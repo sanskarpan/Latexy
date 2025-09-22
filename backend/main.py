@@ -85,7 +85,7 @@ def validate_latex_content(content: str) -> bool:
     return has_document_class and has_begin_document and has_end_document
 
 async def compile_latex(latex_content: str, job_id: str) -> CompilationResponse:
-    """Compile LaTeX content to PDF using pdflatex."""
+    """Compile LaTeX content to PDF using Docker with LaTeX."""
     import time
     start_time = time.time()
     
@@ -102,23 +102,26 @@ async def compile_latex(latex_content: str, job_id: str) -> CompilationResponse:
         tex_file.write_text(latex_content, encoding='utf-8')
         logger.info(f"Created LaTeX file for job {job_id}")
         
-        # Compile using pdflatex
-        cmd = [
+        # Docker command to compile LaTeX
+        docker_cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{job_dir}:/workspace",
+            "-w", "/workspace",
+            "texlive/texlive:latest",
             "pdflatex",
             "-interaction=nonstopmode",
-            "-output-directory", str(job_dir),
+            "-output-directory", "/workspace",
             "-jobname", "resume",
-            str(tex_file)
+            "resume.tex"
         ]
         
-        logger.info(f"Starting LaTeX compilation for job {job_id}")
+        logger.info(f"Starting LaTeX compilation for job {job_id} using Docker")
         
         # Run compilation with timeout
         process = await asyncio.create_subprocess_exec(
-            *cmd,
+            *docker_cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=job_dir
+            stderr=asyncio.subprocess.PIPE
         )
         
         try:
@@ -140,6 +143,11 @@ async def compile_latex(latex_content: str, job_id: str) -> CompilationResponse:
         log_output = ""
         if log_file.exists():
             log_output = log_file.read_text(encoding='utf-8', errors='ignore')
+        else:
+            # If no log file, use stdout/stderr
+            log_output = stdout.decode('utf-8', errors='ignore')
+            if stderr:
+                log_output += "\n" + stderr.decode('utf-8', errors='ignore')
         
         # Check if compilation was successful
         if process.returncode == 0 and pdf_file.exists():
@@ -181,15 +189,26 @@ async def compile_latex(latex_content: str, job_id: str) -> CompilationResponse:
         pass
 
 def check_latex_installation() -> bool:
-    """Check if LaTeX is properly installed."""
+    """Check if Docker and LaTeX Docker image are available."""
     try:
-        result = subprocess.run(
-            ["pdflatex", "--version"], 
+        # Check if Docker is available
+        docker_result = subprocess.run(
+            ["docker", "--version"], 
             capture_output=True, 
             text=True, 
             timeout=5
         )
-        return result.returncode == 0
+        if docker_result.returncode != 0:
+            return False
+        
+        # Check if LaTeX Docker image is available
+        image_result = subprocess.run(
+            ["docker", "image", "inspect", "texlive/texlive:latest"], 
+            capture_output=True, 
+            text=True, 
+            timeout=5
+        )
+        return image_result.returncode == 0
     except Exception:
         return False
 
