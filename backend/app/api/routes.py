@@ -69,6 +69,11 @@ async def compile_latex_endpoint(
         # Compile LaTeX
         result = await latex_service.compile_latex(latex_content)
         
+        # Schedule cleanup after retention period only if compilation was successful
+        if result.success:
+            job_dir = settings.TEMP_DIR / result.job_id
+            asyncio.create_task(latex_service.cleanup_temp_files_delayed(job_dir, settings.PDF_RETENTION_TIME))
+        
         return result
         
     except HTTPException:
@@ -94,16 +99,11 @@ async def download_pdf(job_id: str):
     
     try:
         # Return PDF file
-        response = FileResponse(
+        return FileResponse(
             path=pdf_file,
             media_type='application/pdf',
             filename=f"resume_{job_id[:8]}.pdf"
         )
-        
-        # Schedule cleanup after response
-        asyncio.create_task(latex_service.cleanup_temp_files_delayed(job_dir))
-        
-        return response
         
     except Exception as e:
         logger.error(f"Error serving PDF for job {job_id}: {e}")
@@ -183,6 +183,11 @@ async def optimize_and_compile_resume(request: OptimizationRequest):
         
         # Then compile the optimized LaTeX
         compilation_result = await latex_service.compile_latex(optimization_result.optimized_latex)
+        
+        # Schedule cleanup after retention period only if compilation was successful
+        if compilation_result.success:
+            job_dir = settings.TEMP_DIR / compilation_result.job_id
+            asyncio.create_task(latex_service.cleanup_temp_files_delayed(job_dir, settings.PDF_RETENTION_TIME))
         
         return {
             "optimization": optimization_result,
