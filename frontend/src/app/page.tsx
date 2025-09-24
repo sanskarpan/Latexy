@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import Header from '@/components/Header'
 import LaTeXEditor from '@/components/LaTeXEditor'
 import JobDescriptionInput from '@/components/JobDescriptionInput'
@@ -8,27 +8,93 @@ import PDFPreview from '@/components/PDFPreview'
 import FileUpload from '@/components/FileUpload'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ErrorBoundary from '@/components/ErrorBoundary'
-import { FileText, Briefcase, Eye } from 'lucide-react'
+import { useCompilation, usePdf, useHealthCheck, useOptimization } from '@/hooks/useApi'
+import { FileText, Briefcase, Eye, AlertCircle, CheckCircle } from 'lucide-react'
 
 export default function Home() {
   const [latexContent, setLatexContent] = useState('')
   const [jobDescription, setJobDescription] = useState('')
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'editor' | 'job' | 'preview'>('editor')
+  
+  // API hooks
+  const { compile, isLoading: isCompiling, result: compilationResult } = useCompilation()
+  const { pdfUrl, loadPdf, downloadPdf, clearPdf, isLoading: isPdfLoading } = usePdf()
+  const { health, checkHealth, isLoading: isHealthLoading } = useHealthCheck()
+  const { optimizeAndCompile, isLoading: isOptimizing, result: optimizationResult } = useOptimization()
+  
+  const isLoading = isCompiling || isPdfLoading || isOptimizing
+
+  // Check backend health on mount
+  useEffect(() => {
+    checkHealth()
+  }, [checkHealth])
+
+  // Load PDF when compilation succeeds
+  useEffect(() => {
+    if (compilationResult?.success && compilationResult.job_id) {
+      loadPdf(compilationResult.job_id)
+      setActiveTab('preview')
+    }
+  }, [compilationResult, loadPdf])
+
+  // Load PDF when optimization and compilation succeeds
+  useEffect(() => {
+    if (optimizationResult?.success) {
+      // Check if we have a compilation result from optimize-and-compile
+      const jobId = (optimizationResult as any)?.compilation?.job_id
+      if (jobId) {
+        loadPdf(jobId)
+        setActiveTab('preview')
+      }
+    }
+  }, [optimizationResult, loadPdf])
 
   const handleFileUpload = useCallback((content: string) => {
     setLatexContent(content)
     setActiveTab('editor')
-  }, [])
+    clearPdf() // Clear previous PDF when new content is loaded
+  }, [clearPdf])
 
   const handleLatexChange = useCallback((value: string) => {
     setLatexContent(value)
-  }, [])
+    if (pdfUrl) {
+      clearPdf() // Clear PDF when content changes
+    }
+  }, [pdfUrl, clearPdf])
 
   const handleJobDescriptionChange = useCallback((value: string) => {
     setJobDescription(value)
   }, [])
+
+  const handleCompilePdf = useCallback(async () => {
+    if (!latexContent.trim()) return
+    
+    clearPdf() // Clear previous PDF
+    await compile(latexContent)
+  }, [latexContent, compile, clearPdf])
+
+  const handleOptimizeResume = useCallback(async () => {
+    if (!latexContent.trim() || !jobDescription.trim()) return
+    
+    clearPdf() // Clear previous PDF
+    const result = await optimizeAndCompile({
+      latex_content: latexContent,
+      job_description: jobDescription,
+      optimization_level: 'balanced'
+    })
+    
+    // Update LaTeX content with optimized version
+    if (result?.optimization.success && result.optimization.optimized_latex) {
+      setLatexContent(result.optimization.optimized_latex)
+    }
+  }, [latexContent, jobDescription, optimizeAndCompile, clearPdf])
+
+  const handleDownloadPdf = useCallback(() => {
+    if (compilationResult?.job_id) {
+      const filename = `resume_${new Date().toISOString().split('T')[0]}.pdf`
+      downloadPdf(compilationResult.job_id, filename)
+    }
+  }, [compilationResult, downloadPdf])
 
   return (
     <ErrorBoundary>
@@ -36,6 +102,37 @@ export default function Home() {
         <Header />
         
         <main className="container mx-auto px-4 py-8">
+          {/* Backend Status */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between p-4 bg-secondary-50 rounded-lg">
+              <div className="flex items-center gap-3">
+                {isHealthLoading ? (
+                  <LoadingSpinner size="sm" />
+                ) : health?.latex_available ? (
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-500" />
+                )}
+                <div>
+                  <p className="font-medium text-secondary-900">
+                    Backend Status: {health?.status || 'Unknown'}
+                  </p>
+                  <p className="text-sm text-secondary-600">
+                    LaTeX: {health?.latex_available ? 'Available' : 'Unavailable'} • 
+                    Version: {health?.version || 'Unknown'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={checkHealth}
+                disabled={isHealthLoading}
+                className="btn-outline px-3 py-1 text-xs"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
           {/* Upload Section */}
           <div className="mb-8">
             <FileUpload onFileUpload={handleFileUpload} />
@@ -139,7 +236,8 @@ export default function Home() {
                 <div className="card-content flex-1 min-h-0">
                   <PDFPreview
                     pdfUrl={pdfUrl}
-                    isLoading={isLoading}
+                    isLoading={isPdfLoading}
+                    onDownload={handleDownloadPdf}
                   />
                 </div>
               </div>
@@ -164,14 +262,23 @@ export default function Home() {
                   
                   <div className="flex gap-3">
                     <button
+                      onClick={handleCompilePdf}
                       className="btn-outline px-4 py-2 text-sm"
-                      disabled={!latexContent || isLoading}
+                      disabled={!latexContent || isLoading || !health?.latex_available}
                     >
-                      Compile PDF
+                      {isCompiling ? (
+                        <div className="flex items-center gap-2">
+                          <LoadingSpinner size="sm" />
+                          Compiling...
+                        </div>
+                      ) : (
+                        'Compile PDF'
+                      )}
                     </button>
                     <button
+                      onClick={handleOptimizeResume}
                       className="btn-primary px-4 py-2 text-sm"
-                      disabled={!latexContent || !jobDescription || isLoading}
+                      disabled={!latexContent || !jobDescription || isLoading || !health?.latex_available}
                     >
                       {isLoading ? (
                         <div className="flex items-center gap-2">
