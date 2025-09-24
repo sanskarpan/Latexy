@@ -121,3 +121,4 @@ async def get_compilation_logs(job_id: str):
     except Exception as e:
         logger.error(f"Error reading logs for job {job_id}: {e}")
         raise HTTPException(status_code=500, detail="Error reading log file")
+
