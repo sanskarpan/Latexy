@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_MAX_TOKENS: int = 4000
     OPENAI_TEMPERATURE: float = 0.7
+    
+    # File Management
+    PDF_RETENTION_TIME: int = 3600  # Keep PDFs for 1 hour (3600 seconds)
 
 
 # Global settings instance
