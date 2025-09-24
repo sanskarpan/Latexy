@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     
     # Logging
     LOG_LEVEL: str = "INFO"
+    
+    # OpenAI Configuration
+    OPENAI_API_KEY: str = Field(default="", description="OpenAI API key for LLM services")
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_MAX_TOKENS: int = 4000
+    OPENAI_TEMPERATURE: float = 0.7
 
 
 # Global settings instance
