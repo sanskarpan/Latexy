@@ -7,9 +7,10 @@ import LoadingSpinner from './LoadingSpinner'
 interface PDFPreviewProps {
   pdfUrl: string | null
   isLoading: boolean
+  onDownload?: () => void
 }
 
-export default function PDFPreview({ pdfUrl, isLoading }: PDFPreviewProps) {
+export default function PDFPreview({ pdfUrl, isLoading, onDownload }: PDFPreviewProps) {
   const [zoom, setZoom] = useState(1)
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.2, 3))
@@ -64,7 +65,11 @@ export default function PDFPreview({ pdfUrl, isLoading }: PDFPreviewProps) {
           </button>
         </div>
         
-        <button className="flex items-center gap-2 text-xs text-secondary-600 hover:text-secondary-900">
+        <button 
+          onClick={onDownload}
+          disabled={!pdfUrl || !onDownload}
+          className="flex items-center gap-2 text-xs text-secondary-600 hover:text-secondary-900 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
           <Download size={14} />
           Download
         </button>
@@ -81,14 +86,22 @@ export default function PDFPreview({ pdfUrl, isLoading }: PDFPreviewProps) {
               transition: 'transform 0.2s ease'
             }}
           >
-            {/* PDF content will go here when we integrate with backend */}
-            <div className="w-[595px] h-[842px] bg-white border border-secondary-200 flex items-center justify-center">
-              <div className="text-center text-secondary-400">
-                <FileText size={48} className="mx-auto mb-4" />
-                <p>PDF Preview Placeholder</p>
-                <p className="text-sm mt-2">Phase 3 will integrate actual PDF viewing</p>
+            {/* PDF Viewer */}
+            {pdfUrl ? (
+              <iframe
+                src={pdfUrl}
+                className="w-[595px] h-[842px] border border-secondary-200"
+                title="PDF Preview"
+              />
+            ) : (
+              <div className="w-[595px] h-[842px] bg-white border border-secondary-200 flex items-center justify-center">
+                <div className="text-center text-secondary-400">
+                  <FileText size={48} className="mx-auto mb-4" />
+                  <p>No PDF available</p>
+                  <p className="text-sm mt-2">Compile your LaTeX to see the preview</p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
