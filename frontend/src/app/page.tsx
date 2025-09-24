@@ -181,7 +181,7 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {/* LaTeX Editor */}
             <div className={`${activeTab !== 'editor' ? 'hidden lg:block' : ''} xl:col-span-1`}>
-              <div className="card h-[600px] flex flex-col">
+              <div className="card h-[700px] lg:h-[800px] flex flex-col">
                 <div className="card-header">
                   <h2 className="text-lg font-semibold text-secondary-900 flex items-center gap-2">
                     <FileText size={20} className="text-primary-600" />
@@ -202,7 +202,7 @@ export default function Home() {
 
             {/* Job Description */}
             <div className={`${activeTab !== 'job' ? 'hidden lg:block' : ''} xl:col-span-1`}>
-              <div className="card h-[600px] flex flex-col">
+              <div className="card h-[700px] lg:h-[800px] flex flex-col">
                 <div className="card-header">
                   <h2 className="text-lg font-semibold text-secondary-900 flex items-center gap-2">
                     <Briefcase size={20} className="text-primary-600" />
@@ -223,7 +223,7 @@ export default function Home() {
 
             {/* PDF Preview */}
             <div className={`${activeTab !== 'preview' ? 'hidden lg:block' : ''} xl:col-span-1`}>
-              <div className="card h-[600px] flex flex-col">
+              <div className="card h-[700px] lg:h-[800px] flex flex-col">
                 <div className="card-header">
                   <h2 className="text-lg font-semibold text-secondary-900 flex items-center gap-2">
                     <Eye size={20} className="text-primary-600" />
