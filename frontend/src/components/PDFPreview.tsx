@@ -77,9 +77,9 @@ export default function PDFPreview({ pdfUrl, isLoading, onDownload }: PDFPreview
 
       {/* PDF Viewer */}
       <div className="flex-1 bg-secondary-50 overflow-auto">
-        <div className="p-4 flex justify-center">
+        <div className="p-2 sm:p-4 flex justify-center min-h-full">
           <div 
-            className="bg-white shadow-lg"
+            className="bg-white shadow-lg max-w-full"
             style={{ 
               transform: `scale(${zoom})`,
               transformOrigin: 'top center',
@@ -90,11 +90,15 @@ export default function PDFPreview({ pdfUrl, isLoading, onDownload }: PDFPreview
             {pdfUrl ? (
               <iframe
                 src={pdfUrl}
-                className="w-[595px] h-[842px] border border-secondary-200"
+                className="w-full max-w-[800px] h-[600px] sm:h-[700px] md:h-[800px] lg:h-[900px] xl:h-[1000px] border border-secondary-200 rounded"
                 title="PDF Preview"
+                style={{ 
+                  aspectRatio: '210/297', // A4 aspect ratio
+                  minHeight: '500px'
+                }}
               />
             ) : (
-              <div className="w-[595px] h-[842px] bg-white border border-secondary-200 flex items-center justify-center">
+              <div className="w-full max-w-[800px] h-[600px] sm:h-[700px] md:h-[800px] lg:h-[900px] xl:h-[1000px] bg-white border border-secondary-200 rounded flex items-center justify-center">
                 <div className="text-center text-secondary-400">
                   <FileText size={48} className="mx-auto mb-4" />
                   <p>No PDF available</p>
