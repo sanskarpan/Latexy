@@ -74,6 +74,68 @@ class Settings(BaseSettings):
     # Better-Auth Configuration
     BETTER_AUTH_SECRET: str = Field(default="", description="Better-Auth secret key")
     BETTER_AUTH_URL: str = Field(default="http://localhost:3000", description="Better-Auth URL")
+    
+    # Razorpay Configuration
+    RAZORPAY_KEY_ID: str = Field(default="", description="Razorpay API Key ID")
+    RAZORPAY_KEY_SECRET: str = Field(default="", description="Razorpay API Key Secret")
+    RAZORPAY_WEBHOOK_SECRET: str = Field(default="", description="Razorpay Webhook Secret")
+    
+    # Subscription Plans
+    SUBSCRIPTION_PLANS: dict = Field(default={
+        "free": {
+            "name": "Free Trial",
+            "price": 0,
+            "currency": "INR",
+            "interval": "month",
+            "features": {
+                "compilations": 3,
+                "optimizations": 0,
+                "historyRetention": 0,
+                "prioritySupport": False,
+                "apiAccess": False
+            }
+        },
+        "basic": {
+            "name": "Basic",
+            "price": 29900,  # 299 INR in paise
+            "currency": "INR",
+            "interval": "month",
+            "features": {
+                "compilations": 50,
+                "optimizations": 10,
+                "historyRetention": 30,
+                "prioritySupport": False,
+                "apiAccess": False
+            }
+        },
+        "pro": {
+            "name": "Pro",
+            "price": 59900,  # 599 INR in paise
+            "currency": "INR",
+            "interval": "month",
+            "features": {
+                "compilations": "unlimited",
+                "optimizations": "unlimited",
+                "historyRetention": 365,
+                "prioritySupport": True,
+                "apiAccess": True
+            }
+        },
+        "byok": {
+            "name": "BYOK (Bring Your Own Key)",
+            "price": 19900,  # 199 INR in paise
+            "currency": "INR",
+            "interval": "month",
+            "features": {
+                "compilations": "unlimited",
+                "optimizations": "unlimited",
+                "historyRetention": 365,
+                "prioritySupport": True,
+                "apiAccess": True,
+                "customModels": True
+            }
+        }
+    })
 
 
 # Global settings instance
