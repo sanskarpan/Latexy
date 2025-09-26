@@ -250,3 +250,5 @@ Thumbs.db
 
 # Logs
 *.log
+
+.cursor
