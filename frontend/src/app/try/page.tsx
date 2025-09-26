@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { toast, Toaster } from 'sonner'
 import { 
   FileText, 
   Download, 
@@ -21,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { apiClient, generateDeviceFingerprint, showSuccessToast, showErrorToast } from '@/lib/api-client'
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -92,14 +94,35 @@ export default function TryPage() {
   const [compilationResult, setCompilationResult] = useState<any>(null)
   const [trialUsage, setTrialUsage] = useState({ used: 0, total: 3 })
   const [showSignupPrompt, setShowSignupPrompt] = useState(false)
+  const [deviceFingerprint, setDeviceFingerprint] = useState<string>('')
 
   useEffect(() => {
-    // Simulate trial usage check
-    const usage = localStorage.getItem('trial_usage')
-    if (usage) {
-      setTrialUsage(JSON.parse(usage))
-    }
+    // Generate device fingerprint
+    const fingerprint = generateDeviceFingerprint()
+    setDeviceFingerprint(fingerprint)
+    
+    // Load trial status from API
+    loadTrialStatus(fingerprint)
   }, [])
+
+  const loadTrialStatus = async (fingerprint: string) => {
+    try {
+      const response = await apiClient.getTrialStatus(fingerprint)
+      if (response.success && response.data) {
+        setTrialUsage({
+          used: response.data.usage_count,
+          total: 3
+        })
+      }
+    } catch (error) {
+      console.error('Failed to load trial status:', error)
+      // Fallback to localStorage
+      const usage = localStorage.getItem('trial_usage')
+      if (usage) {
+        setTrialUsage(JSON.parse(usage))
+      }
+    }
+  }
 
   const handleCompile = async () => {
     if (trialUsage.used >= trialUsage.total) {
@@ -107,27 +130,79 @@ export default function TryPage() {
       return
     }
 
+    if (!latexContent.trim()) {
+      showErrorToast('Please enter LaTeX content to compile')
+      return
+    }
+
     setIsCompiling(true)
     
-    // Simulate compilation
-    setTimeout(() => {
-      setIsCompiling(false)
-      setCompilationResult({
-        success: true,
-        pdfUrl: '/sample-resume.pdf',
-        jobId: 'demo-job-123'
+    try {
+      // Track usage
+      await apiClient.trackUsage(deviceFingerprint, 'compile')
+      
+      // Compile LaTeX
+      const response = await apiClient.compileLatex({
+        latex_content: latexContent,
+        device_fingerprint: deviceFingerprint
       })
-      
-      // Update trial usage
-      const newUsage = { ...trialUsage, used: trialUsage.used + 1 }
-      setTrialUsage(newUsage)
-      localStorage.setItem('trial_usage', JSON.stringify(newUsage))
-      
-      // Show signup prompt after 2nd use
-      if (newUsage.used >= 2) {
-        setTimeout(() => setShowSignupPrompt(true), 2000)
+
+      if (response.success && response.data) {
+        setCompilationResult({
+          success: true,
+          pdfUrl: `/jobs/${response.data.job_id}/download`,
+          jobId: response.data.job_id
+        })
+        
+        showSuccessToast('Resume compiled successfully!')
+        
+        // Update trial usage
+        const newUsage = { ...trialUsage, used: trialUsage.used + 1 }
+        setTrialUsage(newUsage)
+        localStorage.setItem('trial_usage', JSON.stringify(newUsage))
+        
+        // Show signup prompt after 2nd use
+        if (newUsage.used >= 2) {
+          setTimeout(() => setShowSignupPrompt(true), 2000)
+        }
+      } else {
+        throw new Error(response.error || 'Compilation failed')
       }
-    }, 3000)
+    } catch (error) {
+      console.error('Compilation error:', error)
+      showErrorToast(error instanceof Error ? error.message : 'Compilation failed')
+      setCompilationResult({
+        success: false,
+        error: error instanceof Error ? error.message : 'Compilation failed'
+      })
+    } finally {
+      setIsCompiling(false)
+    }
+  }
+
+  const handleDownload = async () => {
+    if (!compilationResult?.jobId) return
+    
+    try {
+      const response = await apiClient.downloadPdf(compilationResult.jobId)
+      if (response.success && response.data) {
+        const url = URL.createObjectURL(response.data)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'resume.pdf'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        
+        showSuccessToast('PDF downloaded successfully!')
+      } else {
+        throw new Error(response.error || 'Download failed')
+      }
+    } catch (error) {
+      console.error('Download error:', error)
+      showErrorToast(error instanceof Error ? error.message : 'Download failed')
+    }
   }
 
   const remainingTrials = trialUsage.total - trialUsage.used
@@ -288,7 +363,10 @@ export default function TryPage() {
                           <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
                           <p className="text-gray-900 dark:text-white font-medium mb-2">Resume compiled successfully!</p>
                           <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">Your professional PDF is ready</p>
-                          <Button className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600">
+                          <Button 
+                            onClick={handleDownload}
+                            className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
+                          >
                             <Download className="w-4 h-4 mr-2" />
                             Download PDF
                           </Button>
@@ -469,6 +547,9 @@ export default function TryPage() {
           </motion.div>
         </div>
       )}
+
+      {/* Toast Notifications */}
+      <Toaster position="top-right" richColors />
     </div>
   )
 }
