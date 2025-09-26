@@ -195,28 +195,45 @@ export default function BillingPage() {
         {showPricing ? (
           <>
             {/* Back Button */}
-            <div className="mb-8">
-              <button
+            <motion.div 
+              className="mb-8"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <Button
+                variant="ghost"
                 onClick={handleBackToSubscription}
-                className="inline-flex items-center text-primary-600 hover:text-primary-700"
+                className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back to Subscription
-              </button>
-            </div>
+              </Button>
+            </motion.div>
 
             {/* Pricing Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-              {Object.entries(plans).map(([planId, plan]) => (
-                <PricingCard
+            <motion.div 
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+            >
+              {Object.entries(plans).map(([planId, plan], index) => (
+                <motion.div
                   key={planId}
-                  plan={{ ...plan, id: planId }}
-                  isPopular={planId === 'pro'}
-                  onSelectPlan={handleSelectPlan}
-                  isLoading={selectedPlan === planId}
-                />
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                >
+                  <PricingCard
+                    plan={{ ...plan, id: planId }}
+                    isPopular={planId === 'pro'}
+                    onSelectPlan={handleSelectPlan}
+                    isLoading={selectedPlan === planId}
+                  />
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
 
             {/* Features Comparison */}
             <div className="mt-16">
