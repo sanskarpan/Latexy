@@ -1,335 +1,423 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
-import Header from '@/components/Header'
-import LaTeXEditor from '@/components/LaTeXEditor'
-import JobDescriptionInput from '@/components/JobDescriptionInput'
-import PDFPreview from '@/components/PDFPreview'
-import FileUpload from '@/components/FileUpload'
-import LoadingSpinner from '@/components/LoadingSpinner'
-import ErrorBoundary from '@/components/ErrorBoundary'
-import { useCompilation, usePdf, useHealthCheck, useOptimization } from '@/hooks/useApi'
-import { FileText, Briefcase, Eye, AlertCircle, CheckCircle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { motion } from 'framer-motion'
+import { 
+  FileText, 
+  Zap, 
+  Target, 
+  Download, 
+  Sparkles, 
+  ArrowRight, 
+  CheckCircle, 
+  Star,
+  Users,
+  TrendingUp,
+  Shield,
+  Rocket
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 
-export default function Home() {
-  const [latexContent, setLatexContent] = useState('')
-  const [jobDescription, setJobDescription] = useState('')
-  const [activeTab, setActiveTab] = useState<'editor' | 'job' | 'preview'>('editor')
-  
-  // API hooks
-  const { compile, isLoading: isCompiling, result: compilationResult } = useCompilation()
-  const { pdfUrl, loadPdf, downloadPdf, clearPdf, isLoading: isPdfLoading } = usePdf()
-  const { health, checkHealth, isLoading: isHealthLoading } = useHealthCheck()
-  const { optimizeAndCompile, isLoading: isOptimizing, result: optimizationResult } = useOptimization()
-  
-  const isLoading = isCompiling || isPdfLoading || isOptimizing
+const fadeInUp = {
+  initial: { opacity: 0, y: 60 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.6 }
+}
 
-  // Check backend health on mount
-  useEffect(() => {
-    checkHealth()
-  }, [checkHealth])
-
-  // Load PDF when compilation succeeds
-  useEffect(() => {
-    if (compilationResult?.success && compilationResult.job_id) {
-      loadPdf(compilationResult.job_id)
-      setActiveTab('preview')
+const staggerContainer = {
+  animate: {
+    transition: {
+      staggerChildren: 0.1
     }
-  }, [compilationResult, loadPdf])
+  }
+}
 
-  // Load PDF when optimization and compilation succeeds
+const features = [
+  {
+    icon: FileText,
+    title: "LaTeX Precision",
+    description: "Professional resume compilation with LaTeX for pixel-perfect formatting and ATS compatibility.",
+    color: "text-blue-500"
+  },
+  {
+    icon: Zap,
+    title: "AI-Powered Optimization",
+    description: "Advanced LLM integration analyzes job descriptions and optimizes your resume content automatically.",
+    color: "text-yellow-500"
+  },
+  {
+    icon: Target,
+    title: "ATS Scoring",
+    description: "Real-time ATS compatibility scoring ensures your resume passes automated screening systems.",
+    color: "text-green-500"
+  },
+  {
+    icon: Download,
+    title: "Instant PDF Export",
+    description: "Download professional PDFs instantly with optimized formatting for any job application.",
+    color: "text-purple-500"
+  }
+]
+
+const testimonials = [
+  {
+    name: "Sarah Chen",
+    role: "Software Engineer",
+    company: "Google",
+    content: "Latexy helped me land my dream job at Google. The ATS optimization was game-changing!",
+    rating: 5,
+    avatar: "SC"
+  },
+  {
+    name: "Michael Rodriguez",
+    role: "Product Manager",
+    company: "Microsoft",
+    content: "The LaTeX formatting made my resume stand out. Got 3x more interview calls!",
+    rating: 5,
+    avatar: "MR"
+  },
+  {
+    name: "Emily Johnson",
+    role: "Data Scientist",
+    company: "Meta",
+    content: "AI optimization saved me hours of manual editing. Highly recommend!",
+    rating: 5,
+    avatar: "EJ"
+  }
+]
+
+const stats = [
+  { label: "Resumes Created", value: "50,000+", icon: FileText },
+  { label: "Success Rate", value: "94%", icon: TrendingUp },
+  { label: "Happy Users", value: "12,000+", icon: Users },
+  { label: "ATS Score Avg", value: "8.7/10", icon: Target }
+]
+
+export default function LandingPage() {
+  const [isVisible, setIsVisible] = useState(false)
+
   useEffect(() => {
-    if (optimizationResult?.success) {
-      // Check if we have a compilation result from optimize-and-compile
-      const jobId = (optimizationResult as any)?.compilation?.job_id
-      if (jobId) {
-        loadPdf(jobId)
-        setActiveTab('preview')
-      }
-    }
-  }, [optimizationResult, loadPdf])
-
-  const handleFileUpload = useCallback((content: string) => {
-    setLatexContent(content)
-    setActiveTab('editor')
-    clearPdf() // Clear previous PDF when new content is loaded
-  }, [clearPdf])
-
-  const handleLatexChange = useCallback((value: string) => {
-    setLatexContent(value)
-    if (pdfUrl) {
-      clearPdf() // Clear PDF when content changes
-    }
-  }, [pdfUrl, clearPdf])
-
-  const handleJobDescriptionChange = useCallback((value: string) => {
-    setJobDescription(value)
+    setIsVisible(true)
   }, [])
 
-  const handleCompilePdf = useCallback(async () => {
-    if (!latexContent.trim()) return
-    
-    clearPdf() // Clear previous PDF
-    await compile(latexContent)
-  }, [latexContent, compile, clearPdf])
-
-  const handleOptimizeResume = useCallback(async () => {
-    if (!latexContent.trim() || !jobDescription.trim()) return
-    
-    clearPdf() // Clear previous PDF
-    const result = await optimizeAndCompile({
-      latex_content: latexContent,
-      job_description: jobDescription,
-      optimization_level: 'balanced'
-    })
-    
-    // Update LaTeX content with optimized version
-    if (result?.optimization.success && result.optimization.optimized_latex) {
-      setLatexContent(result.optimization.optimized_latex)
-    }
-  }, [latexContent, jobDescription, optimizeAndCompile, clearPdf])
-
-  const handleDownloadPdf = useCallback(() => {
-    if (compilationResult?.job_id) {
-      const filename = `resume_${new Date().toISOString().split('T')[0]}.pdf`
-      downloadPdf(compilationResult.job_id, filename)
-    }
-  }, [compilationResult, downloadPdf])
-
   return (
-    <ErrorBoundary>
-      <div className="min-h-screen">
-        <Header />
-        
-        <main className="container mx-auto px-4 py-8">
-          {/* Backend Status */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between p-4 bg-secondary-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                {isHealthLoading ? (
-                  <LoadingSpinner size="sm" />
-                ) : health?.latex_available ? (
-                  <CheckCircle className="w-5 h-5 text-green-500" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-red-500" />
-                )}
-                <div>
-                  <p className="font-medium text-secondary-900">
-                    Backend Status: {health?.status || 'Unknown'}
-                  </p>
-                  <p className="text-sm text-secondary-600">
-                    LaTeX: {health?.latex_available ? 'Available' : 'Unavailable'} • 
-                    Version: {health?.version || 'Unknown'}
-                  </p>
-                </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      {/* Navigation */}
+      <nav className="fixed top-0 w-full z-50 bg-black/20 backdrop-blur-md border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center space-x-2"
+            >
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-white" />
               </div>
-              <button
-                onClick={checkHealth}
-                disabled={isHealthLoading}
-                className="btn-outline px-3 py-1 text-xs"
+              <span className="text-xl font-bold text-white">Latexy</span>
+            </motion.div>
+            
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center space-x-4"
+            >
+              <Link href="/try" className="text-gray-300 hover:text-white transition-colors">
+                Try Free
+              </Link>
+              <Link href="/pricing" className="text-gray-300 hover:text-white transition-colors">
+                Pricing
+              </Link>
+              <Button variant="outline" size="sm" className="border-white/20 text-white hover:bg-white/10">
+                Sign In
+              </Button>
+              <Button size="sm" className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700">
+                Get Started
+              </Button>
+            </motion.div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <motion.div 
+            className="text-center"
+            variants={staggerContainer}
+            initial="initial"
+            animate="animate"
+          >
+            <motion.div variants={fadeInUp} className="mb-6">
+              <Badge variant="outline" className="border-blue-500/50 text-blue-400 bg-blue-500/10">
+                <Sparkles className="w-3 h-3 mr-1" />
+                AI-Powered Resume Optimizer
+              </Badge>
+            </motion.div>
+            
+            <motion.h1 
+              variants={fadeInUp}
+              className="text-4xl md:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight"
+            >
+              Create{' '}
+              <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent animate-gradient-shift">
+                ATS-Perfect
+              </span>
+              <br />
+              Resumes with AI
+            </motion.h1>
+            
+            <motion.p 
+              variants={fadeInUp}
+              className="text-xl text-gray-300 mb-8 max-w-3xl mx-auto leading-relaxed"
+            >
+              Transform your career with AI-powered resume optimization. LaTeX precision meets 
+              intelligent job matching for resumes that actually get you hired.
+            </motion.p>
+            
+            <motion.div 
+              variants={fadeInUp}
+              className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12"
+            >
+              <Button 
+                size="xl" 
+                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 shadow-2xl hover:shadow-blue-500/25 transition-all duration-300"
               >
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          {/* Upload Section */}
-          <div className="mb-8">
-            <FileUpload onFileUpload={handleFileUpload} />
-          </div>
-
-          {/* Mobile Tab Navigation */}
-          <div className="lg:hidden mb-6">
-            <div className="flex space-x-1 bg-secondary-100 rounded-lg p-1">
-              <button
-                onClick={() => setActiveTab('editor')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === 'editor'
-                    ? 'bg-white text-primary-700 shadow-sm'
-                    : 'text-secondary-600 hover:text-secondary-900'
-                }`}
+                <Rocket className="w-5 h-5 mr-2" />
+                Start Free Trial
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+              <Button 
+                variant="outline" 
+                size="xl"
+                className="border-white/20 text-white hover:bg-white/10"
               >
-                <FileText size={16} />
-                LaTeX
-              </button>
-              <button
-                onClick={() => setActiveTab('job')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === 'job'
-                    ? 'bg-white text-primary-700 shadow-sm'
-                    : 'text-secondary-600 hover:text-secondary-900'
-                }`}
+                <FileText className="w-5 h-5 mr-2" />
+                View Examples
+              </Button>
+            </motion.div>
+
+            <motion.div 
+              variants={fadeInUp}
+              className="flex items-center justify-center gap-8 text-sm text-gray-400"
+            >
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-400" />
+                <span>3 Free Trials</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-400" />
+                <span>No Credit Card</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-400" />
+                <span>Instant Results</span>
+              </div>
+            </motion.div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Stats Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <motion.div 
+            className="grid grid-cols-2 md:grid-cols-4 gap-8"
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true }}
+          >
+            {stats.map((stat, index) => (
+              <motion.div 
+                key={stat.label}
+                className="text-center"
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.1 }}
+                viewport={{ once: true }}
               >
-                <Briefcase size={16} />
-                Job
-              </button>
-              <button
-                onClick={() => setActiveTab('preview')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === 'preview'
-                    ? 'bg-white text-primary-700 shadow-sm'
-                    : 'text-secondary-600 hover:text-secondary-900'
-                }`}
+                <div className="w-12 h-12 bg-gradient-to-r from-blue-500/20 to-purple-600/20 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <stat.icon className="w-6 h-6 text-blue-400" />
+                </div>
+                <div className="text-3xl font-bold text-white mb-2">{stat.value}</div>
+                <div className="text-gray-400">{stat.label}</div>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <motion.div 
+            className="text-center mb-16"
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true }}
+          >
+            <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">
+              Why Choose Latexy?
+            </h2>
+            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+              Cutting-edge technology meets career success. Our platform combines the best of 
+              AI and professional formatting to give you the competitive edge.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {features.map((feature, index) => (
+              <motion.div
+                key={feature.title}
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.1 }}
+                viewport={{ once: true }}
               >
-                <Eye size={16} />
-                Preview
-              </button>
-            </div>
-          </div>
-
-          {/* Main Content */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {/* LaTeX Editor */}
-            <div className={`${activeTab !== 'editor' ? 'hidden lg:block' : ''} xl:col-span-1`}>
-              <div className="card h-[700px] lg:h-[800px] flex flex-col">
-                <div className="card-header">
-                  <h2 className="text-lg font-semibold text-secondary-900 flex items-center gap-2">
-                    <FileText size={20} className="text-primary-600" />
-                    LaTeX Editor
-                  </h2>
-                  <p className="text-sm text-secondary-500">
-                    Edit your resume LaTeX source code
-                  </p>
-                </div>
-                <div className="card-content flex-1 min-h-0">
-                  <LaTeXEditor
-                    value={latexContent}
-                    onChange={handleLatexChange}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Job Description */}
-            <div className={`${activeTab !== 'job' ? 'hidden lg:block' : ''} xl:col-span-1`}>
-              <div className="card h-[700px] lg:h-[800px] flex flex-col">
-                <div className="card-header">
-                  <h2 className="text-lg font-semibold text-secondary-900 flex items-center gap-2">
-                    <Briefcase size={20} className="text-primary-600" />
-                    Job Description
-                  </h2>
-                  <p className="text-sm text-secondary-500">
-                    Paste the job description for optimization
-                  </p>
-                </div>
-                <div className="card-content flex-1 min-h-0">
-                  <JobDescriptionInput
-                    value={jobDescription}
-                    onChange={handleJobDescriptionChange}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* PDF Preview */}
-            <div className={`${activeTab !== 'preview' ? 'hidden lg:block' : ''} xl:col-span-1`}>
-              <div className="card h-[700px] lg:h-[800px] flex flex-col">
-                <div className="card-header">
-                  <h2 className="text-lg font-semibold text-secondary-900 flex items-center gap-2">
-                    <Eye size={20} className="text-primary-600" />
-                    PDF Preview
-                  </h2>
-                  <p className="text-sm text-secondary-500">
-                    Preview your compiled resume
-                  </p>
-                </div>
-                <div className="card-content flex-1 min-h-0">
-                  <PDFPreview
-                    pdfUrl={pdfUrl}
-                    isLoading={isPdfLoading}
-                    onDownload={handleDownloadPdf}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Action Bar */}
-          <div className="mt-8">
-            <div className="card">
-              <div className="card-content">
-                <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-                  <div className="flex items-center gap-4 text-sm text-secondary-600">
-                    <span className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${latexContent ? 'bg-green-500' : 'bg-secondary-300'}`} />
-                      LaTeX Content
-                    </span>
-                    <span className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${jobDescription ? 'bg-green-500' : 'bg-secondary-300'}`} />
-                      Job Description
-                    </span>
-                  </div>
-                  
-                  <div className="flex gap-3">
-                    <button
-                      onClick={handleCompilePdf}
-                      className="btn-outline px-4 py-2 text-sm"
-                      disabled={!latexContent || isLoading || !health?.latex_available}
-                    >
-                      {isCompiling ? (
-                        <div className="flex items-center gap-2">
-                          <LoadingSpinner size="sm" />
-                          Compiling...
-                        </div>
-                      ) : (
-                        'Compile PDF'
-                      )}
-                    </button>
-                    <button
-                      onClick={handleOptimizeResume}
-                      className="btn-primary px-4 py-2 text-sm"
-                      disabled={!latexContent || !jobDescription || isLoading || !health?.latex_available}
-                    >
-                      {isLoading ? (
-                        <div className="flex items-center gap-2">
-                          <LoadingSpinner size="sm" />
-                          Processing...
-                        </div>
-                      ) : (
-                        'Optimize Resume'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Help Section */}
-          <div className="mt-8">
-            <div className="card">
-              <div className="card-header">
-                <h3 className="font-semibold text-secondary-900">Getting Started</h3>
-              </div>
-              <div className="card-content">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center text-xs font-bold">1</div>
-                    <div>
-                      <p className="font-medium text-secondary-900">Upload or Edit LaTeX</p>
-                      <p className="text-secondary-600">Start with your resume LaTeX source code</p>
+                <Card className="bg-white/5 border-white/10 backdrop-blur-sm hover:bg-white/10 transition-all duration-300 card-hover">
+                  <CardHeader>
+                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-r from-blue-500/20 to-purple-600/20 flex items-center justify-center mb-4`}>
+                      <feature.icon className={`w-6 h-6 ${feature.color}`} />
                     </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center text-xs font-bold">2</div>
-                    <div>
-                      <p className="font-medium text-secondary-900">Add Job Description</p>
-                      <p className="text-secondary-600">Paste the target job posting details</p>
+                    <CardTitle className="text-white">{feature.title}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <CardDescription className="text-gray-300">
+                      {feature.description}
+                    </CardDescription>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials Section */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <motion.div 
+            className="text-center mb-16"
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true }}
+          >
+            <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">
+              Success Stories
+            </h2>
+            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+              Join thousands of professionals who've transformed their careers with Latexy
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {testimonials.map((testimonial, index) => (
+              <motion.div
+                key={testimonial.name}
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.1 }}
+                viewport={{ once: true }}
+              >
+                <Card className="bg-white/5 border-white/10 backdrop-blur-sm hover:bg-white/10 transition-all duration-300">
+                  <CardHeader>
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
+                        {testimonial.avatar}
+                      </div>
+                      <div>
+                        <CardTitle className="text-white text-lg">{testimonial.name}</CardTitle>
+                        <CardDescription className="text-gray-400">
+                          {testimonial.role} at {testimonial.company}
+                        </CardDescription>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center text-xs font-bold">3</div>
-                    <div>
-                      <p className="font-medium text-secondary-900">Optimize & Download</p>
-                      <p className="text-secondary-600">Get ATS-optimized resume with insights</p>
+                    <div className="flex gap-1 mt-2">
+                      {[...Array(testimonial.rating)].map((_, i) => (
+                        <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                      ))}
                     </div>
-                  </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-gray-300 italic">"{testimonial.content}"</p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true }}
+          >
+            <Card className="bg-gradient-to-r from-blue-500/10 to-purple-600/10 border-blue-500/20 backdrop-blur-sm">
+              <CardContent className="p-12">
+                <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
+                  Ready to Transform Your Career?
+                </h2>
+                <p className="text-xl text-gray-300 mb-8">
+                  Join thousands of professionals who've already upgraded their resumes with AI
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <Button 
+                    size="xl" 
+                    className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 shadow-2xl"
+                  >
+                    <Rocket className="w-5 h-5 mr-2" />
+                    Start Your Free Trial
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="xl"
+                    className="border-white/20 text-white hover:bg-white/10"
+                  >
+                    <Shield className="w-5 h-5 mr-2" />
+                    View Pricing
+                  </Button>
                 </div>
+                <p className="text-sm text-gray-400 mt-6">
+                  No credit card required • 3 free trials • Instant access
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/10">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row justify-between items-center">
+            <div className="flex items-center space-x-2 mb-4 md:mb-0">
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-white" />
               </div>
+              <span className="text-xl font-bold text-white">Latexy</span>
+            </div>
+            <div className="flex items-center space-x-6 text-gray-400">
+              <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+              <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
+              <Link href="/contact" className="hover:text-white transition-colors">Contact</Link>
             </div>
           </div>
-        </main>
-      </div>
-    </ErrorBoundary>
+          <div className="mt-8 pt-8 border-t border-white/10 text-center text-gray-400">
+            <p>&copy; 2024 Latexy. All rights reserved. Built with ❤️ for job seekers worldwide.</p>
+          </div>
+        </div>
+      </footer>
+    </div>
   )
 }
