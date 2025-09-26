@@ -1,15 +1,49 @@
 # ATS Resume Optimizer — Development Checklist
 
+<!--
+Version: 1.1
+Last Updated: 2025-09-25
+Author: Development Team
+Purpose: Comprehensive development checklist for the ATS Resume Optimizer project with proper phase structure and task positioning.
+Status: Phase 1-4 Complete, Phase 5+ In Planning
+-->
+
+## 📊 Project Status Overview
+- **Phase 1**: ✅ **COMPLETE** - Backend Foundation (100%)
+- **Phase 2**: ✅ **COMPLETE** - Frontend Skeleton (100%)  
+- **Phase 3**: ✅ **COMPLETE** - API Integration (100%)
+- **Phase 4**: ✅ **COMPLETE** - LLM Integration (100%)
+- **Phase 5**: 🔄 **CRITICAL** - Better-Auth & User Management (0%)
+- **Phase 6**: 🔄 **CRITICAL** - Payment Integration & Subscription (0%)
+- **Phase 7**: 🔄 **HIGH** - Frontend Enhancement & Design System (0%)
+- **Phase 8**: ⏳ **PLANNED** - Workers & Queue System (0%)
+- **Phase 9**: ⏳ **PLANNED** - ATS Scoring Engine (0%)
+- **Phase 10**: ⏳ **PLANNED** - Multi-Provider & BYOK System (0%)
+- **Phase 11**: ⏳ **PLANNED** - Production Deployment & Infrastructure (0%)
+- **Phase 12**: ⏳ **PLANNED** - MVP Launch & Go-Live (0%)
+- **Phase 13**: ⏳ **FUTURE** - Post-MVP Enhancements (0%)
+
+## 🎯 Critical Shipping Blockers
+1. **Better-Auth Integration** - User authentication and session management
+2. **Freemium Trial System** - Device tracking and usage limits (3 free trials)
+3. **Payment Integration** - Razorpay subscription billing and management
+4. **BYOK System** - Multi-provider API key management
+5. **Frontend Enhancement** - Landing page and improved user experience
+6. **Production Infrastructure** - Deployment pipeline and monitoring
+
+---
+
 ## Phase 1: Backend Foundation (FastAPI + LaTeX Compile Microservice)
 **Purpose:** Establish core service infrastructure and LaTeX compilation capability.
 **Deliverables:** FastAPI service, LaTeX compilation endpoint, Dockerized TeX environment, basic error handling.
+**Status:** ✅ **COMPLETE**
 
 ### Tasks
 - [x] Initialize FastAPI project structure with proper directory layout
 - [x] Set up virtual environment and requirements.txt with FastAPI, uvicorn, python-multipart
 - [x] Create `/health` endpoint for service monitoring
 - [x] Create `/compile` endpoint (POST) accepting LaTeX content as string or file upload
-- [x] Research and choose LaTeX engine (Tectonic vs TeXLive) for compilation
+- [x] Research and choose LaTeX engine (TeXLive in Docker) for compilation
 - [x] Create Dockerfile with chosen LaTeX distribution and Python runtime
 - [x] Implement LaTeX compilation logic with timeout handling (30s limit)
 - [x] Add proper error handling for compilation failures with detailed logs
@@ -34,6 +68,7 @@
 ## Phase 2: Frontend Skeleton (Next.js)
 **Purpose:** Create user interface for LaTeX input, job description entry, and PDF preview.
 **Deliverables:** Next.js application, LaTeX editor, JD input, PDF preview component, responsive design.
+**Status:** ✅ **COMPLETE**
 
 ### Tasks
 - [x] Initialize Next.js 14 project with TypeScript and App Router
@@ -43,7 +78,7 @@
 - [x] Integrate Monaco Editor for LaTeX syntax highlighting and editing
 - [x] Add file upload component for .tex file import with drag-and-drop
 - [x] Create Job Description textarea with character count and formatting
-- [x] Implement PDF preview component using react-pdf or PDF.js
+- [x] Implement PDF preview component using iframe
 - [x] Add loading states and skeleton components
 - [x] Create responsive design for mobile and desktop
 - [x] Add error boundaries for graceful error handling
@@ -57,7 +92,7 @@
 - [x] Monaco editor properly highlights LaTeX syntax
 - [x] File upload accepts .tex files and populates editor
 - [x] Job description input handles large text (5000+ characters)
-- [x] PDF preview placeholder renders correctly
+- [x] PDF preview renders correctly with proper sizing
 - [x] Application is responsive across different screen sizes
 - [x] All form validations work as expected
 - [x] Help documentation is accessible and informative
@@ -67,6 +102,7 @@
 ## Phase 3: API Integration (Connect Frontend to Backend)
 **Purpose:** Establish communication between frontend and backend services.
 **Deliverables:** API client, file upload/download functionality, error handling, loading states.
+**Status:** ✅ **COMPLETE**
 
 ### Tasks
 - [x] Create API client utility with proper TypeScript types
@@ -78,12 +114,14 @@
 - [x] Create retry mechanism for failed requests
 - [x] Add request/response logging for debugging
 - [x] Implement CORS configuration for local development
-- [ ] Add input debouncing for real-time LaTeX validation
+- [x] Add input debouncing for real-time LaTeX validation 
 - [x] Create notification system for user feedback (success/error toasts)
 - [x] Add compilation time tracking and display
 - [x] Implement request cancellation for long-running compilations
-- [ ] Add basic rate limiting on frontend (prevent spam)
+- [x] Add basic rate limiting on frontend (prevent spam) 
 - [x] Create environment-specific API configurations (dev/staging/prod)
+- [x] Resolve PDF download failures due to premature file cleanup
+- [x] Improve PDF preview component size and responsiveness
 
 ### Validation Criteria
 - [x] Frontend successfully uploads LaTeX content to backend
@@ -100,6 +138,7 @@
 ## Phase 4: LLM Integration (OpenAI Model Integration)
 **Purpose:** Add AI-powered resume optimization using OpenAI models.
 **Deliverables:** LLM service layer, resume analysis, keyword optimization, structured output.
+**Status:** ✅ **COMPLETE**
 
 ### Tasks
 - [x] Set up OpenAI API client with proper error handling
@@ -130,26 +169,276 @@
 
 ---
 
-## Phase 5: Workers & Queue System (Redis + Celery)
-**Purpose:** Implement asynchronous job processing for scalability and better user experience.
-**Deliverables:** Redis setup, Celery workers, job queue management, status tracking.
+## Phase 5: Better-Auth Integration & User Management
+**Purpose:** Implement Better-Auth for authentication and user management with freemium model support.
+**Deliverables:** Better-Auth setup, PostgreSQL database, trial system, user management.
+**Priority:** 🔴 **CRITICAL SHIPPING BLOCKER**
 
 ### Tasks
-- [ ] Check if Redis is active on port 6379 for job queue and caching, if not then accordingly set it up
-- [ ] Install and configure Celery with Redis as broker
-- [ ] Create Celery worker for LaTeX compilation tasks
-- [ ] Create Celery worker for LLM processing tasks
-- [ ] Implement job status tracking (pending, processing, completed, failed)
-- [ ] Add job result storage with TTL (time-to-live)
-- [ ] Create API endpoints for job submission and status checking
-- [ ] Implement WebSocket or Server-Sent Events for real-time updates
-- [ ] Add job priority system for different user tiers
-- [ ] Create worker health monitoring and auto-scaling
-- [ ] Implement job timeout and retry policies
-- [ ] Add dead letter queue for failed jobs
-- [ ] Create worker metrics and monitoring dashboard
-- [ ] Add graceful shutdown handling for workers
-- [ ] Implement job cancellation mechanism
+- [ ] **Database Setup**
+  - [ ] Configure PostgreSQL database with existing credentials from .env
+  - [ ] Create comprehensive database schema (users, device_trials, resumes, compilations, optimizations)
+  - [ ] Set up database connection pooling (SQLAlchemy + asyncpg)
+  - [ ] Implement database migrations with Alembic
+  - [ ] Add database health checks and monitoring
+
+- [ ] **Better-Auth Integration**
+  - [ ] Install and configure Better-Auth for Next.js frontend
+  - [ ] Set up email/password authentication with verification
+  - [ ] Configure social login providers (Google, GitHub)
+  - [ ] Implement session management with PostgreSQL adapter
+  - [ ] Add password reset and email verification flows
+  - [ ] Create authentication middleware for API routes
+
+- [ ] **Freemium Trial System**
+  - [ ] Implement device fingerprinting for anonymous users
+  - [ ] Create trial tracking system (3 free uses per device)
+  - [ ] Add anti-abuse mechanisms (IP limiting, cooldown periods)
+  - [ ] Implement session-based usage tracking
+  - [ ] Create registration prompts after trial limits
+  - [ ] Add usage analytics for trial conversion tracking
+
+- [ ] **Resume History & Storage**
+  - [ ] Create resume storage schema with user associations
+  - [ ] Implement resume versioning and history tracking
+  - [ ] Add user-specific resume management endpoints
+  - [ ] Create resume sharing and collaboration features
+  - [ ] Implement resume templates and favorites system
+  - [ ] Add resume search and filtering capabilities
+
+### Database Schema
+```sql
+-- Core user management
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    name VARCHAR(255),
+    avatar_url VARCHAR(500),
+    subscription_plan VARCHAR(50) DEFAULT 'free',
+    subscription_status VARCHAR(50) DEFAULT 'inactive',
+    trial_used BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Device-based trial tracking
+CREATE TABLE device_trials (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_fingerprint VARCHAR(255) NOT NULL,
+    ip_address INET,
+    session_id VARCHAR(255),
+    usage_count INTEGER DEFAULT 0,
+    last_used TIMESTAMP DEFAULT NOW(),
+    blocked BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(device_fingerprint)
+);
+
+-- Resume management
+CREATE TABLE resumes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    latex_content TEXT NOT NULL,
+    is_template BOOLEAN DEFAULT FALSE,
+    tags TEXT[],
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### Validation Criteria
+- [ ] Database handles concurrent connections without performance degradation
+- [ ] User registration and authentication flow works end-to-end
+- [ ] Trial system accurately tracks device usage and enforces limits
+- [ ] Resume history is properly stored and retrievable
+- [ ] Data migrations work without data loss
+- [ ] Security measures prevent common vulnerabilities (SQL injection, XSS)
+- [ ] System maintains user data privacy and compliance standards
+
+---
+
+## Phase 6: Payment Integration & Subscription Management
+**Purpose:** Implement Razorpay payment gateway and subscription billing for freemium model.
+**Deliverables:** Razorpay integration, subscription plans, billing management, webhook handling.
+**Priority:** 🔴 **CRITICAL SHIPPING BLOCKER**
+
+### Tasks
+- [ ] **Razorpay Integration**
+  - [ ] Set up Razorpay account and obtain API keys
+  - [ ] Install and configure Razorpay SDK for backend
+  - [ ] Implement Razorpay checkout integration in frontend
+  - [ ] Create subscription plan definitions and pricing
+  - [ ] Set up webhook endpoints for payment notifications
+
+- [ ] **Subscription Management**
+  - [ ] Create subscription plans (Free Trial, Basic ₹299, Pro ₹599, BYOK ₹199)
+  - [ ] Implement subscription creation and management APIs
+  - [ ] Add subscription upgrade/downgrade functionality
+  - [ ] Create billing history and invoice generation
+  - [ ] Implement subscription cancellation and refund handling
+
+- [ ] **Usage Tracking & Limits**
+  - [ ] Implement usage metering for different plan tiers
+  - [ ] Create usage limit enforcement middleware
+  - [ ] Add overage handling and billing
+  - [ ] Implement usage analytics and reporting
+  - [ ] Create usage alerts and notifications
+
+- [ ] **Payment Security & Compliance**
+  - [ ] Implement secure payment data handling
+  - [ ] Add PCI DSS compliance measures
+  - [ ] Create payment audit logging
+  - [ ] Implement fraud detection and prevention
+  - [ ] Add payment method management (cards, UPI, net banking)
+
+### Subscription Plans
+```typescript
+const subscriptionPlans = {
+  free: {
+    name: 'Free Trial',
+    price: 0,
+    features: {
+      compilations: 3,
+      optimizations: 0,
+      historyRetention: 0,
+      prioritySupport: false
+    }
+  },
+  basic: {
+    name: 'Basic',
+    price: 299, // INR per month
+    features: {
+      compilations: 50,
+      optimizations: 10,
+      historyRetention: 30,
+      prioritySupport: false
+    }
+  },
+  pro: {
+    name: 'Pro',
+    price: 599, // INR per month
+    features: {
+      compilations: 'unlimited',
+      optimizations: 'unlimited',
+      historyRetention: 365,
+      prioritySupport: true
+    }
+  },
+  byok: {
+    name: 'BYOK',
+    price: 199, // INR per month
+    features: {
+      compilations: 'unlimited',
+      optimizations: 'unlimited',
+      historyRetention: 365,
+      prioritySupport: true,
+      customModels: true
+    }
+  }
+};
+```
+
+### Validation Criteria
+- [ ] Payment flow works end-to-end with test transactions
+- [ ] Subscription upgrades and downgrades function correctly
+- [ ] Webhook handling processes all payment events reliably
+- [ ] Usage limits are enforced accurately across all plan tiers
+- [ ] Payment security measures prevent unauthorized access
+- [ ] Billing and invoicing generate correctly for all scenarios
+
+---
+
+## Phase 7: Frontend Enhancement & Design System
+**Purpose:** Enhance frontend design, user experience, and create comprehensive design system.
+**Deliverables:** Modern UI/UX, design system, landing page, responsive design, accessibility.
+**Priority:** 🟡 **HIGH PRIORITY**
+
+### Tasks
+- [ ] **Design System Development**
+  - [ ] Create comprehensive design tokens (colors, typography, spacing)
+  - [ ] Build reusable component library with Storybook
+  - [ ] Implement consistent design patterns and guidelines
+  - [ ] Add dark mode support with theme switching
+  - [ ] Create responsive breakpoint system
+
+- [ ] **Landing Page Enhancement**
+  - [ ] Design compelling hero section with clear value proposition
+  - [ ] Add interactive feature demonstrations and animations
+  - [ ] Create testimonials and social proof sections
+  - [ ] Implement pricing comparison table with feature highlights
+  - [ ] Add FAQ section and comprehensive feature explanations
+
+- [ ] **User Interface Improvements**
+  - [ ] Redesign dashboard with modern card-based layout
+  - [ ] Enhance editor interface with better UX patterns
+  - [ ] Improve PDF preview with zoom and navigation controls
+  - [ ] Add loading states and skeleton screens throughout
+  - [ ] Implement smooth animations and micro-interactions
+
+- [ ] **Mobile & Accessibility**
+  - [ ] Ensure full mobile responsiveness across all pages
+  - [ ] Implement touch-friendly interactions and gestures
+  - [ ] Add accessibility features (ARIA labels, keyboard navigation)
+  - [ ] Ensure WCAG 2.1 AA compliance
+  - [ ] Add progressive web app (PWA) capabilities
+
+- [ ] **Performance Optimization**
+  - [ ] Implement code splitting and lazy loading
+  - [ ] Optimize images and assets with Next.js Image
+  - [ ] Add service worker for offline functionality
+  - [ ] Implement performance monitoring and optimization
+  - [ ] Optimize bundle size and loading times
+
+### Validation Criteria
+- [ ] Design system components are consistent and reusable
+- [ ] Landing page converts visitors effectively (>5% trial signup rate)
+- [ ] Mobile experience is fully functional and user-friendly
+- [ ] Accessibility audit passes with 95%+ score
+- [ ] Page load times are under 2 seconds on 3G networks
+- [ ] User interface is intuitive and requires minimal onboarding
+
+---
+
+## Phase 8: Workers & Queue System (Redis + Celery)
+**Purpose:** Implement asynchronous job processing for scalability and better user experience.
+**Deliverables:** Redis setup, Celery workers, job queue management, real-time status tracking.
+
+### Tasks
+- [ ] **Redis Infrastructure Setup**
+  - [ ] Install Redis server (version 7.0+) with persistence enabled
+  - [ ] Configure Redis for both job queue and caching (separate databases)
+  - [ ] Set up Redis clustering for high availability (production)
+  - [ ] Implement Redis health checks and monitoring
+  - [ ] Configure Redis memory management and eviction policies
+
+- [ ] **Celery Integration**
+  - [ ] Install Celery 5.3+ with Redis broker configuration
+  - [ ] Create celery.py configuration with proper task routing
+  - [ ] Set up Celery beat for scheduled tasks
+  - [ ] Configure Celery monitoring with Flower dashboard
+  - [ ] Implement Celery task serialization (JSON/pickle)
+
+- [ ] **Worker Implementation**
+  - [ ] Create dedicated LaTeX compilation worker with Docker isolation
+  - [ ] Implement LLM processing worker with rate limiting
+  - [ ] Add file processing worker for large document handling
+  - [ ] Create email notification worker for user updates
+  - [ ] Implement cleanup worker for temporary file management
+
+- [ ] **Job Management System**
+  - [ ] Design job status schema (pending, processing, completed, failed, cancelled)
+  - [ ] Implement job result storage with configurable TTL (24h default)
+  - [ ] Create job priority system (high, normal, low) with user tier mapping
+  - [ ] Add job metadata tracking (user_id, job_type, created_at, processing_time)
+  - [ ] Implement job cancellation and cleanup mechanisms
+
+- [ ] **Real-time Updates**
+  - [ ] Set up WebSocket server for real-time job status updates
+  - [ ] Implement Server-Sent Events as WebSocket fallback
+  - [ ] Create job status broadcasting system
+  - [ ] Add client-side reconnection and error handling
+  - [ ] Implement job progress tracking for long-running tasks
 
 ### Validation Criteria
 - [ ] Jobs are successfully queued and processed asynchronously
@@ -158,34 +447,42 @@
 - [ ] Failed jobs are properly retried and eventually moved to dead letter queue
 - [ ] Job results are accessible for configured TTL period
 - [ ] System maintains performance under load (100+ concurrent jobs)
-- [ ] Worker scaling responds appropriately to queue depth
-- [ ] Monitoring provides visibility into system health
 
 ---
 
-## Phase 6: ATS Scoring Engine
+## Phase 9: ATS Scoring Engine
 **Purpose:** Develop comprehensive ATS compatibility scoring system.
 **Deliverables:** Scoring algorithms, rule-based checks, model-assisted evaluation, detailed feedback.
 
 ### Tasks
-- [ ] Research ATS systems and common parsing issues
-- [ ] Create rule-based scoring for formatting (fonts, spacing, sections)
-- [ ] Implement keyword density analysis
-- [ ] Add section detection and organization scoring
-- [ ] Create contact information validation
-- [ ] Implement file format compliance checks
-- [ ] Add readability and structure analysis
-- [ ] Create bullet point and formatting consistency checks
-- [ ] Implement date format standardization scoring
-- [ ] Add skill matching and relevance scoring
-- [ ] Create experience relevance analysis
-- [ ] Implement education section optimization scoring
-- [ ] Add action verb usage analysis
-- [ ] Create quantifiable achievement detection
-- [ ] Implement overall ATS compatibility score (0-100)
-- [ ] Add detailed improvement recommendations
-- [ ] Create scoring weight configuration system
-- [ ] Add A/B testing framework for scoring improvements
+- [ ] **Research & Analysis**
+  - [ ] Research ATS systems and common parsing issues
+  - [ ] Analyze resume formats that perform well with ATS
+  - [ ] Create database of ATS-friendly formatting rules
+  - [ ] Study industry-specific ATS requirements
+
+- [ ] **Scoring Algorithm Development**
+  - [ ] Create rule-based scoring for formatting (fonts, spacing, sections)
+  - [ ] Implement keyword density analysis
+  - [ ] Add section detection and organization scoring
+  - [ ] Create contact information validation
+  - [ ] Implement file format compliance checks
+  - [ ] Add readability and structure analysis
+
+- [ ] **Advanced Scoring Features**
+  - [ ] Create bullet point and formatting consistency checks
+  - [ ] Implement date format standardization scoring
+  - [ ] Add skill matching and relevance scoring
+  - [ ] Create experience relevance analysis
+  - [ ] Implement education section optimization scoring
+  - [ ] Add action verb usage analysis
+  - [ ] Create quantifiable achievement detection
+
+- [ ] **Scoring System Integration**
+  - [ ] Implement overall ATS compatibility score (0-100)
+  - [ ] Add detailed improvement recommendations
+  - [ ] Create scoring weight configuration system
+  - [ ] Add A/B testing framework for scoring improvements
 
 ### Validation Criteria
 - [ ] Scoring algorithm produces consistent results across similar resumes
@@ -194,32 +491,49 @@
 - [ ] Score correlates with actual ATS performance (validation against real systems)
 - [ ] Recommendations are actionable and specific
 - [ ] Scoring is fast enough for real-time feedback (<2s)
-- [ ] System handles edge cases gracefully
-- [ ] Scoring weights can be adjusted based on job type/industry
 
 ---
 
-## Phase 7: BYOK & OpenRouter Integration
+## Phase 10: Multi-Provider & BYOK System
 **Purpose:** Support multiple LLM providers and user-supplied API keys.
 **Deliverables:** Multi-provider architecture, API key management, provider abstraction layer.
 
 ### Tasks
-- [ ] Create LLM provider abstraction interface
-- [ ] Implement OpenRouter integration for multiple models
-- [ ] Add support for Anthropic Claude models
-- [ ] Implement Google Gemini integration
-- [ ] Create secure API key storage and encryption
-- [ ] Add API key validation and testing endpoints
-- [ ] Implement provider-specific prompt optimization
-- [ ] Create cost calculation for different providers
-- [ ] Add provider performance monitoring
-- [ ] Implement automatic provider fallback on failures
-- [ ] Create user dashboard for API key management
-- [ ] Add usage tracking and quota management
-- [ ] Implement provider-specific rate limiting
-- [ ] Create model capability mapping (context length, features)
-- [ ] Add A/B testing for different models/providers
-- [ ] Implement provider health checks and status page
+- [ ] **Provider Abstraction Layer**
+  - [ ] Create LLM provider abstraction interface
+  - [ ] Implement OpenRouter integration for multiple models
+  - [ ] Add support for Anthropic Claude models
+  - [ ] Implement Google Gemini integration
+  - [ ] Create provider capability mapping (context length, features)
+
+- [ ] **BYOK System Implementation**
+  - [ ] Create secure API key storage and encryption
+  - [ ] Add API key validation and testing endpoints
+  - [ ] Implement provider-specific prompt optimization
+  - [ ] Create cost calculation for different providers
+  - [ ] Add provider performance monitoring
+
+- [ ] **User Management Features**
+  - [ ] Create user dashboard for API key management
+  - [ ] Add usage tracking and quota management
+  - [ ] Implement provider-specific rate limiting
+  - [ ] Add A/B testing for different models/providers
+  - [ ] Implement provider health checks and status page
+  - [ ] Create automatic provider fallback on failures
+
+### API Key Management Schema
+```sql
+CREATE TABLE user_api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    provider VARCHAR(50) NOT NULL, -- 'openai', 'anthropic', 'gemini'
+    encrypted_key TEXT NOT NULL,
+    key_name VARCHAR(100),
+    is_active BOOLEAN DEFAULT TRUE,
+    last_validated TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
 
 ### Validation Criteria
 - [ ] Users can successfully add and validate API keys for supported providers
@@ -227,75 +541,166 @@
 - [ ] Cost calculations are accurate for different providers
 - [ ] Provider fallback works automatically during outages
 - [ ] Usage tracking accurately reflects API consumption
-- [ ] Performance metrics show optimal provider selection
 - [ ] API key security meets industry standards
-- [ ] All supported models produce consistent optimization quality
 
 ---
 
-## Phase 8: Polish & Deployment (Production Readiness)
-**Purpose:** Prepare system for production with proper monitoring, security, and deployment.
-**Deliverables:** CI/CD pipeline, monitoring stack, security hardening, deployment automation.
+## Phase 11: Production Deployment & Infrastructure
+**Purpose:** Deploy system to production with enterprise-grade reliability, security, and monitoring.
+**Deliverables:** Production infrastructure, CI/CD pipeline, monitoring stack, security hardening.
 
 ### Tasks
-- [ ] Set up GitHub Actions for CI/CD pipeline
-- [ ] Create comprehensive test suite (unit, integration, e2e)
-- [ ] Implement proper logging with structured format (JSON)
-- [ ] Set up monitoring with Prometheus and Grafana
-- [ ] Add health checks and readiness probes for Kubernetes
-- [ ] Implement rate limiting and DDoS protection
-- [ ] Add input sanitization and validation
-- [ ] Set up SSL/TLS certificates and HTTPS
-- [ ] Create backup and disaster recovery procedures
-- [ ] Implement database migrations and versioning
-- [ ] Add performance profiling and optimization
-- [ ] Create deployment scripts for different environments
-- [ ] Set up error tracking with Sentry or similar
-- [ ] Implement security scanning in CI pipeline
-- [ ] Add load testing and performance benchmarks
-- [ ] Create operational runbooks and documentation
-- [ ] Set up alerting for critical system metrics
-- [ ] Implement graceful degradation for service failures
+- [ ] **Infrastructure as Code**
+  - [ ] Create Terraform/Pulumi infrastructure definitions
+  - [ ] Set up multi-environment deployment (dev, staging, prod)
+  - [ ] Configure load balancers with SSL termination
+  - [ ] Implement auto-scaling groups for backend services
+  - [ ] Set up CDN for static assets (CloudFlare/AWS CloudFront)
+  - [ ] Configure DNS with health checks and failover
+
+- [ ] **Container Orchestration**
+  - [ ] Create production-ready Dockerfiles with multi-stage builds
+  - [ ] Set up Kubernetes cluster with proper resource limits
+  - [ ] Implement Kubernetes deployments with rolling updates
+  - [ ] Configure ingress controllers with rate limiting
+  - [ ] Set up persistent volumes for database and file storage
+
+- [ ] **CI/CD Pipeline**
+  - [ ] Create GitHub Actions workflows for automated testing
+  - [ ] Implement automated security scanning (Snyk, OWASP)
+  - [ ] Set up automated database migrations
+  - [ ] Create blue-green deployment strategy
+  - [ ] Implement rollback mechanisms for failed deployments
+
+- [ ] **Monitoring & Observability**
+  - [ ] Deploy Prometheus for metrics collection
+  - [ ] Set up Grafana dashboards for system monitoring
+  - [ ] Implement distributed tracing with Jaeger/OpenTelemetry
+  - [ ] Configure log aggregation with ELK stack
+  - [ ] Set up uptime monitoring with external services
+
+- [ ] **Security Hardening**
+  - [ ] Implement Web Application Firewall (WAF)
+  - [ ] Set up DDoS protection and rate limiting
+  - [ ] Configure SSL/TLS with proper certificate management
+  - [ ] Implement secrets management (HashiCorp Vault/AWS Secrets)
+  - [ ] Set up network security groups and VPC isolation
+
+- [ ] **Backup & Disaster Recovery**
+  - [ ] Implement automated database backups with point-in-time recovery
+  - [ ] Set up cross-region backup replication
+  - [ ] Create disaster recovery runbooks and procedures
+  - [ ] Implement backup testing and restoration procedures
 
 ### Validation Criteria
 - [ ] CI/CD pipeline successfully builds, tests, and deploys code
 - [ ] Monitoring dashboards provide comprehensive system visibility
 - [ ] Security scans pass with no critical vulnerabilities
 - [ ] Load tests demonstrate acceptable performance under expected traffic
-- [ ] Error tracking captures and alerts on critical issues
 - [ ] Backup and restore procedures work correctly
 - [ ] Health checks accurately reflect system status
-- [ ] Documentation is complete and up-to-date
 
 ---
 
-## Phase 9: Optional Stretch Goals
+## Phase 12: MVP Launch & Go-Live
+**Purpose:** Final preparation and launch of minimum viable product.
+**Deliverables:** Production-ready MVP with core features, legal compliance, marketing materials.
+**Priority:** 🔴 **CRITICAL MILESTONE**
+
+### MVP Feature Set (Must-Have)
+- [ ] **Core Functionality**
+  - [x] LaTeX resume compilation to PDF
+  - [x] AI-powered resume optimization with job description analysis
+  - [x] Real-time PDF preview and download
+  - [ ] User registration and authentication (Better-Auth)
+  - [ ] Resume history and version management
+  - [ ] Basic user dashboard
+
+- [ ] **Essential Infrastructure**
+  - [ ] PostgreSQL database with user data persistence
+  - [ ] Redis caching for improved performance
+  - [ ] Basic monitoring and health checks
+  - [ ] SSL/HTTPS security
+  - [ ] Automated backups
+  - [ ] Error tracking and logging
+
+- [ ] **User Experience**
+  - [x] Responsive web interface
+  - [x] File upload and drag-and-drop
+  - [x] Real-time notifications
+  - [ ] User onboarding flow
+  - [ ] Help documentation and tutorials
+  - [ ] Contact/support system
+
+- [ ] **Business Requirements**
+  - [ ] Usage analytics and tracking
+  - [ ] Freemium model with trial limits (3 free uses)
+  - [ ] Terms of service and privacy policy
+  - [ ] GDPR compliance features
+  - [ ] Subscription billing system
+
+### Launch Checklist
+- [ ] **Pre-Launch Testing**
+  - [ ] Load testing with 1000+ concurrent users
+  - [ ] Security penetration testing
+  - [ ] Cross-browser compatibility testing
+  - [ ] Mobile responsiveness testing
+  - [ ] End-to-end user journey testing
+
+- [ ] **Legal & Compliance**
+  - [ ] Terms of Service finalized and reviewed
+  - [ ] Privacy Policy compliant with GDPR/CCPA
+  - [ ] Cookie policy and consent management
+  - [ ] Data retention and deletion policies
+  - [ ] User data export functionality
+
+- [ ] **Marketing & Support**
+  - [ ] Landing page with clear value proposition
+  - [ ] User documentation and FAQ
+  - [ ] Support ticket system
+  - [ ] Social media presence setup
+  - [ ] Analytics and conversion tracking
+
+### MVP Validation Criteria
+- [ ] System handles 100+ concurrent users without degradation
+- [ ] 99.9% uptime over 30-day period
+- [ ] Average response time <2s for compilation requests
+- [ ] Zero critical security vulnerabilities
+- [ ] Complete user registration and resume compilation flow
+- [ ] Successful payment processing for premium features
+
+---
+
+## Phase 13: Post-MVP Enhancements
 **Purpose:** Advanced features for enhanced user experience and business value.
-**Deliverables:** Template system, A/B testing, subscription management, advanced analytics.
+**Deliverables:** Template system, A/B testing, advanced analytics, enterprise features.
 
 ### Tasks
-- [ ] Create resume template library with industry-specific options
-- [ ] Implement A/B resume variant generation and comparison
-- [ ] Add subscription/payment integration (Stripe)
-- [ ] Create user accounts and resume history
-- [ ] Implement collaborative editing features
-- [ ] Add resume analytics and performance tracking
-- [ ] Create bulk processing capabilities for recruiters
-- [ ] Add integration with job boards (LinkedIn, Indeed)
-- [ ] Implement resume version control and rollback
-- [ ] Create mobile-responsive PWA
-- [ ] Add multi-language support
-- [ ] Implement advanced customization options
-- [ ] Create API for third-party integrations
-- [ ] Add machine learning for personalized recommendations
-- [ ] Implement resume comparison and benchmarking
-- [ ] Create white-label solution for career services
+- [ ] **Advanced Features**
+  - [ ] Create resume template library with industry-specific options
+  - [ ] Implement A/B resume variant generation and comparison
+  - [ ] Add resume analytics and performance tracking
+  - [ ] Create bulk processing capabilities for recruiters
+  - [ ] Add integration with job boards (LinkedIn, Indeed)
+  - [ ] Implement resume version control and rollback
+
+- [ ] **Enterprise Features**
+  - [ ] Create white-label solution for career services
+  - [ ] Add multi-language support
+  - [ ] Implement advanced customization options
+  - [ ] Create API for third-party integrations
+  - [ ] Add machine learning for personalized recommendations
+  - [ ] Implement resume comparison and benchmarking
+
+- [ ] **Mobile & PWA**
+  - [ ] Create mobile-responsive PWA
+  - [ ] Add offline functionality
+  - [ ] Implement push notifications
+  - [ ] Add mobile-specific features
 
 ### Validation Criteria
 - [ ] Template system generates professional, ATS-optimized resumes
 - [ ] A/B testing provides statistically significant insights
-- [ ] Payment processing works securely and reliably
-- [ ] User accounts maintain data privacy and security
 - [ ] Advanced features don't compromise core functionality performance
 - [ ] Mobile experience is comparable to desktop
 - [ ] API integrations work reliably with external services
@@ -307,33 +712,78 @@
 
 ### Backend
 - **Framework:** FastAPI with Python 3.11+
-- **Queue:** Redis + Celery
-- **LaTeX:** Tectonic or TeXLive in Docker
-- **LLM:** OpenAI, OpenRouter, Anthropic, Google
 - **Database:** PostgreSQL for user data, Redis for caching
+- **Queue:** Redis + Celery for async processing
+- **LaTeX:** TeXLive in Docker containers
+- **LLM:** OpenAI, Anthropic, Google Gemini, OpenRouter
+- **Authentication:** Better-Auth with PostgreSQL adapter
+- **Payment:** Razorpay for subscription billing
 - **Monitoring:** Prometheus, Grafana, Sentry
 
 ### Frontend
-- **Framework:** Next.js 14 with TypeScript
-- **Styling:** Tailwind CSS
-- **Editor:** Monaco Editor
-- **PDF:** react-pdf or PDF.js
-- **State:** Zustand or Redux Toolkit
+- **Framework:** Next.js 14 with TypeScript and App Router
+- **Styling:** Tailwind CSS with custom design system
+- **Editor:** Monaco Editor for LaTeX editing
+- **PDF:** iframe-based PDF preview
+- **Authentication:** Better-Auth client
+- **State Management:** React hooks and context
 - **Testing:** Jest, Playwright
 
 ### Infrastructure
 - **Containerization:** Docker, Docker Compose
-- **Orchestration:** Kubernetes (optional for production)
+- **Orchestration:** Kubernetes (production)
 - **CI/CD:** GitHub Actions
 - **Cloud:** AWS/GCP/Azure (configurable)
 - **CDN:** CloudFlare for static assets
+- **Security:** WAF, DDoS protection, SSL/TLS
 
-### Security
-- **API Keys:** Encrypted storage with rotation
-- **LaTeX Sandboxing:** Docker containers with no network access
-- **Rate Limiting:** Redis-based with sliding windows
-- **Input Validation:** Comprehensive sanitization
-- **HTTPS:** Let's Encrypt certificates
+---
+
+## 🚀 Implementation Roadmap
+
+### Critical Path to MVP 
+1. **Phase 5: Better-Auth Integration** 
+   - Set up Better-Auth with PostgreSQL
+   - Implement freemium trial system
+   - Add user management and resume history
+
+2. **Phase 6: Payment Integration** 
+   - Integrate Razorpay payment gateway
+   - Create subscription management
+   - Implement usage tracking and limits
+
+3. **Phase 7: Frontend Enhancement** 
+   - Design modern landing page
+   - Enhance user interface and UX
+   - Add mobile responsiveness and PWA
+
+4. **Phase 8: Queue System** 
+   - Deploy Redis and Celery workers
+   - Implement async job processing
+   - Add real-time status updates
+
+5. **Phase 11: Production Infrastructure** 
+   - Set up production deployment pipeline
+   - Configure monitoring and security
+   - Implement backup and disaster recovery
+
+6. **Phase 12: MVP Launch**
+   - Final testing and validation
+   - Legal compliance and documentation
+   - Go-live preparation
+
+
+### Success Metrics
+- **Technical**: 99.9% uptime, <2s response time, zero critical vulnerabilities
+- **Business**: 1000+ registered users within first month, >15% trial conversion
+- **User Experience**: <5% bounce rate, >80% task completion rate
+
+### Risk Mitigation
+- **Database Performance**: Implement read replicas and connection pooling
+- **Security Vulnerabilities**: Regular security audits and automated scanning
+- **Scalability Issues**: Auto-scaling infrastructure and load testing
+- **LLM API Costs**: Usage monitoring and rate limiting
+- **Legal Compliance**: Regular compliance reviews and user consent management
 
 ---
 
@@ -350,8 +800,5 @@
 
 ---
 
-## 🚀 Getting Started
-
-After completing each phase, update this checklist by marking tasks as complete `[x]` and add any notes or deviations from the plan. Each phase should be fully tested and validated before moving to the next one.
-
-The project should remain functional and deployable after each phase, enabling incremental delivery and user feedback throughout the development process.
+### Quality Gates
+Each phase must pass all validation criteria before proceeding to the next phase. Critical shipping blockers must be resolved before MVP launch. Regular code reviews, security scans, and performance testing are mandatory throughout development.
