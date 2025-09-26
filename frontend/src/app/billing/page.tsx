@@ -7,8 +7,10 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { toast, Toaster } from 'sonner'
 import PricingCard from '@/components/billing/PricingCard'
 import SubscriptionManager from '@/components/billing/SubscriptionManager'
+import { apiClient } from '@/lib/api-client'
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -46,13 +48,12 @@ export default function BillingPage() {
   const fetchPlans = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch('/api/subscription/plans')
+      const response = await apiClient.getSubscriptionPlans()
       
-      if (response.ok) {
-        const data = await response.json()
-        setPlans(data.plans)
+      if (response.success && response.data) {
+        setPlans(response.data.plans)
       } else {
-        throw new Error('Failed to fetch plans')
+        throw new Error(response.error || 'Failed to fetch plans')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load plans')
@@ -63,7 +64,7 @@ export default function BillingPage() {
 
   const handleSelectPlan = async (planId: string) => {
     if (planId === 'free') {
-      alert('You are already on the free plan!')
+      toast.info('You are already on the free plan!')
       return
     }
 
@@ -71,32 +72,25 @@ export default function BillingPage() {
     
     try {
       // For demo purposes, we'll use dummy customer data
-      const response = await fetch('/api/subscription/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          planId,
-          customerEmail: 'demo@latexy.com',
-          customerName: 'Demo User'
-        })
-      })
-
-      const result = await response.json()
+      const response = await apiClient.createSubscription(
+        planId,
+        'demo@latexy.com',
+        'Demo User'
+      )
       
-      if (result.success) {
-        if (result.shortUrl) {
+      if (response.success && response.data) {
+        if (response.data.shortUrl) {
           // Open Razorpay payment page
-          window.open(result.shortUrl, '_blank')
+          window.open(response.data.shortUrl, '_blank')
+          toast.success('Redirecting to payment page...')
         } else {
-          alert('Subscription created successfully!')
+          toast.success('Subscription created successfully!')
         }
       } else {
-        alert(`Error: ${result.error || 'Failed to create subscription'}`)
+        throw new Error(response.error || 'Failed to create subscription')
       }
     } catch (err) {
-      alert(`Error: ${err instanceof Error ? err.message : 'Failed to create subscription'}`)
+      toast.error(err instanceof Error ? err.message : 'Failed to create subscription')
     } finally {
       setSelectedPlan(null)
     }
@@ -304,6 +298,9 @@ export default function BillingPage() {
           </motion.div>
         )}
       </div>
+
+      {/* Toast Notifications */}
+      <Toaster position="top-right" richColors />
     </div>
   )
 }
