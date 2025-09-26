@@ -18,6 +18,7 @@ from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
 from ..services.latex_service import latex_service
 from ..services.llm_service import llm_service
 from ..services.trial_service import trial_service
+from ..services.payment_service import payment_service
 from ..utils.file_utils import validate_file_upload, validate_job_id, get_job_files
 
 logger = get_logger(__name__)
@@ -361,5 +362,172 @@ async def compile_latex_anonymous(
         raise
     except Exception as e:
         logger.error(f"Unexpected error in anonymous compile endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# Payment & Subscription Endpoints
+
+class SubscriptionPlanResponse(BaseModel):
+    plans: dict
+
+class CreateSubscriptionRequest(BaseModel):
+    planId: str
+    customerEmail: str
+    customerName: str
+
+class CreateSubscriptionResponse(BaseModel):
+    success: bool
+    subscriptionId: Optional[str] = None
+    shortUrl: Optional[str] = None
+    customerId: Optional[str] = None
+    error: Optional[str] = None
+    message: Optional[str] = None
+
+class UserSubscriptionResponse(BaseModel):
+    userId: str
+    planId: str
+    planName: str
+    status: str
+    features: dict
+    subscriptionId: Optional[str] = None
+    currentPeriodEnd: Optional[str] = None
+
+class CancelSubscriptionResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+@router.get("/subscription/plans", response_model=SubscriptionPlanResponse)
+async def get_subscription_plans():
+    """Get available subscription plans."""
+    try:
+        plans = await payment_service.get_subscription_plans()
+        return SubscriptionPlanResponse(plans=plans)
+    except Exception as e:
+        logger.error(f"Error getting subscription plans: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/subscription/create", response_model=CreateSubscriptionResponse)
+async def create_subscription(
+    request_data: CreateSubscriptionRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new subscription."""
+    try:
+        if not payment_service.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail="Payment service is not available"
+            )
+
+        # For demo purposes, we'll use a dummy user ID
+        # In production, this would come from authentication
+        user_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # This should come from JWT token
+
+        result = await payment_service.create_subscription(
+            db=db,
+            user_id=user_id,
+            plan_id=request_data.planId,
+            customer_email=request_data.customerEmail,
+            customer_name=request_data.customerName
+        )
+
+        return CreateSubscriptionResponse(
+            success=result["success"],
+            subscriptionId=result.get("subscription_id"),
+            shortUrl=result.get("short_url"),
+            customerId=result.get("customer_id"),
+            error=result.get("error"),
+            message=result.get("message")
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating subscription: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/subscription/current", response_model=UserSubscriptionResponse)
+async def get_current_subscription(
+    db: AsyncSession = Depends(get_db)
+):
+    """Get current user's subscription."""
+    try:
+        # For demo purposes, we'll use a dummy user ID
+        # In production, this would come from authentication
+        user_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # This should come from JWT token
+
+        subscription = await payment_service.get_user_subscription(db, user_id)
+        
+        if not subscription:
+            raise HTTPException(status_code=404, detail="Subscription not found")
+
+        return UserSubscriptionResponse(
+            userId=subscription["user_id"],
+            planId=subscription["plan_id"],
+            planName=subscription["plan_name"],
+            status=subscription["status"],
+            features=subscription["features"],
+            subscriptionId=subscription["subscription_id"],
+            currentPeriodEnd=subscription["current_period_end"]
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting current subscription: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/subscription/cancel", response_model=CancelSubscriptionResponse)
+async def cancel_subscription(
+    db: AsyncSession = Depends(get_db)
+):
+    """Cancel current user's subscription."""
+    try:
+        # For demo purposes, we'll use a dummy user ID
+        # In production, this would come from authentication
+        user_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # This should come from JWT token
+
+        result = await payment_service.cancel_subscription(db, user_id)
+
+        return CancelSubscriptionResponse(
+            success=result["success"],
+            message=result.get("message"),
+            error=result.get("error")
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error cancelling subscription: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/billing/webhook")
+async def razorpay_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Handle Razorpay webhook events."""
+    try:
+        payload = await request.body()
+        signature = request.headers.get("X-Razorpay-Signature", "")
+
+        result = await payment_service.handle_webhook(db, payload, signature)
+
+        if result["success"]:
+            return {"status": "ok"}
+        else:
+            logger.error(f"Webhook processing failed: {result.get('error')}")
+            raise HTTPException(status_code=400, detail="Webhook processing failed")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing webhook: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
