@@ -24,9 +24,14 @@ async def init_db():
         logger.error("DATABASE_URL not configured")
         raise ValueError("DATABASE_URL not configured")
     
+    # Convert PostgreSQL URL to asyncpg format
+    database_url = settings.DATABASE_URL
+    if database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    
     # Create async engine
     engine = create_async_engine(
-        settings.DATABASE_URL,
+        database_url,
         echo=settings.DEBUG,
         pool_pre_ping=True,
         pool_recycle=300,
@@ -41,8 +46,9 @@ async def init_db():
     
     logger.info("Database connection initialized")
 
-async def get_db() -> AsyncSession:
+async def get_db():
     """Get database session."""
+    global SessionLocal
     if SessionLocal is None:
         await init_db()
     
@@ -52,8 +58,6 @@ async def get_db() -> AsyncSession:
         except Exception:
             await session.rollback()
             raise
-        finally:
-            await session.close()
 
 async def close_db():
     """Close database connection."""
