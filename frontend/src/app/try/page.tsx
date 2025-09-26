@@ -15,7 +15,14 @@ import {
   Sparkles,
   ArrowLeft,
   User,
-  Crown
+  Crown,
+  Play,
+  Maximize2,
+  Minimize2,
+  RefreshCw,
+  Eye,
+  Code,
+  Upload
 } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -95,6 +102,8 @@ export default function TryPage() {
   const [trialUsage, setTrialUsage] = useState({ used: 0, total: 3 })
   const [showSignupPrompt, setShowSignupPrompt] = useState(false)
   const [deviceFingerprint, setDeviceFingerprint] = useState<string>('')
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor')
 
   useEffect(() => {
     // Generate device fingerprint
@@ -208,22 +217,33 @@ export default function TryPage() {
   const remainingTrials = trialUsage.total - trialUsage.used
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40">
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
-              <Link href="/" className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors">
+              <Link href="/" className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors">
                 <ArrowLeft className="w-4 h-4" />
                 <span>Back to Home</span>
               </Link>
+              <div className="hidden md:block h-6 w-px bg-gray-300" />
+              <div className="hidden md:flex items-center space-x-2">
+                <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center">
+                  <FileText className="w-4 h-4 text-white" />
+                </div>
+                <span className="font-semibold text-gray-900">Try Latexy</span>
+              </div>
             </div>
             
             <div className="flex items-center space-x-4">
               <Badge 
-                variant={remainingTrials > 0 ? "success" : "destructive"}
-                className="flex items-center gap-1"
+                variant={remainingTrials > 0 ? "default" : "destructive"}
+                className={`flex items-center gap-1 ${
+                  remainingTrials > 0 
+                    ? 'bg-green-100 text-green-700 border-green-200' 
+                    : 'bg-red-100 text-red-700 border-red-200'
+                }`}
               >
                 <Sparkles className="w-3 h-3" />
                 {remainingTrials > 0 ? `${remainingTrials} trials left` : 'Trials exhausted'}
@@ -232,10 +252,12 @@ export default function TryPage() {
                 <User className="w-4 h-4 mr-2" />
                 Sign In
               </Button>
-              <Button size="sm" className="bg-gradient-to-r from-blue-500 to-purple-600">
-                <Crown className="w-4 h-4 mr-2" />
-                Get Unlimited
-              </Button>
+              <Link href="/billing">
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                  <Crown className="w-4 h-4 mr-2" />
+                  Get Unlimited
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
@@ -249,29 +271,43 @@ export default function TryPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
             Try Latexy Free
           </h1>
-          <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
             Experience the power of AI-driven resume optimization. No sign-up required for your first 3 tries!
           </p>
         </motion.div>
 
         {/* Main Editor Layout */}
-        <div className="grid lg:grid-cols-3 gap-8">
+        <div className="grid lg:grid-cols-2 gap-8 mb-8">
           {/* LaTeX Editor */}
           <motion.div 
-            className="lg:col-span-1"
+            className="space-y-6"
             variants={fadeInUp}
             initial="initial"
             animate="animate"
           >
-            <Card className="h-full">
+            <Card className="bg-white border-gray-200">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-blue-500" />
-                  LaTeX Editor
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Code className="w-5 h-5 text-blue-600" />
+                    <CardTitle>LaTeX Editor</CardTitle>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button variant="ghost" size="sm">
+                      <Upload className="w-4 h-4" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => setIsFullscreen(!isFullscreen)}
+                    >
+                      {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
                 <CardDescription>
                   Edit your resume content using LaTeX
                 </CardDescription>
@@ -281,31 +317,25 @@ export default function TryPage() {
                   <textarea
                     value={latexContent}
                     onChange={(e) => setLatexContent(e.target.value)}
-                    className="w-full h-96 p-4 text-sm font-mono border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className={`w-full p-4 text-sm font-mono border border-gray-300 rounded-lg bg-white text-gray-900 resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      isFullscreen ? 'h-96' : 'h-64'
+                    }`}
                     placeholder="Enter your LaTeX resume content here..."
                   />
-                  <div className="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400">
+                  <div className="flex justify-between items-center text-sm text-gray-500">
                     <span>{latexContent.length} characters</span>
                     <span>LaTeX format</span>
                   </div>
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
 
-          {/* Job Description */}
-          <motion.div 
-            className="lg:col-span-1"
-            variants={fadeInUp}
-            initial="initial"
-            animate="animate"
-            transition={{ delay: 0.1 }}
-          >
-            <Card className="h-full">
+            {/* Job Description */}
+            <Card className="bg-white border-gray-200">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Target className="w-5 h-5 text-green-500" />
-                  Job Description
+                  <Target className="w-5 h-5 text-green-600" />
+                  Job Description (Optional)
                 </CardTitle>
                 <CardDescription>
                   Paste the job description for AI optimization
@@ -316,12 +346,14 @@ export default function TryPage() {
                   <textarea
                     value={jobDescription}
                     onChange={(e) => setJobDescription(e.target.value)}
-                    className="w-full h-96 p-4 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full h-32 p-4 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     placeholder="Paste the job description here for AI-powered optimization..."
                   />
-                  <div className="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400">
+                  <div className="flex justify-between items-center text-sm text-gray-500">
                     <span>{jobDescription.length} characters</span>
-                    <span>Optional for basic compilation</span>
+                    <Badge variant="outline" className="text-xs">
+                      Premium Feature
+                    </Badge>
                   </div>
                 </div>
               </CardContent>
@@ -330,18 +362,32 @@ export default function TryPage() {
 
           {/* PDF Preview */}
           <motion.div 
-            className="lg:col-span-1"
+            className="space-y-6"
             variants={fadeInUp}
             initial="initial"
             animate="animate"
-            transition={{ delay: 0.2 }}
+            transition={{ delay: 0.1 }}
           >
-            <Card className="h-full">
+            <Card className="bg-white border-gray-200">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Download className="w-5 h-5 text-purple-500" />
-                  PDF Preview
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-5 h-5 text-blue-600" />
+                    <CardTitle>PDF Preview</CardTitle>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {compilationResult && (
+                      <Button 
+                        size="sm" 
+                        onClick={handleDownload}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download
+                      </Button>
+                    )}
+                  </div>
+                </div>
                 <CardDescription>
                   Your compiled resume will appear here
                 </CardDescription>
@@ -349,23 +395,23 @@ export default function TryPage() {
               <CardContent>
                 <div className="space-y-4">
                   {isCompiling ? (
-                    <div className="h-96 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600">
+                    <div className="h-96 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                       <div className="text-center">
-                        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                        <p className="text-gray-600 dark:text-gray-300 font-medium">Compiling your resume...</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">This may take a few seconds</p>
+                        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                        <p className="text-gray-700 font-medium">Compiling your resume...</p>
+                        <p className="text-sm text-gray-500 mt-2">This may take a few seconds</p>
                       </div>
                     </div>
-                  ) : compilationResult ? (
+                  ) : compilationResult?.success ? (
                     <div className="space-y-4">
-                      <div className="h-96 bg-white rounded-lg border border-gray-300 dark:border-gray-600 flex items-center justify-center">
+                      <div className="h-96 bg-white rounded-lg border border-gray-300 flex items-center justify-center">
                         <div className="text-center">
-                          <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                          <p className="text-gray-900 dark:text-white font-medium mb-2">Resume compiled successfully!</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">Your professional PDF is ready</p>
+                          <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
+                          <p className="text-gray-900 font-medium mb-2">Resume compiled successfully!</p>
+                          <p className="text-sm text-gray-600 mb-4">Your professional PDF is ready</p>
                           <Button 
                             onClick={handleDownload}
-                            className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
+                            className="bg-green-600 hover:bg-green-700"
                           >
                             <Download className="w-4 h-4 mr-2" />
                             Download PDF
@@ -373,12 +419,28 @@ export default function TryPage() {
                         </div>
                       </div>
                     </div>
+                  ) : compilationResult?.error ? (
+                    <div className="h-96 flex items-center justify-center bg-red-50 rounded-lg border-2 border-dashed border-red-300">
+                      <div className="text-center">
+                        <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                        <p className="text-red-700 font-medium mb-2">Compilation failed</p>
+                        <p className="text-sm text-red-600 mb-4">{compilationResult.error}</p>
+                        <Button 
+                          variant="outline" 
+                          onClick={() => setCompilationResult(null)}
+                          className="border-red-300 text-red-700 hover:bg-red-50"
+                        >
+                          <RefreshCw className="w-4 h-4 mr-2" />
+                          Try Again
+                        </Button>
+                      </div>
+                    </div>
                   ) : (
-                    <div className="h-96 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600">
+                    <div className="h-96 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                       <div className="text-center">
                         <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                        <p className="text-gray-600 dark:text-gray-300 font-medium">PDF preview will appear here</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Click compile to generate your resume</p>
+                        <p className="text-gray-600 font-medium">PDF preview will appear here</p>
+                        <p className="text-sm text-gray-500 mt-2">Click compile to generate your resume</p>
                       </div>
                     </div>
                   )}
@@ -390,7 +452,7 @@ export default function TryPage() {
 
         {/* Action Bar */}
         <motion.div 
-          className="mt-8 flex flex-col sm:flex-row gap-4 justify-center items-center"
+          className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
@@ -399,7 +461,7 @@ export default function TryPage() {
             size="lg" 
             onClick={handleCompile}
             disabled={isCompiling || remainingTrials <= 0}
-            className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 shadow-lg"
+            className="bg-blue-600 hover:bg-blue-700 px-8 py-3 text-lg"
           >
             {isCompiling ? (
               <>
@@ -414,13 +476,13 @@ export default function TryPage() {
             )}
           </Button>
           
-          <Button variant="outline" size="lg" disabled>
+          <Button variant="outline" size="lg" disabled className="px-8 py-3 text-lg">
             <Save className="w-5 h-5 mr-2" />
             Save (Sign Up Required)
           </Button>
 
           {jobDescription && (
-            <Button variant="outline" size="lg" disabled>
+            <Button variant="outline" size="lg" disabled className="px-8 py-3 text-lg">
               <Sparkles className="w-5 h-5 mr-2" />
               AI Optimize (Premium)
             </Button>
@@ -429,29 +491,33 @@ export default function TryPage() {
 
         {/* Trial Status */}
         <motion.div 
-          className="mt-8 max-w-2xl mx-auto"
+          className="max-w-2xl mx-auto mb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.4 }}
         >
-          <Card className={`${remainingTrials <= 1 ? 'border-yellow-500/50 bg-yellow-500/5' : 'border-blue-500/50 bg-blue-500/5'}`}>
+          <Card className={`${
+            remainingTrials <= 1 
+              ? 'border-yellow-200 bg-yellow-50' 
+              : 'border-blue-200 bg-blue-50'
+          }`}>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   {remainingTrials > 1 ? (
-                    <CheckCircle className="w-6 h-6 text-green-500" />
+                    <CheckCircle className="w-6 h-6 text-green-600" />
                   ) : remainingTrials === 1 ? (
-                    <AlertCircle className="w-6 h-6 text-yellow-500" />
+                    <AlertCircle className="w-6 h-6 text-yellow-600" />
                   ) : (
-                    <AlertCircle className="w-6 h-6 text-red-500" />
+                    <AlertCircle className="w-6 h-6 text-red-600" />
                   )}
                   <div>
-                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                    <h3 className="font-semibold text-gray-900">
                       {remainingTrials > 1 ? 'Free Trial Active' : 
                        remainingTrials === 1 ? 'Last Free Trial' : 
                        'Free Trials Exhausted'}
                     </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                    <p className="text-sm text-gray-600">
                       {remainingTrials > 0 ? 
                         `You have ${remainingTrials} free compilation${remainingTrials > 1 ? 's' : ''} remaining` :
                         'Sign up to continue using Latexy with unlimited access'
@@ -460,7 +526,7 @@ export default function TryPage() {
                   </div>
                 </div>
                 {remainingTrials <= 1 && (
-                  <Button className="bg-gradient-to-r from-blue-500 to-purple-600">
+                  <Button className="bg-blue-600 hover:bg-blue-700">
                     <Crown className="w-4 h-4 mr-2" />
                     Sign Up Free
                   </Button>
@@ -472,38 +538,38 @@ export default function TryPage() {
 
         {/* Features Teaser */}
         <motion.div 
-          className="mt-12 text-center"
+          className="text-center"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.5 }}
         >
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">
             Unlock More with a Free Account
           </h2>
           <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            <Card className="border-blue-500/20 bg-blue-500/5">
+            <Card className="border-blue-200 bg-blue-50">
               <CardContent className="p-6 text-center">
-                <Save className="w-8 h-8 text-blue-500 mx-auto mb-4" />
-                <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Save & Manage</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <Save className="w-8 h-8 text-blue-600 mx-auto mb-4" />
+                <h3 className="font-semibold text-gray-900 mb-2">Save & Manage</h3>
+                <p className="text-sm text-gray-600">
                   Save your resumes and access them anytime
                 </p>
               </CardContent>
             </Card>
-            <Card className="border-green-500/20 bg-green-500/5">
+            <Card className="border-green-200 bg-green-50">
               <CardContent className="p-6 text-center">
-                <Sparkles className="w-8 h-8 text-green-500 mx-auto mb-4" />
-                <h3 className="font-semibold text-gray-900 dark:text-white mb-2">AI Optimization</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <Sparkles className="w-8 h-8 text-green-600 mx-auto mb-4" />
+                <h3 className="font-semibold text-gray-900 mb-2">AI Optimization</h3>
+                <p className="text-sm text-gray-600">
                   Get AI-powered resume improvements
                 </p>
               </CardContent>
             </Card>
-            <Card className="border-purple-500/20 bg-purple-500/5">
+            <Card className="border-orange-200 bg-orange-50">
               <CardContent className="p-6 text-center">
-                <Target className="w-8 h-8 text-purple-500 mx-auto mb-4" />
-                <h3 className="font-semibold text-gray-900 dark:text-white mb-2">ATS Scoring</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <Target className="w-8 h-8 text-orange-600 mx-auto mb-4" />
+                <h3 className="font-semibold text-gray-900 mb-2">ATS Scoring</h3>
+                <p className="text-sm text-gray-600">
                   Real-time ATS compatibility analysis
                 </p>
               </CardContent>
@@ -518,20 +584,20 @@ export default function TryPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl"
+            className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl"
           >
             <div className="text-center">
-              <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6">
+              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
                 <Crown className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">
                 Ready for More?
               </h3>
-              <p className="text-gray-600 dark:text-gray-300 mb-6">
+              <p className="text-gray-600 mb-6">
                 You've experienced the power of Latexy! Sign up for free to get unlimited access and advanced features.
               </p>
               <div className="space-y-3">
-                <Button className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700">
+                <Button className="w-full bg-blue-600 hover:bg-blue-700">
                   <User className="w-4 h-4 mr-2" />
                   Sign Up Free
                 </Button>
