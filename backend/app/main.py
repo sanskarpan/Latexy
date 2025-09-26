@@ -12,6 +12,7 @@ from .api.routes import router
 from .core.config import settings
 from .core.logging import setup_logging, get_logger
 from .services.latex_service import latex_service
+from .database.connection import init_db, close_db
 
 # Setup logging
 setup_logging()
@@ -23,6 +24,14 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     logger.info("Latexy Backend starting up...")
+    
+    # Initialize database connection
+    try:
+        await init_db()
+        logger.info("Database connection initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        raise
     
     # Check LaTeX installation
     if not latex_service.check_latex_installation():
@@ -38,6 +47,7 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Latexy Backend shutting down...")
+    await close_db()
 
 
 # Initialize FastAPI app
