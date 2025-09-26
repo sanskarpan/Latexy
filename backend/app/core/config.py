@@ -56,6 +56,24 @@ class Settings(BaseSettings):
     
     # File Management
     PDF_RETENTION_TIME: int = 3600  # Keep PDFs for 1 hour (3600 seconds)
+    
+    # Database Configuration
+    DATABASE_URL: str = Field(default="", description="PostgreSQL database URL")
+    DB_HOST: str = Field(default="localhost", description="Database host")
+    DB_PORT: int = Field(default=5432, description="Database port")
+    DB_USER: str = Field(default="postgres", description="Database user")
+    DB_PASSWORD: str = Field(default="", description="Database password")
+    DB_NAME: str = Field(default="postgres", description="Database name")
+    
+    # Social Authentication (for Better-Auth)
+    GOOGLE_CLIENT_ID: str = Field(default="", description="Google OAuth client ID")
+    GOOGLE_CLIENT_SECRET: str = Field(default="", description="Google OAuth client secret")
+    GITHUB_CLIENT_ID: str = Field(default="", description="GitHub OAuth client ID")
+    GITHUB_CLIENT_SECRET: str = Field(default="", description="GitHub OAuth client secret")
+    
+    # Better-Auth Configuration
+    BETTER_AUTH_SECRET: str = Field(default="", description="Better-Auth secret key")
+    BETTER_AUTH_URL: str = Field(default="http://localhost:3000", description="Better-Auth URL")
 
 
 # Global settings instance
