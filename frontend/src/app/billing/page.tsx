@@ -1,10 +1,20 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, CreditCard } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { ArrowLeft, CreditCard, Sparkles, Crown, Zap, Shield } from 'lucide-react'
 import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import PricingCard from '@/components/billing/PricingCard'
 import SubscriptionManager from '@/components/billing/SubscriptionManager'
+
+const fadeInUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.5 }
+}
 
 interface PricingPlan {
   id: string
