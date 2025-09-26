@@ -135,7 +135,7 @@
 **Deliverables:** Redis setup, Celery workers, job queue management, status tracking.
 
 ### Tasks
-- [ ] Set up Redis container for job queue and caching
+- [ ] Check if Redis is active on port 6379 for job queue and caching, if not then accordingly set it up
 - [ ] Install and configure Celery with Redis as broker
 - [ ] Create Celery worker for LaTeX compilation tasks
 - [ ] Create Celery worker for LLM processing tasks
