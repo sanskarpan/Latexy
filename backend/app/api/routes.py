@@ -5,15 +5,19 @@ API routes for the application.
 import asyncio
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Request
 from fastapi.responses import FileResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..database.connection import get_db
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
 from ..services.latex_service import latex_service
 from ..services.llm_service import llm_service
+from ..services.trial_service import trial_service
 from ..utils.file_utils import validate_file_upload, validate_job_id, get_job_files
 
 logger = get_logger(__name__)
@@ -199,5 +203,163 @@ async def optimize_and_compile_resume(request: OptimizationRequest):
         raise
     except Exception as e:
         logger.error(f"Unexpected error in optimize-and-compile endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# Trial System Endpoints
+
+class TrialStatusResponse(BaseModel):
+    usageCount: int
+    remainingUses: int
+    blocked: bool
+    lastUsed: Optional[str]
+    canUse: bool
+
+class TrackUsageRequest(BaseModel):
+    deviceFingerprint: str
+    sessionId: Optional[str] = None
+    action: str
+    resourceType: Optional[str] = None
+    userAgent: Optional[str] = None
+    metadata: Optional[dict] = None
+
+class TrackUsageResponse(BaseModel):
+    success: bool
+    usageCount: Optional[int] = None
+    remainingUses: Optional[int] = None
+    blocked: Optional[bool] = None
+    error: Optional[str] = None
+    waitTime: Optional[float] = None
+
+
+@router.get("/public/trial-status", response_model=TrialStatusResponse)
+async def get_trial_status(
+    fingerprint: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get trial status for a device fingerprint."""
+    try:
+        ip_address = request.client.host if request.client else None
+        status = await trial_service.get_trial_status(db, fingerprint, ip_address)
+        
+        return TrialStatusResponse(
+            usageCount=status["usageCount"],
+            remainingUses=status["remainingUses"],
+            blocked=status["blocked"],
+            lastUsed=status["lastUsed"],
+            canUse=status["canUse"]
+        )
+    except Exception as e:
+        logger.error(f"Error getting trial status: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/public/track-usage", response_model=TrackUsageResponse)
+async def track_usage(
+    request_data: TrackUsageRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Track usage for anonymous users."""
+    try:
+        ip_address = request.client.host if request.client else None
+        
+        result = await trial_service.track_usage(
+            db=db,
+            device_fingerprint=request_data.deviceFingerprint,
+            action=request_data.action,
+            ip_address=ip_address,
+            user_agent=request_data.userAgent,
+            session_id=request_data.sessionId,
+            resource_type=request_data.resourceType,
+            metadata=request_data.metadata
+        )
+        
+        return TrackUsageResponse(
+            success=result["success"],
+            usageCount=result.get("usageCount"),
+            remainingUses=result.get("remainingUses"),
+            blocked=result.get("blocked"),
+            error=result.get("error"),
+            waitTime=result.get("waitTime")
+        )
+    except Exception as e:
+        logger.error(f"Error tracking usage: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/public/compile", response_model=CompilationResponse)
+async def compile_latex_anonymous(
+    latex_content: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    device_fingerprint: str = Form(...),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Compile LaTeX content for anonymous users with trial limits."""
+    
+    try:
+        ip_address = request.client.host if request.client else None
+        
+        # Check trial limits first
+        rate_check = await trial_service.check_rate_limits(db, device_fingerprint, ip_address)
+        if not rate_check["allowed"]:
+            error_messages = {
+                "trial_limit_exceeded": "Free trial limit exceeded. Please sign up to continue.",
+                "cooldown": f"Please wait {int(rate_check.get('waitTime', 0))} seconds before trying again.",
+                "blocked": "Device blocked due to abuse. Please contact support.",
+                "daily_limit_exceeded": "Daily request limit exceeded. Please try again tomorrow."
+            }
+            raise HTTPException(
+                status_code=429, 
+                detail=error_messages.get(rate_check["reason"], "Rate limit exceeded")
+            )
+        
+        # Get LaTeX content from either form data or file upload
+        if file:
+            validate_file_upload(file)
+            content = await file.read()
+            latex_content = content.decode('utf-8')
+            
+        elif latex_content:
+            pass  # Use provided content
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail="Either latex_content or file must be provided"
+            )
+        
+        # Validate LaTeX content
+        if not latex_service.validate_latex_content(latex_content):
+            raise HTTPException(
+                status_code=400, 
+                detail="Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}"
+            )
+        
+        # Track usage
+        await trial_service.track_usage(
+            db=db,
+            device_fingerprint=device_fingerprint,
+            action="compile",
+            ip_address=ip_address,
+            user_agent=request.headers.get("user-agent") if request else None,
+            resource_type="resume"
+        )
+        
+        # Compile LaTeX
+        result = await latex_service.compile_latex(latex_content)
+        
+        # Schedule cleanup after retention period only if compilation was successful
+        if result.success:
+            job_dir = settings.TEMP_DIR / result.job_id
+            asyncio.create_task(latex_service.cleanup_temp_files_delayed(job_dir, settings.PDF_RETENTION_TIME))
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in anonymous compile endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
