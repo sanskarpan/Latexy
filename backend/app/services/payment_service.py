@@ -5,12 +5,10 @@ import hmac
 import json
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
-from uuid import uuid4
-
-import razorpay
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, and_
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
+import razorpay
 
 from ..database.models import User, Subscription, Payment
 from ..core.config import settings
@@ -37,7 +35,7 @@ class PaymentService:
         """Get available subscription plans."""
         return settings.SUBSCRIPTION_PLANS
 
-    async def create_razorpay_plan(self, plan_id: str) -> Optional[Dict[str, Any]]:
+    async def create_razorpay_plan(self, plan_id: str) -> Optional[str]:
         """Create a plan in Razorpay."""
         if not self.client:
             logger.error("Razorpay client not initialized")
@@ -51,7 +49,7 @@ class PaymentService:
 
             # Skip free plan
             if plan_config["price"] == 0:
-                return {"id": f"plan_{plan_id}", "status": "active"}
+                return None
 
             razorpay_plan = self.client.plan.create({
                 "period": plan_config["interval"],
@@ -59,16 +57,15 @@ class PaymentService:
                 "item": {
                     "name": plan_config["name"],
                     "amount": plan_config["price"],
-                    "currency": plan_config["currency"],
-                    "description": f"Latexy {plan_config['name']} subscription"
+                    "currency": plan_config["currency"]
                 }
             })
 
-            logger.info(f"Created Razorpay plan: {razorpay_plan['id']}")
-            return razorpay_plan
+            logger.info(f"Created Razorpay plan: {razorpay_plan['id']} for {plan_id}")
+            return razorpay_plan["id"]
 
         except Exception as e:
-            logger.error(f"Error creating Razorpay plan {plan_id}: {e}")
+            logger.error(f"Error creating Razorpay plan for {plan_id}: {e}")
             return None
 
     async def create_subscription(
@@ -76,216 +73,125 @@ class PaymentService:
         db: AsyncSession,
         user_id: str,
         plan_id: str,
-        customer_details: Optional[Dict[str, Any]] = None
+        customer_email: str,
+        customer_name: str
     ) -> Dict[str, Any]:
-        """Create a new subscription for a user."""
+        """Create a new subscription."""
         try:
-            # Get user
-            stmt = select(User).where(User.id == user_id)
-            result = await db.execute(stmt)
-            user = result.scalar_one_or_none()
-
-            if not user:
-                return {"success": False, "error": "User not found"}
+            if not self.client:
+                return {
+                    "success": False,
+                    "error": "Payment service not available"
+                }
 
             # Get plan configuration
             plan_config = settings.SUBSCRIPTION_PLANS.get(plan_id)
             if not plan_config:
-                return {"success": False, "error": "Invalid plan"}
-
-            # Check if user already has an active subscription
-            stmt = select(Subscription).where(
-                and_(
-                    Subscription.user_id == user_id,
-                    Subscription.status.in_(["active", "created"])
-                )
-            )
-            result = await db.execute(stmt)
-            existing_subscription = result.scalar_one_or_none()
-
-            if existing_subscription:
-                return {"success": False, "error": "User already has an active subscription"}
+                return {
+                    "success": False,
+                    "error": "Invalid plan selected"
+                }
 
             # Handle free plan
-            if plan_id == "free":
-                subscription = Subscription(
-                    user_id=user_id,
-                    plan_id=plan_id,
-                    status="active",
-                    current_period_start=datetime.utcnow(),
-                    current_period_end=datetime.utcnow() + timedelta(days=30)
-                )
-                db.add(subscription)
+            if plan_config["price"] == 0:
+                return await self._create_free_subscription(db, user_id, plan_id)
 
-                # Update user subscription info
-                user.subscription_plan = plan_id
-                user.subscription_status = "active"
-                user.trial_used = True
+            # Create Razorpay customer
+            customer = self.client.customer.create({
+                "name": customer_name,
+                "email": customer_email
+            })
 
-                await db.commit()
-                await db.refresh(subscription)
-
+            # Create Razorpay plan if not exists
+            razorpay_plan_id = await self.create_razorpay_plan(plan_id)
+            if not razorpay_plan_id:
                 return {
-                    "success": True,
-                    "subscription_id": subscription.id,
-                    "status": "active",
+                    "success": False,
+                    "error": "Failed to create payment plan"
+                }
+
+            # Create Razorpay subscription
+            subscription = self.client.subscription.create({
+                "plan_id": razorpay_plan_id,
+                "customer_id": customer["id"],
+                "total_count": 12,  # 12 months
+                "quantity": 1,
+                "notes": {
+                    "user_id": user_id,
                     "plan_id": plan_id
                 }
+            })
 
-            # Create Razorpay subscription for paid plans
-            if not self.client:
-                return {"success": False, "error": "Payment service not available"}
+            # Store subscription in database
+            db_subscription = Subscription(
+                user_id=user_id,
+                razorpay_subscription_id=subscription["id"],
+                plan_id=plan_id,
+                status="created",
+                current_period_start=datetime.utcnow(),
+                current_period_end=datetime.utcnow() + timedelta(days=30)
+            )
+            db.add(db_subscription)
 
-            try:
-                # Create customer if not exists
-                customer_data = {
-                    "name": customer_details.get("name", user.name or ""),
-                    "email": user.email,
-                    "contact": customer_details.get("phone", "")
-                }
+            # Update user subscription info
+            stmt = update(User).where(User.id == user_id).values(
+                subscription_plan=plan_id,
+                subscription_status="created",
+                subscription_id=subscription["id"]
+            )
+            await db.execute(stmt)
+            await db.commit()
 
-                razorpay_customer = self.client.customer.create(customer_data)
-
-                # Create subscription
-                subscription_data = {
-                    "plan_id": f"plan_{plan_id}",
-                    "customer_id": razorpay_customer["id"],
-                    "total_count": 12,  # 12 months
-                    "quantity": 1,
-                    "notes": {
-                        "user_id": user_id,
-                        "plan_id": plan_id
-                    }
-                }
-
-                razorpay_subscription = self.client.subscription.create(subscription_data)
-
-                # Create subscription record
-                subscription = Subscription(
-                    user_id=user_id,
-                    razorpay_subscription_id=razorpay_subscription["id"],
-                    plan_id=plan_id,
-                    status="created",
-                    current_period_start=datetime.utcnow(),
-                    current_period_end=datetime.utcnow() + timedelta(days=30)
-                )
-                db.add(subscription)
-
-                await db.commit()
-                await db.refresh(subscription)
-
-                return {
-                    "success": True,
-                    "subscription_id": subscription.id,
-                    "razorpay_subscription_id": razorpay_subscription["id"],
-                    "status": "created",
-                    "plan_id": plan_id,
-                    "short_url": razorpay_subscription.get("short_url")
-                }
-
-            except Exception as e:
-                logger.error(f"Error creating Razorpay subscription: {e}")
-                await db.rollback()
-                return {"success": False, "error": "Failed to create subscription"}
+            return {
+                "success": True,
+                "subscription_id": subscription["id"],
+                "short_url": subscription.get("short_url"),
+                "customer_id": customer["id"]
+            }
 
         except Exception as e:
             logger.error(f"Error creating subscription: {e}")
             await db.rollback()
-            return {"success": False, "error": "Internal server error"}
-
-    async def get_user_subscription(
-        self,
-        db: AsyncSession,
-        user_id: str
-    ) -> Optional[Dict[str, Any]]:
-        """Get user's current subscription."""
-        try:
-            stmt = select(Subscription).where(
-                and_(
-                    Subscription.user_id == user_id,
-                    Subscription.status.in_(["active", "created", "past_due"])
-                )
-            ).order_by(Subscription.created_at.desc())
-
-            result = await db.execute(stmt)
-            subscription = result.scalar_one_or_none()
-
-            if not subscription:
-                return None
-
-            plan_config = settings.SUBSCRIPTION_PLANS.get(subscription.plan_id, {})
-
             return {
-                "id": subscription.id,
-                "plan_id": subscription.plan_id,
-                "plan_name": plan_config.get("name", "Unknown"),
-                "status": subscription.status,
-                "current_period_start": subscription.current_period_start.isoformat() if subscription.current_period_start else None,
-                "current_period_end": subscription.current_period_end.isoformat() if subscription.current_period_end else None,
-                "features": plan_config.get("features", {}),
-                "price": plan_config.get("price", 0),
-                "currency": plan_config.get("currency", "INR")
+                "success": False,
+                "error": "Failed to create subscription"
             }
 
-        except Exception as e:
-            logger.error(f"Error getting user subscription: {e}")
-            return None
-
-    async def cancel_subscription(
+    async def _create_free_subscription(
         self,
         db: AsyncSession,
         user_id: str,
-        subscription_id: str
+        plan_id: str
     ) -> Dict[str, Any]:
-        """Cancel a user's subscription."""
+        """Create a free subscription."""
         try:
-            # Get subscription
-            stmt = select(Subscription).where(
-                and_(
-                    Subscription.id == subscription_id,
-                    Subscription.user_id == user_id
-                )
+            # Update user to free plan
+            stmt = update(User).where(User.id == user_id).values(
+                subscription_plan=plan_id,
+                subscription_status="active",
+                trial_used=True
             )
-            result = await db.execute(stmt)
-            subscription = result.scalar_one_or_none()
-
-            if not subscription:
-                return {"success": False, "error": "Subscription not found"}
-
-            # Cancel in Razorpay if it's a paid subscription
-            if subscription.razorpay_subscription_id and self.client:
-                try:
-                    self.client.subscription.cancel(subscription.razorpay_subscription_id, {
-                        "cancel_at_cycle_end": True
-                    })
-                except Exception as e:
-                    logger.error(f"Error cancelling Razorpay subscription: {e}")
-
-            # Update subscription status
-            subscription.status = "cancelled"
-            subscription.cancelled_at = datetime.utcnow()
-
-            # Update user status
-            stmt = select(User).where(User.id == user_id)
-            result = await db.execute(stmt)
-            user = result.scalar_one_or_none()
-
-            if user:
-                user.subscription_status = "cancelled"
-
+            await db.execute(stmt)
             await db.commit()
 
-            return {"success": True, "message": "Subscription cancelled successfully"}
+            return {
+                "success": True,
+                "subscription_id": None,
+                "message": "Free plan activated"
+            }
 
         except Exception as e:
-            logger.error(f"Error cancelling subscription: {e}")
+            logger.error(f"Error creating free subscription: {e}")
             await db.rollback()
-            return {"success": False, "error": "Internal server error"}
+            return {
+                "success": False,
+                "error": "Failed to activate free plan"
+            }
 
     async def handle_webhook(
         self,
         db: AsyncSession,
-        payload: str,
+        payload: bytes,
         signature: str
     ) -> Dict[str, Any]:
         """Handle Razorpay webhook events."""
@@ -293,32 +199,38 @@ class PaymentService:
             # Verify webhook signature
             if not self._verify_webhook_signature(payload, signature):
                 logger.warning("Invalid webhook signature")
-                return {"success": False, "error": "Invalid signature"}
+                return {
+                    "success": False,
+                    "error": "Invalid signature"
+                }
 
-            event = json.loads(payload)
-            event_type = event.get("event")
-            
+            # Parse webhook data
+            event_data = json.loads(payload.decode('utf-8'))
+            event_type = event_data.get("event")
+            entity = event_data.get("payload", {}).get("subscription", {})
+
             logger.info(f"Processing webhook event: {event_type}")
 
             if event_type == "subscription.activated":
-                return await self._handle_subscription_activated(db, event)
+                return await self._handle_subscription_activated(db, entity)
             elif event_type == "subscription.charged":
-                return await self._handle_subscription_charged(db, event)
+                return await self._handle_subscription_charged(db, entity)
             elif event_type == "subscription.cancelled":
-                return await self._handle_subscription_cancelled(db, event)
+                return await self._handle_subscription_cancelled(db, entity)
             elif event_type == "subscription.paused":
-                return await self._handle_subscription_paused(db, event)
-            elif event_type == "payment.failed":
-                return await self._handle_payment_failed(db, event)
+                return await self._handle_subscription_paused(db, entity)
             else:
                 logger.info(f"Unhandled webhook event: {event_type}")
                 return {"success": True, "message": "Event ignored"}
 
         except Exception as e:
             logger.error(f"Error handling webhook: {e}")
-            return {"success": False, "error": "Internal server error"}
+            return {
+                "success": False,
+                "error": "Webhook processing failed"
+            }
 
-    def _verify_webhook_signature(self, payload: str, signature: str) -> bool:
+    def _verify_webhook_signature(self, payload: bytes, signature: str) -> bool:
         """Verify Razorpay webhook signature."""
         if not settings.RAZORPAY_WEBHOOK_SECRET:
             logger.warning("Webhook secret not configured")
@@ -326,8 +238,8 @@ class PaymentService:
 
         try:
             expected_signature = hmac.new(
-                settings.RAZORPAY_WEBHOOK_SECRET.encode(),
-                payload.encode(),
+                settings.RAZORPAY_WEBHOOK_SECRET.encode('utf-8'),
+                payload,
                 hashlib.sha256
             ).hexdigest()
 
@@ -339,174 +251,252 @@ class PaymentService:
     async def _handle_subscription_activated(
         self,
         db: AsyncSession,
-        event: Dict[str, Any]
+        entity: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle subscription activated event."""
         try:
-            subscription_data = event["payload"]["subscription"]["entity"]
-            razorpay_subscription_id = subscription_data["id"]
-
-            # Find subscription
-            stmt = select(Subscription).where(
-                Subscription.razorpay_subscription_id == razorpay_subscription_id
-            )
-            result = await db.execute(stmt)
-            subscription = result.scalar_one_or_none()
-
-            if not subscription:
-                logger.warning(f"Subscription not found: {razorpay_subscription_id}")
-                return {"success": False, "error": "Subscription not found"}
+            subscription_id = entity.get("id")
+            if not subscription_id:
+                return {"success": False, "error": "No subscription ID"}
 
             # Update subscription status
-            subscription.status = "active"
-            subscription.current_period_start = datetime.fromtimestamp(
-                subscription_data["current_start"]
+            stmt = update(Subscription).where(
+                Subscription.razorpay_subscription_id == subscription_id
+            ).values(
+                status="active",
+                current_period_start=datetime.utcnow(),
+                current_period_end=datetime.utcnow() + timedelta(days=30)
             )
-            subscription.current_period_end = datetime.fromtimestamp(
-                subscription_data["current_end"]
-            )
-
-            # Update user status
-            stmt = select(User).where(User.id == subscription.user_id)
             result = await db.execute(stmt)
-            user = result.scalar_one_or_none()
 
-            if user:
-                user.subscription_status = "active"
+            if result.rowcount > 0:
+                # Update user status
+                subscription_result = await db.execute(
+                    select(Subscription).where(
+                        Subscription.razorpay_subscription_id == subscription_id
+                    )
+                )
+                subscription = subscription_result.scalar_one_or_none()
 
-            await db.commit()
+                if subscription:
+                    await db.execute(
+                        update(User).where(User.id == subscription.user_id).values(
+                            subscription_status="active"
+                        )
+                    )
 
-            logger.info(f"Subscription activated: {razorpay_subscription_id}")
-            return {"success": True, "message": "Subscription activated"}
+                await db.commit()
+                logger.info(f"Subscription activated: {subscription_id}")
+                return {"success": True, "message": "Subscription activated"}
+            else:
+                logger.warning(f"Subscription not found: {subscription_id}")
+                return {"success": False, "error": "Subscription not found"}
 
         except Exception as e:
-            logger.error(f"Error handling subscription activated: {e}")
+            logger.error(f"Error handling subscription activation: {e}")
             await db.rollback()
-            return {"success": False, "error": "Internal server error"}
+            return {"success": False, "error": "Failed to activate subscription"}
 
     async def _handle_subscription_charged(
         self,
         db: AsyncSession,
-        event: Dict[str, Any]
+        entity: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle subscription charged event."""
         try:
-            payment_data = event["payload"]["payment"]["entity"]
-            subscription_data = event["payload"]["subscription"]["entity"]
-
-            # Find subscription
-            stmt = select(Subscription).where(
-                Subscription.razorpay_subscription_id == subscription_data["id"]
-            )
-            result = await db.execute(stmt)
-            subscription = result.scalar_one_or_none()
-
-            if not subscription:
-                logger.warning(f"Subscription not found: {subscription_data['id']}")
-                return {"success": False, "error": "Subscription not found"}
+            subscription_id = entity.get("id")
+            payment_data = entity.get("latest_invoice", {})
 
             # Create payment record
             payment = Payment(
-                user_id=subscription.user_id,
-                subscription_id=subscription.id,
-                razorpay_payment_id=payment_data["id"],
-                amount=payment_data["amount"],
-                currency=payment_data["currency"],
-                status="captured",
-                payment_method=payment_data.get("method", "unknown")
+                subscription_id=subscription_id,
+                razorpay_payment_id=payment_data.get("payment_id"),
+                amount=payment_data.get("amount", 0),
+                currency=payment_data.get("currency", "INR"),
+                status="paid",
+                payment_method=payment_data.get("method")
             )
             db.add(payment)
-
             await db.commit()
 
-            logger.info(f"Payment recorded: {payment_data['id']}")
+            logger.info(f"Payment recorded for subscription: {subscription_id}")
             return {"success": True, "message": "Payment recorded"}
 
         except Exception as e:
-            logger.error(f"Error handling subscription charged: {e}")
+            logger.error(f"Error handling subscription charge: {e}")
             await db.rollback()
-            return {"success": False, "error": "Internal server error"}
+            return {"success": False, "error": "Failed to record payment"}
 
     async def _handle_subscription_cancelled(
         self,
         db: AsyncSession,
-        event: Dict[str, Any]
+        entity: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle subscription cancelled event."""
         try:
-            subscription_data = event["payload"]["subscription"]["entity"]
-            razorpay_subscription_id = subscription_data["id"]
-
-            # Find subscription
-            stmt = select(Subscription).where(
-                Subscription.razorpay_subscription_id == razorpay_subscription_id
-            )
-            result = await db.execute(stmt)
-            subscription = result.scalar_one_or_none()
-
-            if not subscription:
-                logger.warning(f"Subscription not found: {razorpay_subscription_id}")
-                return {"success": False, "error": "Subscription not found"}
+            subscription_id = entity.get("id")
 
             # Update subscription status
-            subscription.status = "cancelled"
-            subscription.cancelled_at = datetime.utcnow()
-
-            # Update user status
-            stmt = select(User).where(User.id == subscription.user_id)
+            stmt = update(Subscription).where(
+                Subscription.razorpay_subscription_id == subscription_id
+            ).values(
+                status="cancelled",
+                cancelled_at=datetime.utcnow()
+            )
             result = await db.execute(stmt)
-            user = result.scalar_one_or_none()
 
-            if user:
-                user.subscription_status = "cancelled"
+            if result.rowcount > 0:
+                # Update user status to free
+                subscription_result = await db.execute(
+                    select(Subscription).where(
+                        Subscription.razorpay_subscription_id == subscription_id
+                    )
+                )
+                subscription = subscription_result.scalar_one_or_none()
 
-            await db.commit()
+                if subscription:
+                    await db.execute(
+                        update(User).where(User.id == subscription.user_id).values(
+                            subscription_plan="free",
+                            subscription_status="cancelled"
+                        )
+                    )
 
-            logger.info(f"Subscription cancelled: {razorpay_subscription_id}")
-            return {"success": True, "message": "Subscription cancelled"}
+                await db.commit()
+                logger.info(f"Subscription cancelled: {subscription_id}")
+                return {"success": True, "message": "Subscription cancelled"}
 
         except Exception as e:
-            logger.error(f"Error handling subscription cancelled: {e}")
+            logger.error(f"Error handling subscription cancellation: {e}")
             await db.rollback()
-            return {"success": False, "error": "Internal server error"}
+            return {"success": False, "error": "Failed to cancel subscription"}
 
     async def _handle_subscription_paused(
         self,
         db: AsyncSession,
-        event: Dict[str, Any]
+        entity: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle subscription paused event."""
-        # Similar implementation to cancelled
-        return await self._handle_subscription_cancelled(db, event)
-
-    async def _handle_payment_failed(
-        self,
-        db: AsyncSession,
-        event: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Handle payment failed event."""
         try:
-            payment_data = event["payload"]["payment"]["entity"]
+            subscription_id = entity.get("id")
 
-            # Create failed payment record
-            payment = Payment(
-                razorpay_payment_id=payment_data["id"],
-                amount=payment_data["amount"],
-                currency=payment_data["currency"],
-                status="failed",
-                payment_method=payment_data.get("method", "unknown")
+            # Update subscription status
+            stmt = update(Subscription).where(
+                Subscription.razorpay_subscription_id == subscription_id
+            ).values(status="paused")
+            await db.execute(stmt)
+
+            # Update user status
+            subscription_result = await db.execute(
+                select(Subscription).where(
+                    Subscription.razorpay_subscription_id == subscription_id
+                )
             )
-            db.add(payment)
+            subscription = subscription_result.scalar_one_or_none()
+
+            if subscription:
+                await db.execute(
+                    update(User).where(User.id == subscription.user_id).values(
+                        subscription_status="paused"
+                    )
+                )
 
             await db.commit()
-
-            logger.info(f"Failed payment recorded: {payment_data['id']}")
-            return {"success": True, "message": "Failed payment recorded"}
+            logger.info(f"Subscription paused: {subscription_id}")
+            return {"success": True, "message": "Subscription paused"}
 
         except Exception as e:
-            logger.error(f"Error handling payment failed: {e}")
+            logger.error(f"Error handling subscription pause: {e}")
             await db.rollback()
-            return {"success": False, "error": "Internal server error"}
+            return {"success": False, "error": "Failed to pause subscription"}
+
+    async def get_user_subscription(
+        self,
+        db: AsyncSession,
+        user_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get user's current subscription."""
+        try:
+            # Get user
+            user_result = await db.execute(select(User).where(User.id == user_id))
+            user = user_result.scalar_one_or_none()
+
+            if not user:
+                return None
+
+            # Get subscription details
+            subscription_result = await db.execute(
+                select(Subscription).where(Subscription.user_id == user_id)
+                .order_by(Subscription.created_at.desc())
+            )
+            subscription = subscription_result.scalar_one_or_none()
+
+            plan_config = settings.SUBSCRIPTION_PLANS.get(user.subscription_plan, {})
+
+            return {
+                "user_id": user_id,
+                "plan_id": user.subscription_plan,
+                "plan_name": plan_config.get("name", "Unknown"),
+                "status": user.subscription_status,
+                "features": plan_config.get("features", {}),
+                "subscription_id": user.subscription_id,
+                "current_period_end": subscription.current_period_end.isoformat() if subscription and subscription.current_period_end else None
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting user subscription: {e}")
+            return None
+
+    async def cancel_subscription(
+        self,
+        db: AsyncSession,
+        user_id: str
+    ) -> Dict[str, Any]:
+        """Cancel user's subscription."""
+        try:
+            # Get user's subscription
+            user_result = await db.execute(select(User).where(User.id == user_id))
+            user = user_result.scalar_one_or_none()
+
+            if not user or not user.subscription_id:
+                return {
+                    "success": False,
+                    "error": "No active subscription found"
+                }
+
+            # Cancel in Razorpay if not free plan
+            if user.subscription_plan != "free" and self.client:
+                try:
+                    self.client.subscription.cancel(user.subscription_id, {"cancel_at_cycle_end": 1})
+                except Exception as e:
+                    logger.error(f"Error cancelling Razorpay subscription: {e}")
+
+            # Update local records
+            await db.execute(
+                update(Subscription).where(
+                    Subscription.user_id == user_id
+                ).values(
+                    status="cancelled",
+                    cancelled_at=datetime.utcnow()
+                )
+            )
+
+            await db.execute(
+                update(User).where(User.id == user_id).values(
+                    subscription_status="cancelled"
+                )
+            )
+
+            await db.commit()
+            return {"success": True, "message": "Subscription cancelled"}
+
+        except Exception as e:
+            logger.error(f"Error cancelling subscription: {e}")
+            await db.rollback()
+            return {
+                "success": False,
+                "error": "Failed to cancel subscription"
+            }
 
 # Global service instance
 payment_service = PaymentService()
