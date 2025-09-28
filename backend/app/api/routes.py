@@ -33,6 +33,10 @@ router.include_router(job_router)
 from .ats_routes import router as ats_router
 router.include_router(ats_router)
 
+# Include BYOK routes
+from .byok_routes import router as byok_router
+router.include_router(byok_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
