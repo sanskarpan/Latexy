@@ -17,7 +17,8 @@ celery_app = Celery(
         "app.workers.latex_worker",
         "app.workers.llm_worker", 
         "app.workers.email_worker",
-        "app.workers.cleanup_worker"
+        "app.workers.cleanup_worker",
+        "app.workers.ats_worker"
     ]
 )
 
@@ -35,6 +36,7 @@ celery_app.conf.update(
         "app.workers.llm_worker.*": {"queue": "llm"},
         "app.workers.email_worker.*": {"queue": "email"},
         "app.workers.cleanup_worker.*": {"queue": "cleanup"},
+        "app.workers.ats_worker.*": {"queue": "ats"},
     },
     
     # Task configuration
@@ -111,6 +113,11 @@ QUEUE_CONFIGS = {
         "priority": TASK_PRIORITY_LOW,
         "max_retries": 1,
     },
+    "ats": {
+        "routing_key": "ats",
+        "priority": TASK_PRIORITY_NORMAL,
+        "max_retries": 2,
+    },
 }
 
 
@@ -135,7 +142,7 @@ def debug_task(self):
 
 # Import tasks to register them
 try:
-    from ..workers import latex_worker, llm_worker, email_worker, cleanup_worker
+    from ..workers import latex_worker, llm_worker, email_worker, cleanup_worker, ats_worker
     logger.info("Celery workers imported successfully")
 except ImportError as e:
     logger.warning(f"Could not import some workers: {e}")
