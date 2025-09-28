@@ -25,6 +25,10 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
+# Include job management routes
+from .job_routes import router as job_router
+router.include_router(job_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
