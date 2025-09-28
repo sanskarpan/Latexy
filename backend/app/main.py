@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api.routes import router
 from .core.config import settings
 from .core.logging import setup_logging, get_logger
+from .core.redis import redis_manager
 from .services.latex_service import latex_service
 from .database.connection import init_db, close_db
 
@@ -33,6 +34,15 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize database: {e}")
         raise
     
+    # Initialize Redis connections
+    try:
+        await redis_manager.init_redis()
+        logger.info("Redis connections initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize Redis: {e}")
+        # Redis is not critical for basic functionality, so don't raise
+        logger.warning("Continuing without Redis - some features may be limited")
+    
     # Check LaTeX installation
     if not latex_service.check_latex_installation():
         logger.warning("LaTeX installation not found or not working properly")
@@ -48,6 +58,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Latexy Backend shutting down...")
     await close_db()
+    await redis_manager.close_redis()
 
 
 # Initialize FastAPI app
