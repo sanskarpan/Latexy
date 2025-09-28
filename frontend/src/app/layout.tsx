@@ -2,6 +2,7 @@ import './globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { NotificationProvider } from '@/components/NotificationProvider'
+import { WebSocketProvider } from '@/components/WebSocketProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
