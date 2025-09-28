@@ -44,7 +44,7 @@ services:
   # Celery Worker for Phase 8
   celery-worker:
     build: .
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4 --queues=latex,llm,email,cleanup
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4 --queues=latex,llm,email,cleanup,ats
     volumes:
       - .:/app
       - /app/temp
