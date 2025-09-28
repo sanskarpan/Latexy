@@ -206,13 +206,19 @@ export default function SubscriptionManager({ onUpgrade }: SubscriptionManagerPr
           <div className="text-sm text-gray-600 mb-1">Features</div>
           <div className="flex space-x-2">
             {subscription.features.prioritySupport && (
-              <CheckCircle className="w-4 h-4 text-green-500" title="Priority Support" />
+              <div title="Priority Support">
+                <CheckCircle className="w-4 h-4 text-green-500" />
+              </div>
             )}
             {subscription.features.apiAccess && (
-              <CheckCircle className="w-4 h-4 text-blue-500" title="API Access" />
+              <div title="API Access">
+                <CheckCircle className="w-4 h-4 text-blue-500" />
+              </div>
             )}
             {subscription.features.customModels && (
-              <CheckCircle className="w-4 h-4 text-purple-500" title="Custom Models" />
+              <div title="Custom Models">
+                <CheckCircle className="w-4 h-4 text-purple-500" />
+              </div>
             )}
           </div>
         </div>
