@@ -80,6 +80,30 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: str = Field(default="", description="Razorpay API Key Secret")
     RAZORPAY_WEBHOOK_SECRET: str = Field(default="", description="Razorpay Webhook Secret")
     
+    # Redis Config
+    REDIS_URL: str = Field(default="redis://localhost:6379/0", description="Redis URL for job queue")
+    REDIS_CACHE_URL: str = Field(default="redis://localhost:6379/1", description="Redis URL for caching")
+    REDIS_PASSWORD: str = Field(default="", description="Redis password")
+    REDIS_MAX_CONNECTIONS: int = Field(default=20, description="Redis max connections")
+    
+    # Celery Configuration 
+    CELERY_BROKER_URL: str = Field(default="redis://localhost:6379/0", description="Celery broker URL")
+    CELERY_RESULT_BACKEND: str = Field(default="redis://localhost:6379/0", description="Celery result backend URL")
+    CELERY_TASK_SERIALIZER: str = Field(default="json", description="Celery task serializer")
+    CELERY_RESULT_SERIALIZER: str = Field(default="json", description="Celery result serializer")
+    CELERY_ACCEPT_CONTENT: List[str] = Field(default=["json"], description="Celery accepted content types")
+    CELERY_TIMEZONE: str = Field(default="UTC", description="Celery timezone")
+    CELERY_ENABLE_UTC: bool = Field(default=True, description="Enable UTC in Celery")
+    
+    # Job Management Configuration 
+    JOB_RESULT_TTL: int = Field(default=86400, description="Job result TTL in seconds (24 hours)")
+    JOB_RETRY_ATTEMPTS: int = Field(default=3, description="Maximum job retry attempts")
+    JOB_RETRY_DELAY: int = Field(default=60, description="Job retry delay in seconds")
+    
+    # WebSocket Configuration 
+    WEBSOCKET_ENABLED: bool = Field(default=True, description="Enable WebSocket for real-time updates")
+    WEBSOCKET_HEARTBEAT_INTERVAL: int = Field(default=30, description="WebSocket heartbeat interval in seconds")
+    
     # Subscription Plans
     SUBSCRIPTION_PLANS: dict = Field(default={
         "free": {
