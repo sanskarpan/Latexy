@@ -18,6 +18,7 @@ Status: Phase 1-4 Complete, Phase 5+ In Planning
 - **Phase 7**: ✅ **COMPLETE** - Frontend Enhancement & Design System (100%)
 - **Phase 8**: ✅ **COMPLETE** - Workers & Queue System (100%)
 - **Phase 9**: ✅ **COMPLETE** - ATS Scoring Engine (100%)
+- **Phase 9.5**: ⏳ **IN PROGRESS** - Frontend Integration for Phase 8 & 9 (0%)
 - **Phase 10**: ⏳ **PLANNED** - Multi-Provider & BYOK System (0%)
 - **Phase 11**: ⏳ **PLANNED** - Production Deployment & Infrastructure (0%)
 - **Phase 12**: ⏳ **PLANNED** - MVP Launch & Go-Live (0%)
@@ -492,6 +493,79 @@ const subscriptionPlans = {
 - [x] Score correlates with actual ATS performance (validation against real systems)
 - [x] Recommendations are actionable and specific
 - [x] Scoring is fast enough for real-time feedback (<2s)
+
+---
+
+## Phase 9.5: Frontend Integration for Phase 8 & 9 Features
+**Purpose:** Integrate all implemented backend features (Phase 8 & 9) with the frontend.
+**Deliverables:** Complete frontend integration for job queue system, ATS scoring, real-time updates, and job management.
+**Status:** ⏳ **IN PROGRESS** - Frontend Integration (0%)
+
+### Tasks
+- [ ] **Job Queue System Integration (Phase 8)**
+  - [ ] Update API client to use new job submission endpoints
+  - [ ] Create job status tracking components and hooks
+  - [ ] Implement WebSocket integration for real-time updates
+  - [ ] Add job management dashboard with active/completed jobs
+  - [ ] Create job progress indicators and status badges
+  - [ ] Implement job cancellation functionality
+  - [ ] Add system health monitoring display
+
+- [ ] **ATS Scoring Integration (Phase 9)**
+  - [ ] Create ATS scoring UI components and forms
+  - [ ] Implement ATS score display with visual indicators
+  - [ ] Add industry selection and keyword management
+  - [ ] Create recommendations display and action items
+  - [ ] Implement job description analysis interface
+  - [ ] Add ATS scoring to compilation workflow
+  - [ ] Create ATS score history and tracking
+
+- [ ] **Enhanced User Experience**
+  - [ ] Replace synchronous compilation with asynchronous job flow
+  - [ ] Add real-time progress updates during compilation
+  - [ ] Implement job queue visualization
+  - [ ] Create notification system for job completion
+  - [ ] Add bulk operations for multiple resumes
+  - [ ] Implement job result caching and management
+  - [ ] Add export options for ATS reports
+
+- [ ] **API Client Modernization**
+  - [ ] Refactor api-client.ts to use job-based endpoints
+  - [ ] Add WebSocket client for real-time updates
+  - [ ] Implement retry logic and error handling
+  - [ ] Add request queuing and rate limiting
+  - [ ] Create typed interfaces for all new endpoints
+  - [ ] Add comprehensive error boundary handling
+
+### Frontend Components to Create/Update
+- [ ] `JobStatusTracker` - Real-time job status display
+- [ ] `ATSScoreCard` - ATS score visualization
+- [ ] `JobQueue` - Active jobs management
+- [ ] `RecommendationsPanel` - ATS improvement suggestions
+- [ ] `IndustrySelector` - Industry-specific optimization
+- [ ] `JobDescriptionAnalyzer` - JD analysis interface
+- [ ] `WebSocketProvider` - Real-time updates context
+- [ ] `JobManagementDashboard` - Comprehensive job overview
+
+### API Integration Updates
+- [ ] Update `useCompilation` hook to use job queue
+- [ ] Create `useJobStatus` hook for status tracking
+- [ ] Add `useATSScoring` hook for ATS features
+- [ ] Implement `useWebSocket` hook for real-time updates
+- [ ] Create `useJobManagement` hook for job operations
+- [ ] Add `useRecommendations` hook for ATS suggestions
+
+### Validation Criteria
+- [ ] All backend Phase 8 features are accessible from frontend
+- [ ] All backend Phase 9 features are accessible from frontend
+- [ ] Real-time job updates work seamlessly via WebSocket
+- [ ] ATS scoring is integrated into the compilation workflow
+- [ ] Job management dashboard shows all active/completed jobs
+- [ ] Users can cancel jobs and see progress in real-time
+- [ ] ATS recommendations are displayed and actionable
+- [ ] Industry-specific optimizations are available
+- [ ] System health status is visible to users
+- [ ] All new features work on mobile and desktop
 
 ---
 
