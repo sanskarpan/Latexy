@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     OPENAI_MAX_TOKENS: int = 4000
     OPENAI_TEMPERATURE: float = 0.7
     
+    # Multi-Provider & BYOK (Phase 10)
+    API_KEY_ENCRYPTION_KEY: str = Field(default="", description="Encryption key for storing user API keys")
+    ANTHROPIC_API_KEY: str = Field(default="", description="Default Anthropic API key")
+    OPENROUTER_API_KEY: str = Field(default="", description="Default OpenRouter API key")
+    GEMINI_API_KEY: str = Field(default="", description="Default Google Gemini API key")
+    
     # File Management
     PDF_RETENTION_TIME: int = 3600  # Keep PDFs for 1 hour (3600 seconds)
     
