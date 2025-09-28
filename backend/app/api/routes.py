@@ -29,6 +29,10 @@ router = APIRouter()
 from .job_routes import router as job_router
 router.include_router(job_router)
 
+# Include ATS scoring routes
+from .ats_routes import router as ats_router
+router.include_router(ats_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
