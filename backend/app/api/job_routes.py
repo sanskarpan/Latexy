@@ -420,12 +420,19 @@ async def websocket_endpoint(websocket: WebSocket, connection_id: str):
 async def system_health():
     """Get system health status."""
     try:
+        # Initialize Redis if not already done
+        if not redis_manager.redis_client:
+            await redis_manager.init_redis()
+        
         # Check Redis health
         redis_health = await redis_manager.health_check()
         
-        # Get active jobs count
-        active_jobs = await job_status_manager.get_active_jobs()
-        active_jobs_count = len(active_jobs)
+        # Get active jobs count (with fallback)
+        try:
+            active_jobs = await job_status_manager.get_active_jobs()
+            active_jobs_count = len(active_jobs)
+        except Exception:
+            active_jobs_count = 0
         
         # Determine overall health
         overall_health = "healthy" if all(redis_health.values()) else "degraded"
@@ -444,6 +451,7 @@ async def system_health():
         return {
             "status": "unhealthy",
             "error": str(e),
+            "redis_available": False,
             "timestamp": asyncio.get_event_loop().time()
         }
 
