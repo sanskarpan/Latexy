@@ -13,7 +13,7 @@ export PYTHONPATH=$(pwd)
 
 # Start Celery worker in the background
 echo "Starting Celery worker..."
-celery -A app.core.celery_app worker --loglevel=info --concurrency=4 --queues=latex,llm,email,cleanup &
+celery -A app.core.celery_app worker --loglevel=info --concurrency=4 --queues=latex,llm,email,cleanup,ats &
 WORKER_PID=$!
 
 # Start Celery beat for scheduled tasks
