@@ -1,0 +1,239 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker
+  namespace: latexy
+  labels:
+    app: celery-worker
+    component: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: celery-worker
+  template:
+    metadata:
+      labels:
+        app: celery-worker
+        component: worker
+    spec:
+      containers:
+      - name: celery-worker
+        image: latexy-backend:latest
+        command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-url
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: openai-api-key
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: anthropic-api-key
+        - name: GOOGLE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: google-api-key
+        - name: OPENROUTER_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: openrouter-api-key
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: encryption-key
+        - name: CELERY_BROKER_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-url
+        - name: CELERY_RESULT_BACKEND
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-url
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          exec:
+            command:
+            - celery
+            - -A
+            - app.celery_app
+            - inspect
+            - ping
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - celery
+            - -A
+            - app.celery_app
+            - inspect
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      imagePullSecrets:
+      - name: registry-secret
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  namespace: latexy
+  labels:
+    app: celery-beat
+    component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: celery-beat
+  template:
+    metadata:
+      labels:
+        app: celery-beat
+        component: scheduler
+    spec:
+      containers:
+      - name: celery-beat
+        image: latexy-backend:latest
+        command: ["celery", "-A", "app.celery_app", "beat", "--loglevel=info"]
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-url
+        - name: CELERY_BROKER_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-url
+        - name: CELERY_RESULT_BACKEND
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-url
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          exec:
+            command:
+            - pgrep
+            - -f
+            - "celery.*beat"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+      imagePullSecrets:
+      - name: registry-secret
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower
+  namespace: latexy
+  labels:
+    app: flower
+    component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flower
+  template:
+    metadata:
+      labels:
+        app: flower
+        component: monitoring
+    spec:
+      containers:
+      - name: flower
+        image: latexy-backend:latest
+        command: ["celery", "-A", "app.celery_app", "flower", "--port=5555"]
+        ports:
+        - containerPort: 5555
+        env:
+        - name: CELERY_BROKER_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-url
+        - name: CELERY_RESULT_BACKEND
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-url
+        - name: FLOWER_BASIC_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: flower-auth
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 5555
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 5555
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      imagePullSecrets:
+      - name: registry-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flower-service
+  namespace: latexy
+  labels:
+    app: flower
+spec:
+  selector:
+    app: flower
+  ports:
+  - port: 5555
+    targetPort: 5555
+    protocol: TCP
+  type: ClusterIP
