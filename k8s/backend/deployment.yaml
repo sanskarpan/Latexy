@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: latexy-backend
+  labels:
+    app: latexy-backend
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: latexy-backend
+  template:
+    metadata:
+      labels:
+        app: latexy-backend
+        version: v1
+    spec:
+      containers:
+      - name: backend
+        image: ghcr.io/your-org/latexy-backend:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: FASTAPI_ENV
+          value: "production"
+        - name: DEBUG
+          value: "false"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-url
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: openai-api-key
+        - name: API_KEY_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: api-key-encryption-key
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: temp-storage
+          mountPath: /app/temp
+      volumes:
+      - name: temp-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: latexy-backend-service
+  labels:
+    app: latexy-backend
+spec:
+  selector:
+    app: latexy-backend
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP
