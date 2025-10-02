@@ -16,6 +16,7 @@ from ..database.connection import get_db
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
 from ..services.latex_compiler import latex_compiler
+from ..services.latex_service import latex_service
 from ..services.llm_service import llm_service
 from ..services.trial_service import trial_service
 from ..services.payment_service import payment_service
