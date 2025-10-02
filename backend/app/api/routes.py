@@ -15,7 +15,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
-from ..services.latex_service import latex_service
+from ..services.latex_compiler import latex_compiler
 from ..services.llm_service import llm_service
 from ..services.trial_service import trial_service
 from ..services.payment_service import payment_service
@@ -45,7 +45,7 @@ router.include_router(analytics_router)
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint."""
-    latex_available = latex_service.check_latex_installation()
+    latex_available = latex_compiler.is_available()
     llm_available = llm_service.is_available()
     
     # Consider service healthy if LaTeX is available (LLM is optional)
