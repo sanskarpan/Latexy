@@ -860,3 +860,259 @@ This comprehensive implementation plan provides a complete roadmap for building 
 **Implementation Plan Last Updated:** $(date)  
 **Next Major Review:** After Phase 12 MVP Launch  
 **Living Document:** Updated quarterly with market feedback
+
+---
+
+## 📅 Phase 14-18: Multi-Format Input Support
+
+### Phase 14: Core Multi-Format Infrastructure (3 weeks)
+**Purpose:** Build foundational infrastructure for format detection and parsing  
+**Priority:** 🔴 HIGH - Expands platform capability significantly
+
+#### Features:
+1. **Format Detection System**
+   - MIME type detection
+   - File extension validation
+   - Content analysis and verification
+   - Security validation
+
+2. **Parser Framework**
+   - Abstract parser interface
+   - Parser factory pattern
+   - Error handling and fallback mechanisms
+   - Parser registry system
+
+3. **File Upload Enhancement**
+   - Support for multiple file formats
+   - Drag-and-drop interface
+   - File size validation (PDF: 10MB, DOCX: 5MB, Others: 2MB)
+   - Progress indicators
+
+#### Technical Stack:
+- python-magic for MIME detection
+- Abstract base classes for parsers
+- Factory pattern for parser selection
+- Comprehensive error handling
+
+---
+
+### Phase 15: PDF & DOCX Support (4 weeks)
+**Purpose:** Implement parsers for the most common resume formats  
+**Priority:** 🔴 CRITICAL - Most requested feature
+
+#### Features:
+1. **PDF Parser**
+   - Libraries: PyPDF2, pdfplumber, pdfminer.six
+   - Text extraction with layout preservation
+   - Table and multi-column detection
+   - Image handling
+   - Scanned PDF support (future: OCR)
+
+2. **DOCX Parser**
+   - Library: python-docx
+   - Paragraph and heading extraction
+   - Table parsing
+   - Style and formatting detection
+   - Template recognition
+
+3. **Structure Extraction**
+   - Named Entity Recognition (NER) with spaCy
+   - Contact information extraction (email, phone, address)
+   - Section detection (Experience, Education, Skills)
+   - Date parsing and normalization
+   - Skills and keywords extraction
+
+#### Data Models:
+```python
+ParsedResume(
+  contact: ContactInfo,
+  summary: str,
+  experience: List[Experience],
+  education: List[Education],
+  skills: List[str],
+  certifications: List[Certification]
+)
+```
+
+---
+
+### Phase 16: Markdown, Text & HTML Support (3 weeks)
+**Purpose:** Support lightweight and web-based formats  
+**Priority:** 🟡 MEDIUM - Developer-friendly formats
+
+#### Features:
+1. **Markdown Parser**
+   - Library: markdown-it-py, mistune
+   - Markdown to LaTeX conversion
+   - Custom resume markdown syntax
+   - Code block and link handling
+   - GitHub-flavored markdown support
+
+2. **Plain Text Parser**
+   - Library: spaCy for NLP
+   - Intelligent section detection
+   - Pattern matching for common formats
+   - Heuristic-based structuring
+   - Fallback for unstructured text
+
+3. **HTML Parser**
+   - Library: BeautifulSoup4, lxml
+   - Web resume extraction
+   - LinkedIn profile parsing
+   - Semantic HTML interpretation
+   - Style stripping and conversion
+
+#### NLP Pipeline:
+- Named Entity Recognition
+- Pattern matching engine
+- Section boundary detection
+- Confidence scoring
+
+---
+
+### Phase 17: Structured Data & Advanced Formats (2 weeks)
+**Purpose:** Support structured data formats and third-party imports  
+**Priority:** 🟡 MEDIUM - Power user features
+
+#### Features:
+1. **JSON/YAML Parser**
+   - JSON Resume schema support
+   - YAML resume format
+   - Custom schema validation
+   - Field mapping configuration
+   - Data transformation rules
+
+2. **Third-Party Integrations**
+   - LinkedIn export import
+   - Indeed profile parsing
+   - GitHub resume extraction
+   - Stack Overflow developer story
+
+3. **Advanced Features**
+   - Multi-file upload support
+   - Resume merging from multiple sources
+   - Batch processing
+   - Format conversion API
+
+#### Standards:
+- JSON Resume Schema 1.0
+- Custom YAML schema
+- API endpoints for each format
+
+---
+
+### Phase 18: LaTeX Generation & Frontend Integration (4 weeks)
+**Purpose:** Complete the pipeline and deliver seamless UX  
+**Priority:** 🔴 HIGH - Required for feature completion
+
+#### Features:
+1. **LaTeX Template System**
+   - Dynamic template generation
+   - Section mapping engine
+   - Style configuration
+   - Format-specific adaptations
+   - Template library expansion
+
+2. **Content Mapper**
+   - Field-to-LaTeX mapping
+   - Smart formatting decisions
+   - Date formatting
+   - List generation
+   - Special character handling
+
+3. **Frontend Integration**
+   - Multi-format file upload UI
+   - Format preview and validation
+   - Drag-and-drop interface
+   - Real-time parsing feedback
+   - Template selection workflow
+
+4. **Quality Assurance**
+   - End-to-end testing all formats
+   - Parsing accuracy validation (>95%)
+   - Performance optimization
+   - User acceptance testing
+   - Documentation and tutorials
+
+#### User Experience Flow:
+```
+Upload File → Auto-detect Format → Parse & Preview → 
+Select Template → Generate LaTeX → Optimize → Compile PDF
+```
+
+---
+
+## 🎯 Multi-Format Support Success Metrics
+
+### Parsing Accuracy Targets
+- PDF: >95% section detection accuracy
+- DOCX: >98% content extraction accuracy
+- Markdown: >99% conversion accuracy
+- Text: >85% structure detection accuracy
+- JSON/YAML: 100% (structured format)
+
+### Performance Targets
+- PDF parsing: <5 seconds
+- DOCX parsing: <3 seconds
+- Markdown/Text: <1 second
+- LaTeX generation: <2 seconds
+- Total pipeline: <15 seconds end-to-end
+
+### User Satisfaction
+- File upload success rate: >99%
+- Format detection accuracy: >99%
+- Conversion satisfaction: >4.5/5
+- Feature adoption: >60% of users try multi-format
+
+---
+
+## 📦 Required Dependencies (Phases 14-18)
+
+### Python Backend
+```txt
+# PDF Processing
+PyPDF2==3.0.1
+pdfplumber==0.10.3
+pdfminer.six==20221105
+
+# DOCX Processing
+python-docx==1.1.0
+docx2txt==0.8
+
+# Markdown
+markdown-it-py==3.0.0
+mistune==3.0.2
+
+# HTML
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# NLP & Text Processing
+spacy==3.7.2
+python-dateutil==2.8.2
+
+# Structured Data
+pyyaml==6.0.1
+jsonschema==4.20.0
+
+# Format Detection
+python-magic==0.4.27
+```
+
+### Frontend
+```json
+{
+  "react-dropzone": "^14.2.3",
+  "file-type": "^18.5.0",
+  "@uppy/core": "^3.7.1",
+  "@uppy/react": "^3.1.3",
+  "react-pdf": "^7.5.1"
+}
+```
+
+---
+
+**Implementation Plan Updated:** $(date)  
+**New Phases Added:** 14-18 (Multi-Format Input Support)  
+**Total Duration:** 16 weeks  
+**Next Milestone:** Phase 14 Implementation
