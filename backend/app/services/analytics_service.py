@@ -18,7 +18,7 @@ from app.database.models import (
     UsageAnalytics, Subscription, Payment
 )
 from app.database.connection import get_db
-from app.services.redis_manager import redis_manager
+from app.core.redis import redis_manager
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class AnalyticsService:
                 device_fingerprint=device_fingerprint,
                 action=event_type,
                 resource_type=metadata.get('resource_type') if metadata else None,
-                metadata=metadata or {},
+                event_metadata=metadata or {},
                 ip_address=ip_address,
                 user_agent=user_agent
             )
