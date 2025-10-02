@@ -1,7 +1,12 @@
-import { FileText, Zap, Key } from 'lucide-react'
+'use client'
+
+import { FileText, Zap, Key, HelpCircle } from 'lucide-react'
 import Link from 'next/link'
+import { useHelpCenter } from './help/HelpCenter'
+import HelpCenter from './help/HelpCenter'
 
 export default function Header() {
+  const { isHelpOpen, openHelp, closeHelp } = useHelpCenter()
   return (
     <header className="border-b border-secondary-200 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
       <div className="container mx-auto px-4">
@@ -25,7 +30,7 @@ export default function Header() {
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-2 text-sm text-secondary-600">
               <Zap className="w-4 h-4 text-green-500" />
-              <span>Phase 10: Multi-Provider & BYOK Complete</span>
+              <span>Phase 12: MVP Launch Ready</span>
             </div>
             
             <Link 
@@ -36,12 +41,18 @@ export default function Header() {
               <span className="hidden sm:inline">BYOK</span>
             </Link>
             
-            <button className="btn-outline px-3 py-2 text-sm">
-              Help
+            <button 
+              onClick={openHelp}
+              className="flex items-center gap-2 btn-outline px-3 py-2 text-sm hover:bg-blue-50 transition-colors"
+            >
+              <HelpCircle className="w-4 h-4" />
+              <span className="hidden sm:inline">Help</span>
             </button>
           </div>
         </div>
       </div>
+      
+      <HelpCenter isOpen={isHelpOpen} onClose={closeHelp} />
     </header>
   )
 }
