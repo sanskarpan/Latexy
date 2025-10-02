@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.database.connection import get_db
 from app.services.analytics_service import analytics_service
+from app.middleware.auth_middleware import get_user_id_required, get_user_id_optional, require_admin
 import logging
 
 logger = logging.getLogger(__name__)
