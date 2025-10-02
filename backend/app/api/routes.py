@@ -37,6 +37,10 @@ router.include_router(ats_router)
 from .byok_routes import router as byok_router
 router.include_router(byok_router)
 
+# Include Analytics routes
+from .analytics_routes import router as analytics_router
+router.include_router(analytics_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
