@@ -17,6 +17,7 @@ from ..workers.latex_worker import submit_latex_compilation, submit_optimization
 from ..workers.llm_worker import submit_resume_optimization, submit_job_description_analysis
 from ..workers.email_worker import submit_notification_email, submit_completion_email
 from ..workers.cleanup_worker import submit_temp_files_cleanup, submit_expired_jobs_cleanup
+from ..middleware.auth_middleware import get_current_user_optional
 
 logger = get_logger(__name__)
 
@@ -148,12 +149,12 @@ manager = ConnectionManager()
 async def submit_job(
     request: JobSubmissionRequest,
     http_request: Request,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional)
 ):
     """Submit a new job to the queue."""
     try:
-        # Extract user information (in production, this would come from authentication)
-        user_id = None  # TODO: Extract from JWT token
+        # Extract user information
         ip_address = http_request.client.host if http_request.client else None
         
         # Validate request based on job type
