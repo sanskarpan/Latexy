@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     BETTER_AUTH_SECRET: str = Field(default="", description="Better-Auth secret key")
     BETTER_AUTH_URL: str = Field(default="http://localhost:3000", description="Better-Auth URL")
     
+    # JWT Configuration
+    JWT_SECRET_KEY: str = Field(default="", description="JWT secret key for token signing")
+    JWT_ALGORITHM: str = Field(default="HS256", description="JWT algorithm")
+    JWT_EXPIRATION_HOURS: int = Field(default=24, description="JWT token expiration in hours")
+    
     # Razorpay Configuration
     RAZORPAY_KEY_ID: str = Field(default="", description="Razorpay API Key ID")
     RAZORPAY_KEY_SECRET: str = Field(default="", description="Razorpay API Key Secret")
