@@ -12,6 +12,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..services.api_key_service import api_key_service
 from ..services.llm_provider_service import multi_provider_service, LLMRequest
+from ..middleware.auth_middleware import get_current_user_required, get_current_user_optional
 
 logger = get_logger(__name__)
 
@@ -131,8 +132,8 @@ class GenerateWithProviderResponse(BaseModel):
 @router.post("/api-keys", response_model=AddAPIKeyResponse)
 async def add_api_key(
     request: AddAPIKeyRequest,
-    user_id: str = "f47ac10b-58cc-4372-a567-0e02b2c3d479",  # Demo UUID - TODO: Get from JWT token
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required)
 ):
     """Add a new API key for a user."""
     try:
@@ -154,8 +155,8 @@ async def add_api_key(
 
 @router.get("/api-keys", response_model=UserAPIKeysResponse)
 async def get_user_api_keys(
-    user_id: str = "f47ac10b-58cc-4372-a567-0e02b2c3d479",  # Demo UUID - TODO: Get from JWT token
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required)
 ):
     """Get all API keys for the current user."""
     try:
@@ -175,8 +176,8 @@ async def get_user_api_keys(
 @router.delete("/api-keys/{key_id}")
 async def delete_api_key(
     key_id: str,
-    user_id: str = "f47ac10b-58cc-4372-a567-0e02b2c3d479",  # Demo UUID - TODO: Get from JWT token
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required)
 ):
     """Delete an API key."""
     try:
@@ -235,8 +236,8 @@ async def validate_api_key(request: ValidateAPIKeyRequest):
 @router.post("/test/{provider}", response_model=TestProviderResponse)
 async def test_provider_connection(
     provider: str,
-    user_id: str = "f47ac10b-58cc-4372-a567-0e02b2c3d479",  # Demo UUID - TODO: Get from JWT token
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required)
 ):
     """Test connection to a user's configured provider."""
     try:
@@ -252,7 +253,7 @@ async def test_provider_connection(
 # Usage and Statistics Endpoints
 @router.get("/usage-stats", response_model=UsageStatsResponse)
 async def get_usage_stats(
-    user_id: str = "demo_user"  # TODO: Get from JWT token
+    user_id: str = Depends(get_current_user_required)
 ):
     """Get usage statistics for user's providers."""
     try:
@@ -280,8 +281,8 @@ async def get_usage_stats(
 @router.post("/generate", response_model=GenerateWithProviderResponse)
 async def generate_with_provider(
     request: GenerateWithProviderRequest,
-    user_id: str = "f47ac10b-58cc-4372-a567-0e02b2c3d479",  # Demo UUID - TODO: Get from JWT token
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required)
 ):
     """Generate content using a specific provider."""
     try:
@@ -352,8 +353,8 @@ async def get_system_health():
 # Provider Configuration Management
 @router.post("/load-providers")
 async def load_user_providers(
-    user_id: str = "f47ac10b-58cc-4372-a567-0e02b2c3d479",  # Demo UUID - TODO: Get from JWT token
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required)
 ):
     """Load all user providers into the service."""
     try:
