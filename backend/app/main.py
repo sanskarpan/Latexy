@@ -12,7 +12,7 @@ from .api.routes import router
 from .core.config import settings
 from .core.logging import setup_logging, get_logger
 from .core.redis import redis_manager
-from .services.latex_service import latex_service
+from .services.latex_compiler import latex_compiler
 from .database.connection import init_db, close_db
 
 # Setup logging
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
         logger.warning("Continuing without Redis - some features may be limited")
     
     # Check LaTeX installation
-    if not latex_service.check_latex_installation():
+    if not latex_compiler.is_available():
         logger.warning("LaTeX installation not found or not working properly")
     else:
         logger.info("LaTeX installation verified successfully")
