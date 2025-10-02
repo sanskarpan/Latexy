@@ -42,6 +42,10 @@ router.include_router(byok_router)
 from .analytics_routes import router as analytics_router
 router.include_router(analytics_router)
 
+# Include Format detection routes
+from .format_routes import router as format_router
+router.include_router(format_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
