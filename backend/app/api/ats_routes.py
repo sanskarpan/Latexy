@@ -14,6 +14,7 @@ from ..core.redis import job_status_manager
 from ..database.connection import get_db
 from ..services.ats_scoring_service import ats_scoring_service
 from ..workers.ats_worker import submit_ats_scoring, submit_job_description_analysis
+from ..middleware.auth_middleware import get_current_user_optional
 
 logger = get_logger(__name__)
 
@@ -86,12 +87,12 @@ class ATSRecommendationsResponse(BaseModel):
 async def score_resume_ats(
     request: ATSScoreRequest,
     http_request: Request,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional)
 ):
     """Score a resume for ATS compatibility."""
     try:
         # Extract user information
-        user_id = None  # TODO: Extract from JWT token
         ip_address = http_request.client.host if http_request.client else None
         
         # Validate input
@@ -159,12 +160,12 @@ async def score_resume_ats(
 async def analyze_job_description_ats(
     request: JobDescriptionAnalysisRequest,
     http_request: Request,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional)
 ):
     """Analyze job description for ATS optimization insights."""
     try:
         # Extract user information
-        user_id = None  # TODO: Extract from JWT token
         ip_address = http_request.client.host if http_request.client else None
         
         # Validate input
