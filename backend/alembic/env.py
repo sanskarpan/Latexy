@@ -3,13 +3,20 @@ import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
 
+# Load .env from backend/ first, then project root as fallback
+_here = Path(__file__).parent.parent  # backend/
+_root = _here.parent                  # project root
+load_dotenv(_here / ".env")
+load_dotenv(_root / ".env")
+
 # Add the parent directory to the path so we can import our app
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(_here))
 
 from app.database.models import Base
 from app.core.config import settings
@@ -27,8 +34,11 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 target_metadata = Base.metadata
 
-# Set the database URL from our settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Use DATABASE_URL from env — strip asyncpg driver prefix for psycopg2 (sync alembic)
+_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
+if not _db_url:
+    raise RuntimeError("DATABASE_URL is not set. Check your .env file.")
+config.set_main_option("sqlalchemy.url", _db_url)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
