@@ -75,6 +75,11 @@ def cleanup_temp_files_task(
                 "files_deleted": 0,
                 "directories_deleted": 0,
                 "space_freed": 0,
+                "space_freed_mb": 0.0,
+                "max_age_hours": max_age_hours,
+                "target_directory": str(cleanup_dir),
+                "errors": [],
+                "error_count": 0,
                 "completed_at": time.time()
             }
             
@@ -275,6 +280,10 @@ def cleanup_expired_jobs_task(
                 "message": "No active jobs found for cleanup",
                 "jobs_cleaned": 0,
                 "total_jobs_scanned": 0,
+                "max_age_hours": max_age_hours,
+                "batch_size": batch_size,
+                "errors": [],
+                "error_count": 0,
                 "completed_at": time.time()
             }
             
