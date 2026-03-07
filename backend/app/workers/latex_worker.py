@@ -1,461 +1,246 @@
 """
-LaTeX compilation worker for Phase 8.
+LaTeX compilation worker — event-driven rebuild.
+
+Streams pdflatex log lines via publish_event() instead of collecting
+them all at once.  Uses subprocess.Popen for line-by-line stdout
+streaming.  Zero asyncio — all Redis I/O goes through event_publisher.
 """
 
-import asyncio
+import subprocess
 import time
 import uuid
 from pathlib import Path
+from subprocess import PIPE, STDOUT
 from typing import Dict, Any, Optional
 
-from celery import current_task
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
-from ..core.redis import job_status_manager
 from ..services.latex_service import latex_service
-from ..models.schemas import CompilationResponse
+from ..workers.event_publisher import publish_event, publish_job_result, is_cancelled
 
 logger = get_logger(__name__)
 
 
-@celery_app.task(bind=True, name="app.workers.latex_worker.compile_latex_task")
+@celery_app.task(
+    bind=True,
+    name="app.workers.latex_worker.compile_latex_task",
+    max_retries=3,
+    default_retry_delay=60,
+)
 def compile_latex_task(
-    self, 
-    latex_content: str, 
-    job_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    user_plan: str = "free",
-    device_fingerprint: Optional[str] = None,
-    metadata: Optional[Dict] = None
-) -> Dict[str, Any]:
-    """
-    Compile LaTeX content to PDF asynchronously.
-    
-    Args:
-        latex_content: LaTeX source code
-        job_id: Optional job ID (will generate if not provided)
-        user_id: User ID for authenticated users
-        user_plan: User subscription plan for priority
-        device_fingerprint: Device fingerprint for anonymous users
-        metadata: Additional metadata
-    
-    Returns:
-        Dict containing compilation result
-    """
-    if job_id is None:
-        job_id = str(uuid.uuid4())
-    
-    task_id = self.request.id
-    logger.info(f"Starting LaTeX compilation task {task_id} for job {job_id}")
-    
-    try:
-        # Set initial status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            "processing", 
-            {
-                "task_id": task_id,
-                "user_id": user_id,
-                "device_fingerprint": device_fingerprint,
-                "started_at": time.time(),
-                "metadata": metadata or {}
-            }
-        ))
-        
-        # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id, 
-            10, 
-            "Validating LaTeX content"
-        ))
-        
-        # Validate LaTeX content
-        if not latex_service.validate_latex_content(latex_content):
-            error_msg = "Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}"
-            logger.error(f"LaTeX validation failed for job {job_id}: {error_msg}")
-            
-            # Set error status
-            asyncio.run(job_status_manager.set_job_status(
-                job_id, 
-                "failed", 
-                {"error": error_msg, "completed_at": time.time()}
-            ))
-            
-            return {
-                "success": False,
-                "job_id": job_id,
-                "task_id": task_id,
-                "message": error_msg,
-                "error": error_msg
-            }
-        
-        # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id, 
-            30, 
-            "Starting LaTeX compilation"
-        ))
-        
-        # Perform compilation
-        start_time = time.time()
-        result = asyncio.run(latex_service.compile_latex(latex_content, job_id))
-        compilation_time = time.time() - start_time
-        
-        # Update progress
-        if result.success:
-            asyncio.run(job_status_manager.set_job_progress(
-                job_id, 
-                90, 
-                "Compilation successful, finalizing"
-            ))
-        else:
-            asyncio.run(job_status_manager.set_job_progress(
-                job_id, 
-                50, 
-                "Compilation failed"
-            ))
-        
-        # Prepare result data
-        result_data = {
-            "success": result.success,
-            "job_id": job_id,
-            "task_id": task_id,
-            "message": result.message,
-            "compilation_time": compilation_time,
-            "pdf_size": result.pdf_size if result.success else None,
-            "log_output": result.log_output,
-            "user_id": user_id,
-            "device_fingerprint": device_fingerprint,
-            "completed_at": time.time()
-        }
-        
-        if not result.success:
-            result_data["error"] = result.message
-        
-        # Set final status and result
-        final_status = "completed" if result.success else "failed"
-        asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            final_status, 
-            {
-                "task_id": task_id,
-                "completed_at": time.time(),
-                "compilation_time": compilation_time,
-                "success": result.success
-            }
-        ))
-        
-        asyncio.run(job_status_manager.set_job_result(job_id, result_data))
-        
-        # Final progress update
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id, 
-            100, 
-            "Task completed"
-        ))
-        
-        logger.info(f"LaTeX compilation task {task_id} completed for job {job_id}: {result.success}")
-        return result_data
-        
-    except Exception as e:
-        logger.error(f"LaTeX compilation task {task_id} failed for job {job_id}: {e}")
-        
-        error_data = {
-            "success": False,
-            "job_id": job_id,
-            "task_id": task_id,
-            "message": f"Compilation error: {str(e)}",
-            "error": str(e),
-            "completed_at": time.time()
-        }
-        
-        # Set error status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            "failed", 
-            {
-                "task_id": task_id,
-                "error": str(e),
-                "completed_at": time.time()
-            }
-        ))
-        
-        asyncio.run(job_status_manager.set_job_result(job_id, error_data))
-        
-        # Retry logic
-        if self.request.retries < self.max_retries:
-            logger.info(f"Retrying LaTeX compilation task {task_id} (attempt {self.request.retries + 1})")
-            raise self.retry(countdown=60, exc=e)
-        
-        return error_data
-
-
-@celery_app.task(bind=True, name="app.workers.latex_worker.compile_latex_with_optimization_task")
-def compile_latex_with_optimization_task(
     self,
     latex_content: str,
-    job_description: str,
     job_id: Optional[str] = None,
     user_id: Optional[str] = None,
     user_plan: str = "free",
     device_fingerprint: Optional[str] = None,
-    optimization_level: str = "balanced",
-    metadata: Optional[Dict] = None
+    metadata: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
-    Optimize and compile LaTeX content in one task.
-    
-    Args:
-        latex_content: LaTeX source code
-        job_description: Job description for optimization
-        job_id: Optional job ID
-        user_id: User ID for authenticated users
-        user_plan: User subscription plan
-        device_fingerprint: Device fingerprint for anonymous users
-        optimization_level: Optimization level (conservative, balanced, aggressive)
-        metadata: Additional metadata
-    
-    Returns:
-        Dict containing optimization and compilation results
+    Compile LaTeX content to PDF, streaming each pdflatex log line as
+    a log.line event.  Publishes job.completed on success or job.failed
+    on error.
     """
     if job_id is None:
         job_id = str(uuid.uuid4())
-    
+
     task_id = self.request.id
-    logger.info(f"Starting optimization + compilation task {task_id} for job {job_id}")
-    
+    worker_id = f"latex-{task_id}"
+    logger.info(f"LaTeX task {task_id} starting for job {job_id}")
+
+    publish_event(job_id, "job.started", {
+        "worker_id": worker_id,
+        "stage": "latex_compilation",
+    })
+
     try:
-        # Set initial status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            "processing", 
-            {
-                "task_id": task_id,
-                "user_id": user_id,
-                "device_fingerprint": device_fingerprint,
-                "started_at": time.time(),
-                "stage": "optimization",
-                "metadata": metadata or {}
-            }
-        ))
-        
-        # Step 1: Optimize resume
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id, 
-            20, 
-            "Optimizing resume with AI"
-        ))
-        
-        # Import and use LLM worker
-        from .llm_worker import optimize_resume_task
-        
-        optimization_result = optimize_resume_task.apply(
-            args=[latex_content, job_description],
-            kwargs={
-                "user_id": user_id,
-                "user_plan": user_plan,
-                "optimization_level": optimization_level
-            }
-        ).get()
-        
-        if not optimization_result.get("success", False):
-            error_msg = f"Optimization failed: {optimization_result.get('error', 'Unknown error')}"
-            logger.error(f"Optimization failed for job {job_id}: {error_msg}")
-            
-            asyncio.run(job_status_manager.set_job_status(
-                job_id, 
-                "failed", 
-                {"error": error_msg, "stage": "optimization", "completed_at": time.time()}
-            ))
-            
-            return {
-                "success": False,
+        # ── Validation ──────────────────────────────────────────────
+        publish_event(job_id, "job.progress", {
+            "percent": 5,
+            "stage": "latex_compilation",
+            "message": "Validating LaTeX content",
+        })
+
+        if not latex_service.validate_latex_content(latex_content):
+            error_msg = (
+                r"Invalid LaTeX: missing \documentclass, "
+                r"\begin{document}, or \end{document}"
+            )
+            publish_event(job_id, "job.failed", {
+                "stage": "latex_compilation",
+                "error_code": "latex_error",
+                "error_message": error_msg,
+                "retryable": False,
+            })
+            return {"success": False, "job_id": job_id, "error": error_msg}
+
+        # ── Set up temp directory ────────────────────────────────────
+        # Path must match what GET /download/{job_id} serves from.
+        job_dir = settings.TEMP_DIR / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+
+        tex_file = job_dir / "resume.tex"
+        pdf_file = job_dir / "resume.pdf"
+
+        tex_file.write_text(latex_content, encoding="utf-8")
+
+        publish_event(job_id, "job.progress", {
+            "percent": 10,
+            "stage": "latex_compilation",
+            "message": "Starting pdflatex compilation",
+        })
+
+        # ── Docker / pdflatex command ────────────────────────────────
+        docker_cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{job_dir}:/workspace",
+            "-w", "/workspace",
+            settings.LATEX_DOCKER_IMAGE,
+            "pdflatex",
+            "-interaction=nonstopmode",
+            "-output-directory", "/workspace",
+            "-jobname", "resume",
+            "resume.tex",
+        ]
+
+        start_time = time.time()
+        log_lines: list[str] = []
+
+        # ── Stream stdout line-by-line ───────────────────────────────
+        proc = subprocess.Popen(
+            docker_cmd,
+            stdout=PIPE,
+            stderr=STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+        for raw_line in proc.stdout:  # type: ignore[union-attr]
+            line = raw_line.rstrip("\n")
+            if not line:
+                continue
+            log_lines.append(line)
+            line_lower = line.lower()
+            is_error = any(
+                kw in line_lower for kw in ("error", "fatal", "undefined control")
+            )
+            publish_event(job_id, "log.line", {
+                "source": "pdflatex",
+                "line": line,
+                "is_error": is_error,
+            })
+
+            # Honour compilation timeout
+            if time.time() - start_time > settings.COMPILE_TIMEOUT:
+                proc.kill()
+                proc.wait()
+                timeout_msg = f"pdflatex timed out after {settings.COMPILE_TIMEOUT}s"
+                publish_event(job_id, "job.failed", {
+                    "stage": "latex_compilation",
+                    "error_code": "timeout",
+                    "error_message": timeout_msg,
+                    "retryable": False,
+                })
+                return {"success": False, "job_id": job_id, "error": timeout_msg}
+
+            # Honour cancellation between log lines
+            if is_cancelled(job_id):
+                proc.kill()
+                proc.wait()
+                publish_event(job_id, "job.cancelled", {})
+                return {"success": False, "job_id": job_id, "cancelled": True}
+
+        proc.wait()
+        compilation_time = time.time() - start_time
+
+        publish_event(job_id, "job.progress", {
+            "percent": 90,
+            "stage": "latex_compilation",
+            "message": "Finalizing PDF",
+        })
+
+        # ── Success / failure ────────────────────────────────────────
+        if proc.returncode == 0 and pdf_file.exists():
+            pdf_size = pdf_file.stat().st_size
+            result = {
+                "success": True,
                 "job_id": job_id,
-                "task_id": task_id,
-                "message": error_msg,
-                "error": error_msg,
-                "optimization": optimization_result,
-                "compilation": None
+                "pdf_job_id": job_id,
+                "compilation_time": compilation_time,
+                "pdf_size": pdf_size,
+                "log_output": "\n".join(log_lines),
             }
-        
-        # Step 2: Compile optimized LaTeX
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id, 
-            60, 
-            "Compiling optimized LaTeX"
-        ))
-        
-        asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            "processing", 
-            {
-                "task_id": task_id,
-                "stage": "compilation",
-                "optimization_completed": True
-            }
-        ))
-        
-        optimized_latex = optimization_result.get("optimized_latex", latex_content)
-        compilation_result = compile_latex_task.apply(
-            args=[optimized_latex],
-            kwargs={
-                "job_id": f"{job_id}_compiled",
-                "user_id": user_id,
-                "user_plan": user_plan,
-                "device_fingerprint": device_fingerprint,
-                "metadata": {"optimized": True, "original_job_id": job_id}
-            }
-        ).get()
-        
-        # Combine results
-        combined_result = {
-            "success": optimization_result.get("success", False) and compilation_result.get("success", False),
-            "job_id": job_id,
-            "task_id": task_id,
-            "optimization": optimization_result,
-            "compilation": compilation_result,
-            "message": "Optimization and compilation completed",
-            "completed_at": time.time()
-        }
-        
-        if not combined_result["success"]:
-            combined_result["error"] = "Either optimization or compilation failed"
-            combined_result["message"] = "Optimization and compilation failed"
-        
-        # Set final status
-        final_status = "completed" if combined_result["success"] else "failed"
-        asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            final_status, 
-            {
-                "task_id": task_id,
-                "completed_at": time.time(),
-                "success": combined_result["success"],
-                "stage": "completed"
-            }
-        ))
-        
-        asyncio.run(job_status_manager.set_job_result(job_id, combined_result))
-        
-        # Final progress update
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id, 
-            100, 
-            "Optimization and compilation completed"
-        ))
-        
-        logger.info(f"Optimization + compilation task {task_id} completed for job {job_id}: {combined_result['success']}")
-        return combined_result
-        
-    except Exception as e:
-        logger.error(f"Optimization + compilation task {task_id} failed for job {job_id}: {e}")
-        
-        error_data = {
-            "success": False,
-            "job_id": job_id,
-            "task_id": task_id,
-            "message": f"Task error: {str(e)}",
-            "error": str(e),
-            "optimization": None,
-            "compilation": None,
-            "completed_at": time.time()
-        }
-        
-        # Set error status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            "failed", 
-            {
-                "task_id": task_id,
-                "error": str(e),
-                "completed_at": time.time()
-            }
-        ))
-        
-        asyncio.run(job_status_manager.set_job_result(job_id, error_data))
-        
-        # Retry logic
-        if self.request.retries < self.max_retries:
-            logger.info(f"Retrying optimization + compilation task {task_id} (attempt {self.request.retries + 1})")
-            raise self.retry(countdown=120, exc=e)
-        
-        return error_data
+            publish_job_result(job_id, result)
+            publish_event(job_id, "job.completed", {
+                "pdf_job_id": job_id,
+                "ats_score": 0.0,
+                "ats_details": {},
+                "changes_made": [],
+                "compilation_time": compilation_time,
+                "optimization_time": 0.0,
+                "tokens_used": 0,
+            })
+            logger.info(
+                f"LaTeX task {task_id} succeeded for job {job_id} ({pdf_size} bytes)"
+            )
+            return result
+
+        error_msg = (
+            f"pdflatex exited with code {proc.returncode}. "
+            "See log.line events for details."
+        )
+        publish_event(job_id, "job.failed", {
+            "stage": "latex_compilation",
+            "error_code": "latex_error",
+            "error_message": error_msg,
+            "retryable": False,
+        })
+        return {"success": False, "job_id": job_id, "error": error_msg}
+
+    except Exception as exc:
+        logger.error(f"LaTeX task {task_id} raised: {exc}")
+        retryable = self.request.retries < self.max_retries
+        publish_event(job_id, "job.failed", {
+            "stage": "latex_compilation",
+            "error_code": "internal",
+            "error_message": str(exc),
+            "retryable": retryable,
+        })
+        if retryable:
+            raise self.retry(countdown=60, exc=exc)
+        return {"success": False, "job_id": job_id, "error": str(exc)}
 
 
-# Utility function to submit LaTeX compilation job
+# ------------------------------------------------------------------ #
+#  Submission helper                                                   #
+# ------------------------------------------------------------------ #
+
 def submit_latex_compilation(
     latex_content: str,
+    job_id: str,
     user_id: Optional[str] = None,
     user_plan: str = "free",
     device_fingerprint: Optional[str] = None,
     priority: Optional[int] = None,
-    metadata: Optional[Dict] = None
+    metadata: Optional[Dict] = None,
 ) -> str:
-    """
-    Submit LaTeX compilation job to queue.
-    
-    Returns:
-        job_id: Job ID for tracking
-    """
-    job_id = str(uuid.uuid4())
-    
+    """Enqueue compile_latex_task on the latex queue."""
     if priority is None:
         priority = get_task_priority(user_plan)
-    
-    # Submit task to queue
-    task = compile_latex_task.apply_async(
+
+    compile_latex_task.apply_async(
         args=[latex_content],
         kwargs={
             "job_id": job_id,
             "user_id": user_id,
             "user_plan": user_plan,
             "device_fingerprint": device_fingerprint,
-            "metadata": metadata
+            "metadata": metadata,
         },
         priority=priority,
-        queue="latex"
+        queue="latex",
     )
-    
-    logger.info(f"Submitted LaTeX compilation job {job_id} with task {task.id}")
-    return job_id
-
-
-def submit_optimization_and_compilation(
-    latex_content: str,
-    job_description: str,
-    user_id: Optional[str] = None,
-    user_plan: str = "free",
-    device_fingerprint: Optional[str] = None,
-    optimization_level: str = "balanced",
-    priority: Optional[int] = None,
-    metadata: Optional[Dict] = None
-) -> str:
-    """
-    Submit optimization + compilation job to queue.
-    
-    Returns:
-        job_id: Job ID for tracking
-    """
-    job_id = str(uuid.uuid4())
-    
-    if priority is None:
-        priority = get_task_priority(user_plan)
-    
-    # Submit task to queue
-    task = compile_latex_with_optimization_task.apply_async(
-        args=[latex_content, job_description],
-        kwargs={
-            "job_id": job_id,
-            "user_id": user_id,
-            "user_plan": user_plan,
-            "device_fingerprint": device_fingerprint,
-            "optimization_level": optimization_level,
-            "metadata": metadata
-        },
-        priority=priority,
-        queue="latex"
-    )
-    
-    logger.info(f"Submitted optimization + compilation job {job_id} with task {task.id}")
+    logger.info(f"Submitted LaTeX compilation for job {job_id}")
     return job_id

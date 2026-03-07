@@ -1,8 +1,5 @@
 'use client'
 
-import { useState } from 'react'
-import { Check, X } from 'lucide-react'
-
 interface PricingPlan {
   id: string
   name: string
@@ -26,137 +23,73 @@ interface PricingCardProps {
   isLoading?: boolean
 }
 
-export default function PricingCard({ 
-  plan, 
-  isPopular = false, 
-  onSelectPlan, 
-  isLoading = false 
+export default function PricingCard({
+  plan,
+  isPopular = false,
+  onSelectPlan,
+  isLoading = false,
 }: PricingCardProps) {
-  const [isHovered, setIsHovered] = useState(false)
-
   const formatPrice = (price: number) => {
     if (price === 0) return 'Free'
     return `₹${(price / 100).toFixed(0)}`
   }
 
-  const formatFeatureValue = (value: number | string) => {
+  const formatValue = (value: string | number) => {
     if (value === 'unlimited') return 'Unlimited'
-    if (typeof value === 'number' && value === 0) return 'None'
-    return value.toString()
+    if (value === 0) return 'None'
+    return value
   }
 
+  const yesNo = (enabled: boolean) => (enabled ? 'Yes' : 'No')
+
   return (
-    <div
-      className={`relative rounded-2xl border-2 p-8 transition-all duration-300 ${
-        isPopular
-          ? 'border-primary-500 bg-primary-50 shadow-lg scale-105'
-          : 'border-gray-200 bg-white hover:border-primary-300 hover:shadow-md'
-      } ${isHovered ? 'transform -translate-y-1' : ''}`}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <article className={`surface-card relative p-5 ${isPopular ? 'edge-highlight bg-orange-300/5' : ''}`}>
       {isPopular && (
-        <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-          <span className="bg-primary-500 text-white px-4 py-1 rounded-full text-sm font-medium">
-            Most Popular
-          </span>
-        </div>
+        <span className="absolute right-4 top-4 rounded-full border border-orange-200/30 bg-orange-300/20 px-2 py-1 text-[10px] uppercase tracking-wider text-orange-100">
+          Recommended
+        </span>
       )}
 
-      <div className="text-center mb-8">
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
-        <div className="mb-4">
-          <span className="text-4xl font-bold text-gray-900">
-            {formatPrice(plan.price)}
-          </span>
-          {plan.price > 0 && (
-            <span className="text-gray-500 ml-2">/{plan.interval}</span>
-          )}
-        </div>
-        <p className="text-gray-600 text-sm">
-          {plan.id === 'free' && 'Perfect for trying out Latexy'}
-          {plan.id === 'basic' && 'Great for individual job seekers'}
-          {plan.id === 'pro' && 'Best for frequent users'}
-          {plan.id === 'byok' && 'Use your own AI models'}
-        </p>
+      <div className="mb-5">
+        <p className="text-sm text-slate-400">{plan.name}</p>
+        <h3 className="mt-2 text-3xl font-semibold text-white">{formatPrice(plan.price)}</h3>
+        <p className="text-sm text-slate-400">{plan.price > 0 ? `per ${plan.interval}` : 'No payment required'}</p>
       </div>
 
-      <div className="space-y-4 mb-8">
-        <div className="flex items-center justify-between">
-          <span className="text-gray-600">LaTeX Compilations</span>
-          <span className="font-semibold text-gray-900">
-            {formatFeatureValue(plan.features.compilations)}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <span className="text-gray-600">AI Optimizations</span>
-          <span className="font-semibold text-gray-900">
-            {formatFeatureValue(plan.features.optimizations)}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <span className="text-gray-600">History Retention</span>
-          <span className="font-semibold text-gray-900">
-            {plan.features.historyRetention === 0 
-              ? 'None' 
-              : `${plan.features.historyRetention} days`}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <span className="text-gray-600">Priority Support</span>
-          {plan.features.prioritySupport ? (
-            <Check className="w-5 h-5 text-green-500" />
-          ) : (
-            <X className="w-5 h-5 text-gray-400" />
-          )}
-        </div>
-
-        <div className="flex items-center justify-between">
-          <span className="text-gray-600">API Access</span>
-          {plan.features.apiAccess ? (
-            <Check className="w-5 h-5 text-green-500" />
-          ) : (
-            <X className="w-5 h-5 text-gray-400" />
-          )}
-        </div>
-
-        {plan.features.customModels && (
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600">Custom AI Models</span>
-            <Check className="w-5 h-5 text-green-500" />
-          </div>
+      <div className="space-y-3 text-sm">
+        <FeatureRow label="LaTeX compilations" value={formatValue(plan.features.compilations)} />
+        <FeatureRow label="AI optimizations" value={formatValue(plan.features.optimizations)} />
+        <FeatureRow
+          label="History retention"
+          value={plan.features.historyRetention === 0 ? 'None' : `${plan.features.historyRetention} days`}
+        />
+        <FeatureRow label="Priority support" value={yesNo(plan.features.prioritySupport)} />
+        <FeatureRow label="API access" value={yesNo(plan.features.apiAccess)} />
+        {typeof plan.features.customModels === 'boolean' && (
+          <FeatureRow label="Custom models" value={yesNo(plan.features.customModels)} />
         )}
       </div>
 
       <button
         onClick={() => onSelectPlan(plan.id)}
         disabled={isLoading}
-        className={`w-full py-3 px-6 rounded-lg font-semibold transition-colors duration-200 ${
+        className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
           isPopular
-            ? 'bg-primary-500 text-white hover:bg-primary-600 disabled:bg-primary-300'
-            : 'bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-400'
-        } disabled:cursor-not-allowed`}
+            ? 'bg-orange-300 text-slate-950 hover:bg-orange-200'
+            : 'border border-white/15 bg-white/5 text-slate-100 hover:bg-white/10'
+        }`}
       >
-        {isLoading ? (
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-            <span className="ml-2">Processing...</span>
-          </div>
-        ) : plan.id === 'free' ? (
-          'Get Started Free'
-        ) : (
-          'Subscribe Now'
-        )}
+        {isLoading ? 'Processing...' : 'Select Plan'}
       </button>
+    </article>
+  )
+}
 
-      {plan.id === 'free' && (
-        <p className="text-xs text-gray-500 text-center mt-3">
-          No credit card required
-        </p>
-      )}
+function FeatureRow({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-slate-300">{label}</span>
+      <span className="font-medium text-orange-200">{value}</span>
     </div>
   )
 }

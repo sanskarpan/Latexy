@@ -9,14 +9,20 @@ from typing import List
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Resolve paths relative to this file so they work regardless of CWD
+_backend_dir = Path(__file__).parent.parent.parent   # backend/
+_root_dir = _backend_dir.parent                      # Latexy/
+
 
 class Settings(BaseSettings):
     """Application settings."""
-    
+
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Load root .env first, then backend/.env (backend overrides root)
+        env_file=(_root_dir / ".env", _backend_dir / ".env"),
+        env_file_encoding="utf-8",
         case_sensitive=True,
-        env_file_encoding="utf-8"
+        extra="ignore",   # silently ignore MINIO_*, NEXT_PUBLIC_*, etc.
     )
     
     # Application
@@ -27,8 +33,8 @@ class Settings(BaseSettings):
     
     # Server
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
-    
+    PORT: int = 8030
+
     # LaTeX Configuration
     COMPILE_TIMEOUT: int = 30  # seconds
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
@@ -41,7 +47,9 @@ class Settings(BaseSettings):
     CORS_ORIGINS: List[str] = Field(
         default=[
             "http://localhost:3000",
-            "http://127.0.0.1:3000"
+            "http://127.0.0.1:3000",
+            "http://localhost:5180",
+            "http://127.0.0.1:5180",
         ]
     )
     
@@ -79,7 +87,7 @@ class Settings(BaseSettings):
     
     # Better-Auth Configuration
     BETTER_AUTH_SECRET: str = Field(default="", description="Better-Auth secret key")
-    BETTER_AUTH_URL: str = Field(default="http://localhost:3000", description="Better-Auth URL")
+    BETTER_AUTH_URL: str = Field(default="http://localhost:5180", description="Better-Auth URL")
     
     # JWT Configuration
     JWT_SECRET_KEY: str = Field(default="", description="JWT secret key for token signing")

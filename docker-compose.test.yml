@@ -1,0 +1,67 @@
+version: '3.9'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Latexy — E2E Test Environment
+#
+# Spins up isolated infrastructure + runs the pytest test suite.
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
+#
+# Exit code of the `test-runner` service indicates pass (0) / fail (non-zero).
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── Test PostgreSQL (isolated DB, destroyed after tests) ───────────────────
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: latexy
+      POSTGRES_PASSWORD: latexy_password
+      POSTGRES_DB: latexy_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U latexy -d latexy_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    tmpfs:
+      - /var/lib/postgresql/data   # in-memory — faster and ephemeral
+
+  # ── Test Redis ───────────────────────────────────────────────────────────────
+  redis-test:
+    image: redis:7-alpine
+    command: redis-server --save ""  # disable persistence for speed
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Test runner ──────────────────────────────────────────────────────────────
+  test-runner:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: >
+      sh -c "
+        alembic upgrade head &&
+        pytest test/ -v --tb=short --asyncio-mode=auto
+      "
+    environment:
+      TEST_DATABASE_URL: postgresql+asyncpg://latexy:latexy_password@postgres-test:5432/latexy_test
+      DATABASE_URL: postgresql://latexy:latexy_password@postgres-test:5432/latexy_test
+      REDIS_URL: redis://redis-test:6379/0
+      CELERY_BROKER_URL: redis://redis-test:6379/0
+      CELERY_RESULT_BACKEND: redis://redis-test:6379/0
+      BETTER_AUTH_SECRET: test_better_auth_secret_32_chars!
+      JWT_SECRET_KEY: test_jwt_secret_32_characters_!!
+      OPENAI_API_KEY: test_key
+      DEBUG: "true"
+      PYTHONPATH: /app
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app

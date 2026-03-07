@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, Zap, Clock, DollarSign, CheckCircle } from 'lucide-react';
 
 interface Model {
   id: string;
@@ -52,10 +51,9 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
       const response = await fetch('/api/byok/providers');
       if (response.ok) {
         const data = await response.json();
-        
-        // Convert to provider objects with capabilities
+
         const providerData: Record<string, Provider> = {};
-        for (const [providerName, models] of Object.entries(data.providers || {})) {
+        for (const [providerName] of Object.entries(data.providers || {})) {
           const capResponse = await fetch(`/api/byok/capabilities/${providerName}`);
           if (capResponse.ok) {
             const capabilities = await capResponse.json();
@@ -83,17 +81,14 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
 
   const getProviderStatus = (providerId: string) => {
     if (hasUserKey(providerId)) {
-      return { status: 'byok', label: 'Your Key', color: 'text-green-600' };
+      return { label: 'Your Key', color: 'text-green-600' };
     }
-    return { status: 'default', label: 'Default', color: 'text-blue-600' };
+    return { label: 'Default', color: 'text-blue-600' };
   };
 
   const formatContextLength = (length: number) => {
-    if (length >= 1000000) {
-      return `${(length / 1000000).toFixed(1)}M`;
-    } else if (length >= 1000) {
-      return `${(length / 1000).toFixed(0)}K`;
-    }
+    if (length >= 1000000) return `${(length / 1000000).toFixed(1)}M`;
+    if (length >= 1000) return `${(length / 1000).toFixed(0)}K`;
     return length.toString();
   };
 
@@ -117,15 +112,12 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Provider Selection */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          LLM Provider
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">LLM Provider</label>
         <div className="relative">
           <button
             onClick={() => setShowProviderDropdown(!showProviderDropdown)}
-            className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50"
           >
             <div className="flex items-center space-x-2">
               {selectedProviderData ? (
@@ -139,7 +131,7 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                 <span className="text-gray-500">Select a provider</span>
               )}
             </div>
-            <ChevronDown className="w-4 h-4 text-gray-400" />
+            <span className="text-gray-400">v</span>
           </button>
 
           {showProviderDropdown && (
@@ -163,14 +155,7 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                           {provider.models.length} models • {formatContextLength(provider.max_context_length)} tokens max
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`text-xs px-2 py-1 rounded-full bg-gray-100 ${status.color}`}>
-                          {status.label}
-                        </span>
-                        {hasUserKey(provider.id) && (
-                          <CheckCircle className="w-4 h-4 text-green-500" />
-                        )}
-                      </div>
+                      <span className={`text-xs px-2 py-1 rounded-full bg-gray-100 ${status.color}`}>{status.label}</span>
                     </button>
                   );
                 })}
@@ -180,23 +165,18 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
         </div>
       </div>
 
-      {/* Model Selection */}
       {selectedProvider && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Model
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Model</label>
           <div className="relative">
             <button
               onClick={() => setShowModelDropdown(!showModelDropdown)}
-              className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50"
             >
               <div className="flex items-center space-x-2">
                 {selectedModel ? (
                   <>
-                    <span className="font-medium">
-                      {availableModels.find(m => m.id === selectedModel)?.name || selectedModel}
-                    </span>
+                    <span className="font-medium">{availableModels.find(m => m.id === selectedModel)?.name || selectedModel}</span>
                     <span className="text-xs text-gray-500">
                       {formatContextLength(availableModels.find(m => m.id === selectedModel)?.context_length || 0)} tokens
                     </span>
@@ -205,7 +185,7 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                   <span className="text-gray-500">Select a model</span>
                 )}
               </div>
-              <ChevronDown className="w-4 h-4 text-gray-400" />
+              <span className="text-gray-400">v</span>
             </button>
 
             {showModelDropdown && (
@@ -221,17 +201,9 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                       className="w-full px-3 py-2 text-left hover:bg-gray-50"
                     >
                       <div className="font-medium">{model.name}</div>
-                      <div className="text-xs text-gray-500 flex items-center space-x-4">
-                        <span className="flex items-center space-x-1">
-                          <Clock className="w-3 h-3" />
-                          <span>{formatContextLength(model.context_length)} tokens</span>
-                        </span>
-                        {model.features.length > 0 && (
-                          <span className="flex items-center space-x-1">
-                            <Zap className="w-3 h-3" />
-                            <span>{model.features.join(', ')}</span>
-                          </span>
-                        )}
+                      <div className="text-xs text-gray-500">
+                        {formatContextLength(model.context_length)} tokens
+                        {model.features.length > 0 ? ` • ${model.features.join(', ')}` : ''}
                       </div>
                     </button>
                   ))}
@@ -242,7 +214,6 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
         </div>
       )}
 
-      {/* Provider Info */}
       {selectedProviderData && (
         <div className="bg-gray-50 rounded-lg p-4">
           <h4 className="font-medium text-gray-900 mb-2">Provider Information</h4>
@@ -253,35 +224,25 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
             </div>
             <div>
               <span className="text-gray-500">Max Context:</span>
-              <span className="ml-2 font-medium">
-                {formatContextLength(selectedProviderData.max_context_length)} tokens
-              </span>
+              <span className="ml-2 font-medium">{formatContextLength(selectedProviderData.max_context_length)} tokens</span>
             </div>
             <div className="col-span-2">
               <span className="text-gray-500">Features:</span>
               <div className="mt-1 flex flex-wrap gap-1">
                 {selectedProviderData.supported_features.map((feature) => (
-                  <span
-                    key={feature}
-                    className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800"
-                  >
+                  <span key={feature} className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
                     {feature}
                   </span>
                 ))}
               </div>
             </div>
           </div>
-          
-          {!hasUserKey(selectedProvider) && (
+
+          {selectedProvider && !hasUserKey(selectedProvider) && (
             <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-start space-x-2">
-                <DollarSign className="w-4 h-4 text-blue-600 mt-0.5" />
-                <div className="text-sm">
-                  <p className="text-blue-800 font-medium">Using Default API Key</p>
-                  <p className="text-blue-600">
-                    Add your own API key to avoid usage limits and get better performance.
-                  </p>
-                </div>
+              <div className="text-sm">
+                <p className="text-blue-800 font-medium">Using Default API Key</p>
+                <p className="text-blue-600">Add your own API key to avoid usage limits and get better performance.</p>
               </div>
             </div>
           )}

@@ -1,12 +1,17 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useImperativeHandle, useRef, forwardRef } from 'react'
 import Editor from '@monaco-editor/react'
-import { FileCode } from 'lucide-react'
+
+export interface LaTeXEditorRef {
+  setValue: (value: string) => void
+  getValue: () => string
+}
 
 interface LaTeXEditorProps {
   value: string
   onChange: (value: string) => void
+  readOnly?: boolean
 }
 
 const SAMPLE_LATEX = `\\documentclass[letterpaper,11pt]{article}
@@ -41,16 +46,25 @@ const SAMPLE_LATEX = `\\documentclass[letterpaper,11pt]{article}
 
 \\end{document}`
 
-export default function LaTeXEditor({ value, onChange }: LaTeXEditorProps) {
-  const editorRef = useRef(null)
+const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(function LaTeXEditor({ value, onChange, readOnly = false }, ref) {
+  const editorRef = useRef<any>(null)
+
+  useImperativeHandle(ref, () => ({
+    setValue(content: string) {
+      const model = editorRef.current?.getModel()
+      if (!model) return
+      model.setValue(content)
+      editorRef.current?.revealLine(model.getLineCount())
+    },
+    getValue() {
+      return editorRef.current?.getValue() ?? ''
+    },
+  }))
 
   const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor
 
-    // Configure LaTeX language support
     monaco.languages.register({ id: 'latex' })
-    
-    // Define LaTeX tokens
     monaco.languages.setMonarchTokensProvider('latex', {
       tokenizer: {
         root: [
@@ -63,66 +77,50 @@ export default function LaTeXEditor({ value, onChange }: LaTeXEditorProps) {
           [/%.*$/, 'comment'],
           [/\$\$/, 'string.math'],
           [/\$/, 'string.math'],
-        ]
-      }
+        ],
+      },
     })
 
-    // Define theme
-    monaco.editor.defineTheme('latex-theme', {
-      base: 'vs',
+    monaco.editor.defineTheme('latexy-dark', {
+      base: 'vs-dark',
       inherit: true,
       rules: [
-        { token: 'keyword', foreground: '0ea5e9', fontStyle: 'bold' },
-        { token: 'comment', foreground: '64748b', fontStyle: 'italic' },
-        { token: 'string.math', foreground: 'dc2626' },
-        { token: 'delimiter.bracket', foreground: '7c3aed' },
-        { token: 'delimiter.square', foreground: '7c3aed' },
+        { token: 'keyword', foreground: 'f59e0b' },
+        { token: 'comment', foreground: '71717a', fontStyle: 'italic' },
+        { token: 'string.math', foreground: 'fb7185' },
+        { token: 'delimiter.bracket', foreground: 'c084fc' },
+        { token: 'delimiter.square', foreground: 'c084fc' },
       ],
       colors: {
-        'editor.background': '#ffffff',
-        'editor.lineHighlightBackground': '#f8fafc',
-      }
+        'editor.background': '#07090f',
+        'editor.lineHighlightBackground': '#0f1118',
+      },
     })
 
-    monaco.editor.setTheme('latex-theme')
-  }
-
-  const handleChange = (newValue: string | undefined) => {
-    onChange(newValue || '')
-  }
-
-  const insertSample = () => {
-    onChange(SAMPLE_LATEX)
+    monaco.editor.setTheme('latexy-dark')
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {!value && (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <FileCode className="w-12 h-12 text-secondary-300 mx-auto mb-4" />
-            <p className="text-secondary-500 mb-4">No LaTeX content yet</p>
-            <button
-              onClick={insertSample}
-              className="btn-primary px-4 py-2 text-sm"
-            >
-              Insert Sample Resume
-            </button>
-          </div>
+    <div className="flex h-full flex-col">
+      {!value ? (
+        <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+          <p className="text-sm uppercase tracking-[0.14em] text-zinc-500">Empty Document</p>
+          <p className="mt-2 max-w-sm text-sm text-zinc-400">No LaTeX source is loaded. Insert a sample template or start writing manually.</p>
+          <button onClick={() => onChange(SAMPLE_LATEX)} className="btn-ghost mt-4 px-4 py-2 text-xs">
+            Insert Sample Resume
+          </button>
         </div>
-      )}
-      
-      {value && (
-        <div className="flex-1">
+      ) : (
+        <div className="min-h-0 flex-1">
           <Editor
             height="100%"
             defaultLanguage="latex"
             value={value}
-            onChange={handleChange}
+            onChange={(nextValue) => onChange(nextValue || '')}
             onMount={handleEditorDidMount}
             options={{
               minimap: { enabled: false },
-              fontSize: 14,
+              fontSize: 13,
               lineNumbers: 'on',
               wordWrap: 'on',
               scrollBeyondLastLine: false,
@@ -134,17 +132,18 @@ export default function LaTeXEditor({ value, onChange }: LaTeXEditorProps) {
               cursorSmoothCaretAnimation: 'on',
               smoothScrolling: true,
               contextmenu: false,
+              readOnly,
             }}
           />
         </div>
       )}
-      
-      {value && (
-        <div className="flex items-center justify-between p-3 border-t border-secondary-200 text-xs text-secondary-500">
-          <span>LaTeX Editor</span>
-          <span>{value.length} characters</span>
-        </div>
-      )}
+
+      <div className="flex items-center justify-between border-t border-white/10 bg-black/25 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-zinc-500">
+        <span>{readOnly ? 'Editor locked while run is active' : 'LaTeX editor ready'}</span>
+        <span>{value.length} chars</span>
+      </div>
     </div>
   )
-}
+})
+
+export default LaTeXEditor

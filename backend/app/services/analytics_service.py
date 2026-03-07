@@ -13,12 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
 
-from app.database.models import (
-    User, DeviceTrial, Resume, Compilation, Optimization, 
+from ..database.models import (
+    User, DeviceTrial, Resume, Compilation, Optimization,
     UsageAnalytics, Subscription, Payment
 )
-from app.database.connection import get_db
-from app.core.redis import redis_manager
+from ..database.connection import get_db
+from ..core.redis import redis_manager
 
 logger = logging.getLogger(__name__)
 

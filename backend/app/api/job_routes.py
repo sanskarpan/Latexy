@@ -1,37 +1,59 @@
 """
-Job management API routes for Phase 8.
+Job management API routes — event-driven rebuild.
+
+Key changes from previous version:
+- ConnectionManager class removed (replaced by EventBusManager + ws_routes.py)
+- WebSocket endpoint removed (replaced by /ws/jobs in ws_routes.py)
+- Job submission now generates job_id upfront and writes initial Redis state
+- GET /jobs/{job_id}/state reads from new latexy:job:{job_id}:state key
+- GET /jobs/{job_id}/result reads from new latexy:job:{job_id}:result key
+- cancel_job uses Redis cancel flag instead of in-process ConnectionManager
+- ats_scoring job type wired to ats_worker
+- combined job type wired to orchestrator
 """
 
 import asyncio
+import json
+import time
+import uuid
 from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, HTTPException, Depends, Request, WebSocket, WebSocketDisconnect
+
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from ..core.config import settings
 from ..core.logging import get_logger
-from ..core.redis import job_status_manager, redis_manager
+from ..core.redis import get_redis_client, redis_manager
 from ..database.connection import get_db
-from ..workers.latex_worker import submit_latex_compilation, submit_optimization_and_compilation
-from ..workers.llm_worker import submit_resume_optimization, submit_job_description_analysis
+from ..middleware.auth_middleware import get_current_user_optional
+from ..workers.latex_worker import submit_latex_compilation
+from ..workers.llm_worker import submit_resume_optimization
+from ..workers.ats_worker import submit_ats_scoring
+from ..workers.orchestrator import submit_optimize_and_compile
 from ..workers.email_worker import submit_notification_email, submit_completion_email
 from ..workers.cleanup_worker import submit_temp_files_cleanup, submit_expired_jobs_cleanup
-from ..middleware.auth_middleware import get_current_user_optional
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
+_JOB_TTL = 86400  # 24 hours
 
-# Pydantic models for job management
+
+# ------------------------------------------------------------------ #
+#  Pydantic models                                                     #
+# ------------------------------------------------------------------ #
+
 class JobSubmissionRequest(BaseModel):
-    job_type: str  # "latex_compilation", "llm_optimization", "combined"
+    job_type: str  # "latex_compilation" | "llm_optimization" | "combined" | "ats_scoring"
     latex_content: Optional[str] = None
     job_description: Optional[str] = None
     optimization_level: str = "balanced"
     user_plan: str = "free"
     device_fingerprint: Optional[str] = None
+    industry: Optional[str] = None
     metadata: Optional[Dict] = None
 
 
@@ -39,446 +61,387 @@ class JobSubmissionResponse(BaseModel):
     success: bool
     job_id: str
     message: str
-    estimated_time: Optional[int] = None  # seconds
-    queue_position: Optional[int] = None
+    estimated_time: Optional[int] = None
 
 
-class JobStatusResponse(BaseModel):
-    job_id: str
-    status: str  # "pending", "processing", "completed", "failed", "cancelled"
-    progress: Optional[int] = None  # 0-100
-    message: Optional[str] = None
-    created_at: Optional[float] = None
-    updated_at: Optional[float] = None
-    estimated_completion: Optional[float] = None
-    metadata: Optional[Dict] = None
+class JobStateResponse(BaseModel):
+    status: str
+    stage: str
+    percent: int
+    last_updated: float
 
 
 class JobResultResponse(BaseModel):
-    job_id: str
     success: bool
+    job_id: str
     result: Optional[Dict] = None
     error: Optional[str] = None
-    completed_at: Optional[float] = None
 
 
 class JobListResponse(BaseModel):
-    jobs: List[JobStatusResponse]
+    jobs: List[Dict]
     total_count: int
-    active_count: int
-    completed_count: int
-    failed_count: int
 
 
-# WebSocket connection manager
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
-        self.job_subscriptions: Dict[str, List[str]] = {}  # job_id -> [connection_ids]
-    
-    async def connect(self, websocket: WebSocket, connection_id: str):
-        await websocket.accept()
-        self.active_connections[connection_id] = websocket
-        logger.info(f"WebSocket connection established: {connection_id}")
-    
-    def disconnect(self, connection_id: str):
-        if connection_id in self.active_connections:
-            del self.active_connections[connection_id]
-        
-        # Remove from job subscriptions
-        for job_id, connections in self.job_subscriptions.items():
-            if connection_id in connections:
-                connections.remove(connection_id)
-        
-        logger.info(f"WebSocket connection closed: {connection_id}")
-    
-    def subscribe_to_job(self, connection_id: str, job_id: str):
-        if job_id not in self.job_subscriptions:
-            self.job_subscriptions[job_id] = []
-        
-        if connection_id not in self.job_subscriptions[job_id]:
-            self.job_subscriptions[job_id].append(connection_id)
-        
-        logger.debug(f"Connection {connection_id} subscribed to job {job_id}")
-    
-    async def send_job_update(self, job_id: str, update_data: Dict):
-        if job_id in self.job_subscriptions:
-            disconnected_connections = []
-            
-            for connection_id in self.job_subscriptions[job_id]:
-                if connection_id in self.active_connections:
-                    try:
-                        websocket = self.active_connections[connection_id]
-                        await websocket.send_json({
-                            "type": "job_update",
-                            "job_id": job_id,
-                            "data": update_data
-                        })
-                    except Exception as e:
-                        logger.error(f"Error sending update to connection {connection_id}: {e}")
-                        disconnected_connections.append(connection_id)
-                else:
-                    disconnected_connections.append(connection_id)
-            
-            # Clean up disconnected connections
-            for connection_id in disconnected_connections:
-                if connection_id in self.job_subscriptions[job_id]:
-                    self.job_subscriptions[job_id].remove(connection_id)
-    
-    async def broadcast(self, message: Dict):
-        disconnected_connections = []
-        
-        for connection_id, websocket in self.active_connections.items():
-            try:
-                await websocket.send_json(message)
-            except Exception as e:
-                logger.error(f"Error broadcasting to connection {connection_id}: {e}")
-                disconnected_connections.append(connection_id)
-        
-        # Clean up disconnected connections
-        for connection_id in disconnected_connections:
-            self.disconnect(connection_id)
+# ------------------------------------------------------------------ #
+#  Helpers                                                             #
+# ------------------------------------------------------------------ #
+
+async def _write_initial_redis_state(
+    job_id: str,
+    job_type: str,
+    user_id: Optional[str],
+    estimated_seconds: int,
+) -> None:
+    """
+    Write the initial job.queued state snapshot + event to Redis.
+    This runs in the FastAPI process (async Redis client).
+    """
+    r = await get_redis_client()
+
+    # State snapshot
+    state = {
+        "status": "queued",
+        "stage": "",
+        "percent": 0,
+        "last_updated": time.time(),
+    }
+    await r.setex(f"latexy:job:{job_id}:state", _JOB_TTL, json.dumps(state))
+
+    # Job metadata
+    meta = {
+        "job_id": job_id,
+        "user_id": user_id,
+        "job_type": job_type,
+        "submitted_at": time.time(),
+    }
+    await r.setex(f"latexy:job:{job_id}:meta", _JOB_TTL, json.dumps(meta))
+
+    # job.queued event — persisted to stream + published to Pub/Sub
+    event_id = str(uuid.uuid4())
+    seq_key = f"latexy:job:{job_id}:seq"
+    seq = await r.incr(seq_key)
+    await r.expire(seq_key, _JOB_TTL)
+
+    event = {
+        "event_id": event_id,
+        "job_id": job_id,
+        "timestamp": time.time(),
+        "sequence": seq,
+        "type": "job.queued",
+        "job_type": job_type,
+        "user_id": user_id,
+        "estimated_seconds": estimated_seconds,
+    }
+    payload_json = json.dumps(event)
+
+    stream_key = f"latexy:stream:{job_id}"
+    entry_id = await r.xadd(
+        stream_key,
+        {
+            "payload": payload_json,
+            "type": "job.queued",
+            "sequence": str(seq),
+            "event_id": event_id,
+        },
+        maxlen=10000,
+        approximate=True,
+    )
+    await r.expire(stream_key, _JOB_TTL)
+
+    # Include stream_id so the frontend can track the Redis Stream entry position
+    # for accurate XREAD replay on reconnect.
+    ws_message = json.dumps({"type": "event", "event": event, "stream_id": entry_id})
+    await r.publish(f"latexy:events:{job_id}", ws_message)
 
 
-# Global connection manager
-manager = ConnectionManager()
+# ------------------------------------------------------------------ #
+#  Job submission                                                      #
+# ------------------------------------------------------------------ #
 
-
-# Job submission endpoints
 @router.post("/submit", response_model=JobSubmissionResponse)
 async def submit_job(
     request: JobSubmissionRequest,
     http_request: Request,
     db: AsyncSession = Depends(get_db),
-    user_id: Optional[str] = Depends(get_current_user_optional)
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
-    """Submit a new job to the queue."""
+    """Submit a new job to the async queue."""
     try:
-        # Extract user information
         ip_address = http_request.client.host if http_request.client else None
-        
-        # Validate request based on job type
+        job_id = str(uuid.uuid4())
+
+        estimated_times = {
+            "latex_compilation": 30,
+            "llm_optimization": 60,
+            "combined": 90,
+            "ats_scoring": 20,
+        }
+        estimated_time = estimated_times.get(request.job_type, 60)
+        if request.user_plan in ("pro", "byok"):
+            estimated_time = int(estimated_time * 0.7)
+
+        # Sanitise caller-supplied metadata: cap at 10 keys, 256 chars per value.
+        safe_meta: Dict[str, Any] = {}
+        for k, v in (request.metadata or {}).items():
+            if len(safe_meta) >= 10:
+                break
+            safe_meta[str(k)[:64]] = str(v)[:256] if not isinstance(v, (int, float, bool)) else v
+
+        extra_meta = {
+            "ip_address": ip_address,
+            "submitted_via": "api",
+            **safe_meta,
+        }
+
         if request.job_type == "latex_compilation":
             if not request.latex_content:
-                raise HTTPException(status_code=400, detail="LaTeX content is required for compilation jobs")
-            
-            job_id = submit_latex_compilation(
+                raise HTTPException(
+                    status_code=400,
+                    detail="latex_content is required for latex_compilation jobs",
+                )
+            await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
+            submit_latex_compilation(
                 latex_content=request.latex_content,
+                job_id=job_id,
                 user_id=user_id,
                 user_plan=request.user_plan,
                 device_fingerprint=request.device_fingerprint,
-                metadata={
-                    "ip_address": ip_address,
-                    "submitted_via": "api",
-                    **(request.metadata or {})
-                }
+                metadata=extra_meta,
             )
-            
+
         elif request.job_type == "llm_optimization":
             if not request.latex_content or not request.job_description:
                 raise HTTPException(
-                    status_code=400, 
-                    detail="LaTeX content and job description are required for optimization jobs"
+                    status_code=400,
+                    detail="latex_content and job_description are required for llm_optimization jobs",
                 )
-            
-            job_id = submit_resume_optimization(
+            await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
+            submit_resume_optimization(
                 latex_content=request.latex_content,
                 job_description=request.job_description,
+                job_id=job_id,
                 user_id=user_id,
                 user_plan=request.user_plan,
                 optimization_level=request.optimization_level,
-                metadata={
-                    "ip_address": ip_address,
-                    "submitted_via": "api",
-                    **(request.metadata or {})
-                }
+                metadata=extra_meta,
             )
-            
+
         elif request.job_type == "combined":
             if not request.latex_content or not request.job_description:
                 raise HTTPException(
-                    status_code=400, 
-                    detail="LaTeX content and job description are required for combined jobs"
+                    status_code=400,
+                    detail="latex_content and job_description are required for combined jobs",
                 )
-            
-            job_id = submit_optimization_and_compilation(
+            await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
+            submit_optimize_and_compile(
                 latex_content=request.latex_content,
                 job_description=request.job_description,
+                job_id=job_id,
+                user_id=user_id,
+                user_plan=request.user_plan,
+                optimization_level=request.optimization_level,
+                device_fingerprint=request.device_fingerprint,
+                metadata=extra_meta,
+            )
+
+        elif request.job_type == "ats_scoring":
+            if not request.latex_content:
+                raise HTTPException(
+                    status_code=400,
+                    detail="latex_content is required for ats_scoring jobs",
+                )
+            await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
+            submit_ats_scoring(
+                latex_content=request.latex_content,
+                job_id=job_id,
+                job_description=request.job_description,
+                industry=request.industry,
                 user_id=user_id,
                 user_plan=request.user_plan,
                 device_fingerprint=request.device_fingerprint,
-                optimization_level=request.optimization_level,
-                metadata={
-                    "ip_address": ip_address,
-                    "submitted_via": "api",
-                    **(request.metadata or {})
-                }
+                metadata=extra_meta,
             )
-            
+
         else:
-            raise HTTPException(status_code=400, detail=f"Unsupported job type: {request.job_type}")
-        
-        # Estimate completion time based on job type and user plan
-        estimated_times = {
-            "latex_compilation": 30,  # 30 seconds
-            "llm_optimization": 60,   # 1 minute
-            "combined": 90            # 1.5 minutes
-        }
-        
-        estimated_time = estimated_times.get(request.job_type, 60)
-        if request.user_plan in ["pro", "byok"]:
-            estimated_time = int(estimated_time * 0.7)  # 30% faster for premium users
-        
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported job_type: {request.job_type!r}",
+            )
+
         return JobSubmissionResponse(
             success=True,
             job_id=job_id,
-            message=f"Job submitted successfully: {request.job_type}",
+            message=f"Job queued: {request.job_type}",
             estimated_time=estimated_time,
-            queue_position=None  # TODO: Implement queue position tracking
         )
-        
+
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error submitting job: {e}")
+    except Exception as exc:
+        logger.error(f"Error submitting job: {exc}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-# Job status and result endpoints
-@router.get("/{job_id}/status", response_model=JobStatusResponse)
-async def get_job_status(job_id: str):
-    """Get job status."""
+# ------------------------------------------------------------------ #
+#  Job state & result                                                  #
+# ------------------------------------------------------------------ #
+
+@router.get("/{job_id}/state", response_model=JobStateResponse)
+async def get_job_state(job_id: str):
+    """Get current job state snapshot (for REST polling fallback)."""
     try:
-        status_data = await job_status_manager.get_job_status(job_id)
-        progress_data = await job_status_manager.get_job_progress(job_id)
-        
-        if not status_data:
+        r = await get_redis_client()
+        raw = await r.get(f"latexy:job:{job_id}:state")
+        if not raw:
             raise HTTPException(status_code=404, detail="Job not found")
-        
-        return JobStatusResponse(
-            job_id=job_id,
-            status=status_data.get("status", "unknown"),
-            progress=progress_data.get("progress") if progress_data else None,
-            message=progress_data.get("message") if progress_data else status_data.get("message"),
-            created_at=status_data.get("started_at"),
-            updated_at=status_data.get("updated_at"),
-            metadata=status_data.get("metadata")
-        )
-        
+        return json.loads(raw)
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error getting job status for {job_id}: {e}")
+    except Exception as exc:
+        logger.error(f"Error getting state for job {job_id}: {exc}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{job_id}/result", response_model=JobResultResponse)
 async def get_job_result(job_id: str):
-    """Get job result."""
+    """Fetch the final job result (available after job.completed event)."""
     try:
-        result_data = await job_status_manager.get_job_result(job_id)
-        
-        if not result_data:
-            raise HTTPException(status_code=404, detail="Job result not found")
-        
+        r = await get_redis_client()
+        raw = await r.get(f"latexy:job:{job_id}:result")
+        if not raw:
+            raise HTTPException(
+                status_code=404,
+                detail="Job result not available yet or job not found",
+            )
+        result_data = json.loads(raw)
         return JobResultResponse(
-            job_id=job_id,
             success=result_data.get("success", False),
+            job_id=job_id,
             result=result_data if result_data.get("success") else None,
             error=result_data.get("error") if not result_data.get("success") else None,
-            completed_at=result_data.get("completed_at")
         )
-        
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error getting job result for {job_id}: {e}")
+    except Exception as exc:
+        logger.error(f"Error getting result for job {job_id}: {exc}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
+# ------------------------------------------------------------------ #
+#  Job cancellation                                                    #
+# ------------------------------------------------------------------ #
 
 @router.delete("/{job_id}")
 async def cancel_job(job_id: str):
-    """Cancel a job."""
+    """
+    Request cancellation of a running job.
+
+    Sets latexy:job:{job_id}:cancel flag in Redis.  Celery workers poll
+    is_cancelled() between stages and stop gracefully.
+    """
     try:
-        # TODO: Implement job cancellation logic
-        # For now, just mark as cancelled in Redis
-        await job_status_manager.set_job_status(
-            job_id, 
-            "cancelled", 
-            {"cancelled_at": asyncio.get_event_loop().time()}
+        r = await get_redis_client()
+        await r.setex(f"latexy:job:{job_id}:cancel", 3600, "1")
+
+        # Publish provisional cancellation event so WebSocket clients
+        # get immediate feedback before the worker processes it.
+        cancel_event = {
+            "event_id": str(uuid.uuid4()),
+            "job_id": job_id,
+            "timestamp": time.time(),
+            "sequence": 0,
+            "type": "job.cancelled",
+        }
+        await r.publish(
+            f"latexy:events:{job_id}",
+            json.dumps({"type": "event", "event": cancel_event}),
         )
-        
-        # Notify WebSocket subscribers
-        await manager.send_job_update(job_id, {
-            "status": "cancelled",
-            "message": "Job cancelled by user"
-        })
-        
-        return {"success": True, "message": "Job cancelled successfully"}
-        
-    except Exception as e:
-        logger.error(f"Error cancelling job {job_id}: {e}")
+
+        return {"success": True, "message": "Cancellation requested"}
+
+    except Exception as exc:
+        logger.error(f"Error cancelling job {job_id}: {exc}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
+# ------------------------------------------------------------------ #
+#  Job listing                                                         #
+# ------------------------------------------------------------------ #
 
 @router.get("/", response_model=JobListResponse)
 async def list_jobs(
-    status: Optional[str] = None,
+    user_id: Optional[str] = Depends(get_current_user_optional),
     limit: int = 50,
-    offset: int = 0
 ):
-    """List jobs with optional filtering."""
+    """
+    List recent jobs for the authenticated user (reads from user ZSET).
+    Returns an empty list for unauthenticated users.
+    """
+    if not user_id:
+        return JobListResponse(jobs=[], total_count=0)
+
     try:
-        # Get all active job IDs
-        active_jobs = await job_status_manager.get_active_jobs()
-        
-        jobs = []
-        total_count = len(active_jobs)
-        status_counts = {"active": 0, "completed": 0, "failed": 0}
-        
-        # Apply pagination
-        paginated_jobs = active_jobs[offset:offset + limit]
-        
-        for job_id in paginated_jobs:
-            try:
-                status_data = await job_status_manager.get_job_status(job_id)
-                progress_data = await job_status_manager.get_job_progress(job_id)
-                
-                if status_data:
-                    job_status = status_data.get("status", "unknown")
-                    
-                    # Apply status filter
-                    if status and job_status != status:
-                        continue
-                    
-                    # Count statuses
-                    if job_status in ["pending", "processing"]:
-                        status_counts["active"] += 1
-                    elif job_status == "completed":
-                        status_counts["completed"] += 1
-                    elif job_status == "failed":
-                        status_counts["failed"] += 1
-                    
-                    jobs.append(JobStatusResponse(
-                        job_id=job_id,
-                        status=job_status,
-                        progress=progress_data.get("progress") if progress_data else None,
-                        message=progress_data.get("message") if progress_data else status_data.get("message"),
-                        created_at=status_data.get("started_at"),
-                        updated_at=status_data.get("updated_at"),
-                        metadata=status_data.get("metadata")
-                    ))
-                    
-            except Exception as e:
-                logger.error(f"Error processing job {job_id}: {e}")
-                continue
-        
-        return JobListResponse(
-            jobs=jobs,
-            total_count=total_count,
-            active_count=status_counts["active"],
-            completed_count=status_counts["completed"],
-            failed_count=status_counts["failed"]
-        )
-        
-    except Exception as e:
-        logger.error(f"Error listing jobs: {e}")
+        r = await get_redis_client()
+        zset_key = f"latexy:user:{user_id}:jobs"
+        # Get job IDs ordered by recency (highest score = newest)
+        job_ids = await r.zrevrange(zset_key, 0, limit - 1)
+
+        jobs: List[Dict] = []
+        for jid in job_ids:
+            raw = await r.get(f"latexy:job:{jid}:state")
+            if raw:
+                state = json.loads(raw)
+                state["job_id"] = jid
+                jobs.append(state)
+
+        return JobListResponse(jobs=jobs, total_count=len(jobs))
+
+    except Exception as exc:
+        logger.error(f"Error listing jobs for user {user_id}: {exc}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-# WebSocket endpoint for real-time updates
-@router.websocket("/ws/{connection_id}")
-async def websocket_endpoint(websocket: WebSocket, connection_id: str):
-    """WebSocket endpoint for real-time job updates."""
-    await manager.connect(websocket, connection_id)
-    
-    try:
-        while True:
-            # Receive messages from client
-            data = await websocket.receive_json()
-            
-            if data.get("type") == "subscribe":
-                job_id = data.get("job_id")
-                if job_id:
-                    manager.subscribe_to_job(connection_id, job_id)
-                    await websocket.send_json({
-                        "type": "subscription_confirmed",
-                        "job_id": job_id
-                    })
-            
-            elif data.get("type") == "ping":
-                await websocket.send_json({"type": "pong"})
-                
-    except WebSocketDisconnect:
-        manager.disconnect(connection_id)
-    except Exception as e:
-        logger.error(f"WebSocket error for connection {connection_id}: {e}")
-        manager.disconnect(connection_id)
+# ------------------------------------------------------------------ #
+#  System health & cleanup                                             #
+# ------------------------------------------------------------------ #
 
-
-# System health and monitoring endpoints
-@router.get("/system/health")
-async def system_health():
-    """Get system health status."""
+@router.get("/health")
+async def jobs_health():
+    """Get job system health: queue depths and basic Redis status."""
     try:
-        # Initialize Redis if not already done
         if not redis_manager.redis_client:
             await redis_manager.init_redis()
-        
-        # Check Redis health
         redis_health = await redis_manager.health_check()
-        
-        # Get active jobs count (with fallback)
-        try:
-            active_jobs = await job_status_manager.get_active_jobs()
-            active_jobs_count = len(active_jobs)
-        except Exception:
-            active_jobs_count = 0
-        
-        # Determine overall health
-        overall_health = "healthy" if all(redis_health.values()) else "degraded"
-        
         return {
-            "status": overall_health,
-            "redis_health": redis_health,
-            "active_jobs_count": active_jobs_count,
-            "websocket_connections": len(manager.active_connections),
-            "job_subscriptions": len(manager.job_subscriptions),
-            "timestamp": asyncio.get_event_loop().time()
+            "status": "healthy" if all(redis_health.values()) else "degraded",
+            "redis": redis_health,
+            "timestamp": time.time(),
         }
-        
-    except Exception as e:
-        logger.error(f"Error getting system health: {e}")
-        return {
-            "status": "unhealthy",
-            "error": str(e),
-            "redis_available": False,
-            "timestamp": asyncio.get_event_loop().time()
-        }
+    except Exception as exc:
+        logger.error(f"Health check error: {exc}")
+        return {"status": "unhealthy", "error": str(exc), "timestamp": time.time()}
 
 
 @router.post("/system/cleanup")
 async def trigger_cleanup(
     cleanup_type: str = "temp_files",
-    max_age_hours: int = 24
+    max_age_hours: int = 24,
 ):
-    """Trigger system cleanup tasks."""
+    """Trigger a background cleanup task."""
     try:
         if cleanup_type == "temp_files":
             job_id = submit_temp_files_cleanup(max_age_hours=max_age_hours)
         elif cleanup_type == "expired_jobs":
             job_id = submit_expired_jobs_cleanup(max_age_hours=max_age_hours)
         else:
-            raise HTTPException(status_code=400, detail=f"Unsupported cleanup type: {cleanup_type}")
-        
-        return {
-            "success": True,
-            "message": f"Cleanup task submitted: {cleanup_type}",
-            "job_id": job_id
-        }
-        
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported cleanup_type: {cleanup_type!r}",
+            )
+        return {"success": True, "message": f"Cleanup submitted: {cleanup_type}", "job_id": job_id}
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error triggering cleanup: {e}")
+    except Exception as exc:
+        logger.error(f"Error triggering cleanup: {exc}")
         raise HTTPException(status_code=500, detail="Internal server error")

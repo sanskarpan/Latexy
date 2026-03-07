@@ -1,7 +1,7 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
-import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react'
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
 
 export interface Notification {
   id: string
@@ -28,123 +28,51 @@ export function useNotifications() {
   return context
 }
 
-interface NotificationProviderProps {
-  children: ReactNode
-}
-
-export function NotificationProvider({ children }: NotificationProviderProps) {
+export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([])
 
-  const addNotification = useCallback((notification: Omit<Notification, 'id'>) => {
-    const id = Math.random().toString(36).substr(2, 9)
-    const newNotification: Notification = {
-      ...notification,
-      id,
-      duration: notification.duration ?? 5000,
-    }
-
-    setNotifications(prev => [...prev, newNotification])
-
-    // Auto-remove after duration
-    if (newNotification.duration && newNotification.duration > 0) {
-      setTimeout(() => {
-        removeNotification(id)
-      }, newNotification.duration)
-    }
-  }, [])
-
   const removeNotification = useCallback((id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id))
+    setNotifications((prev) => prev.filter((item) => item.id !== id))
   }, [])
+
+  const addNotification = useCallback(
+    (notification: Omit<Notification, 'id'>) => {
+      const id = Math.random().toString(36).slice(2, 11)
+      const next: Notification = {
+        ...notification,
+        id,
+        duration: notification.duration ?? 5000,
+      }
+
+      setNotifications((prev) => [...prev, next])
+
+      const message = next.message?.trim() || undefined
+      if (next.type === 'success') toast.success(next.title, { description: message, duration: next.duration })
+      if (next.type === 'error') toast.error(next.title, { description: message, duration: next.duration })
+      if (next.type === 'warning') toast.warning(next.title, { description: message, duration: next.duration })
+      if (next.type === 'info') toast.info(next.title, { description: message, duration: next.duration })
+
+      if (next.duration && next.duration > 0) {
+        window.setTimeout(() => removeNotification(id), next.duration)
+      }
+    },
+    [removeNotification]
+  )
 
   const clearAll = useCallback(() => {
     setNotifications([])
+    toast.dismiss()
   }, [])
 
-  return (
-    <NotificationContext.Provider value={{
+  const value = useMemo(
+    () => ({
       notifications,
       addNotification,
       removeNotification,
       clearAll,
-    }}>
-      {children}
-      <NotificationContainer 
-        notifications={notifications}
-        onRemove={removeNotification}
-      />
-    </NotificationContext.Provider>
+    }),
+    [notifications, addNotification, removeNotification, clearAll]
   )
-}
 
-interface NotificationContainerProps {
-  notifications: Notification[]
-  onRemove: (id: string) => void
-}
-
-function NotificationContainer({ notifications, onRemove }: NotificationContainerProps) {
-  if (notifications.length === 0) return null
-
-  return (
-    <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
-      {notifications.map(notification => (
-        <NotificationItem
-          key={notification.id}
-          notification={notification}
-          onRemove={onRemove}
-        />
-      ))}
-    </div>
-  )
-}
-
-interface NotificationItemProps {
-  notification: Notification
-  onRemove: (id: string) => void
-}
-
-function NotificationItem({ notification, onRemove }: NotificationItemProps) {
-  const getIcon = () => {
-    switch (notification.type) {
-      case 'success':
-        return <CheckCircle className="w-5 h-5 text-green-500" />
-      case 'error':
-        return <AlertCircle className="w-5 h-5 text-red-500" />
-      case 'warning':
-        return <AlertTriangle className="w-5 h-5 text-yellow-500" />
-      case 'info':
-        return <Info className="w-5 h-5 text-blue-500" />
-    }
-  }
-
-  const getBgColor = () => {
-    switch (notification.type) {
-      case 'success':
-        return 'bg-green-50 border-green-200'
-      case 'error':
-        return 'bg-red-50 border-red-200'
-      case 'warning':
-        return 'bg-yellow-50 border-yellow-200'
-      case 'info':
-        return 'bg-blue-50 border-blue-200'
-    }
-  }
-
-  return (
-    <div className={`p-4 rounded-lg border shadow-lg ${getBgColor()} animate-in slide-in-from-right duration-300`}>
-      <div className="flex items-start gap-3">
-        {getIcon()}
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-secondary-900">{notification.title}</p>
-          <p className="text-sm text-secondary-600 mt-1">{notification.message}</p>
-        </div>
-        <button
-          onClick={() => onRemove(notification.id)}
-          className="text-secondary-400 hover:text-secondary-600 transition-colors"
-        >
-          <X size={16} />
-        </button>
-      </div>
-    </div>
-  )
+  return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>
 }

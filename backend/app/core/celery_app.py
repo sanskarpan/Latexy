@@ -15,10 +15,11 @@ celery_app = Celery(
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
         "app.workers.latex_worker",
-        "app.workers.llm_worker", 
+        "app.workers.llm_worker",
         "app.workers.email_worker",
         "app.workers.cleanup_worker",
-        "app.workers.ats_worker"
+        "app.workers.ats_worker",
+        "app.workers.orchestrator",
     ]
 )
 
@@ -37,6 +38,7 @@ celery_app.conf.update(
         "app.workers.email_worker.*": {"queue": "email"},
         "app.workers.cleanup_worker.*": {"queue": "cleanup"},
         "app.workers.ats_worker.*": {"queue": "ats"},
+        "app.workers.orchestrator.*": {"queue": "combined"},
     },
     
     # Task configuration
@@ -140,9 +142,42 @@ def debug_task(self):
     return "Celery is working!"
 
 
+# ------------------------------------------------------------------ #
+#  Worker process initialisation signal                               #
+# ------------------------------------------------------------------ #
+
+from celery.signals import worker_process_init  # noqa: E402
+
+@worker_process_init.connect
+def init_worker_process(sender=None, **kwargs):
+    """
+    Called once per Celery worker OS process on startup.
+    Initialises the synchronous Redis client used by event_publisher.py.
+    This ensures every worker has its own Redis connection without
+    any asyncio involvement.
+    """
+    try:
+        from ..workers.event_publisher import initialize_worker_redis
+        initialize_worker_redis(
+            redis_url=settings.REDIS_URL,
+            password=settings.REDIS_PASSWORD or None,
+        )
+        logger.info("Worker process: event publisher Redis initialised")
+    except Exception as exc:
+        logger.error(f"Worker process: failed to initialise Redis: {exc}")
+        raise
+
+
 # Import tasks to register them
 try:
-    from ..workers import latex_worker, llm_worker, email_worker, cleanup_worker, ats_worker
+    from ..workers import (
+        latex_worker,
+        llm_worker,
+        email_worker,
+        cleanup_worker,
+        ats_worker,
+        orchestrator,
+    )
     logger.info("Celery workers imported successfully")
 except ImportError as e:
     logger.warning(f"Could not import some workers: {e}")

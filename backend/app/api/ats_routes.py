@@ -3,6 +3,7 @@ ATS Scoring API routes for Phase 9.
 """
 
 import asyncio
+import uuid
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,17 +109,19 @@ async def score_resume_ats(
         })
         
         if request.async_processing:
-            # Submit to queue for asynchronous processing
-            job_id = submit_ats_scoring(
+            # Generate job_id here (submission helper requires it as positional arg)
+            job_id = str(uuid.uuid4())
+            submit_ats_scoring(
                 latex_content=request.latex_content,
+                job_id=job_id,
                 job_description=request.job_description,
                 industry=request.industry,
                 user_id=user_id,
                 user_plan=request.user_plan,
                 device_fingerprint=request.device_fingerprint,
-                metadata=metadata
+                metadata=metadata,
             )
-            
+
             return ATSScoreResponse(
                 success=True,
                 job_id=job_id,
@@ -181,14 +184,16 @@ async def analyze_job_description_ats(
         })
         
         if request.async_processing:
-            # Submit to queue for asynchronous processing
-            job_id = submit_job_description_analysis(
+            # Generate job_id here (submission helper requires it as positional arg)
+            job_id = str(uuid.uuid4())
+            submit_job_description_analysis(
                 job_description=request.job_description,
+                job_id=job_id,
                 user_id=user_id,
                 user_plan=request.user_plan,
-                metadata=metadata
+                metadata=metadata,
             )
-            
+
             return JobDescriptionAnalysisResponse(
                 success=True,
                 job_id=job_id,

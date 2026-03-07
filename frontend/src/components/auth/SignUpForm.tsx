@@ -40,7 +40,7 @@ export default function SignUpForm() {
     <div className="max-w-md mx-auto">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="name" className="block text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
             Full Name
           </label>
           <input
@@ -49,12 +49,12 @@ export default function SignUpForm() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            className="mt-2 block w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-zinc-100 outline-none transition focus:border-orange-300/50"
           />
         </div>
 
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="email" className="block text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
             Email
           </label>
           <input
@@ -63,12 +63,12 @@ export default function SignUpForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            className="mt-2 block w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-zinc-100 outline-none transition focus:border-orange-300/50"
           />
         </div>
 
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="password" className="block text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
             Password
           </label>
           <input
@@ -78,18 +78,18 @@ export default function SignUpForm() {
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={8}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            className="mt-2 block w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-zinc-100 outline-none transition focus:border-orange-300/50"
           />
         </div>
 
         {error && (
-          <div className="text-red-600 text-sm">{error}</div>
+          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">{error}</div>
         )}
 
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
+          className="btn-accent w-full py-2.5 text-sm disabled:opacity-50"
         >
           {isLoading ? 'Creating account...' : 'Sign Up'}
         </button>
