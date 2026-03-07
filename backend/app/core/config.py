@@ -9,14 +9,20 @@ from typing import List
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Resolve paths relative to this file so they work regardless of CWD
+_backend_dir = Path(__file__).parent.parent.parent   # backend/
+_root_dir = _backend_dir.parent                      # Latexy/
+
 
 class Settings(BaseSettings):
     """Application settings."""
-    
+
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Load root .env first, then backend/.env (backend overrides root)
+        env_file=(_root_dir / ".env", _backend_dir / ".env"),
+        env_file_encoding="utf-8",
         case_sensitive=True,
-        env_file_encoding="utf-8"
+        extra="ignore",   # silently ignore MINIO_*, NEXT_PUBLIC_*, etc.
     )
     
     # Application
