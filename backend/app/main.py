@@ -10,8 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api.routes import router
 from .core.config import settings
+from .core.event_bus import event_bus
 from .core.logging import setup_logging, get_logger
-from .core.redis import redis_manager
+from .core.redis import redis_manager, get_redis_client
 from .services.latex_compiler import latex_compiler
 from .database.connection import init_db, close_db
 
@@ -42,6 +43,15 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize Redis: {e}")
         # Redis is not critical for basic functionality, so don't raise
         logger.warning("Continuing without Redis - some features may be limited")
+
+    # Initialize EventBusManager (WebSocket → Redis Pub/Sub bridge)
+    try:
+        async_redis = await get_redis_client()
+        await event_bus.init(async_redis)
+        logger.info("EventBusManager initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize EventBusManager: {e}")
+        logger.warning("Real-time WebSocket events will not be available")
     
     # Check LaTeX installation
     if not latex_compiler.is_available():
