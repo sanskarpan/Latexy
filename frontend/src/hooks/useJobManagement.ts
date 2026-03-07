@@ -74,6 +74,36 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
   const { addNotification } = useNotifications()
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
+  const refreshJobs = useCallback(async () => {
+    try {
+      setIsLoadingJobs(true)
+      setJobsError(null)
+
+      const response = await jobApiClient.listJobs(undefined, maxJobs, 0)
+      setJobs(response)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load jobs'
+      setJobsError(errorMessage)
+    } finally {
+      setIsLoadingJobs(false)
+    }
+  }, [maxJobs])
+
+  const refreshHealth = useCallback(async () => {
+    try {
+      setIsLoadingHealth(true)
+      setHealthError(null)
+
+      const response = await jobApiClient.getSystemHealth()
+      setSystemHealth(response)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load system health'
+      setHealthError(errorMessage)
+    } finally {
+      setIsLoadingHealth(false)
+    }
+  }, [])
+
   const submitJob = useCallback(async (request: JobSubmissionRequest): Promise<string | null> => {
     try {
       setIsSubmitting(true)
@@ -112,36 +142,6 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
       setIsSubmitting(false)
     }
   }, [addNotification, refreshJobs])
-
-  const refreshJobs = useCallback(async () => {
-    try {
-      setIsLoadingJobs(true)
-      setJobsError(null)
-
-      const response = await jobApiClient.listJobs(undefined, maxJobs, 0)
-      setJobs(response)
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load jobs'
-      setJobsError(errorMessage)
-    } finally {
-      setIsLoadingJobs(false)
-    }
-  }, [maxJobs])
-
-  const refreshHealth = useCallback(async () => {
-    try {
-      setIsLoadingHealth(true)
-      setHealthError(null)
-
-      const response = await jobApiClient.getSystemHealth()
-      setSystemHealth(response)
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load system health'
-      setHealthError(errorMessage)
-    } finally {
-      setIsLoadingHealth(false)
-    }
-  }, [])
 
   // Convenience methods for common job types
   const compileLatex = useCallback(async (
