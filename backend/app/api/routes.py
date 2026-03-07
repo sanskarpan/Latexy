@@ -21,6 +21,7 @@ from ..services.llm_service import llm_service
 from ..services.trial_service import trial_service
 from ..services.payment_service import payment_service
 from ..utils.file_utils import validate_file_upload, validate_job_id, get_job_files
+from ..middleware.auth_middleware import get_current_user_optional
 
 logger = get_logger(__name__)
 
@@ -29,6 +30,10 @@ router = APIRouter()
 # Include job management routes
 from .job_routes import router as job_router
 router.include_router(job_router)
+
+# Include WebSocket routes (no prefix — endpoint is /ws/jobs)
+from .ws_routes import ws_router
+router.include_router(ws_router)
 
 # Include ATS scoring routes
 from .ats_routes import router as ats_router
@@ -433,7 +438,8 @@ async def get_subscription_plans():
 @router.post("/subscription/create", response_model=CreateSubscriptionResponse)
 async def create_subscription(
     request_data: CreateSubscriptionRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional)
 ):
     """Create a new subscription."""
     try:
@@ -443,9 +449,8 @@ async def create_subscription(
                 detail="Payment service is not available"
             )
 
-        # For demo purposes, we'll use a dummy user ID
-        # In production, this would come from authentication
-        user_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # This should come from JWT token
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Authentication required to create a subscription")
 
         result = await payment_service.create_subscription(
             db=db,
@@ -473,13 +478,13 @@ async def create_subscription(
 
 @router.get("/subscription/current", response_model=UserSubscriptionResponse)
 async def get_current_subscription(
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional)
 ):
     """Get current user's subscription."""
     try:
-        # For demo purposes, we'll use a dummy user ID
-        # In production, this would come from authentication
-        user_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # This should come from JWT token
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Authentication required")
 
         subscription = await payment_service.get_user_subscription(db, user_id)
         
@@ -505,13 +510,13 @@ async def get_current_subscription(
 
 @router.post("/subscription/cancel", response_model=CancelSubscriptionResponse)
 async def cancel_subscription(
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional)
 ):
     """Cancel current user's subscription."""
     try:
-        # For demo purposes, we'll use a dummy user ID
-        # In production, this would come from authentication
-        user_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"  # This should come from JWT token
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Authentication required")
 
         result = await payment_service.cancel_subscription(db, user_id)
 
