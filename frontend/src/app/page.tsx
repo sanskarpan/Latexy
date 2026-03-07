@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useEffect, useState } from 'react'
-import MarketingFrame from '@/components/marketing/MarketingFrame'
 import { MotionItem, MotionReveal, MotionStagger, ScrollDepth } from '@/components/marketing/MotionPrimitives'
 
 const HeroScene3D = dynamic(() => import('@/components/marketing/HeroScene3D'), {
@@ -131,7 +130,9 @@ export default function LandingPage() {
     return () => clearTimeout(timer)
   }, [typedText, isDeleting, phraseIndex, mounted])
 
-  if (!mounted) return <div className="min-h-screen bg-black" />
+  if (!mounted) {
+    return <div className="min-h-screen bg-black" />
+  }
 
   return (
     <div className="relative overflow-hidden py-12">
@@ -264,6 +265,6 @@ export default function LandingPage() {
           </div>
         </section>
       </MotionReveal>
-    </MarketingFrame>
+    </div>
   )
 }
