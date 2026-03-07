@@ -1,15 +1,16 @@
 import './globals.css'
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import { NotificationProvider } from '@/components/NotificationProvider'
 import { WebSocketProvider } from '@/components/WebSocketProvider'
-
-const inter = Inter({ subsets: ['latin'] })
+import { AuthSync } from '@/components/AuthSync'
+import GlobalHeader from '@/components/GlobalHeader'
+import MarketingFooter from '@/components/marketing/MarketingFooter'
+import { Toaster } from 'sonner'
 
 export const metadata: Metadata = {
-  title: 'ATS Resume Optimizer',
-  description: 'Optimize your LaTeX resume for ATS systems with AI-powered suggestions',
-  keywords: 'resume, ATS, LaTeX, optimization, job application',
+  title: 'Latexy | Precision Resume Intelligence',
+  description: 'Compile, optimize, and score LaTeX resumes with enterprise-grade speed and ATS precision.',
+  keywords: 'LaTeX, ATS, resume optimization, AI, job applications',
 }
 
 export default function RootLayout({
@@ -18,13 +19,25 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" suppressHydrationWarning>
+      <body className="font-sans antialiased">
         <NotificationProvider>
           <WebSocketProvider>
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-              {children}
+            <AuthSync />
+            <div className="min-h-screen enterprise-grid noise-overlay flex flex-col">
+              <GlobalHeader />
+              <main className="flex-1">
+                {children}
+              </main>
+              <MarketingFooter />
             </div>
+            <Toaster
+              richColors
+              position="top-right"
+              toastOptions={{
+                className: 'border border-white/10 bg-zinc-950 text-zinc-100',
+              }}
+            />
           </WebSocketProvider>
         </NotificationProvider>
       </body>
