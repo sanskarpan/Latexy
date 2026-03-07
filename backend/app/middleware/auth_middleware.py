@@ -1,174 +1,238 @@
 """
-Authentication middleware for protecting routes and extracting user information.
+Authentication middleware.
+
+Validation order for every protected request:
+  1. Better Auth session token — extracted from Authorization: Bearer <token>
+     or from the better-auth.session_token cookie.
+     Validated by querying the `session` table in PostgreSQL.
+  2. Legacy JWT fallback — for tokens signed with JWT_SECRET_KEY (HS256).
+     Preserved for backward compatibility during migration.
+
+Device fingerprint and client info helpers are unchanged.
 """
 
 import jwt
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
+
 from fastapi import HTTPException, status, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 import logging
+
+from ..core.config import settings
+from ..database.connection import get_db
 
 logger = logging.getLogger(__name__)
 
-# Security scheme for JWT tokens
+# Security scheme for Bearer token extraction
 security = HTTPBearer(auto_error=False)
 
-class AuthMiddleware:
-    """Authentication middleware for JWT token validation."""
-    
-    def __init__(self, secret_key: str = "your-secret-key"):
+
+# ------------------------------------------------------------------ #
+#  Better Auth session validation (stateful, PostgreSQL-backed)       #
+# ------------------------------------------------------------------ #
+
+async def _validate_better_auth_session(
+    token: str,
+    db: AsyncSession,
+) -> Optional[str]:
+    """Return userId if the Better Auth session token is valid, else None."""
+    try:
+        result = await db.execute(
+            text(
+                'SELECT "userId" FROM session '
+                'WHERE token = :token AND "expiresAt" > :now'
+            ),
+            {"token": token, "now": datetime.now(timezone.utc)},
+        )
+        row = result.fetchone()
+        return row[0] if row else None
+    except Exception as exc:
+        logger.debug(f"Better Auth session lookup failed: {exc}")
+        return None
+
+
+# ------------------------------------------------------------------ #
+#  Legacy JWT validation (stateless, for backward compatibility)      #
+# ------------------------------------------------------------------ #
+
+class _LegacyJWTValidator:
+    """Validates HS256 JWTs issued before Better Auth was introduced."""
+
+    def __init__(self, secret_key: str):
         self.secret_key = secret_key
         self.algorithm = "HS256"
-    
-    def decode_token(self, token: str) -> Optional[Dict[str, Any]]:
-        """Decode and validate JWT token."""
+
+    def decode(self, token: str) -> Optional[Dict[str, Any]]:
         try:
-            payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
-            return payload
+            return jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
         except jwt.ExpiredSignatureError:
-            logger.warning("Token has expired")
-            return None
+            logger.debug("Legacy JWT expired")
         except jwt.InvalidTokenError:
-            logger.warning("Invalid token")
-            return None
-    
-    def extract_user_id(self, token: str) -> Optional[str]:
-        """Extract user ID from JWT token."""
-        payload = self.decode_token(token)
+            logger.debug("Legacy JWT invalid")
+        return None
+
+    def user_id(self, token: str) -> Optional[str]:
+        payload = self.decode(token)
         if payload:
             return payload.get("sub") or payload.get("user_id")
         return None
-    
+
     def is_admin(self, token: str) -> bool:
-        """Check if user has admin privileges."""
-        payload = self.decode_token(token)
+        payload = self.decode(token)
         if payload:
             return payload.get("role") == "admin" or payload.get("is_admin", False)
         return False
 
-# Global auth middleware instance
-auth_middleware = AuthMiddleware()
+
+_jwt_validator = _LegacyJWTValidator(
+    secret_key=settings.JWT_SECRET_KEY or "change-me-in-production"
+)
+
+# Expose for callers that still reference auth_middleware.is_admin()
+auth_middleware = _jwt_validator
+
+
+# ------------------------------------------------------------------ #
+#  Token extraction helper                                            #
+# ------------------------------------------------------------------ #
+
+def _extract_token(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials],
+) -> Optional[str]:
+    """Return the raw token string from Bearer header or session cookie."""
+    if credentials and credentials.credentials:
+        return credentials.credentials
+    # Cookie fallback for same-origin requests
+    return request.cookies.get("better-auth.session_token")
+
+
+# ------------------------------------------------------------------ #
+#  FastAPI dependency functions                                        #
+# ------------------------------------------------------------------ #
 
 async def get_current_user_optional(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
 ) -> Optional[str]:
     """
-    Get current user ID from JWT token (optional - doesn't raise error if no token).
-    Returns None if no valid token is provided.
+    Return the current user_id, or None if no valid credentials are present.
+    Never raises — safe for endpoints accessible by both anonymous and
+    authenticated users.
     """
-    if not credentials:
+    token = _extract_token(request, credentials)
+    if not token:
         return None
-    
-    try:
-        user_id = auth_middleware.extract_user_id(credentials.credentials)
+
+    # 1. Better Auth session lookup
+    user_id = await _validate_better_auth_session(token, db)
+    if user_id:
         return user_id
-    except Exception as e:
-        logger.warning(f"Error extracting user from token: {e}")
-        return None
+
+    # 2. Legacy JWT fallback
+    return _jwt_validator.user_id(token)
+
 
 async def get_current_user_required(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
 ) -> str:
     """
-    Get current user ID from JWT token (required - raises error if no valid token).
+    Return the current user_id or raise HTTP 401.
+    Use as a FastAPI dependency on protected endpoints.
     """
-    if not credentials:
+    user_id = await get_current_user_optional(request, credentials, db)
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    try:
-        user_id = auth_middleware.extract_user_id(credentials.credentials)
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        return user_id
-    except Exception as e:
-        logger.error(f"Error validating token: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    return user_id
+
 
 async def require_admin(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
 ) -> str:
     """
-    Require admin privileges for accessing the endpoint.
+    Return the current user_id if the user has admin privileges, else raise.
+    Admin status is encoded in legacy JWTs; Better Auth sessions do not
+    carry role claims — extend this if RBAC is required.
     """
-    if not credentials:
+    token = _extract_token(request, credentials)
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    try:
-        user_id = auth_middleware.extract_user_id(credentials.credentials)
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        
-        if not auth_middleware.is_admin(credentials.credentials):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin privileges required"
-            )
-        
-        return user_id
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error validating admin token: {e}")
+
+    user_id = await get_current_user_optional(request, credentials, db)
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-# Convenience functions for backward compatibility
-async def get_user_id_optional(request: Request) -> Optional[str]:
-    """Get user ID optionally (for backward compatibility)."""
-    return await get_current_user_optional(request)
+    if not _jwt_validator.is_admin(token):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
 
-async def get_user_id_required(request: Request) -> str:
-    """Get user ID required (for backward compatibility)."""
-    return await get_current_user_required(request)
+    return user_id
 
-# Device fingerprint extraction
+
+# ------------------------------------------------------------------ #
+#  Backward-compatibility aliases                                      #
+#  These must be full FastAPI dependencies so DI injects credentials  #
+#  and db correctly — not bare callables missing required params.     #
+# ------------------------------------------------------------------ #
+
+async def get_user_id_optional(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[str]:
+    return await get_current_user_optional(request, credentials, db)
+
+
+async def get_user_id_required(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    return await get_current_user_required(request, credentials, db)
+
+
+# ------------------------------------------------------------------ #
+#  Device / client info helpers (unchanged)                           #
+# ------------------------------------------------------------------ #
+
 def extract_device_fingerprint(request: Request) -> Optional[str]:
     """Extract device fingerprint from request headers."""
-    # Try to get from custom header first
     fingerprint = request.headers.get("X-Device-Fingerprint")
-    
     if not fingerprint:
-        # Fallback: create basic fingerprint from user agent and IP
         user_agent = request.headers.get("User-Agent", "")
         client_ip = request.client.host if request.client else ""
-        
         if user_agent or client_ip:
             import hashlib
-            fingerprint_data = f"{user_agent}:{client_ip}"
-            fingerprint = hashlib.md5(fingerprint_data.encode()).hexdigest()
-    
+            fingerprint = hashlib.md5(f"{user_agent}:{client_ip}".encode()).hexdigest()
     return fingerprint
+
 
 def extract_client_info(request: Request) -> Dict[str, Optional[str]]:
     """Extract client information from request."""
     return {
         "ip_address": request.client.host if request.client else None,
         "user_agent": request.headers.get("User-Agent"),
-        "device_fingerprint": extract_device_fingerprint(request)
+        "device_fingerprint": extract_device_fingerprint(request),
     }
