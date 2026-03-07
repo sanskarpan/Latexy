@@ -3,14 +3,15 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { 
-  jobApiClient, 
-  ATSScoreRequest, 
+import {
+  jobApiClient,
+  ATSScoreRequest,
   ATSScoreResponse,
+  CategoryScores,
   JobDescriptionAnalysisRequest,
   JobDescriptionAnalysisResponse,
   ATSRecommendationsRequest,
-  ATSRecommendationsResponse 
+  ATSRecommendationsResponse
 } from '@/lib/job-api-client'
 import { useNotifications } from '@/components/NotificationProvider'
 import { useJobStatus } from './useJobStatus'
@@ -91,23 +92,31 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
   const scoringJobStatus = useJobStatus(scoringJobId, {
     onComplete: (result) => {
       if (result.success && result.result) {
+        const r = result.result as {
+          overall_score?: number
+          category_scores?: CategoryScores
+          recommendations?: string[]
+          warnings?: string[]
+          strengths?: string[]
+          detailed_analysis?: Record<string, unknown>
+          timestamp?: string
+        }
         setScoringResult({
           success: true,
-          ats_score: result.result.overall_score,
-          category_scores: result.result.category_scores,
-          recommendations: result.result.recommendations,
-          warnings: result.result.warnings,
-          strengths: result.result.strengths,
-          detailed_analysis: result.result.detailed_analysis,
+          ats_score: r.overall_score,
+          category_scores: r.category_scores,
+          recommendations: r.recommendations,
+          warnings: r.warnings,
+          strengths: r.strengths,
+          detailed_analysis: r.detailed_analysis,
           processing_time: (Date.now() - startTimeRef.current) / 1000,
-          message: `ATS scoring completed: ${result.result.overall_score}/100`,
-          timestamp: result.result.timestamp,
+          message: `ATS scoring completed: ${r.overall_score}/100`,
+          timestamp: r.timestamp,
         })
-        
         addNotification({
           type: 'success',
           title: 'ATS Scoring Complete',
-          message: `Resume scored: ${result.result.overall_score}/100`,
+          message: `Resume scored: ${r.overall_score}/100`,
         })
       }
       setIsScoringLoading(false)
@@ -127,22 +136,29 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
   const analysisJobStatus = useJobStatus(analysisJobId, {
     onComplete: (result) => {
       if (result.success && result.result) {
+        const r = result.result as {
+          keywords?: string[]
+          requirements?: string[]
+          preferred_qualifications?: string[]
+          detected_industry?: string
+          analysis_metrics?: Record<string, unknown>
+          optimization_tips?: string[]
+        }
         setAnalysisResult({
           success: true,
-          keywords: result.result.keywords,
-          requirements: result.result.requirements,
-          preferred_qualifications: result.result.preferred_qualifications,
-          detected_industry: result.result.detected_industry,
-          analysis_metrics: result.result.analysis_metrics,
-          optimization_tips: result.result.optimization_tips,
+          keywords: r.keywords,
+          requirements: r.requirements,
+          preferred_qualifications: r.preferred_qualifications,
+          detected_industry: r.detected_industry,
+          analysis_metrics: r.analysis_metrics,
+          optimization_tips: r.optimization_tips,
           processing_time: (Date.now() - startTimeRef.current) / 1000,
           message: 'Job description analysis completed',
         })
-        
         addNotification({
           type: 'success',
           title: 'Job Description Analysis Complete',
-          message: `Found ${result.result.keywords?.length || 0} keywords`,
+          message: `Found ${r.keywords?.length || 0} keywords`,
         })
       }
       setIsAnalysisLoading(false)
