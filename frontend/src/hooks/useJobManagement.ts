@@ -111,7 +111,7 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
     } finally {
       setIsSubmitting(false)
     }
-  }, [addNotification])
+  }, [addNotification, refreshJobs])
 
   const refreshJobs = useCallback(async () => {
     try {
