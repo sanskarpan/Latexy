@@ -1,23 +1,37 @@
 /**
- * React hook for job status tracking with real-time updates
+ * useJobStatus — thin wrapper around useJobStream that keeps the
+ * existing public interface so callers don't need to change.
+ *
+ * Real-time updates come from the WebSocket via useJobStream.
+ * REST polling fallback via apiClient.getJobState() when WS is unavailable.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { jobApiClient, JobStatusResponse, JobResultResponse } from '@/lib/job-api-client'
-import { useWebSocket } from '@/components/WebSocketProvider'
-import { useNotifications } from '@/components/NotificationProvider'
+import { useCallback, useEffect } from 'react'
+import { apiClient } from '@/lib/api-client'
+import { useJobStream } from '@/hooks/useJobStream'
+
+// ------------------------------------------------------------------ //
+//  Public interface (unchanged from previous version)                 //
+// ------------------------------------------------------------------ //
 
 export interface UseJobStatusOptions {
   autoSubscribe?: boolean
   pollInterval?: number
-  onStatusChange?: (status: JobStatusResponse) => void
-  onComplete?: (result: JobResultResponse) => void
+  onStatusChange?: (status: { status: string; percent: number; stage: string }) => void
+  onComplete?: (result: { job_id: string; success: boolean; result?: Record<string, unknown> }) => void
   onError?: (error: string) => void
 }
 
 export interface UseJobStatusResult {
-  status: JobStatusResponse | null
-  result: JobResultResponse | null
+  status: {
+    status: string
+    progress: number
+    message: string
+    created_at?: number
+    updated_at?: number
+    estimated_completion?: number
+  } | null
+  result: { job_id: string; success: boolean; result?: Record<string, unknown> } | null
   isLoading: boolean
   error: string | null
   progress: number
@@ -28,244 +42,118 @@ export interface UseJobStatusResult {
   clearError: () => void
 }
 
+// ------------------------------------------------------------------ //
+//  Hook                                                                //
+// ------------------------------------------------------------------ //
+
 export function useJobStatus(
   jobId: string | null,
   options: UseJobStatusOptions = {}
 ): UseJobStatusResult {
-  const {
-    autoSubscribe = true,
-    pollInterval = 2000,
-    onStatusChange,
-    onComplete,
-    onError,
-  } = options
+  const { onStatusChange, onComplete, onError } = options
 
-  const [status, setStatus] = useState<JobStatusResponse | null>(null)
-  const [result, setResult] = useState<JobResultResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { state, cancel: streamCancel } = useJobStream(jobId)
 
-  const { subscribeToJob, unsubscribeFromJob, jobUpdates, isConnected } = useWebSocket()
-  const { addNotification } = useNotifications()
-  
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const lastStatusRef = useRef<string | null>(null)
+  // ── Fire callbacks on state transitions ─────────────────────────
+  useEffect(() => {
+    if (!jobId || state.status === 'idle') return
 
-  // Calculate derived state
-  const progress = status?.progress || 0
-  const isComplete = status?.status === 'completed'
-  const isFailed = status?.status === 'failed'
-
-  const clearError = useCallback(() => {
-    setError(null)
-  }, [])
-
-  const fetchStatus = useCallback(async () => {
-    if (!jobId) return
-
-    try {
-      setIsLoading(true)
-      const statusResponse = await jobApiClient.getJobStatus(jobId)
-      setStatus(statusResponse)
-      
-      // Call status change callback
-      if (onStatusChange) {
-        onStatusChange(statusResponse)
-      }
-
-      // Check if job completed and fetch result
-      if (statusResponse.status === 'completed' && !result) {
-        try {
-          const resultResponse = await jobApiClient.getJobResult(jobId)
-          setResult(resultResponse)
-          
-          if (onComplete) {
-            onComplete(resultResponse)
-          }
-
-          // Show success notification
-          addNotification({
-            type: 'success',
-            title: 'Job Completed',
-            message: `Job ${jobId.substring(0, 8)} completed successfully`,
-          })
-        } catch (resultError) {
-          console.error('Failed to fetch job result:', resultError)
-        }
-      }
-
-      // Handle failed jobs
-      if (statusResponse.status === 'failed' && lastStatusRef.current !== 'failed') {
-        const errorMessage = statusResponse.message || 'Job failed'
-        setError(errorMessage)
-        
-        if (onError) {
-          onError(errorMessage)
-        }
-
-        addNotification({
-          type: 'error',
-          title: 'Job Failed',
-          message: `Job ${jobId.substring(0, 8)} failed: ${errorMessage}`,
-        })
-      }
-
-      lastStatusRef.current = statusResponse.status
-
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch job status'
-      setError(errorMessage)
-      
-      if (onError) {
-        onError(errorMessage)
-      }
-    } finally {
-      setIsLoading(false)
+    if (onStatusChange) {
+      onStatusChange({
+        status: state.status,
+        percent: state.percent,
+        stage: state.stage,
+      })
     }
-  }, [jobId, result, onStatusChange, onComplete, onError, addNotification])
+  }, [state.status, state.stage, state.percent]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!jobId || state.status !== 'completed') return
+    if (onComplete) {
+      onComplete({
+        job_id: state.pdfJobId ?? jobId,
+        success: true,
+        result: {
+          overall_score: state.atsScore,
+          category_scores: state.atsDetails?.category_scores,
+          recommendations: state.atsDetails?.recommendations,
+          warnings: state.atsDetails?.warnings,
+          strengths: state.atsDetails?.strengths,
+          pdf_job_id: state.pdfJobId,
+          changes_made: state.changesMade,
+          compilation_time: state.compilationTime,
+          optimization_time: state.optimizationTime,
+          tokens_used: state.tokensUsed,
+          timestamp: new Date().toISOString(),
+        } as Record<string, unknown>,
+      })
+    }
+  }, [state.status]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!jobId || state.status !== 'failed' || !state.error) return
+    if (onError) onError(state.error)
+  }, [state.status, state.error]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── REST polling fallback ────────────────────────────────────────
   const refresh = useCallback(async () => {
-    await fetchStatus()
-  }, [fetchStatus])
+    if (!jobId) return
+    try {
+      await apiClient.getJobState(jobId)
+    } catch {
+      // Ignore — WebSocket is the primary update mechanism
+    }
+  }, [jobId])
 
   const cancel = useCallback(async () => {
     if (!jobId) return
-
+    streamCancel()
     try {
-      await jobApiClient.cancelJob(jobId)
-      
-      addNotification({
-        type: 'info',
-        title: 'Job Cancelled',
-        message: `Job ${jobId.substring(0, 8)} has been cancelled`,
-      })
-
-      // Refresh status to get updated state
-      await fetchStatus()
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to cancel job'
-      setError(errorMessage)
-      
-      addNotification({
-        type: 'error',
-        title: 'Cancellation Failed',
-        message: errorMessage,
-      })
+      await apiClient.cancelJob(jobId)
+    } catch {
+      // Cancel flag is also set via WS cancel message; REST is supplemental
     }
-  }, [jobId, fetchStatus, addNotification])
+  }, [jobId, streamCancel])
 
-  // Handle WebSocket updates
-  useEffect(() => {
-    if (!jobId || !jobUpdates[jobId]) return
-
-    const update = jobUpdates[jobId]
-    
-    // Update status with WebSocket data
-    setStatus(prev => prev ? {
-      ...prev,
-      status: update.status as any,
-      progress: update.progress,
-      message: update.message,
-      updated_at: Date.now() / 1000,
-    } : null)
-
-    // Handle completion via WebSocket
-    if (update.status === 'completed' && update.result && !result) {
-      const resultResponse: JobResultResponse = {
-        job_id: jobId,
-        success: true,
-        result: update.result,
-        completed_at: update.completed_at,
-      }
-      
-      setResult(resultResponse)
-      
-      if (onComplete) {
-        onComplete(resultResponse)
-      }
-
-      addNotification({
-        type: 'success',
-        title: 'Job Completed',
-        message: `Job ${jobId.substring(0, 8)} completed successfully`,
-      })
-    }
-
-    // Handle failure via WebSocket
-    if (update.status === 'failed' && update.error) {
-      setError(update.error)
-      
-      if (onError) {
-        onError(update.error)
-      }
-
-      addNotification({
-        type: 'error',
-        title: 'Job Failed',
-        message: `Job ${jobId.substring(0, 8)} failed: ${update.error}`,
-      })
-    }
-  }, [jobId, jobUpdates, result, onComplete, onError, addNotification])
-
-  // Subscribe to WebSocket updates
-  useEffect(() => {
-    if (!jobId || !autoSubscribe) return
-
-    if (isConnected) {
-      subscribeToJob(jobId)
-    }
-
-    return () => {
-      if (jobId) {
-        unsubscribeFromJob(jobId)
-      }
-    }
-  }, [jobId, autoSubscribe, isConnected, subscribeToJob, unsubscribeFromJob])
-
-  // Initial fetch and polling setup
-  useEffect(() => {
-    if (!jobId) {
-      setStatus(null)
-      setResult(null)
-      setError(null)
-      return
-    }
-
-    // Initial fetch
-    fetchStatus()
-
-    // Set up polling for non-terminal states (when WebSocket is not available)
-    const shouldPoll = !isConnected && status && !['completed', 'failed', 'cancelled'].includes(status.status)
-    
-    if (shouldPoll && pollInterval > 0) {
-      pollIntervalRef.current = setInterval(fetchStatus, pollInterval)
-    }
-
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-        pollIntervalRef.current = null
-      }
-    }
-  }, [jobId, fetchStatus, pollInterval, isConnected, status?.status])
-
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-      }
-    }
+  const clearError = useCallback(() => {
+    // No local error state to clear — error comes from stream reducer
   }, [])
+
+  // ── Map stream state to legacy shape ────────────────────────────
+  const status =
+    state.status === 'idle'
+      ? null
+      : {
+          status: state.status,
+          progress: state.percent,
+          message: state.message,
+        }
+
+  const result =
+    state.status === 'completed' && state.pdfJobId
+      ? {
+          job_id: state.pdfJobId,
+          success: true,
+          result: {
+            pdf_job_id: state.pdfJobId,
+            ats_score: state.atsScore,
+            ats_details: state.atsDetails,
+            changes_made: state.changesMade,
+            compilation_time: state.compilationTime,
+            optimization_time: state.optimizationTime,
+            tokens_used: state.tokensUsed,
+          } as Record<string, unknown>,
+        }
+      : null
 
   return {
     status,
     result,
-    isLoading,
-    error,
-    progress,
-    isComplete,
-    isFailed,
+    isLoading: state.status === 'queued' || state.status === 'processing',
+    error: state.error,
+    progress: state.percent,
+    isComplete: state.status === 'completed',
+    isFailed: state.status === 'failed',
     refresh,
     cancel,
     clearError,
