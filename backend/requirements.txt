@@ -41,6 +41,12 @@ websockets==15.0.1
 openai==1.54.4
 tiktoken==0.8.0
 
+# Database
+SQLAlchemy==2.0.41
+alembic==1.16.1
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+
 # Redis and Celery for Phase 8 - Workers & Queue System
 redis==5.0.1
 celery==5.3.4
@@ -49,3 +55,7 @@ flower==2.0.1
 # Additional dependencies for Phase 8
 aioredis==2.0.1
 kombu==5.3.4
+
+# Test dependencies
+pytest-asyncio==1.2.0
+httpx==0.27.0
