@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.database.connection import get_db
 from app.services.analytics_service import analytics_service
-from app.middleware.auth_middleware import get_user_id_required, get_user_id_optional, require_admin
+from app.middleware.auth_middleware import get_current_user_required, require_admin
 import logging
 
 logger = logging.getLogger(__name__)
@@ -94,11 +94,50 @@ async def track_event(
             detail="Internal server error"
         )
 
+@router.get("/me", response_model=UserAnalyticsResponse)
+async def get_my_analytics(
+    days: int = 30,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required)
+):
+    """Get analytics data for the current authenticated user."""
+    try:
+        from uuid import UUID
+        analytics_data = await analytics_service.get_user_analytics(
+            db=db,
+            user_id=UUID(user_id),
+            days=days
+        )
+        
+        if not analytics_data:
+            return {
+                "user_id": user_id,
+                "period_days": days,
+                "total_compilations": 0,
+                "successful_compilations": 0,
+                "success_rate": 0,
+                "total_optimizations": 0,
+                "avg_compilation_time": 0,
+                "feature_usage": {},
+                "daily_activity": {},
+                "most_active_day": None
+            }
+        
+        return UserAnalyticsResponse(**analytics_data)
+        
+    except Exception as e:
+        logger.error(f"Error getting user analytics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
 @router.get("/user/{user_id}", response_model=UserAnalyticsResponse)
 async def get_user_analytics(
     user_id: UUID,
     days: int = 30,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_user: str = Depends(require_admin)
 ):
     """Get analytics data for a specific user."""
     try:
