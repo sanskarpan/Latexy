@@ -1,0 +1,226 @@
+version: '3.9'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Latexy — Local Development Stack
+#
+# Services:
+#   postgres   — PostgreSQL 16 database (port 5432)
+#   redis      — Redis 7 (Celery broker + event bus, port 6379)
+#   minio      — MinIO S3-compatible object storage (API 9000, Console 9001)
+#   backend    — FastAPI app (port 8030)
+#   worker     — Celery worker (latex, llm, combined, ats queues)
+#   beat       — Celery beat (scheduled tasks)
+#   flower     — Celery monitoring UI (port 5555)
+#
+# Quick start:
+#   docker compose up -d postgres redis minio   # infra only (run frontend/backend locally)
+#   docker compose up -d                        # everything
+#
+# Note: PostgreSQL is exposed on host port 5433 to avoid conflict with
+#       other local Postgres instances on 5432.
+#
+# Run database migrations after first start:
+#   docker compose exec backend alembic upgrade head
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql://latexy:latexy_password@postgres:5432/latexy
+  REDIS_URL: redis://redis:6379/0
+  REDIS_CACHE_URL: redis://redis:6379/1
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/0
+  MINIO_ENDPOINT: http://minio:9000
+  MINIO_ACCESS_KEY: minioadmin
+  MINIO_SECRET_KEY: minioadmin_secret
+  MINIO_BUCKET: latexy
+  BETTER_AUTH_URL: http://localhost:5180
+  CORS_ORIGINS: '["http://localhost:5180","http://127.0.0.1:5180"]'
+  TEMP_DIR: /app/temp
+  PYTHONPATH: /app
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: latexy-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: latexy
+      POSTGRES_PASSWORD: latexy_password
+      POSTGRES_DB: latexy
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U latexy -d latexy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: latexy-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MinIO ───────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: latexy-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin_secret
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ── MinIO bucket init ────────────────────────────────────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    container_name: latexy-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin_secret &&
+        mc mb --ignore-existing local/latexy &&
+        mc anonymous set download local/latexy &&
+        echo 'MinIO bucket ready.'
+      "
+    restart: "no"
+
+  # ── FastAPI Backend ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: latexy-backend
+    restart: unless-stopped
+    ports:
+      - "8030:8030"
+    environment:
+      <<: *backend-env
+      PORT: 8030
+      DEBUG: "false"
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+      - backend_temp:/app/temp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8030/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ── Celery Worker ────────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: latexy-worker
+    restart: unless-stopped
+    command: >
+      celery -A app.core.celery_app worker
+      --loglevel=info
+      --concurrency=4
+      --queues=latex,llm,combined,ats,cleanup,email
+    environment:
+      <<: *backend-env
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+      - backend_temp:/app/temp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.core.celery_app inspect ping --timeout 5 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Celery Beat ──────────────────────────────────────────────────────────────
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: latexy-beat
+    restart: unless-stopped
+    command: celery -A app.core.celery_app beat --loglevel=info
+    environment:
+      <<: *backend-env
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+      - celery_beat_data:/app/celerybeat-schedule
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Flower (Celery monitoring) ────────────────────────────────────────────────
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: latexy-flower
+    restart: unless-stopped
+    command: celery -A app.core.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      <<: *backend-env
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  backend_temp:
+  celery_beat_data:
+
+networks:
+  default:
+    name: latexy-network

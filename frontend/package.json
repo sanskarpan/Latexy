@@ -6,6 +6,7 @@
         "dev": "next dev -p 5180",
         "build": "next build",
         "start": "next start",
+        "clean": "rm -rf .next && rm -f tsconfig.tsbuildinfo",
         "lint": "next lint",
         "type-check": "tsc --noEmit",
         "format": "prettier --write .",

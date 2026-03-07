@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { CreditCard, Calendar, AlertCircle, CheckCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 interface Subscription {
   userId: string
@@ -30,21 +29,15 @@ export default function SubscriptionManager({ onUpgrade }: SubscriptionManagerPr
   const [isCancelling, setIsCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchSubscription()
-  }, [])
-
   const fetchSubscription = async () => {
+    setIsLoading(true)
+    setError(null)
     try {
-      setIsLoading(true)
       const response = await fetch('/api/subscription/current')
-      
-      if (response.ok) {
-        const data = await response.json()
-        setSubscription(data)
-      } else if (response.status === 404) {
-        // No subscription found - user is on free plan
+      if (response.status === 404) {
         setSubscription(null)
+      } else if (response.ok) {
+        setSubscription(await response.json())
       } else {
         throw new Error('Failed to fetch subscription')
       }
@@ -55,28 +48,19 @@ export default function SubscriptionManager({ onUpgrade }: SubscriptionManagerPr
     }
   }
 
-  const handleCancelSubscription = async () => {
-    if (!subscription || !confirm('Are you sure you want to cancel your subscription?')) {
-      return
-    }
+  useEffect(() => {
+    fetchSubscription()
+  }, [])
 
+  const handleCancel = async () => {
+    if (!subscription || !confirm('Cancel this subscription?')) return
+    setIsCancelling(true)
+    setError(null)
     try {
-      setIsCancelling(true)
-      const response = await fetch('/api/subscription/cancel', {
-        method: 'POST',
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        if (result.success) {
-          await fetchSubscription() // Refresh subscription data
-          alert('Subscription cancelled successfully')
-        } else {
-          throw new Error(result.error || 'Failed to cancel subscription')
-        }
-      } else {
-        throw new Error('Failed to cancel subscription')
-      }
+      const response = await fetch('/api/subscription/cancel', { method: 'POST' })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || !payload.success) throw new Error(payload.error || 'Failed to cancel subscription')
+      await fetchSubscription()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cancel subscription')
     } finally {
@@ -84,53 +68,15 @@ export default function SubscriptionManager({ onUpgrade }: SubscriptionManagerPr
     }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'text-green-600 bg-green-100'
-      case 'cancelled':
-        return 'text-red-600 bg-red-100'
-      case 'paused':
-        return 'text-yellow-600 bg-yellow-100'
-      default:
-        return 'text-gray-600 bg-gray-100'
-    }
-  }
-
-  const formatFeatureValue = (value: number | string) => {
-    if (value === 'unlimited') return 'Unlimited'
-    if (typeof value === 'number' && value === 0) return 'None'
-    return value.toString()
-  }
-
   if (isLoading) {
-    return (
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="animate-pulse">
-          <div className="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
-          <div className="h-8 bg-gray-200 rounded w-1/2 mb-4"></div>
-          <div className="space-y-3">
-            <div className="h-4 bg-gray-200 rounded"></div>
-            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-          </div>
-        </div>
-      </div>
-    )
+    return <div className="surface-card p-4 text-slate-300">Loading subscription state...</div>
   }
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex items-center text-red-600 mb-4">
-          <AlertCircle className="w-5 h-5 mr-2" />
-          <span className="font-medium">Error loading subscription</span>
-        </div>
-        <p className="text-gray-600 mb-4">{error}</p>
-        <button
-          onClick={fetchSubscription}
-          className="bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition-colors"
-        >
+      <div className="surface-card p-4">
+        <p className="text-sm text-rose-300">{error}</p>
+        <button onClick={fetchSubscription} className="mt-3 rounded-lg border border-white/15 px-3 py-2 text-sm text-slate-100 hover:bg-white/10">
           Retry
         </button>
       </div>
@@ -139,104 +85,65 @@ export default function SubscriptionManager({ onUpgrade }: SubscriptionManagerPr
 
   if (!subscription) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="text-center">
-          <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">No Active Subscription</h3>
-          <p className="text-gray-600 mb-6">
-            You're currently on the free plan. Upgrade to unlock more features.
-          </p>
-          <button
-            onClick={onUpgrade}
-            className="bg-primary-500 text-white px-6 py-3 rounded-lg hover:bg-primary-600 transition-colors"
-          >
-            View Plans
-          </button>
-        </div>
+      <div className="surface-card p-5 text-center">
+        <h3 className="text-lg font-semibold text-white">No Active Subscription</h3>
+        <p className="mt-1 text-sm text-slate-400">You are on the free tier.</p>
+        <button onClick={onUpgrade} className="mt-4 rounded-lg bg-orange-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-orange-200">
+          Browse Plans
+        </button>
       </div>
     )
   }
 
+  const statusClass =
+    subscription.status === 'active'
+      ? 'text-emerald-200 border-emerald-300/30 bg-emerald-300/10'
+      : 'text-amber-200 border-amber-300/30 bg-amber-300/10'
+
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-semibold text-gray-900">Current Subscription</h3>
-        <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(subscription.status)}`}>
-          {subscription.status.charAt(0).toUpperCase() + subscription.status.slice(1)}
+    <div className="surface-card p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-lg font-semibold text-white">{subscription.planName}</h3>
+        <span className={`rounded-full border px-2 py-1 text-xs uppercase tracking-wider ${statusClass}`}>
+          {subscription.status}
         </span>
       </div>
 
-      <div className="mb-6">
-        <h4 className="text-xl font-bold text-gray-900 mb-2">{subscription.planName}</h4>
-        {subscription.currentPeriodEnd && (
-          <div className="flex items-center text-gray-600 text-sm">
-            <Calendar className="w-4 h-4 mr-2" />
-            <span>
-              Renews on {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
-            </span>
-          </div>
-        )}
+      <div className="mt-2 text-sm text-slate-400">
+        {subscription.currentPeriodEnd
+          ? `Renews on ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
+          : 'No renewal date'}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <div className="text-sm text-gray-600 mb-1">Compilations</div>
-          <div className="text-lg font-semibold text-gray-900">
-            {formatFeatureValue(subscription.features.compilations)}
-          </div>
-        </div>
-
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <div className="text-sm text-gray-600 mb-1">Optimizations</div>
-          <div className="text-lg font-semibold text-gray-900">
-            {formatFeatureValue(subscription.features.optimizations)}
-          </div>
-        </div>
-
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <div className="text-sm text-gray-600 mb-1">History Retention</div>
-          <div className="text-lg font-semibold text-gray-900">
-            {subscription.features.historyRetention === 0 
-              ? 'None' 
-              : `${subscription.features.historyRetention} days`}
-          </div>
-        </div>
-
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <div className="text-sm text-gray-600 mb-1">Features</div>
-          <div className="flex space-x-2">
-            {subscription.features.prioritySupport && (
-              <div title="Priority Support">
-                <CheckCircle className="w-4 h-4 text-green-500" />
-              </div>
-            )}
-            {subscription.features.apiAccess && (
-              <div title="API Access">
-                <CheckCircle className="w-4 h-4 text-blue-500" />
-              </div>
-            )}
-            {subscription.features.customModels && (
-              <div title="Custom Models">
-                <CheckCircle className="w-4 h-4 text-purple-500" />
-              </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <Metric label="Compilations" value={String(subscription.features.compilations)} />
+        <Metric label="Optimizations" value={String(subscription.features.optimizations)} />
+        <Metric
+          label="History"
+          value={subscription.features.historyRetention === 0 ? 'None' : `${subscription.features.historyRetention} days`}
+        />
+        <div className="surface-card p-3">
+          <p className="text-xs uppercase tracking-wider text-slate-500">Enabled Features</p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-200">
+            {subscription.features.prioritySupport && <Tag text="Priority" />}
+            {subscription.features.apiAccess && <Tag text="API" />}
+            {subscription.features.customModels && <Tag text="Custom Models" />}
+            {!subscription.features.prioritySupport && !subscription.features.apiAccess && !subscription.features.customModels && (
+              <span className="text-slate-500">None</span>
             )}
           </div>
         </div>
       </div>
 
-      <div className="flex space-x-3">
-        <button
-          onClick={onUpgrade}
-          className="flex-1 bg-primary-500 text-white py-2 px-4 rounded-lg hover:bg-primary-600 transition-colors"
-        >
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button onClick={onUpgrade} className="rounded-lg border border-white/15 px-3 py-2 text-sm text-slate-100 hover:bg-white/10">
           Change Plan
         </button>
-        
         {subscription.status === 'active' && subscription.subscriptionId && (
           <button
-            onClick={handleCancelSubscription}
+            onClick={handleCancel}
             disabled={isCancelling}
-            className="flex-1 bg-red-500 text-white py-2 px-4 rounded-lg hover:bg-red-600 transition-colors disabled:bg-red-300 disabled:cursor-not-allowed"
+            className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-sm text-rose-100 hover:bg-rose-300/20 disabled:opacity-60"
           >
             {isCancelling ? 'Cancelling...' : 'Cancel'}
           </button>
@@ -244,4 +151,17 @@ export default function SubscriptionManager({ onUpgrade }: SubscriptionManagerPr
       </div>
     </div>
   )
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="surface-card p-3">
+      <p className="text-xs uppercase tracking-wider text-slate-500">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-orange-200">{value}</p>
+    </div>
+  )
+}
+
+function Tag({ text }: { text: string }) {
+  return <span className="rounded-full border border-orange-200/25 bg-orange-300/10 px-2 py-1 text-orange-100">{text}</span>
 }

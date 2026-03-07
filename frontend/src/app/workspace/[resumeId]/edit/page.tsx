@@ -1,14 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
-import { Toaster, toast } from 'sonner'
-import { Save, Play, ChevronLeft, Download, FileText, Settings, History } from 'lucide-react'
+import { toast } from 'sonner'
 import { apiClient } from '@/lib/api-client'
 import { useJobStream } from '@/hooks/useJobStream'
-import LaTeXEditor, { LaTeXEditorRef } from '@/components/LaTeXEditor'
+import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -20,82 +18,95 @@ export default function ResumeEditPage() {
 
   const [title, setTitle] = useState('')
   const [latexContent, setLatexContent] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
-  
+
   const editorRef = useRef<LaTeXEditorRef>(null)
+  const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
 
-  // Fetch resume on mount
   useEffect(() => {
-    async function fetchResume() {
+    const fetchResume = async () => {
       try {
         const data = await apiClient.getResume(resumeId)
         setTitle(data.title)
         setLatexContent(data.latex_content)
         editorRef.current?.setValue(data.latex_content)
-      } catch (err) {
+      } catch {
         toast.error('Failed to load resume')
         router.push('/workspace')
       } finally {
-        setLoading(false)
+        setIsLoading(false)
       }
     }
+
     fetchResume()
   }, [resumeId, router])
 
-  // Stream handler: Direct Monaco mutation
   useEffect(() => {
-    if (stream.streamingLatex && editorRef.current) {
-      editorRef.current.setValue(stream.streamingLatex)
-      
-      if (stream.status === 'completed' || stream.status === 'failed') {
-        setLatexContent(stream.streamingLatex)
-      }
+    if (!stream.streamingLatex || !editorRef.current) return
+
+    editorRef.current.setValue(stream.streamingLatex)
+    if (stream.status === 'completed' || stream.status === 'failed') {
+      setLatexContent(stream.streamingLatex)
     }
   }, [stream.streamingLatex, stream.status])
 
-  // PDF Fetcher
   useEffect(() => {
-    let active = true
     const fetchPdf = async () => {
-      if (stream.status === 'completed' && stream.pdfJobId) {
-        try {
-          const blob = await apiClient.downloadPdf(stream.pdfJobId)
-          if (active) {
-            const url = URL.createObjectURL(blob)
-            setPdfUrl(url)
+      if (stream.status !== 'completed' || !stream.pdfJobId) {
+        if (stream.status === 'queued' || stream.status === 'processing') {
+          if (pdfUrlRef.current) {
+            URL.revokeObjectURL(pdfUrlRef.current)
+            pdfUrlRef.current = null
           }
-        } catch (err) {
-          console.error('Failed to auto-fetch PDF:', err)
-          toast.error('Failed to load PDF preview')
+          setPdfUrl(null)
         }
-      } else if (stream.status === 'queued' || stream.status === 'processing') {
-        setPdfUrl(null)
+        return
+      }
+
+      try {
+        const blob = await apiClient.downloadPdf(stream.pdfJobId)
+        const nextUrl = URL.createObjectURL(blob)
+
+        if (pdfUrlRef.current) {
+          URL.revokeObjectURL(pdfUrlRef.current)
+        }
+
+        pdfUrlRef.current = nextUrl
+        setPdfUrl(nextUrl)
+      } catch {
+        toast.error('Failed to load PDF preview')
       }
     }
+
     fetchPdf()
-    return () => {
-      active = false
-      if (pdfUrl) URL.revokeObjectURL(pdfUrl)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream.status, stream.pdfJobId])
+
+  useEffect(() => {
+    return () => {
+      if (pdfUrlRef.current) {
+        URL.revokeObjectURL(pdfUrlRef.current)
+        pdfUrlRef.current = null
+      }
+    }
+  }, [])
 
   const handleSave = async () => {
     const content = editorRef.current?.getValue() || latexContent
     setIsSaving(true)
+
     try {
-      await apiClient.updateResume(resumeId, { 
-        title, 
-        latex_content: content 
+      await apiClient.updateResume(resumeId, {
+        title,
+        latex_content: content,
       })
       setLatexContent(content)
-      toast.success('Resume saved successfully')
-    } catch (err) {
+      toast.success('Resume saved')
+    } catch {
       toast.error('Failed to save resume')
     } finally {
       setIsSaving(false)
@@ -111,17 +122,17 @@ export default function ResumeEditPage() {
 
     setIsSubmitting(true)
     try {
-      const response = await apiClient.compileLatex({ 
+      const response = await apiClient.compileLatex({
         latex_content: currentContent,
-        user_plan: 'pro' // Workspace users are authenticated
+        user_plan: 'pro',
       })
 
       if (!response.success || !response.job_id) {
-        throw new Error(response.message || 'Failed to submit job')
+        throw new Error(response.message || 'Failed to submit compile job')
       }
 
       setActiveJobId(response.job_id)
-      toast.success('Compilation started...')
+      toast.success('Compilation started')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Submission failed')
     } finally {
@@ -132,13 +143,14 @@ export default function ResumeEditPage() {
   const handleDownload = async () => {
     const downloadId = stream.pdfJobId ?? activeJobId
     if (!downloadId) return
+
     try {
       const blob = await apiClient.downloadPdf(downloadId)
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${title.replace(/\s+/g, '_').toLowerCase()}_resume.pdf`
-      a.click()
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${title.replace(/\s+/g, '_').toLowerCase()}_resume.pdf`
+      link.click()
       URL.revokeObjectURL(url)
     } catch {
       toast.error('Download failed')
@@ -147,106 +159,88 @@ export default function ResumeEditPage() {
 
   const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
-  if (loading) return (
-    <div className="flex h-screen items-center justify-center">
-      <LoadingSpinner />
-    </div>
-  )
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    )
+  }
 
   return (
-    <div className="flex h-screen flex-col bg-slate-950 overflow-hidden">
-      <Toaster richColors position="top-right" />
-      
-      {/* Editor Header */}
-      <header className="flex h-14 items-center justify-between border-b border-white/10 bg-slate-900/50 px-4">
-        <div className="flex items-center gap-4">
-          <Link href="/workspace" className="rounded-lg p-2 text-zinc-400 hover:bg-white/5 hover:text-white transition">
-            <ChevronLeft size={20} />
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-950">
+      <header className="flex h-14 items-center justify-between border-b border-white/10 bg-black/30 px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <Link href="/workspace" className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white">
+            Workspace
           </Link>
-          <div className="h-6 w-px bg-white/10" />
-          <div className="flex items-center gap-2">
-            <FileText size={18} className="text-orange-300" />
-            <input 
-              type="text" 
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="bg-transparent text-sm font-medium text-white outline-none focus:text-orange-200 transition min-w-[200px]"
-            />
-          </div>
+          <input
+            type="text"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            className="min-w-[220px] max-w-[420px] border-none bg-transparent text-sm font-semibold text-white outline-none"
+          />
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10 disabled:opacity-50"
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition hover:bg-white/10 disabled:opacity-50"
           >
-            <Save size={14} />
             {isSaving ? 'Saving...' : 'Save'}
           </button>
           <button
             onClick={runCompile}
             disabled={isSubmitting || isProcessing}
-            className="flex items-center gap-2 rounded-lg bg-orange-300 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-orange-200 disabled:opacity-50"
+            className="rounded-lg bg-orange-300 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-orange-200 disabled:opacity-50"
           >
-            <Play size={14} fill="currentColor" />
-            Run
+            {isSubmitting || isProcessing ? 'Running...' : 'Run Compile'}
           </button>
-          <div className="h-6 w-px bg-white/10" />
-          <Link href={`/workspace/${resumeId}/optimize`} className="rounded-lg p-2 text-zinc-400 hover:bg-white/5 hover:text-white transition">
-            <Settings size={18} />
+          <Link
+            href={`/workspace/${resumeId}/optimize`}
+            className="rounded-lg border border-orange-300/20 bg-orange-300/10 px-3 py-1.5 text-xs font-semibold text-orange-200 transition hover:bg-orange-300/20"
+          >
+            Optimize
           </Link>
         </div>
       </header>
 
-      {/* Editor Body */}
-      <main className="flex flex-1 overflow-hidden">
-        {/* Left: Code Editor */}
-        <div className="flex-1 border-r border-white/10">
-          <LaTeXEditor
-            ref={editorRef}
-            value={latexContent}
-            onChange={setLatexContent}
-          />
-        </div>
+      <main className="flex min-h-0 flex-1 overflow-hidden">
+        <section className="flex min-h-0 flex-1 flex-col border-r border-white/10">
+          <div className="flex h-9 items-center border-b border-white/10 px-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+            LaTeX Source
+          </div>
+          <div className="min-h-0 flex-1">
+            <LaTeXEditor ref={editorRef} value={latexContent} onChange={setLatexContent} />
+          </div>
+        </section>
 
-        {/* Right: Preview & Logs */}
-        <div className="flex w-[450px] flex-col bg-slate-900/30">
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <div className="flex h-10 items-center justify-between border-b border-white/10 px-4 bg-black/20">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Live Preview</span>
+        <aside className="flex w-[460px] min-w-[360px] flex-col bg-black/20">
+          <section className="flex min-h-0 flex-1 flex-col border-b border-white/10">
+            <div className="flex h-9 items-center justify-between border-b border-white/10 px-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+              <span>Live Preview</span>
               {stream.status === 'completed' && (
-                <button onClick={handleDownload} className="text-zinc-400 hover:text-orange-200 transition">
-                  <Download size={14} />
+                <button onClick={handleDownload} className="text-[10px] text-zinc-300 transition hover:text-white">
+                  Download PDF
                 </button>
               )}
             </div>
-            <div className="flex-1 bg-black/40">
-              <PDFPreview 
-                pdfUrl={pdfUrl} 
-                isLoading={isProcessing}
-                onDownload={handleDownload}
-              />
+            <div className="min-h-0 flex-1 bg-black/35">
+              <PDFPreview pdfUrl={pdfUrl} isLoading={isProcessing} onDownload={handleDownload} />
             </div>
-          </div>
+          </section>
 
-          <div className="h-[200px] border-t border-white/10 flex flex-col overflow-hidden bg-black/20">
-            <div className="flex h-8 items-center justify-between px-4 border-b border-white/5">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Compilation Logs</span>
-              <div className="flex items-center gap-2">
-                <span className={`h-1.5 w-1.5 rounded-full ${isProcessing ? 'bg-orange-400 animate-pulse' : 'bg-zinc-600'}`} />
-                <span className="text-[10px] text-zinc-500 capitalize">{stream.status}</span>
-              </div>
+          <section className="flex h-[220px] min-h-0 flex-col">
+            <div className="flex h-9 items-center justify-between border-b border-white/10 px-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+              <span>Compilation Logs</span>
+              <span className="capitalize">{stream.status}</span>
             </div>
-            <div className="flex-1 overflow-hidden">
-              <LogViewer 
-                lines={stream.logLines} 
-                maxHeight="100%" 
-                className="font-mono text-[10px] p-2" 
-              />
+            <div className="min-h-0 flex-1 p-2">
+              <LogViewer lines={stream.logLines} maxHeight="100%" className="h-full text-[10px]" />
             </div>
-          </div>
-        </div>
+          </section>
+        </aside>
       </main>
     </div>
   )

@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * AuthSync — keeps apiClient's auth token in sync with the Better Auth session.
+ * AuthSync - keeps apiClient's auth token in sync with the Better Auth session.
  *
  * Mount once in the root layout (inside a Client Component boundary).
  * Whenever the Better Auth session changes (login, logout, token refresh)

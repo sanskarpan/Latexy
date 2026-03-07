@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Toaster, toast } from 'sonner'
+import { toast } from 'sonner'
 import PricingCard from '@/components/billing/PricingCard'
 import SubscriptionManager from '@/components/billing/SubscriptionManager'
 import { apiClient } from '@/lib/api-client'
@@ -76,7 +76,6 @@ export default function BillingPage() {
 
   return (
     <div className="content-shell">
-      <Toaster richColors position="top-right" />
       <div className="space-y-6">
         <div className="surface-panel edge-highlight p-6 sm:p-8">
           <h1 className="text-3xl font-bold text-white tracking-tight">Billing & Subscription</h1>

@@ -1,4 +1,3 @@
-import MarketingFrame from '@/components/marketing/MarketingFrame'
 import { MotionItem, MotionReveal, MotionStagger } from '@/components/marketing/MotionPrimitives'
 
 const faqs = [
@@ -22,7 +21,7 @@ const faqs = [
 
 export default function FAQPage() {
   return (
-    <MarketingFrame>
+    <div className="content-shell py-12">
       <MotionReveal>
         <p className="overline">FAQ</p>
         <h1 className="section-title mt-2 text-white">Clear answers for product, workflow, and reliability.</h1>
@@ -38,6 +37,6 @@ export default function FAQPage() {
           </MotionItem>
         ))}
       </MotionStagger>
-    </MarketingFrame>
+    </div>
   )
 }

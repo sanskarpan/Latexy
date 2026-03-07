@@ -1,5 +1,5 @@
 /**
- * useJobStream — accumulates all typed WebSocket events into UI state.
+ * useJobStream - accumulates all typed WebSocket events into UI state.
  *
  * Uses useReducer so every event type has a pure, testable update path.
  * Subscribe on mount, unsubscribe on unmount or jobId change.
@@ -38,7 +38,7 @@ export interface JobStreamState {
   stage: string
   percent: number
   message: string
-  /** Accumulated LLM token stream — update Monaco model directly */
+  /** Accumulated LLM token stream - update Monaco model directly */
   streamingLatex: string
   logLines: LogLine[]
   atsScore: number | null
@@ -98,7 +98,7 @@ function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStre
       }
 
     case 'llm.token':
-      // Append token — caller updates Monaco model in a useEffect
+      // Append token - caller updates Monaco model in a useEffect
       return { ...state, streamingLatex: state.streamingLatex + event.token }
 
     case 'llm.complete':

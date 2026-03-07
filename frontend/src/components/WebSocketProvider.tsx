@@ -1,10 +1,10 @@
 'use client'
 
 /**
- * WebSocketProvider — wraps wsClient in a React context.
+ * WebSocketProvider - wraps wsClient in a React context.
  *
  * Exposes:
- *   connected:    boolean — current WebSocket connection state
+ *   connected:    boolean - current WebSocket connection state
  *   subscribe:    (jobId, lastEventId?) => void
  *   unsubscribe:  (jobId) => void
  *   cancelJob:    (jobId) => void
@@ -67,7 +67,7 @@ export const WSProvider: React.FC<WSProviderProps> = ({ children }) => {
     return () => {
       wsClient.off('connected', onConnected)
       wsClient.off('disconnected', onDisconnected)
-      // Do NOT call wsClient.disconnect() here — the singleton should
+      // Do NOT call wsClient.disconnect() here - the singleton should
       // outlive any single provider mount/unmount cycle.
     }
   }, [])
@@ -102,7 +102,7 @@ export function useWS(): WSContextValue {
   return useContext(WSContext)
 }
 
-// Legacy alias — keeps existing useWebSocket() callers working
+// Legacy alias - keeps existing useWebSocket() callers working
 export const useWebSocket = useWS
 
 // Named alias so layout.tsx can do: import { WebSocketProvider } from '@/components/WebSocketProvider'
