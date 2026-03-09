@@ -9,7 +9,7 @@ queries needed for our 1K-10K user scale).
 import hashlib
 import math
 import re
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from ..core.config import settings
 from ..core.logging import get_logger
@@ -70,9 +70,10 @@ class EmbeddingService:
         Compute embedding for a resume and persist to DB.
         Returns the embedding vector.
         """
-        from ..services.ats_scoring_service import ats_scoring_service
-        from ..database.models import Resume
         from sqlalchemy import update
+
+        from ..database.models import Resume
+        from ..services.ats_scoring_service import ats_scoring_service
 
         try:
             text = ats_scoring_service._extract_text_from_latex(latex_content)
