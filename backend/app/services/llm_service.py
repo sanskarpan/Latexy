@@ -31,7 +31,22 @@ class LLMService:
         self.client = None
         if settings.OPENAI_API_KEY:
             self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        self.encoding = tiktoken.encoding_for_model("gpt-4")
+        self.encoding = self._load_tokenizer()
+
+    def _load_tokenizer(self):
+        """Load tokenizer with an offline-safe fallback for local/test environments."""
+        try:
+            return tiktoken.encoding_for_model("gpt-4")
+        except Exception as exc:
+            logger.warning(f"Failed to load tiktoken model encoding, using fallback tokenizer: {exc}")
+
+            class _FallbackEncoding:
+                @staticmethod
+                def encode(text: str):
+                    # Approximate tokenization fallback (whitespace split).
+                    return text.split()
+
+            return _FallbackEncoding()
     
     def is_available(self) -> bool:
         """Check if LLM service is available."""
@@ -41,8 +56,10 @@ class LLMService:
         """Count tokens in text."""
         return len(self.encoding.encode(text))
     
-    def extract_keywords_from_job_description(self, job_description: str) -> List[str]:
+    def extract_keywords_from_job_description(self, job_description: Optional[str]) -> List[str]:
         """Extract relevant keywords from job description."""
+        if not job_description:
+            return []
         # Simple keyword extraction - can be enhanced with NLP libraries
         text = job_description.lower()
         
@@ -224,38 +241,49 @@ class LLMService:
             )
     
     def _create_optimization_prompt(
-        self, 
-        latex_content: str, 
-        job_description: str, 
+        self,
+        latex_content: str,
+        job_description: Optional[str],
         keywords: List[str],
         optimization_level: str
     ) -> str:
         """Create optimization prompt for LLM."""
-        
+
         level_instructions = {
-            "conservative": "Make minimal changes, only adding missing keywords where they naturally fit.",
+            "conservative": "Make minimal changes, only fixing obvious issues and improving clarity where clearly beneficial.",
             "balanced": "Make moderate improvements to content and structure while maintaining the original style.",
-            "aggressive": "Significantly restructure and enhance the resume to maximize ATS compatibility and job relevance."
+            "aggressive": "Significantly restructure and enhance the resume to maximize ATS compatibility and professional impact."
         }
-        
-        return f"""
-Please optimize the following LaTeX resume for the given job description. 
 
-OPTIMIZATION LEVEL: {optimization_level}
-INSTRUCTIONS: {level_instructions.get(optimization_level, level_instructions['balanced'])}
-
-JOB DESCRIPTION:
+        if job_description:
+            jd_section = f"""JOB DESCRIPTION (optimize specifically for this role):
 {job_description}
-
-CURRENT LATEX RESUME:
-{latex_content}
 
 KEY REQUIREMENTS:
 1. Maintain valid LaTeX syntax
 2. Keep the professional formatting and structure
-3. Incorporate relevant keywords naturally: {', '.join(keywords[:20])}
-4. Improve ATS compatibility
-5. Enhance content relevance to the job description
+3. Incorporate relevant keywords naturally: {', '.join(keywords[:20]) if keywords else 'none extracted'}
+4. Improve ATS compatibility for this specific role
+5. Enhance content relevance to the job description"""
+        else:
+            jd_section = """No job description provided — perform general optimization.
+
+KEY REQUIREMENTS:
+1. Maintain valid LaTeX syntax
+2. Improve clarity, impact, and professional tone of bullet points
+3. Strengthen action verbs and quantify achievements where possible
+4. Improve ATS compatibility for general job applications
+5. Ensure consistent formatting and structure throughout"""
+
+        return f"""Please optimize the following LaTeX resume.
+
+OPTIMIZATION LEVEL: {optimization_level}
+INSTRUCTIONS: {level_instructions.get(optimization_level, level_instructions['balanced'])}
+
+{jd_section}
+
+CURRENT LATEX RESUME:
+{latex_content}
 
 Please respond with a JSON object containing:
 {{
