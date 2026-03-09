@@ -245,9 +245,11 @@ class LLMService:
         latex_content: str,
         job_description: Optional[str],
         keywords: List[str],
-        optimization_level: str
+        optimization_level: str,
+        target_sections: Optional[List[str]] = None,
+        custom_instructions: Optional[str] = None,
     ) -> str:
-        """Create optimization prompt for LLM."""
+        """Create optimization prompt for LLM using delimiter output format."""
 
         level_instructions = {
             "conservative": "Make minimal changes, only fixing obvious issues and improving clarity where clearly beneficial.",
@@ -275,33 +277,37 @@ KEY REQUIREMENTS:
 4. Improve ATS compatibility for general job applications
 5. Ensure consistent formatting and structure throughout"""
 
+        section_constraint = ""
+        if target_sections:
+            section_list = ", ".join(target_sections)
+            section_constraint = (
+                f"\n\nIMPORTANT: Only modify these sections: {section_list}. "
+                "Keep ALL other sections byte-for-byte identical to the original."
+            )
+
+        user_constraint = ""
+        if custom_instructions:
+            user_constraint = f"\n\nUser instructions: {custom_instructions}"
+
         return f"""Please optimize the following LaTeX resume.
 
 OPTIMIZATION LEVEL: {optimization_level}
 INSTRUCTIONS: {level_instructions.get(optimization_level, level_instructions['balanced'])}
 
-{jd_section}
+{jd_section}{section_constraint}{user_constraint}
 
 CURRENT LATEX RESUME:
 {latex_content}
 
-Please respond with a JSON object containing:
-{{
-    "optimized_latex": "The optimized LaTeX code",
-    "changes": [
-        {{
-            "section": "section name",
-            "change_type": "added|modified|removed",
-            "original_text": "original text (if applicable)",
-            "new_text": "new text (if applicable)",
-            "reason": "explanation for the change"
-        }}
-    ],
-    "warnings": ["any warnings or limitations"],
-    "summary": "Brief summary of optimizations made"
-}}
-
 IMPORTANT: Ensure the optimized LaTeX is complete and compilable. Do not truncate sections or leave incomplete commands.
+
+Respond in this exact format with no other text outside these markers:
+<<<LATEX>>>
+[Complete optimized LaTeX document here]
+<<<END_LATEX>>>
+<<<CHANGES>>>
+[JSON array: [{{"section":"...","change_type":"added|modified|removed","reason":"..."}}]]
+<<<END_CHANGES>>>
 """
     
     def _parse_changes(self, changes_data: List[Dict[str, Any]]) -> List[OptimizationChange]:
