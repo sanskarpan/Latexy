@@ -65,15 +65,15 @@ celery_app.conf.update(
     # Beat configuration (for scheduled tasks)
     beat_schedule={
         "cleanup-expired-jobs": {
-            "task": "app.workers.cleanup_worker.cleanup_expired_jobs",
+            "task": "app.workers.cleanup_worker.cleanup_expired_jobs_task",
             "schedule": 3600.0,  # Run every hour
         },
         "cleanup-temp-files": {
-            "task": "app.workers.cleanup_worker.cleanup_temp_files",
+            "task": "app.workers.cleanup_worker.cleanup_temp_files_task",
             "schedule": 1800.0,  # Run every 30 minutes
         },
         "health-check": {
-            "task": "app.workers.cleanup_worker.health_check",
+            "task": "app.workers.cleanup_worker.health_check_task",
             "schedule": 300.0,  # Run every 5 minutes
         },
     },
