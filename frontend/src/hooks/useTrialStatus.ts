@@ -28,7 +28,8 @@ export function useTrialStatus() {
     try {
       const res = await apiClient.getTrialStatus(fp)
       const used = res.usageCount
-      const total = DEFAULT_TOTAL
+      // Prefer server-supplied trialLimit (test users get 100), fall back to 3
+      const total = (res as { trialLimit?: number }).trialLimit ?? DEFAULT_TOTAL
       setStatus({
         used,
         total,
@@ -37,13 +38,13 @@ export function useTrialStatus() {
         canRun: !res.blocked && used < total,
         fingerprint: fp,
       })
-      // Cache for offline/immediate checks
+      // Cache for offline/immediate checks (include total so test users retain correct limit)
       localStorage.setItem('trial_usage', JSON.stringify({ used, total }))
     } catch (err) {
       // Fallback to cache
       const cached = localStorage.getItem('trial_usage')
       if (cached) {
-        const { used, total } = JSON.parse(cached)
+        const { used, total = DEFAULT_TOTAL } = JSON.parse(cached)
         setStatus((prev) => ({
           ...prev,
           used,
