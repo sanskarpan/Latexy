@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 class OptimizationRequest(BaseModel):
     """Request model for resume optimization."""
     latex_content: str = Field(..., description="Original LaTeX resume content")
-    job_description: str = Field(..., description="Target job description")
+    job_description: Optional[str] = Field(None, description="Target job description (optional)")
     optimization_level: str = Field(
         default="balanced", 
         description="Optimization level: conservative, balanced, or aggressive"
@@ -47,7 +47,7 @@ class OptimizationResponse(BaseModel):
     success: bool
     optimized_latex: Optional[str] = None
     original_latex: str
-    job_description: str
+    job_description: Optional[str] = None
     
     # Analysis results
     keywords_found: List[KeywordMatch] = Field(default_factory=list)
