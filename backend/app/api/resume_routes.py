@@ -1,15 +1,16 @@
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, func
 
 from ..core.config import settings
 from ..database.connection import get_db
-from ..database.models import Resume, Optimization
+from ..database.models import Optimization, Resume
 from ..middleware.auth_middleware import get_current_user_required
-from pydantic import BaseModel, Field
-from datetime import datetime
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
@@ -56,12 +57,12 @@ async def get_resume_stats(
         select(func.count(Resume.id)).where(Resume.user_id == user_id)
     )
     templates = await db.execute(
-        select(func.count(Resume.id)).where(Resume.user_id == user_id, Resume.is_template == True)
+        select(func.count(Resume.id)).where(Resume.user_id == user_id, Resume.is_template)
     )
     latest = await db.execute(
         select(func.max(Resume.updated_at)).where(Resume.user_id == user_id)
     )
-    
+
     return {
         "total_resumes": total.scalar() or 0,
         "total_templates": templates.scalar() or 0,
@@ -142,7 +143,7 @@ async def update_resume(
     update_data = resume_in.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(resume, key, value)
-    
+
     resume.updated_at = datetime.now()
     await db.commit()
     await db.refresh(resume)
