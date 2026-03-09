@@ -71,7 +71,8 @@ class TrialService:
         self,
         db: AsyncSession,
         device_fingerprint: str,
-        ip_address: Optional[str] = None
+        ip_address: Optional[str] = None,
+        limit: int = TRIAL_LIMIT,
     ) -> Dict[str, Any]:
         """Check if device/IP is within rate limits."""
         try:
