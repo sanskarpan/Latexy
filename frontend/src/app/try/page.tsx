@@ -113,11 +113,6 @@ export default function TryPage() {
       toast.error('Trial limit reached. Upgrade to continue.')
       return
     }
-    if (mode === 'combined' && !jobDescription.trim()) {
-      toast.error('Job description is required for optimize + compile')
-      return
-    }
-
     setIsSubmitting(true)
     try {
       await apiClient.trackUsage(trialStatus.fingerprint, mode)
@@ -234,11 +229,14 @@ export default function TryPage() {
               </div>
 
               <div className="h-36 flex-shrink-0 flex flex-col">
-                 <label className="mb-2 block text-xs uppercase tracking-[0.22em] text-slate-400">Job Description Context</label>
+                 <div className="mb-2 flex items-center justify-between">
+                   <label className="block text-xs uppercase tracking-[0.22em] text-slate-400">Job Description</label>
+                   <span className="text-[10px] text-slate-600">optional</span>
+                 </div>
                  <textarea
                    value={jobDescription}
                    onChange={(e) => setJobDescription(e.target.value)}
-                   placeholder="Paste target job description for context-aware optimization"
+                   placeholder="Paste a job description to tailor the optimization. Leave blank for general improvements."
                    className="flex-1 w-full rounded-xl border border-white/10 bg-slate-950/70 p-4 text-sm text-slate-100 outline-none transition focus:border-orange-300/50 resize-none scrollbar-subtle"
                  />
               </div>
