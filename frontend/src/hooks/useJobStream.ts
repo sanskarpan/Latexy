@@ -1,20 +1,10 @@
 /**
  * useJobStream - accumulates all typed WebSocket events into UI state.
- *
- * Uses useReducer so every event type has a pure, testable update path.
- * Subscribe on mount, unsubscribe on unmount or jobId change.
- *
- * Critical performance note:
- * - llm.token events append to streamingLatex in the reducer (string concat).
- * - Callers should use streamingLatex for direct Monaco model mutation
- *   (editorRef.current.getModel().setValue(streamingLatex)) NOT React state
- *   per token.  useJobStream only triggers a re-render when the field
- *   actually changes, but even so, callers should debounce if needed.
  */
 
 import { useEffect, useReducer, useCallback } from 'react'
 import { wsClient } from '@/lib/ws-client'
-import type { AnyEvent } from '@/lib/event-types'
+import type { AnyEvent, ATSDeepAnalysis } from '@/lib/event-types'
 
 // ------------------------------------------------------------------ //
 //  State shape                                                        //
@@ -43,6 +33,7 @@ export interface JobStreamState {
   logLines: LogLine[]
   atsScore: number | null
   atsDetails: ATSDetails | null
+  deepAnalysis: ATSDeepAnalysis | null
   changesMade: Array<{ section: string; change_type: string; reason: string }>
   pdfJobId: string | null
   compilationTime: number | null
@@ -62,6 +53,7 @@ const initialState: JobStreamState = {
   logLines: [],
   atsScore: null,
   atsDetails: null,
+  deepAnalysis: null,
   changesMade: [],
   pdfJobId: null,
   compilationTime: null,
@@ -98,7 +90,6 @@ function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStre
       }
 
     case 'llm.token':
-      // Append token - caller updates Monaco model in a useEffect
       return { ...state, streamingLatex: state.streamingLatex + event.token }
 
     case 'llm.complete':
@@ -135,6 +126,20 @@ function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStre
         errorCode: null,
       }
 
+    case 'ats.deep_complete':
+      return {
+        ...state,
+        deepAnalysis: {
+          overall_score: event.overall_score,
+          overall_feedback: event.overall_feedback,
+          sections: event.sections,
+          ats_compatibility: event.ats_compatibility,
+          job_match: event.job_match,
+          tokens_used: event.tokens_used,
+          analysis_time: event.analysis_time,
+        },
+      }
+
     case 'job.failed':
       return {
         ...state,
@@ -143,7 +148,6 @@ function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStre
         error: event.error_message,
         errorCode: event.error_code,
         retryable: event.retryable,
-        // Fix 3: preserve LLM work when compilation fails
         streamingLatex: event.optimized_latex ?? state.streamingLatex,
         changesMade: event.changes_made ?? state.changesMade,
       }
@@ -169,7 +173,6 @@ export interface UseJobStreamResult {
 export function useJobStream(jobId: string | null): UseJobStreamResult {
   const [state, dispatch] = useReducer(jobStreamReducer, initialState)
 
-  // Subscribe / unsubscribe when jobId changes
   useEffect(() => {
     if (!jobId) return
 
