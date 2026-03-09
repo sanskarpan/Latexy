@@ -1,11 +1,11 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, func
 
 from ..database.connection import get_db
-from ..database.models import Resume, User
+from ..database.models import Resume, Optimization
 from ..middleware.auth_middleware import get_current_user_required
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -149,3 +149,122 @@ async def delete_resume(
         raise HTTPException(status_code=404, detail="Resume not found")
     await db.commit()
     return None
+
+
+# ── Optimization history ──────────────────────────────────────────────────
+
+class RecordOptimizationRequest(BaseModel):
+    original_latex: str
+    optimized_latex: str
+    changes_made: Optional[List[Dict[str, Any]]] = None
+    ats_score: Optional[float] = None
+    tokens_used: Optional[int] = None
+    job_description: Optional[str] = None
+
+
+class OptimizationHistoryEntry(BaseModel):
+    id: str
+    created_at: datetime
+    ats_score: Optional[float]
+    changes_count: int
+    tokens_used: Optional[int]
+
+
+class RestoreOptimizationResponse(BaseModel):
+    success: bool
+    latex_content: str
+
+
+@router.post("/{resume_id}/record-optimization", status_code=status.HTTP_201_CREATED)
+async def record_optimization(
+    resume_id: str,
+    body: RecordOptimizationRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Save an optimization record after a successful AI job."""
+    result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    opt = Optimization(
+        id=str(uuid4()),
+        user_id=user_id,
+        resume_id=resume_id,
+        original_latex=body.original_latex,
+        optimized_latex=body.optimized_latex,
+        job_description=body.job_description or "",
+        provider="openai",
+        model="gpt-4o",
+        tokens_used=body.tokens_used,
+        ats_score=body.ats_score,
+        changes_made=body.changes_made or [],
+    )
+    db.add(opt)
+    await db.commit()
+    return {"success": True, "id": opt.id}
+
+
+@router.get("/{resume_id}/optimization-history", response_model=List[OptimizationHistoryEntry])
+async def get_optimization_history(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Return the 20 most recent optimization records for a resume."""
+    result = await db.execute(
+        select(Optimization)
+        .where(Optimization.resume_id == resume_id, Optimization.user_id == user_id)
+        .order_by(Optimization.created_at.desc())
+        .limit(20)
+    )
+    rows = result.scalars().all()
+    return [
+        {
+            "id": r.id,
+            "created_at": r.created_at,
+            "ats_score": r.ats_score if isinstance(r.ats_score, float) else None,
+            "changes_count": len(r.changes_made) if isinstance(r.changes_made, list) else 0,
+            "tokens_used": r.tokens_used,
+        }
+        for r in rows
+    ]
+
+
+@router.post(
+    "/{resume_id}/restore-optimization/{opt_id}",
+    response_model=RestoreOptimizationResponse,
+)
+async def restore_optimization(
+    resume_id: str,
+    opt_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Restore a resume to a previously optimized version."""
+    # Verify ownership of resume
+    res_result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
+    )
+    resume = res_result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    # Fetch the optimization record
+    opt_result = await db.execute(
+        select(Optimization).where(
+            Optimization.id == opt_id,
+            Optimization.resume_id == resume_id,
+            Optimization.user_id == user_id,
+        )
+    )
+    opt = opt_result.scalar_one_or_none()
+    if not opt:
+        raise HTTPException(status_code=404, detail="Optimization record not found")
+
+    resume.latex_content = opt.optimized_latex
+    resume.updated_at = datetime.now()
+    await db.commit()
+    return {"success": True, "latex_content": opt.optimized_latex}

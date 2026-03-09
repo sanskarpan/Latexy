@@ -6,21 +6,23 @@ version: '3.9'
 # Services:
 #   postgres   — PostgreSQL 16 database (port 5432)
 #   redis      — Redis 7 (Celery broker + event bus, port 6379)
-#   minio      — MinIO S3-compatible object storage (API 9000, Console 9001)
-#   backend    — FastAPI app (port 8030)
+#   minio      — MinIO (S3 API internal-only, Console → localhost:9091)
+#   backend    — FastAPI app → localhost:8030 (auto-runs migrations)
 #   worker     — Celery worker (latex, llm, combined, ats queues)
 #   beat       — Celery beat (scheduled tasks)
-#   flower     — Celery monitoring UI (port 5555)
+#   flower     — Celery monitoring UI → localhost:5555
+#   frontend   — Next.js dev server → localhost:5180
 #
-# Quick start:
-#   docker compose up -d postgres redis minio   # infra only (run frontend/backend locally)
-#   docker compose up -d                        # everything
+# Quick start (everything):
+#   docker compose up --build
 #
-# Note: PostgreSQL is exposed on host port 5433 to avoid conflict with
-#       other local Postgres instances on 5432.
-#
-# Run database migrations after first start:
-#   docker compose exec backend alembic upgrade head
+# Host port map:
+#   5180  → Next.js frontend
+#   8030  → FastAPI backend + WebSocket
+#   5434  → PostgreSQL (for DB clients like TablePlus)
+#   5555  → Flower (Celery monitor)
+#   9091  → MinIO Web Console
+#   Redis + MinIO S3 API are internal-only (no host binding)
 # ─────────────────────────────────────────────────────────────────────────────
 
 x-backend-env: &backend-env
@@ -45,7 +47,7 @@ services:
     container_name: latexy-postgres
     restart: unless-stopped
     ports:
-      - "5433:5432"
+      - "5434:5432"
     environment:
       POSTGRES_USER: latexy
       POSTGRES_PASSWORD: latexy_password
@@ -64,8 +66,10 @@ services:
     image: redis:7-alpine
     container_name: latexy-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # No host port — services access via Docker network (redis:6379)
+    # Uncomment below if you need redis-cli from your Mac:
+    # ports:
+    #   - "6380:6379"
     command: >
       redis-server
       --appendonly yes
@@ -85,8 +89,7 @@ services:
     container_name: latexy-minio
     restart: unless-stopped
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console
+      - "9091:9001"   # Web console at localhost:9091 (S3 API stays internal)
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin_secret
@@ -123,6 +126,9 @@ services:
       dockerfile: Dockerfile
     container_name: latexy-backend
     restart: unless-stopped
+    # Run migrations then start the server
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8030 --log-level info --reload --reload-dir /app/app"
     ports:
       - "8030:8030"
     environment:
@@ -144,7 +150,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
 
   # ── Celery Worker ────────────────────────────────────────────────────────────
   worker:
@@ -154,6 +160,7 @@ services:
     container_name: latexy-worker
     restart: unless-stopped
     command: >
+      watchmedo auto-restart --directory=/app/app --pattern="*.py" --recursive --
       celery -A app.core.celery_app worker
       --loglevel=info
       --concurrency=4
@@ -184,16 +191,48 @@ services:
       dockerfile: Dockerfile
     container_name: latexy-beat
     restart: unless-stopped
-    command: celery -A app.core.celery_app beat --loglevel=info
+    command: >
+      watchmedo auto-restart --directory=/app/app --pattern="*.py" --recursive --
+      celery -A app.core.celery_app beat --loglevel=info --schedule=/var/lib/celery/beat.db
     environment:
       <<: *backend-env
     env_file:
       - .env
     volumes:
       - ./backend:/app
-      - celery_beat_data:/app/celerybeat-schedule
+      - celery_beat_data:/var/lib/celery
     depends_on:
       redis:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # ── Next.js Frontend ─────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: latexy-frontend
+    restart: unless-stopped
+    ports:
+      - "5180:5180"
+    environment:
+      # Server-side: Better Auth pg pool connects to the local postgres container
+      DATABASE_URL: postgresql://latexy:latexy_password@postgres:5432/latexy
+      BETTER_AUTH_URL: http://localhost:5180
+      # Client-side defaults in next.config.js already point to localhost:8030
+      # Secrets (BETTER_AUTH_SECRET, JWT_SECRET_KEY, OPENAI_API_KEY, etc.)
+      # come from the env_file below
+    env_file:
+      - .env
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules   # keep container's installed node_modules
+      - /app/.next          # keep container's build cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
         condition: service_healthy
 
   # ── Flower (Celery monitoring) ────────────────────────────────────────────────
@@ -213,6 +252,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      disable: true
 
 volumes:
   postgres_data:

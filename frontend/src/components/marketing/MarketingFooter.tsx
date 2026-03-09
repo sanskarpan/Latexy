@@ -1,6 +1,13 @@
+'use client'
+
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 export default function MarketingFooter() {
+  const pathname = usePathname()
+  const hidden = /^\/workspace\/[^/]+\/(edit|optimize)$/.test(pathname)
+  if (hidden) return null
+
   return (
     <footer className="mt-6 surface-panel edge-highlight px-5 py-6 sm:px-8">
       <div className="flex flex-wrap items-center justify-between gap-4">

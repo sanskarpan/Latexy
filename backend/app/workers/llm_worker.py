@@ -32,7 +32,7 @@ logger = get_logger(__name__)
 def optimize_resume_task(
     self,
     latex_content: str,
-    job_description: str,
+    job_description: Optional[str] = None,
     job_id: Optional[str] = None,
     user_id: Optional[str] = None,
     user_plan: str = "free",

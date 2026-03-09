@@ -47,6 +47,11 @@ alembic==1.16.1
 asyncpg==0.30.0
 psycopg2-binary==2.9.10
 
+setuptools>=70.0.0
+watchdog==4.0.1
+PyJWT==2.8.0
+razorpay==1.4.2
+
 # Redis and Celery for Phase 8 - Workers & Queue System
 redis==5.0.1
 celery==5.3.4

@@ -54,6 +54,8 @@ class JobSubmissionRequest(BaseModel):
     user_plan: str = "free"
     device_fingerprint: Optional[str] = None
     industry: Optional[str] = None
+    target_sections: Optional[List[str]] = None
+    custom_instructions: Optional[str] = None
     metadata: Optional[Dict] = None
 
 
@@ -211,10 +213,10 @@ async def submit_job(
             )
 
         elif request.job_type == "llm_optimization":
-            if not request.latex_content or not request.job_description:
+            if not request.latex_content:
                 raise HTTPException(
                     status_code=400,
-                    detail="latex_content and job_description are required for llm_optimization jobs",
+                    detail="latex_content is required for llm_optimization jobs",
                 )
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
             submit_resume_optimization(
@@ -228,10 +230,10 @@ async def submit_job(
             )
 
         elif request.job_type == "combined":
-            if not request.latex_content or not request.job_description:
+            if not request.latex_content:
                 raise HTTPException(
                     status_code=400,
-                    detail="latex_content and job_description are required for combined jobs",
+                    detail="latex_content is required for combined jobs",
                 )
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
             submit_optimize_and_compile(
@@ -242,6 +244,8 @@ async def submit_job(
                 user_plan=request.user_plan,
                 optimization_level=request.optimization_level,
                 device_fingerprint=request.device_fingerprint,
+                target_sections=request.target_sections,
+                custom_instructions=request.custom_instructions,
                 metadata=extra_meta,
             )
 

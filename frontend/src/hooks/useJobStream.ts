@@ -143,6 +143,9 @@ function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStre
         error: event.error_message,
         errorCode: event.error_code,
         retryable: event.retryable,
+        // Fix 3: preserve LLM work when compilation fails
+        streamingLatex: event.optimized_latex ?? state.streamingLatex,
+        changesMade: event.changes_made ?? state.changesMade,
       }
 
     case 'job.cancelled':

@@ -85,11 +85,6 @@ export default function OptimizationSuitePage() {
   }, [])
 
   const runOptimization = async () => {
-    if (!jobDescription.trim()) {
-      toast.error('Please provide a job description')
-      return
-    }
-
     const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
     setIsSubmitting(true)
     setPdfUrl(null)
@@ -137,7 +132,7 @@ export default function OptimizationSuitePage() {
         <div>
           <p className="overline">Optimization</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">Targeted Optimization</h1>
-          <p className="mt-1 text-sm text-zinc-400">Tune "{resume?.title}" against a specific job description.</p>
+          <p className="mt-1 text-sm text-zinc-400">Optimize "{resume?.title}" — add a job description to tailor it to a specific role, or leave blank for general improvements.</p>
         </div>
         <div className="flex gap-2">
           <Link href={`/workspace/${resumeId}/edit`} className="btn-ghost px-4 py-2 text-xs">
@@ -152,20 +147,23 @@ export default function OptimizationSuitePage() {
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
         <aside className="space-y-6">
           <section className="surface-panel edge-highlight p-5">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Job Context</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Job Description</h2>
+              <span className="text-[10px] text-zinc-600">optional</span>
+            </div>
             <textarea
               value={jobDescription}
               onChange={(event) => setJobDescription(event.target.value)}
-              placeholder="Paste the target job description..."
+              placeholder="Paste a job description to tailor the optimization to a specific role. Leave blank for general improvements."
               disabled={isProcessing}
-              className="scrollbar-subtle mt-4 h-64 w-full resize-none rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-zinc-100 outline-none transition focus:border-orange-300/50"
+              className="scrollbar-subtle mt-3 h-64 w-full resize-none rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-zinc-100 outline-none transition focus:border-orange-300/50"
             />
             <button
               onClick={runOptimization}
-              disabled={isProcessing || isSubmitting || !jobDescription.trim()}
+              disabled={isProcessing || isSubmitting}
               className="btn-accent mt-4 w-full py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isProcessing || isSubmitting ? 'Processing...' : 'Optimize for this Role'}
+              {isProcessing || isSubmitting ? 'Processing...' : jobDescription.trim() ? 'Optimize for this Role' : 'Optimize Resume'}
             </button>
           </section>
 
@@ -236,8 +234,39 @@ export default function OptimizationSuitePage() {
                 <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
                   <h2 className="text-xl font-semibold text-white">ATS Analysis</h2>
                   <div className="flex gap-2">
-                    <button className="btn-ghost px-4 py-2 text-xs">Save as New Version</button>
-                    <button className="btn-accent px-4 py-2 text-xs">Finalize and Export</button>
+                    <button
+                      className="btn-ghost px-4 py-2 text-xs"
+                      onClick={async () => {
+                        try {
+                          const latex = editorRef.current?.getValue() || stream.streamingLatex || ''
+                          await apiClient.updateResume(resumeId, { latex_content: latex })
+                          toast.success('Saved to resume')
+                        } catch {
+                          toast.error('Failed to save')
+                        }
+                      }}
+                    >
+                      Save as New Version
+                    </button>
+                    <button
+                      className="btn-accent px-4 py-2 text-xs"
+                      onClick={async () => {
+                        if (!stream.pdfJobId) return
+                        try {
+                          const blob = await apiClient.downloadPdf(stream.pdfJobId)
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = 'resume_optimized.pdf'
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        } catch {
+                          toast.error('Failed to download PDF')
+                        }
+                      }}
+                    >
+                      Finalize and Export
+                    </button>
                   </div>
                 </div>
                 <ATSScoreCard

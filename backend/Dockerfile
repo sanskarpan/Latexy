@@ -24,10 +24,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create temp directory for LaTeX compilation and set permissions
-RUN mkdir -p /app/temp && \
+RUN mkdir -p /app/temp /var/lib/celery && \
     addgroup --system --gid 1001 appgroup && \
     adduser --system --uid 1001 --ingroup appgroup --no-create-home appuser && \
-    chown -R appuser:appgroup /app/temp
+    chown -R appuser:appgroup /app/temp /var/lib/celery
 
 # Switch to non-root user
 USER appuser

@@ -6,6 +6,7 @@ them all at once.  Uses subprocess.Popen for line-by-line stdout
 streaming.  Zero asyncio — all Redis I/O goes through event_publisher.
 """
 
+import shutil
 import subprocess
 import time
 import uuid
@@ -91,30 +92,46 @@ def compile_latex_task(
             "message": "Starting pdflatex compilation",
         })
 
-        # ── Docker / pdflatex command ────────────────────────────────
-        docker_cmd = [
-            "docker", "run", "--rm",
-            "-v", f"{job_dir}:/workspace",
-            "-w", "/workspace",
-            settings.LATEX_DOCKER_IMAGE,
-            "pdflatex",
-            "-interaction=nonstopmode",
-            "-output-directory", "/workspace",
-            "-jobname", "resume",
-            "resume.tex",
-        ]
+        # ── Build compile command: Docker if available, else local pdflatex ──
+        _use_docker = shutil.which("docker") is not None
+        if _use_docker:
+            compile_cmd = [
+                "docker", "run", "--rm",
+                "-v", f"{job_dir}:/workspace",
+                "-w", "/workspace",
+                settings.LATEX_DOCKER_IMAGE,
+                "pdflatex",
+                "-interaction=nonstopmode",
+                "-synctex=1",
+                "-output-directory", "/workspace",
+                "-jobname", "resume",
+                "resume.tex",
+            ]
+            compile_cwd = None
+        else:
+            # Inside the container, pdflatex is installed locally via texlive
+            compile_cmd = [
+                "pdflatex",
+                "-interaction=nonstopmode",
+                "-synctex=1",
+                "-output-directory", str(job_dir),
+                "-jobname", "resume",
+                "resume.tex",
+            ]
+            compile_cwd = str(job_dir)
 
         start_time = time.time()
         log_lines: list[str] = []
 
         # ── Stream stdout line-by-line ───────────────────────────────
         proc = subprocess.Popen(
-            docker_cmd,
+            compile_cmd,
             stdout=PIPE,
             stderr=STDOUT,
             text=True,
             encoding="utf-8",
             errors="replace",
+            cwd=compile_cwd,
         )
 
         for raw_line in proc.stdout:  # type: ignore[union-attr]

@@ -88,6 +88,9 @@ class Settings(BaseSettings):
     # Better-Auth Configuration
     BETTER_AUTH_SECRET: str = Field(default="", description="Better-Auth secret key")
     BETTER_AUTH_URL: str = Field(default="http://localhost:5180", description="Better-Auth URL")
+
+    # Comma-separated list of emails that get TEST_TRIAL_LIMIT instead of TRIAL_LIMIT
+    TEST_USER_EMAILS: str = Field(default="", description="Comma-separated test user emails with elevated trial quota")
     
     # JWT Configuration
     JWT_SECRET_KEY: str = Field(default="", description="JWT secret key for token signing")

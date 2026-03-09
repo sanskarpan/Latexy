@@ -1,33 +1,707 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { apiClient } from '@/lib/api-client'
-import { useJobStream } from '@/hooks/useJobStream'
+import {
+  Sparkles,
+  Play,
+  Save,
+  ChevronRight,
+  Download,
+  FileText,
+  Terminal,
+  RotateCcw,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Eye,
+  List,
+  ChevronDown,
+  ChevronRight as ChevronRightIcon,
+  History,
+  AlertTriangle,
+} from 'lucide-react'
+import { apiClient, type OptimizationHistoryEntry } from '@/lib/api-client'
+import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import LoadingSpinner from '@/components/LoadingSpinner'
+
+type RightTab = 'preview' | 'ai' | 'logs' | 'history'
+type OptLevel = 'conservative' | 'balanced' | 'aggressive'
+
+// ─── Outline ────────────────────────────────────────────────────────────────
+
+interface OutlineItem {
+  level: number
+  label: string
+  line: number
+}
+
+function buildOutline(latex: string): OutlineItem[] {
+  const items: OutlineItem[] = []
+  const sectionRe = /^[^%]*\\(part|chapter|section|subsection|subsubsection)\*?\{([^}]*)\}/
+  const lines = latex.split('\n')
+  const levelMap: Record<string, number> = {
+    part: 0, chapter: 1, section: 2, subsection: 3, subsubsection: 4,
+  }
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(sectionRe)
+    if (m) {
+      items.push({ level: levelMap[m[1]] ?? 2, label: m[2].trim(), line: i + 1 })
+    }
+  }
+  return items
+}
+
+function OutlinePanel({
+  latex,
+  onJump,
+}: {
+  latex: string
+  onJump: (line: number) => void
+}) {
+  const items = buildOutline(latex)
+
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 py-8 px-4">
+        <List size={18} className="text-zinc-800" />
+        <p className="text-[11px] text-zinc-700 text-center">
+          No sections found.<br />Add \section{} to your document.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-y-auto py-1">
+      {items.map((item, idx) => (
+        <button
+          key={idx}
+          onClick={() => onJump(item.line)}
+          className="flex w-full items-baseline gap-1 px-2 py-1 text-left text-[11px] text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-200"
+          style={{ paddingLeft: `${8 + item.level * 10}px` }}
+          title={`Line ${item.line}`}
+        >
+          <span className="shrink-0 text-zinc-800" style={{ fontSize: 9 }}>
+            {'─'.repeat(item.level > 0 ? 1 : 0)}
+          </span>
+          <span className="truncate">{item.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ─── AI Stage Pipeline ───────────────────────────────────────────────────────
+
+const STAGES = [
+  { key: 'llm_optimization', label: 'Rewrite' },
+  { key: 'latex_compilation', label: 'Compile' },
+  { key: 'ats_scoring', label: 'Score' },
+]
+
+function AIStagePipeline({ stage, percent, message }: { stage: string; percent: number; message: string }) {
+  const current = STAGES.findIndex((s) => s.key === stage)
+  return (
+    <div className="w-full space-y-4">
+      <div className="relative flex items-start justify-between">
+        <div className="absolute left-4 right-4 top-3.5 h-px bg-white/[0.06]" />
+        {STAGES.map((s, i) => {
+          const done = i < current
+          const active = i === current
+          return (
+            <div key={s.key} className="relative z-10 flex flex-col items-center gap-2">
+              <div
+                className={`flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-bold transition-all duration-300 ${
+                  done
+                    ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-400'
+                    : active
+                    ? 'border-violet-400/50 bg-violet-500/20 text-violet-300'
+                    : 'border-white/[0.08] bg-black/40 text-zinc-700'
+                }`}
+              >
+                {done ? <CheckCircle2 size={13} /> : <span>{i + 1}</span>}
+              </div>
+              <span
+                className={`text-[10px] font-medium ${
+                  done ? 'text-emerald-400' : active ? 'text-violet-300' : 'text-zinc-700'
+                }`}
+              >
+                {s.label}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      <div>
+        <div className="mb-1.5 flex justify-between text-[10px]">
+          <span className="text-zinc-500 truncate">{message || 'Processing…'}</span>
+          <span className="shrink-0 pl-2 tabular-nums text-zinc-600">{percent}%</span>
+        </div>
+        <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/[0.05]">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-orange-400 transition-all duration-500"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Shared sub-components ───────────────────────────────────────────────────
+
+function LevelSelector({
+  value,
+  onChange,
+  compact = false,
+}: {
+  value: OptLevel
+  onChange: (v: OptLevel) => void
+  compact?: boolean
+}) {
+  const descriptions: Record<OptLevel, string> = {
+    conservative: 'Fix issues and add missing keywords only.',
+    balanced: 'Moderate rewrites, preserves your voice.',
+    aggressive: 'Full restructure for maximum ATS score.',
+  }
+  return (
+    <div>
+      <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+        Optimization Level
+      </label>
+      <div className="grid grid-cols-3 gap-1 rounded-xl border border-white/[0.06] bg-black/30 p-1">
+        {(['conservative', 'balanced', 'aggressive'] as OptLevel[]).map((level) => (
+          <button
+            key={level}
+            onClick={() => onChange(level)}
+            className={`rounded-lg py-2 text-[11px] font-medium capitalize transition ${
+              value === level
+                ? 'bg-violet-500/25 text-violet-200 ring-1 ring-violet-400/30'
+                : 'text-zinc-600 hover:text-zinc-300'
+            }`}
+          >
+            {level}
+          </button>
+        ))}
+      </div>
+      {!compact && (
+        <p className="mt-1.5 text-[10px] text-zinc-700">{descriptions[value]}</p>
+      )}
+    </div>
+  )
+}
+
+function JDInput({
+  value,
+  onChange,
+  compact = false,
+}: {
+  value: string
+  onChange: (v: string) => void
+  compact?: boolean
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+          Job Description
+        </label>
+        <span className="text-[10px] text-zinc-700">optional</span>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={
+          compact
+            ? 'Paste job description…'
+            : 'Paste a job description to tailor optimization to a specific role. Leave blank for general improvements.'
+        }
+        rows={compact ? 3 : 5}
+        className="w-full resize-none rounded-xl border border-white/[0.06] bg-black/40 p-3 text-[12px] text-zinc-200 outline-none transition placeholder:text-zinc-700 focus:border-violet-400/30"
+      />
+    </div>
+  )
+}
+
+// ─── Section Selector ────────────────────────────────────────────────────────
+
+function SectionSelector({
+  outline,
+  selected,
+  onChange,
+}: {
+  outline: OutlineItem[]
+  selected: string[]
+  onChange: (v: string[]) => void
+}) {
+  const allLabels = outline.map((o) => o.label)
+  const allSelected = selected.length === 0 || selected.length === allLabels.length
+
+  const toggle = (label: string) => {
+    if (selected.includes(label)) {
+      const next = selected.filter((s) => s !== label)
+      onChange(next.length === allLabels.length ? [] : next)
+    } else {
+      const next = [...selected, label]
+      onChange(next.length === allLabels.length ? [] : next)
+    }
+  }
+
+  if (outline.length === 0) return null
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+          Sections
+        </label>
+        <button
+          onClick={() => onChange([])}
+          className="text-[10px] text-zinc-700 transition hover:text-zinc-400"
+        >
+          {allSelected ? 'all' : `${selected.length} selected`}
+        </button>
+      </div>
+      <div className="max-h-32 overflow-y-auto rounded-xl border border-white/[0.06] bg-black/30 p-2 space-y-0.5">
+        {outline.map((item) => {
+          const checked = selected.length === 0 || selected.includes(item.label)
+          return (
+            <label
+              key={item.label}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[11px] transition hover:bg-white/[0.04]"
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => toggle(item.label)}
+                className="h-3 w-3 accent-violet-400"
+              />
+              <span
+                className="truncate text-zinc-400"
+                style={{ paddingLeft: `${item.level * 8}px` }}
+              >
+                {item.label}
+              </span>
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── AI Panel ────────────────────────────────────────────────────────────────
+
+interface AIPanelProps {
+  aiStream: JobStreamState
+  isRunning: boolean
+  isSubmitting: boolean
+  jobDescription: string
+  setJobDescription: (v: string) => void
+  optLevel: OptLevel
+  setOptLevel: (v: OptLevel) => void
+  undoCount: number
+  onRun: () => void
+  onUndo: () => void
+  onApplyAnyway: () => void
+  outline: OutlineItem[]
+  targetSections: string[]
+  setTargetSections: (v: string[]) => void
+  customInstructions: string
+  setCustomInstructions: (v: string) => void
+}
+
+function AIPanel({
+  aiStream,
+  isRunning,
+  isSubmitting,
+  jobDescription,
+  setJobDescription,
+  optLevel,
+  setOptLevel,
+  undoCount,
+  onRun,
+  onUndo,
+  onApplyAnyway,
+  outline,
+  targetSections,
+  setTargetSections,
+  customInstructions,
+  setCustomInstructions,
+}: AIPanelProps) {
+  const isDone = !isRunning && aiStream.status === 'completed'
+  const isFailed = !isRunning && aiStream.status === 'failed'
+  const isIdle = !isRunning && aiStream.status !== 'completed' && aiStream.status !== 'failed'
+  const [showCustom, setShowCustom] = useState(false)
+
+  return (
+    <div className="flex h-full flex-col overflow-y-auto scrollbar-subtle">
+      {isRunning && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-8 p-6">
+          <div className="w-full">
+            <div className="mb-5 flex items-center gap-2">
+              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-500/20">
+                <Sparkles size={11} className="animate-pulse text-violet-300" />
+              </div>
+              <span className="text-xs font-semibold text-zinc-300">AI is working…</span>
+            </div>
+            <AIStagePipeline
+              stage={aiStream.stage}
+              percent={aiStream.percent}
+              message={aiStream.message}
+            />
+          </div>
+          {aiStream.streamingLatex && (
+            <div className="flex items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-300">
+              <Sparkles size={11} />
+              <span>Streaming to editor in real-time…</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isDone && (
+        <div className="space-y-4 p-4">
+          <div className="flex items-center gap-3 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.07] p-3">
+            <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-emerald-300">Optimization complete</p>
+              <p className="truncate text-[10px] text-zinc-500">
+                {aiStream.changesMade?.length ?? 0} changes ·{' '}
+                {aiStream.tokensUsed ? `${aiStream.tokensUsed.toLocaleString()} tokens` : 'PDF ready'}
+              </p>
+            </div>
+          </div>
+
+          {aiStream.atsScore != null && (
+            <div className="flex items-center gap-4 rounded-xl border border-white/[0.06] bg-black/40 p-4">
+              <div className="relative shrink-0">
+                <svg className="h-[68px] w-[68px] -rotate-90" viewBox="0 0 36 36">
+                  <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3" />
+                  <circle
+                    cx="18" cy="18" r="15.9" fill="none"
+                    stroke={aiStream.atsScore >= 80 ? '#34d399' : aiStream.atsScore >= 60 ? '#f59e0b' : '#f87171'}
+                    strokeWidth="3"
+                    strokeDasharray={`${aiStream.atsScore} ${100 - aiStream.atsScore}`}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span
+                  className={`absolute inset-0 flex items-center justify-center text-base font-bold ${
+                    aiStream.atsScore >= 80 ? 'text-emerald-400' : aiStream.atsScore >= 60 ? 'text-amber-400' : 'text-rose-400'
+                  }`}
+                >
+                  {Math.round(aiStream.atsScore)}
+                </span>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-zinc-200">ATS Score</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-zinc-500">
+                  {aiStream.atsScore >= 80
+                    ? 'Excellent — highly compatible'
+                    : aiStream.atsScore >= 60
+                    ? 'Good — minor improvements possible'
+                    : 'Needs improvement'}
+                </p>
+                {aiStream.atsDetails?.recommendations?.[0] && (
+                  <p className="mt-1 text-[10px] italic text-zinc-600">
+                    {aiStream.atsDetails.recommendations[0]}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={onUndo}
+              disabled={undoCount === 0}
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] py-2.5 text-xs font-medium text-zinc-400 transition hover:border-white/10 hover:text-zinc-200 disabled:opacity-30"
+            >
+              <RotateCcw size={12} />
+              {undoCount > 0 ? `Undo (${undoCount})` : 'Undo'}
+            </button>
+            <button
+              onClick={onRun}
+              disabled={isSubmitting}
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-violet-500/20 py-2.5 text-xs font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
+            >
+              <Sparkles size={12} /> Run again
+            </button>
+          </div>
+
+          <div className="border-t border-white/[0.05]" />
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+            Settings for next run
+          </p>
+          <LevelSelector value={optLevel} onChange={setOptLevel} compact />
+          <JDInput value={jobDescription} onChange={setJobDescription} compact />
+        </div>
+      )}
+
+      {isFailed && (
+        <div className="space-y-4 p-4">
+          <div className="flex items-start gap-3 rounded-xl border border-rose-400/20 bg-rose-500/[0.07] p-3">
+            <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-400" />
+            <div>
+              <p className="text-sm font-semibold text-rose-300">Optimization failed</p>
+              <p className="mt-0.5 text-[11px] text-zinc-500">{aiStream.error || 'An error occurred'}</p>
+            </div>
+          </div>
+
+          {/* Fix 3: Apply anyway when LLM succeeded but compile failed */}
+          {aiStream.streamingLatex && (
+            <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.07] p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle size={13} className="text-amber-400" />
+                <p className="text-[11px] font-semibold text-amber-300">AI rewrite is available</p>
+              </div>
+              <p className="text-[10px] text-zinc-500 mb-3">
+                The LaTeX rewrite completed but failed to compile. You can apply it to the editor and fix the errors manually.
+              </p>
+              <button
+                onClick={onApplyAnyway}
+                className="w-full rounded-lg border border-amber-400/30 bg-amber-500/10 py-2 text-[11px] font-semibold text-amber-200 transition hover:bg-amber-500/20"
+              >
+                Apply optimized LaTeX anyway
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={onRun}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500/20 py-2.5 text-sm font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
+          >
+            <Sparkles size={13} /> Try again
+          </button>
+        </div>
+      )}
+
+      {isIdle && (
+        <div className="space-y-5 p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-orange-500/10 ring-1 ring-violet-400/20">
+              <Sparkles size={16} className="text-violet-300" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-zinc-100">AI Optimization</p>
+              <p className="text-[10px] text-zinc-600">GPT-4o · Optimize + Compile + Score</p>
+            </div>
+          </div>
+
+          <p className="text-[12px] leading-relaxed text-zinc-500">
+            Rewrites your resume with improved language and ATS keywords, then compiles to PDF and
+            scores for recruiter visibility.
+          </p>
+
+          {undoCount > 0 && (
+            <div className="flex items-center justify-between rounded-xl border border-amber-400/20 bg-amber-400/[0.05] px-3 py-2.5">
+              <span className="text-[11px] text-amber-300">
+                {undoCount} undo {undoCount === 1 ? 'state' : 'states'} available
+              </span>
+              <button
+                onClick={onUndo}
+                className="flex items-center gap-1 text-[11px] font-semibold text-amber-200 transition hover:text-white"
+              >
+                <RotateCcw size={11} /> Undo
+              </button>
+            </div>
+          )}
+
+          <LevelSelector value={optLevel} onChange={setOptLevel} />
+          <JDInput value={jobDescription} onChange={setJobDescription} />
+
+          {/* Feature 3: Section-specific optimization */}
+          {outline.length > 0 && (
+            <SectionSelector
+              outline={outline}
+              selected={targetSections}
+              onChange={setTargetSections}
+            />
+          )}
+
+          {/* Feature 3: Custom instructions */}
+          <div>
+            <button
+              onClick={() => setShowCustom((v) => !v)}
+              className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600 transition hover:text-zinc-400"
+            >
+              <ChevronDown
+                size={11}
+                className={`transition-transform ${showCustom ? 'rotate-180' : ''}`}
+              />
+              Custom Instructions
+            </button>
+            {showCustom && (
+              <textarea
+                value={customInstructions}
+                onChange={(e) => setCustomInstructions(e.target.value)}
+                placeholder="e.g. keep it to 1 page, emphasize Python experience, avoid passive voice"
+                rows={3}
+                className="mt-2 w-full resize-none rounded-xl border border-white/[0.06] bg-black/40 p-3 text-[12px] text-zinc-200 outline-none transition placeholder:text-zinc-700 focus:border-violet-400/30"
+              />
+            )}
+          </div>
+
+          <button
+            onClick={onRun}
+            disabled={isSubmitting}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600/80 to-violet-500/60 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-900/20 ring-1 ring-violet-400/20 transition hover:from-violet-600 hover:to-violet-500/80 disabled:opacity-50"
+          >
+            {isSubmitting ? (
+              <><Loader2 size={14} className="animate-spin" /> Starting…</>
+            ) : (
+              <><Sparkles size={14} /> {jobDescription.trim() ? 'Optimize for this Role' : 'Optimize Resume'}</>
+            )}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── History Panel ────────────────────────────────────────────────────────────
+
+function HistoryPanel({
+  resumeId,
+  onRestore,
+}: {
+  resumeId: string
+  onRestore: (latex: string, label: string) => void
+}) {
+  const [history, setHistory] = useState<OptimizationHistoryEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [restoringId, setRestoringId] = useState<string | null>(null)
+
+  useEffect(() => {
+    apiClient.getOptimizationHistory(resumeId)
+      .then(setHistory)
+      .catch(() => toast.error('Failed to load history'))
+      .finally(() => setLoading(false))
+  }, [resumeId])
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 size={16} className="animate-spin text-zinc-600" />
+      </div>
+    )
+  }
+
+  if (history.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 p-6 text-center">
+        <History size={20} className="text-zinc-700" />
+        <p className="text-[11px] text-zinc-600">No optimization history yet.<br />Run AI Optimize to create your first entry.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-y-auto p-3 space-y-2">
+      <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-700">
+        {history.length} optimization{history.length !== 1 ? 's' : ''}
+      </p>
+      {history.map((entry) => {
+        const date = new Date(entry.created_at)
+        const label = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        return (
+          <div
+            key={entry.id}
+            className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.05] bg-black/30 px-3 py-2.5"
+          >
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium text-zinc-300 truncate">{label}</p>
+              <div className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-600">
+                {entry.ats_score != null && (
+                  <span className={
+                    entry.ats_score >= 80 ? 'text-emerald-500' :
+                    entry.ats_score >= 60 ? 'text-amber-500' : 'text-rose-500'
+                  }>ATS {Math.round(entry.ats_score)}</span>
+                )}
+                <span>{entry.changes_count} changes</span>
+                {entry.tokens_used && <span>{entry.tokens_used.toLocaleString()} tok</span>}
+              </div>
+            </div>
+            <button
+              disabled={restoringId === entry.id}
+              onClick={async () => {
+                setRestoringId(entry.id)
+                try {
+                  const result = await apiClient.restoreOptimization(resumeId, entry.id)
+                  onRestore(result.latex_content, `Restore ${label}`)
+                  toast.success('Restored optimization')
+                } catch {
+                  toast.error('Failed to restore')
+                } finally {
+                  setRestoringId(null)
+                }
+              }}
+              className="shrink-0 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[10px] font-semibold text-zinc-400 transition hover:border-violet-400/30 hover:text-violet-200 disabled:opacity-40"
+            >
+              {restoringId === entry.id ? <Loader2 size={10} className="animate-spin" /> : 'Restore'}
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function ResumeEditPage() {
   const params = useParams()
   const router = useRouter()
   const resumeId = params.resumeId as string
 
+  // Core state
   const [title, setTitle] = useState('')
   const [latexContent, setLatexContent] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const [compileJobId, setCompileJobId] = useState<string | null>(null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
 
+  // Layout
+  const [rightTab, setRightTab] = useState<RightTab>('preview')
+  const [rightWidth, setRightWidth] = useState<number | null>(null)
+  const [showOutline, setShowOutline] = useState(false)
+  const [isDraggingResize, setIsDraggingResize] = useState(false)
+  const isResizingRef = useRef(false)
+  const resizeStartX = useRef(0)
+  const resizeStartWidth = useRef(0)
+
+  // AI
+  const [aiJobId, setAiJobId] = useState<string | null>(null)
+  const [jobDescription, setJobDescription] = useState('')
+  const [optLevel, setOptLevel] = useState<OptLevel>('balanced')
+  const [isAiSubmitting, setIsAiSubmitting] = useState(false)
+  // Feature 2: Multi-level undo stack (replaces single baselineLatex)
+  const [undoStack, setUndoStack] = useState<Array<{ label: string; latex: string }>>([])
+  // Feature 3: Section-specific optimization
+  const [targetSections, setTargetSections] = useState<string[]>([])
+  const [customInstructions, setCustomInstructions] = useState('')
+
+  // SyncTeX
+  const [syncFromLine, setSyncFromLine] = useState<number | null>(null)
+  const [cursorLine, setCursorLine] = useState<number | null>(null)
+
+  const activePdfJobId = useRef<string | null>(null)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
-  const { state: stream } = useJobStream(activeJobId)
 
+  const { state: compileStream } = useJobStream(compileJobId)
+  const { state: aiStream } = useJobStream(aiJobId)
+
+  // Load resume
   useEffect(() => {
     const fetchResume = async () => {
       try {
@@ -42,206 +716,539 @@ export default function ResumeEditPage() {
         setIsLoading(false)
       }
     }
-
     fetchResume()
   }, [resumeId, router])
 
+  // Stream AI tokens to Monaco in real-time (direct model mutation, no setState per token)
   useEffect(() => {
-    if (!stream.streamingLatex || !editorRef.current) return
+    if (!aiStream.streamingLatex || !editorRef.current) return
+    editorRef.current.setValue(aiStream.streamingLatex)
+  }, [aiStream.streamingLatex])
 
-    editorRef.current.setValue(stream.streamingLatex)
-    if (stream.status === 'completed' || stream.status === 'failed') {
-      setLatexContent(stream.streamingLatex)
-    }
-  }, [stream.streamingLatex, stream.status])
-
+  // When AI completes, commit streamed content to React state + record optimization
   useEffect(() => {
-    const fetchPdf = async () => {
-      if (stream.status !== 'completed' || !stream.pdfJobId) {
-        if (stream.status === 'queued' || stream.status === 'processing') {
-          if (pdfUrlRef.current) {
-            URL.revokeObjectURL(pdfUrlRef.current)
-            pdfUrlRef.current = null
-          }
-          setPdfUrl(null)
-        }
-        return
+    if (aiStream.status === 'completed') {
+      const finalLatex = editorRef.current?.getValue() || ''
+      setLatexContent(finalLatex)
+      // Feature 1: save optimization record
+      if (finalLatex && aiJobId) {
+        const baselineLatex = undoStack[undoStack.length - 1]?.latex || ''
+        apiClient.recordOptimization(resumeId, {
+          original_latex: baselineLatex,
+          optimized_latex: finalLatex,
+          changes_made: aiStream.changesMade,
+          ats_score: aiStream.atsScore ?? undefined,
+          tokens_used: aiStream.tokensUsed ?? undefined,
+          job_description: jobDescription.trim() || undefined,
+        }).catch(() => {}) // non-critical
       }
+    }
+  }, [aiStream.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
-      try {
-        const blob = await apiClient.downloadPdf(stream.pdfJobId)
+  // Load PDF after either job completes
+  useEffect(() => {
+    const pdfJobId = compileStream.pdfJobId ?? aiStream.pdfJobId
+    const anyCompleted =
+      (compileStream.status === 'completed' && compileStream.pdfJobId) ||
+      (aiStream.status === 'completed' && aiStream.pdfJobId)
+
+    if (anyCompleted && pdfJobId) {
+      activePdfJobId.current = pdfJobId
+      apiClient.downloadPdf(pdfJobId).then((blob) => {
         const nextUrl = URL.createObjectURL(blob)
-
-        if (pdfUrlRef.current) {
-          URL.revokeObjectURL(pdfUrlRef.current)
-        }
-
+        if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
         pdfUrlRef.current = nextUrl
         setPdfUrl(nextUrl)
-      } catch {
-        toast.error('Failed to load PDF preview')
-      }
+        setRightTab('preview')
+      }).catch(() => toast.error('Failed to load PDF preview'))
+      return
     }
 
-    fetchPdf()
-  }, [stream.status, stream.pdfJobId])
+    const anyRunning =
+      compileStream.status === 'queued' || compileStream.status === 'processing' ||
+      aiStream.status === 'queued' || aiStream.status === 'processing'
 
+    if (anyRunning && pdfUrlRef.current) {
+      URL.revokeObjectURL(pdfUrlRef.current)
+      pdfUrlRef.current = null
+      setPdfUrl(null)
+      activePdfJobId.current = null
+    }
+  }, [
+    compileStream.status, compileStream.pdfJobId,
+    aiStream.status, aiStream.pdfJobId,
+  ])
+
+  // Cleanup blob URL on unmount
   useEffect(() => {
+    return () => { if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current) }
+  }, [])
+
+  // ── Resize handle ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isResizingRef.current) return
+      const delta = resizeStartX.current - e.clientX
+      const next = Math.max(280, Math.min(window.innerWidth - 300, resizeStartWidth.current + delta))
+      setRightWidth(next)
+    }
+    const onMouseUp = () => {
+      if (!isResizingRef.current) return
+      isResizingRef.current = false
+      setIsDraggingResize(false)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
     return () => {
-      if (pdfUrlRef.current) {
-        URL.revokeObjectURL(pdfUrlRef.current)
-        pdfUrlRef.current = null
-      }
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
     }
   }, [])
 
+  const rightPanelRef = useRef<HTMLElement>(null)
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    const w = rightPanelRef.current
+      ? rightPanelRef.current.getBoundingClientRect().width
+      : (rightWidth ?? 560)
+    isResizingRef.current = true
+    setIsDraggingResize(true)
+    resizeStartX.current = e.clientX
+    resizeStartWidth.current = w
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    e.preventDefault()
+  }, [rightWidth])
+
+  // ── Undo stack helpers (Feature 2) ──────────────────────────────────────
+  const pushUndo = useCallback((label: string) => {
+    const current = editorRef.current?.getValue() || latexContent
+    setUndoStack((prev) => [...prev.slice(-9), { label, latex: current }])
+  }, [latexContent])
+
+  const handleUndo = useCallback(() => {
+    setUndoStack((prev) => {
+      if (prev.length === 0) return prev
+      const entry = prev[prev.length - 1]
+      editorRef.current?.setValue(entry.latex)
+      setLatexContent(entry.latex)
+      toast.success(`Restored: ${entry.label}`)
+      return prev.slice(0, -1)
+    })
+  }, [])
+
+  // ── Handlers ────────────────────────────────────────────────────────────
   const handleSave = async () => {
     const content = editorRef.current?.getValue() || latexContent
     setIsSaving(true)
-
     try {
-      await apiClient.updateResume(resumeId, {
-        title,
-        latex_content: content,
-      })
+      await apiClient.updateResume(resumeId, { title, latex_content: content })
       setLatexContent(content)
-      toast.success('Resume saved')
+      toast.success('Saved')
     } catch {
-      toast.error('Failed to save resume')
+      toast.error('Failed to save')
     } finally {
       setIsSaving(false)
     }
   }
 
   const runCompile = async () => {
-    const currentContent = editorRef.current?.getValue() || latexContent
-    if (!currentContent.trim()) {
-      toast.error('LaTeX content is required')
-      return
-    }
-
+    const content = editorRef.current?.getValue() || latexContent
+    if (!content.trim()) { toast.error('Nothing to compile'); return }
     setIsSubmitting(true)
     try {
-      const response = await apiClient.compileLatex({
-        latex_content: currentContent,
-        user_plan: 'pro',
-      })
-
-      if (!response.success || !response.job_id) {
-        throw new Error(response.message || 'Failed to submit compile job')
-      }
-
-      setActiveJobId(response.job_id)
+      const r = await apiClient.compileLatex({ latex_content: content, user_plan: 'pro' })
+      if (!r.success || !r.job_id) throw new Error(r.message)
+      setCompileJobId(r.job_id)
+      setRightTab('logs')
       toast.success('Compilation started')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Submission failed')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Compile failed')
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const handleDownload = async () => {
-    const downloadId = stream.pdfJobId ?? activeJobId
-    if (!downloadId) return
-
+  const runAiOptimize = async () => {
+    const content = editorRef.current?.getValue() || latexContent
+    // Feature 2: push to undo stack before AI changes the editor
+    pushUndo('Before AI optimization')
+    setIsAiSubmitting(true)
     try {
-      const blob = await apiClient.downloadPdf(downloadId)
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${title.replace(/\s+/g, '_').toLowerCase()}_resume.pdf`
-      link.click()
-      URL.revokeObjectURL(url)
-    } catch {
-      toast.error('Download failed')
+      const r = await apiClient.optimizeAndCompile({
+        latex_content: content,
+        job_description: jobDescription.trim() || undefined,
+        optimization_level: optLevel,
+        user_plan: 'pro',
+        // Feature 3: pass section and instruction filters
+        target_sections: targetSections.length > 0 ? targetSections : undefined,
+        custom_instructions: customInstructions.trim() || undefined,
+      })
+      if (!r.success || !r.job_id) throw new Error(r.message)
+      setAiJobId(r.job_id)
+      toast.success('AI optimization started')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'AI optimization failed')
+    } finally {
+      setIsAiSubmitting(false)
     }
   }
 
-  const isProcessing = stream.status === 'queued' || stream.status === 'processing'
+  // Fix 3: Apply optimized LaTeX even when compilation failed
+  const handleApplyAnyway = useCallback(() => {
+    if (!aiStream.streamingLatex) return
+    pushUndo('Before apply (failed compile)')
+    editorRef.current?.setValue(aiStream.streamingLatex)
+    setLatexContent(aiStream.streamingLatex)
+    toast.success('Applied optimized LaTeX — fix the compile errors manually')
+  }, [aiStream.streamingLatex, pushUndo])
+
+  // Feature 1: restore from history
+  const handleHistoryRestore = useCallback((latex: string, label: string) => {
+    pushUndo(`Before ${label}`)
+    editorRef.current?.setValue(latex)
+    setLatexContent(latex)
+  }, [pushUndo])
+
+  const handleDownload = async () => {
+    const id = compileStream.pdfJobId ?? aiStream.pdfJobId ?? compileJobId ?? aiJobId
+    if (!id) return
+    try {
+      const blob = await apiClient.downloadPdf(id)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${title.replace(/\s+/g, '_') || 'resume'}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { toast.error('Download failed') }
+  }
+
+  const handleSyncToSource = useCallback((line: number) => {
+    editorRef.current?.highlightLine(line)
+  }, [])
+
+  const handleCursorChange = useCallback((line: number) => {
+    setCursorLine(line)
+  }, [])
+
+  const handleOutlineJump = useCallback((line: number) => {
+    editorRef.current?.highlightLine(line)
+  }, [])
+
+  const isCompiling = compileStream.status === 'queued' || compileStream.status === 'processing'
+  const isAiRunning = aiStream.status === 'queued' || aiStream.status === 'processing'
+  const isAnyRunning = isCompiling || isAiRunning
+
+  const logLines = isCompiling || compileStream.logLines.length > 0
+    ? compileStream.logLines
+    : aiStream.logLines
+
+  const statusText = isAiRunning
+    ? `AI: ${aiStream.message || aiStream.stage || 'processing…'}`
+    : isCompiling
+    ? `Compiling… ${compileStream.percent}%`
+    : compileStream.status === 'completed'
+    ? 'Compiled successfully'
+    : aiStream.status === 'completed'
+    ? `AI complete · ATS ${aiStream.atsScore != null ? Math.round(aiStream.atsScore) : '—'}`
+    : aiStream.status === 'failed'
+    ? `AI failed: ${aiStream.error || 'error'}`
+    : 'LaTeX editor ready'
+
+  const currentLatex = editorRef.current?.getValue() || latexContent
+  const outline = buildOutline(currentLatex)
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-screen items-center justify-center bg-[#0d0d0d]">
         <LoadingSpinner />
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-slate-950">
-      <header className="flex h-14 items-center justify-between border-b border-white/10 bg-black/30 px-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <Link href="/workspace" className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white">
+    <div className="flex h-screen flex-col overflow-hidden bg-[#0d0d0d]">
+
+      {/* ── TOP HEADER ── */}
+      <header className="flex h-11 shrink-0 items-center justify-between border-b border-white/[0.07] bg-[#111] px-4">
+        <div className="flex min-w-0 items-center gap-1.5 text-xs">
+          <Link href="/workspace" className="shrink-0 text-zinc-600 transition hover:text-zinc-300">
             Workspace
           </Link>
+          <ChevronRight size={12} className="shrink-0 text-zinc-800" />
           <input
             type="text"
             value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            className="min-w-[220px] max-w-[420px] border-none bg-transparent text-sm font-semibold text-white outline-none"
+            onChange={(e) => setTitle(e.target.value)}
+            className="min-w-0 max-w-[280px] bg-transparent text-sm font-medium text-zinc-300 outline-none transition placeholder:text-zinc-700 hover:text-white focus:text-white"
+            placeholder="Untitled"
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1">
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition hover:bg-white/10 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
           >
-            {isSaving ? 'Saving...' : 'Save'}
+            <Save size={12} />
+            {isSaving ? 'Saving…' : 'Save'}
           </button>
+
+          <div className="mx-1 h-3.5 w-px bg-white/[0.08]" />
+
           <button
             onClick={runCompile}
-            disabled={isSubmitting || isProcessing}
-            className="rounded-lg bg-orange-300 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-orange-200 disabled:opacity-50"
+            disabled={isSubmitting || isAnyRunning}
+            className="flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.05] px-3 py-1.5 text-[11px] font-semibold text-zinc-200 transition hover:bg-white/[0.09] disabled:opacity-40"
           >
-            {isSubmitting || isProcessing ? 'Running...' : 'Run Compile'}
+            {isCompiling
+              ? <Loader2 size={11} className="animate-spin" />
+              : <Play size={11} className="fill-current" />}
+            {isCompiling ? 'Compiling…' : 'Compile'}
           </button>
-          <Link
-            href={`/workspace/${resumeId}/optimize`}
-            className="rounded-lg border border-orange-300/20 bg-orange-300/10 px-3 py-1.5 text-xs font-semibold text-orange-200 transition hover:bg-orange-300/20"
+
+          <button
+            onClick={() => setRightTab('ai')}
+            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[11px] font-semibold transition ${
+              isAiRunning
+                ? 'border-violet-400/30 bg-violet-500/15 text-violet-200'
+                : 'border-violet-400/20 bg-gradient-to-r from-violet-500/15 to-orange-500/10 text-violet-200 hover:from-violet-500/25 hover:to-orange-500/15'
+            }`}
           >
-            Optimize
-          </Link>
+            {isAiRunning
+              ? <Loader2 size={11} className="animate-spin" />
+              : <Sparkles size={11} />}
+            {isAiRunning ? `AI ${aiStream.percent}%` : 'AI Optimize'}
+          </button>
         </div>
       </header>
 
+      {/* Resize drag overlay */}
+      {isDraggingResize && (
+        <div className="fixed inset-0 z-50" style={{ cursor: 'col-resize' }} />
+      )}
+
+      {/* ── MAIN BODY ── */}
       <main className="flex min-h-0 flex-1 overflow-hidden">
-        <section className="flex min-h-0 flex-1 flex-col border-r border-white/10">
-          <div className="flex h-9 items-center border-b border-white/10 px-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
-            LaTeX Source
+
+        {/* ── Left: Outline sidebar (collapsible) ── */}
+        <aside
+          className={`flex shrink-0 flex-col border-r border-white/[0.05] bg-[#0a0a0a] transition-all duration-200 ${
+            showOutline ? 'w-48' : 'w-8'
+          }`}
+        >
+          <button
+            onClick={() => setShowOutline((v) => !v)}
+            className={`flex h-8 w-full shrink-0 items-center border-b border-white/[0.05] px-1.5 text-zinc-600 transition hover:text-zinc-300 ${
+              showOutline ? 'justify-between' : 'justify-center'
+            }`}
+            title={showOutline ? 'Hide outline' : 'Show outline'}
+          >
+            {showOutline ? (
+              <>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em]">Outline</span>
+                <ChevronRightIcon size={12} />
+              </>
+            ) : (
+              <List size={13} />
+            )}
+          </button>
+
+          {showOutline && (
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <OutlinePanel latex={currentLatex} onJump={handleOutlineJump} />
+            </div>
+          )}
+        </aside>
+
+        {/* ── Editor ── */}
+        <section className="flex min-h-0 min-w-0 flex-col" style={{ flex: '3 1 0%' }}>
+          <div className="flex h-8 shrink-0 items-center gap-2 border-b border-white/[0.05] bg-[#0a0a0a] px-3">
+            <div className="flex items-center gap-1.5 rounded-md bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-400">
+              <FileText size={11} className="text-zinc-600" />
+              {title || 'Untitled'}.tex
+            </div>
           </div>
           <div className="min-h-0 flex-1">
-            <LaTeXEditor ref={editorRef} value={latexContent} onChange={setLatexContent} />
+            <LaTeXEditor
+              ref={editorRef}
+              value={latexContent}
+              onChange={setLatexContent}
+              logLines={logLines}
+              onSave={handleSave}
+              onCompile={runCompile}
+              onCursorChange={handleCursorChange}
+              syncLine={syncFromLine}
+            />
           </div>
         </section>
 
-        <aside className="flex w-[460px] min-w-[360px] flex-col bg-black/20">
-          <section className="flex min-h-0 flex-1 flex-col border-b border-white/10">
-            <div className="flex h-9 items-center justify-between border-b border-white/10 px-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
-              <span>Live Preview</span>
-              {stream.status === 'completed' && (
-                <button onClick={handleDownload} className="text-[10px] text-zinc-300 transition hover:text-white">
-                  Download PDF
-                </button>
-              )}
-            </div>
-            <div className="min-h-0 flex-1 bg-black/35">
-              <PDFPreview pdfUrl={pdfUrl} isLoading={isProcessing} onDownload={handleDownload} />
-            </div>
-          </section>
+        {/* ── Resize handle ── */}
+        <div
+          className="group relative flex w-[5px] shrink-0 cursor-col-resize items-center justify-center"
+          onMouseDown={startResize}
+        >
+          <div className="h-full w-px bg-white/[0.05] transition-colors group-hover:bg-orange-400/30 group-active:bg-orange-400/60" />
+        </div>
 
-          <section className="flex h-[220px] min-h-0 flex-col">
-            <div className="flex h-9 items-center justify-between border-b border-white/10 px-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
-              <span>Compilation Logs</span>
-              <span className="capitalize">{stream.status}</span>
-            </div>
-            <div className="min-h-0 flex-1 p-2">
-              <LogViewer lines={stream.logLines} maxHeight="100%" className="h-full text-[10px]" />
-            </div>
-          </section>
+        {/* ── Right panel ── */}
+        <aside
+          ref={rightPanelRef}
+          className="flex flex-col border-l border-white/[0.05] bg-[#0e0e0e]"
+          style={
+            rightWidth === null
+              ? { flex: '2 1 0%', minWidth: 340 }
+              : { width: `${rightWidth}px`, minWidth: `${rightWidth}px`, maxWidth: `${rightWidth}px`, flexShrink: 0 }
+          }
+        >
+          {/* Tab bar */}
+          <div className="flex h-9 shrink-0 items-center border-b border-white/[0.05] bg-black/20 px-1">
+            {(
+              [
+                { id: 'preview', label: 'Preview', icon: Eye },
+                { id: 'ai', label: 'AI', icon: Sparkles },
+                { id: 'logs', label: 'Logs', icon: Terminal },
+                { id: 'history', label: 'History', icon: History },
+              ] as const
+            ).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setRightTab(id)}
+                className={`relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition ${
+                  rightTab === id ? 'text-zinc-100' : 'text-zinc-600 hover:text-zinc-300'
+                }`}
+              >
+                <Icon size={11} />
+                {label}
+                {rightTab === id && (
+                  <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-t-sm bg-orange-400" />
+                )}
+                {id === 'ai' && isAiRunning && (
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" />
+                )}
+                {id === 'logs' && isCompiling && (
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400" />
+                )}
+                {id === 'ai' && undoStack.length > 0 && !isAiRunning && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/30 px-1 text-[9px] font-bold text-amber-300">
+                    {undoStack.length}
+                  </span>
+                )}
+              </button>
+            ))}
+
+            <div className="flex-1" />
+
+            {pdfUrl && (
+              <button
+                onClick={handleDownload}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-600 transition hover:text-zinc-300"
+              >
+                <Download size={11} />
+                PDF
+              </button>
+            )}
+          </div>
+
+          {/* Tab content */}
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {rightTab === 'preview' && (
+              <PDFPreview
+                pdfUrl={pdfUrl}
+                isLoading={isAnyRunning}
+                onDownload={handleDownload}
+                jobId={activePdfJobId.current}
+                onSyncToSource={handleSyncToSource}
+                syncFromLine={cursorLine}
+              />
+            )}
+
+            {rightTab === 'ai' && (
+              <AIPanel
+                aiStream={aiStream}
+                isRunning={isAiRunning}
+                isSubmitting={isAiSubmitting}
+                jobDescription={jobDescription}
+                setJobDescription={setJobDescription}
+                optLevel={optLevel}
+                setOptLevel={setOptLevel}
+                undoCount={undoStack.length}
+                onRun={runAiOptimize}
+                onUndo={handleUndo}
+                onApplyAnyway={handleApplyAnyway}
+                outline={outline}
+                targetSections={targetSections}
+                setTargetSections={setTargetSections}
+                customInstructions={customInstructions}
+                setCustomInstructions={setCustomInstructions}
+              />
+            )}
+
+            {rightTab === 'logs' && (
+              <div className="h-full overflow-auto p-3">
+                <div className="mb-2 flex items-center justify-between px-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-700">
+                    {isCompiling ? 'Compilation output' : isAiRunning ? 'AI pipeline logs' : 'Last run logs'}
+                  </span>
+                  <span
+                    className={`text-[10px] font-medium capitalize ${
+                      isAnyRunning
+                        ? 'text-orange-400'
+                        : compileStream.status === 'completed' || aiStream.status === 'completed'
+                        ? 'text-emerald-400'
+                        : 'text-zinc-600'
+                    }`}
+                  >
+                    {isAnyRunning
+                      ? 'Running'
+                      : compileStream.status !== 'idle'
+                      ? compileStream.status
+                      : aiStream.status !== 'idle'
+                      ? aiStream.status
+                      : '—'}
+                  </span>
+                </div>
+                <LogViewer lines={logLines} maxHeight="100%" className="h-full text-[11px]" />
+              </div>
+            )}
+
+            {rightTab === 'history' && (
+              <HistoryPanel resumeId={resumeId} onRestore={handleHistoryRestore} />
+            )}
+          </div>
         </aside>
       </main>
+
+      {/* ── STATUS BAR ── */}
+      <footer className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#0a0a0a] px-3">
+        <span
+          className={`text-[10px] font-medium ${
+            isAnyRunning
+              ? 'text-violet-400'
+              : compileStream.status === 'completed' || aiStream.status === 'completed'
+              ? 'text-emerald-400/80'
+              : aiStream.status === 'failed' || compileStream.status === 'failed'
+              ? 'text-rose-400/80'
+              : 'text-zinc-700'
+          }`}
+        >
+          {statusText}
+        </span>
+        <div className="flex items-center gap-3">
+          {cursorLine && (
+            <span className="text-[10px] tabular-nums text-zinc-700">
+              Ln {cursorLine}
+            </span>
+          )}
+          <span className="text-[10px] tabular-nums text-zinc-700">
+            {latexContent.length.toLocaleString()} chars
+          </span>
+        </div>
+      </footer>
     </div>
   )
 }
