@@ -1,7 +1,7 @@
 """Trial system service for freemium model."""
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
@@ -13,6 +13,7 @@ from ..core.logging import get_logger
 logger = get_logger(__name__)
 
 TRIAL_LIMIT = 3
+TEST_TRIAL_LIMIT = 100
 COOLDOWN_PERIOD = 300  # 5 minutes in seconds
 MAX_DAILY_REQUESTS = 10
 
@@ -20,10 +21,11 @@ class TrialService:
     """Service for managing device trials and usage tracking."""
 
     async def get_trial_status(
-        self, 
-        db: AsyncSession, 
+        self,
+        db: AsyncSession,
         device_fingerprint: str,
-        ip_address: Optional[str] = None
+        ip_address: Optional[str] = None,
+        limit: int = TRIAL_LIMIT,
     ) -> Dict[str, Any]:
         """Get trial status for a device."""
         try:
@@ -44,12 +46,15 @@ class TrialService:
                 await db.commit()
                 await db.refresh(trial)
 
+            # Test users are never considered blocked regardless of usage_count
+            is_test = limit > TRIAL_LIMIT
             return {
                 "usageCount": trial.usage_count,
-                "remainingUses": max(0, TRIAL_LIMIT - trial.usage_count),
-                "blocked": trial.blocked,
+                "remainingUses": max(0, limit - trial.usage_count),
+                "blocked": False if is_test else trial.blocked,
                 "lastUsed": trial.last_used.isoformat() if trial.last_used else None,
-                "canUse": not trial.blocked and trial.usage_count < TRIAL_LIMIT
+                "canUse": trial.usage_count < limit if is_test else (not trial.blocked and trial.usage_count < limit),
+                "trialLimit": limit,
             }
 
         except Exception as e:
@@ -70,8 +75,8 @@ class TrialService:
     ) -> Dict[str, Any]:
         """Check if device/IP is within rate limits."""
         try:
-            now = datetime.utcnow()
-            
+            now = datetime.now(timezone.utc)
+
             # Check device-based rate limiting
             stmt = select(DeviceTrial).where(DeviceTrial.device_fingerprint == device_fingerprint)
             result = await db.execute(stmt)
@@ -149,7 +154,7 @@ class TrialService:
     ) -> Dict[str, Any]:
         """Track device usage and update trial status."""
         try:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             # Check rate limits first
             rate_check = await self.check_rate_limits(db, device_fingerprint, ip_address)
@@ -225,7 +230,7 @@ class TrialService:
             ).values(
                 usage_count=0,
                 blocked=False,
-                last_used=datetime.utcnow()
+                last_used=datetime.now(timezone.utc)
             )
             await db.execute(stmt)
             await db.commit()
