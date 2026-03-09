@@ -41,9 +41,9 @@ x-backend-env: &backend-env
   PYTHONPATH: /app
 
 services:
-  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  # ── PostgreSQL (pgvector-enabled for semantic matching) ─────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: latexy-postgres
     restart: unless-stopped
     ports:
