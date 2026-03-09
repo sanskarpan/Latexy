@@ -54,6 +54,8 @@ class JobSubmissionRequest(BaseModel):
     user_plan: str = "free"
     device_fingerprint: Optional[str] = None
     industry: Optional[str] = None
+    target_sections: Optional[List[str]] = None
+    custom_instructions: Optional[str] = None
     metadata: Optional[Dict] = None
 
 
@@ -242,6 +244,8 @@ async def submit_job(
                 user_plan=request.user_plan,
                 optimization_level=request.optimization_level,
                 device_fingerprint=request.device_fingerprint,
+                target_sections=request.target_sections,
+                custom_instructions=request.custom_instructions,
                 metadata=extra_meta,
             )
 
