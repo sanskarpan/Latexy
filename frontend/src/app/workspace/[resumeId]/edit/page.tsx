@@ -20,15 +20,17 @@ import {
   List,
   ChevronDown,
   ChevronRight as ChevronRightIcon,
+  History,
+  AlertTriangle,
 } from 'lucide-react'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, type OptimizationHistoryEntry } from '@/lib/api-client'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
-type RightTab = 'preview' | 'ai' | 'logs'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 
 // ─── Outline ────────────────────────────────────────────────────────────────
@@ -227,6 +229,73 @@ function JDInput({
   )
 }
 
+// ─── Section Selector ────────────────────────────────────────────────────────
+
+function SectionSelector({
+  outline,
+  selected,
+  onChange,
+}: {
+  outline: OutlineItem[]
+  selected: string[]
+  onChange: (v: string[]) => void
+}) {
+  const allLabels = outline.map((o) => o.label)
+  const allSelected = selected.length === 0 || selected.length === allLabels.length
+
+  const toggle = (label: string) => {
+    if (selected.includes(label)) {
+      const next = selected.filter((s) => s !== label)
+      onChange(next.length === allLabels.length ? [] : next)
+    } else {
+      const next = [...selected, label]
+      onChange(next.length === allLabels.length ? [] : next)
+    }
+  }
+
+  if (outline.length === 0) return null
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+          Sections
+        </label>
+        <button
+          onClick={() => onChange([])}
+          className="text-[10px] text-zinc-700 transition hover:text-zinc-400"
+        >
+          {allSelected ? 'all' : `${selected.length} selected`}
+        </button>
+      </div>
+      <div className="max-h-32 overflow-y-auto rounded-xl border border-white/[0.06] bg-black/30 p-2 space-y-0.5">
+        {outline.map((item) => {
+          const checked = selected.length === 0 || selected.includes(item.label)
+          return (
+            <label
+              key={item.label}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[11px] transition hover:bg-white/[0.04]"
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => toggle(item.label)}
+                className="h-3 w-3 accent-violet-400"
+              />
+              <span
+                className="truncate text-zinc-400"
+                style={{ paddingLeft: `${item.level * 8}px` }}
+              >
+                {item.label}
+              </span>
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── AI Panel ────────────────────────────────────────────────────────────────
 
 interface AIPanelProps {
@@ -237,9 +306,15 @@ interface AIPanelProps {
   setJobDescription: (v: string) => void
   optLevel: OptLevel
   setOptLevel: (v: OptLevel) => void
-  hasBaseline: boolean
+  undoCount: number
   onRun: () => void
-  onRestore: () => void
+  onUndo: () => void
+  onApplyAnyway: () => void
+  outline: OutlineItem[]
+  targetSections: string[]
+  setTargetSections: (v: string[]) => void
+  customInstructions: string
+  setCustomInstructions: (v: string) => void
 }
 
 function AIPanel({
@@ -250,13 +325,20 @@ function AIPanel({
   setJobDescription,
   optLevel,
   setOptLevel,
-  hasBaseline,
+  undoCount,
   onRun,
-  onRestore,
+  onUndo,
+  onApplyAnyway,
+  outline,
+  targetSections,
+  setTargetSections,
+  customInstructions,
+  setCustomInstructions,
 }: AIPanelProps) {
   const isDone = !isRunning && aiStream.status === 'completed'
   const isFailed = !isRunning && aiStream.status === 'failed'
   const isIdle = !isRunning && aiStream.status !== 'completed' && aiStream.status !== 'failed'
+  const [showCustom, setShowCustom] = useState(false)
 
   return (
     <div className="flex h-full flex-col overflow-y-auto scrollbar-subtle">
@@ -338,11 +420,12 @@ function AIPanel({
 
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={onRestore}
-              disabled={!hasBaseline}
+              onClick={onUndo}
+              disabled={undoCount === 0}
               className="flex items-center justify-center gap-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] py-2.5 text-xs font-medium text-zinc-400 transition hover:border-white/10 hover:text-zinc-200 disabled:opacity-30"
             >
-              <RotateCcw size={12} /> Restore
+              <RotateCcw size={12} />
+              {undoCount > 0 ? `Undo (${undoCount})` : 'Undo'}
             </button>
             <button
               onClick={onRun}
@@ -371,6 +454,26 @@ function AIPanel({
               <p className="mt-0.5 text-[11px] text-zinc-500">{aiStream.error || 'An error occurred'}</p>
             </div>
           </div>
+
+          {/* Fix 3: Apply anyway when LLM succeeded but compile failed */}
+          {aiStream.streamingLatex && (
+            <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.07] p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle size={13} className="text-amber-400" />
+                <p className="text-[11px] font-semibold text-amber-300">AI rewrite is available</p>
+              </div>
+              <p className="text-[10px] text-zinc-500 mb-3">
+                The LaTeX rewrite completed but failed to compile. You can apply it to the editor and fix the errors manually.
+              </p>
+              <button
+                onClick={onApplyAnyway}
+                className="w-full rounded-lg border border-amber-400/30 bg-amber-500/10 py-2 text-[11px] font-semibold text-amber-200 transition hover:bg-amber-500/20"
+              >
+                Apply optimized LaTeX anyway
+              </button>
+            </div>
+          )}
+
           <button
             onClick={onRun}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500/20 py-2.5 text-sm font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
@@ -397,20 +500,54 @@ function AIPanel({
             scores for recruiter visibility.
           </p>
 
-          {hasBaseline && (
+          {undoCount > 0 && (
             <div className="flex items-center justify-between rounded-xl border border-amber-400/20 bg-amber-400/[0.05] px-3 py-2.5">
-              <span className="text-[11px] text-amber-300">AI changes applied to editor</span>
+              <span className="text-[11px] text-amber-300">
+                {undoCount} undo {undoCount === 1 ? 'state' : 'states'} available
+              </span>
               <button
-                onClick={onRestore}
+                onClick={onUndo}
                 className="flex items-center gap-1 text-[11px] font-semibold text-amber-200 transition hover:text-white"
               >
-                <RotateCcw size={11} /> Restore
+                <RotateCcw size={11} /> Undo
               </button>
             </div>
           )}
 
           <LevelSelector value={optLevel} onChange={setOptLevel} />
           <JDInput value={jobDescription} onChange={setJobDescription} />
+
+          {/* Feature 3: Section-specific optimization */}
+          {outline.length > 0 && (
+            <SectionSelector
+              outline={outline}
+              selected={targetSections}
+              onChange={setTargetSections}
+            />
+          )}
+
+          {/* Feature 3: Custom instructions */}
+          <div>
+            <button
+              onClick={() => setShowCustom((v) => !v)}
+              className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600 transition hover:text-zinc-400"
+            >
+              <ChevronDown
+                size={11}
+                className={`transition-transform ${showCustom ? 'rotate-180' : ''}`}
+              />
+              Custom Instructions
+            </button>
+            {showCustom && (
+              <textarea
+                value={customInstructions}
+                onChange={(e) => setCustomInstructions(e.target.value)}
+                placeholder="e.g. keep it to 1 page, emphasize Python experience, avoid passive voice"
+                rows={3}
+                className="mt-2 w-full resize-none rounded-xl border border-white/[0.06] bg-black/40 p-3 text-[12px] text-zinc-200 outline-none transition placeholder:text-zinc-700 focus:border-violet-400/30"
+              />
+            )}
+          </div>
 
           <button
             onClick={onRun}
@@ -425,6 +562,94 @@ function AIPanel({
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── History Panel ────────────────────────────────────────────────────────────
+
+function HistoryPanel({
+  resumeId,
+  onRestore,
+}: {
+  resumeId: string
+  onRestore: (latex: string, label: string) => void
+}) {
+  const [history, setHistory] = useState<OptimizationHistoryEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [restoringId, setRestoringId] = useState<string | null>(null)
+
+  useEffect(() => {
+    apiClient.getOptimizationHistory(resumeId)
+      .then(setHistory)
+      .catch(() => toast.error('Failed to load history'))
+      .finally(() => setLoading(false))
+  }, [resumeId])
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 size={16} className="animate-spin text-zinc-600" />
+      </div>
+    )
+  }
+
+  if (history.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 p-6 text-center">
+        <History size={20} className="text-zinc-700" />
+        <p className="text-[11px] text-zinc-600">No optimization history yet.<br />Run AI Optimize to create your first entry.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-y-auto p-3 space-y-2">
+      <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-700">
+        {history.length} optimization{history.length !== 1 ? 's' : ''}
+      </p>
+      {history.map((entry) => {
+        const date = new Date(entry.created_at)
+        const label = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        return (
+          <div
+            key={entry.id}
+            className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.05] bg-black/30 px-3 py-2.5"
+          >
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium text-zinc-300 truncate">{label}</p>
+              <div className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-600">
+                {entry.ats_score != null && (
+                  <span className={
+                    entry.ats_score >= 80 ? 'text-emerald-500' :
+                    entry.ats_score >= 60 ? 'text-amber-500' : 'text-rose-500'
+                  }>ATS {Math.round(entry.ats_score)}</span>
+                )}
+                <span>{entry.changes_count} changes</span>
+                {entry.tokens_used && <span>{entry.tokens_used.toLocaleString()} tok</span>}
+              </div>
+            </div>
+            <button
+              disabled={restoringId === entry.id}
+              onClick={async () => {
+                setRestoringId(entry.id)
+                try {
+                  const result = await apiClient.restoreOptimization(resumeId, entry.id)
+                  onRestore(result.latex_content, `Restore ${label}`)
+                  toast.success('Restored optimization')
+                } catch {
+                  toast.error('Failed to restore')
+                } finally {
+                  setRestoringId(null)
+                }
+              }}
+              className="shrink-0 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[10px] font-semibold text-zinc-400 transition hover:border-violet-400/30 hover:text-violet-200 disabled:opacity-40"
+            >
+              {restoringId === entry.id ? <Loader2 size={10} className="animate-spin" /> : 'Restore'}
+            </button>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -447,7 +672,6 @@ export default function ResumeEditPage() {
 
   // Layout
   const [rightTab, setRightTab] = useState<RightTab>('preview')
-  // null = default 50/50; once user drags, locks to pixel value
   const [rightWidth, setRightWidth] = useState<number | null>(null)
   const [showOutline, setShowOutline] = useState(false)
   const [isDraggingResize, setIsDraggingResize] = useState(false)
@@ -460,15 +684,17 @@ export default function ResumeEditPage() {
   const [jobDescription, setJobDescription] = useState('')
   const [optLevel, setOptLevel] = useState<OptLevel>('balanced')
   const [isAiSubmitting, setIsAiSubmitting] = useState(false)
-  const [baselineLatex, setBaselineLatex] = useState<string | null>(null)
+  // Feature 2: Multi-level undo stack (replaces single baselineLatex)
+  const [undoStack, setUndoStack] = useState<Array<{ label: string; latex: string }>>([])
+  // Feature 3: Section-specific optimization
+  const [targetSections, setTargetSections] = useState<string[]>([])
+  const [customInstructions, setCustomInstructions] = useState('')
 
   // SyncTeX
   const [syncFromLine, setSyncFromLine] = useState<number | null>(null)
   const [cursorLine, setCursorLine] = useState<number | null>(null)
 
-  // Current PDF job ID (for synctex fetch)
   const activePdfJobId = useRef<string | null>(null)
-
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
 
@@ -499,12 +725,25 @@ export default function ResumeEditPage() {
     editorRef.current.setValue(aiStream.streamingLatex)
   }, [aiStream.streamingLatex])
 
-  // When AI completes, commit streamed content to React state
+  // When AI completes, commit streamed content to React state + record optimization
   useEffect(() => {
     if (aiStream.status === 'completed') {
-      setLatexContent(editorRef.current?.getValue() || '')
+      const finalLatex = editorRef.current?.getValue() || ''
+      setLatexContent(finalLatex)
+      // Feature 1: save optimization record
+      if (finalLatex && aiJobId) {
+        const baselineLatex = undoStack[undoStack.length - 1]?.latex || ''
+        apiClient.recordOptimization(resumeId, {
+          original_latex: baselineLatex,
+          optimized_latex: finalLatex,
+          changes_made: aiStream.changesMade,
+          ats_score: aiStream.atsScore ?? undefined,
+          tokens_used: aiStream.tokensUsed ?? undefined,
+          job_description: jobDescription.trim() || undefined,
+        }).catch(() => {}) // non-critical
+      }
     }
-  }, [aiStream.status])
+  }, [aiStream.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load PDF after either job completes
   useEffect(() => {
@@ -546,9 +785,6 @@ export default function ResumeEditPage() {
   }, [])
 
   // ── Resize handle ──────────────────────────────────────────────────────
-  // An invisible full-screen overlay is shown during drag so Monaco (and any
-  // other iframe/canvas child) cannot steal pointer events when the cursor
-  // moves left over the editor area. The window-level listeners still fire.
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!isResizingRef.current) return
@@ -586,6 +822,23 @@ export default function ResumeEditPage() {
     e.preventDefault()
   }, [rightWidth])
 
+  // ── Undo stack helpers (Feature 2) ──────────────────────────────────────
+  const pushUndo = useCallback((label: string) => {
+    const current = editorRef.current?.getValue() || latexContent
+    setUndoStack((prev) => [...prev.slice(-9), { label, latex: current }])
+  }, [latexContent])
+
+  const handleUndo = useCallback(() => {
+    setUndoStack((prev) => {
+      if (prev.length === 0) return prev
+      const entry = prev[prev.length - 1]
+      editorRef.current?.setValue(entry.latex)
+      setLatexContent(entry.latex)
+      toast.success(`Restored: ${entry.label}`)
+      return prev.slice(0, -1)
+    })
+  }, [])
+
   // ── Handlers ────────────────────────────────────────────────────────────
   const handleSave = async () => {
     const content = editorRef.current?.getValue() || latexContent
@@ -620,7 +873,8 @@ export default function ResumeEditPage() {
 
   const runAiOptimize = async () => {
     const content = editorRef.current?.getValue() || latexContent
-    setBaselineLatex(content)
+    // Feature 2: push to undo stack before AI changes the editor
+    pushUndo('Before AI optimization')
     setIsAiSubmitting(true)
     try {
       const r = await apiClient.optimizeAndCompile({
@@ -628,6 +882,9 @@ export default function ResumeEditPage() {
         job_description: jobDescription.trim() || undefined,
         optimization_level: optLevel,
         user_plan: 'pro',
+        // Feature 3: pass section and instruction filters
+        target_sections: targetSections.length > 0 ? targetSections : undefined,
+        custom_instructions: customInstructions.trim() || undefined,
       })
       if (!r.success || !r.job_id) throw new Error(r.message)
       setAiJobId(r.job_id)
@@ -639,13 +896,21 @@ export default function ResumeEditPage() {
     }
   }
 
-  const restoreBaseline = () => {
-    if (!baselineLatex) return
-    editorRef.current?.setValue(baselineLatex)
-    setLatexContent(baselineLatex)
-    setBaselineLatex(null)
-    toast.success('Restored original')
-  }
+  // Fix 3: Apply optimized LaTeX even when compilation failed
+  const handleApplyAnyway = useCallback(() => {
+    if (!aiStream.streamingLatex) return
+    pushUndo('Before apply (failed compile)')
+    editorRef.current?.setValue(aiStream.streamingLatex)
+    setLatexContent(aiStream.streamingLatex)
+    toast.success('Applied optimized LaTeX — fix the compile errors manually')
+  }, [aiStream.streamingLatex, pushUndo])
+
+  // Feature 1: restore from history
+  const handleHistoryRestore = useCallback((latex: string, label: string) => {
+    pushUndo(`Before ${label}`)
+    editorRef.current?.setValue(latex)
+    setLatexContent(latex)
+  }, [pushUndo])
 
   const handleDownload = async () => {
     const id = compileStream.pdfJobId ?? aiStream.pdfJobId ?? compileJobId ?? aiJobId
@@ -661,17 +926,14 @@ export default function ResumeEditPage() {
     } catch { toast.error('Download failed') }
   }
 
-  // SyncTeX: PDF click → scroll editor to source line
   const handleSyncToSource = useCallback((line: number) => {
     editorRef.current?.highlightLine(line)
   }, [])
 
-  // SyncTeX: editor cursor move → forward-sync to PDF
   const handleCursorChange = useCallback((line: number) => {
     setCursorLine(line)
   }, [])
 
-  // Jump to outline section
   const handleOutlineJump = useCallback((line: number) => {
     editorRef.current?.highlightLine(line)
   }, [])
@@ -697,6 +959,7 @@ export default function ResumeEditPage() {
     : 'LaTeX editor ready'
 
   const currentLatex = editorRef.current?.getValue() || latexContent
+  const outline = buildOutline(currentLatex)
 
   if (isLoading) {
     return (
@@ -764,7 +1027,7 @@ export default function ResumeEditPage() {
         </div>
       </header>
 
-      {/* Resize drag overlay — blocks Monaco from stealing pointer events */}
+      {/* Resize drag overlay */}
       {isDraggingResize && (
         <div className="fixed inset-0 z-50" style={{ cursor: 'col-resize' }} />
       )}
@@ -778,7 +1041,6 @@ export default function ResumeEditPage() {
             showOutline ? 'w-48' : 'w-8'
           }`}
         >
-          {/* Toggle button */}
           <button
             onClick={() => setShowOutline((v) => !v)}
             className={`flex h-8 w-full shrink-0 items-center border-b border-white/[0.05] px-1.5 text-zinc-600 transition hover:text-zinc-300 ${
@@ -850,6 +1112,7 @@ export default function ResumeEditPage() {
                 { id: 'preview', label: 'Preview', icon: Eye },
                 { id: 'ai', label: 'AI', icon: Sparkles },
                 { id: 'logs', label: 'Logs', icon: Terminal },
+                { id: 'history', label: 'History', icon: History },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -869,6 +1132,11 @@ export default function ResumeEditPage() {
                 )}
                 {id === 'logs' && isCompiling && (
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400" />
+                )}
+                {id === 'ai' && undoStack.length > 0 && !isAiRunning && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/30 px-1 text-[9px] font-bold text-amber-300">
+                    {undoStack.length}
+                  </span>
                 )}
               </button>
             ))}
@@ -908,9 +1176,15 @@ export default function ResumeEditPage() {
                 setJobDescription={setJobDescription}
                 optLevel={optLevel}
                 setOptLevel={setOptLevel}
-                hasBaseline={!!baselineLatex}
+                undoCount={undoStack.length}
                 onRun={runAiOptimize}
-                onRestore={restoreBaseline}
+                onUndo={handleUndo}
+                onApplyAnyway={handleApplyAnyway}
+                outline={outline}
+                targetSections={targetSections}
+                setTargetSections={setTargetSections}
+                customInstructions={customInstructions}
+                setCustomInstructions={setCustomInstructions}
               />
             )}
 
@@ -940,6 +1214,10 @@ export default function ResumeEditPage() {
                 </div>
                 <LogViewer lines={logLines} maxHeight="100%" className="h-full text-[11px]" />
               </div>
+            )}
+
+            {rightTab === 'history' && (
+              <HistoryPanel resumeId={resumeId} onRestore={handleHistoryRestore} />
             )}
           </div>
         </aside>
