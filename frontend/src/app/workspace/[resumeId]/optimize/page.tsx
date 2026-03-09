@@ -234,8 +234,39 @@ export default function OptimizationSuitePage() {
                 <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
                   <h2 className="text-xl font-semibold text-white">ATS Analysis</h2>
                   <div className="flex gap-2">
-                    <button className="btn-ghost px-4 py-2 text-xs">Save as New Version</button>
-                    <button className="btn-accent px-4 py-2 text-xs">Finalize and Export</button>
+                    <button
+                      className="btn-ghost px-4 py-2 text-xs"
+                      onClick={async () => {
+                        try {
+                          const latex = editorRef.current?.getValue() || stream.streamingLatex || ''
+                          await apiClient.updateResume(resumeId, { latex_content: latex })
+                          toast.success('Saved to resume')
+                        } catch {
+                          toast.error('Failed to save')
+                        }
+                      }}
+                    >
+                      Save as New Version
+                    </button>
+                    <button
+                      className="btn-accent px-4 py-2 text-xs"
+                      onClick={async () => {
+                        if (!stream.pdfJobId) return
+                        try {
+                          const blob = await apiClient.downloadPdf(stream.pdfJobId)
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = 'resume_optimized.pdf'
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        } catch {
+                          toast.error('Failed to download PDF')
+                        }
+                      }}
+                    >
+                      Finalize and Export
+                    </button>
                   </div>
                 </div>
                 <ATSScoreCard
