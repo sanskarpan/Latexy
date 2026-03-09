@@ -12,28 +12,24 @@ Key changes from previous version:
 - combined job type wired to orchestrator
 """
 
-import asyncio
 import json
 import time
 import uuid
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Request
-from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client, redis_manager
 from ..database.connection import get_db
 from ..middleware.auth_middleware import get_current_user_optional
+from ..workers.ats_worker import submit_ats_scoring
+from ..workers.cleanup_worker import submit_expired_jobs_cleanup, submit_temp_files_cleanup
 from ..workers.latex_worker import submit_latex_compilation
 from ..workers.llm_worker import submit_resume_optimization
-from ..workers.ats_worker import submit_ats_scoring
 from ..workers.orchestrator import submit_optimize_and_compile
-from ..workers.email_worker import submit_notification_email, submit_completion_email
-from ..workers.cleanup_worker import submit_temp_files_cleanup, submit_expired_jobs_cleanup
 
 logger = get_logger(__name__)
 
