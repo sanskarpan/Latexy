@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, func
 
+from ..core.config import settings
 from ..database.connection import get_db
 from ..database.models import Resume, Optimization
 from ..middleware.auth_middleware import get_current_user_required
@@ -82,6 +83,18 @@ async def create_resume(
     db.add(resume)
     await db.commit()
     await db.refresh(resume)
+
+    if settings.OPENAI_API_KEY:
+        try:
+            from ..workers.ats_worker import embed_resume_task
+            embed_resume_task.apply_async(
+                kwargs={"resume_id": str(resume.id), "latex_content": resume.latex_content,
+                        "user_id": user_id},
+                queue="ats", priority=1,
+            )
+        except Exception:
+            pass  # Embedding is best-effort
+
     return resume
 
 @router.get("/", response_model=List[ResumeResponse])
@@ -133,6 +146,18 @@ async def update_resume(
     resume.updated_at = datetime.now()
     await db.commit()
     await db.refresh(resume)
+
+    if settings.OPENAI_API_KEY and update_data.get("latex_content"):
+        try:
+            from ..workers.ats_worker import embed_resume_task
+            embed_resume_task.apply_async(
+                kwargs={"resume_id": str(resume.id), "latex_content": resume.latex_content,
+                        "user_id": user_id},
+                queue="ats", priority=1,
+            )
+        except Exception:
+            pass  # Embedding is best-effort
+
     return resume
 
 @router.delete("/{resume_id}", status_code=status.HTTP_204_NO_CONTENT)
