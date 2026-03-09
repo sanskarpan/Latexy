@@ -2,18 +2,18 @@
 Analytics API routes for tracking and retrieving usage data.
 """
 
+import logging
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.connection import get_db
-from ..services.analytics_service import analytics_service
 from ..middleware.auth_middleware import get_current_user_required, require_admin
-import logging
+from ..services.analytics_service import analytics_service
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ async def track_event(
         # Get IP address and user agent from request
         ip_address = http_request.client.host if http_request.client else None
         user_agent = http_request.headers.get("user-agent")
-        
+
         success = await analytics_service.track_event(
             db=db,
             event_type=request.event_type,
@@ -113,7 +113,7 @@ async def track_event(
             ip_address=ip_address,
             user_agent=user_agent
         )
-        
+
         if success:
             return {"message": "Event tracked successfully"}
         else:
@@ -121,7 +121,7 @@ async def track_event(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to track event"
             )
-            
+
     except Exception as e:
         logger.error(f"Error tracking event: {e}")
         raise HTTPException(
@@ -143,7 +143,7 @@ async def get_my_analytics(
             user_id=UUID(user_id),
             days=days
         )
-        
+
         if not analytics_data:
             return {
                 "user_id": user_id,
@@ -157,9 +157,9 @@ async def get_my_analytics(
                 "daily_activity": {},
                 "most_active_day": None
             }
-        
+
         return UserAnalyticsResponse(**analytics_data)
-        
+
     except Exception as e:
         logger.error(f"Error getting user analytics: {e}")
         raise HTTPException(
@@ -217,21 +217,21 @@ async def get_user_analytics(
     try:
         # TODO: Add authentication check to ensure user can only access their own data
         # or is an admin
-        
+
         analytics_data = await analytics_service.get_user_analytics(
             db=db,
             user_id=user_id,
             days=days
         )
-        
+
         if not analytics_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User analytics not found"
             )
-        
+
         return UserAnalyticsResponse(**analytics_data)
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -250,14 +250,14 @@ async def get_system_analytics(
     """Get system-wide analytics. Requires admin access."""
     try:
         # TODO: Add admin authentication check
-        
+
         analytics_data = await analytics_service.get_system_analytics(
             db=db,
             days=days
         )
-        
+
         return SystemAnalyticsResponse(**analytics_data)
-        
+
     except Exception as e:
         logger.error(f"Error getting system analytics: {e}")
         raise HTTPException(
@@ -274,14 +274,14 @@ async def get_conversion_funnel(
     """Get conversion funnel analytics. Requires admin access."""
     try:
         # TODO: Add admin authentication check
-        
+
         funnel_data = await analytics_service.get_conversion_funnel(
             db=db,
             days=days
         )
-        
+
         return ConversionFunnelResponse(**funnel_data)
-        
+
     except Exception as e:
         logger.error(f"Error getting conversion funnel: {e}")
         raise HTTPException(
@@ -302,7 +302,7 @@ async def track_compilation(
     """Track compilation-specific events."""
     try:
         ip_address = http_request.client.host if http_request and http_request.client else None
-        
+
         await analytics_service.track_compilation_event(
             db=db,
             user_id=user_id,
@@ -312,9 +312,9 @@ async def track_compilation(
             compilation_time=compilation_time,
             ip_address=ip_address
         )
-        
+
         return {"message": "Compilation event tracked successfully"}
-        
+
     except Exception as e:
         logger.error(f"Error tracking compilation event: {e}")
         raise HTTPException(
@@ -335,7 +335,7 @@ async def track_optimization(
     """Track optimization-specific events."""
     try:
         ip_address = http_request.client.host if http_request and http_request.client else None
-        
+
         await analytics_service.track_optimization_event(
             db=db,
             user_id=user_id,
@@ -345,9 +345,9 @@ async def track_optimization(
             tokens_used=tokens_used,
             ip_address=ip_address
         )
-        
+
         return {"message": "Optimization event tracked successfully"}
-        
+
     except Exception as e:
         logger.error(f"Error tracking optimization event: {e}")
         raise HTTPException(
@@ -367,7 +367,7 @@ async def track_page_view(
     try:
         ip_address = http_request.client.host if http_request and http_request.client else None
         user_agent = http_request.headers.get("user-agent") if http_request else None
-        
+
         await analytics_service.track_user_journey_event(
             db=db,
             event_type="page_view",
@@ -377,9 +377,9 @@ async def track_page_view(
             ip_address=ip_address,
             user_agent=user_agent
         )
-        
+
         return {"message": "Page view tracked successfully"}
-        
+
     except Exception as e:
         logger.error(f"Error tracking page view: {e}")
         raise HTTPException(
@@ -399,7 +399,7 @@ async def track_feature_usage(
     try:
         ip_address = http_request.client.host if http_request and http_request.client else None
         user_agent = http_request.headers.get("user-agent") if http_request else None
-        
+
         await analytics_service.track_user_journey_event(
             db=db,
             event_type="feature_usage",
@@ -409,9 +409,9 @@ async def track_feature_usage(
             ip_address=ip_address,
             user_agent=user_agent
         )
-        
+
         return {"message": "Feature usage tracked successfully"}
-        
+
     except Exception as e:
         logger.error(f"Error tracking feature usage: {e}")
         raise HTTPException(
@@ -428,17 +428,17 @@ async def get_analytics_dashboard(
     """Get comprehensive analytics dashboard data."""
     try:
         # TODO: Add admin authentication check
-        
+
         # Get all analytics data
         system_analytics = await analytics_service.get_system_analytics(db, days)
         conversion_funnel = await analytics_service.get_conversion_funnel(db, days)
-        
+
         return {
             "system_analytics": system_analytics,
             "conversion_funnel": conversion_funnel,
             "generated_at": datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting analytics dashboard: {e}")
         raise HTTPException(
