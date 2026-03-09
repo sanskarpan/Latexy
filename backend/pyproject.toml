@@ -1,0 +1,24 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = [
+    ".git",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "alembic/versions",
+]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I"]
+ignore = [
+    "E501",   # line too long — handled by formatter, not enforced
+    "E402",   # module-level import not at top — necessary in some Celery/FastAPI patterns
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test/*" = ["F841"]   # unused variables in tests are fine (captured responses etc.)
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
