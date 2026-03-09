@@ -2,19 +2,19 @@
 FastAPI application main module.
 """
 
-import uvicorn
 from contextlib import asynccontextmanager
 
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.routes import router
 from .core.config import settings
 from .core.event_bus import event_bus
-from .core.logging import setup_logging, get_logger
-from .core.redis import redis_manager, get_redis_client
+from .core.logging import get_logger, setup_logging
+from .core.redis import get_redis_client, redis_manager
+from .database.connection import close_db, init_db
 from .services.latex_compiler import latex_compiler
-from .database.connection import init_db, close_db
 
 # Setup logging
 setup_logging()
@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     logger.info("Latexy Backend starting up...")
-    
+
     # Initialize database connection
     try:
         await init_db()
@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         raise
-    
+
     # Initialize Redis connections
     try:
         await redis_manager.init_redis()
@@ -52,19 +52,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize EventBusManager: {e}")
         logger.warning("Real-time WebSocket events will not be available")
-    
+
     # Check LaTeX installation
     if not latex_compiler.is_available():
         logger.warning("LaTeX installation not found or not working properly")
     else:
         logger.info("LaTeX installation verified successfully")
-    
+
     # Ensure temp directory exists
     settings.TEMP_DIR.mkdir(exist_ok=True)
     logger.info(f"Temporary directory ready: {settings.TEMP_DIR}")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Latexy Backend shutting down...")
     await close_db()
@@ -95,9 +95,9 @@ app.include_router(router)
 def main():
     """Application entry point."""
     uvicorn.run(
-        "app.main:app", 
-        host=settings.HOST, 
-        port=settings.PORT, 
+        "app.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
         reload=settings.DEBUG,
         log_level=settings.LOG_LEVEL.lower()
     )
