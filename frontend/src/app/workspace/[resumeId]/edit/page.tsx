@@ -29,6 +29,8 @@ import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import DeepAnalysisPanel from '@/components/ats/DeepAnalysisPanel'
+import { Brain } from 'lucide-react'
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
@@ -315,6 +317,7 @@ interface AIPanelProps {
   setTargetSections: (v: string[]) => void
   customInstructions: string
   setCustomInstructions: (v: string) => void
+  onOpenDeepAnalysis: () => void
 }
 
 function AIPanel({
@@ -334,6 +337,7 @@ function AIPanel({
   setTargetSections,
   customInstructions,
   setCustomInstructions,
+  onOpenDeepAnalysis,
 }: AIPanelProps) {
   const isDone = !isRunning && aiStream.status === 'completed'
   const isFailed = !isRunning && aiStream.status === 'failed'
@@ -435,6 +439,13 @@ function AIPanel({
               <Sparkles size={12} /> Run again
             </button>
           </div>
+
+          <button
+            onClick={onOpenDeepAnalysis}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-violet-400/20 bg-violet-500/10 py-2.5 text-xs font-semibold text-violet-200 transition hover:bg-violet-500/20"
+          >
+            <Brain size={12} /> Deep AI Analysis
+          </button>
 
           <div className="border-t border-white/[0.05]" />
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
@@ -694,12 +705,20 @@ export default function ResumeEditPage() {
   const [syncFromLine, setSyncFromLine] = useState<number | null>(null)
   const [cursorLine, setCursorLine] = useState<number | null>(null)
 
+  // Deep analysis (Layer 2)
+  const [deepPanelOpen, setDeepPanelOpen] = useState(false)
+  const [deepAnalysisJobId, setDeepAnalysisJobId] = useState<string | null>(null)
+  const [deepAnalysisUsesRemaining, setDeepAnalysisUsesRemaining] = useState<number | null>(null)
+  const [isDeepRunning, setIsDeepRunning] = useState(false)
+  const [deepAnalysisError, setDeepAnalysisError] = useState<string | null>(null)
+
   const activePdfJobId = useRef<string | null>(null)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
 
   const { state: compileStream } = useJobStream(compileJobId)
   const { state: aiStream } = useJobStream(aiJobId)
+  const { state: deepStream } = useJobStream(deepAnalysisJobId)
 
   // Load resume
   useEffect(() => {
@@ -925,6 +944,33 @@ export default function ResumeEditPage() {
       URL.revokeObjectURL(url)
     } catch { toast.error('Download failed') }
   }
+
+  const handleOpenDeepAnalysis = useCallback(async () => {
+    setDeepPanelOpen(true)
+    if (deepAnalysisJobId) return // already have a job running/done
+    const content = editorRef.current?.getValue() || latexContent
+    if (!content.trim()) { toast.error('Add LaTeX content first'); return }
+    setIsDeepRunning(true)
+    setDeepAnalysisError(null)
+    try {
+      const response = await apiClient.deepAnalyzeResume({
+        latex_content: content,
+        job_description: jobDescription.trim() || undefined,
+      })
+      if (response.success && response.job_id) {
+        setDeepAnalysisJobId(response.job_id)
+        setDeepAnalysisUsesRemaining(response.uses_remaining ?? null)
+      } else {
+        throw new Error(response.message || 'Deep analysis failed')
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Deep analysis failed'
+      setDeepAnalysisError(msg)
+      toast.error(msg)
+    } finally {
+      setIsDeepRunning(false)
+    }
+  }, [deepAnalysisJobId, latexContent, jobDescription])
 
   const handleSyncToSource = useCallback((line: number) => {
     editorRef.current?.highlightLine(line)
@@ -1185,6 +1231,7 @@ export default function ResumeEditPage() {
                 setTargetSections={setTargetSections}
                 customInstructions={customInstructions}
                 setCustomInstructions={setCustomInstructions}
+                onOpenDeepAnalysis={handleOpenDeepAnalysis}
               />
             )}
 
@@ -1222,6 +1269,17 @@ export default function ResumeEditPage() {
           </div>
         </aside>
       </main>
+
+      <DeepAnalysisPanel
+        isOpen={deepPanelOpen}
+        onClose={() => setDeepPanelOpen(false)}
+        isLoading={isDeepRunning || deepStream.status === 'queued' || deepStream.status === 'processing'}
+        analysis={deepStream.deepAnalysis}
+        error={deepAnalysisError}
+        usesRemaining={deepAnalysisUsesRemaining}
+        onRun={handleOpenDeepAnalysis}
+        isRunning={isDeepRunning}
+      />
 
       {/* ── STATUS BAR ── */}
       <footer className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#0a0a0a] px-3">
