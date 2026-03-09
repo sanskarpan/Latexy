@@ -2,7 +2,7 @@
 
 from contextlib import asynccontextmanager
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from ..core.config import settings
@@ -21,16 +21,16 @@ class Base(DeclarativeBase):
 async def init_db():
     """Initialize database connection."""
     global engine, SessionLocal
-    
+
     if not settings.DATABASE_URL:
         logger.error("DATABASE_URL not configured")
         raise ValueError("DATABASE_URL not configured")
-    
+
     # Convert PostgreSQL URL to asyncpg format
     database_url = settings.DATABASE_URL
     if database_url.startswith("postgresql://"):
         database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    
+
     # Create async engine
     engine = create_async_engine(
         database_url,
@@ -38,14 +38,14 @@ async def init_db():
         pool_pre_ping=True,
         pool_recycle=300,
     )
-    
+
     # Create session factory
     SessionLocal = async_sessionmaker(
         engine,
         class_=AsyncSession,
         expire_on_commit=False
     )
-    
+
     logger.info("Database connection initialized")
 
 async def get_db():
@@ -53,7 +53,7 @@ async def get_db():
     global SessionLocal
     if SessionLocal is None:
         await init_db()
-    
+
     async with SessionLocal() as session:
         try:
             yield session
