@@ -2,7 +2,8 @@
 Pydantic models for LLM-related operations.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -11,7 +12,7 @@ class OptimizationRequest(BaseModel):
     latex_content: str = Field(..., description="Original LaTeX resume content")
     job_description: Optional[str] = Field(None, description="Target job description (optional)")
     optimization_level: str = Field(
-        default="balanced", 
+        default="balanced",
         description="Optimization level: conservative, balanced, or aggressive"
     )
 
@@ -48,17 +49,17 @@ class OptimizationResponse(BaseModel):
     optimized_latex: Optional[str] = None
     original_latex: str
     job_description: Optional[str] = None
-    
+
     # Analysis results
     keywords_found: List[KeywordMatch] = Field(default_factory=list)
     changes_made: List[OptimizationChange] = Field(default_factory=list)
     ats_score: Optional[ATSScore] = None
-    
+
     # Metadata
     optimization_time: Optional[float] = None
     tokens_used: Optional[int] = None
     model_used: Optional[str] = None
-    
+
     # Error handling
     error_message: Optional[str] = None
     warnings: List[str] = Field(default_factory=list)
