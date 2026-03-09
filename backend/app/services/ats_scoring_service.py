@@ -3,15 +3,13 @@ ATS Scoring Service — 3-layer SAAS-grade engine.
 Layer 1: Rule-based (accurate LaTeX extraction + expanded corpus)
 """
 
-import re
-import json
-from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass, asdict
-from datetime import datetime
 import asyncio
+import re
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from ..core.logging import get_logger
-from ..core.config import settings
 
 logger = get_logger(__name__)
 
