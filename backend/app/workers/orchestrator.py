@@ -5,12 +5,19 @@ This is the main task for the 'combined' job type (optimize + compile + score).
 
 Stage progression:
   job.started           → stage=llm_optimization
-  llm.token (×N)        → live token stream to frontend Monaco editor
+  llm.token (×N)        → live LaTeX token stream to frontend Monaco editor
   llm.complete          → full assembled LaTeX + token count
   job.progress 40%      → stage=latex_compilation
   log.line (×N)         → pdflatex stdout lines
   job.progress 80%      → stage=ats_scoring
   job.completed 100%    → ats_score, pdf_job_id, changes_made, times
+
+Fix notes:
+- Delimiter streaming: LLM output wrapped in <<<LATEX>>>...<<<END_LATEX>>> markers;
+  only LaTeX tokens published via llm.token (JSON scaffold never reaches editor).
+- Docker fallback: shutil.which("docker") → local pdflatex when Docker unavailable.
+- Compile failure preserves LLM work: job.failed includes optimized_latex + changes_made.
+- Section-specific optimization: target_sections + custom_instructions pass-through.
 
 All Redis I/O via event_publisher (sync redis.Redis — no asyncio).
 """
@@ -18,6 +25,7 @@ All Redis I/O via event_publisher (sync redis.Redis — no asyncio).
 import asyncio
 import json
 import re
+import shutil
 import subprocess
 import time
 import uuid
@@ -41,6 +49,13 @@ from ..workers.event_publisher import (
 
 logger = get_logger(__name__)
 
+# Delimiter markers for structured LLM output (Fix 2)
+_LS = "<<<LATEX>>>"
+_LE = "<<<END_LATEX>>>"
+_CS = "<<<CHANGES>>>"
+_CE = "<<<END_CHANGES>>>"
+_BEFORE, _IN_LATEX, _AFTER_LATEX, _IN_CHANGES = 0, 1, 2, 3
+
 
 @celery_app.task(
     bind=True,
@@ -58,6 +73,8 @@ def optimize_and_compile_task(
     optimization_level: str = "balanced",
     user_api_key: Optional[str] = None,
     device_fingerprint: Optional[str] = None,
+    target_sections: Optional[List[str]] = None,
+    custom_instructions: Optional[str] = None,
     metadata: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
@@ -101,6 +118,8 @@ def optimize_and_compile_task(
             job_description=job_description,
             optimization_level=optimization_level,
             api_key=api_key,
+            target_sections=target_sections,
+            custom_instructions=custom_instructions,
         )
 
         if is_cancelled(job_id):
@@ -116,7 +135,7 @@ def optimize_and_compile_task(
             "message": "Starting LaTeX compilation",
         })
 
-        compilation_ok, compilation_time = _run_latex_stage(
+        compilation_ok, compilation_time, compile_error = _run_latex_stage(
             job_id=job_id,
             latex_content=optimized_latex,
         )
@@ -126,8 +145,22 @@ def optimize_and_compile_task(
             return {"success": False, "job_id": job_id, "cancelled": True}
 
         if not compilation_ok:
-            # job.failed already published inside _run_latex_stage
-            return {"success": False, "job_id": job_id, "error": "LaTeX compilation failed"}
+            # Fix 3: include optimized_latex and changes_made in failure event
+            # so the frontend can offer an "Apply anyway" option.
+            publish_event(job_id, "job.failed", {
+                "stage": "latex_compilation",
+                "error_code": "latex_error",
+                "error_message": compile_error,
+                "retryable": False,
+                "optimized_latex": optimized_latex,
+                "changes_made": changes_made,
+            })
+            return {
+                "success": False,
+                "job_id": job_id,
+                "error": "LaTeX compilation failed",
+                "optimized_latex": optimized_latex,
+            }
 
         # ================================================================ #
         # Stage 3 — ATS scoring (80% → 100%)                              #
@@ -199,10 +232,16 @@ def _run_llm_stage(
     job_description: Optional[str],
     optimization_level: str,
     api_key: str,
+    target_sections: Optional[List[str]] = None,
+    custom_instructions: Optional[str] = None,
 ) -> tuple[str, List[Dict], int, float]:
     """
-    Stream OpenAI tokens, publish llm.token per delta, return
-    (optimized_latex, changes_made, tokens_total, optimization_time).
+    Stream OpenAI tokens through a delimiter state machine.
+
+    Only LaTeX tokens inside <<<LATEX>>>...<<<END_LATEX>>> are published
+    via llm.token events — the JSON scaffold never reaches the Monaco editor.
+
+    Returns (optimized_latex, changes_made, tokens_total, optimization_time).
     """
     publish_event(job_id, "job.progress", {
         "percent": 5,
@@ -212,7 +251,9 @@ def _run_llm_stage(
 
     keywords = llm_service.extract_keywords_from_job_description(job_description)
     prompt = llm_service._create_optimization_prompt(  # noqa: SLF001
-        latex_content, job_description, keywords, optimization_level
+        latex_content, job_description, keywords, optimization_level,
+        target_sections=target_sections,
+        custom_instructions=custom_instructions,
     )
 
     publish_event(job_id, "job.progress", {
@@ -246,6 +287,14 @@ def _run_llm_stage(
         stream_options={"include_usage": True},
     )
 
+    # ── Delimiter state machine ──────────────────────────────────────
+    # States: BEFORE → IN_LATEX → AFTER_LATEX → IN_CHANGES
+    # Only tokens inside <<<LATEX>>>...<<<END_LATEX>>> are published.
+    llm_state = _BEFORE
+    latex_parts: List[str] = []
+    changes_parts: List[str] = []
+    buf = ""  # rolling buffer for delimiter detection
+
     for chunk in stream:
         if hasattr(chunk, "usage") and chunk.usage is not None:
             tokens_total = chunk.usage.total_tokens
@@ -253,50 +302,117 @@ def _run_llm_stage(
         if not chunk.choices:
             continue
         delta = chunk.choices[0].delta.content
-        if delta:
-            accumulated += delta
-            token_count += 1
-            publish_event(job_id, "llm.token", {"token": delta})
-            if token_count % 20 == 0 and is_cancelled(job_id):
-                raise RuntimeError("Job cancelled during LLM streaming")
+        if not delta:
+            continue
+
+        accumulated += delta
+        token_count += 1
+        buf += delta
+
+        if token_count % 20 == 0 and is_cancelled(job_id):
+            raise RuntimeError("Job cancelled during LLM streaming")
+
+        # Process state transitions; loop allows multiple per chunk
+        # (e.g. chunk contains both <<<END_LATEX>>> and <<<CHANGES>>>)
+        for _ in range(4):
+            if llm_state == _BEFORE:
+                if _LS in buf:
+                    buf = buf.split(_LS, 1)[1]
+                    llm_state = _IN_LATEX
+                    continue  # re-process buf with IN_LATEX state
+                else:
+                    if len(buf) >= len(_LS):
+                        buf = buf[-len(_LS):]  # keep potential partial match
+                break
+
+            elif llm_state == _IN_LATEX:
+                if _LE in buf:
+                    before, _, buf = buf.partition(_LE)
+                    if before:
+                        latex_parts.append(before)
+                        publish_event(job_id, "llm.token", {"token": before})
+                    llm_state = _AFTER_LATEX
+                    continue  # re-process buf with AFTER_LATEX state
+                else:
+                    # Flush safe portion (hold back enough to detect end delimiter)
+                    safe_len = len(buf) - len(_LE) + 1
+                    if safe_len > 0:
+                        safe = buf[:safe_len]
+                        latex_parts.append(safe)
+                        publish_event(job_id, "llm.token", {"token": safe})
+                        buf = buf[safe_len:]
+                break
+
+            elif llm_state == _AFTER_LATEX:
+                if _CS in buf:
+                    buf = buf.split(_CS, 1)[1]
+                    llm_state = _IN_CHANGES
+                    continue  # re-process buf with IN_CHANGES state
+                else:
+                    if len(buf) >= len(_CS):
+                        buf = buf[-len(_CS):]
+                break
+
+            elif llm_state == _IN_CHANGES:
+                if _CE in buf:
+                    before, _, _ = buf.partition(_CE)
+                    changes_parts.append(before)
+                    buf = ""
+                else:
+                    # Hold back potential delimiter chars (same pattern as IN_LATEX)
+                    safe_len = len(buf) - len(_CE) + 1
+                    if safe_len > 0:
+                        changes_parts.append(buf[:safe_len])
+                        buf = buf[safe_len:]
+                break
 
     optimization_time = time.time() - start_time
     if tokens_total == 0:
         tokens_total = llm_service.count_tokens(accumulated)
 
-    # Parse JSON response FIRST before publishing llm.complete,
-    # so full_content contains the actual LaTeX (not the raw JSON wrapper string).
-    optimized_latex = latex_content
-    changes_made: List[Dict] = []
-    try:
-        parsed = json.loads(accumulated)
-        optimized_latex = parsed.get("optimized_latex", latex_content)
-        raw_changes = parsed.get("changes", [])
-        changes_made = [
-            {
-                "section": c.get("section", ""),
-                "change_type": c.get("change_type", "modified"),
-                "reason": c.get("reason", ""),
-            }
-            for c in raw_changes
-            if isinstance(c, dict)
-        ]
-    except Exception as parse_err:
-        logger.warning(f"[{job_id}] Could not parse LLM JSON: {parse_err}")
-        match = re.search(
-            r'"optimized_latex"\s*:\s*"(.*?)"(?=\s*[,}])',
-            accumulated,
-            re.DOTALL,
-        )
-        if match:
-            optimized_latex = (
-                match.group(1)
-                .replace("\\n", "\n")
-                .replace('\\"', '"')
-            )
+    # ── Build result from delimiter-parsed parts ─────────────────────
+    optimized_latex = "".join(latex_parts).strip()
+    changes_raw = "".join(changes_parts).strip()
 
-    # Publish with parsed LaTeX so the frontend Monaco editor receives
-    # actual LaTeX content, not the raw JSON wrapper from the LLM response.
+    # Fallback: if LLM ignored delimiter format, try JSON parse
+    if not optimized_latex:
+        logger.warning(f"[{job_id}] Delimiter format not found; falling back to JSON parse")
+        try:
+            parsed = json.loads(accumulated)
+            optimized_latex = parsed.get("optimized_latex", latex_content)
+            raw_changes = parsed.get("changes", [])
+        except Exception:
+            match = re.search(
+                r'"optimized_latex"\s*:\s*"(.*?)"(?=\s*[,}])',
+                accumulated,
+                re.DOTALL,
+            )
+            if match:
+                optimized_latex = (
+                    match.group(1)
+                    .replace("\\n", "\n")
+                    .replace('\\"', '"')
+                )
+            else:
+                optimized_latex = latex_content
+            raw_changes = []
+    else:
+        try:
+            raw_changes = json.loads(changes_raw) if changes_raw else []
+        except Exception:
+            raw_changes = []
+
+    changes_made = [
+        {
+            "section": c.get("section", ""),
+            "change_type": c.get("change_type", "modified"),
+            "reason": c.get("reason", ""),
+        }
+        for c in raw_changes
+        if isinstance(c, dict)
+    ]
+
+    # Publish with the fully-parsed LaTeX so the editor reflects final content
     publish_event(job_id, "llm.complete", {
         "full_content": optimized_latex,
         "tokens_total": tokens_total,
@@ -308,10 +424,14 @@ def _run_llm_stage(
 def _run_latex_stage(
     job_id: str,
     latex_content: str,
-) -> tuple[bool, float]:
+) -> tuple[bool, float, str]:
     """
-    Write LaTeX, run pdflatex via Docker with line-by-line log streaming.
-    Returns (success, compilation_time).
+    Write LaTeX, run pdflatex (Docker if available, else local texlive)
+    with line-by-line log streaming.
+
+    Returns (success, compilation_time, error_message).
+    Does NOT publish job.failed — caller is responsible so it can
+    include optimized_latex in the failure payload.
     """
     job_dir = settings.TEMP_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -320,27 +440,43 @@ def _run_latex_stage(
     pdf_file = job_dir / "resume.pdf"
     tex_file.write_text(latex_content, encoding="utf-8")
 
-    docker_cmd = [
-        "docker", "run", "--rm",
-        "-v", f"{job_dir}:/workspace",
-        "-w", "/workspace",
-        settings.LATEX_DOCKER_IMAGE,
-        "pdflatex",
-        "-interaction=nonstopmode",
-        "-synctex=1",
-        "-output-directory", "/workspace",
-        "-jobname", "resume",
-        "resume.tex",
-    ]
+    # Fix 1: Docker if available, else local pdflatex (matches latex_worker.py)
+    _use_docker = shutil.which("docker") is not None
+    if _use_docker:
+        compile_cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{job_dir}:/workspace",
+            "-w", "/workspace",
+            settings.LATEX_DOCKER_IMAGE,
+            "pdflatex",
+            "-interaction=nonstopmode",
+            "-synctex=1",
+            "-output-directory", "/workspace",
+            "-jobname", "resume",
+            "resume.tex",
+        ]
+        compile_cwd = None
+    else:
+        # Inside the backend container, pdflatex is installed via texlive
+        compile_cmd = [
+            "pdflatex",
+            "-interaction=nonstopmode",
+            "-synctex=1",
+            "-output-directory", str(job_dir),
+            "-jobname", "resume",
+            "resume.tex",
+        ]
+        compile_cwd = str(job_dir)
 
     start_time = time.time()
     proc = subprocess.Popen(
-        docker_cmd,
+        compile_cmd,
         stdout=PIPE,
         stderr=STDOUT,
         text=True,
         encoding="utf-8",
         errors="replace",
+        cwd=compile_cwd,
     )
 
     for raw_line in proc.stdout:  # type: ignore[union-attr]
@@ -365,19 +501,13 @@ def _run_latex_stage(
     compilation_time = time.time() - start_time
 
     if proc.returncode == 0 and pdf_file.exists():
-        return True, compilation_time
+        return True, compilation_time, ""
 
     error_msg = (
         f"pdflatex exited with code {proc.returncode}. "
         "See log.line events for details."
     )
-    publish_event(job_id, "job.failed", {
-        "stage": "latex_compilation",
-        "error_code": "latex_error",
-        "error_message": error_msg,
-        "retryable": False,
-    })
-    return False, compilation_time
+    return False, compilation_time, error_msg
 
 
 def _run_ats_stage(
@@ -422,6 +552,8 @@ def submit_optimize_and_compile(
     optimization_level: str = "balanced",
     user_api_key: Optional[str] = None,
     device_fingerprint: Optional[str] = None,
+    target_sections: Optional[List[str]] = None,
+    custom_instructions: Optional[str] = None,
     priority: Optional[int] = None,
     metadata: Optional[Dict] = None,
 ) -> str:
@@ -438,6 +570,8 @@ def submit_optimize_and_compile(
             "optimization_level": optimization_level,
             "user_api_key": user_api_key,
             "device_fingerprint": device_fingerprint,
+            "target_sections": target_sections,
+            "custom_instructions": custom_instructions,
             "metadata": metadata,
         },
         priority=priority,
