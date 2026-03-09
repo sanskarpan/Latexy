@@ -51,7 +51,7 @@ logger = get_logger(__name__)
 def optimize_and_compile_task(
     self,
     latex_content: str,
-    job_description: str,
+    job_description: Optional[str] = None,
     job_id: Optional[str] = None,
     user_id: Optional[str] = None,
     user_plan: str = "free",
@@ -196,7 +196,7 @@ def optimize_and_compile_task(
 def _run_llm_stage(
     job_id: str,
     latex_content: str,
-    job_description: str,
+    job_description: Optional[str],
     optimization_level: str,
     api_key: str,
 ) -> tuple[str, List[Dict], int, float]:
@@ -327,6 +327,7 @@ def _run_latex_stage(
         settings.LATEX_DOCKER_IMAGE,
         "pdflatex",
         "-interaction=nonstopmode",
+        "-synctex=1",
         "-output-directory", "/workspace",
         "-jobname", "resume",
         "resume.tex",
