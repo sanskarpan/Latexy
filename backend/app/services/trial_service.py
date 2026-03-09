@@ -103,7 +103,7 @@ class TrialService:
                     }
 
                 # Check trial limit
-                if trial.usage_count >= TRIAL_LIMIT:
+                if trial.usage_count >= limit:
                     return {
                         "allowed": False,
                         "reason": "trial_limit_exceeded",
