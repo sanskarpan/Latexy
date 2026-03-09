@@ -8,7 +8,7 @@ from sqlalchemy import (
     String, Integer, Boolean, Text, DateTime, Float, JSON, ARRAY, 
     ForeignKey, UniqueConstraint, Index
 )
-from sqlalchemy.dialects.postgresql import UUID, INET
+from sqlalchemy.dialects.postgresql import UUID, INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -52,13 +52,22 @@ class DeviceTrial(Base):
     blocked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+class DeepAnalysisTrial(Base):
+    """Trial tracking for deep analysis feature (2 free uses per device)."""
+    __tablename__ = "deep_analysis_trials"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    device_fingerprint: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    usage_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_used: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
 class UserAPIKey(Base):
     """User API keys for BYOK (Bring Your Own Key) functionality."""
     __tablename__ = "user_api_keys"
     
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    provider: Mapped[str] = mapped_column(String(50), nullable=False)  # 'openai', 'anthropic', 'gemini'
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
     encrypted_key: Mapped[str] = mapped_column(Text, nullable=False)
     key_name: Mapped[Optional[str]] = mapped_column(String(100))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -78,6 +87,8 @@ class Resume(Base):
     latex_content: Mapped[str] = mapped_column(Text, nullable=False)
     is_template: Mapped[bool] = mapped_column(Boolean, default=False)
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
+    # Layer 3: vector embedding for semantic job matching (1536-dim OpenAI text-embedding-3-small)
+    content_embedding: Mapped[Optional[List[float]]] = mapped_column(ARRAY(Float), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
@@ -93,7 +104,7 @@ class Compilation(Base):
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), index=True)
     resume_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"))
-    device_fingerprint: Mapped[Optional[str]] = mapped_column(String(255), index=True)  # For anonymous users
+    device_fingerprint: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     job_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     pdf_path: Mapped[Optional[str]] = mapped_column(String(500))
@@ -120,13 +131,29 @@ class Optimization(Base):
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     tokens_used: Mapped[Optional[int]] = mapped_column(Integer)
     optimization_time: Mapped[Optional[float]] = mapped_column(Float)
-    ats_score: Mapped[Optional[dict]] = mapped_column(JSON)  # Store ATS scoring data
-    changes_made: Mapped[Optional[dict]] = mapped_column(JSON)  # Store change log
+    ats_score: Mapped[Optional[dict]] = mapped_column(JSON)
+    changes_made: Mapped[Optional[dict]] = mapped_column(JSON)
+    # Layer 3: embedding of the job description used for this optimization
+    job_desc_embedding: Mapped[Optional[List[float]]] = mapped_column(ARRAY(Float), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
     user: Mapped[Optional["User"]] = relationship("User", back_populates="optimizations")
     resume: Mapped["Resume"] = relationship("Resume", back_populates="optimizations")
+
+class ResumeJobMatch(Base):
+    """Cached semantic similarity results between resumes and job descriptions."""
+    __tablename__ = "resume_job_matches"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    resume_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True)
+    jd_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    similarity_score: Mapped[float] = mapped_column(Float, nullable=False)
+    matched_keywords: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    missing_keywords: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    semantic_gaps: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 class UsageAnalytics(Base):
     """Usage analytics for tracking user behavior."""
@@ -135,8 +162,8 @@ class UsageAnalytics(Base):
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), index=True)
     device_fingerprint: Mapped[Optional[str]] = mapped_column(String(255), index=True)
-    action: Mapped[str] = mapped_column(String(100), nullable=False)  # 'compile', 'optimize', 'download'
-    resource_type: Mapped[Optional[str]] = mapped_column(String(50))  # 'resume', 'template'
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    resource_type: Mapped[Optional[str]] = mapped_column(String(50))
     event_metadata: Mapped[Optional[dict]] = mapped_column(JSON)
     ip_address: Mapped[Optional[str]] = mapped_column(INET)
     user_agent: Mapped[Optional[str]] = mapped_column(Text)
@@ -153,7 +180,7 @@ class Subscription(Base):
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     razorpay_subscription_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
     plan_id: Mapped[str] = mapped_column(String(50), nullable=False)
-    status: Mapped[str] = mapped_column(String(50), nullable=False)  # 'active', 'cancelled', 'past_due'
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
     current_period_start: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     current_period_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
@@ -172,7 +199,7 @@ class Payment(Base):
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     subscription_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("subscriptions.id"))
     razorpay_payment_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
-    amount: Mapped[int] = mapped_column(Integer, nullable=False)  # Amount in paise
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="INR")
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     payment_method: Mapped[Optional[str]] = mapped_column(String(50))
@@ -186,6 +213,7 @@ class Payment(Base):
 Index('idx_users_email', User.email)
 Index('idx_device_trials_fingerprint', DeviceTrial.device_fingerprint)
 Index('idx_device_trials_ip', DeviceTrial.ip_address)
+Index('idx_deep_analysis_trials_fingerprint', DeepAnalysisTrial.device_fingerprint)
 Index('idx_resumes_user_id', Resume.user_id)
 Index('idx_compilations_user_id', Compilation.user_id)
 Index('idx_compilations_device', Compilation.device_fingerprint)
@@ -193,3 +221,4 @@ Index('idx_optimizations_user_id', Optimization.user_id)
 Index('idx_usage_analytics_user_id', UsageAnalytics.user_id)
 Index('idx_usage_analytics_device', UsageAnalytics.device_fingerprint)
 Index('idx_subscriptions_user_id', Subscription.user_id)
+Index('idx_rjm_resume_jd', ResumeJobMatch.resume_id, ResumeJobMatch.jd_hash)
