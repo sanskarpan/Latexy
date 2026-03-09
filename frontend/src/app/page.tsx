@@ -1,6 +1,12 @@
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import HeroTypingLine from '@/components/marketing/HeroTypingLine'
 import { MotionItem, MotionReveal, MotionStagger, ScrollDepth } from '@/components/marketing/MotionPrimitives'
+
+const HeroScene3D = dynamic(() => import('@/components/marketing/HeroScene3D'), {
+  ssr: false,
+  loading: () => null,
+})
 
 const featureCards = [
   {
@@ -49,11 +55,9 @@ export default function LandingPage() {
         <MotionReveal className="relative" y={30}>
           <div className="orange-burst relative mx-auto max-w-5xl rounded-[44px] border border-white/10 bg-black/45 p-3 sm:p-4">
             <div className="relative h-[360px] overflow-hidden rounded-[34px] bg-black sm:h-[460px]">
+              <HeroScene3D />
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_52%_38%,rgba(255,132,93,0.28),transparent_42%)]" />
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(255,183,160,0.16),transparent_48%)]" />
-              <div className="absolute left-1/2 top-[46%] h-[270px] w-[270px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-orange-200/35" />
-              <div className="absolute left-1/2 top-[46%] h-[270px] w-[270px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-orange-200/20 [transform:translate(-50%,-50%)_rotateX(68deg)]" />
-              <div className="absolute left-1/2 top-[46%] h-[270px] w-[270px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-orange-200/20 [transform:translate(-50%,-50%)_rotateY(68deg)]" />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/5 via-black/30 to-black/60" />
 
               <div className="absolute inset-x-0 bottom-6 z-20 px-3 sm:bottom-9">
