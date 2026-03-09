@@ -3,7 +3,7 @@ Analytics API routes for tracking and retrieving usage data.
 """
 
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -56,6 +56,41 @@ class ConversionFunnelResponse(BaseModel):
     period_days: int
     funnel_steps: Dict[str, int]
     conversion_rates: Dict[str, float]
+
+class UserAnalyticsTimeseriesPoint(BaseModel):
+    date: str
+    events: int
+    compile_events: int
+    optimize_events: int
+    feature_events: int
+
+class CompilationTimeseriesPoint(BaseModel):
+    date: str
+    total: int
+    completed: int
+    failed: int
+    cancelled: int
+    avg_latency: float
+
+class OptimizationTimeseriesPoint(BaseModel):
+    date: str
+    total: int
+    avg_tokens: float
+    avg_ats_score: float
+
+class FeatureSeriesPoint(BaseModel):
+    feature: str
+    count: int
+    last_used_at: Optional[str]
+
+class UserAnalyticsTimeseriesResponse(BaseModel):
+    user_id: str
+    period_days: int
+    activity_series: List[UserAnalyticsTimeseriesPoint]
+    compilation_series: List[CompilationTimeseriesPoint]
+    optimization_series: List[OptimizationTimeseriesPoint]
+    feature_series: List[FeatureSeriesPoint]
+    status_distribution: Dict[str, int]
 
 @router.post("/track", status_code=status.HTTP_201_CREATED)
 async def track_event(
@@ -132,6 +167,45 @@ async def get_my_analytics(
             detail="Internal server error"
         )
 
+@router.get("/me/timeseries", response_model=UserAnalyticsTimeseriesResponse)
+async def get_my_analytics_timeseries(
+    days: int = 30,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required)
+):
+    """Get richer timeseries analytics for the current authenticated user."""
+    try:
+        timeseries = await analytics_service.get_user_analytics_timeseries(
+            db=db,
+            user_id=UUID(user_id),
+            days=days
+        )
+
+        if not timeseries:
+            return {
+                "user_id": user_id,
+                "period_days": days,
+                "activity_series": [],
+                "compilation_series": [],
+                "optimization_series": [],
+                "feature_series": [],
+                "status_distribution": {
+                    "completed": 0,
+                    "processing": 0,
+                    "queued": 0,
+                    "failed": 0,
+                    "cancelled": 0,
+                },
+            }
+
+        return UserAnalyticsTimeseriesResponse(**timeseries)
+    except Exception as e:
+        logger.error(f"Error getting user analytics timeseries: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
 @router.get("/user/{user_id}", response_model=UserAnalyticsResponse)
 async def get_user_analytics(
     user_id: UUID,
@@ -170,7 +244,8 @@ async def get_user_analytics(
 @router.get("/system", response_model=SystemAnalyticsResponse)
 async def get_system_analytics(
     days: int = 7,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_user: str = Depends(require_admin)
 ):
     """Get system-wide analytics. Requires admin access."""
     try:
@@ -193,7 +268,8 @@ async def get_system_analytics(
 @router.get("/conversion-funnel", response_model=ConversionFunnelResponse)
 async def get_conversion_funnel(
     days: int = 30,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_user: str = Depends(require_admin)
 ):
     """Get conversion funnel analytics. Requires admin access."""
     try:
@@ -346,7 +422,8 @@ async def track_feature_usage(
 @router.get("/dashboard")
 async def get_analytics_dashboard(
     days: int = 7,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_user: str = Depends(require_admin)
 ):
     """Get comprehensive analytics dashboard data."""
     try:
@@ -368,4 +445,3 @@ async def get_analytics_dashboard(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
         )
-
