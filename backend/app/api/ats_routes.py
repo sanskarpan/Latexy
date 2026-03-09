@@ -6,22 +6,23 @@ import asyncio
 import json
 import time
 import uuid
-from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, HTTPException, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from pydantic import BaseModel, Field
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
-from ..core.redis import job_status_manager, get_redis_client
+from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import DeepAnalysisTrial, Resume
-from ..services.ats_scoring_service import ats_scoring_service
-from ..services.api_key_service import api_key_service
-from ..workers.ats_worker import submit_ats_scoring, submit_job_description_analysis, deep_analyze_ats_task
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
+from ..services.api_key_service import api_key_service
+from ..services.ats_scoring_service import ats_scoring_service
+from ..workers.ats_worker import deep_analyze_ats_task, submit_ats_scoring, submit_job_description_analysis
 
 logger = get_logger(__name__)
 
@@ -101,11 +102,11 @@ async def score_resume_ats(
     try:
         # Extract user information
         ip_address = http_request.client.host if http_request.client else None
-        
+
         # Validate input
         if not request.latex_content.strip():
             raise HTTPException(status_code=400, detail="LaTeX content is required")
-        
+
         # Add IP address to metadata
         metadata = request.metadata or {}
         metadata.update({
@@ -113,7 +114,7 @@ async def score_resume_ats(
             "submitted_via": "api",
             "endpoint": "ats_score"
         })
-        
+
         if request.async_processing:
             # Generate job_id here (submission helper requires it as positional arg)
             job_id = str(uuid.uuid4())
@@ -136,15 +137,15 @@ async def score_resume_ats(
         else:
             # Process synchronously (for testing or immediate results)
             start_time = asyncio.get_event_loop().time()
-            
+
             result = await ats_scoring_service.score_resume(
                 latex_content=request.latex_content,
                 job_description=request.job_description,
                 industry=request.industry
             )
-            
+
             processing_time = asyncio.get_event_loop().time() - start_time
-            
+
             return ATSScoreResponse(
                 success=True,
                 ats_score=result.overall_score,
@@ -157,7 +158,7 @@ async def score_resume_ats(
                 message=f"ATS scoring completed: {result.overall_score:.1f}/100",
                 timestamp=result.timestamp
             )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -176,11 +177,11 @@ async def analyze_job_description_ats(
     try:
         # Extract user information
         ip_address = http_request.client.host if http_request.client else None
-        
+
         # Validate input
         if not request.job_description.strip():
             raise HTTPException(status_code=400, detail="Job description is required")
-        
+
         # Add IP address to metadata
         metadata = request.metadata or {}
         metadata.update({
@@ -188,7 +189,7 @@ async def analyze_job_description_ats(
             "submitted_via": "api",
             "endpoint": "analyze_job_description"
         })
-        
+
         if request.async_processing:
             # Generate job_id here (submission helper requires it as positional arg)
             job_id = str(uuid.uuid4())
@@ -208,16 +209,16 @@ async def analyze_job_description_ats(
         else:
             # Process synchronously
             start_time = asyncio.get_event_loop().time()
-            
+
             # Extract keywords from job description
             keywords = ats_scoring_service._extract_keywords_from_job_description(request.job_description)
-            
+
             # Basic analysis (simplified for sync processing)
             words = request.job_description.split()
             sentences = request.job_description.split('.')
-            
+
             processing_time = asyncio.get_event_loop().time() - start_time
-            
+
             return JobDescriptionAnalysisResponse(
                 success=True,
                 keywords=keywords[:15],
@@ -237,7 +238,7 @@ async def analyze_job_description_ats(
                 processing_time=processing_time,
                 message="Basic job description analysis completed. Use async processing for detailed analysis."
             )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -254,7 +255,7 @@ async def get_ats_recommendations(request: ATSRecommendationsRequest):
         quick_wins = []
         long_term_improvements = []
         industry_specific_tips = []
-        
+
         # Prioritize improvements based on category scores
         for category, score in request.category_scores.items():
             if score < 50:
@@ -273,7 +274,7 @@ async def get_ats_recommendations(request: ATSRecommendationsRequest):
                     "potential_improvement": 100 - score,
                     "recommended_actions": _get_category_recommendations(category, score)
                 })
-        
+
         # Generate quick wins (easy improvements)
         if request.category_scores.get("formatting", 100) < 80:
             quick_wins.extend([
@@ -281,14 +282,14 @@ async def get_ats_recommendations(request: ATSRecommendationsRequest):
                 "Use standard fonts (Arial, Helvetica, Calibri)",
                 "Ensure consistent formatting throughout"
             ])
-        
+
         if request.category_scores.get("keywords", 100) < 70:
             quick_wins.extend([
                 "Include more action verbs (achieved, managed, developed)",
                 "Add quantifiable achievements with numbers",
                 "Include relevant technical skills"
             ])
-        
+
         # Generate long-term improvements
         if request.category_scores.get("content", 100) < 60:
             long_term_improvements.extend([
@@ -296,14 +297,14 @@ async def get_ats_recommendations(request: ATSRecommendationsRequest):
                 "Develop stronger achievement statements",
                 "Align content more closely with target roles"
             ])
-        
+
         if request.category_scores.get("structure", 100) < 70:
             long_term_improvements.extend([
                 "Reorganize resume sections for better flow",
                 "Add missing sections (summary, skills)",
                 "Improve section headers and organization"
             ])
-        
+
         # Industry-specific tips
         if request.industry:
             industry_tips = {
@@ -333,12 +334,12 @@ async def get_ats_recommendations(request: ATSRecommendationsRequest):
                 ]
             }
             industry_specific_tips = industry_tips.get(request.industry, [])
-        
+
         # Estimate potential score improvement
         current_score = request.ats_score
         max_improvement = min(30, 100 - current_score)  # Cap at 30 points improvement
         estimated_improvement = max_improvement * 0.7  # Conservative estimate
-        
+
         return ATSRecommendationsResponse(
             success=True,
             priority_improvements=priority_improvements,
@@ -348,7 +349,7 @@ async def get_ats_recommendations(request: ATSRecommendationsRequest):
             estimated_score_improvement=estimated_improvement,
             message=f"Generated {len(priority_improvements)} priority improvements and {len(quick_wins)} quick wins"
         )
-        
+
     except Exception as e:
         logger.error(f"Error generating ATS recommendations: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -360,10 +361,10 @@ async def get_industry_keywords(industry: str):
     try:
         # Get industry keywords from the scoring service
         industry_keywords = ats_scoring_service.industry_keywords.get(industry.lower(), [])
-        
+
         if not industry_keywords:
             raise HTTPException(status_code=404, detail=f"Industry '{industry}' not found")
-        
+
         return {
             "success": True,
             "industry": industry,
@@ -371,7 +372,7 @@ async def get_industry_keywords(industry: str):
             "count": len(industry_keywords),
             "message": f"Retrieved {len(industry_keywords)} keywords for {industry} industry"
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -384,14 +385,14 @@ async def get_supported_industries():
     """Get list of supported industries for ATS scoring."""
     try:
         industries = list(ats_scoring_service.industry_keywords.keys())
-        
+
         return {
             "success": True,
             "industries": industries,
             "count": len(industries),
             "message": f"Retrieved {len(industries)} supported industries"
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting supported industries: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -673,5 +674,5 @@ def _get_category_recommendations(category: str, score: float) -> List[str]:
             "Maintain professional tone throughout"
         ]
     }
-    
+
     return recommendations.get(category, ["Improve overall quality and relevance"])
