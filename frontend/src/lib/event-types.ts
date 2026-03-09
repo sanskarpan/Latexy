@@ -13,6 +13,7 @@ export type EventType =
   | 'llm.token'
   | 'llm.complete'
   | 'log.line'
+  | 'ats.deep_complete'
   | 'sys.heartbeat'
   | 'sys.error'
 
@@ -110,6 +111,52 @@ export interface LogLineEvent extends BaseEvent {
 }
 
 // ------------------------------------------------------------------ //
+//  ATS Deep Analysis Events (Layer 2)                                //
+// ------------------------------------------------------------------ //
+
+export interface ATSDeepSection {
+  name: string
+  score: number
+  strengths: string[]
+  improvements: string[]
+  rewrite_suggestion?: string
+}
+
+export interface ATSDeepCompatibility {
+  score: number
+  issues: string[]
+  keyword_gaps: string[]
+}
+
+export interface ATSJobMatch {
+  score: number
+  matched_requirements: string[]
+  missing_requirements: string[]
+  recommendation: string
+}
+
+export interface ATSDeepAnalysis {
+  overall_score: number
+  overall_feedback: string
+  sections: ATSDeepSection[]
+  ats_compatibility: ATSDeepCompatibility
+  job_match: ATSJobMatch | null
+  tokens_used: number
+  analysis_time: number
+}
+
+export interface ATSDeepCompleteEvent extends BaseEvent {
+  type: 'ats.deep_complete'
+  overall_score: number
+  overall_feedback: string
+  sections: ATSDeepSection[]
+  ats_compatibility: ATSDeepCompatibility
+  job_match: ATSJobMatch | null
+  tokens_used: number
+  analysis_time: number
+}
+
+// ------------------------------------------------------------------ //
 //  System Events                                                      //
 // ------------------------------------------------------------------ //
 
@@ -137,6 +184,7 @@ export type AnyEvent =
   | LLMTokenEvent
   | LLMStreamCompleteEvent
   | LogLineEvent
+  | ATSDeepCompleteEvent
   | HeartbeatEvent
   | SystemErrorEvent
 
