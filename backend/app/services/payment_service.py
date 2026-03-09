@@ -8,7 +8,10 @@ from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
-import razorpay
+try:
+    import razorpay as _razorpay_module
+except (ImportError, ModuleNotFoundError):
+    _razorpay_module = None  # type: ignore[assignment]
 
 from ..database.models import User, Subscription, Payment
 from ..core.config import settings
@@ -21,11 +24,14 @@ class PaymentService:
 
     def __init__(self):
         """Initialize Razorpay client."""
-        if settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET:
-            self.client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        if _razorpay_module and settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET:
+            self.client = _razorpay_module.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
         else:
             self.client = None
-            logger.warning("Razorpay credentials not configured")
+            if not _razorpay_module:
+                logger.warning("Razorpay SDK not available (pkg_resources missing)")
+            else:
+                logger.warning("Razorpay credentials not configured")
 
     def is_available(self) -> bool:
         """Check if payment service is available."""
