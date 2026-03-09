@@ -1,0 +1,623 @@
+/**
+ * Typed REST API client for Latexy.
+ * Handles job submission, state polling, result fetching, and PDF download.
+ * All real-time updates come through the WebSocket (ws-client.ts).
+ */
+
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
+
+// ------------------------------------------------------------------ //
+//  Request / Response types                                           //
+// ------------------------------------------------------------------ //
+
+export type JobType =
+  | 'latex_compilation'
+  | 'llm_optimization'
+  | 'combined'
+  | 'ats_scoring'
+
+export type OptimizationLevel = 'conservative' | 'balanced' | 'aggressive'
+
+export interface JobSubmitRequest {
+  job_type: JobType
+  latex_content?: string
+  job_description?: string
+  optimization_level?: OptimizationLevel
+  user_plan?: string
+  device_fingerprint?: string
+  industry?: string
+  target_sections?: string[]
+  custom_instructions?: string
+}
+
+export interface OptimizationHistoryEntry {
+  id: string
+  created_at: string
+  ats_score: number | null
+  changes_count: number
+  tokens_used: number | null
+}
+
+export interface RecordOptimizationRequest {
+  original_latex: string
+  optimized_latex: string
+  changes_made?: Array<{ section: string; change_type: string; reason: string }>
+  ats_score?: number
+  tokens_used?: number
+  job_description?: string
+}
+
+export interface JobSubmitResponse {
+  success: boolean
+  job_id: string
+  message: string
+  estimated_time?: number
+}
+
+export interface JobStateResponse {
+  job_id?: string
+  job_type?: JobType
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  stage: string
+  percent: number
+  last_updated: number
+  created_at?: number
+  user_id?: string
+}
+
+export interface JobResultResponse {
+  success: boolean
+  job_id: string
+  pdf_job_id?: string
+  ats_score?: number
+  ats_details?: {
+    category_scores: Record<string, number>
+    recommendations: string[]
+    strengths: string[]
+    warnings: string[]
+  }
+  changes_made?: Array<{
+    section: string
+    change_type: string
+    reason: string
+  }>
+  compilation_time?: number
+  optimization_time?: number
+  tokens_used?: number
+  error?: string
+}
+
+export interface TrialStatusResponse {
+  usageCount: number
+  remainingUses: number
+  blocked: boolean
+  canUse: boolean
+  lastUsed: string | null
+}
+
+export interface HealthResponse {
+  status: string
+  version: string
+  latex_available: boolean
+}
+
+export interface ResumeBase {
+  title: string
+  latex_content: string
+  is_template?: boolean
+  tags?: string[]
+}
+
+export interface ResumeResponse extends ResumeBase {
+  id: string
+  user_id: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ResumeCreate extends ResumeBase {}
+
+export interface ResumeUpdate {
+  title?: string
+  latex_content?: string
+  is_template?: boolean
+  tags?: string[]
+}
+
+export interface ResumeStats {
+  total_resumes: number
+  total_templates: number
+  last_updated: string | null
+}
+
+export interface UserAnalyticsResponse {
+  user_id: string
+  period_days: number
+  total_compilations: number
+  successful_compilations: number
+  success_rate: number
+  total_optimizations: number
+  avg_compilation_time: number
+  feature_usage: Record<string, number>
+  daily_activity: Record<string, number>
+  most_active_day: string | null
+}
+
+export interface AnalyticsTimeseriesPoint {
+  date: string
+  events: number
+  compile_events: number
+  optimize_events: number
+  feature_events: number
+}
+
+export interface CompilationTimeseriesPoint {
+  date: string
+  total: number
+  completed: number
+  failed: number
+  cancelled: number
+  avg_latency: number
+}
+
+export interface OptimizationTimeseriesPoint {
+  date: string
+  total: number
+  avg_tokens: number
+  avg_ats_score: number
+}
+
+export interface FeatureSeriesPoint {
+  feature: string
+  count: number
+  last_used_at: string | null
+}
+
+export interface UserAnalyticsTimeseriesResponse {
+  user_id: string
+  period_days: number
+  activity_series: AnalyticsTimeseriesPoint[]
+  compilation_series: CompilationTimeseriesPoint[]
+  optimization_series: OptimizationTimeseriesPoint[]
+  feature_series: FeatureSeriesPoint[]
+  status_distribution: Record<string, number>
+}
+
+// ------------------------------------------------------------------ //
+//  API client class                                                   //
+// ------------------------------------------------------------------ //
+
+class ApiClient {
+  private authToken: string | null = null
+
+  setAuthToken(token: string | null): void {
+    this.authToken = token
+  }
+
+  private headers(extra: Record<string, string> = {}): HeadersInit {
+    const h: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...extra,
+    }
+    const token =
+      this.authToken ??
+      (typeof window !== 'undefined'
+        ? localStorage.getItem('auth_token')
+        : null)
+    if (token) h['Authorization'] = `Bearer ${token}`
+    return h
+  }
+
+  private async request<T>(
+    path: string,
+    init: RequestInit = {}
+  ): Promise<T> {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: { ...this.headers(), ...(init.headers as Record<string, string> ?? {}) },
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+    }
+    return res.json() as Promise<T>
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Health                                                           //
+  // ---------------------------------------------------------------- //
+
+  async health(): Promise<HealthResponse> {
+    return this.request<HealthResponse>('/health')
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Job submission                                                   //
+  // ---------------------------------------------------------------- //
+
+  async submitJob(req: JobSubmitRequest): Promise<JobSubmitResponse> {
+    return this.request<JobSubmitResponse>('/jobs/submit', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Job state & result                                               //
+  // ---------------------------------------------------------------- //
+
+  async getJobState(jobId: string): Promise<JobStateResponse> {
+    return this.request<JobStateResponse>(`/jobs/${encodeURIComponent(jobId)}/state`)
+  }
+
+  async getJobResult(jobId: string): Promise<JobResultResponse> {
+    return this.request<JobResultResponse>(`/jobs/${encodeURIComponent(jobId)}/result`)
+  }
+
+  async listJobs(): Promise<{ jobs: JobStateResponse[] }> {
+    return this.request<{ jobs: JobStateResponse[] }>('/jobs')
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Resumes (Workspace)                                             //
+  // ---------------------------------------------------------------- //
+
+  async listResumes(): Promise<ResumeResponse[]> {
+    return this.request<ResumeResponse[]>('/resumes/')
+  }
+
+  async getResume(resumeId: string): Promise<ResumeResponse> {
+    return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}`)
+  }
+
+  async createResume(resume: ResumeCreate): Promise<ResumeResponse> {
+    return this.request<ResumeResponse>('/resumes/', {
+      method: 'POST',
+      body: JSON.stringify(resume),
+    })
+  }
+
+  async updateResume(
+    resumeId: string,
+    resume: ResumeUpdate
+  ): Promise<ResumeResponse> {
+    return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(resume),
+    })
+  }
+
+  async deleteResume(resumeId: string): Promise<void> {
+    await fetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}`, {
+      method: 'DELETE',
+      headers: this.headers(),
+    })
+  }
+
+  async getResumeStats(): Promise<ResumeStats> {
+    return this.request<ResumeStats>('/resumes/stats')
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Analytics                                                       //
+  // ---------------------------------------------------------------- //
+
+  async getMyAnalytics(days: number = 30): Promise<UserAnalyticsResponse> {
+    return this.request<UserAnalyticsResponse>(`/analytics/me?days=${days}`)
+  }
+
+  async getMyAnalyticsTimeseries(days: number = 30): Promise<UserAnalyticsTimeseriesResponse> {
+    return this.request<UserAnalyticsTimeseriesResponse>(`/analytics/me/timeseries?days=${days}`)
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Job cancellation                                                 //
+  // ---------------------------------------------------------------- //
+
+  async cancelJob(jobId: string): Promise<void> {
+    await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}`, {
+      method: 'DELETE',
+      headers: this.headers(),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  PDF download                                                     //
+  // ---------------------------------------------------------------- //
+
+  getPdfUrl(jobId: string): string {
+    return `${API_BASE}/download/${encodeURIComponent(jobId)}`
+  }
+
+  async downloadPdf(jobId: string): Promise<Blob> {
+    const res = await fetch(this.getPdfUrl(jobId), {
+      headers: this.headers({ 'Content-Type': '' }),
+    })
+    if (!res.ok) throw new Error(`PDF download failed: HTTP ${res.status}`)
+    return res.blob()
+  }
+
+  async getPdfBlobUrl(jobId: string): Promise<string> {
+    const blob = await this.downloadPdf(jobId)
+    return URL.createObjectURL(blob)
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Trial system                                                     //
+  // ---------------------------------------------------------------- //
+
+  async getTrialStatus(fingerprint: string): Promise<TrialStatusResponse> {
+    return this.request<TrialStatusResponse>(
+      `/public/trial-status?fingerprint=${encodeURIComponent(fingerprint)}`
+    )
+  }
+
+  async trackUsage(
+    fingerprint: string,
+    action: string,
+    resourceType?: string,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    await fetch(`${API_BASE}/public/track-usage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceFingerprint: fingerprint,
+        action,
+        resourceType,
+        metadata,
+      }),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Convenience wrappers (for pages that submit directly)           //
+  // ---------------------------------------------------------------- //
+
+  async compileLatex(body: {
+    latex_content: string
+    device_fingerprint?: string
+    user_plan?: string
+  }): Promise<JobSubmitResponse> {
+    return this.submitJob({
+      job_type: 'latex_compilation',
+      latex_content: body.latex_content,
+      device_fingerprint: body.device_fingerprint,
+      user_plan: body.user_plan,
+    })
+  }
+
+  async optimizeAndCompile(body: {
+    latex_content: string
+    job_description?: string
+    optimization_level?: OptimizationLevel
+    device_fingerprint?: string
+    user_plan?: string
+    target_sections?: string[]
+    custom_instructions?: string
+  }): Promise<JobSubmitResponse> {
+    return this.submitJob({
+      job_type: 'combined',
+      latex_content: body.latex_content,
+      job_description: body.job_description,
+      optimization_level: body.optimization_level ?? 'balanced',
+      device_fingerprint: body.device_fingerprint,
+      user_plan: body.user_plan,
+      target_sections: body.target_sections,
+      custom_instructions: body.custom_instructions,
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Optimization history                                             //
+  // ---------------------------------------------------------------- //
+
+  async getOptimizationHistory(resumeId: string): Promise<OptimizationHistoryEntry[]> {
+    return this.request<OptimizationHistoryEntry[]>(
+      `/resumes/${encodeURIComponent(resumeId)}/optimization-history`
+    )
+  }
+
+  async restoreOptimization(
+    resumeId: string,
+    optId: string
+  ): Promise<{ success: boolean; latex_content: string }> {
+    return this.request(`/resumes/${encodeURIComponent(resumeId)}/restore-optimization/${encodeURIComponent(optId)}`, {
+      method: 'POST',
+    })
+  }
+
+  async recordOptimization(
+    resumeId: string,
+    data: RecordOptimizationRequest
+  ): Promise<{ success: boolean; id: string }> {
+    return this.request(`/resumes/${encodeURIComponent(resumeId)}/record-optimization`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async scoreResume(body: {
+    latex_content: string
+    job_description?: string
+    industry?: string
+  }): Promise<JobSubmitResponse> {
+    return this.submitJob({
+      job_type: 'ats_scoring',
+      latex_content: body.latex_content,
+      job_description: body.job_description,
+      industry: body.industry,
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  System health (for job queue display)                           //
+  // ---------------------------------------------------------------- //
+
+  async getSystemHealth(): Promise<{
+    queue_depths: Record<string, number>
+    worker_count: number
+  }> {
+    return this.request('/jobs/health')
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Subscription / billing (used by billing/page.tsx)              //
+  // ---------------------------------------------------------------- //
+
+  async getSubscriptionPlans(): Promise<{
+    success: boolean
+    data?: { plans: Record<string, unknown> }
+    error?: string
+  }> {
+    try {
+      const data = await this.request<{ plans: Record<string, unknown> }>('/subscription/plans')
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async createSubscription(
+    planId: string,
+    email: string,
+    name: string
+  ): Promise<{
+    success: boolean
+    data?: { shortUrl?: string; subscriptionId?: string }
+    error?: string
+  }> {
+    try {
+      const data = await this.request<{ shortUrl?: string; subscriptionId?: string }>(
+        '/subscription/create',
+        {
+          method: 'POST',
+          body: JSON.stringify({ planId, customerEmail: email, customerName: name }),
+        }
+      )
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  // ---------------------------------------------------------------- //
+  //  ATS analysis endpoints                                          //
+  // ---------------------------------------------------------------- //
+
+  async analyzeJobDescription(body: {
+    job_description: string
+    user_plan?: string
+    async_processing?: boolean
+  }): Promise<{
+    success: boolean
+    job_id?: string
+    keywords?: string[]
+    requirements?: string[]
+    preferred_qualifications?: string[]
+    detected_industry?: string
+    analysis_metrics?: Record<string, unknown>
+    optimization_tips?: string[]
+    processing_time?: number
+    message: string
+  }> {
+    return this.request('/ats/analyze-job-description', {
+      method: 'POST',
+      body: JSON.stringify({ async_processing: true, ...body }),
+    })
+  }
+
+  async getAtsRecommendations(body: {
+    ats_score: number
+    category_scores: Record<string, number>
+    industry?: string
+  }): Promise<{
+    success: boolean
+    priority_improvements: Array<{
+      category: string
+      current_score: number
+      priority: string
+      potential_improvement: number
+      recommended_actions: string[]
+    }>
+    quick_wins: string[]
+    long_term_improvements: string[]
+    industry_specific_tips: string[]
+    estimated_score_improvement: number
+    message: string
+  }> {
+    return this.request('/ats/recommendations', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async getIndustryKeywords(industry: string): Promise<{
+    success: boolean
+    industry: string
+    keywords: string[]
+    count: number
+    message: string
+  }> {
+    return this.request(`/ats/industry-keywords/${encodeURIComponent(industry)}`)
+  }
+
+  async getSupportedIndustries(): Promise<{
+    success: boolean
+    industries: string[]
+    count: number
+    message: string
+  }> {
+    return this.request('/ats/supported-industries')
+  }
+}
+
+// Singleton
+export const apiClient = new ApiClient()
+
+// ------------------------------------------------------------------ //
+//  Device fingerprint utility                                         //
+// ------------------------------------------------------------------ //
+
+export function getDeviceFingerprint(): string {
+  if (typeof window === 'undefined') return 'server'
+  const key = 'latexy_device_fp'
+  let fp = localStorage.getItem(key)
+  if (!fp) {
+    fp = `fp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+    localStorage.setItem(key, fp)
+  }
+  return fp
+}
+
+// ------------------------------------------------------------------ //
+//  WebSocket URL builder (used by ws-client.ts)                      //
+// ------------------------------------------------------------------ //
+
+export function getWebSocketUrl(): string {
+  const base =
+    process.env.NEXT_PUBLIC_WS_URL ??
+    (API_BASE.replace(/^http/, 'ws'))
+  return `${base}/ws/jobs`
+}
+
+// ------------------------------------------------------------------ //
+//  Legacy aliases (for pages using old import names)                 //
+// ------------------------------------------------------------------ //
+
+/** @deprecated use getDeviceFingerprint */
+export const generateDeviceFingerprint = getDeviceFingerprint
+
+export function showSuccessToast(message: string): void {
+  if (typeof window !== 'undefined') {
+    // dynamic import to avoid SSR issues
+    import('sonner').then(({ toast }) => toast.success(message)).catch(() => {})
+  }
+}
+
+export function showErrorToast(message: string): void {
+  if (typeof window !== 'undefined') {
+    import('sonner').then(({ toast }) => toast.error(message)).catch(() => {})
+  }
+}
