@@ -21,7 +21,9 @@ from ..services.llm_service import llm_service
 from ..services.trial_service import trial_service
 from ..services.payment_service import payment_service
 from ..utils.file_utils import validate_file_upload, validate_job_id, get_job_files
+from ..database.models import User
 from ..middleware.auth_middleware import get_current_user_optional
+from ..services.trial_service import TEST_TRIAL_LIMIT, TRIAL_LIMIT as _TRIAL_LIMIT
 
 logger = get_logger(__name__)
 
@@ -265,12 +267,31 @@ async def optimize_and_compile_resume(request: OptimizationRequest):
 
 # Trial System Endpoints
 
+
+async def _get_trial_limit(user_id: Optional[str], db: AsyncSession) -> int:
+    """Return TEST_TRIAL_LIMIT for known test users, else the standard TRIAL_LIMIT."""
+    if not user_id or not settings.TEST_USER_EMAILS:
+        return _TRIAL_LIMIT
+    try:
+        from sqlalchemy import select as _select
+        result = await db.execute(_select(User.email).where(User.id == user_id))
+        row = result.scalar_one_or_none()
+        if row:
+            test_emails = [e.strip().lower() for e in settings.TEST_USER_EMAILS.split(",") if e.strip()]
+            if row.lower() in test_emails:
+                return TEST_TRIAL_LIMIT
+    except Exception:
+        pass
+    return _TRIAL_LIMIT
+
+
 class TrialStatusResponse(BaseModel):
     usageCount: int
     remainingUses: int
     blocked: bool
     lastUsed: Optional[str]
     canUse: bool
+    trialLimit: int = _TRIAL_LIMIT
 
 class TrackUsageRequest(BaseModel):
     deviceFingerprint: str
@@ -293,19 +314,22 @@ class TrackUsageResponse(BaseModel):
 async def get_trial_status(
     fingerprint: str,
     request: Request,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Get trial status for a device fingerprint."""
     try:
         ip_address = request.client.host if request.client else None
-        status = await trial_service.get_trial_status(db, fingerprint, ip_address)
-        
+        limit = await _get_trial_limit(user_id, db)
+        status = await trial_service.get_trial_status(db, fingerprint, ip_address, limit=limit)
+
         return TrialStatusResponse(
             usageCount=status["usageCount"],
             remainingUses=status["remainingUses"],
             blocked=status["blocked"],
             lastUsed=status["lastUsed"],
-            canUse=status["canUse"]
+            canUse=status["canUse"],
+            trialLimit=status["trialLimit"],
         )
     except Exception as e:
         logger.error(f"Error getting trial status: {e}")
