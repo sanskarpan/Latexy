@@ -121,17 +121,17 @@ async def compile_latex_endpoint(
 @router.get("/download/{job_id}")
 async def download_pdf(job_id: str):
     """Download compiled PDF."""
-    
+
     validate_job_id(job_id)
-    
+
     job_dir, pdf_file, _ = get_job_files(job_id)
-    
+
     if not pdf_file.exists():
         raise HTTPException(
-            status_code=404, 
+            status_code=404,
             detail="PDF not found. Job may have failed or files may have been cleaned up."
         )
-    
+
     try:
         # Return PDF file
         return FileResponse(
@@ -139,10 +139,36 @@ async def download_pdf(job_id: str):
             media_type='application/pdf',
             filename=f"resume_{job_id[:8]}.pdf"
         )
-        
+
     except Exception as e:
         logger.error(f"Error serving PDF for job {job_id}: {e}")
         raise HTTPException(status_code=500, detail="Error serving PDF file")
+
+
+@router.get("/download/{job_id}/synctex")
+async def download_synctex(job_id: str):
+    """Serve decompressed SyncTeX data for bidirectional editor↔PDF sync."""
+    import gzip
+    from fastapi.responses import Response
+
+    validate_job_id(job_id)
+    job_dir, _, _ = get_job_files(job_id)
+    synctex_gz = job_dir / "resume.synctex.gz"
+    synctex_plain = job_dir / "resume.synctex"
+
+    try:
+        if synctex_gz.exists():
+            content = gzip.decompress(synctex_gz.read_bytes()).decode("utf-8", errors="replace")
+        elif synctex_plain.exists():
+            content = synctex_plain.read_text(encoding="utf-8", errors="replace")
+        else:
+            raise HTTPException(status_code=404, detail="SyncTeX data not found")
+        return Response(content=content, media_type="text/plain")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving synctex for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error serving SyncTeX file")
 
 
 @router.get("/logs/{job_id}", response_model=LogsResponse)
