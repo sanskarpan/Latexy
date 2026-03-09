@@ -1,5 +1,7 @@
 """Database connection and session management."""
 
+from contextlib import asynccontextmanager
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -58,6 +60,20 @@ async def get_db():
         except Exception:
             await session.rollback()
             raise
+
+@asynccontextmanager
+async def get_async_db_session():
+    """Async context manager for database sessions (for use in Celery workers)."""
+    global SessionLocal
+    if SessionLocal is None:
+        await init_db()
+    async with SessionLocal() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+
 
 async def close_db():
     """Close database connection."""
