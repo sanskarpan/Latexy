@@ -4,7 +4,7 @@ Analytics Service for tracking user behavior and system metrics.
 
 import asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 from uuid import UUID
 import logging
@@ -174,6 +174,223 @@ class AnalyticsService:
         except Exception as e:
             logger.error(f"Error getting user analytics: {e}")
             return {}
+
+    async def get_user_analytics_timeseries(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        days: int = 30
+    ) -> Dict[str, Any]:
+        """Get richer per-day analytics for a specific user."""
+        try:
+            period_days = max(1, min(days, 365))
+            today = datetime.now(timezone.utc).date()
+            start_day = today - timedelta(days=period_days - 1)
+            start_date = datetime.combine(start_day, datetime.min.time(), tzinfo=timezone.utc)
+
+            compilations_query = select(Compilation).where(
+                and_(
+                    Compilation.user_id == user_id,
+                    Compilation.created_at >= start_date
+                )
+            )
+            compilations = (await db.execute(compilations_query)).scalars().all()
+
+            optimizations_query = select(Optimization).where(
+                and_(
+                    Optimization.user_id == user_id,
+                    Optimization.created_at >= start_date
+                )
+            )
+            optimizations = (await db.execute(optimizations_query)).scalars().all()
+
+            events_query = select(UsageAnalytics).where(
+                and_(
+                    UsageAnalytics.user_id == user_id,
+                    UsageAnalytics.created_at >= start_date
+                )
+            )
+            events = (await db.execute(events_query)).scalars().all()
+
+            days_list = [
+                (start_day + timedelta(days=i)).strftime("%Y-%m-%d")
+                for i in range(period_days)
+            ]
+
+            activity_map: Dict[str, Dict[str, int]] = {
+                day: {
+                    "events": 0,
+                    "compile_events": 0,
+                    "optimize_events": 0,
+                    "feature_events": 0,
+                }
+                for day in days_list
+            }
+            compilation_map: Dict[str, Dict[str, Any]] = {
+                day: {
+                    "total": 0,
+                    "completed": 0,
+                    "failed": 0,
+                    "cancelled": 0,
+                    "latency_sum": 0.0,
+                    "latency_count": 0,
+                }
+                for day in days_list
+            }
+            optimization_map: Dict[str, Dict[str, Any]] = {
+                day: {
+                    "total": 0,
+                    "tokens_sum": 0,
+                    "tokens_count": 0,
+                    "ats_sum": 0.0,
+                    "ats_count": 0,
+                }
+                for day in days_list
+            }
+            feature_totals: Dict[str, int] = {}
+            feature_last_used: Dict[str, datetime] = {}
+
+            for event in events:
+                day = event.created_at.strftime("%Y-%m-%d")
+                if day not in activity_map:
+                    continue
+                activity_map[day]["events"] += 1
+
+                action = event.action or ""
+                if action in {"compile", "latex_compilation"}:
+                    activity_map[day]["compile_events"] += 1
+                if action in {"optimize", "combined", "llm_optimization"}:
+                    activity_map[day]["optimize_events"] += 1
+
+                feature_key = None
+                metadata = event.event_metadata or {}
+                if isinstance(metadata, dict) and metadata.get("feature"):
+                    feature_key = str(metadata["feature"])
+                elif action:
+                    feature_key = action
+
+                if feature_key:
+                    activity_map[day]["feature_events"] += 1
+                    feature_totals[feature_key] = feature_totals.get(feature_key, 0) + 1
+                    previous = feature_last_used.get(feature_key)
+                    if previous is None or event.created_at > previous:
+                        feature_last_used[feature_key] = event.created_at
+
+            for item in compilations:
+                day = item.created_at.strftime("%Y-%m-%d")
+                if day not in compilation_map:
+                    continue
+                entry = compilation_map[day]
+                entry["total"] += 1
+                status = (item.status or "").lower()
+                if status == "completed":
+                    entry["completed"] += 1
+                elif status == "failed":
+                    entry["failed"] += 1
+                elif status == "cancelled":
+                    entry["cancelled"] += 1
+
+                if item.compilation_time is not None:
+                    entry["latency_sum"] += float(item.compilation_time)
+                    entry["latency_count"] += 1
+
+            for item in optimizations:
+                day = item.created_at.strftime("%Y-%m-%d")
+                if day not in optimization_map:
+                    continue
+                entry = optimization_map[day]
+                entry["total"] += 1
+
+                if item.tokens_used is not None:
+                    entry["tokens_sum"] += int(item.tokens_used)
+                    entry["tokens_count"] += 1
+
+                ats_score_value = None
+                if isinstance(item.ats_score, dict):
+                    if isinstance(item.ats_score.get("overall_score"), (int, float)):
+                        ats_score_value = float(item.ats_score["overall_score"])
+                    elif isinstance(item.ats_score.get("overall"), (int, float)):
+                        ats_score_value = float(item.ats_score["overall"])
+                elif isinstance(item.ats_score, (int, float)):
+                    ats_score_value = float(item.ats_score)
+
+                if ats_score_value is not None:
+                    entry["ats_sum"] += ats_score_value
+                    entry["ats_count"] += 1
+
+            activity_series = [
+                {
+                    "date": day,
+                    "events": activity_map[day]["events"],
+                    "compile_events": activity_map[day]["compile_events"],
+                    "optimize_events": activity_map[day]["optimize_events"],
+                    "feature_events": activity_map[day]["feature_events"],
+                }
+                for day in days_list
+            ]
+            compilation_series = [
+                {
+                    "date": day,
+                    "total": compilation_map[day]["total"],
+                    "completed": compilation_map[day]["completed"],
+                    "failed": compilation_map[day]["failed"],
+                    "cancelled": compilation_map[day]["cancelled"],
+                    "avg_latency": round(
+                        compilation_map[day]["latency_sum"] / compilation_map[day]["latency_count"],
+                        2
+                    ) if compilation_map[day]["latency_count"] > 0 else 0,
+                }
+                for day in days_list
+            ]
+            optimization_series = [
+                {
+                    "date": day,
+                    "total": optimization_map[day]["total"],
+                    "avg_tokens": round(
+                        optimization_map[day]["tokens_sum"] / optimization_map[day]["tokens_count"],
+                        2
+                    ) if optimization_map[day]["tokens_count"] > 0 else 0,
+                    "avg_ats_score": round(
+                        optimization_map[day]["ats_sum"] / optimization_map[day]["ats_count"],
+                        2
+                    ) if optimization_map[day]["ats_count"] > 0 else 0,
+                }
+                for day in days_list
+            ]
+            feature_series = sorted(
+                [
+                    {
+                        "feature": feature,
+                        "count": count,
+                        "last_used_at": feature_last_used[feature].isoformat() if feature in feature_last_used else None,
+                    }
+                    for feature, count in feature_totals.items()
+                ],
+                key=lambda item: item["count"],
+                reverse=True,
+            )
+
+            status_distribution = {
+                "completed": sum(1 for c in compilations if (c.status or "").lower() == "completed"),
+                "processing": sum(1 for c in compilations if (c.status or "").lower() == "processing"),
+                "queued": sum(1 for c in compilations if (c.status or "").lower() == "queued"),
+                "failed": sum(1 for c in compilations if (c.status or "").lower() == "failed"),
+                "cancelled": sum(1 for c in compilations if (c.status or "").lower() == "cancelled"),
+            }
+
+            return {
+                "user_id": str(user_id),
+                "period_days": period_days,
+                "activity_series": activity_series,
+                "compilation_series": compilation_series,
+                "optimization_series": optimization_series,
+                "feature_series": feature_series,
+                "status_distribution": status_distribution,
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting user analytics timeseries: {e}")
+            return {}
     
     async def get_system_analytics(
         self,
@@ -331,15 +548,18 @@ class AnalyticsService:
             start_date = datetime.now() - timedelta(days=days)
             
             # Landing page visits (from analytics events)
-            landing_visits_query = select(func.count(UsageAnalytics.id)).where(
+            events_query = select(UsageAnalytics).where(
                 and_(
                     UsageAnalytics.action == 'page_view',
-                    UsageAnalytics.metadata['page'].astext == 'landing',
                     UsageAnalytics.created_at >= start_date
                 )
             )
-            landing_visits_result = await db.execute(landing_visits_query)
-            landing_visits = landing_visits_result.scalar() or 0
+            page_view_events = (await db.execute(events_query)).scalars().all()
+            landing_visits = 0
+            for event in page_view_events:
+                metadata = event.event_metadata or {}
+                if isinstance(metadata, dict) and metadata.get("page") == "landing":
+                    landing_visits += 1
             
             # Trial starts
             trial_starts_query = select(func.count(DeviceTrial.id)).where(
@@ -473,4 +693,3 @@ class AnalyticsService:
 
 # Global analytics service instance
 analytics_service = AnalyticsService()
-
