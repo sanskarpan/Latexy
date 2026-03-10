@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..database.models import User
 from ..middleware.auth_middleware import get_current_user_optional
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
@@ -21,8 +20,8 @@ from ..services.latex_compiler import latex_compiler
 from ..services.latex_service import latex_service
 from ..services.llm_service import llm_service
 from ..services.payment_service import payment_service
-from ..services.trial_service import TEST_TRIAL_LIMIT, trial_service
 from ..services.trial_service import TRIAL_LIMIT as _TRIAL_LIMIT
+from ..services.trial_service import get_trial_limit_for_user, trial_service
 from ..utils.file_utils import get_job_files, validate_file_upload, validate_job_id
 
 logger = get_logger(__name__)
@@ -277,20 +276,12 @@ async def optimize_and_compile_resume(request: OptimizationRequest):
 
 
 async def _get_trial_limit(user_id: Optional[str], db: AsyncSession) -> int:
-    """Return TEST_TRIAL_LIMIT for known test users, else the standard TRIAL_LIMIT."""
-    if not user_id or not settings.TEST_USER_EMAILS:
-        return _TRIAL_LIMIT
-    try:
-        from sqlalchemy import select as _select
-        result = await db.execute(_select(User.email).where(User.id == user_id))
-        row = result.scalar_one_or_none()
-        if row:
-            test_emails = [e.strip().lower() for e in settings.TEST_USER_EMAILS.split(",") if e.strip()]
-            if row.lower() in test_emails:
-                return TEST_TRIAL_LIMIT
-    except Exception:
-        pass
-    return _TRIAL_LIMIT
+    """Return the effective trial limit for the given user.
+
+    Delegates to ``trial_service.get_trial_limit_for_user`` so the logic lives
+    in exactly one place (the service layer).
+    """
+    return await get_trial_limit_for_user(user_id, db)
 
 
 class TrialStatusResponse(BaseModel):
