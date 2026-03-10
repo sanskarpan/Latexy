@@ -34,10 +34,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         try:
             await self.check_rate_limit(client_id, request.url.path)
         except HTTPException as e:
+            retry_after = e.headers.get("Retry-After", "60") if e.headers else "60"
             return Response(
-                content=f'{{"error": "{e.detail}", "retry_after": 60}}',
+                content=f'{{"error": "{e.detail}", "retry_after": {retry_after}}}',
                 status_code=e.status_code,
-                headers={"Content-Type": "application/json", "Retry-After": "60"}
+                headers={"Content-Type": "application/json", "Retry-After": retry_after}
             )
 
         response = await call_next(request)
@@ -58,8 +59,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         return f"ip:{client_ip}"
 
+    # Lua script: atomic INCR + EXPIRE for new keys (prevents GET-then-INCR race)
+    _LUA_INCR_EXPIRE = """
+local n = redis.call('INCR', KEYS[1])
+if n == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return n
+"""
+
     async def check_rate_limit(self, client_id: str, endpoint: str):
-        """Check if client has exceeded rate limits."""
+        """Check if client has exceeded rate limits using atomic Lua script."""
         if not redis_manager.redis_client:
             # If Redis is not available, allow the request
             logger.warning("Redis not available for rate limiting")
@@ -70,29 +80,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         hour_key = f"rate_limit:{client_id}:hour:{current_time // 3600}"
 
         try:
-            # Check minute limit
-            minute_count = await redis_manager.redis_client.get(minute_key)
-            if minute_count and int(minute_count) >= self.calls_per_minute:
+            minute_count = await redis_manager.redis_client.eval(
+                self._LUA_INCR_EXPIRE, 1, minute_key, 60
+            )
+            if minute_count > self.calls_per_minute:
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Rate limit exceeded: {self.calls_per_minute} calls per minute"
+                    detail=f"Rate limit exceeded: {self.calls_per_minute} calls per minute",
+                    headers={"Retry-After": "60"},
                 )
 
-            # Check hour limit
-            hour_count = await redis_manager.redis_client.get(hour_key)
-            if hour_count and int(hour_count) >= self.calls_per_hour:
+            hour_count = await redis_manager.redis_client.eval(
+                self._LUA_INCR_EXPIRE, 1, hour_key, 3600
+            )
+            if hour_count > self.calls_per_hour:
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Rate limit exceeded: {self.calls_per_hour} calls per hour"
+                    detail=f"Rate limit exceeded: {self.calls_per_hour} calls per hour",
+                    headers={"Retry-After": "3600"},
                 )
-
-            # Increment counters
-            pipe = redis_manager.redis_client.pipeline()
-            pipe.incr(minute_key)
-            pipe.expire(minute_key, 60)  # Expire after 1 minute
-            pipe.incr(hour_key)
-            pipe.expire(hour_key, 3600)  # Expire after 1 hour
-            await pipe.execute()
 
         except HTTPException:
             raise
@@ -186,8 +192,9 @@ class APIKeyRateLimitMiddleware(BaseHTTPMiddleware):
             # Count current requests in window
             pipe.zcard(key)
 
-            # Add current request
-            pipe.zadd(key, {str(current_time): current_time})
+            # Add current request with unique member (prevents score collision in same second)
+            import uuid as _uuid
+            pipe.zadd(key, {f"{current_time}:{_uuid.uuid4().hex[:8]}": current_time})
 
             # Set expiration
             pipe.expire(key, limit_config["window"])
