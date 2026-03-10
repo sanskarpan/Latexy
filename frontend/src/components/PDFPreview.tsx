@@ -289,8 +289,8 @@ export default function PDFPreview({
               <div
                 key={pageNum}
                 ref={(el) => { pageRefs.current[pageNum] = el }}
-                className="shadow-[0_4px_24px_rgba(0,0,0,0.5)]"
-                style={{ lineHeight: 0, cursor: synctexReady ? 'crosshair' : 'default' }}
+                className="shadow-[0_4px_24px_rgba(0,0,0,0.5)] select-text"
+                style={{ lineHeight: 0 }}
                 onClick={(e) => handlePageClick(e, pageNum)}
               >
                 <Page
