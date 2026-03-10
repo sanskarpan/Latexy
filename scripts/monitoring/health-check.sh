@@ -17,7 +17,7 @@ if [ -f "$PROJECT_ROOT/.env.production" ]; then
 fi
 
 # Service endpoints
-BACKEND_URL="${BACKEND_URL:-http://localhost:8000}"
+BACKEND_URL="${BACKEND_URL:-http://localhost:8030}"
 FRONTEND_URL="${FRONTEND_URL:-http://localhost}"
 REDIS_HOST="${REDIS_HOST:-localhost}"
 REDIS_PORT="${REDIS_PORT:-6379}"
