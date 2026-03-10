@@ -15,7 +15,6 @@ import pytest
 
 import app.workers.llm_worker as lw
 
-
 # ── Celery eager mode ─────────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
