@@ -24,7 +24,7 @@ services:
     container_name: latexy-postgres-dev
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
       POSTGRES_DB: ${DB_NAME:-latexy}
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
@@ -55,7 +55,7 @@ services:
       - REDIS_CACHE_URL=redis://redis:6379/1
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/latexy}
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
       - SKIP_ENV_VALIDATION=false
     depends_on:
       redis:
@@ -91,7 +91,7 @@ services:
       - REDIS_CACHE_URL=redis://redis:6379/1
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/latexy}
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
     depends_on:
       redis:
         condition: service_healthy
@@ -117,7 +117,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/latexy}
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
     depends_on:
       redis:
         condition: service_healthy
