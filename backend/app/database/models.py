@@ -36,6 +36,7 @@ class User(Base):
     subscriptions: Mapped[List["Subscription"]] = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
     payments: Mapped[List["Payment"]] = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
     usage_analytics: Mapped[List["UsageAnalytics"]] = relationship("UsageAnalytics", back_populates="user")
+    resume_job_matches: Mapped[List["ResumeJobMatch"]] = relationship("ResumeJobMatch", back_populates="user", cascade="all, delete-orphan")
 
 class DeviceTrial(Base):
     """Device trial tracking for freemium model."""
@@ -100,6 +101,7 @@ class Compilation(Base):
     __tablename__ = "compilations"
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    # SET NULL preserves anonymous compilation records after account deletion
     user_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), index=True)
     resume_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"))
     device_fingerprint: Mapped[Optional[str]] = mapped_column(String(255), index=True)
@@ -120,8 +122,10 @@ class Optimization(Base):
     __tablename__ = "optimizations"
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    # SET NULL preserves anonymous optimization records after account deletion
     user_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), index=True)
     resume_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False)
+    device_fingerprint: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     job_description: Mapped[str] = mapped_column(Text, nullable=False)
     original_latex: Mapped[str] = mapped_column(Text, nullable=False)
     optimized_latex: Mapped[str] = mapped_column(Text, nullable=False)
@@ -129,7 +133,7 @@ class Optimization(Base):
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     tokens_used: Mapped[Optional[int]] = mapped_column(Integer)
     optimization_time: Mapped[Optional[float]] = mapped_column(Float)
-    ats_score: Mapped[Optional[dict]] = mapped_column(JSON)
+    ats_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     changes_made: Mapped[Optional[dict]] = mapped_column(JSON)
     # Layer 3: embedding of the job description used for this optimization
     job_desc_embedding: Mapped[Optional[List[float]]] = mapped_column(ARRAY(Float), nullable=True)
@@ -144,7 +148,12 @@ class ResumeJobMatch(Base):
     __tablename__ = "resume_job_matches"
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
-    user_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     resume_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True)
     jd_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     similarity_score: Mapped[float] = mapped_column(Float, nullable=False)
@@ -152,6 +161,9 @@ class ResumeJobMatch(Base):
     missing_keywords: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     semantic_gaps: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="resume_job_matches")
 
 class UsageAnalytics(Base):
     """Usage analytics for tracking user behavior."""
@@ -165,7 +177,7 @@ class UsageAnalytics(Base):
     event_metadata: Mapped[Optional[dict]] = mapped_column(JSON)
     ip_address: Mapped[Optional[str]] = mapped_column(INET)
     user_agent: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     # Relationships
     user: Mapped[Optional["User"]] = relationship("User", back_populates="usage_analytics")
@@ -216,6 +228,7 @@ Index('idx_resumes_user_id', Resume.user_id)
 Index('idx_compilations_user_id', Compilation.user_id)
 Index('idx_compilations_device', Compilation.device_fingerprint)
 Index('idx_optimizations_user_id', Optimization.user_id)
+Index('idx_optimizations_device_fp', Optimization.device_fingerprint)
 Index('idx_usage_analytics_user_id', UsageAnalytics.user_id)
 Index('idx_usage_analytics_device', UsageAnalytics.device_fingerprint)
 Index('idx_subscriptions_user_id', Subscription.user_id)
