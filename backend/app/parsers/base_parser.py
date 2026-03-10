@@ -131,7 +131,8 @@ class ParsedResume(BaseModel):
             self.summary,
             self.experience,
             self.education,
-            self.skills
+            self.skills,
+            self.raw_text,
         ])
 
 
