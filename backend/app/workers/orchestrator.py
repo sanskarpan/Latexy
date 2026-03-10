@@ -25,11 +25,8 @@ All Redis I/O via event_publisher (sync redis.Redis — no asyncio).
 import asyncio
 import json
 import re
-import shutil
-import subprocess
 import time
 import uuid
-from subprocess import PIPE, STDOUT
 from typing import Any, Dict, List, Optional
 
 import openai
@@ -76,6 +73,7 @@ def optimize_and_compile_task(
     device_fingerprint: Optional[str] = None,
     target_sections: Optional[List[str]] = None,
     custom_instructions: Optional[str] = None,
+    model: Optional[str] = None,
     metadata: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
@@ -121,6 +119,7 @@ def optimize_and_compile_task(
             api_key=api_key,
             target_sections=target_sections,
             custom_instructions=custom_instructions,
+            model=model,
         )
 
         if is_cancelled(job_id):
@@ -245,6 +244,7 @@ def _run_llm_stage(
     api_key: str,
     target_sections: Optional[List[str]] = None,
     custom_instructions: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> tuple[str, List[Dict], int, float]:
     """
     Stream OpenAI tokens through a delimiter state machine.
@@ -280,7 +280,7 @@ def _run_llm_stage(
     tokens_total = 0
 
     stream = client.chat.completions.create(
-        model=settings.OPENAI_MODEL,
+        model=model or settings.OPENAI_MODEL,
         messages=[
             {
                 "role": "system",
@@ -443,85 +443,9 @@ def _run_latex_stage(
     Returns (success, compilation_time, error_message).
     Does NOT publish job.failed — caller is responsible so it can
     include optimized_latex in the failure payload.
-
-    # TODO(refactor): LaTeX compilation logic is also present in latex_worker.py.
-    # Extract to a shared helper function in app/services/latex_service.py.
     """
-    job_dir = settings.TEMP_DIR / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-
-    tex_file = job_dir / "resume.tex"
-    pdf_file = job_dir / "resume.pdf"
-    tex_file.write_text(latex_content, encoding="utf-8")
-
-    # Fix 1: Docker if available, else local pdflatex (matches latex_worker.py)
-    _use_docker = shutil.which("docker") is not None
-    if _use_docker:
-        compile_cmd = [
-            "docker", "run", "--rm",
-            "-v", f"{job_dir}:/workspace",
-            "-w", "/workspace",
-            settings.LATEX_DOCKER_IMAGE,
-            "pdflatex",
-            "-interaction=nonstopmode",
-            "-synctex=1",
-            "-output-directory", "/workspace",
-            "-jobname", "resume",
-            "resume.tex",
-        ]
-        compile_cwd = None
-    else:
-        # Inside the backend container, pdflatex is installed via texlive
-        compile_cmd = [
-            "pdflatex",
-            "-interaction=nonstopmode",
-            "-synctex=1",
-            "-output-directory", str(job_dir),
-            "-jobname", "resume",
-            "resume.tex",
-        ]
-        compile_cwd = str(job_dir)
-
-    start_time = time.time()
-    proc = subprocess.Popen(
-        compile_cmd,
-        stdout=PIPE,
-        stderr=STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        cwd=compile_cwd,
-    )
-
-    for raw_line in proc.stdout:  # type: ignore[union-attr]
-        line = raw_line.rstrip("\n")
-        if not line:
-            continue
-        line_lower = line.lower()
-        is_error = any(
-            kw in line_lower for kw in ("error", "fatal", "undefined control")
-        )
-        publish_event(job_id, "log.line", {
-            "source": "pdflatex",
-            "line": line,
-            "is_error": is_error,
-        })
-        if is_cancelled(job_id):
-            proc.kill()
-            proc.wait()
-            raise RuntimeError("Job cancelled during LaTeX compilation")
-
-    proc.wait()
-    compilation_time = time.time() - start_time
-
-    if proc.returncode == 0 and pdf_file.exists():
-        return True, compilation_time, ""
-
-    error_msg = (
-        f"pdflatex exited with code {proc.returncode}. "
-        "See log.line events for details."
-    )
-    return False, compilation_time, error_msg
+    from ..services.latex_service import run_latex_subprocess
+    return run_latex_subprocess(job_id=job_id, latex_content=latex_content)
 
 
 def _run_ats_stage(
@@ -568,6 +492,7 @@ def submit_optimize_and_compile(
     device_fingerprint: Optional[str] = None,
     target_sections: Optional[List[str]] = None,
     custom_instructions: Optional[str] = None,
+    model: Optional[str] = None,
     priority: Optional[int] = None,
     metadata: Optional[Dict] = None,
 ) -> str:
@@ -586,6 +511,7 @@ def submit_optimize_and_compile(
             "device_fingerprint": device_fingerprint,
             "target_sections": target_sections,
             "custom_instructions": custom_instructions,
+            "model": model,
             "metadata": metadata,
         },
         priority=priority,
