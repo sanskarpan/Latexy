@@ -67,8 +67,8 @@ jobs:
       # Non-secret CI-only fallbacks — real secrets override via repo secrets
       JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY || 'ci-jwt-secret-key-minimum-32-chars!!' }}
       BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'ci-better-auth-secret-minimum-48-chars-padding!!' }}
-      # API_KEY_ENCRYPTION_KEY must be non-empty — APIKeyEncryption raises ValueError at import if blank
-      API_KEY_ENCRYPTION_KEY: ${{ secrets.CI_API_KEY_ENCRYPTION_KEY || 'ci-encryption-key-not-for-production-use' }}
+      # API_KEY_ENCRYPTION_KEY must be a valid Fernet key (32 url-safe base64 bytes)
+      API_KEY_ENCRYPTION_KEY: ${{ secrets.CI_API_KEY_ENCRYPTION_KEY || 'R2OlT4klI7izaWpn19Qv4qGjXvHpW446ZLxMtU8IjUo=' }}
       OPENAI_API_KEY: ""
       DEBUG: "true"
 
