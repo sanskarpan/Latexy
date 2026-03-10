@@ -72,11 +72,6 @@ const API_BASE =
 export const apiClient = {
   ..._base,
 
-  /** Legacy: cancel any in-flight requests (noop — cancellation now via wsClient.cancelJob) */
-  cancelRequests(): void {
-    // No-op: cancellation is handled via WebSocket cancel message
-  },
-
   /** Legacy: compile via job submission, returns CompilationResponse shape */
   async compileLatex(latexContent: string): Promise<CompilationResponse> {
     const res = await _base.submitJob({
