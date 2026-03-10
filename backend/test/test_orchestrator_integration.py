@@ -9,17 +9,16 @@ Integration tests for orchestrator.py fixes:
 """
 
 import json
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
-from httpx import AsyncClient
+from unittest.mock import MagicMock, patch
 
+import pytest
+from httpx import AsyncClient
 
 # ─── Fix 1: Docker fallback ───────────────────────────────────────────────────
 
 class TestDockerFallback:
     def test_uses_local_pdflatex_when_docker_not_found(self, tmp_path):
         """When Docker is unavailable, orchestrator uses local pdflatex."""
-        import shutil as _shutil
         from app.workers.orchestrator import _run_latex_stage
 
         sample_tex = (
