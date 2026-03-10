@@ -43,7 +43,7 @@ export default function LogViewer({
       <div className="p-3 space-y-0.5">
         {lines.map((entry, i) => (
           <div
-            key={i}
+            key={`${i}-${entry.source}-${entry.line?.substring(0, 20) ?? ''}`}
             className={`leading-5 whitespace-pre-wrap break-all ${
               entry.is_error ? 'text-rose-300' : 'text-zinc-300'
             }`}
