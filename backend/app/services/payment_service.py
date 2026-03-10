@@ -4,18 +4,19 @@ import hashlib
 import hmac
 import json
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any, Dict, Optional
+
 from sqlalchemy import select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
 try:
     import razorpay as _razorpay_module
 except (ImportError, ModuleNotFoundError):
     _razorpay_module = None  # type: ignore[assignment]
 
-from ..database.models import User, Subscription, Payment
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..database.models import Payment, Subscription, User
 
 logger = get_logger(__name__)
 
