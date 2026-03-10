@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useImperativeHandle, useRef, forwardRef } from 'react'
+
+let _latexLanguageRegistered = false
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type { LogLine } from '@/hooks/useJobStream'
 
@@ -276,7 +278,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       monacoRef.current = monaco
 
       // ── Language registration ──────────────────────────────────────
-      monaco.languages.register({ id: 'latex' })
+      if (!_latexLanguageRegistered) {
+        monaco.languages.register({ id: 'latex' })
 
       // ── Monarch tokenizer ──────────────────────────────────────────
       monaco.languages.setMonarchTokensProvider('latex', {
@@ -586,28 +589,6 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       })
       disposablesRef.current.push(foldingDisposable)
 
-      // ── Keyboard shortcuts ─────────────────────────────────────────
-      if (onSave) {
-        editor.addCommand(
-          monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
-          () => onSave()
-        )
-      }
-      if (onCompile) {
-        editor.addCommand(
-          monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-          () => onCompile()
-        )
-      }
-
-      // ── Cursor change listener ─────────────────────────────────────
-      if (onCursorChange) {
-        const cursorDisposable = editor.onDidChangeCursorPosition((e: any) => {
-          onCursorChange(e.position.lineNumber)
-        })
-        disposablesRef.current.push(cursorDisposable)
-      }
-
       // ── Hover provider (show command description) ──────────────────
       const hoverDisposable = monaco.languages.registerHoverProvider('latex', {
         provideHover(model, position) {
@@ -652,6 +633,32 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         },
       })
       disposablesRef.current.push(hoverDisposable)
+
+        _latexLanguageRegistered = true
+      } // end !_latexLanguageRegistered
+
+      // ── Keyboard shortcuts ─────────────────────────────────────────
+      if (onSave) {
+        editor.addCommand(
+          monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
+          () => onSave()
+        )
+      }
+      if (onCompile) {
+        editor.addCommand(
+          monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+          () => onCompile()
+        )
+      }
+
+      // ── Cursor change listener ─────────────────────────────────────
+      if (onCursorChange) {
+        const cursorDisposable = editor.onDidChangeCursorPosition((e: any) => {
+          onCursorChange(e.position.lineNumber)
+        })
+        disposablesRef.current.push(cursorDisposable)
+      }
+
     }
 
     return (
