@@ -9,10 +9,9 @@ Covers:
 - /ats/semantic-match endpoint (auth required, no resumes → empty results)
 """
 
-import math
-import pytest
 import hashlib
 
+import pytest
 
 # ────────────────────────────────────────────────────────────────────────────
 #  EmbeddingService unit tests (no OpenAI calls)
@@ -233,7 +232,7 @@ class TestSemanticMatchEndpoint:
     @pytest.mark.asyncio
     async def test_no_resumes_returns_empty_results(self, client, auth_headers):
         """When user has no resumes, returns empty list without error."""
-        from unittest.mock import patch, AsyncMock
+        from unittest.mock import AsyncMock, patch
 
         # Mock embedding service to avoid OpenAI calls
         with patch("app.services.embedding_service.embedding_service") as mock_svc:
