@@ -53,6 +53,7 @@ class JobSubmissionRequest(BaseModel):
     target_sections: Optional[List[str]] = None
     custom_instructions: Optional[str] = None
     metadata: Optional[Dict] = None
+    model: Optional[str] = None
 
 
 class JobSubmissionResponse(BaseModel):
@@ -222,6 +223,7 @@ async def submit_job(
                 user_id=user_id,
                 user_plan=request.user_plan,
                 optimization_level=request.optimization_level,
+                model=request.model,
                 metadata=extra_meta,
             )
 
@@ -242,6 +244,7 @@ async def submit_job(
                 device_fingerprint=request.device_fingerprint,
                 target_sections=request.target_sections,
                 custom_instructions=request.custom_instructions,
+                model=request.model,
                 metadata=extra_meta,
             )
 
