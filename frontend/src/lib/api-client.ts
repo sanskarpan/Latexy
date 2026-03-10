@@ -290,7 +290,7 @@ class ApiClient {
     const data = await this.request<PaginatedResumesResponse>(
       `/resumes/?page=${page}&limit=${limit}`
     )
-    return data.resumes
+    return data.resumes ?? []
   }
 
   async listResumesPaginated(page: number = 1, limit: number = 20): Promise<PaginatedResumesResponse> {
