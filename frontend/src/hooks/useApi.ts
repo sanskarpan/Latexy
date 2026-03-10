@@ -1,4 +1,10 @@
 /**
+ * @deprecated This legacy hook is a compatibility shim around api-client.ts.
+ * Use apiClient directly or useJobManagement/useATSScoring hooks instead.
+ * This file will be removed in a future release.
+ */
+
+/**
  * React hooks for API operations
  */
 
@@ -132,7 +138,6 @@ export function useCompilation(): UseCompilationResult {
   }, [addNotification, handleError])
 
   const cancel = useCallback(() => {
-    apiClient.cancelRequests()
     setIsLoading(false)
     addNotification({
       type: 'info',
@@ -140,13 +145,6 @@ export function useCompilation(): UseCompilationResult {
       message: 'The compilation request was cancelled',
     })
   }, [addNotification])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      apiClient.cancelRequests()
-    }
-  }, [])
 
   return {
     compile,
