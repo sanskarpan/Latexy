@@ -112,6 +112,8 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
 
   const { addNotification } = useNotifications()
   const startTimeRef = useRef<number>(0)
+  const isScoringLoadingRef = useRef(false)
+  const isDeepAnalysisLoadingRef = useRef(false)
 
   // Job status tracking for scoring
   const scoringJobStatus = useJobStatus(scoringJobId, {
@@ -144,10 +146,12 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
           message: `Resume scored: ${r.overall_score}/100`,
         })
       }
+      isScoringLoadingRef.current = false
       setIsScoringLoading(false)
     },
     onError: (error) => {
       setScoringError(error)
+      isScoringLoadingRef.current = false
       setIsScoringLoading(false)
       addNotification({
         type: 'error',
@@ -202,7 +206,9 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
   const scoreResume = useCallback(async (
     request: Omit<ATSScoreRequest, 'user_plan' | 'device_fingerprint'>
   ): Promise<string | null> => {
+    if (isScoringLoadingRef.current || isDeepAnalysisLoadingRef.current) return null
     try {
+      isScoringLoadingRef.current = true
       setIsScoringLoading(true)
       setScoringError(null)
       setScoringResult(null)
@@ -221,14 +227,15 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
       } else if (response.success && response.ats_score !== undefined) {
         // Synchronous response
         setScoringResult(response)
+        isScoringLoadingRef.current = false
         setIsScoringLoading(false)
-        
+
         addNotification({
           type: 'success',
           title: 'ATS Scoring Complete',
           message: `Resume scored: ${response.ats_score}/100`,
         })
-        
+
         return null
       } else {
         throw new Error(response.message || 'ATS scoring failed')
@@ -236,6 +243,7 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'ATS scoring failed'
       setScoringError(errorMessage)
+      isScoringLoadingRef.current = false
       setIsScoringLoading(false)
       
       addNotification({
@@ -350,7 +358,9 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
         }))
       }
     } catch (error) {
-      console.error('Failed to load industry keywords:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to load industry keywords:', error)
+      }
     } finally {
       setIsIndustryLoading(false)
     }
@@ -359,7 +369,9 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
   const triggerDeepAnalysis = useCallback(async (
     body: { latex_content: string; job_description?: string; device_fingerprint?: string }
   ): Promise<{ job_id: string | null; uses_remaining: number | null }> => {
+    if (isScoringLoadingRef.current || isDeepAnalysisLoadingRef.current) return { job_id: null, uses_remaining: null }
     try {
+      isDeepAnalysisLoadingRef.current = true
       setIsDeepAnalysisLoading(true)
       setDeepAnalysisError(null)
       const response = await apiClient.deepAnalyzeResume(body)
@@ -374,6 +386,7 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
       setDeepAnalysisError(msg)
       return { job_id: null, uses_remaining: null }
     } finally {
+      isDeepAnalysisLoadingRef.current = false
       setIsDeepAnalysisLoading(false)
     }
   }, [])
@@ -431,7 +444,9 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
           }
         }
       } catch (error) {
-        console.error('Failed to load supported industries:', error)
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Failed to load supported industries:', error)
+        }
       }
     }
 
