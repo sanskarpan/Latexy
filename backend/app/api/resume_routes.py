@@ -266,23 +266,31 @@ async def get_optimization_history(
     user_id: str = Depends(get_current_user_required),
 ):
     """Return the 20 most recent optimization records for a resume."""
-    result = await db.execute(
-        select(Optimization)
-        .where(Optimization.resume_id == resume_id, Optimization.user_id == user_id)
-        .order_by(Optimization.created_at.desc())
-        .limit(20)
-    )
-    rows = result.scalars().all()
-    return [
-        {
-            "id": r.id,
-            "created_at": r.created_at,
-            "ats_score": r.ats_score if isinstance(r.ats_score, float) else None,
-            "changes_count": len(r.changes_made) if isinstance(r.changes_made, list) else 0,
-            "tokens_used": r.tokens_used,
-        }
-        for r in rows
-    ]
+    try:
+        result = await db.execute(
+            select(Optimization)
+            .where(Optimization.resume_id == resume_id, Optimization.user_id == user_id)
+            .order_by(Optimization.created_at.desc())
+            .limit(20)
+        )
+        rows = result.scalars().all()
+    except Exception as exc:
+        logger.warning(f"DB error fetching optimization history for resume {resume_id}: {exc}")
+        return []
+    try:
+        return [
+            {
+                "id": r.id,
+                "created_at": r.created_at,
+                "ats_score": float(r.ats_score) if r.ats_score is not None else None,
+                "changes_count": len(r.changes_made) if isinstance(r.changes_made, list) else 0,
+                "tokens_used": r.tokens_used,
+            }
+            for r in rows
+        ]
+    except Exception as exc:
+        logger.warning(f"Error serializing optimization history for resume {resume_id}: {exc}")
+        return []
 
 
 @router.post(
