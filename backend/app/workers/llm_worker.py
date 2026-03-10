@@ -42,6 +42,7 @@ def optimize_resume_task(
     optimization_level: str = "balanced",
     user_api_key: Optional[str] = None,
     metadata: Optional[Dict] = None,
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Optimize a LaTeX resume using OpenAI with live token streaming.
@@ -108,7 +109,7 @@ def optimize_resume_task(
         token_count = 0
 
         stream = client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
+            model=model or settings.OPENAI_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -261,6 +262,7 @@ def submit_resume_optimization(
     user_api_key: Optional[str] = None,
     priority: Optional[int] = None,
     metadata: Optional[Dict] = None,
+    model: Optional[str] = None,
 ) -> str:
     """Enqueue optimize_resume_task on the llm queue."""
     if priority is None:
@@ -275,6 +277,7 @@ def submit_resume_optimization(
             "optimization_level": optimization_level,
             "user_api_key": user_api_key,
             "metadata": metadata,
+            "model": model,
         },
         priority=priority,
         queue="llm",
