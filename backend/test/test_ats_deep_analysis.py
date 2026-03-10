@@ -9,11 +9,11 @@ Covers:
 - Authenticated user → unlimited (no uses_remaining)
 """
 
-import pytest
 import uuid
-from httpx import AsyncClient, ASGITransport
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+from httpx import AsyncClient
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -118,8 +118,9 @@ class TestDeepAnalyzeTrial:
         self, client: AsyncClient, mock_celery_task, mock_redis, db_session
     ):
         """After 2 uses, next request returns 402."""
-        from app.database.models import DeepAnalysisTrial
         from datetime import datetime, timezone
+
+        from app.database.models import DeepAnalysisTrial
 
         fp = f"fp_{uuid.uuid4().hex[:12]}"
 
