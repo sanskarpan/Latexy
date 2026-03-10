@@ -12,12 +12,12 @@ import asyncio
 import re
 import time
 import uuid
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.logging import get_logger
 from ..services.ats_scoring_service import ats_scoring_service
-from ..workers.event_publisher import publish_event, publish_job_result, is_cancelled
+from ..workers.event_publisher import publish_event, publish_job_result
 
 logger = get_logger(__name__)
 
@@ -422,6 +422,7 @@ async def _async_deep_analyze(
 ) -> None:
     """Async implementation of deep analysis task."""
     import time
+
     from openai import AsyncOpenAI
 
     start_time = time.time()
