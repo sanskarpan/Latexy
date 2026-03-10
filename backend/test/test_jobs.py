@@ -6,6 +6,7 @@ Celery tasks are mocked at the task dispatch level so we don't need a
 running worker for these unit/integration tests.
 """
 
+import re
 import uuid
 from unittest.mock import patch
 
@@ -85,7 +86,10 @@ class TestJobSubmission:
                 headers=auth_headers,
             )
         assert resp.status_code in (200, 202)
-        assert "job_id" in resp.json()
+        data = resp.json()
+        assert data["success"] is True
+        assert "job_id" in data
+        assert re.match(r'^[0-9a-f-]{36}$', data["job_id"]), "job_id should be a UUID"
 
     async def test_submit_ats_scoring(
         self, client: AsyncClient, auth_headers: dict
@@ -104,6 +108,10 @@ class TestJobSubmission:
                 headers=auth_headers,
             )
         assert resp.status_code in (200, 202)
+        data = resp.json()
+        assert data["success"] is True
+        assert "job_id" in data
+        assert re.match(r'^[0-9a-f-]{36}$', data["job_id"]), "job_id should be a UUID"
 
 
 # ── Job state polling ─────────────────────────────────────────────────────────
@@ -117,6 +125,8 @@ class TestJobState:
         fake_id = str(uuid.uuid4())
         resp = await client.get(f"/jobs/{fake_id}/state", headers=auth_headers)
         assert resp.status_code == 404
+        data = resp.json()
+        assert "detail" in data
 
     async def test_get_state_unauthenticated(self, client: AsyncClient):
         """State endpoint has no auth requirement; returns 404 for non-existent job."""
