@@ -64,10 +64,12 @@ jobs:
       CELERY_BROKER_URL: redis://localhost:6379/0
       CELERY_RESULT_BACKEND: redis://localhost:6379/0
       SKIP_ENV_VALIDATION: "true"
-      JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY || '' }}
-      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || '' }}
+      # Non-secret CI-only fallbacks — real secrets override via repo secrets
+      JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY || 'ci-jwt-secret-key-minimum-32-chars!!' }}
+      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'ci-better-auth-secret-minimum-48-chars-padding!!' }}
+      # API_KEY_ENCRYPTION_KEY must be non-empty — APIKeyEncryption raises ValueError at import if blank
+      API_KEY_ENCRYPTION_KEY: ${{ secrets.CI_API_KEY_ENCRYPTION_KEY || 'ci-encryption-key-not-for-production-use' }}
       OPENAI_API_KEY: ""
-      API_KEY_ENCRYPTION_KEY: ""
       DEBUG: "true"
 
     steps:
@@ -116,7 +118,7 @@ jobs:
       NEXT_PUBLIC_APP_URL: "http://localhost:5180"
       NEXT_PUBLIC_API_URL: "http://localhost:8030"
       NEXT_PUBLIC_WS_URL: "ws://localhost:8030"
-      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || '' }}
+      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'ci-better-auth-secret-minimum-48-chars-padding!!' }}
       BETTER_AUTH_URL: "http://localhost:5180"
       DATABASE_URL: ${{ secrets.CI_DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/latexy_test' }}
       NEXT_TELEMETRY_DISABLED: "1"
