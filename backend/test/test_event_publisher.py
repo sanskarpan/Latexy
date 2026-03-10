@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,7 +22,6 @@ from app.workers.event_publisher import (
     publish_job_result,
     store_job_meta,
 )
-
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 
