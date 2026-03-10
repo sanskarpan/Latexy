@@ -182,4 +182,5 @@ try:
     )
     logger.info("Celery workers imported successfully")
 except ImportError as e:
-    logger.warning(f"Could not import some workers: {e}")
+    logger.error(f"Failed to import required workers: {e}")
+    raise
