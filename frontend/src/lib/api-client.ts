@@ -29,6 +29,7 @@ export interface JobSubmitRequest {
   industry?: string
   target_sections?: string[]
   custom_instructions?: string
+  model?: string
 }
 
 export interface OptimizationHistoryEntry {
@@ -428,6 +429,7 @@ class ApiClient {
     user_plan?: string
     target_sections?: string[]
     custom_instructions?: string
+    model?: string
   }): Promise<JobSubmitResponse> {
     return this.submitJob({
       job_type: 'combined',
@@ -438,6 +440,7 @@ class ApiClient {
       user_plan: body.user_plan,
       target_sections: body.target_sections,
       custom_instructions: body.custom_instructions,
+      model: body.model,
     })
   }
 
