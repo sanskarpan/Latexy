@@ -131,6 +131,14 @@ export interface ResumeStats {
   last_updated: string | null
 }
 
+export interface PaginatedResumesResponse {
+  resumes: ResumeResponse[]
+  total: number
+  page: number
+  limit: number
+  pages: number
+}
+
 export interface UserAnalyticsResponse {
   user_id: string
   period_days: number
@@ -191,7 +199,7 @@ export interface UserAnalyticsTimeseriesResponse {
 export interface SemanticMatchResult {
   resume_id: string
   resume_title: string
-  similarity_score: number
+  similarity_score: number | null
   matched_keywords: string[]
   missing_keywords: string[]
   semantic_gaps: {
@@ -200,6 +208,7 @@ export interface SemanticMatchResult {
     domain_specific: string[]
     similarity_score: number
   }
+  note?: string
 }
 
 class ApiClient {
@@ -277,8 +286,17 @@ class ApiClient {
   //  Resumes (Workspace)                                             //
   // ---------------------------------------------------------------- //
 
-  async listResumes(): Promise<ResumeResponse[]> {
-    return this.request<ResumeResponse[]>('/resumes/')
+  async listResumes(page: number = 1, limit: number = 20): Promise<ResumeResponse[]> {
+    const data = await this.request<PaginatedResumesResponse>(
+      `/resumes/?page=${page}&limit=${limit}`
+    )
+    return data.resumes
+  }
+
+  async listResumesPaginated(page: number = 1, limit: number = 20): Promise<PaginatedResumesResponse> {
+    return this.request<PaginatedResumesResponse>(
+      `/resumes/?page=${page}&limit=${limit}`
+    )
   }
 
   async getResume(resumeId: string): Promise<ResumeResponse> {
@@ -649,9 +667,6 @@ export function getWebSocketUrl(): string {
 // ------------------------------------------------------------------ //
 //  Legacy aliases (for pages using old import names)                 //
 // ------------------------------------------------------------------ //
-
-/** @deprecated use getDeviceFingerprint */
-export const generateDeviceFingerprint = getDeviceFingerprint
 
 export function showSuccessToast(message: string): void {
   if (typeof window !== 'undefined') {
