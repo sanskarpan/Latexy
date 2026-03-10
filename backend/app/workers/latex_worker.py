@@ -91,6 +91,9 @@ def compile_latex_task(
             "message": "Starting pdflatex compilation",
         })
 
+        # TODO(refactor): LaTeX compilation logic is also present in orchestrator.py
+        # (_run_latex_stage). Extract to a shared helper function in
+        # app/services/latex_service.py.
         # ── Build compile command: Docker if available, else local pdflatex ──
         _use_docker = shutil.which("docker") is not None
         if _use_docker:
