@@ -161,7 +161,7 @@ migrate:
 	cd $(BACKEND_DIR) && alembic upgrade head
 
 db-backup:
-	bash scripts/backup/backup-database.sh
+	bash scripts/backup/database-backup.sh
 
 db-restore:
 	bash scripts/backup/restore-database.sh
