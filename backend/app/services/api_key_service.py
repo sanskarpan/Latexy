@@ -32,8 +32,13 @@ class APIKeyEncryption:
         if encryption_key:
             self.fernet = Fernet(encryption_key.encode())
         else:
-            # Generate a key from settings or create a new one
-            key = settings.API_KEY_ENCRYPTION_KEY or Fernet.generate_key()
+            key = settings.API_KEY_ENCRYPTION_KEY
+            if not key:
+                raise ValueError(
+                    "API_KEY_ENCRYPTION_KEY is not set. "
+                    "All stored BYOK keys would become unreadable after a restart. "
+                    "Set this environment variable to a valid Fernet key."
+                )
             if isinstance(key, str):
                 key = key.encode()
             self.fernet = Fernet(key)
