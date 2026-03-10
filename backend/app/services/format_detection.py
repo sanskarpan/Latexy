@@ -3,10 +3,9 @@ Format Detection Service for Multi-Format Resume Upload
 Detects and validates various resume file formats.
 """
 
-import mimetypes
-from typing import Optional, Dict
-from enum import Enum
 import logging
+from enum import Enum
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,7 @@ class ResumeFormat(Enum):
 
 class FormatDetectionService:
     """Service for detecting and validating resume file formats."""
-    
+
     # Format configurations
     FORMAT_CONFIG = {
         ResumeFormat.LATEX: {
@@ -87,73 +86,73 @@ class FormatDetectionService:
             "magic_bytes": None
         }
     }
-    
+
     def detect_format_from_filename(self, filename: str) -> ResumeFormat:
         """Detect format based on file extension."""
         if not filename:
             return ResumeFormat.UNKNOWN
-        
+
         filename_lower = filename.lower()
-        
+
         for format_type, config in self.FORMAT_CONFIG.items():
             for ext in config["extensions"]:
                 if filename_lower.endswith(ext):
                     logger.info(f"Detected format {format_type.value} from extension {ext}")
                     return format_type
-        
+
         return ResumeFormat.UNKNOWN
-    
+
     def detect_format_from_mime(self, mime_type: str) -> ResumeFormat:
         """Detect format based on MIME type."""
         if not mime_type:
             return ResumeFormat.UNKNOWN
-        
+
         mime_lower = mime_type.lower()
-        
+
         for format_type, config in self.FORMAT_CONFIG.items():
             if mime_lower in [m.lower() for m in config["mime_types"]]:
                 logger.info(f"Detected format {format_type.value} from MIME type {mime_type}")
                 return format_type
-        
+
         return ResumeFormat.UNKNOWN
-    
+
     def detect_format_from_content(self, content: bytes, filename: str = "") -> ResumeFormat:
         """Detect format based on magic bytes in content."""
         if not content:
             return ResumeFormat.UNKNOWN
-        
+
         # Check magic bytes
         for format_type, config in self.FORMAT_CONFIG.items():
             if config["magic_bytes"]:
                 if content.startswith(config["magic_bytes"]):
                     logger.info(f"Detected format {format_type.value} from magic bytes")
                     return format_type
-        
+
         # Fallback to filename detection
         if filename:
             return self.detect_format_from_filename(filename)
-        
+
         # Try to detect text-based formats by content analysis
         try:
             text_content = content.decode('utf-8', errors='ignore')[:1000]
-            
+
             # Check for LaTeX
             if '\\documentclass' in text_content or '\\begin{document}' in text_content:
                 return ResumeFormat.LATEX
-            
+
             # Check for HTML
             if '<html' in text_content.lower() or '<!doctype html' in text_content.lower():
                 return ResumeFormat.HTML
-            
+
             # Check for Markdown (headers)
             if text_content.startswith('#') or '\n#' in text_content[:200]:
                 return ResumeFormat.MARKDOWN
-            
+
             # Check for JSON
             text_stripped = text_content.strip()
             if text_stripped.startswith('{') and '"' in text_stripped:
                 return ResumeFormat.JSON
-            
+
             # Check for YAML
             if ':' in text_content and ('\n' in text_content[:100]):
                 # Simple heuristic: YAML typically has key: value format
@@ -161,13 +160,13 @@ class FormatDetectionService:
                 yaml_like = sum(1 for line in lines if ':' in line and not line.strip().startswith('#'))
                 if yaml_like >= 2:
                     return ResumeFormat.YAML
-            
+
         except Exception as e:
             logger.warning(f"Error in content-based detection: {e}")
-        
+
         return ResumeFormat.UNKNOWN
-    
-    def detect_format(self, filename: str, mime_type: Optional[str] = None, 
+
+    def detect_format(self, filename: str, mime_type: Optional[str] = None,
                      content: Optional[bytes] = None) -> ResumeFormat:
         """
         Detect format using multiple detection methods.
@@ -178,43 +177,43 @@ class FormatDetectionService:
             format_from_content = self.detect_format_from_content(content, filename)
             if format_from_content != ResumeFormat.UNKNOWN:
                 return format_from_content
-        
+
         # Try MIME type
         if mime_type:
             format_from_mime = self.detect_format_from_mime(mime_type)
             if format_from_mime != ResumeFormat.UNKNOWN:
                 return format_from_mime
-        
+
         # Fallback to extension
         format_from_filename = self.detect_format_from_filename(filename)
         if format_from_filename != ResumeFormat.UNKNOWN:
             return format_from_filename
-        
+
         logger.warning(f"Could not detect format for {filename}")
         return ResumeFormat.UNKNOWN
-    
+
     def validate_format(self, format_type: ResumeFormat) -> bool:
         """Check if format is supported."""
         return format_type in self.FORMAT_CONFIG and format_type != ResumeFormat.UNKNOWN
-    
+
     def validate_file_size(self, file_size: int, format_type: ResumeFormat) -> tuple[bool, Optional[str]]:
         """Validate file size for given format."""
         if format_type not in self.FORMAT_CONFIG:
             return False, "Unsupported format"
-        
+
         max_size = self.FORMAT_CONFIG[format_type]["max_size"]
-        
+
         if file_size > max_size:
             max_size_mb = max_size / (1024 * 1024)
             return False, f"File size exceeds maximum allowed size of {max_size_mb}MB for {format_type.value} files"
-        
+
         return True, None
-    
+
     def get_format_info(self, format_type: ResumeFormat) -> Dict:
         """Get configuration information for a format."""
         if format_type not in self.FORMAT_CONFIG:
             return {}
-        
+
         config = self.FORMAT_CONFIG[format_type]
         return {
             "format": format_type.value,
@@ -223,7 +222,7 @@ class FormatDetectionService:
             "max_size_mb": config["max_size"] / (1024 * 1024),
             "max_size_bytes": config["max_size"]
         }
-    
+
     def get_supported_formats(self) -> list[Dict]:
         """Get list of all supported formats with their info."""
         return [
@@ -231,7 +230,7 @@ class FormatDetectionService:
             for format_type in self.FORMAT_CONFIG.keys()
             if format_type != ResumeFormat.UNKNOWN
         ]
-    
+
     def is_text_based(self, format_type: ResumeFormat) -> bool:
         """Check if format is text-based (can be directly edited)."""
         return format_type in [
@@ -242,7 +241,7 @@ class FormatDetectionService:
             ResumeFormat.JSON,
             ResumeFormat.YAML
         ]
-    
+
     def requires_parsing(self, format_type: ResumeFormat) -> bool:
         """Check if format requires special parsing (not LaTeX)."""
         return format_type != ResumeFormat.LATEX
