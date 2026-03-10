@@ -8,9 +8,12 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
+from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import Optimization, Resume
 from ..middleware.auth_middleware import get_current_user_required
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
@@ -93,21 +96,44 @@ async def create_resume(
                         "user_id": user_id},
                 queue="ats", priority=1,
             )
-        except Exception:
-            pass  # Embedding is best-effort
+        except Exception as exc:
+            logger.warning(f"Failed to enqueue embedding for resume {resume.id}: {exc}")
 
     return resume
 
-@router.get("/", response_model=List[ResumeResponse])
+@router.get("/")
 async def list_resumes(
+    page: int = 1,
+    limit: int = 20,
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required)
 ):
-    """List all resumes belonging to the authenticated user."""
-    result = await db.execute(
-        select(Resume).where(Resume.user_id == user_id).order_by(Resume.updated_at.desc())
+    """List resumes belonging to the authenticated user with pagination."""
+    page = max(1, page)
+    limit = max(1, min(limit, 100))
+    offset = (page - 1) * limit
+
+    count_result = await db.execute(
+        select(func.count(Resume.id)).where(Resume.user_id == user_id)
     )
-    return result.scalars().all()
+    total = count_result.scalar() or 0
+
+    result = await db.execute(
+        select(Resume)
+        .where(Resume.user_id == user_id)
+        .order_by(Resume.updated_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    resumes = result.scalars().all()
+
+    return {
+        "resumes": [ResumeResponse.model_validate(r).model_dump() for r in resumes],
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": (total + limit - 1) // limit,
+    }
 
 @router.get("/{resume_id}", response_model=ResumeResponse)
 async def get_resume(
@@ -156,8 +182,8 @@ async def update_resume(
                         "user_id": user_id},
                 queue="ats", priority=1,
             )
-        except Exception:
-            pass  # Embedding is best-effort
+        except Exception as exc:
+            logger.warning(f"Failed to enqueue embedding for resume {resume.id}: {exc}")
 
     return resume
 
