@@ -25,8 +25,11 @@ All Redis I/O via event_publisher (sync redis.Redis — no asyncio).
 import asyncio
 import json
 import re
+import shutil
+import subprocess
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import openai
@@ -437,15 +440,84 @@ def _run_latex_stage(
     latex_content: str,
 ) -> tuple[bool, float, str]:
     """
-    Write LaTeX, run pdflatex (Docker if available, else local texlive)
+    Write LaTeX, run pdflatex (Docker if available, else local pdflatex)
     with line-by-line log streaming.
 
     Returns (success, compilation_time, error_message).
     Does NOT publish job.failed — caller is responsible so it can
     include optimized_latex in the failure payload.
     """
-    from ..services.latex_service import run_latex_subprocess
-    return run_latex_subprocess(job_id=job_id, latex_content=latex_content)
+    job_dir = Path(settings.TEMP_DIR) / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    tex_file = job_dir / "resume.tex"
+    tex_file.write_text(latex_content, encoding="utf-8")
+
+    if shutil.which("docker"):
+        cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{job_dir}:/workdir",
+            "-w", "/workdir",
+            settings.LATEX_DOCKER_IMAGE,
+            "pdflatex",
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            "-synctex=1",
+            "resume.tex",
+        ]
+        cwd = None
+    else:
+        cmd = [
+            "pdflatex",
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            "-synctex=1",
+            "-output-directory", str(job_dir),
+            str(tex_file),
+        ]
+        cwd = str(job_dir)
+
+    try:
+        timeout = float(settings.COMPILE_TIMEOUT)
+    except (TypeError, ValueError, AttributeError):
+        timeout = 120.0
+
+    start_time = time.time()
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=cwd,
+    )
+
+    for line in proc.stdout:
+        stripped = line.rstrip()
+        if stripped:
+            is_error = "error" in stripped.lower() or stripped.startswith("!")
+            if "fatal" in stripped.lower():
+                is_error = True
+            publish_event(job_id, "log.line", {
+                "line": stripped,
+                "source": "pdflatex",
+                "is_error": is_error,
+            })
+
+        if is_cancelled(job_id):
+            proc.kill()
+            return False, time.time() - start_time, "cancelled"
+
+        if time.time() - start_time > timeout:
+            proc.kill()
+            return False, time.time() - start_time, f"LaTeX compilation timed out after {timeout}s"
+
+    proc.wait()
+    compilation_time = time.time() - start_time
+
+    pdf_file = job_dir / "resume.pdf"
+    if proc.returncode == 0 and pdf_file.exists():
+        return True, compilation_time, ""
+
+    return False, compilation_time, f"pdflatex exited with code {proc.returncode}"
 
 
 def _run_ats_stage(
