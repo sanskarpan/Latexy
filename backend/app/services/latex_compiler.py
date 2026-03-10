@@ -4,30 +4,28 @@ Handles LaTeX to PDF compilation with proper error handling and Docker support.
 """
 
 import asyncio
-import os
-import subprocess
-import tempfile
+import logging
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-import logging
 
 logger = logging.getLogger(__name__)
 
 class LaTeXCompiler:
     """Service for compiling LaTeX documents to PDF."""
-    
+
     def __init__(self, temp_dir: str = "/tmp/latex_compile", docker_image: str = "texlive/texlive:latest"):
         self.temp_dir = Path(temp_dir)
         self.docker_image = docker_image
         self.use_docker = self._check_docker_available()
         self.latex_command = self._get_latex_command()
-        
+
         # Ensure temp directory exists
         self.temp_dir.mkdir(parents=True, exist_ok=True)
-        
+
         logger.info(f"LaTeX compiler initialized (Docker: {self.use_docker})")
-    
+
     def _check_docker_available(self) -> bool:
         """Check if Docker is available on the system."""
         try:
@@ -40,12 +38,12 @@ class LaTeXCompiler:
             return result.returncode == 0
         except Exception:
             return False
-    
+
     def _get_latex_command(self) -> str:
         """Get the appropriate LaTeX command based on availability."""
         # Try different LaTeX commands in order of preference
         commands = ["pdflatex", "xelatex", "lualatex"]
-        
+
         for cmd in commands:
             try:
                 result = subprocess.run(
@@ -59,10 +57,10 @@ class LaTeXCompiler:
                     return cmd
             except Exception:
                 continue
-        
+
         logger.warning("No LaTeX command found on system")
         return "pdflatex"  # Default fallback
-    
+
     async def compile_latex(
         self,
         latex_content: str,
@@ -71,30 +69,30 @@ class LaTeXCompiler:
     ) -> Dict[str, any]:
         """
         Compile LaTeX content to PDF.
-        
+
         Returns:
             Dict with keys: success, pdf_path, error_message, compilation_time
         """
         start_time = asyncio.get_event_loop().time()
         work_dir = None
-        
+
         try:
             # Create temporary working directory
             work_dir = self.temp_dir / job_id
             work_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Write LaTeX content to file
             tex_file = work_dir / "document.tex"
             tex_file.write_text(latex_content, encoding='utf-8')
-            
+
             # Compile based on availability
             if self.use_docker:
                 success, error_msg = await self._compile_with_docker(work_dir, timeout)
             else:
                 success, error_msg = await self._compile_local(work_dir, timeout)
-            
+
             compilation_time = asyncio.get_event_loop().time() - start_time
-            
+
             if success:
                 pdf_file = work_dir / "document.pdf"
                 if pdf_file.exists():
@@ -122,7 +120,7 @@ class LaTeXCompiler:
                     "error_message": error_msg,
                     "compilation_time": compilation_time
                 }
-                
+
         except asyncio.TimeoutError:
             compilation_time = asyncio.get_event_loop().time() - start_time
             return {
@@ -145,7 +143,7 @@ class LaTeXCompiler:
         finally:
             # Cleanup is handled separately by cleanup worker
             pass
-    
+
     async def _compile_local(self, work_dir: Path, timeout: int) -> Tuple[bool, Optional[str]]:
         """Compile LaTeX locally using system LaTeX installation."""
         try:
@@ -160,27 +158,27 @@ class LaTeXCompiler:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             try:
                 stdout, stderr = await asyncio.wait_for(
                     process.communicate(),
                     timeout=timeout
                 )
-                
+
                 if process.returncode == 0:
                     return True, None
                 else:
                     error_msg = stderr.decode('utf-8', errors='ignore')
                     return False, self._parse_latex_error(error_msg)
-                    
+
             except asyncio.TimeoutError:
                 process.kill()
                 return False, f"Compilation timeout after {timeout} seconds"
-                
+
         except Exception as e:
             logger.error(f"Local compilation error: {e}")
             return False, str(e)
-    
+
     async def _compile_with_docker(self, work_dir: Path, timeout: int) -> Tuple[bool, Optional[str]]:
         """Compile LaTeX using Docker container."""
         try:
@@ -195,33 +193,33 @@ class LaTeXCompiler:
                 "-halt-on-error",
                 "document.tex"
             ]
-            
+
             process = await asyncio.create_subprocess_exec(
                 *docker_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
+
             try:
                 stdout, stderr = await asyncio.wait_for(
                     process.communicate(),
                     timeout=timeout
                 )
-                
+
                 if process.returncode == 0:
                     return True, None
                 else:
                     error_msg = stderr.decode('utf-8', errors='ignore')
                     return False, self._parse_latex_error(error_msg)
-                    
+
             except asyncio.TimeoutError:
                 process.kill()
                 return False, f"Compilation timeout after {timeout} seconds"
-                
+
         except Exception as e:
             logger.error(f"Docker compilation error: {e}")
             return False, str(e)
-    
+
     def _parse_latex_error(self, error_output: str) -> str:
         """Parse LaTeX error output to extract meaningful error message."""
         # Look for common LaTeX error patterns
@@ -231,7 +229,7 @@ class LaTeXCompiler:
             ("! LaTeX Error:", "LaTeX error"),
             ("! Emergency stop", "Critical compilation error"),
         ]
-        
+
         for pattern, message in error_patterns:
             if pattern in error_output:
                 # Extract the line with the error
@@ -240,11 +238,11 @@ class LaTeXCompiler:
                     if pattern in line:
                         context = '\n'.join(lines[max(0, i-2):min(len(lines), i+3)])
                         return f"{message}\n\n{context}"
-        
+
         # Return first few lines if no specific error found
         lines = error_output.split('\n')
         return '\n'.join(lines[:10])
-    
+
     async def cleanup_job_files(self, job_id: str):
         """Clean up temporary files for a job."""
         try:
@@ -254,7 +252,7 @@ class LaTeXCompiler:
                 logger.info(f"Cleaned up files for job {job_id}")
         except Exception as e:
             logger.error(f"Error cleaning up job {job_id}: {e}")
-    
+
     def is_available(self) -> bool:
         """Check if LaTeX compilation is available."""
         if self.use_docker:
