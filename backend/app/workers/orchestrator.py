@@ -29,7 +29,6 @@ import shutil
 import subprocess
 import time
 import uuid
-from pathlib import Path
 from subprocess import PIPE, STDOUT
 from typing import Any, Dict, List, Optional
 
@@ -39,7 +38,6 @@ from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..services.ats_scoring_service import ats_scoring_service
-from ..services.latex_service import latex_service
 from ..services.llm_service import llm_service
 from ..workers.event_publisher import (
     is_cancelled,

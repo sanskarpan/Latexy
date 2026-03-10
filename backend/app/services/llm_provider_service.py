@@ -3,16 +3,13 @@ Multi-Provider LLM Service for Phase 10 - BYOK System
 Supports multiple LLM providers with user-supplied API keys
 """
 
-import asyncio
-import json
 import time
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any, Union
-from enum import Enum
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
+from enum import Enum
+from typing import Dict, List, Optional
 
-import openai
 import httpx
 from openai import AsyncOpenAI
 
@@ -71,54 +68,54 @@ class LLMResponse:
 
 class BaseLLMProvider(ABC):
     """Base class for all LLM providers"""
-    
+
     def __init__(self, api_key: str, provider_config: Optional[Dict] = None):
         self.api_key = api_key
         self.provider_config = provider_config or {}
         self.provider_name = self.__class__.__name__.lower().replace('provider', '')
-    
+
     @abstractmethod
     async def generate(self, request: LLMRequest) -> LLMResponse:
         """Generate response from the LLM"""
         pass
-    
+
     @abstractmethod
     async def validate_api_key(self) -> bool:
         """Validate the API key"""
         pass
-    
+
     @abstractmethod
     def get_capabilities(self) -> ProviderCapabilities:
         """Get provider capabilities"""
         pass
-    
+
     @abstractmethod
     def get_available_models(self) -> List[str]:
         """Get list of available models"""
         pass
-    
+
     def calculate_cost(self, usage: Dict[str, int], model: str) -> float:
         """Calculate cost based on usage"""
         capabilities = self.get_capabilities()
         input_tokens = usage.get('prompt_tokens', 0)
         output_tokens = usage.get('completion_tokens', 0)
-        
+
         input_cost = (input_tokens / 1000) * capabilities.cost_per_1k_input_tokens
         output_cost = (output_tokens / 1000) * capabilities.cost_per_1k_output_tokens
-        
+
         return input_cost + output_cost
 
 
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI provider implementation"""
-    
+
     def __init__(self, api_key: str, provider_config: Optional[Dict] = None):
         super().__init__(api_key, provider_config)
         self.client = AsyncOpenAI(api_key=api_key)
-    
+
     async def generate(self, request: LLMRequest) -> LLMResponse:
         start_time = time.time()
-        
+
         try:
             # Prepare OpenAI-specific parameters
             params = {
@@ -127,21 +124,21 @@ class OpenAIProvider(BaseLLMProvider):
                 "temperature": request.temperature,
                 "stream": request.stream,
             }
-            
+
             if request.max_tokens:
                 params["max_tokens"] = request.max_tokens
-            
+
             if request.functions:
                 params["functions"] = request.functions
-            
+
             # Add provider-specific parameters
             if request.provider_specific_params:
                 params.update(request.provider_specific_params)
-            
+
             response = await self.client.chat.completions.create(**params)
-            
+
             latency = time.time() - start_time
-            
+
             # Extract response data
             content = response.choices[0].message.content or ""
             usage = {
@@ -149,9 +146,9 @@ class OpenAIProvider(BaseLLMProvider):
                 "completion_tokens": response.usage.completion_tokens,
                 "total_tokens": response.usage.total_tokens,
             }
-            
+
             cost = self.calculate_cost(usage, request.model)
-            
+
             return LLMResponse(
                 content=content,
                 model=response.model,
@@ -162,11 +159,11 @@ class OpenAIProvider(BaseLLMProvider):
                 finish_reason=response.choices[0].finish_reason,
                 raw_response=response.model_dump() if hasattr(response, 'model_dump') else None
             )
-            
+
         except Exception as e:
             logger.error(f"OpenAI generation error: {e}")
             raise
-    
+
     async def validate_api_key(self) -> bool:
         try:
             # Test with a minimal request
@@ -179,7 +176,7 @@ class OpenAIProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"OpenAI API key validation failed: {e}")
             return False
-    
+
     def get_capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
             max_context_length=128000,  # GPT-4 Turbo
@@ -191,7 +188,7 @@ class OpenAIProvider(BaseLLMProvider):
             rate_limit_rpm=10000,
             rate_limit_tpm=2000000
         )
-    
+
     def get_available_models(self) -> List[str]:
         return [
             "gpt-4-turbo-preview",
@@ -204,7 +201,7 @@ class OpenAIProvider(BaseLLMProvider):
 
 class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude provider implementation"""
-    
+
     def __init__(self, api_key: str, provider_config: Optional[Dict] = None):
         super().__init__(api_key, provider_config)
         self.base_url = "https://api.anthropic.com/v1/messages"
@@ -213,15 +210,15 @@ class AnthropicProvider(BaseLLMProvider):
             "anthropic-version": "2023-06-01",
             "content-type": "application/json"
         }
-    
+
     async def generate(self, request: LLMRequest) -> LLMResponse:
         start_time = time.time()
-        
+
         try:
             # Convert OpenAI format to Anthropic format
             system_message = ""
             messages = []
-            
+
             for msg in request.messages:
                 if msg["role"] == "system":
                     system_message = msg["content"]
@@ -230,17 +227,17 @@ class AnthropicProvider(BaseLLMProvider):
                         "role": msg["role"],
                         "content": msg["content"]
                     })
-            
+
             params = {
                 "model": request.model,
                 "messages": messages,
                 "max_tokens": request.max_tokens or 4096,
                 "temperature": request.temperature,
             }
-            
+
             if system_message:
                 params["system"] = system_message
-            
+
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     self.base_url,
@@ -250,9 +247,9 @@ class AnthropicProvider(BaseLLMProvider):
                 )
                 response.raise_for_status()
                 data = response.json()
-            
+
             latency = time.time() - start_time
-            
+
             # Extract response data
             content = data["content"][0]["text"] if data.get("content") else ""
             usage = {
@@ -260,9 +257,9 @@ class AnthropicProvider(BaseLLMProvider):
                 "completion_tokens": data.get("usage", {}).get("output_tokens", 0),
                 "total_tokens": data.get("usage", {}).get("input_tokens", 0) + data.get("usage", {}).get("output_tokens", 0),
             }
-            
+
             cost = self.calculate_cost(usage, request.model)
-            
+
             return LLMResponse(
                 content=content,
                 model=data.get("model", request.model),
@@ -273,11 +270,11 @@ class AnthropicProvider(BaseLLMProvider):
                 finish_reason=data.get("stop_reason", "stop"),
                 raw_response=data
             )
-            
+
         except Exception as e:
             logger.error(f"Anthropic generation error: {e}")
             raise
-    
+
     async def validate_api_key(self) -> bool:
         try:
             params = {
@@ -285,7 +282,7 @@ class AnthropicProvider(BaseLLMProvider):
                 "messages": [{"role": "user", "content": "test"}],
                 "max_tokens": 1
             }
-            
+
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     self.base_url,
@@ -297,7 +294,7 @@ class AnthropicProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"Anthropic API key validation failed: {e}")
             return False
-    
+
     def get_capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
             max_context_length=200000,  # Claude 3
@@ -309,7 +306,7 @@ class AnthropicProvider(BaseLLMProvider):
             rate_limit_rpm=5000,
             rate_limit_tpm=1000000
         )
-    
+
     def get_available_models(self) -> List[str]:
         return [
             "claude-3-opus-20240229",
@@ -320,40 +317,40 @@ class AnthropicProvider(BaseLLMProvider):
 
 class OpenRouterProvider(BaseLLMProvider):
     """OpenRouter provider implementation (supports multiple models)"""
-    
+
     def __init__(self, api_key: str, provider_config: Optional[Dict] = None):
         super().__init__(api_key, provider_config)
         self.client = AsyncOpenAI(
             api_key=api_key,
             base_url="https://openrouter.ai/api/v1"
         )
-    
+
     async def generate(self, request: LLMRequest) -> LLMResponse:
         start_time = time.time()
-        
+
         try:
             params = {
                 "model": request.model,
                 "messages": request.messages,
                 "temperature": request.temperature,
             }
-            
+
             if request.max_tokens:
                 params["max_tokens"] = request.max_tokens
-            
+
             response = await self.client.chat.completions.create(**params)
-            
+
             latency = time.time() - start_time
-            
+
             content = response.choices[0].message.content or ""
             usage = {
                 "prompt_tokens": response.usage.prompt_tokens,
                 "completion_tokens": response.usage.completion_tokens,
                 "total_tokens": response.usage.total_tokens,
             }
-            
+
             cost = self.calculate_cost(usage, request.model)
-            
+
             return LLMResponse(
                 content=content,
                 model=response.model,
@@ -364,11 +361,11 @@ class OpenRouterProvider(BaseLLMProvider):
                 finish_reason=response.choices[0].finish_reason,
                 raw_response=response.model_dump() if hasattr(response, 'model_dump') else None
             )
-            
+
         except Exception as e:
             logger.error(f"OpenRouter generation error: {e}")
             raise
-    
+
     async def validate_api_key(self) -> bool:
         try:
             await self.client.chat.completions.create(
@@ -380,7 +377,7 @@ class OpenRouterProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"OpenRouter API key validation failed: {e}")
             return False
-    
+
     def get_capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
             max_context_length=128000,
@@ -392,7 +389,7 @@ class OpenRouterProvider(BaseLLMProvider):
             rate_limit_rpm=1000,
             rate_limit_tpm=100000
         )
-    
+
     def get_available_models(self) -> List[str]:
         return [
             "openai/gpt-4-turbo-preview",
@@ -408,19 +405,19 @@ class OpenRouterProvider(BaseLLMProvider):
 
 class MultiProviderLLMService:
     """Main service for managing multiple LLM providers"""
-    
+
     def __init__(self):
         self.providers: Dict[str, BaseLLMProvider] = {}
         self.default_provider = None
         self.usage_stats: Dict[str, Dict] = {}
         self.rate_limiters: Dict[str, Dict] = {}
-    
+
     def add_provider(self, provider_name: str, provider: BaseLLMProvider, is_default: bool = False):
         """Add a provider to the service"""
         self.providers[provider_name] = provider
         if is_default or not self.default_provider:
             self.default_provider = provider_name
-        
+
         # Initialize usage stats
         self.usage_stats[provider_name] = {
             "requests": 0,
@@ -429,9 +426,9 @@ class MultiProviderLLMService:
             "errors": 0,
             "last_used": None
         }
-        
+
         logger.info(f"Added LLM provider: {provider_name}")
-    
+
     def remove_provider(self, provider_name: str):
         """Remove a provider from the service"""
         if provider_name in self.providers:
@@ -439,40 +436,40 @@ class MultiProviderLLMService:
             if self.default_provider == provider_name:
                 self.default_provider = next(iter(self.providers.keys())) if self.providers else None
             logger.info(f"Removed LLM provider: {provider_name}")
-    
+
     def get_provider(self, provider_name: Optional[str] = None) -> BaseLLMProvider:
         """Get a specific provider or the default one"""
         if not provider_name:
             provider_name = self.default_provider
-        
+
         if not provider_name or provider_name not in self.providers:
             raise ValueError(f"Provider {provider_name} not found")
-        
+
         return self.providers[provider_name]
-    
+
     async def generate(self, request: LLMRequest, provider_name: Optional[str] = None, fallback: bool = True) -> LLMResponse:
         """Generate response with optional fallback to other providers"""
         provider_name = provider_name or self.default_provider
-        
+
         if not provider_name:
             raise ValueError("No provider specified and no default provider set")
-        
+
         try:
             provider = self.get_provider(provider_name)
             response = await provider.generate(request)
-            
+
             # Update usage stats
             self.update_usage_stats(provider_name, response)
-            
+
             return response
-            
+
         except Exception as e:
             logger.error(f"Error with provider {provider_name}: {e}")
-            
+
             # Update error stats
             if provider_name in self.usage_stats:
                 self.usage_stats[provider_name]["errors"] += 1
-            
+
             # Try fallback if enabled
             if fallback and len(self.providers) > 1:
                 for fallback_provider in self.providers.keys():
@@ -486,10 +483,10 @@ class MultiProviderLLMService:
                         except Exception as fallback_error:
                             logger.error(f"Fallback provider {fallback_provider} also failed: {fallback_error}")
                             continue
-            
+
             # If all providers failed, raise the original error
             raise e
-    
+
     def update_usage_stats(self, provider_name: str, response: LLMResponse):
         """Update usage statistics for a provider"""
         if provider_name in self.usage_stats:
@@ -498,7 +495,7 @@ class MultiProviderLLMService:
             stats["tokens"] += response.usage.get("total_tokens", 0)
             stats["cost"] += response.cost
             stats["last_used"] = datetime.now().isoformat()
-    
+
     async def validate_provider(self, provider_name: str) -> bool:
         """Validate a provider's API key"""
         try:
@@ -507,21 +504,21 @@ class MultiProviderLLMService:
         except Exception as e:
             logger.error(f"Provider validation failed for {provider_name}: {e}")
             return False
-    
+
     def get_provider_capabilities(self, provider_name: str) -> ProviderCapabilities:
         """Get capabilities for a specific provider"""
         provider = self.get_provider(provider_name)
         return provider.get_capabilities()
-    
+
     def get_available_models(self, provider_name: str) -> List[str]:
         """Get available models for a specific provider"""
         provider = self.get_provider(provider_name)
         return provider.get_available_models()
-    
+
     def get_usage_stats(self) -> Dict[str, Dict]:
         """Get usage statistics for all providers"""
         return self.usage_stats.copy()
-    
+
     def get_provider_health(self) -> Dict[str, Dict]:
         """Get health status for all providers"""
         health = {}

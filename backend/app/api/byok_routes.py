@@ -3,16 +3,17 @@ BYOK (Bring Your Own Key) API routes for Phase 10
 Handles user API key management and multi-provider configuration
 """
 
-from typing import List, Dict, Optional, Any
-from fastapi import APIRouter, HTTPException, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
 from ..database.connection import get_db
+from ..middleware.auth_middleware import get_current_user_required
 from ..services.api_key_service import api_key_service
-from ..services.llm_provider_service import multi_provider_service, LLMRequest
-from ..middleware.auth_middleware import get_current_user_required, get_current_user_optional
+from ..services.llm_provider_service import LLMRequest, multi_provider_service
 
 logger = get_logger(__name__)
 
@@ -145,9 +146,9 @@ async def add_api_key(
             key_name=request.key_name,
             validate_key=request.validate_key
         )
-        
+
         return AddAPIKeyResponse(**result)
-        
+
     except Exception as e:
         logger.error(f"Error adding API key: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -161,13 +162,13 @@ async def get_user_api_keys(
     """Get all API keys for the current user."""
     try:
         api_keys = await api_key_service.get_user_api_keys(db, user_id)
-        
+
         return UserAPIKeysResponse(
             success=True,
             api_keys=[APIKeyInfo(**key) for key in api_keys],
             total_count=len(api_keys)
         )
-        
+
     except Exception as e:
         logger.error(f"Error getting user API keys: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -182,12 +183,12 @@ async def delete_api_key(
     """Delete an API key."""
     try:
         result = await api_key_service.delete_api_key(db, user_id, key_id)
-        
+
         if not result["success"]:
             raise HTTPException(status_code=404, detail=result["error"])
-        
+
         return result
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -201,13 +202,13 @@ async def get_supported_providers():
     """Get list of supported providers with their capabilities."""
     try:
         providers = api_key_service.get_supported_providers()
-        
+
         return SupportedProvidersResponse(
             success=True,
             providers=[ProviderInfo(**provider) for provider in providers],
             total_count=len(providers)
         )
-        
+
     except Exception as e:
         logger.error(f"Error getting supported providers: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -218,7 +219,7 @@ async def validate_api_key(request: ValidateAPIKeyRequest):
     """Validate an API key with its provider."""
     try:
         result = await api_key_service.validate_api_key(request.provider, request.api_key)
-        
+
         return ValidateAPIKeyResponse(
             valid=result["valid"],
             provider=request.provider,
@@ -227,7 +228,7 @@ async def validate_api_key(request: ValidateAPIKeyRequest):
             validated_at=result.get("validated_at"),
             error=result.get("error")
         )
-        
+
     except Exception as e:
         logger.error(f"Error validating API key: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -242,9 +243,9 @@ async def test_provider_connection(
     """Test connection to a user's configured provider."""
     try:
         result = await api_key_service.test_provider_connection(db, user_id, provider)
-        
+
         return TestProviderResponse(**result)
-        
+
     except Exception as e:
         logger.error(f"Error testing provider connection: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -258,10 +259,10 @@ async def get_usage_stats(
     """Get usage statistics for user's providers."""
     try:
         stats = await api_key_service.get_provider_usage_stats(user_id)
-        
+
         total_requests = sum(stat.get("requests", 0) for stat in stats.values())
         total_cost = sum(stat.get("cost", 0.0) for stat in stats.values())
-        
+
         return UsageStatsResponse(
             success=True,
             usage_stats={
@@ -271,7 +272,7 @@ async def get_usage_stats(
             total_requests=total_requests,
             total_cost=total_cost
         )
-        
+
     except Exception as e:
         logger.error(f"Error getting usage stats: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -288,7 +289,7 @@ async def generate_with_provider(
     try:
         # Load user providers
         await api_key_service.load_user_providers(db, user_id)
-        
+
         # Create LLM request
         llm_request = LLMRequest(
             messages=request.messages,
@@ -298,15 +299,15 @@ async def generate_with_provider(
             stream=request.stream,
             user_id=user_id
         )
-        
+
         # Generate with specific provider
         provider_name = f"{request.provider}_{user_id}"
         response = await multi_provider_service.generate(
-            llm_request, 
+            llm_request,
             provider_name=provider_name,
             fallback=False
         )
-        
+
         return GenerateWithProviderResponse(
             success=True,
             content=response.content,
@@ -316,7 +317,7 @@ async def generate_with_provider(
             cost=response.cost,
             latency=response.latency
         )
-        
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -334,7 +335,7 @@ async def get_system_health():
     try:
         provider_health = multi_provider_service.get_provider_health()
         usage_stats = multi_provider_service.get_usage_stats()
-        
+
         return {
             "success": True,
             "provider_health": provider_health,
@@ -344,7 +345,7 @@ async def get_system_health():
             "total_cost": sum(stats.get("cost", 0.0) for stats in usage_stats.values()),
             "timestamp": "2024-01-01T00:00:00Z"  # TODO: Use actual timestamp
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting system health: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -359,19 +360,19 @@ async def load_user_providers(
     """Load all user providers into the service."""
     try:
         await api_key_service.load_user_providers(db, user_id)
-        
+
         # Get loaded providers
         user_provider_names = [
             name for name in multi_provider_service.providers.keys()
             if name.endswith(f"_{user_id}")
         ]
-        
+
         return {
             "success": True,
             "message": f"Loaded {len(user_provider_names)} providers",
             "loaded_providers": [name.replace(f"_{user_id}", "") for name in user_provider_names]
         }
-        
+
     except Exception as e:
         logger.error(f"Error loading user providers: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -383,18 +384,18 @@ async def get_provider_models(provider: str):
     try:
         if provider not in api_key_service.provider_classes:
             raise HTTPException(status_code=404, detail=f"Provider {provider} not supported")
-        
+
         provider_class = api_key_service.provider_classes[provider]
         temp_instance = provider_class("dummy_key")
         models = temp_instance.get_available_models()
-        
+
         return {
             "success": True,
             "provider": provider,
             "models": models,
             "total_count": len(models)
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -408,11 +409,11 @@ async def get_provider_capabilities(provider: str):
     try:
         if provider not in api_key_service.provider_classes:
             raise HTTPException(status_code=404, detail=f"Provider {provider} not supported")
-        
+
         provider_class = api_key_service.provider_classes[provider]
         temp_instance = provider_class("dummy_key")
         capabilities = temp_instance.get_capabilities()
-        
+
         return {
             "success": True,
             "provider": provider,
@@ -427,7 +428,7 @@ async def get_provider_capabilities(provider: str):
                 "rate_limit_tpm": capabilities.rate_limit_tpm,
             }
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:

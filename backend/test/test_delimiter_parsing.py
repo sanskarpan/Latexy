@@ -6,9 +6,6 @@ from delimited LLM output without leaking JSON scaffold tokens to the frontend.
 """
 
 import json
-import pytest
-from unittest.mock import MagicMock, patch, call
-
 
 # ─── Helpers to simulate the state machine ───────────────────────────────────
 

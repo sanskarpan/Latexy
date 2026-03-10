@@ -10,7 +10,7 @@ import json
 import re
 import time
 import uuid
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 import openai
 
@@ -18,7 +18,7 @@ from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..services.llm_service import llm_service
-from ..workers.event_publisher import publish_event, publish_job_result, is_cancelled
+from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
 
 logger = get_logger(__name__)
 

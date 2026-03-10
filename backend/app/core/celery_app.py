@@ -3,6 +3,7 @@ Celery application configuration for Phase 8.
 """
 
 from celery import Celery
+
 from ..core.config import settings
 from ..core.logging import get_logger
 
@@ -30,7 +31,7 @@ celery_app.conf.update(
     accept_content=settings.CELERY_ACCEPT_CONTENT,
     timezone=settings.CELERY_TIMEZONE,
     enable_utc=settings.CELERY_ENABLE_UTC,
-    
+
     # Task routing
     task_routes={
         "app.workers.latex_worker.*": {"queue": "latex"},
@@ -40,28 +41,28 @@ celery_app.conf.update(
         "app.workers.ats_worker.*": {"queue": "ats"},
         "app.workers.orchestrator.*": {"queue": "combined"},
     },
-    
+
     # Task configuration
     task_always_eager=False,
     task_eager_propagates=True,
     task_ignore_result=False,
     task_store_eager_result=True,
-    
+
     # Result backend configuration
     result_expires=settings.JOB_RESULT_TTL,
     result_persistent=True,
-    
+
     # Worker configuration
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=1000,
     worker_disable_rate_limits=False,
-    
+
     # Retry configuration
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     task_default_retry_delay=settings.JOB_RETRY_DELAY,
     task_max_retries=settings.JOB_RETRY_ATTEMPTS,
-    
+
     # Beat configuration (for scheduled tasks)
     beat_schedule={
         "cleanup-expired-jobs": {
@@ -78,11 +79,11 @@ celery_app.conf.update(
         },
     },
     beat_schedule_filename="celerybeat-schedule",
-    
+
     # Monitoring
     worker_send_task_events=True,
     task_send_sent_event=True,
-    
+
     # Security
     worker_hijack_root_logger=False,
     worker_log_color=False,
@@ -101,7 +102,7 @@ QUEUE_CONFIGS = {
         "max_retries": 3,
     },
     "llm": {
-        "routing_key": "llm", 
+        "routing_key": "llm",
         "priority": TASK_PRIORITY_NORMAL,
         "max_retries": 2,
     },
@@ -148,6 +149,7 @@ def debug_task(self):
 
 from celery.signals import worker_process_init  # noqa: E402
 
+
 @worker_process_init.connect
 def init_worker_process(sender=None, **kwargs):
     """
@@ -170,12 +172,12 @@ def init_worker_process(sender=None, **kwargs):
 
 # Import tasks to register them
 try:
-    from ..workers import (
+    from ..workers import (  # noqa: F401
+        ats_worker,
+        cleanup_worker,
+        email_worker,
         latex_worker,
         llm_worker,
-        email_worker,
-        cleanup_worker,
-        ats_worker,
         orchestrator,
     )
     logger.info("Celery workers imported successfully")

@@ -1,8 +1,10 @@
 import uuid
+
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 
 @pytest.mark.asyncio
 class TestResumeCRUD:
@@ -33,7 +35,7 @@ class TestResumeCRUD:
             headers=auth_headers,
             json={"title": "R1", "latex_content": "C1"}
         )
-        
+
         resp = await client.get("/resumes/", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()

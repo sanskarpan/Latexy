@@ -7,12 +7,11 @@ Tests use Celery eager mode: tasks run synchronously in the same process.
 from __future__ import annotations
 
 import uuid
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import app.workers.latex_worker as lw
-
 
 # ── Celery eager mode ─────────────────────────────────────────────────────────
 

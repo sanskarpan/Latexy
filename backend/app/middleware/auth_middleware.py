@@ -11,15 +11,15 @@ Validation order for every protected request:
 Device fingerprint and client info helpers are unchanged.
 """
 
-import jwt
-from datetime import datetime, timezone
-from typing import Optional, Dict, Any
-
-from fastapi import HTTPException, status, Depends, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 import logging
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+
+import jwt
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..database.connection import get_db

@@ -9,7 +9,7 @@ is required. Sync processing branches exercise the real scoring service.
 from __future__ import annotations
 
 import uuid
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient

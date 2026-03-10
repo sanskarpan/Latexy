@@ -12,12 +12,12 @@ import asyncio
 import re
 import time
 import uuid
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.logging import get_logger
 from ..services.ats_scoring_service import ats_scoring_service
-from ..workers.event_publisher import publish_event, publish_job_result, is_cancelled
+from ..workers.event_publisher import publish_event, publish_job_result
 
 logger = get_logger(__name__)
 
@@ -340,3 +340,295 @@ def submit_job_description_analysis(
     )
     logger.info(f"Submitted JD analysis for job {job_id}")
     return job_id
+
+
+# ------------------------------------------------------------------ #
+#  Layer 2 — Deep LLM Analysis Task                                  #
+# ------------------------------------------------------------------ #
+
+_DEEP_ANALYSIS_PROMPT = """You are an expert ATS (Applicant Tracking System) resume analyst.
+Analyze the following resume text and return a detailed JSON analysis.
+
+Resume text:
+{resume_text}
+
+{jd_section}
+
+Return ONLY valid JSON (no markdown) with this exact structure:
+{{
+  "overall_score": <integer 0-100>,
+  "overall_feedback": "<2-3 sentence overall assessment>",
+  "sections": [
+    {{
+      "name": "<section name>",
+      "score": <integer 0-100>,
+      "strengths": ["<strength 1>", "<strength 2>"],
+      "improvements": ["<improvement 1>", "<improvement 2>"],
+      "rewrite_suggestion": "<optional one-sentence rewrite tip>"
+    }}
+  ],
+  "ats_compatibility": {{
+    "score": <integer 0-100>,
+    "issues": ["<issue 1>", "<issue 2>"],
+    "keyword_gaps": ["<missing keyword 1>", "<missing keyword 2>"]
+  }},
+  "job_match": null
+}}
+
+Be specific, actionable, and honest. Score strictly (90+ = excellent, 70-89 = good, 50-69 = needs work, <50 = poor)."""
+
+_DEEP_ANALYSIS_PROMPT_WITH_JD = """You are an expert ATS resume analyst.
+Analyze the following resume against the provided job description.
+
+Resume text:
+{resume_text}
+
+Job Description:
+{job_description}
+
+Return ONLY valid JSON (no markdown) with this exact structure:
+{{
+  "overall_score": <integer 0-100>,
+  "overall_feedback": "<2-3 sentence overall assessment>",
+  "sections": [
+    {{
+      "name": "<section name>",
+      "score": <integer 0-100>,
+      "strengths": ["<strength 1>"],
+      "improvements": ["<improvement 1>"],
+      "rewrite_suggestion": "<optional rewrite tip>"
+    }}
+  ],
+  "ats_compatibility": {{
+    "score": <integer 0-100>,
+    "issues": ["<ats issue>"],
+    "keyword_gaps": ["<missing keyword>"]
+  }},
+  "job_match": {{
+    "score": <integer 0-100>,
+    "matched_requirements": ["<matched req>"],
+    "missing_requirements": ["<missing req>"],
+    "recommendation": "<one sentence on fit>"
+  }}
+}}"""
+
+
+async def _async_deep_analyze(
+    task,
+    latex_content: str,
+    job_id: str,
+    job_description: Optional[str],
+    api_key: Optional[str],
+) -> None:
+    """Async implementation of deep analysis task."""
+    import time
+
+    from openai import AsyncOpenAI
+
+    start_time = time.time()
+
+    publish_event(job_id, "job.started", {
+        "worker_id": f"deep-ats-{job_id[:8]}",
+        "stage": "deep_analysis",
+    })
+
+    # Extract text
+    resume_text = ats_scoring_service._extract_text_from_latex(latex_content)  # noqa: SLF001
+    if not resume_text.strip():
+        publish_event(job_id, "job.failed", {
+            "stage": "deep_analysis",
+            "error_code": "latex_error",
+            "error_message": "Could not extract text from LaTeX content",
+            "retryable": False,
+        })
+        return
+
+    publish_event(job_id, "job.progress", {
+        "percent": 20,
+        "stage": "deep_analysis",
+        "message": "Analysing resume with AI...",
+    })
+
+    # Build prompt
+    if job_description:
+        prompt = _DEEP_ANALYSIS_PROMPT_WITH_JD.format(
+            resume_text=resume_text[:8000],
+            job_description=job_description[:3000],
+        )
+    else:
+        jd_section = ""
+        prompt = _DEEP_ANALYSIS_PROMPT.format(
+            resume_text=resume_text[:8000],
+            jd_section=jd_section,
+        )
+
+    # Call OpenAI
+    from ..core.config import settings
+    resolved_key = api_key or settings.OPENAI_API_KEY
+    if not resolved_key:
+        publish_event(job_id, "job.failed", {
+            "stage": "deep_analysis",
+            "error_code": "config_error",
+            "error_message": "No OpenAI API key configured",
+            "retryable": False,
+        })
+        return
+
+    client = AsyncOpenAI(api_key=resolved_key)
+
+    publish_event(job_id, "job.progress", {
+        "percent": 40,
+        "stage": "deep_analysis",
+        "message": "Calling LLM for section-by-section analysis...",
+    })
+
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": "You are an expert resume analyst. Return only valid JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=2000,
+        temperature=0.3,
+    )
+
+    publish_event(job_id, "job.progress", {
+        "percent": 80,
+        "stage": "deep_analysis",
+        "message": "Parsing analysis results...",
+    })
+
+    tokens_used = response.usage.total_tokens if response.usage else 0
+    analysis_time = time.time() - start_time
+
+    # Parse response
+    try:
+        import json as _json
+        result = _json.loads(response.choices[0].message.content)
+    except Exception:
+        result = {
+            "overall_score": 0,
+            "overall_feedback": "Analysis parsing failed. Please retry.",
+            "sections": [],
+            "ats_compatibility": {"score": 0, "issues": [], "keyword_gaps": []},
+            "job_match": None,
+        }
+
+    # Publish deep_complete event
+    publish_event(job_id, "ats.deep_complete", {
+        "overall_score": result.get("overall_score", 0),
+        "overall_feedback": result.get("overall_feedback", ""),
+        "sections": result.get("sections", []),
+        "ats_compatibility": result.get("ats_compatibility", {}),
+        "job_match": result.get("job_match"),
+        "tokens_used": tokens_used,
+        "analysis_time": analysis_time,
+    })
+
+    publish_job_result(job_id, {
+        "success": True,
+        "job_id": job_id,
+        "deep_analysis": result,
+        "tokens_used": tokens_used,
+        "analysis_time": analysis_time,
+    })
+
+    publish_event(job_id, "job.completed", {
+        "pdf_job_id": job_id,
+        "ats_score": float(result.get("overall_score", 0)),
+        "ats_details": {
+            "category_scores": {},
+            "recommendations": [],
+            "strengths": [],
+            "warnings": [],
+        },
+        "changes_made": [],
+        "compilation_time": 0.0,
+        "optimization_time": analysis_time,
+        "tokens_used": tokens_used,
+    })
+
+    logger.info(f"Deep analysis complete for job {job_id}: {result.get('overall_score')}/100")
+
+
+@celery_app.task(
+    bind=True,
+    name="app.workers.ats_worker.deep_analyze_ats_task",
+    queue="ats",
+    max_retries=1,
+    default_retry_delay=30,
+)
+def deep_analyze_ats_task(
+    self,
+    latex_content: str,
+    job_id: Optional[str] = None,
+    job_description: Optional[str] = None,
+    api_key: Optional[str] = None,
+    metadata: Optional[Dict] = None,
+) -> Dict[str, Any]:
+    """
+    Deep LLM-powered ATS analysis task.
+    Uses gpt-4o-mini with JSON mode for structured section-by-section feedback.
+    """
+    if job_id is None:
+        job_id = str(uuid.uuid4())
+
+    logger.info(f"Deep ATS analysis starting for job {job_id}")
+
+    try:
+        asyncio.run(_async_deep_analyze(self, latex_content, job_id, job_description, api_key))
+        return {"success": True, "job_id": job_id}
+    except Exception as exc:
+        logger.error(f"Deep ATS analysis failed for job {job_id}: {exc}")
+        retryable = self.request.retries < self.max_retries
+        publish_event(job_id, "job.failed", {
+            "stage": "deep_analysis",
+            "error_code": "internal",
+            "error_message": str(exc),
+            "retryable": retryable,
+        })
+        if retryable:
+            raise self.retry(countdown=30, exc=exc)
+        return {"success": False, "job_id": job_id, "error": str(exc)}
+
+
+# ------------------------------------------------------------------ #
+#  Layer 3 — Background Resume Embedding Task                        #
+# ------------------------------------------------------------------ #
+
+async def _async_embed_resume(resume_id: str, latex_content: str) -> None:
+    """Async implementation: extract text -> embed -> store in DB."""
+    from ..database.connection import get_async_db_session
+    from ..services.embedding_service import embedding_service
+
+    async with get_async_db_session() as db:
+        await embedding_service.embed_resume(resume_id, latex_content, db)
+
+
+@celery_app.task(
+    name="app.workers.ats_worker.embed_resume_task",
+    queue="ats",
+    max_retries=2,
+    default_retry_delay=60,
+    priority=1,
+)
+def embed_resume_task(
+    resume_id: str,
+    latex_content: str,
+    user_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Fire-and-forget task to compute and store the embedding for a resume.
+    Priority=1 (low) so it doesn't compete with interactive tasks.
+    """
+    from ..core.config import settings
+    if not settings.OPENAI_API_KEY:
+        return {"skipped": True, "reason": "no_api_key"}
+
+    try:
+        asyncio.run(_async_embed_resume(resume_id, latex_content))
+        return {"success": True, "resume_id": resume_id}
+    except Exception as exc:
+        logger.error(f"embed_resume_task failed for {resume_id}: {exc}")
+        return {"success": False, "resume_id": resume_id, "error": str(exc)}

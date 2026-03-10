@@ -4,14 +4,9 @@ Email notification worker for Phase 8.
 
 import asyncio
 import time
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
-from celery import current_task
 from ..core.celery_app import celery_app
-from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.redis import job_status_manager
 
@@ -31,7 +26,7 @@ def send_notification_email_task(
 ) -> Dict[str, Any]:
     """
     Send notification email asynchronously.
-    
+
     Args:
         recipient_email: Recipient email address
         subject: Email subject
@@ -40,20 +35,20 @@ def send_notification_email_task(
         email_type: Type of email (notification, completion, error, etc.)
         template_data: Data for email template
         metadata: Additional metadata
-    
+
     Returns:
         Dict containing email sending result
     """
     task_id = self.request.id
     job_id = f"email_{task_id}"
-    
+
     logger.info(f"Starting email notification task {task_id} for job {job_id}")
-    
+
     try:
         # Set initial status
         asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            "processing", 
+            job_id,
+            "processing",
             {
                 "task_id": task_id,
                 "user_id": user_id,
@@ -63,45 +58,45 @@ def send_notification_email_task(
                 "metadata": metadata or {}
             }
         ))
-        
+
         # Update progress
         asyncio.run(job_status_manager.set_job_progress(
-            job_id, 
-            20, 
+            job_id,
+            20,
             "Preparing email"
         ))
-        
+
         # For now, we'll simulate email sending since we don't have SMTP configured
         # In production, you would configure SMTP settings and actually send emails
-        
+
         # Simulate email preparation time
         time.sleep(1)
-        
+
         # Update progress
         asyncio.run(job_status_manager.set_job_progress(
-            job_id, 
-            60, 
+            job_id,
+            60,
             "Sending email"
         ))
-        
+
         # Simulate email sending
         start_time = time.time()
-        
+
         # TODO: Implement actual email sending with SMTP
         # For now, just log the email details
         logger.info(f"Simulated email sent to {recipient_email}")
         logger.info(f"Subject: {subject}")
         logger.info(f"Message: {message[:100]}...")
-        
+
         send_time = time.time() - start_time
-        
+
         # Update progress
         asyncio.run(job_status_manager.set_job_progress(
-            job_id, 
-            90, 
+            job_id,
+            90,
             "Email sent successfully"
         ))
-        
+
         # Prepare result data
         result_data = {
             "success": True,
@@ -115,11 +110,11 @@ def send_notification_email_task(
             "user_id": user_id,
             "completed_at": time.time()
         }
-        
+
         # Set final status and result
         asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            "completed", 
+            job_id,
+            "completed",
             {
                 "task_id": task_id,
                 "completed_at": time.time(),
@@ -127,22 +122,22 @@ def send_notification_email_task(
                 "success": True
             }
         ))
-        
+
         asyncio.run(job_status_manager.set_job_result(job_id, result_data))
-        
+
         # Final progress update
         asyncio.run(job_status_manager.set_job_progress(
-            job_id, 
-            100, 
+            job_id,
+            100,
             "Email task completed"
         ))
-        
+
         logger.info(f"Email notification task {task_id} completed for job {job_id}")
         return result_data
-        
+
     except Exception as e:
         logger.error(f"Email notification task {task_id} failed for job {job_id}: {e}")
-        
+
         error_data = {
             "success": False,
             "task_id": task_id,
@@ -155,25 +150,25 @@ def send_notification_email_task(
             "send_time": 0,
             "completed_at": time.time()
         }
-        
+
         # Set error status
         asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            "failed", 
+            job_id,
+            "failed",
             {
                 "task_id": task_id,
                 "error": str(e),
                 "completed_at": time.time()
             }
         ))
-        
+
         asyncio.run(job_status_manager.set_job_result(job_id, error_data))
-        
+
         # Retry logic for transient errors
         if self.request.retries < self.max_retries:
             logger.info(f"Retrying email notification task {task_id} (attempt {self.request.retries + 1})")
             raise self.retry(countdown=30, exc=e)
-        
+
         return error_data
 
 
@@ -191,7 +186,7 @@ def send_completion_email_task(
 ) -> Dict[str, Any]:
     """
     Send job completion email asynchronously.
-    
+
     Args:
         recipient_email: Recipient email address
         user_name: User's name
@@ -201,15 +196,15 @@ def send_completion_email_task(
         download_url: URL to download result (if applicable)
         user_id: User ID for tracking
         metadata: Additional metadata
-    
+
     Returns:
         Dict containing email sending result
     """
     task_id = self.request.id
     email_job_id = f"completion_email_{task_id}"
-    
+
     logger.info(f"Starting completion email task {task_id} for job {email_job_id}")
-    
+
     try:
         # Prepare email content based on job result
         if success:
@@ -273,7 +268,7 @@ def send_completion_email_task(
             Best regards,
             The Latexy Team
             """
-        
+
         # Send the notification email
         result = send_notification_email_task.apply(
             args=[recipient_email, subject, message],
@@ -290,13 +285,13 @@ def send_completion_email_task(
                 "metadata": metadata
             }
         ).get()
-        
+
         logger.info(f"Completion email task {task_id} completed for job {email_job_id}")
         return result
-        
+
     except Exception as e:
         logger.error(f"Completion email task {task_id} failed for job {email_job_id}: {e}")
-        
+
         error_data = {
             "success": False,
             "task_id": task_id,
@@ -308,7 +303,7 @@ def send_completion_email_task(
             "original_job_id": job_id,
             "completed_at": time.time()
         }
-        
+
         # Don't retry completion emails as they are not critical
         return error_data
 
@@ -325,7 +320,7 @@ def send_bulk_notification_task(
 ) -> Dict[str, Any]:
     """
     Send bulk notification emails asynchronously.
-    
+
     Args:
         recipients: List of recipient email addresses
         subject: Email subject
@@ -333,20 +328,20 @@ def send_bulk_notification_task(
         email_type: Type of email
         template_data: Data for email template
         metadata: Additional metadata
-    
+
     Returns:
         Dict containing bulk email sending result
     """
     task_id = self.request.id
     job_id = f"bulk_email_{task_id}"
-    
+
     logger.info(f"Starting bulk email task {task_id} for job {job_id} with {len(recipients)} recipients")
-    
+
     try:
         # Set initial status
         asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            "processing", 
+            job_id,
+            "processing",
             {
                 "task_id": task_id,
                 "recipient_count": len(recipients),
@@ -355,21 +350,21 @@ def send_bulk_notification_task(
                 "metadata": metadata or {}
             }
         ))
-        
+
         successful_sends = 0
         failed_sends = 0
         results = []
-        
+
         for i, recipient in enumerate(recipients):
             try:
                 # Update progress
                 progress = int((i / len(recipients)) * 90) + 10
                 asyncio.run(job_status_manager.set_job_progress(
-                    job_id, 
-                    progress, 
+                    job_id,
+                    progress,
                     f"Sending email {i+1}/{len(recipients)}"
                 ))
-                
+
                 # Send individual email
                 result = send_notification_email_task.apply(
                     args=[recipient, subject, message],
@@ -379,18 +374,18 @@ def send_bulk_notification_task(
                         "metadata": {"bulk_job_id": job_id, "recipient_index": i}
                     }
                 ).get()
-                
+
                 if result.get("success", False):
                     successful_sends += 1
                 else:
                     failed_sends += 1
-                
+
                 results.append({
                     "recipient": recipient,
                     "success": result.get("success", False),
                     "error": result.get("error") if not result.get("success", False) else None
                 })
-                
+
             except Exception as e:
                 logger.error(f"Failed to send email to {recipient}: {e}")
                 failed_sends += 1
@@ -399,7 +394,7 @@ def send_bulk_notification_task(
                     "success": False,
                     "error": str(e)
                 })
-        
+
         # Prepare result data
         result_data = {
             "success": successful_sends > 0,
@@ -413,12 +408,12 @@ def send_bulk_notification_task(
             "email_type": email_type,
             "completed_at": time.time()
         }
-        
+
         # Set final status and result
         final_status = "completed" if successful_sends > 0 else "failed"
         asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            final_status, 
+            job_id,
+            final_status,
             {
                 "task_id": task_id,
                 "completed_at": time.time(),
@@ -427,22 +422,22 @@ def send_bulk_notification_task(
                 "success": successful_sends > 0
             }
         ))
-        
+
         asyncio.run(job_status_manager.set_job_result(job_id, result_data))
-        
+
         # Final progress update
         asyncio.run(job_status_manager.set_job_progress(
-            job_id, 
-            100, 
+            job_id,
+            100,
             "Bulk email task completed"
         ))
-        
+
         logger.info(f"Bulk email task {task_id} completed for job {job_id}: {successful_sends}/{len(recipients)} successful")
         return result_data
-        
+
     except Exception as e:
         logger.error(f"Bulk email task {task_id} failed for job {job_id}: {e}")
-        
+
         error_data = {
             "success": False,
             "task_id": task_id,
@@ -454,20 +449,20 @@ def send_bulk_notification_task(
             "failed_sends": len(recipients),
             "completed_at": time.time()
         }
-        
+
         # Set error status
         asyncio.run(job_status_manager.set_job_status(
-            job_id, 
-            "failed", 
+            job_id,
+            "failed",
             {
                 "task_id": task_id,
                 "error": str(e),
                 "completed_at": time.time()
             }
         ))
-        
+
         asyncio.run(job_status_manager.set_job_result(job_id, error_data))
-        
+
         return error_data
 
 
@@ -483,7 +478,7 @@ def submit_notification_email(
 ) -> str:
     """
     Submit notification email job to queue.
-    
+
     Returns:
         job_id: Job ID for tracking
     """
@@ -498,7 +493,7 @@ def submit_notification_email(
         },
         queue="email"
     )
-    
+
     job_id = f"email_{task.id}"
     logger.info(f"Submitted notification email job {job_id} with task {task.id}")
     return job_id
@@ -516,7 +511,7 @@ def submit_completion_email(
 ) -> str:
     """
     Submit completion email job to queue.
-    
+
     Returns:
         job_id: Job ID for tracking
     """
@@ -530,7 +525,7 @@ def submit_completion_email(
         },
         queue="email"
     )
-    
+
     email_job_id = f"completion_email_{task.id}"
     logger.info(f"Submitted completion email job {email_job_id} with task {task.id}")
     return email_job_id

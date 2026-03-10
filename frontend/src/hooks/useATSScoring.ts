@@ -13,6 +13,7 @@ import {
   ATSRecommendationsRequest,
   ATSRecommendationsResponse
 } from '@/lib/job-api-client'
+import { apiClient, type SemanticMatchResult } from '@/lib/api-client'
 import { useNotifications } from '@/components/NotificationProvider'
 import { useJobStatus } from './useJobStatus'
 
@@ -50,6 +51,19 @@ export interface UseATSScoringResult {
   loadIndustryKeywords: (industry: string) => Promise<void>
   isIndustryLoading: boolean
 
+  // Deep Analysis (Layer 2)
+  triggerDeepAnalysis: (body: { latex_content: string; job_description?: string; device_fingerprint?: string }) => Promise<{ job_id: string | null; uses_remaining: number | null }>
+  deepAnalysisJobId: string | null
+  deepAnalysisUsesRemaining: number | null
+  isDeepAnalysisLoading: boolean
+  deepAnalysisError: string | null
+
+  // Semantic Match (Layer 3)
+  runSemanticMatch: (body: { job_description: string; resume_ids?: string[] }) => Promise<SemanticMatchResult[]>
+  semanticMatchResults: SemanticMatchResult[]
+  isSemMatchLoading: boolean
+  semMatchError: string | null
+
   // Utilities
   clearResults: () => void
   clearErrors: () => void
@@ -84,6 +98,17 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
   const [supportedIndustries, setSupportedIndustries] = useState<string[]>([])
   const [industryKeywords, setIndustryKeywords] = useState<Record<string, string[]>>({})
   const [isIndustryLoading, setIsIndustryLoading] = useState(false)
+
+  // Deep analysis state
+  const [deepAnalysisJobId, setDeepAnalysisJobId] = useState<string | null>(null)
+  const [deepAnalysisUsesRemaining, setDeepAnalysisUsesRemaining] = useState<number | null>(null)
+  const [isDeepAnalysisLoading, setIsDeepAnalysisLoading] = useState(false)
+  const [deepAnalysisError, setDeepAnalysisError] = useState<string | null>(null)
+
+  // Semantic match state
+  const [semanticMatchResults, setSemanticMatchResults] = useState<SemanticMatchResult[]>([])
+  const [isSemMatchLoading, setIsSemMatchLoading] = useState(false)
+  const [semMatchError, setSemMatchError] = useState<string | null>(null)
 
   const { addNotification } = useNotifications()
   const startTimeRef = useRef<number>(0)
@@ -331,18 +356,65 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
     }
   }, [industryKeywords])
 
+  const triggerDeepAnalysis = useCallback(async (
+    body: { latex_content: string; job_description?: string; device_fingerprint?: string }
+  ): Promise<{ job_id: string | null; uses_remaining: number | null }> => {
+    try {
+      setIsDeepAnalysisLoading(true)
+      setDeepAnalysisError(null)
+      const response = await apiClient.deepAnalyzeResume(body)
+      if (response.success && response.job_id) {
+        setDeepAnalysisJobId(response.job_id)
+        setDeepAnalysisUsesRemaining(response.uses_remaining ?? null)
+        return { job_id: response.job_id, uses_remaining: response.uses_remaining ?? null }
+      }
+      throw new Error(response.message || 'Deep analysis failed')
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Deep analysis failed'
+      setDeepAnalysisError(msg)
+      return { job_id: null, uses_remaining: null }
+    } finally {
+      setIsDeepAnalysisLoading(false)
+    }
+  }, [])
+
+  const runSemanticMatch = useCallback(async (
+    body: { job_description: string; resume_ids?: string[] }
+  ): Promise<SemanticMatchResult[]> => {
+    try {
+      setIsSemMatchLoading(true)
+      setSemMatchError(null)
+      const response = await apiClient.semanticMatch(body)
+      if (response.success) {
+        setSemanticMatchResults(response.results)
+        return response.results
+      }
+      throw new Error(response.message || 'Semantic match failed')
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Semantic match failed'
+      setSemMatchError(msg)
+      return []
+    } finally {
+      setIsSemMatchLoading(false)
+    }
+  }, [])
+
   const clearResults = useCallback(() => {
     setScoringJobId(null)
     setScoringResult(null)
     setAnalysisJobId(null)
     setAnalysisResult(null)
     setRecommendations(null)
+    setDeepAnalysisJobId(null)
+    setSemanticMatchResults([])
   }, [])
 
   const clearErrors = useCallback(() => {
     setScoringError(null)
     setAnalysisError(null)
     setRecommendationsError(null)
+    setDeepAnalysisError(null)
+    setSemMatchError(null)
   }, [])
 
   // Load supported industries on mount
@@ -403,6 +475,19 @@ export function useATSScoring(options: UseATSScoringOptions = {}): UseATSScoring
     industryKeywords,
     loadIndustryKeywords,
     isIndustryLoading,
+
+    // Deep Analysis
+    triggerDeepAnalysis,
+    deepAnalysisJobId,
+    deepAnalysisUsesRemaining,
+    isDeepAnalysisLoading,
+    deepAnalysisError,
+
+    // Semantic Match
+    runSemanticMatch,
+    semanticMatchResults,
+    isSemMatchLoading,
+    semMatchError,
 
     // Utilities
     clearResults,

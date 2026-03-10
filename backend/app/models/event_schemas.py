@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
-
 # ------------------------------------------------------------------ #
 #  Base                                                               #
 # ------------------------------------------------------------------ #
@@ -31,7 +30,7 @@ class BaseEvent(BaseModel):
 
 class JobQueuedEvent(BaseEvent):
     type: Literal["job.queued"] = "job.queued"
-    job_type: str                               # "combined" | "latex_compilation" | ...
+    job_type: str
     user_id: Optional[str] = None
     estimated_seconds: int = 60
 
@@ -39,19 +38,19 @@ class JobQueuedEvent(BaseEvent):
 class JobStartedEvent(BaseEvent):
     type: Literal["job.started"] = "job.started"
     worker_id: str
-    stage: str                                  # "llm_optimization" | "latex_compilation" | "ats_scoring"
+    stage: str
 
 
 class JobProgressEvent(BaseEvent):
     type: Literal["job.progress"] = "job.progress"
-    percent: int                                # 0 – 100
+    percent: int
     stage: str
     message: str
 
 
 class JobCompletedEvent(BaseEvent):
     type: Literal["job.completed"] = "job.completed"
-    pdf_job_id: str                             # same as job_id — use for /download/{pdf_job_id}
+    pdf_job_id: str
     ats_score: float
     ats_details: Dict[str, Any]
     changes_made: List[Dict[str, Any]]
@@ -63,7 +62,7 @@ class JobCompletedEvent(BaseEvent):
 class JobFailedEvent(BaseEvent):
     type: Literal["job.failed"] = "job.failed"
     stage: str
-    error_code: str                             # "latex_error" | "llm_error" | "timeout" | "internal"
+    error_code: str
     error_message: str
     retryable: bool
 
@@ -78,20 +77,35 @@ class JobCancelledEvent(BaseEvent):
 
 class LLMTokenEvent(BaseEvent):
     type: Literal["llm.token"] = "llm.token"
-    token: str                                  # single token delta from OpenAI streaming
+    token: str
 
 
 class LLMStreamCompleteEvent(BaseEvent):
     type: Literal["llm.complete"] = "llm.complete"
-    full_content: str                           # complete assembled LaTeX
+    full_content: str
     tokens_total: int
 
 
 class LogLineEvent(BaseEvent):
     type: Literal["log.line"] = "log.line"
-    source: str                                 # "pdflatex" | "lualatex"
+    source: str
     line: str
     is_error: bool
+
+
+# ------------------------------------------------------------------ #
+#  ATS deep analysis event (Layer 2)                                  #
+# ------------------------------------------------------------------ #
+
+class ATSDeepCompleteEvent(BaseEvent):
+    type: Literal["ats.deep_complete"] = "ats.deep_complete"
+    overall_score: float
+    overall_feedback: str
+    sections: List[Dict[str, Any]]
+    ats_compatibility: Dict[str, Any]
+    job_match: Optional[Dict[str, Any]] = None
+    tokens_used: int
+    analysis_time: float
 
 
 # ------------------------------------------------------------------ #
@@ -122,6 +136,7 @@ AnyEvent = Union[
     LLMTokenEvent,
     LLMStreamCompleteEvent,
     LogLineEvent,
+    ATSDeepCompleteEvent,
     HeartbeatEvent,
     SystemErrorEvent,
 ]
@@ -138,6 +153,7 @@ _STATUS_MAP: Dict[str, str] = {
     "job.completed": "completed",
     "job.failed": "failed",
     "job.cancelled": "cancelled",
+    "ats.deep_complete": "completed",
 }
 
 

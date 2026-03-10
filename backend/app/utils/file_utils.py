@@ -4,7 +4,6 @@ File utility functions.
 
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from fastapi import HTTPException, UploadFile
 
@@ -15,13 +14,13 @@ def validate_file_upload(file: UploadFile) -> None:
     """Validate uploaded file."""
     if file.size and file.size > settings.MAX_FILE_SIZE:
         raise HTTPException(
-            status_code=413, 
+            status_code=413,
             detail=f"File too large. Maximum size: {settings.MAX_FILE_SIZE} bytes"
         )
-    
+
     if not file.filename or not file.filename.endswith('.tex'):
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail="File must be a .tex file"
         )
 

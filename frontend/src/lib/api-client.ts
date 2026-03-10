@@ -188,6 +188,20 @@ export interface UserAnalyticsTimeseriesResponse {
 //  API client class                                                   //
 // ------------------------------------------------------------------ //
 
+export interface SemanticMatchResult {
+  resume_id: string
+  resume_title: string
+  similarity_score: number
+  matched_keywords: string[]
+  missing_keywords: string[]
+  semantic_gaps: {
+    technical_skills: string[]
+    soft_skills: string[]
+    domain_specific: string[]
+    similarity_score: number
+  }
+}
+
 class ApiClient {
   private authToken: string | null = null
 
@@ -570,6 +584,36 @@ class ApiClient {
     message: string
   }> {
     return this.request('/ats/supported-industries')
+  }
+
+  async deepAnalyzeResume(body: {
+    latex_content: string
+    job_description?: string
+    device_fingerprint?: string
+  }): Promise<{
+    success: boolean
+    job_id?: string
+    uses_remaining?: number | null
+    message: string
+  }> {
+    return this.request('/ats/deep-analyze', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async semanticMatch(body: {
+    job_description: string
+    resume_ids?: string[]
+  }): Promise<{
+    success: boolean
+    results: SemanticMatchResult[]
+    message: string
+  }> {
+    return this.request('/ats/semantic-match', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
   }
 }
 

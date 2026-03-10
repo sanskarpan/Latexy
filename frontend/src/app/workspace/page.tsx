@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { apiClient, type JobStateResponse, type ResumeResponse } from '@/lib/api-client'
+import { apiClient, type JobStateResponse, type ResumeResponse, type SemanticMatchResult } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import SemanticMatchModal from '@/components/ats/SemanticMatchModal'
 
 export default function WorkspacePage() {
   const { data: session, isPending: sessionLoading } = useSession()
@@ -13,6 +14,10 @@ export default function WorkspacePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [matchModalOpen, setMatchModalOpen] = useState(false)
+  const [matchResults, setMatchResults] = useState<SemanticMatchResult[]>([])
+  const [isMatchLoading, setIsMatchLoading] = useState(false)
+  const [matchError, setMatchError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!session) return
@@ -37,6 +42,12 @@ export default function WorkspacePage() {
     () => resumes.filter((resume) => resume.title.toLowerCase().includes(searchQuery.toLowerCase())),
     [resumes, searchQuery]
   )
+
+  const matchMap = useMemo(() => {
+    const m: Record<string, SemanticMatchResult> = {}
+    for (const r of matchResults) m[r.resume_id] = r
+    return m
+  }, [matchResults])
 
   if (sessionLoading) {
     return (
@@ -72,6 +83,12 @@ export default function WorkspacePage() {
           <Link href="/workspace/history" className="btn-ghost px-4 py-2 text-xs">
             Run History
           </Link>
+          <button
+            onClick={() => setMatchModalOpen(true)}
+            className="rounded-lg border border-violet-400/20 bg-violet-500/10 px-4 py-2 text-xs font-semibold text-violet-200 transition hover:bg-violet-500/20"
+          >
+            Match to Job
+          </button>
           <Link href="/workspace/new" className="btn-accent px-4 py-2 text-xs">
             New Resume
           </Link>
@@ -131,7 +148,20 @@ export default function WorkspacePage() {
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {filteredResumes.map((resume) => (
                 <article key={resume.id} className="surface-card edge-highlight flex flex-col p-5">
-                  <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Resume</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Resume</p>
+                    {matchMap[resume.id] && (
+                      <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${
+                        matchMap[resume.id].similarity_score >= 0.8
+                          ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20'
+                          : matchMap[resume.id].similarity_score >= 0.6
+                          ? 'bg-amber-500/10 text-amber-300 ring-amber-400/20'
+                          : 'bg-rose-500/10 text-rose-300 ring-rose-400/20'
+                      }`}>
+                        {Math.round(matchMap[resume.id].similarity_score * 100)}% match
+                      </span>
+                    )}
+                  </div>
                   <h3 className="mt-2 line-clamp-2 text-lg font-semibold text-white">{resume.title}</h3>
                   <p className="mt-2 text-xs text-zinc-500">Updated {new Date(resume.updated_at).toLocaleDateString()}</p>
 
@@ -226,6 +256,27 @@ export default function WorkspacePage() {
           </section>
         </aside>
       </div>
+
+      <SemanticMatchModal
+        isOpen={matchModalOpen}
+        onClose={() => setMatchModalOpen(false)}
+        onMatch={async (jd) => {
+          setIsMatchLoading(true)
+          setMatchError(null)
+          try {
+            const res = await apiClient.semanticMatch({ job_description: jd })
+            if (res.success) setMatchResults(res.results)
+            else throw new Error(res.message)
+          } catch (err) {
+            setMatchError(err instanceof Error ? err.message : 'Match failed')
+          } finally {
+            setIsMatchLoading(false)
+          }
+        }}
+        results={matchResults}
+        isLoading={isMatchLoading}
+        error={matchError}
+      />
     </div>
   )
 }

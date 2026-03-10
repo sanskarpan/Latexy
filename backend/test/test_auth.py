@@ -12,7 +12,7 @@ auth and return 200 for anonymous requests. Tests here verify:
 """
 
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient

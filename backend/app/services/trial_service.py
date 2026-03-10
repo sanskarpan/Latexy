@@ -1,14 +1,13 @@
 """Trial system service for freemium model."""
 
-import asyncio
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
-from sqlalchemy.exc import IntegrityError
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
-from ..database.models import DeviceTrial, UsageAnalytics
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ..core.logging import get_logger
+from ..database.models import DeviceTrial, UsageAnalytics
 
 logger = get_logger(__name__)
 
@@ -256,7 +255,7 @@ class TrialService:
             )
             await db.execute(stmt)
             await db.commit()
-            
+
             logger.info(f"Blocked device {device_fingerprint[:8]}... for {reason}")
             return True
         except Exception as e:

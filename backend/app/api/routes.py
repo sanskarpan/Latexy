@@ -5,25 +5,25 @@ API routes for the application.
 import asyncio
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
+from ..database.models import User
+from ..middleware.auth_middleware import get_current_user_optional
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
+from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
 from ..services.latex_compiler import latex_compiler
 from ..services.latex_service import latex_service
 from ..services.llm_service import llm_service
-from ..services.trial_service import trial_service
 from ..services.payment_service import payment_service
-from ..utils.file_utils import validate_file_upload, validate_job_id, get_job_files
-from ..database.models import User
-from ..middleware.auth_middleware import get_current_user_optional
-from ..services.trial_service import TEST_TRIAL_LIMIT, TRIAL_LIMIT as _TRIAL_LIMIT
+from ..services.trial_service import TEST_TRIAL_LIMIT, trial_service
+from ..services.trial_service import TRIAL_LIMIT as _TRIAL_LIMIT
+from ..utils.file_utils import get_job_files, validate_file_upload, validate_job_id
 
 logger = get_logger(__name__)
 
@@ -31,30 +31,37 @@ router = APIRouter()
 
 # Include job management routes
 from .job_routes import router as job_router
+
 router.include_router(job_router)
 
 # Include WebSocket routes (no prefix — endpoint is /ws/jobs)
 from .ws_routes import ws_router
+
 router.include_router(ws_router)
 
 # Include ATS scoring routes
 from .ats_routes import router as ats_router
+
 router.include_router(ats_router)
 
 # Include BYOK routes
 from .byok_routes import router as byok_router
+
 router.include_router(byok_router)
 
 # Include Analytics routes
 from .analytics_routes import router as analytics_router
+
 router.include_router(analytics_router)
 
 # Include Resume routes
 from .resume_routes import router as resume_router
+
 router.include_router(resume_router)
 
 # Include Format detection routes
 from .format_routes import router as format_router
+
 router.include_router(format_router)
 
 
@@ -62,11 +69,11 @@ router.include_router(format_router)
 async def health_check():
     """Health check endpoint."""
     latex_available = latex_compiler.is_available()
-    llm_available = llm_service.is_available()
-    
+    llm_service.is_available()
+
     # Consider service healthy if LaTeX is available (LLM is optional)
     status = "healthy" if latex_available else "degraded"
-    
+
     return HealthResponse(
         status=status,
         version=settings.APP_VERSION,
@@ -80,39 +87,39 @@ async def compile_latex_endpoint(
     file: Optional[UploadFile] = File(None)
 ):
     """Compile LaTeX content to PDF."""
-    
+
     try:
         # Get LaTeX content from either form data or file upload
         if file:
             validate_file_upload(file)
             content = await file.read()
             latex_content = content.decode('utf-8')
-            
+
         elif latex_content:
             pass  # Use provided content
         else:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail="Either latex_content or file must be provided"
             )
-        
+
         # Validate LaTeX content
         if not latex_service.validate_latex_content(latex_content):
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail="Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}"
             )
-        
+
         # Compile LaTeX
         result = await latex_service.compile_latex(latex_content)
-        
+
         # Schedule cleanup after retention period only if compilation was successful
         if result.success:
             job_dir = settings.TEMP_DIR / result.job_id
             asyncio.create_task(latex_service.cleanup_temp_files_delayed(job_dir, settings.PDF_RETENTION_TIME))
-        
+
         return result
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -151,6 +158,7 @@ async def download_pdf(job_id: str):
 async def download_synctex(job_id: str):
     """Serve decompressed SyncTeX data for bidirectional editor↔PDF sync."""
     import gzip
+
     from fastapi.responses import Response
 
     validate_job_id(job_id)
@@ -176,14 +184,14 @@ async def download_synctex(job_id: str):
 @router.get("/logs/{job_id}", response_model=LogsResponse)
 async def get_compilation_logs(job_id: str):
     """Get compilation logs for debugging."""
-    
+
     validate_job_id(job_id)
-    
+
     _, _, log_file = get_job_files(job_id)
-    
+
     if not log_file.exists():
         raise HTTPException(status_code=404, detail="Log file not found")
-    
+
     try:
         log_content = log_file.read_text(encoding='utf-8', errors='ignore')
         return LogsResponse(job_id=job_id, logs=log_content)
@@ -195,13 +203,13 @@ async def get_compilation_logs(job_id: str):
 @router.post("/optimize", response_model=OptimizationResponse)
 async def optimize_resume(request: OptimizationRequest):
     """Optimize resume using LLM for better ATS compatibility."""
-    
+
     if not llm_service.is_available():
         raise HTTPException(
             status_code=503,
             detail="LLM service is not available. Please configure OpenAI API key."
         )
-    
+
     try:
         # Validate LaTeX content
         if not latex_service.validate_latex_content(request.latex_content):
@@ -209,19 +217,19 @@ async def optimize_resume(request: OptimizationRequest):
                 status_code=400,
                 detail="Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}"
             )
-        
+
         # Validate job description
         if not request.job_description.strip():
             raise HTTPException(
                 status_code=400,
                 detail="Job description cannot be empty"
             )
-        
+
         # Perform optimization
         result = await llm_service.optimize_resume(request)
-        
+
         return result
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -232,32 +240,32 @@ async def optimize_resume(request: OptimizationRequest):
 @router.post("/optimize-and-compile", response_model=dict)
 async def optimize_and_compile_resume(request: OptimizationRequest):
     """Optimize resume and compile to PDF in one step."""
-    
+
     try:
         # First optimize the resume
         optimization_result = await optimize_resume(request)
-        
+
         if not optimization_result.success:
             return {
                 "optimization": optimization_result,
                 "compilation": None,
                 "success": False
             }
-        
+
         # Then compile the optimized LaTeX
         compilation_result = await latex_service.compile_latex(optimization_result.optimized_latex)
-        
+
         # Schedule cleanup after retention period only if compilation was successful
         if compilation_result.success:
             job_dir = settings.TEMP_DIR / compilation_result.job_id
             asyncio.create_task(latex_service.cleanup_temp_files_delayed(job_dir, settings.PDF_RETENTION_TIME))
-        
+
         return {
             "optimization": optimization_result,
             "compilation": compilation_result,
             "success": optimization_result.success and compilation_result.success
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -345,7 +353,7 @@ async def track_usage(
     """Track usage for anonymous users."""
     try:
         ip_address = request.client.host if request.client else None
-        
+
         result = await trial_service.track_usage(
             db=db,
             device_fingerprint=request_data.deviceFingerprint,
@@ -356,7 +364,7 @@ async def track_usage(
             resource_type=request_data.resourceType,
             metadata=request_data.metadata
         )
-        
+
         return TrackUsageResponse(
             success=result["success"],
             usageCount=result.get("usageCount"),
@@ -379,10 +387,10 @@ async def compile_latex_anonymous(
     db: AsyncSession = Depends(get_db)
 ):
     """Compile LaTeX content for anonymous users with trial limits."""
-    
+
     try:
         ip_address = request.client.host if request.client else None
-        
+
         # Check trial limits first
         rate_check = await trial_service.check_rate_limits(db, device_fingerprint, ip_address)
         if not rate_check["allowed"]:
@@ -393,31 +401,31 @@ async def compile_latex_anonymous(
                 "daily_limit_exceeded": "Daily request limit exceeded. Please try again tomorrow."
             }
             raise HTTPException(
-                status_code=429, 
+                status_code=429,
                 detail=error_messages.get(rate_check["reason"], "Rate limit exceeded")
             )
-        
+
         # Get LaTeX content from either form data or file upload
         if file:
             validate_file_upload(file)
             content = await file.read()
             latex_content = content.decode('utf-8')
-            
+
         elif latex_content:
             pass  # Use provided content
         else:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail="Either latex_content or file must be provided"
             )
-        
+
         # Validate LaTeX content
         if not latex_service.validate_latex_content(latex_content):
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail="Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}"
             )
-        
+
         # Track usage
         await trial_service.track_usage(
             db=db,
@@ -427,17 +435,17 @@ async def compile_latex_anonymous(
             user_agent=request.headers.get("user-agent") if request else None,
             resource_type="resume"
         )
-        
+
         # Compile LaTeX
         result = await latex_service.compile_latex(latex_content)
-        
+
         # Schedule cleanup after retention period only if compilation was successful
         if result.success:
             job_dir = settings.TEMP_DIR / result.job_id
             asyncio.create_task(latex_service.cleanup_temp_files_delayed(job_dir, settings.PDF_RETENTION_TIME))
-        
+
         return result
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -541,7 +549,7 @@ async def get_current_subscription(
             raise HTTPException(status_code=401, detail="Authentication required")
 
         subscription = await payment_service.get_user_subscription(db, user_id)
-        
+
         if not subscription:
             raise HTTPException(status_code=404, detail="Subscription not found")
 

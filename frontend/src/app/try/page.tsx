@@ -10,6 +10,7 @@ import { useTrialStatus } from '@/hooks/useTrialStatus'
 import LaTeXEditor, { LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
+import DeepAnalysisPanel from '@/components/ats/DeepAnalysisPanel'
 
 const sampleLatex = `\\documentclass[11pt,a4paper]{article}
 \\usepackage[margin=0.72in]{geometry}
@@ -55,10 +56,16 @@ export default function TryPage() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [logsOpen, setLogsOpen] = useState(false)
+  const [deepPanelOpen, setDeepPanelOpen] = useState(false)
+  const [deepAnalysisJobId, setDeepAnalysisJobId] = useState<string | null>(null)
+  const [deepAnalysisUsesRemaining, setDeepAnalysisUsesRemaining] = useState<number | null>(null)
+  const [isDeepAnalysisRunning, setIsDeepAnalysisRunning] = useState(false)
+  const [deepAnalysisError, setDeepAnalysisError] = useState<string | null>(null)
 
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
+  const { state: deepStream } = useJobStream(deepAnalysisJobId)
   const trialStatus = useTrialStatus()
 
   useEffect(() => {
@@ -156,6 +163,32 @@ export default function TryPage() {
   }, [stream.status, isProcessing])
 
   const categoryScores = stream.atsDetails?.category_scores as Record<string, number> | undefined
+
+  const handleRunDeepAnalysis = async () => {
+    const currentContent = editorRef.current?.getValue() || latexContent
+    if (!currentContent.trim()) { toast.error('Add LaTeX content first'); return }
+    setIsDeepAnalysisRunning(true)
+    setDeepAnalysisError(null)
+    try {
+      const response = await apiClient.deepAnalyzeResume({
+        latex_content: currentContent,
+        job_description: jobDescription || undefined,
+        device_fingerprint: trialStatus.fingerprint,
+      })
+      if (response.success && response.job_id) {
+        setDeepAnalysisJobId(response.job_id)
+        setDeepAnalysisUsesRemaining(response.uses_remaining ?? null)
+      } else {
+        throw new Error(response.message || 'Deep analysis failed')
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Deep analysis failed'
+      setDeepAnalysisError(msg)
+      toast.error(msg)
+    } finally {
+      setIsDeepAnalysisRunning(false)
+    }
+  }
 
   return (
     <div className="content-shell">
@@ -326,12 +359,18 @@ export default function TryPage() {
                   </div>
                 )}
 
-                {/* Divider + run guidance */}
-                <div className="border-t border-white/8 pt-4 space-y-2">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-slate-600">Tips</p>
-                  <p className="text-[11px] leading-relaxed text-slate-500">Compile for format-only checks.</p>
-                  <p className="text-[11px] leading-relaxed text-slate-500">Optimize + Compile for role targeting.</p>
-                  <p className="text-[11px] leading-relaxed text-slate-500">Watch logs for warnings before downloading.</p>
+                {/* AI Deep Analysis */}
+                <div className="border-t border-white/8 pt-4">
+                  <button
+                    onClick={() => { setDeepPanelOpen(true); if (!deepAnalysisJobId) handleRunDeepAnalysis() }}
+                    disabled={isDeepAnalysisRunning}
+                    className="w-full rounded-lg bg-violet-500/20 px-3 py-2 text-[11px] font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30 disabled:opacity-50"
+                  >
+                    {isDeepAnalysisRunning ? 'Analysing…' : 'AI Analysis'}
+                  </button>
+                  {deepAnalysisUsesRemaining !== null && (
+                    <p className="mt-1.5 text-[10px] text-center text-slate-600">{deepAnalysisUsesRemaining} free uses left</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -370,6 +409,16 @@ export default function TryPage() {
           </section>
         </div>
       </div>
+      <DeepAnalysisPanel
+        isOpen={deepPanelOpen}
+        onClose={() => setDeepPanelOpen(false)}
+        isLoading={isDeepAnalysisRunning || deepStream.status === 'queued' || deepStream.status === 'processing'}
+        analysis={deepStream.deepAnalysis}
+        error={deepAnalysisError}
+        usesRemaining={deepAnalysisUsesRemaining}
+        onRun={handleRunDeepAnalysis}
+        isRunning={isDeepAnalysisRunning}
+      />
     </div>
   )
 }

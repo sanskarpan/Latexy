@@ -7,7 +7,6 @@ the protocol tests; the auth/Redis integration is covered by test_auth.py
 and test_jobs.py which use the async ASGI transport.
 """
 
-import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -15,7 +14,6 @@ import pytest
 from starlette.testclient import TestClient
 
 from app.main import app
-
 
 # ---------------------------------------------------------------------------
 # Shared mock: patch event_bus and redis for all WebSocket tests

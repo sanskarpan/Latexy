@@ -1,14 +1,16 @@
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, func
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..core.config import settings
 from ..database.connection import get_db
-from ..database.models import Resume, Optimization
+from ..database.models import Optimization, Resume
 from ..middleware.auth_middleware import get_current_user_required
-from pydantic import BaseModel, Field
-from datetime import datetime
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
@@ -55,12 +57,12 @@ async def get_resume_stats(
         select(func.count(Resume.id)).where(Resume.user_id == user_id)
     )
     templates = await db.execute(
-        select(func.count(Resume.id)).where(Resume.user_id == user_id, Resume.is_template == True)
+        select(func.count(Resume.id)).where(Resume.user_id == user_id, Resume.is_template)
     )
     latest = await db.execute(
         select(func.max(Resume.updated_at)).where(Resume.user_id == user_id)
     )
-    
+
     return {
         "total_resumes": total.scalar() or 0,
         "total_templates": templates.scalar() or 0,
@@ -82,6 +84,18 @@ async def create_resume(
     db.add(resume)
     await db.commit()
     await db.refresh(resume)
+
+    if settings.OPENAI_API_KEY:
+        try:
+            from ..workers.ats_worker import embed_resume_task
+            embed_resume_task.apply_async(
+                kwargs={"resume_id": str(resume.id), "latex_content": resume.latex_content,
+                        "user_id": user_id},
+                queue="ats", priority=1,
+            )
+        except Exception:
+            pass  # Embedding is best-effort
+
     return resume
 
 @router.get("/", response_model=List[ResumeResponse])
@@ -129,10 +143,22 @@ async def update_resume(
     update_data = resume_in.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(resume, key, value)
-    
+
     resume.updated_at = datetime.now()
     await db.commit()
     await db.refresh(resume)
+
+    if settings.OPENAI_API_KEY and update_data.get("latex_content"):
+        try:
+            from ..workers.ats_worker import embed_resume_task
+            embed_resume_task.apply_async(
+                kwargs={"resume_id": str(resume.id), "latex_content": resume.latex_content,
+                        "user_id": user_id},
+                queue="ats", priority=1,
+            )
+        except Exception:
+            pass  # Embedding is best-effort
+
     return resume
 
 @router.delete("/{resume_id}", status_code=status.HTTP_204_NO_CONTENT)

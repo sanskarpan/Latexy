@@ -10,15 +10,14 @@ import shutil
 import subprocess
 import time
 import uuid
-from pathlib import Path
 from subprocess import PIPE, STDOUT
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..services.latex_service import latex_service
-from ..workers.event_publisher import publish_event, publish_job_result, is_cancelled
+from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
 
 logger = get_logger(__name__)
 
