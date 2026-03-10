@@ -12,7 +12,6 @@ Tasks are invoked via Celery's task.apply() which runs synchronously.
 from __future__ import annotations
 
 import os
-import shutil
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -25,7 +24,6 @@ from app.workers.cleanup_worker import (
     cleanup_temp_files_task,
     health_check_task,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
