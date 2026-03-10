@@ -561,7 +561,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
       // ── Hover provider (show command description) ──────────────────
       const hoverDisposable = monaco.languages.registerHoverProvider('latex', {
-        provideHover(model, position) {
+        provideHover(model: import('monaco-editor').editor.ITextModel, position: import('monaco-editor').Position) {
           const word = model.getWordAtPosition(position)
           if (!word) return null
 
