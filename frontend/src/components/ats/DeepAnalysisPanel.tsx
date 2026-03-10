@@ -109,7 +109,12 @@ export default function DeepAnalysisPanel({
       />
 
       {/* Panel */}
-      <div className="fixed right-0 top-0 z-50 flex h-full w-[480px] flex-col border-l border-white/[0.07] bg-[#0d0d0d] shadow-2xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Deep AI Analysis"
+        className="fixed right-0 top-0 z-50 flex h-full w-[480px] flex-col border-l border-white/[0.07] bg-[#0d0d0d] shadow-2xl"
+      >
         {/* Header */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.07] px-4">
           <div className="flex items-center gap-2">
@@ -120,6 +125,7 @@ export default function DeepAnalysisPanel({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="rounded-md p-1.5 text-zinc-600 transition hover:bg-white/[0.05] hover:text-zinc-200"
           >
             <X size={14} />
