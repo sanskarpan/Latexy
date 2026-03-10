@@ -2,7 +2,6 @@
 Analytics API routes for tracking and retrieving usage data.
 """
 
-import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -11,11 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..middleware.auth_middleware import get_current_user_required, require_admin
 from ..services.analytics_service import analytics_service
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 

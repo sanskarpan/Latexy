@@ -338,11 +338,26 @@ class TestSectionSpecificPrompt:
 
 # ─── Feature 1: Optimization history endpoints ───────────────────────────────
 
+@pytest.fixture
+async def test_resume(client: AsyncClient, auth_headers: dict):
+    """Create a test resume and clean it up after the test."""
+    resp = await client.post(
+        "/resumes/",
+        json={"title": "Orch Test Resume", "latex_content": r"\documentclass{article}\begin{document}Test\end{document}"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 201
+    resume = resp.json()
+    yield resume
+    # Cleanup
+    await client.delete(f"/resumes/{resume['id']}", headers=auth_headers)
+
+
 @pytest.mark.asyncio
 class TestOptimizationHistoryEndpoints:
-    async def test_record_optimization(self, async_client: AsyncClient, auth_headers: dict, test_db, test_resume):
+    async def test_record_optimization(self, client: AsyncClient, auth_headers: dict, test_resume):
         """POST record-optimization saves an optimization record."""
-        resp = await async_client.post(
+        resp = await client.post(
             f"/resumes/{test_resume['id']}/record-optimization",
             json={
                 "original_latex": r"\section{old}",
@@ -358,10 +373,10 @@ class TestOptimizationHistoryEndpoints:
         assert data["success"] is True
         assert "id" in data
 
-    async def test_get_optimization_history(self, async_client: AsyncClient, auth_headers: dict, test_resume):
+    async def test_get_optimization_history(self, client: AsyncClient, auth_headers: dict, test_resume):
         """GET optimization-history returns previously recorded optimizations."""
         # Record one first
-        await async_client.post(
+        await client.post(
             f"/resumes/{test_resume['id']}/record-optimization",
             json={
                 "original_latex": r"\section{orig}",
@@ -372,7 +387,7 @@ class TestOptimizationHistoryEndpoints:
             headers=auth_headers,
         )
 
-        resp = await async_client.get(
+        resp = await client.get(
             f"/resumes/{test_resume['id']}/optimization-history",
             headers=auth_headers,
         )
@@ -386,10 +401,10 @@ class TestOptimizationHistoryEndpoints:
         assert "ats_score" in entry
         assert "changes_count" in entry
 
-    async def test_restore_optimization(self, async_client: AsyncClient, auth_headers: dict, test_resume):
+    async def test_restore_optimization(self, client: AsyncClient, auth_headers: dict, test_resume):
         """POST restore-optimization updates resume latex_content."""
         # Record
-        rec_resp = await async_client.post(
+        rec_resp = await client.post(
             f"/resumes/{test_resume['id']}/record-optimization",
             json={
                 "original_latex": r"\section{before}",
@@ -401,7 +416,7 @@ class TestOptimizationHistoryEndpoints:
         opt_id = rec_resp.json()["id"]
 
         # Restore
-        restore_resp = await async_client.post(
+        restore_resp = await client.post(
             f"/resumes/{test_resume['id']}/restore-optimization/{opt_id}",
             headers=auth_headers,
         )
@@ -411,15 +426,15 @@ class TestOptimizationHistoryEndpoints:
         assert "restored content" in data["latex_content"]
 
         # Verify resume was updated
-        resume_resp = await async_client.get(
+        resume_resp = await client.get(
             f"/resumes/{test_resume['id']}",
             headers=auth_headers,
         )
         assert "restored content" in resume_resp.json()["latex_content"]
 
-    async def test_history_not_accessible_by_other_user(self, async_client: AsyncClient, auth_headers: dict, test_resume):
+    async def test_history_not_accessible_by_other_user(self, client: AsyncClient, test_resume):
         """Other users cannot see or restore another user's optimization history."""
-        resp = await async_client.get(
+        resp = await client.get(
             f"/resumes/{test_resume['id']}/optimization-history",
             # No auth headers — unauthenticated
         )

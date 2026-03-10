@@ -20,7 +20,7 @@ spec:
       containers:
       - name: celery-worker
         image: latexy-backend:latest
-        command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+        command: ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info", "--concurrency=2", "--queues=latex,llm,email,cleanup,ats,combined"]
         env:
         - name: DATABASE_URL
           valueFrom:
@@ -52,11 +52,11 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: openrouter-api-key
-        - name: ENCRYPTION_KEY
+        - name: API_KEY_ENCRYPTION_KEY
           valueFrom:
             secretKeyRef:
               name: latexy-secrets
-              key: encryption-key
+              key: api-key-encryption-key
         - name: CELERY_BROKER_URL
           valueFrom:
             secretKeyRef:
@@ -79,7 +79,7 @@ spec:
             command:
             - celery
             - -A
-            - app.celery_app
+            - app.core.celery_app
             - inspect
             - ping
           initialDelaySeconds: 60
@@ -89,7 +89,7 @@ spec:
             command:
             - celery
             - -A
-            - app.celery_app
+            - app.core.celery_app
             - inspect
             - ping
           initialDelaySeconds: 30
@@ -119,7 +119,7 @@ spec:
       containers:
       - name: celery-beat
         image: latexy-backend:latest
-        command: ["celery", "-A", "app.celery_app", "beat", "--loglevel=info"]
+        command: ["celery", "-A", "app.core.celery_app", "beat", "--loglevel=info"]
         env:
         - name: DATABASE_URL
           valueFrom:
@@ -181,7 +181,7 @@ spec:
       containers:
       - name: flower
         image: latexy-backend:latest
-        command: ["celery", "-A", "app.celery_app", "flower", "--port=5555"]
+        command: ["celery", "-A", "app.core.celery_app", "flower", "--port=5555"]
         ports:
         - containerPort: 5555
         env:

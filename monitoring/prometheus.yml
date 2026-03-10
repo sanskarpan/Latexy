@@ -21,7 +21,7 @@ scrape_configs:
   # Latexy Backend API
   - job_name: 'latexy-backend'
     static_configs:
-      - targets: ['backend:8000']
+      - targets: ['backend:8030']
     metrics_path: '/metrics'
     scrape_interval: 30s
     scrape_timeout: 10s
@@ -29,7 +29,7 @@ scrape_configs:
   # Latexy Frontend
   - job_name: 'latexy-frontend'
     static_configs:
-      - targets: ['frontend:3000']
+      - targets: ['frontend:5180']
     metrics_path: '/api/metrics'
     scrape_interval: 30s
 

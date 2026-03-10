@@ -13,6 +13,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from celery.result import AsyncResult
 from httpx import AsyncClient
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -44,7 +45,7 @@ def mock_celery_task():
         "app.api.ats_routes.deep_analyze_ats_task",
         new_callable=MagicMock,
     ) as mock:
-        mock.apply_async = MagicMock(return_value=MagicMock(id="fake-task-id"))
+        mock.apply_async = MagicMock(return_value=MagicMock(spec=AsyncResult, id="fake-task-id"))
         yield mock
 
 

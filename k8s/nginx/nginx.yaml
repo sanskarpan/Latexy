@@ -61,7 +61,7 @@ data:
         }
 
         upstream backend {
-            server latexy-backend-service:8000;
+            server latexy-backend-service:8030;
         }
 
         upstream flower {

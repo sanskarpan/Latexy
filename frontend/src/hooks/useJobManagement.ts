@@ -3,12 +3,13 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { 
-  jobApiClient, 
-  JobSubmissionRequest, 
+import {
+  jobApiClient,
+  JobSubmissionRequest,
   JobSubmissionResponse,
+  JobInfo,
   JobListResponse,
-  SystemHealthResponse 
+  SystemHealthResponse
 } from '@/lib/job-api-client'
 import { useNotifications } from '@/components/NotificationProvider'
 
@@ -44,10 +45,10 @@ export interface UseJobManagementResult {
 
   // Utilities
   clearErrors: () => void
-  getJobById: (jobId: string) => any
-  getActiveJobs: () => any[]
-  getCompletedJobs: () => any[]
-  getFailedJobs: () => any[]
+  getJobById: (jobId: string) => JobInfo | undefined
+  getActiveJobs: () => JobInfo[]
+  getCompletedJobs: () => JobInfo[]
+  getFailedJobs: () => JobInfo[]
 }
 
 export function useJobManagement(options: UseJobManagementOptions = {}): UseJobManagementResult {
@@ -73,6 +74,7 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
 
   const { addNotification } = useNotifications()
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const refreshJobs = useCallback(async () => {
     try {
@@ -119,8 +121,10 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
         })
 
         // Refresh jobs list to include the new job
-        setTimeout(() => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current)
+        timeoutRef.current = setTimeout(() => {
           refreshJobs()
+          timeoutRef.current = null
         }, 1000)
 
         return response.job_id
@@ -228,8 +232,8 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
     setHealthError(null)
   }, [])
 
-  const getJobById = useCallback((jobId: string) => {
-    return jobs?.jobs.find(job => job.job_id === jobId) || null
+  const getJobById = useCallback((jobId: string): JobInfo | undefined => {
+    return jobs?.jobs.find(job => job.job_id === jobId)
   }, [jobs])
 
   const getActiveJobs = useCallback(() => {
@@ -273,6 +277,9 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
     return () => {
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current)
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
       }
     }
   }, [])

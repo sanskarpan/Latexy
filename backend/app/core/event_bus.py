@@ -157,8 +157,8 @@ class EventBusManager:
             try:
                 await pubsub.unsubscribe(channel)
                 await pubsub.aclose()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"Error during pubsub cleanup: {exc}")
             logger.debug(f"[EventBus] listener exited for {job_id}")
 
     # ---------------------------------------------------------------- #

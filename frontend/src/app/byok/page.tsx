@@ -1,6 +1,9 @@
 'use client'
 
+import { useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useSession } from '@/lib/auth-client'
 import APIKeyManager from '@/components/byok/APIKeyManager'
 
 const points = [
@@ -19,6 +22,15 @@ const points = [
 ]
 
 export default function BYOKPage() {
+  const { data: session, isPending } = useSession()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isPending && !session) {
+      router.push('/login')
+    }
+  }, [session, isPending, router])
+
   return (
     <div className="content-shell">
       <div className="space-y-6">

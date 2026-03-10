@@ -75,7 +75,7 @@ async def test_me_timeseries_returns_series_data(client: AsyncClient, db_session
             model='gpt-4o-mini',
             tokens_used=420,
             optimization_time=1.8,
-            ats_score={'overall_score': 81},
+            ats_score=81.0,
             created_at=now,
         ),
         UsageAnalytics(

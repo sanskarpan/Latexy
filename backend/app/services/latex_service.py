@@ -183,3 +183,102 @@ class LaTeXService:
 
 # Global service instance
 latex_service = LaTeXService()
+
+
+def run_latex_subprocess(
+    job_id: str,
+    latex_content: str,
+    timeout: Optional[float] = None,
+) -> tuple[bool, float, str]:
+    """
+    Shared synchronous LaTeX compilation helper used by both
+    ``latex_worker.py`` and ``orchestrator.py``.
+
+    Writes *latex_content* to ``{TEMP_DIR}/{job_id}/resume.tex``,
+    runs pdflatex (Docker if available, else local texlive),
+    streams every log line via ``publish_event``, honours
+    cancellation flags and an optional *timeout*, then returns
+    ``(success, compilation_time, error_message)``.
+
+    Callers are responsible for publishing ``job.failed`` so they
+    can include any extra payload (e.g. ``optimized_latex``).
+    """
+    # Lazy import to avoid circular imports (workers → services → workers)
+    from ..workers.event_publisher import is_cancelled, publish_event  # noqa: PLC0415
+
+    job_dir = settings.TEMP_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    tex_file = job_dir / "resume.tex"
+    pdf_file = job_dir / "resume.pdf"
+    tex_file.write_text(latex_content, encoding="utf-8")
+
+    _use_docker = shutil.which("docker") is not None
+    if _use_docker:
+        compile_cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{job_dir}:/workspace",
+            "-w", "/workspace",
+            settings.LATEX_DOCKER_IMAGE,
+            "pdflatex",
+            "-interaction=nonstopmode",
+            "-synctex=1",
+            "-output-directory", "/workspace",
+            "-jobname", "resume",
+            "resume.tex",
+        ]
+        compile_cwd = None
+    else:
+        compile_cmd = [
+            "pdflatex",
+            "-interaction=nonstopmode",
+            "-synctex=1",
+            "-output-directory", str(job_dir),
+            "-jobname", "resume",
+            "resume.tex",
+        ]
+        compile_cwd = str(job_dir)
+
+    start_time = time.time()
+    proc = subprocess.Popen(
+        compile_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=compile_cwd,
+    )
+
+    for raw_line in proc.stdout:  # type: ignore[union-attr]
+        line = raw_line.rstrip("\n")
+        if not line:
+            continue
+        line_lower = line.lower()
+        is_error = any(kw in line_lower for kw in ("error", "fatal", "undefined control"))
+        publish_event(job_id, "log.line", {
+            "source": "pdflatex",
+            "line": line,
+            "is_error": is_error,
+        })
+
+        if timeout is not None and time.time() - start_time > timeout:
+            proc.kill()
+            proc.wait()
+            return False, time.time() - start_time, f"pdflatex timed out after {timeout:.0f}s"
+
+        if is_cancelled(job_id):
+            proc.kill()
+            proc.wait()
+            raise RuntimeError("Job cancelled during LaTeX compilation")
+
+    proc.wait()
+    compilation_time = time.time() - start_time
+
+    if proc.returncode == 0 and pdf_file.exists():
+        return True, compilation_time, ""
+
+    return False, compilation_time, (
+        f"pdflatex exited with code {proc.returncode}. "
+        "See log.line events for details."
+    )

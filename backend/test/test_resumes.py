@@ -38,7 +38,8 @@ class TestResumeCRUD:
 
         resp = await client.get("/resumes/", headers=auth_headers)
         assert resp.status_code == 200
-        data = resp.json()
+        payload = resp.json()
+        data = payload["resumes"] if isinstance(payload, dict) else payload
         assert len(data) >= 1
         assert any(r["title"] == "R1" for r in data)
 

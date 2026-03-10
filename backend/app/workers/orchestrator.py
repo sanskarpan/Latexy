@@ -29,10 +29,11 @@ import shutil
 import subprocess
 import time
 import uuid
-from subprocess import PIPE, STDOUT
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import openai
+from celery.exceptions import SoftTimeLimitExceeded
 
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
@@ -60,6 +61,8 @@ _BEFORE, _IN_LATEX, _AFTER_LATEX, _IN_CHANGES = 0, 1, 2, 3
     name="app.workers.orchestrator.optimize_and_compile_task",
     max_retries=1,
     default_retry_delay=60,
+    time_limit=300,
+    soft_time_limit=270,
 )
 def optimize_and_compile_task(
     self,
@@ -73,6 +76,7 @@ def optimize_and_compile_task(
     device_fingerprint: Optional[str] = None,
     target_sections: Optional[List[str]] = None,
     custom_instructions: Optional[str] = None,
+    model: Optional[str] = None,
     metadata: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
@@ -118,6 +122,7 @@ def optimize_and_compile_task(
             api_key=api_key,
             target_sections=target_sections,
             custom_instructions=custom_instructions,
+            model=model,
         )
 
         if is_cancelled(job_id):
@@ -207,6 +212,16 @@ def optimize_and_compile_task(
         )
         return result
 
+    except SoftTimeLimitExceeded:
+        logger.error(f"Orchestrator task {task_id} exceeded soft time limit for job {job_id}")
+        publish_event(job_id, "job.failed", {
+            "stage": "llm_optimization",
+            "error_code": "timeout",
+            "error_message": "Task exceeded time limit",
+            "retryable": False,
+        })
+        return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
+
     except Exception as exc:
         logger.error(f"Orchestrator task {task_id} raised: {exc}")
         publish_event(job_id, "job.failed", {
@@ -232,6 +247,7 @@ def _run_llm_stage(
     api_key: str,
     target_sections: Optional[List[str]] = None,
     custom_instructions: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> tuple[str, List[Dict], int, float]:
     """
     Stream OpenAI tokens through a delimiter state machine.
@@ -267,7 +283,7 @@ def _run_llm_stage(
     tokens_total = 0
 
     stream = client.chat.completions.create(
-        model=settings.OPENAI_MODEL,
+        model=model or settings.OPENAI_MODEL,
         messages=[
             {
                 "role": "system",
@@ -424,88 +440,84 @@ def _run_latex_stage(
     latex_content: str,
 ) -> tuple[bool, float, str]:
     """
-    Write LaTeX, run pdflatex (Docker if available, else local texlive)
+    Write LaTeX, run pdflatex (Docker if available, else local pdflatex)
     with line-by-line log streaming.
 
     Returns (success, compilation_time, error_message).
     Does NOT publish job.failed — caller is responsible so it can
     include optimized_latex in the failure payload.
     """
-    job_dir = settings.TEMP_DIR / job_id
+    job_dir = Path(settings.TEMP_DIR) / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
-
     tex_file = job_dir / "resume.tex"
-    pdf_file = job_dir / "resume.pdf"
     tex_file.write_text(latex_content, encoding="utf-8")
 
-    # Fix 1: Docker if available, else local pdflatex (matches latex_worker.py)
-    _use_docker = shutil.which("docker") is not None
-    if _use_docker:
-        compile_cmd = [
+    if shutil.which("docker"):
+        cmd = [
             "docker", "run", "--rm",
-            "-v", f"{job_dir}:/workspace",
-            "-w", "/workspace",
+            "-v", f"{job_dir}:/workdir",
+            "-w", "/workdir",
             settings.LATEX_DOCKER_IMAGE,
             "pdflatex",
             "-interaction=nonstopmode",
+            "-halt-on-error",
             "-synctex=1",
-            "-output-directory", "/workspace",
-            "-jobname", "resume",
             "resume.tex",
         ]
-        compile_cwd = None
+        cwd = None
     else:
-        # Inside the backend container, pdflatex is installed via texlive
-        compile_cmd = [
+        cmd = [
             "pdflatex",
             "-interaction=nonstopmode",
+            "-halt-on-error",
             "-synctex=1",
             "-output-directory", str(job_dir),
-            "-jobname", "resume",
-            "resume.tex",
+            str(tex_file),
         ]
-        compile_cwd = str(job_dir)
+        cwd = str(job_dir)
+
+    try:
+        timeout = float(settings.COMPILE_TIMEOUT)
+    except (TypeError, ValueError, AttributeError):
+        timeout = 120.0
 
     start_time = time.time()
     proc = subprocess.Popen(
-        compile_cmd,
-        stdout=PIPE,
-        stderr=STDOUT,
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
-        encoding="utf-8",
-        errors="replace",
-        cwd=compile_cwd,
+        cwd=cwd,
     )
 
-    for raw_line in proc.stdout:  # type: ignore[union-attr]
-        line = raw_line.rstrip("\n")
-        if not line:
-            continue
-        line_lower = line.lower()
-        is_error = any(
-            kw in line_lower for kw in ("error", "fatal", "undefined control")
-        )
-        publish_event(job_id, "log.line", {
-            "source": "pdflatex",
-            "line": line,
-            "is_error": is_error,
-        })
+    for line in proc.stdout:
+        stripped = line.rstrip()
+        if stripped:
+            is_error = "error" in stripped.lower() or stripped.startswith("!")
+            if "fatal" in stripped.lower():
+                is_error = True
+            publish_event(job_id, "log.line", {
+                "line": stripped,
+                "source": "pdflatex",
+                "is_error": is_error,
+            })
+
         if is_cancelled(job_id):
             proc.kill()
-            proc.wait()
-            raise RuntimeError("Job cancelled during LaTeX compilation")
+            return False, time.time() - start_time, "cancelled"
+
+        if time.time() - start_time > timeout:
+            proc.kill()
+            return False, time.time() - start_time, f"LaTeX compilation timed out after {timeout}s"
 
     proc.wait()
     compilation_time = time.time() - start_time
 
+    pdf_file = job_dir / "resume.pdf"
     if proc.returncode == 0 and pdf_file.exists():
         return True, compilation_time, ""
 
-    error_msg = (
-        f"pdflatex exited with code {proc.returncode}. "
-        "See log.line events for details."
-    )
-    return False, compilation_time, error_msg
+    return False, compilation_time, f"pdflatex exited with code {proc.returncode}"
 
 
 def _run_ats_stage(
@@ -552,6 +564,7 @@ def submit_optimize_and_compile(
     device_fingerprint: Optional[str] = None,
     target_sections: Optional[List[str]] = None,
     custom_instructions: Optional[str] = None,
+    model: Optional[str] = None,
     priority: Optional[int] = None,
     metadata: Optional[Dict] = None,
 ) -> str:
@@ -570,6 +583,7 @@ def submit_optimize_and_compile(
             "device_fingerprint": device_fingerprint,
             "target_sections": target_sections,
             "custom_instructions": custom_instructions,
+            "model": model,
             "metadata": metadata,
         },
         priority=priority,

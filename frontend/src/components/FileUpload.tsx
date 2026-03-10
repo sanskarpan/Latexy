@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react'
 import { Upload, File, X, CheckCircle } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface FileUploadProps {
   onFileUpload: (content: string) => void
@@ -20,7 +21,7 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
       setUploadedFile(file.name)
     } catch (error) {
       console.error('Error reading file:', error)
-      alert('Error reading file. Please try again.')
+      toast.error('Error reading file. Please try again.')
     } finally {
       setIsUploading(false)
     }
@@ -36,7 +37,7 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
     if (texFile) {
       handleFileRead(texFile)
     } else {
-      alert('Please upload a .tex file')
+      toast.error('Please upload a .tex file')
     }
   }, [handleFileRead])
 
@@ -45,7 +46,7 @@ export default function FileUpload({ onFileUpload }: FileUploadProps) {
     if (file && file.name.endsWith('.tex')) {
       handleFileRead(file)
     } else {
-      alert('Please select a .tex file')
+      toast.error('Please select a .tex file')
     }
     // Reset input
     e.target.value = ''

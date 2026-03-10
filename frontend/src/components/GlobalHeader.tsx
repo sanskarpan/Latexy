@@ -66,6 +66,8 @@ export default function GlobalHeader() {
             <div className="relative">
               <button
                 onClick={() => setIsUserMenuOpen((open) => !open)}
+                aria-label={isUserMenuOpen ? 'Close account menu' : 'Open account menu'}
+                aria-expanded={isUserMenuOpen}
                 className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:bg-white/10 hover:text-white"
               >
                 {firstName}
@@ -139,6 +141,8 @@ export default function GlobalHeader() {
         <button
           className="rounded-lg border border-white/10 px-3 py-1 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white md:hidden"
           onClick={() => setIsMobileMenuOpen((open) => !open)}
+          aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={isMobileMenuOpen}
         >
           {isMobileMenuOpen ? 'Close' : 'Menu'}
         </button>

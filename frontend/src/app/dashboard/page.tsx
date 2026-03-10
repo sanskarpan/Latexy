@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   apiClient,
   type JobStateResponse,
@@ -21,12 +22,19 @@ const ranges = [
 
 export default function DashboardPage() {
   const { data: session, isPending: sessionLoading } = useSession()
+  const router = useRouter()
   const [selectedRange, setSelectedRange] = useState(30)
   const [analytics, setAnalytics] = useState<UserAnalyticsResponse | null>(null)
   const [timeseries, setTimeseries] = useState<UserAnalyticsTimeseriesResponse | null>(null)
   const [stats, setStats] = useState<ResumeStats | null>(null)
   const [recentJobs, setRecentJobs] = useState<JobStateResponse[]>([])
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!sessionLoading && !session) {
+      router.push('/login')
+    }
+  }, [session, sessionLoading, router])
 
   useEffect(() => {
     if (!session) return
@@ -46,7 +54,9 @@ export default function DashboardPage() {
         setStats(statsData)
         setRecentJobs([...(jobsData.jobs || [])].sort((a, b) => b.last_updated - a.last_updated).slice(0, 10))
       } catch (error) {
-        console.error('Failed to fetch dashboard data', error)
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Failed to fetch dashboard data', error)
+        }
       } finally {
         setLoading(false)
       }

@@ -125,6 +125,18 @@ class FormatDetectionService:
         for format_type, config in self.FORMAT_CONFIG.items():
             if config["magic_bytes"]:
                 if content.startswith(config["magic_bytes"]):
+                    # DOCX magic bytes (PK) are shared with all ZIP-based formats.
+                    # Validate the ZIP contains DOCX-specific entries before accepting.
+                    if format_type == ResumeFormat.DOCX:
+                        import io
+                        import zipfile
+                        try:
+                            with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                                names = set(zf.namelist())
+                            if "word/document.xml" not in names:
+                                continue  # Not a DOCX — skip and fall through
+                        except zipfile.BadZipFile:
+                            continue
                     logger.info(f"Detected format {format_type.value} from magic bytes")
                     return format_type
 

@@ -14,7 +14,10 @@ import time
 import uuid
 from typing import Any, Dict, Optional
 
+from celery.exceptions import SoftTimeLimitExceeded
+
 from ..core.celery_app import celery_app, get_task_priority
+from ..core.config import settings
 from ..core.logging import get_logger
 from ..services.ats_scoring_service import ats_scoring_service
 from ..workers.event_publisher import publish_event, publish_job_result
@@ -27,6 +30,8 @@ logger = get_logger(__name__)
     name="app.workers.ats_worker.score_resume_ats_task",
     max_retries=2,
     default_retry_delay=60,
+    time_limit=60,
+    soft_time_limit=50,
 )
 def score_resume_ats_task(
     self,
@@ -128,6 +133,16 @@ def score_resume_ats_task(
             f"{scoring_result.overall_score:.1f}/100"
         )
         return result
+
+    except SoftTimeLimitExceeded:
+        logger.error(f"ATS task {task_id} exceeded soft time limit for job {job_id}")
+        publish_event(job_id, "job.failed", {
+            "stage": "ats_scoring",
+            "error_code": "timeout",
+            "error_message": "Task exceeded time limit",
+            "retryable": False,
+        })
+        return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
 
     except Exception as exc:
         logger.error(f"ATS task {task_id} raised: {exc}")
@@ -419,7 +434,7 @@ async def _async_deep_analyze(
     job_id: str,
     job_description: Optional[str],
     api_key: Optional[str],
-) -> None:
+) -> bool:
     """Async implementation of deep analysis task."""
     import time
 
@@ -441,7 +456,7 @@ async def _async_deep_analyze(
             "error_message": "Could not extract text from LaTeX content",
             "retryable": False,
         })
-        return
+        return False
 
     publish_event(job_id, "job.progress", {
         "percent": 20,
@@ -463,7 +478,6 @@ async def _async_deep_analyze(
         )
 
     # Call OpenAI
-    from ..core.config import settings
     resolved_key = api_key or settings.OPENAI_API_KEY
     if not resolved_key:
         publish_event(job_id, "job.failed", {
@@ -472,7 +486,7 @@ async def _async_deep_analyze(
             "error_message": "No OpenAI API key configured",
             "retryable": False,
         })
-        return
+        return False
 
     client = AsyncOpenAI(api_key=resolved_key)
 
@@ -483,7 +497,7 @@ async def _async_deep_analyze(
     })
 
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.OPENAI_MODEL,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": "You are an expert resume analyst. Return only valid JSON."},
@@ -550,6 +564,7 @@ async def _async_deep_analyze(
     })
 
     logger.info(f"Deep analysis complete for job {job_id}: {result.get('overall_score')}/100")
+    return True
 
 
 @celery_app.task(
@@ -558,6 +573,8 @@ async def _async_deep_analyze(
     queue="ats",
     max_retries=1,
     default_retry_delay=30,
+    time_limit=120,
+    soft_time_limit=100,
 )
 def deep_analyze_ats_task(
     self,
@@ -577,8 +594,18 @@ def deep_analyze_ats_task(
     logger.info(f"Deep ATS analysis starting for job {job_id}")
 
     try:
-        asyncio.run(_async_deep_analyze(self, latex_content, job_id, job_description, api_key))
-        return {"success": True, "job_id": job_id}
+        success = asyncio.run(_async_deep_analyze(self, latex_content, job_id, job_description, api_key))
+        return {"success": bool(success), "job_id": job_id}
+    except SoftTimeLimitExceeded:
+        logger.error(f"Deep ATS analysis exceeded soft time limit for job {job_id}")
+        publish_event(job_id, "job.failed", {
+            "stage": "deep_analysis",
+            "error_code": "timeout",
+            "error_message": "Task exceeded time limit",
+            "retryable": False,
+        })
+        return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
+
     except Exception as exc:
         logger.error(f"Deep ATS analysis failed for job {job_id}: {exc}")
         retryable = self.request.retries < self.max_retries
@@ -607,6 +634,7 @@ async def _async_embed_resume(resume_id: str, latex_content: str) -> None:
 
 
 @celery_app.task(
+    bind=True,
     name="app.workers.ats_worker.embed_resume_task",
     queue="ats",
     max_retries=2,
@@ -614,6 +642,7 @@ async def _async_embed_resume(resume_id: str, latex_content: str) -> None:
     priority=1,
 )
 def embed_resume_task(
+    self,
     resume_id: str,
     latex_content: str,
     user_id: Optional[str] = None,
@@ -622,7 +651,6 @@ def embed_resume_task(
     Fire-and-forget task to compute and store the embedding for a resume.
     Priority=1 (low) so it doesn't compete with interactive tasks.
     """
-    from ..core.config import settings
     if not settings.OPENAI_API_KEY:
         return {"skipped": True, "reason": "no_api_key"}
 
@@ -631,4 +659,6 @@ def embed_resume_task(
         return {"success": True, "resume_id": resume_id}
     except Exception as exc:
         logger.error(f"embed_resume_task failed for {resume_id}: {exc}")
+        if self.request.retries < self.max_retries:
+            raise self.retry(countdown=60, exc=exc)
         return {"success": False, "resume_id": resume_id, "error": str(exc)}

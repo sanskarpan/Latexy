@@ -35,3 +35,11 @@ class TestHealth:
         assert "openapi" in spec
         assert "info" in spec
         assert spec["info"]["title"] == "Latexy-Backend"
+
+    async def test_health_endpoint_returns_expected_fields(self, client: AsyncClient):
+        """Health endpoint should always return success=True with expected schema."""
+        response = await client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert "status" in data
+        assert data["status"] in ("ok", "healthy", "degraded")

@@ -1,5 +1,18 @@
 """
 Cleanup worker for Phase 8 - File and job cleanup tasks.
+
+State updates (set_job_status / set_job_progress / set_job_result) have been
+migrated from asyncio.run(job_status_manager.*()) to the synchronous
+publish_event() / publish_job_result() helpers in event_publisher.
+
+The cleanup tasks create synthetic job_ids (cleanup_{task_id},
+job_cleanup_{task_id}, health_check_{task_id}) purely for internal progress
+tracking.  These ids are NOT user-facing WebSocket channels, so the events
+published here will not be consumed by any frontend client.
+
+Async job_status_manager calls are still used for READ operations
+(get_active_jobs, get_job_status, delete_job_data, health_check) because
+event_publisher only provides write helpers.
 """
 
 import asyncio
@@ -13,6 +26,7 @@ from ..core.celery_app import celery_app
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.redis import job_status_manager, redis_manager
+from ..workers.event_publisher import publish_event, publish_job_result
 
 logger = get_logger(__name__)
 
@@ -42,24 +56,21 @@ def cleanup_temp_files_task(
 
     try:
         # Set initial status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "processing",
-            {
-                "task_id": task_id,
-                "max_age_hours": max_age_hours,
-                "target_directory": target_directory,
-                "started_at": time.time(),
-                "metadata": metadata or {}
-            }
-        ))
+        publish_event(job_id, "job.started", {
+            "worker_id": f"cleanup-{task_id}",
+            "stage": "temp_file_cleanup",
+            "task_id": task_id,
+            "max_age_hours": max_age_hours,
+            "target_directory": target_directory,
+            "started_at": time.time(),
+        })
 
         # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            10,
-            "Scanning for temporary files"
-        ))
+        publish_event(job_id, "job.progress", {
+            "percent": 10,
+            "stage": "temp_file_cleanup",
+            "message": "Scanning for temporary files",
+        })
 
         # Determine target directory
         cleanup_dir = Path(target_directory) if target_directory else settings.TEMP_DIR
@@ -82,8 +93,16 @@ def cleanup_temp_files_task(
                 "completed_at": time.time()
             }
 
-            asyncio.run(job_status_manager.set_job_status(job_id, "completed", {"success": True}))
-            asyncio.run(job_status_manager.set_job_result(job_id, result_data))
+            publish_event(job_id, "job.completed", {
+                "pdf_job_id": job_id,
+                "ats_score": 0.0,
+                "ats_details": {},
+                "changes_made": [],
+                "compilation_time": 0.0,
+                "optimization_time": 0.0,
+                "tokens_used": 0,
+            })
+            publish_job_result(job_id, result_data)
             return result_data
 
         # Calculate cutoff time
@@ -91,11 +110,11 @@ def cleanup_temp_files_task(
         cutoff_timestamp = cutoff_time.timestamp()
 
         # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            30,
-            f"Cleaning files older than {max_age_hours} hours"
-        ))
+        publish_event(job_id, "job.progress", {
+            "percent": 30,
+            "stage": "temp_file_cleanup",
+            "message": f"Cleaning files older than {max_age_hours} hours",
+        })
 
         # Scan and clean files
         files_deleted = 0
@@ -130,11 +149,11 @@ def cleanup_temp_files_task(
             errors.append(f"Scan error: {e}")
 
         # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            80,
-            f"Cleanup completed: {files_deleted} files deleted"
-        ))
+        publish_event(job_id, "job.progress", {
+            "percent": 80,
+            "stage": "temp_file_cleanup",
+            "message": f"Cleanup completed: {files_deleted} files deleted",
+        })
 
         # Clean up empty parent directories
         try:
@@ -167,27 +186,23 @@ def cleanup_temp_files_task(
         }
 
         # Set final status and result
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "completed",
-            {
-                "task_id": task_id,
-                "completed_at": time.time(),
-                "files_deleted": files_deleted,
-                "directories_deleted": directories_deleted,
-                "space_freed": space_freed,
-                "success": True
-            }
-        ))
-
-        asyncio.run(job_status_manager.set_job_result(job_id, result_data))
+        publish_job_result(job_id, result_data)
+        publish_event(job_id, "job.completed", {
+            "pdf_job_id": job_id,
+            "ats_score": 0.0,
+            "ats_details": {},
+            "changes_made": [],
+            "compilation_time": 0.0,
+            "optimization_time": 0.0,
+            "tokens_used": 0,
+        })
 
         # Final progress update
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            100,
-            "Cleanup task completed"
-        ))
+        publish_event(job_id, "job.progress", {
+            "percent": 100,
+            "stage": "temp_file_cleanup",
+            "message": "Cleanup task completed",
+        })
 
         logger.info(f"Temp files cleanup task {task_id} completed: {files_deleted} files, {space_freed} bytes freed")
         return result_data
@@ -208,17 +223,13 @@ def cleanup_temp_files_task(
         }
 
         # Set error status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "failed",
-            {
-                "task_id": task_id,
-                "error": str(e),
-                "completed_at": time.time()
-            }
-        ))
-
-        asyncio.run(job_status_manager.set_job_result(job_id, error_data))
+        publish_event(job_id, "job.failed", {
+            "stage": "temp_file_cleanup",
+            "error_code": "internal",
+            "error_message": str(e),
+            "retryable": False,
+        })
+        publish_job_result(job_id, error_data)
 
         return error_data
 
@@ -248,26 +259,23 @@ def cleanup_expired_jobs_task(
 
     try:
         # Set initial status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "processing",
-            {
-                "task_id": task_id,
-                "max_age_hours": max_age_hours,
-                "batch_size": batch_size,
-                "started_at": time.time(),
-                "metadata": metadata or {}
-            }
-        ))
+        publish_event(job_id, "job.started", {
+            "worker_id": f"job-cleanup-{task_id}",
+            "stage": "expired_job_cleanup",
+            "task_id": task_id,
+            "max_age_hours": max_age_hours,
+            "batch_size": batch_size,
+            "started_at": time.time(),
+        })
 
         # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            10,
-            "Scanning for expired jobs"
-        ))
+        publish_event(job_id, "job.progress", {
+            "percent": 10,
+            "stage": "expired_job_cleanup",
+            "message": "Scanning for expired jobs",
+        })
 
-        # Get all active job IDs
+        # Get all active job IDs (READ operation — still uses async manager)
         active_jobs = asyncio.run(job_status_manager.get_active_jobs())
 
         if not active_jobs:
@@ -286,19 +294,27 @@ def cleanup_expired_jobs_task(
                 "completed_at": time.time()
             }
 
-            asyncio.run(job_status_manager.set_job_status(job_id, "completed", {"success": True}))
-            asyncio.run(job_status_manager.set_job_result(job_id, result_data))
+            publish_event(job_id, "job.completed", {
+                "pdf_job_id": job_id,
+                "ats_score": 0.0,
+                "ats_details": {},
+                "changes_made": [],
+                "compilation_time": 0.0,
+                "optimization_time": 0.0,
+                "tokens_used": 0,
+            })
+            publish_job_result(job_id, result_data)
             return result_data
 
         # Calculate cutoff time
         cutoff_time = time.time() - (max_age_hours * 3600)
 
         # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            30,
-            f"Processing {len(active_jobs)} jobs"
-        ))
+        publish_event(job_id, "job.progress", {
+            "percent": 30,
+            "stage": "expired_job_cleanup",
+            "message": f"Processing {len(active_jobs)} jobs",
+        })
 
         jobs_cleaned = 0
         jobs_scanned = 0
@@ -333,11 +349,11 @@ def cleanup_expired_jobs_task(
 
             # Update progress
             progress = 30 + int((i / len(active_jobs)) * 60)
-            asyncio.run(job_status_manager.set_job_progress(
-                job_id,
-                progress,
-                f"Processed {min(i + batch_size, len(active_jobs))}/{len(active_jobs)} jobs"
-            ))
+            publish_event(job_id, "job.progress", {
+                "percent": progress,
+                "stage": "expired_job_cleanup",
+                "message": f"Processed {min(i + batch_size, len(active_jobs))}/{len(active_jobs)} jobs",
+            })
 
         # Prepare result data
         result_data = {
@@ -355,26 +371,23 @@ def cleanup_expired_jobs_task(
         }
 
         # Set final status and result
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "completed",
-            {
-                "task_id": task_id,
-                "completed_at": time.time(),
-                "jobs_cleaned": jobs_cleaned,
-                "total_jobs_scanned": jobs_scanned,
-                "success": True
-            }
-        ))
-
-        asyncio.run(job_status_manager.set_job_result(job_id, result_data))
+        publish_job_result(job_id, result_data)
+        publish_event(job_id, "job.completed", {
+            "pdf_job_id": job_id,
+            "ats_score": 0.0,
+            "ats_details": {},
+            "changes_made": [],
+            "compilation_time": 0.0,
+            "optimization_time": 0.0,
+            "tokens_used": 0,
+        })
 
         # Final progress update
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            100,
-            "Job cleanup task completed"
-        ))
+        publish_event(job_id, "job.progress", {
+            "percent": 100,
+            "stage": "expired_job_cleanup",
+            "message": "Job cleanup task completed",
+        })
 
         logger.info(f"Expired jobs cleanup task {task_id} completed: {jobs_cleaned}/{jobs_scanned} jobs cleaned")
         return result_data
@@ -394,17 +407,13 @@ def cleanup_expired_jobs_task(
         }
 
         # Set error status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "failed",
-            {
-                "task_id": task_id,
-                "error": str(e),
-                "completed_at": time.time()
-            }
-        ))
-
-        asyncio.run(job_status_manager.set_job_result(job_id, error_data))
+        publish_event(job_id, "job.failed", {
+            "stage": "expired_job_cleanup",
+            "error_code": "internal",
+            "error_message": str(e),
+            "retryable": False,
+        })
+        publish_job_result(job_id, error_data)
 
         return error_data
 
@@ -430,32 +439,29 @@ def health_check_task(
 
     try:
         # Set initial status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "processing",
-            {
-                "task_id": task_id,
-                "started_at": time.time(),
-                "metadata": metadata or {}
-            }
-        ))
+        publish_event(job_id, "job.started", {
+            "worker_id": f"health-check-{task_id}",
+            "stage": "health_check",
+            "task_id": task_id,
+            "started_at": time.time(),
+        })
 
         # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            20,
-            "Checking Redis connections"
-        ))
+        publish_event(job_id, "job.progress", {
+            "percent": 20,
+            "stage": "health_check",
+            "message": "Checking Redis connections",
+        })
 
-        # Check Redis health
+        # Check Redis health (READ operation — still uses async manager)
         redis_health = asyncio.run(redis_manager.health_check())
 
         # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            50,
-            "Checking disk space"
-        ))
+        publish_event(job_id, "job.progress", {
+            "percent": 50,
+            "stage": "health_check",
+            "message": "Checking disk space",
+        })
 
         # Check disk space
         temp_dir = settings.TEMP_DIR
@@ -465,13 +471,13 @@ def health_check_task(
         disk_used_percent = ((disk_usage.total - disk_usage.free) / disk_usage.total) * 100
 
         # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            80,
-            "Checking active jobs"
-        ))
+        publish_event(job_id, "job.progress", {
+            "percent": 80,
+            "stage": "health_check",
+            "message": "Checking active jobs",
+        })
 
-        # Check active jobs count
+        # Check active jobs count (READ operation — still uses async manager)
         active_jobs = asyncio.run(job_status_manager.get_active_jobs())
         active_jobs_count = len(active_jobs)
 
@@ -509,26 +515,23 @@ def health_check_task(
         }
 
         # Set final status and result
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "completed",
-            {
-                "task_id": task_id,
-                "completed_at": time.time(),
-                "overall_health": overall_health,
-                "health_issues_count": len(health_issues),
-                "success": True
-            }
-        ))
-
-        asyncio.run(job_status_manager.set_job_result(job_id, result_data))
+        publish_job_result(job_id, result_data)
+        publish_event(job_id, "job.completed", {
+            "pdf_job_id": job_id,
+            "ats_score": 0.0,
+            "ats_details": {},
+            "changes_made": [],
+            "compilation_time": 0.0,
+            "optimization_time": 0.0,
+            "tokens_used": 0,
+        })
 
         # Final progress update
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            100,
-            "Health check completed"
-        ))
+        publish_event(job_id, "job.progress", {
+            "percent": 100,
+            "stage": "health_check",
+            "message": "Health check completed",
+        })
 
         logger.info(f"Health check task {task_id} completed: {overall_health}")
         return result_data
@@ -547,17 +550,13 @@ def health_check_task(
         }
 
         # Set error status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "failed",
-            {
-                "task_id": task_id,
-                "error": str(e),
-                "completed_at": time.time()
-            }
-        ))
-
-        asyncio.run(job_status_manager.set_job_result(job_id, error_data))
+        publish_event(job_id, "job.failed", {
+            "stage": "health_check",
+            "error_code": "internal",
+            "error_message": str(e),
+            "retryable": False,
+        })
+        publish_job_result(job_id, error_data)
 
         return error_data
 

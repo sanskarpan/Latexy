@@ -16,6 +16,29 @@ TEST_TRIAL_LIMIT = 100
 COOLDOWN_PERIOD = 300  # 5 minutes in seconds
 MAX_DAILY_REQUESTS = 10
 
+
+async def get_trial_limit_for_user(user_id: Optional[str], db: AsyncSession) -> int:
+    """Return TEST_TRIAL_LIMIT for known test users, else the standard TRIAL_LIMIT.
+
+    Imported by routes that need to resolve the effective limit for a user
+    without duplicating the lookup logic inline.
+    """
+    from ..core.config import settings
+    from ..database.models import User
+
+    if not user_id or not settings.TEST_USER_EMAILS:
+        return TRIAL_LIMIT
+    try:
+        result = await db.execute(select(User.email).where(User.id == user_id))
+        row = result.scalar_one_or_none()
+        if row:
+            test_emails = [e.strip().lower() for e in settings.TEST_USER_EMAILS.split(",") if e.strip()]
+            if row.lower() in test_emails:
+                return TEST_TRIAL_LIMIT
+    except Exception as exc:
+        logger.warning(f"Failed to look up trial limit for user {user_id}: {exc}")
+    return TRIAL_LIMIT
+
 class TrialService:
     """Service for managing device trials and usage tracking."""
 
@@ -139,6 +162,117 @@ class TrialService:
                 "allowed": True,
                 "reason": None,
                 "waitTime": None
+            }
+
+    async def check_and_track_usage(
+        self,
+        db: AsyncSession,
+        device_fingerprint: str,
+        action: str,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        session_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        limit: int = TRIAL_LIMIT,
+    ) -> Dict[str, Any]:
+        """Atomically check trial limit and increment usage in one transaction.
+
+        Uses SELECT FOR UPDATE to prevent concurrent requests from both passing
+        the limit check before either increments the counter (TOCTOU race).
+
+        Returns a dict with ``success`` bool and, on failure, an ``error`` key
+        describing the reason (mirrors ``track_usage`` return shape).
+        """
+        try:
+            now = datetime.now(timezone.utc)
+
+            async with db.begin_nested():
+                # Lock the row so concurrent requests queue up here
+                result = await db.execute(
+                    select(DeviceTrial)
+                    .where(DeviceTrial.device_fingerprint == device_fingerprint)
+                    .with_for_update()
+                )
+                trial = result.scalar_one_or_none()
+
+                if trial is None:
+                    # First-ever request from this device — create the record
+                    trial = DeviceTrial(
+                        device_fingerprint=device_fingerprint,
+                        ip_address=ip_address,
+                        session_id=session_id,
+                        usage_count=0,
+                        blocked=False,
+                    )
+                    db.add(trial)
+                    # Flush so the object gets an id and is visible within the
+                    # savepoint before we check the count below.
+                    await db.flush()
+
+                # Check cooldown
+                if trial.last_used:
+                    time_since_last = (now - trial.last_used).total_seconds()
+                    if time_since_last < COOLDOWN_PERIOD:
+                        return {
+                            "success": False,
+                            "error": "cooldown",
+                            "waitTime": COOLDOWN_PERIOD - time_since_last,
+                        }
+
+                # Check blocked flag
+                if trial.blocked:
+                    return {
+                        "success": False,
+                        "error": "blocked",
+                        "waitTime": None,
+                    }
+
+                # Atomic limit check — no other transaction can have incremented
+                # between our SELECT FOR UPDATE and this point
+                if trial.usage_count >= limit:
+                    return {
+                        "success": False,
+                        "error": "trial_limit_exceeded",
+                        "waitTime": None,
+                    }
+
+                # Safe to increment
+                trial.usage_count += 1
+                trial.last_used = now
+                trial.session_id = session_id or trial.session_id
+                trial.ip_address = ip_address or trial.ip_address
+
+                if trial.usage_count >= TRIAL_LIMIT:
+                    trial.blocked = True
+
+                # Analytics record inside the same savepoint
+                analytics = UsageAnalytics(
+                    device_fingerprint=device_fingerprint,
+                    action=action,
+                    resource_type=resource_type,
+                    event_metadata=metadata,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                )
+                db.add(analytics)
+
+            # Outer commit (caller's transaction boundary)
+            await db.commit()
+
+            return {
+                "success": True,
+                "usageCount": trial.usage_count,
+                "remainingUses": max(0, limit - trial.usage_count),
+                "blocked": trial.blocked,
+            }
+
+        except Exception as e:
+            logger.error(f"Error in check_and_track_usage: {e}")
+            await db.rollback()
+            return {
+                "success": False,
+                "error": "tracking_failed",
             }
 
     async def track_usage(

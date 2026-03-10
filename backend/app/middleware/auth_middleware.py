@@ -88,7 +88,7 @@ class _LegacyJWTValidator:
 
 
 _jwt_validator = _LegacyJWTValidator(
-    secret_key=settings.JWT_SECRET_KEY or "change-me-in-production"
+    secret_key=settings.JWT_SECRET_KEY
 )
 
 # Expose for callers that still reference auth_middleware.is_admin()

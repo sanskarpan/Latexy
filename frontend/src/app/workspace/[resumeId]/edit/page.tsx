@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -34,6 +34,7 @@ import { Brain } from 'lucide-react'
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
+type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
 // ─── Outline ────────────────────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ function OutlinePanel({
   latex: string
   onJump: (line: number) => void
 }) {
-  const items = buildOutline(latex)
+  const items = useMemo(() => buildOutline(latex), [latex])
 
   if (items.length === 0) {
     return (
@@ -199,6 +200,48 @@ function LevelSelector({
   )
 }
 
+function ModelSelector({
+  value,
+  onChange,
+  compact = false,
+}: {
+  value: AIModel
+  onChange: (v: AIModel) => void
+  compact?: boolean
+}) {
+  const models: { id: AIModel; label: string; desc: string }[] = [
+    { id: 'gpt-4o-mini', label: 'Fast', desc: 'Quick & cost-efficient.' },
+    { id: 'gpt-4o', label: 'Best', desc: 'Higher quality rewrites.' },
+  ]
+  return (
+    <div>
+      <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+        Model
+      </label>
+      <div className="grid grid-cols-2 gap-1 rounded-xl border border-white/[0.06] bg-black/30 p-1">
+        {models.map((m) => (
+          <button
+            key={m.id}
+            onClick={() => onChange(m.id)}
+            className={`rounded-lg py-2 text-[11px] font-medium transition ${
+              value === m.id
+                ? 'bg-violet-500/25 text-violet-200 ring-1 ring-violet-400/30'
+                : 'text-zinc-600 hover:text-zinc-300'
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {!compact && (
+        <p className="mt-1.5 text-[10px] text-zinc-700">
+          {models.find((m) => m.id === value)?.desc}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function JDInput({
   value,
   onChange,
@@ -246,9 +289,15 @@ function SectionSelector({
   const allSelected = selected.length === 0 || selected.length === allLabels.length
 
   const toggle = (label: string) => {
-    if (selected.includes(label)) {
-      const next = selected.filter((s) => s !== label)
-      onChange(next.length === allLabels.length ? [] : next)
+    const isChecked = selected.length === 0 || selected.includes(label)
+    if (isChecked) {
+      if (selected.length === 0) {
+        // All were selected — now select all except this one
+        onChange(allLabels.filter((l) => l !== label))
+      } else {
+        const next = selected.filter((s) => s !== label)
+        onChange(next.length === allLabels.length ? [] : next)
+      }
     } else {
       const next = [...selected, label]
       onChange(next.length === allLabels.length ? [] : next)
@@ -318,6 +367,8 @@ interface AIPanelProps {
   customInstructions: string
   setCustomInstructions: (v: string) => void
   onOpenDeepAnalysis: () => void
+  model: AIModel
+  setModel: (v: AIModel) => void
 }
 
 function AIPanel({
@@ -338,6 +389,8 @@ function AIPanel({
   customInstructions,
   setCustomInstructions,
   onOpenDeepAnalysis,
+  model,
+  setModel,
 }: AIPanelProps) {
   const isDone = !isRunning && aiStream.status === 'completed'
   const isFailed = !isRunning && aiStream.status === 'failed'
@@ -452,6 +505,7 @@ function AIPanel({
             Settings for next run
           </p>
           <LevelSelector value={optLevel} onChange={setOptLevel} compact />
+          <ModelSelector value={model} onChange={setModel} compact />
           <JDInput value={jobDescription} onChange={setJobDescription} compact />
         </div>
       )}
@@ -525,6 +579,7 @@ function AIPanel({
             </div>
           )}
 
+          <ModelSelector value={model} onChange={setModel} />
           <LevelSelector value={optLevel} onChange={setOptLevel} />
           <JDInput value={jobDescription} onChange={setJobDescription} />
 
@@ -694,6 +749,7 @@ export default function ResumeEditPage() {
   const [aiJobId, setAiJobId] = useState<string | null>(null)
   const [jobDescription, setJobDescription] = useState('')
   const [optLevel, setOptLevel] = useState<OptLevel>('balanced')
+  const [model, setModel] = useState<AIModel>('gpt-4o-mini')
   const [isAiSubmitting, setIsAiSubmitting] = useState(false)
   // Feature 2: Multi-level undo stack (replaces single baselineLatex)
   const [undoStack, setUndoStack] = useState<Array<{ label: string; latex: string }>>([])
@@ -892,8 +948,6 @@ export default function ResumeEditPage() {
 
   const runAiOptimize = async () => {
     const content = editorRef.current?.getValue() || latexContent
-    // Feature 2: push to undo stack before AI changes the editor
-    pushUndo('Before AI optimization')
     setIsAiSubmitting(true)
     try {
       const r = await apiClient.optimizeAndCompile({
@@ -904,8 +958,10 @@ export default function ResumeEditPage() {
         // Feature 3: pass section and instruction filters
         target_sections: targetSections.length > 0 ? targetSections : undefined,
         custom_instructions: customInstructions.trim() || undefined,
+        model,
       })
       if (!r.success || !r.job_id) throw new Error(r.message)
+      pushUndo('Before AI optimization')
       setAiJobId(r.job_id)
       toast.success('AI optimization started')
     } catch (e) {
@@ -1206,7 +1262,6 @@ export default function ResumeEditPage() {
               <PDFPreview
                 pdfUrl={pdfUrl}
                 isLoading={isAnyRunning}
-                onDownload={handleDownload}
                 jobId={activePdfJobId.current}
                 onSyncToSource={handleSyncToSource}
                 syncFromLine={cursorLine}
@@ -1232,6 +1287,8 @@ export default function ResumeEditPage() {
                 customInstructions={customInstructions}
                 setCustomInstructions={setCustomInstructions}
                 onOpenDeepAnalysis={handleOpenDeepAnalysis}
+                model={model}
+                setModel={setModel}
               />
             )}
 

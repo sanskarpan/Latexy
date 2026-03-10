@@ -73,7 +73,10 @@ export default function PDFPreview({
     setRenderError(false)
   }, [])
 
-  // Fetch and parse synctex when jobId changes
+  // Fetch and parse synctex when jobId changes.
+  // prevJobIdRef is component-instance-scoped (via useRef), so it resets to null on
+  // every fresh mount — meaning a remounted component with the same jobId will still
+  // trigger a fresh fetch. This is intentional: stale synctex data is cleared on unmount.
   useEffect(() => {
     if (!jobId || jobId === prevJobIdRef.current) return
     prevJobIdRef.current = jobId
@@ -177,6 +180,7 @@ export default function PDFPreview({
   )
 
   const storePagDims = useCallback((pageNumber: number, page: any) => {
+    if (!page) return
     const vp = page.getViewport({ scale: 1 })
     pageDimsRef.current[pageNumber] = {
       naturalWidth: vp.width,
@@ -212,6 +216,8 @@ export default function PDFPreview({
           <button
             onClick={handleZoomOut}
             disabled={zoom <= 0.4}
+            aria-label="Zoom out"
+            title="Zoom out"
             className="rounded p-1 text-zinc-500 transition hover:bg-white/10 hover:text-zinc-200 disabled:opacity-30"
           >
             <ZoomOut size={13} />
@@ -222,6 +228,8 @@ export default function PDFPreview({
           <button
             onClick={handleZoomIn}
             disabled={zoom >= 3}
+            aria-label="Zoom in"
+            title="Zoom in"
             className="rounded p-1 text-zinc-500 transition hover:bg-white/10 hover:text-zinc-200 disabled:opacity-30"
           >
             <ZoomIn size={13} />
@@ -281,8 +289,8 @@ export default function PDFPreview({
               <div
                 key={pageNum}
                 ref={(el) => { pageRefs.current[pageNum] = el }}
-                className="shadow-[0_4px_24px_rgba(0,0,0,0.5)]"
-                style={{ lineHeight: 0, cursor: synctexReady ? 'crosshair' : 'default' }}
+                className="shadow-[0_4px_24px_rgba(0,0,0,0.5)] select-text"
+                style={{ lineHeight: 0 }}
                 onClick={(e) => handlePageClick(e, pageNum)}
               >
                 <Page

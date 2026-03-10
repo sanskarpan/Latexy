@@ -19,12 +19,14 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: latexy-frontend:latest
+        image: ghcr.io/your-org/latexy-frontend:latest
         ports:
-        - containerPort: 3000
+        - containerPort: 5180
         env:
         - name: NODE_ENV
           value: "production"
+        - name: PORT
+          value: "5180"
         - name: NEXT_PUBLIC_API_URL
           valueFrom:
             configMapKeyRef:
@@ -45,13 +47,13 @@ spec:
         livenessProbe:
           httpGet:
             path: /
-            port: 3000
+            port: 5180
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /
-            port: 3000
+            port: 5180
           initialDelaySeconds: 5
           periodSeconds: 5
       imagePullSecrets:
@@ -69,6 +71,6 @@ spec:
     app: latexy-frontend
   ports:
   - port: 80
-    targetPort: 3000
+    targetPort: 5180
     protocol: TCP
   type: ClusterIP

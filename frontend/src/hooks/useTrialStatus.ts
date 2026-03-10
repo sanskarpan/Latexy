@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { apiClient, generateDeviceFingerprint } from '@/lib/api-client'
+import { apiClient, getDeviceFingerprint } from '@/lib/api-client'
 
 export interface TrialStatus {
   used: number
@@ -24,7 +24,7 @@ export function useTrialStatus() {
   const [loading, setLoading] = useState(true)
 
   const fetchStatus = useCallback(async () => {
-    const fp = generateDeviceFingerprint()
+    const fp = getDeviceFingerprint()
     try {
       const res = await apiClient.getTrialStatus(fp)
       const used = res.usageCount

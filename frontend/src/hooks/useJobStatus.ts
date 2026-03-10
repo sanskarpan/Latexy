@@ -6,7 +6,7 @@
  * REST polling fallback via apiClient.getJobState() when WS is unavailable.
  */
 
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { apiClient } from '@/lib/api-client'
 import { useJobStream } from '@/hooks/useJobStream'
 
@@ -52,25 +52,34 @@ export function useJobStatus(
 ): UseJobStatusResult {
   const { onStatusChange, onComplete, onError } = options
 
+  const onStatusChangeRef = useRef(onStatusChange)
+  const onCompleteRef = useRef(onComplete)
+  const onErrorRef = useRef(onError)
+
+  // Keep refs current
+  useEffect(() => { onStatusChangeRef.current = onStatusChange }, [onStatusChange])
+  useEffect(() => { onCompleteRef.current = onComplete }, [onComplete])
+  useEffect(() => { onErrorRef.current = onError }, [onError])
+
   const { state, cancel: streamCancel } = useJobStream(jobId)
 
   // ── Fire callbacks on state transitions ─────────────────────────
   useEffect(() => {
     if (!jobId || state.status === 'idle') return
 
-    if (onStatusChange) {
-      onStatusChange({
+    if (onStatusChangeRef.current) {
+      onStatusChangeRef.current({
         status: state.status,
         percent: state.percent,
         stage: state.stage,
       })
     }
-  }, [state.status, state.stage, state.percent]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [jobId, state.status, state.stage, state.percent])
 
   useEffect(() => {
     if (!jobId || state.status !== 'completed') return
-    if (onComplete) {
-      onComplete({
+    if (onCompleteRef.current) {
+      onCompleteRef.current({
         job_id: state.pdfJobId ?? jobId,
         success: true,
         result: {
@@ -88,12 +97,13 @@ export function useJobStatus(
         } as Record<string, unknown>,
       })
     }
-  }, [state.status]) // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, state.status])
 
   useEffect(() => {
     if (!jobId || state.status !== 'failed' || !state.error) return
-    if (onError) onError(state.error)
-  }, [state.status, state.error]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (onErrorRef.current) onErrorRef.current(state.error)
+  }, [jobId, state.status, state.error])
 
   // ── REST polling fallback ────────────────────────────────────────
   const refresh = useCallback(async () => {
@@ -104,6 +114,15 @@ export function useJobStatus(
       // Ignore — WebSocket is the primary update mechanism
     }
   }, [jobId])
+
+  // Poll every 5s when job is active (fallback when WS has not connected yet)
+  useEffect(() => {
+    if (!jobId || (state.status !== 'queued' && state.status !== 'processing')) return
+    const interval = setInterval(() => {
+      refresh()
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [jobId, state.status, refresh])
 
   const cancel = useCallback(async () => {
     if (!jobId) return

@@ -2,6 +2,7 @@
 Application configuration settings.
 """
 
+import os
 from pathlib import Path
 from typing import List
 
@@ -90,6 +91,9 @@ class Settings(BaseSettings):
 
     # Comma-separated list of emails that get TEST_TRIAL_LIMIT instead of TRIAL_LIMIT
     TEST_USER_EMAILS: str = Field(default="", description="Comma-separated test user emails with elevated trial quota")
+
+    # Number of free deep analysis uses per device (anonymous users)
+    DEEP_ANALYSIS_TRIAL_LIMIT: int = Field(default=2, description="Number of free deep analysis uses per device")
 
     # JWT Configuration
     JWT_SECRET_KEY: str = Field(default="", description="JWT secret key for token signing")
@@ -181,6 +185,23 @@ class Settings(BaseSettings):
             }
         }
     })
+
+    def model_post_init(self, __context) -> None:
+        """Validate required settings at startup."""
+        if os.environ.get("SKIP_ENV_VALIDATION") == "true":
+            return
+        missing = []
+        if not self.DATABASE_URL:
+            missing.append("DATABASE_URL")
+        if not self.BETTER_AUTH_SECRET:
+            missing.append("BETTER_AUTH_SECRET")
+        if not self.JWT_SECRET_KEY:
+            missing.append("JWT_SECRET_KEY")
+        if missing:
+            raise ValueError(
+                f"Missing required environment variables: {', '.join(missing)}. "
+                f"Copy backend/.env.example to backend/.env and fill in the values."
+            )
 
 
 # Global settings instance

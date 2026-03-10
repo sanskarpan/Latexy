@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { apiClient, type JobStateResponse, type ResumeResponse, type SemanticMatchResult } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -9,6 +10,7 @@ import SemanticMatchModal from '@/components/ats/SemanticMatchModal'
 
 export default function WorkspacePage() {
   const { data: session, isPending: sessionLoading } = useSession()
+  const router = useRouter()
   const [resumes, setResumes] = useState<ResumeResponse[]>([])
   const [jobs, setJobs] = useState<JobStateResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -20,16 +22,24 @@ export default function WorkspacePage() {
   const [matchError, setMatchError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!sessionLoading && !session) {
+      router.push('/login')
+    }
+  }, [session, sessionLoading, router])
+
+  useEffect(() => {
     if (!session) return
 
     const fetchData = async () => {
       setIsLoading(true)
       try {
         const [resumesData, jobsData] = await Promise.all([apiClient.listResumes(), apiClient.listJobs()])
-        setResumes(resumesData)
+        setResumes(Array.isArray(resumesData) ? resumesData : [])
         setJobs([...(jobsData.jobs || [])].sort((a, b) => b.last_updated - a.last_updated))
       } catch (error) {
-        console.error('Failed to fetch workspace data', error)
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Failed to fetch workspace data', error)
+        }
       } finally {
         setIsLoading(false)
       }
@@ -150,15 +160,15 @@ export default function WorkspacePage() {
                 <article key={resume.id} className="surface-card edge-highlight flex flex-col p-5">
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Resume</p>
-                    {matchMap[resume.id] && (
+                    {matchMap[resume.id] && matchMap[resume.id].similarity_score != null && (
                       <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${
-                        matchMap[resume.id].similarity_score >= 0.8
+                        (matchMap[resume.id].similarity_score as number) >= 0.8
                           ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20'
-                          : matchMap[resume.id].similarity_score >= 0.6
+                          : (matchMap[resume.id].similarity_score as number) >= 0.6
                           ? 'bg-amber-500/10 text-amber-300 ring-amber-400/20'
                           : 'bg-rose-500/10 text-rose-300 ring-rose-400/20'
                       }`}>
-                        {Math.round(matchMap[resume.id].similarity_score * 100)}% match
+                        {Math.round((matchMap[resume.id].similarity_score as number) * 100)}% match
                       </span>
                     )}
                   </div>
@@ -188,6 +198,7 @@ export default function WorkspacePage() {
                 <thead>
                   <tr className="border-b border-white/10 bg-white/[0.03] text-[11px] uppercase tracking-[0.14em] text-zinc-500">
                     <th className="px-4 py-3 font-semibold">Title</th>
+                    {matchResults.length > 0 && <th className="px-4 py-3 font-semibold text-right">Match</th>}
                     <th className="px-4 py-3 font-semibold text-right">Updated</th>
                     <th className="px-4 py-3 font-semibold text-right">Actions</th>
                   </tr>
@@ -200,6 +211,23 @@ export default function WorkspacePage() {
                           {resume.title}
                         </Link>
                       </td>
+                      {matchResults.length > 0 && (
+                        <td className="px-4 py-3 text-right">
+                          {matchMap[resume.id] && matchMap[resume.id].similarity_score != null ? (
+                            <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${
+                              (matchMap[resume.id].similarity_score as number) >= 0.8
+                                ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20'
+                                : (matchMap[resume.id].similarity_score as number) >= 0.6
+                                ? 'bg-amber-500/10 text-amber-300 ring-amber-400/20'
+                                : 'bg-rose-500/10 text-rose-300 ring-rose-400/20'
+                            }`}>
+                              {Math.round((matchMap[resume.id].similarity_score as number) * 100)}%
+                            </span>
+                          ) : (
+                            <span className="text-zinc-700">—</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-3 text-right text-sm text-zinc-400">{new Date(resume.updated_at).toLocaleDateString()}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex gap-2">

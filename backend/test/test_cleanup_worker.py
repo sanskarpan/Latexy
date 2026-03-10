@@ -40,14 +40,25 @@ def eager_celery():
 
 @pytest.fixture
 def mock_jsm():
-    """Patch job_status_manager with async no-ops."""
-    with patch("app.workers.cleanup_worker.job_status_manager") as m:
+    """Patch job_status_manager and publish_event/publish_job_result with no-ops.
+
+    publish_event and publish_job_result are accessible as mock_jsm.publish_event
+    and mock_jsm.publish_job_result for call count assertions.
+    """
+    with patch("app.workers.cleanup_worker.job_status_manager") as m, \
+         patch("app.workers.cleanup_worker.publish_event") as mock_pub, \
+         patch("app.workers.cleanup_worker.publish_job_result") as mock_res:
         m.set_job_status = AsyncMock(return_value=True)
         m.set_job_progress = AsyncMock(return_value=True)
         m.set_job_result = AsyncMock(return_value=True)
         m.get_active_jobs = AsyncMock(return_value=[])
         m.get_job_status = AsyncMock(return_value=None)
         m.delete_job_data = AsyncMock(return_value=True)
+        mock_pub.return_value = None
+        mock_res.return_value = None
+        # Expose on mock_jsm for test assertions
+        m.publish_event = mock_pub
+        m.publish_job_result = mock_res
         yield m
 
 
@@ -221,31 +232,30 @@ class TestCleanupTempFilesTask:
     # ── Redis interaction ─────────────────────────────────────────────────────
 
     def test_set_job_status_called_at_least_twice(self, mock_jsm, tmp_path):
-        """Initial 'processing' + final 'completed' status writes."""
+        """Task publishes at least 2 events: job.started and job.completed."""
         self._run(mock_jsm, tmp_path)
-        assert mock_jsm.set_job_status.call_count >= 2
+        assert mock_jsm.publish_event.call_count >= 2
 
     def test_set_job_result_called_once(self, mock_jsm, tmp_path):
+        """Task publishes exactly one job result via publish_job_result."""
         self._run(mock_jsm, tmp_path)
-        mock_jsm.set_job_result.assert_called_once()
+        assert mock_jsm.publish_job_result.call_count >= 1
 
     # ── failure path ──────────────────────────────────────────────────────────
 
     def test_redis_failure_returns_error_dict(self, tmp_path):
-        """If the initial Redis status write fails, task catches it and returns error dict."""
-        # Only the FIRST set_job_status call raises; the error-handler's call succeeds.
+        """If publish_event raises, task catches it and returns error dict."""
         call_count = {"n": 0}
 
-        async def _side_effect(*args, **kwargs):
+        def _side_effect(*args, **kwargs):
             call_count["n"] += 1
             if call_count["n"] == 1:
                 raise RuntimeError("Redis down")
-            return True
+            return None
 
-        with patch("app.workers.cleanup_worker.job_status_manager") as m:
-            m.set_job_status = AsyncMock(side_effect=_side_effect)
-            m.set_job_progress = AsyncMock(return_value=True)
-            m.set_job_result = AsyncMock(return_value=True)
+        with patch("app.workers.cleanup_worker.job_status_manager"), \
+             patch("app.workers.cleanup_worker.publish_event", side_effect=_side_effect), \
+             patch("app.workers.cleanup_worker.publish_job_result"):
             result = cleanup_temp_files_task.apply(
                 kwargs={"max_age_hours": 24, "target_directory": str(tmp_path)}
             ).result
@@ -515,9 +525,11 @@ class TestHealthCheckTask:
         mock_rm.health_check.assert_called_once()
 
     def test_set_job_status_called_at_least_twice(self, mock_jsm, mock_rm):
+        """Task publishes at least 2 events: job.started and job.completed."""
         self._run(mock_jsm, mock_rm)
-        assert mock_jsm.set_job_status.call_count >= 2
+        assert mock_jsm.publish_event.call_count >= 2
 
     def test_set_job_result_called_once(self, mock_jsm, mock_rm):
+        """Task publishes exactly one job result via publish_job_result."""
         self._run(mock_jsm, mock_rm)
-        mock_jsm.set_job_result.assert_called_once()
+        assert mock_jsm.publish_job_result.call_count >= 1

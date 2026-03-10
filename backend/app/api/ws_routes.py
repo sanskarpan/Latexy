@@ -37,6 +37,20 @@ ws_router = APIRouter()
 
 _HEARTBEAT_INTERVAL = 30  # seconds
 
+# Per-connection message rate limiting
+_ws_message_counts: dict = {}  # {connection_id: [timestamp, ...]}
+
+
+def _check_rate_limit(connection_id: str, max_per_second: int = 20) -> bool:
+    """Return True if within rate limit, False if exceeded."""
+    now = time.time()
+    timestamps = _ws_message_counts.get(connection_id, [])
+    # Keep only timestamps within the last second
+    timestamps = [t for t in timestamps if now - t < 1.0]
+    timestamps.append(now)
+    _ws_message_counts[connection_id] = timestamps
+    return len(timestamps) <= max_per_second
+
 
 @ws_router.websocket("/ws/jobs")
 async def jobs_websocket(websocket: WebSocket) -> None:
@@ -45,6 +59,7 @@ async def jobs_websocket(websocket: WebSocket) -> None:
     One client can subscribe to multiple jobs simultaneously.
     """
     await websocket.accept()
+    connection_id = str(uuid.uuid4())
     logger.info("WebSocket connection accepted")
 
     # Track which jobs this connection is subscribed to (for cleanup)
@@ -67,6 +82,11 @@ async def jobs_websocket(websocket: WebSocket) -> None:
             except Exception as exc:
                 logger.warning(f"WS receive error: {exc}")
                 break
+
+            # Rate limit: max 20 messages/second per connection
+            if not _check_rate_limit(connection_id):
+                await _send_error(websocket, "rate_limited", "Too many messages")
+                continue
 
             msg_type = data.get("type")
 
@@ -124,6 +144,7 @@ async def jobs_websocket(websocket: WebSocket) -> None:
             await heartbeat_task
         except asyncio.CancelledError:
             pass
+        _ws_message_counts.pop(connection_id, None)
         await event_bus.disconnect_all(websocket)
         logger.info("WebSocket connection closed")
 

@@ -5,42 +5,14 @@ import { ChevronDown } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/api-client'
+import { useSession } from '@/lib/auth-client'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useTrialStatus } from '@/hooks/useTrialStatus'
 import LaTeXEditor, { LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import DeepAnalysisPanel from '@/components/ats/DeepAnalysisPanel'
-
-const sampleLatex = `\\documentclass[11pt,a4paper]{article}
-\\usepackage[margin=0.72in]{geometry}
-\\usepackage{enumitem}
-\\setlist{nosep}
-
-\\begin{document}
-\\begin{center}
-{\\LARGE\\textbf{Alex Morgan}} \\\\
-\\vspace{1mm}
-Senior Software Engineer \\\\
-Email: alex@example.com | linkedin.com/in/alexmorgan
-\\end{center}
-
-\\section*{Summary}
-Product-focused engineer with 6+ years building resilient SaaS systems, developer tooling,
-and observability-first workflows.
-
-\\section*{Experience}
-\\textbf{Staff Engineer, Northbeam Labs} \\hfill 2022 - Present
-\\begin{itemize}
-\\item Led migration to event-driven backend reducing deployment risk by 35\\%
-\\item Built internal design system used across 6 product surfaces
-\\item Mentored 4 engineers and introduced measurable review standards
-\\end{itemize}
-
-\\section*{Skills}
-TypeScript, Next.js, Python, PostgreSQL, Redis, Kubernetes, AWS
-\\end{document}`
-
+import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
 const CATEGORY_LABELS: Record<string, string> = {
   formatting: 'Formatting',
   structure: 'Structure',
@@ -50,7 +22,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export default function TryPage() {
-  const [latexContent, setLatexContent] = useState(sampleLatex)
+  const [latexContent, setLatexContent] = useState(DEMO_RESUME_TEMPLATE)
   const [jobDescription, setJobDescription] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
@@ -67,6 +39,7 @@ export default function TryPage() {
   const { state: stream } = useJobStream(activeJobId)
   const { state: deepStream } = useJobStream(deepAnalysisJobId)
   const trialStatus = useTrialStatus()
+  const { data: session } = useSession()
 
   useEffect(() => {
     if (stream.streamingLatex && editorRef.current) {
@@ -114,10 +87,10 @@ export default function TryPage() {
   const runCompile = async (mode: 'compile' | 'combined') => {
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) { toast.error('LaTeX content is required'); return }
-    if (!trialStatus.canRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
+    if (!session && !trialStatus.canRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
     setIsSubmitting(true)
     try {
-      await apiClient.trackUsage(trialStatus.fingerprint, mode)
+      if (!session) await apiClient.trackUsage(trialStatus.fingerprint, mode)
       const response =
         mode === 'compile'
           ? await apiClient.compileLatex({ latex_content: currentContent, device_fingerprint: trialStatus.fingerprint })
@@ -129,7 +102,7 @@ export default function TryPage() {
             })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to submit job')
       setActiveJobId(response.job_id)
-      trialStatus.incrementUsage()
+      if (!session) trialStatus.incrementUsage()
       toast.success('Job submitted. Streaming updates live.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Submission failed')
@@ -140,7 +113,7 @@ export default function TryPage() {
 
   const handleDownload = async () => {
     const downloadId = stream.pdfJobId ?? activeJobId
-    if (!downloadId) { toast.error('No PDF is ready yet.'); return }
+    if (!downloadId) { toast.error('No PDF is ready yet'); return }
     try {
       const blob = await apiClient.downloadPdf(downloadId)
       const url = URL.createObjectURL(blob)
@@ -199,7 +172,7 @@ export default function TryPage() {
             ['Mode', 'Resume Studio'],
             ['Status', stream.status],
             ['Active Job', activeJobId ? `${activeJobId.slice(0, 12)}…` : 'None'],
-            ['Trials Left', String(trialStatus.remaining)],
+            ['Trials Left', session ? '∞' : String(trialStatus.remaining)],
           ].map(([k, v]) => (
             <article key={k} className="surface-card edge-highlight p-3">
               <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">{k}</p>
@@ -223,7 +196,7 @@ export default function TryPage() {
 
             <div className="mb-3 flex flex-wrap gap-2 flex-shrink-0">
               <button
-                onClick={() => { setLatexContent(sampleLatex); editorRef.current?.setValue(sampleLatex) }}
+                onClick={() => { setLatexContent(DEMO_RESUME_TEMPLATE); editorRef.current?.setValue(DEMO_RESUME_TEMPLATE) }}
                 className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10"
               >
                 Reset Sample
@@ -257,14 +230,14 @@ export default function TryPage() {
             <div className="mt-4 flex flex-wrap gap-3 flex-shrink-0">
               <button
                 onClick={() => runCompile('compile')}
-                disabled={isSubmitting || isProcessing || !trialStatus.canRun}
+                disabled={isSubmitting || isProcessing || (!session && !trialStatus.canRun)}
                 className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {isSubmitting ? 'Compiling…' : 'Compile'}
               </button>
               <button
                 onClick={() => runCompile('combined')}
-                disabled={isSubmitting || isProcessing || !trialStatus.canRun}
+                disabled={isSubmitting || isProcessing || (!session && !trialStatus.canRun)}
                 className="rounded-lg bg-orange-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-orange-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSubmitting ? 'Running…' : 'Optimize + Compile'}

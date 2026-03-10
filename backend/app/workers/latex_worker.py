@@ -6,11 +6,10 @@ them all at once.  Uses subprocess.Popen for line-by-line stdout
 streaming.  Zero asyncio — all Redis I/O goes through event_publisher.
 """
 
-import shutil
 import subprocess
 import time
 import uuid
-from subprocess import PIPE, STDOUT
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ..core.celery_app import celery_app, get_task_priority
@@ -75,14 +74,10 @@ def compile_latex_task(
             })
             return {"success": False, "job_id": job_id, "error": error_msg}
 
-        # ── Set up temp directory ────────────────────────────────────
-        # Path must match what GET /download/{job_id} serves from.
-        job_dir = settings.TEMP_DIR / job_id
+        # ── Setup ────────────────────────────────────────────────────
+        job_dir = Path(settings.TEMP_DIR) / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
-
         tex_file = job_dir / "resume.tex"
-        pdf_file = job_dir / "resume.pdf"
-
         tex_file.write_text(latex_content, encoding="utf-8")
 
         publish_event(job_id, "job.progress", {
@@ -91,82 +86,63 @@ def compile_latex_task(
             "message": "Starting pdflatex compilation",
         })
 
-        # ── Build compile command: Docker if available, else local pdflatex ──
-        _use_docker = shutil.which("docker") is not None
-        if _use_docker:
-            compile_cmd = [
-                "docker", "run", "--rm",
-                "-v", f"{job_dir}:/workspace",
-                "-w", "/workspace",
-                settings.LATEX_DOCKER_IMAGE,
-                "pdflatex",
-                "-interaction=nonstopmode",
-                "-synctex=1",
-                "-output-directory", "/workspace",
-                "-jobname", "resume",
-                "resume.tex",
-            ]
-            compile_cwd = None
-        else:
-            # Inside the container, pdflatex is installed locally via texlive
-            compile_cmd = [
-                "pdflatex",
-                "-interaction=nonstopmode",
-                "-synctex=1",
-                "-output-directory", str(job_dir),
-                "-jobname", "resume",
-                "resume.tex",
-            ]
-            compile_cwd = str(job_dir)
+        # ── Compile ──────────────────────────────────────────────────
+        cmd = [
+            "pdflatex",
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            "-synctex=1",
+            "-output-directory", str(job_dir),
+            str(tex_file),
+        ]
+
+        try:
+            timeout = float(settings.COMPILE_TIMEOUT)
+        except (TypeError, ValueError, AttributeError):
+            timeout = 120.0
 
         start_time = time.time()
-        log_lines: list[str] = []
-
-        # ── Stream stdout line-by-line ───────────────────────────────
         proc = subprocess.Popen(
-            compile_cmd,
-            stdout=PIPE,
-            stderr=STDOUT,
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            encoding="utf-8",
-            errors="replace",
-            cwd=compile_cwd,
+            cwd=str(job_dir),
         )
 
-        for raw_line in proc.stdout:  # type: ignore[union-attr]
-            line = raw_line.rstrip("\n")
-            if not line:
+        # ── Stream log lines ─────────────────────────────────────────
+        for line in proc.stdout:
+            stripped = line.rstrip()
+            if not stripped:
                 continue
-            log_lines.append(line)
-            line_lower = line.lower()
-            is_error = any(
-                kw in line_lower for kw in ("error", "fatal", "undefined control")
+
+            is_error_line = (
+                "error" in stripped.lower()
+                or stripped.startswith("!")
+                or "fatal" in stripped.lower()
             )
             publish_event(job_id, "log.line", {
+                "line": stripped,
                 "source": "pdflatex",
-                "line": line,
-                "is_error": is_error,
+                "is_error": is_error_line,
             })
 
-            # Honour compilation timeout
-            if time.time() - start_time > settings.COMPILE_TIMEOUT:
+            # ── Cancellation check ───────────────────────────────────
+            if is_cancelled(job_id):
                 proc.kill()
-                proc.wait()
-                timeout_msg = f"pdflatex timed out after {settings.COMPILE_TIMEOUT}s"
+                publish_event(job_id, "job.cancelled", {})
+                return {"success": False, "job_id": job_id, "cancelled": True}
+
+            # ── Timeout check ────────────────────────────────────────
+            if time.time() - start_time > timeout:
+                proc.kill()
                 publish_event(job_id, "job.failed", {
                     "stage": "latex_compilation",
                     "error_code": "timeout",
-                    "error_message": timeout_msg,
+                    "error_message": f"LaTeX compilation timed out after {timeout}s",
                     "retryable": False,
                 })
-                return {"success": False, "job_id": job_id, "error": timeout_msg}
-
-            # Honour cancellation between log lines
-            if is_cancelled(job_id):
-                proc.kill()
-                proc.wait()
-                publish_event(job_id, "job.cancelled", {})
-                return {"success": False, "job_id": job_id, "cancelled": True}
+                return {"success": False, "job_id": job_id, "error": "timeout"}
 
         proc.wait()
         compilation_time = time.time() - start_time
@@ -178,6 +154,8 @@ def compile_latex_task(
         })
 
         # ── Success / failure ────────────────────────────────────────
+        pdf_file = job_dir / "resume.pdf"
+
         if proc.returncode == 0 and pdf_file.exists():
             pdf_size = pdf_file.stat().st_size
             result = {
@@ -186,7 +164,6 @@ def compile_latex_task(
                 "pdf_job_id": job_id,
                 "compilation_time": compilation_time,
                 "pdf_size": pdf_size,
-                "log_output": "\n".join(log_lines),
             }
             publish_job_result(job_id, result)
             publish_event(job_id, "job.completed", {
@@ -203,10 +180,7 @@ def compile_latex_task(
             )
             return result
 
-        error_msg = (
-            f"pdflatex exited with code {proc.returncode}. "
-            "See log.line events for details."
-        )
+        error_msg = f"pdflatex exited with code {proc.returncode}"
         publish_event(job_id, "job.failed", {
             "stage": "latex_compilation",
             "error_code": "latex_error",

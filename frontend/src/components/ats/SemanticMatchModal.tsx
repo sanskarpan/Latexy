@@ -56,7 +56,12 @@ export default function SemanticMatchModal({
       />
 
       {/* Modal */}
-      <div className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/[0.08] bg-[#111] shadow-2xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Match to Job Description"
+        className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/[0.08] bg-[#111] shadow-2xl"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4">
           <div className="flex items-center gap-2">
@@ -67,6 +72,7 @@ export default function SemanticMatchModal({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="rounded-md p-1.5 text-zinc-600 transition hover:bg-white/[0.05] hover:text-zinc-200"
           >
             <X size={14} />
@@ -130,7 +136,7 @@ export default function SemanticMatchModal({
                         </span>
                       </div>
                     </div>
-                    <MatchBar score={result.similarity_score} />
+                    <MatchBar score={result.similarity_score ?? 0} />
                     {result.missing_keywords.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {result.missing_keywords.slice(0, 5).map((kw, j) => (
