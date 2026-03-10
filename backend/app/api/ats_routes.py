@@ -398,7 +398,6 @@ async def get_supported_industries():
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-_DEEP_ANALYSIS_TRIAL_LIMIT = 2
 _JOB_TTL = 86400
 
 
@@ -423,10 +422,11 @@ class SemanticMatchRequest(BaseModel):
 class SemanticMatchResultItem(BaseModel):
     resume_id: str
     resume_title: str
-    similarity_score: float
+    similarity_score: Optional[float]
     matched_keywords: List[str]
     missing_keywords: List[str]
     semantic_gaps: Dict[str, Any]
+    note: Optional[str] = None
 
 
 class SemanticMatchResponse(BaseModel):
@@ -500,27 +500,38 @@ async def deep_analyze_resume(
                 status_code=401,
                 detail="device_fingerprint is required for anonymous deep analysis"
             )
-        # Load or create trial record
+        # Load or create trial record atomically with row lock
+        from sqlalchemy.exc import IntegrityError
         result = await db.execute(
-            select(DeepAnalysisTrial).where(
-                DeepAnalysisTrial.device_fingerprint == request.device_fingerprint
-            )
+            select(DeepAnalysisTrial)
+            .where(DeepAnalysisTrial.device_fingerprint == request.device_fingerprint)
+            .with_for_update()
         )
         trial = result.scalar_one_or_none()
         if trial is None:
-            trial = DeepAnalysisTrial(
-                device_fingerprint=request.device_fingerprint,
-                usage_count=0,
-            )
-            db.add(trial)
-            await db.flush()
+            try:
+                trial = DeepAnalysisTrial(
+                    device_fingerprint=request.device_fingerprint,
+                    usage_count=0,
+                )
+                db.add(trial)
+                await db.flush()
+            except IntegrityError:
+                # Concurrent request created the row — reload with lock
+                await db.rollback()
+                result = await db.execute(
+                    select(DeepAnalysisTrial)
+                    .where(DeepAnalysisTrial.device_fingerprint == request.device_fingerprint)
+                    .with_for_update()
+                )
+                trial = result.scalar_one()
 
-        if trial.usage_count >= _DEEP_ANALYSIS_TRIAL_LIMIT:
+        if trial.usage_count >= settings.DEEP_ANALYSIS_TRIAL_LIMIT:
             raise HTTPException(
                 status_code=402,
-                detail=f"Trial limit reached ({_DEEP_ANALYSIS_TRIAL_LIMIT} free deep analyses). Sign in for unlimited access."
+                detail=f"Trial limit reached ({settings.DEEP_ANALYSIS_TRIAL_LIMIT} free deep analyses). Sign in for unlimited access."
             )
-        uses_remaining = _DEEP_ANALYSIS_TRIAL_LIMIT - trial.usage_count - 1
+        uses_remaining = settings.DEEP_ANALYSIS_TRIAL_LIMIT - trial.usage_count - 1
 
     # Look up BYOK OpenAI key if user is authenticated
     api_key: Optional[str] = None
@@ -530,8 +541,17 @@ async def deep_analyze_resume(
         except Exception:
             pass  # Fall back to platform key
 
+    # Increment trial counter BEFORE dispatching to avoid counting bypasses on commit failure
+    if user_id is None:
+        trial.usage_count += 1
+        trial.last_used = datetime.now(timezone.utc)
+        await db.commit()
+
     job_id = str(uuid.uuid4())
-    await _write_deep_analysis_redis_state(job_id, user_id)
+    try:
+        await _write_deep_analysis_redis_state(job_id, user_id)
+    except Exception as e:
+        logger.warning(f"Redis state write failed for job {job_id}: {e} — proceeding without state")
 
     deep_analyze_ats_task.apply_async(
         kwargs={
@@ -543,12 +563,6 @@ async def deep_analyze_resume(
         },
         queue="ats",
     )
-
-    # Increment trial usage for anonymous users after successful submission
-    if user_id is None:
-        trial.usage_count += 1
-        trial.last_used = datetime.now(timezone.utc)
-        await db.commit()
 
     return DeepAnalyzeResponse(
         success=True,
@@ -579,7 +593,7 @@ async def semantic_match_resumes(
         q = select(Resume).where(
             Resume.user_id == user_id,
             Resume.id.in_(request.resume_ids[:20])
-        )
+        ).limit(20)
     result = await db.execute(q)
     resumes = result.scalars().all()
 
@@ -599,23 +613,27 @@ async def semantic_match_resumes(
     for resume in resumes:
         resume_emb = resume.content_embedding
         if not resume_emb:
-            # Compute on-the-fly
-            try:
-                resume_emb = await embedding_service.embed_text(
-                    ats_scoring_service._extract_text_from_latex(resume.latex_content)
-                )
-                # Persist for future calls (fire and forget — no await needed for this write)
+            # Skip resumes without embeddings — embed_resume_task will compute them
+            match_results.append(SemanticMatchResultItem(
+                resume_id=str(resume.id),
+                resume_title=resume.title or "Untitled",
+                similarity_score=None,
+                matched_keywords=[],
+                missing_keywords=[],
+                semantic_gaps={},
+                note="Embedding not yet computed. Please try again in a moment.",
+            ))
+            # Fire background embed task so it's ready next time
+            if settings.OPENAI_API_KEY:
                 try:
                     from ..workers.ats_worker import embed_resume_task
                     embed_resume_task.apply_async(
-                        kwargs={"resume_id": str(resume.id), "latex_content": resume.latex_content},
+                        kwargs={"resume_id": str(resume.id), "latex_content": resume.latex_content or ""},
                         queue="ats", priority=1,
                     )
                 except Exception:
                     pass
-            except Exception as e:
-                logger.warning(f"Could not embed resume {resume.id}: {e}")
-                continue
+            continue
 
         resume_text = ats_scoring_service._extract_text_from_latex(resume.latex_content)
         match = await embedding_service.semantic_keyword_match(
@@ -630,7 +648,7 @@ async def semantic_match_resumes(
             semantic_gaps=match["semantic_gaps"],
         ))
 
-    match_results.sort(key=lambda x: x.similarity_score, reverse=True)
+    match_results.sort(key=lambda x: x.similarity_score if x.similarity_score is not None else -1, reverse=True)
 
     return SemanticMatchResponse(
         success=True,
