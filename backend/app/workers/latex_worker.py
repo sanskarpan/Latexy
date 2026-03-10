@@ -6,14 +6,17 @@ them all at once.  Uses subprocess.Popen for line-by-line stdout
 streaming.  Zero asyncio — all Redis I/O goes through event_publisher.
 """
 
+import subprocess
+import time
 import uuid
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..services.latex_service import latex_service
-from ..workers.event_publisher import publish_event, publish_job_result
+from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
 
 logger = get_logger(__name__)
 
@@ -71,19 +74,78 @@ def compile_latex_task(
             })
             return {"success": False, "job_id": job_id, "error": error_msg}
 
+        # ── Setup ────────────────────────────────────────────────────
+        job_dir = Path(settings.TEMP_DIR) / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+        tex_file = job_dir / "resume.tex"
+        tex_file.write_text(latex_content, encoding="utf-8")
+
         publish_event(job_id, "job.progress", {
             "percent": 10,
             "stage": "latex_compilation",
             "message": "Starting pdflatex compilation",
         })
 
-        # ── Compile via shared helper ────────────────────────────────
-        from ..services.latex_service import run_latex_subprocess
-        ok, compilation_time, error_msg = run_latex_subprocess(
-            job_id=job_id,
-            latex_content=latex_content,
-            timeout=float(settings.COMPILE_TIMEOUT),
+        # ── Compile ──────────────────────────────────────────────────
+        cmd = [
+            "pdflatex",
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            "-synctex=1",
+            "-output-directory", str(job_dir),
+            str(tex_file),
+        ]
+
+        try:
+            timeout = float(settings.COMPILE_TIMEOUT)
+        except (TypeError, ValueError, AttributeError):
+            timeout = 120.0
+
+        start_time = time.time()
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=str(job_dir),
         )
+
+        # ── Stream log lines ─────────────────────────────────────────
+        for line in proc.stdout:
+            stripped = line.rstrip()
+            if not stripped:
+                continue
+
+            is_error_line = (
+                "error" in stripped.lower()
+                or stripped.startswith("!")
+                or "fatal" in stripped.lower()
+            )
+            publish_event(job_id, "log.line", {
+                "line": stripped,
+                "source": "pdflatex",
+                "is_error": is_error_line,
+            })
+
+            # ── Cancellation check ───────────────────────────────────
+            if is_cancelled(job_id):
+                proc.kill()
+                publish_event(job_id, "job.cancelled", {})
+                return {"success": False, "job_id": job_id, "cancelled": True}
+
+            # ── Timeout check ────────────────────────────────────────
+            if time.time() - start_time > timeout:
+                proc.kill()
+                publish_event(job_id, "job.failed", {
+                    "stage": "latex_compilation",
+                    "error_code": "timeout",
+                    "error_message": f"LaTeX compilation timed out after {timeout}s",
+                    "retryable": False,
+                })
+                return {"success": False, "job_id": job_id, "error": "timeout"}
+
+        proc.wait()
+        compilation_time = time.time() - start_time
 
         publish_event(job_id, "job.progress", {
             "percent": 90,
@@ -92,10 +154,9 @@ def compile_latex_task(
         })
 
         # ── Success / failure ────────────────────────────────────────
-        job_dir = settings.TEMP_DIR / job_id
         pdf_file = job_dir / "resume.pdf"
 
-        if ok and pdf_file.exists():
+        if proc.returncode == 0 and pdf_file.exists():
             pdf_size = pdf_file.stat().st_size
             result = {
                 "success": True,
@@ -119,6 +180,7 @@ def compile_latex_task(
             )
             return result
 
+        error_msg = f"pdflatex exited with code {proc.returncode}"
         publish_event(job_id, "job.failed", {
             "stage": "latex_compilation",
             "error_code": "latex_error",
