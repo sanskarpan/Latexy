@@ -34,7 +34,7 @@ export default function WorkspacePage() {
       setIsLoading(true)
       try {
         const [resumesData, jobsData] = await Promise.all([apiClient.listResumes(), apiClient.listJobs()])
-        setResumes(resumesData)
+        setResumes(Array.isArray(resumesData) ? resumesData : [])
         setJobs([...(jobsData.jobs || [])].sort((a, b) => b.last_updated - a.last_updated))
       } catch (error) {
         if (process.env.NODE_ENV === 'development') {
