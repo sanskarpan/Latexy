@@ -7,7 +7,7 @@ running worker for these unit/integration tests.
 """
 
 import uuid
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
