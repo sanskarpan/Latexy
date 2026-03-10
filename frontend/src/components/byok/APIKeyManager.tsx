@@ -75,13 +75,13 @@ const APIKeyManager: React.FC = () => {
 
   const addAPIKey = async () => {
     if (!newKey.provider || !newKey.api_key) {
-      toast.error('Provider and API key are required.')
+      toast.error('Provider and API key are required')
       return
     }
 
     const isValid = await validateAPIKey(newKey.provider, newKey.api_key)
     if (!isValid) {
-      toast.error('Key validation failed for selected provider.')
+      toast.error('Key validation failed for selected provider')
       return
     }
 
