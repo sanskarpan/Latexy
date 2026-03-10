@@ -19,9 +19,9 @@ from typing import AsyncGenerator
 
 import pytest
 from dotenv import load_dotenv
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # ── Load .env (backend/ first, project root as fallback) ─────────────────────
 
@@ -60,10 +60,11 @@ os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 os.environ.setdefault("DEBUG", "true")
 
 import sys
+
 sys.path.insert(0, str(_backend_dir))
 
-from app.main import app
 from app.database.connection import Base, get_db
+from app.main import app
 
 # ── Dependency Overrides ──────────────────────────────────────────────────
 
@@ -72,7 +73,7 @@ def override_get_db(db_session: AsyncSession):
     """Override get_db dependency to use the test session."""
     async def _get_db_override():
         yield db_session
-    
+
     app.dependency_overrides[get_db] = _get_db_override
     yield
     app.dependency_overrides.pop(get_db, None)
@@ -188,7 +189,7 @@ Python, TypeScript, PostgreSQL, Redis, Docker
 
 async def _insert_session(db: AsyncSession, user_id: str, expired: bool = False) -> str:
     """Insert a Better Auth session row and return the token."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
     token = f"test_sess_{uuid.uuid4().hex}"
     delta = timedelta(hours=-1) if expired else timedelta(days=1)
     expires_at = datetime.now(timezone.utc) + delta
