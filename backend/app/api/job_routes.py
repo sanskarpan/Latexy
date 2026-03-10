@@ -214,11 +214,6 @@ async def submit_job(
                     status_code=400,
                     detail="latex_content is required for llm_optimization jobs",
                 )
-            if not request.job_description:
-                raise HTTPException(
-                    status_code=400,
-                    detail="job_description is required for llm_optimization jobs",
-                )
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
             submit_resume_optimization(
                 latex_content=request.latex_content,
@@ -235,11 +230,6 @@ async def submit_job(
                 raise HTTPException(
                     status_code=400,
                     detail="latex_content is required for combined jobs",
-                )
-            if not request.job_description:
-                raise HTTPException(
-                    status_code=400,
-                    detail="job_description is required for combined jobs",
                 )
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
             submit_optimize_and_compile(
