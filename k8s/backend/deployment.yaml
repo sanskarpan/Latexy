@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: latexy-backend
+  namespace: latexy
   labels:
     app: latexy-backend
     version: v1
@@ -20,12 +21,14 @@ spec:
       - name: backend
         image: ghcr.io/your-org/latexy-backend:latest
         ports:
-        - containerPort: 8000
+        - containerPort: 8030
         env:
         - name: FASTAPI_ENV
           value: "production"
         - name: DEBUG
           value: "false"
+        - name: PORT
+          value: "8030"
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
@@ -41,11 +44,56 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: openai-api-key
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: anthropic-api-key
+        - name: GOOGLE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: google-api-key
+        - name: OPENROUTER_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: openrouter-api-key
         - name: API_KEY_ENCRYPTION_KEY
           valueFrom:
             secretKeyRef:
               name: latexy-secrets
               key: api-key-encryption-key
+        - name: BETTER_AUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: better-auth-secret
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: jwt-secret-key
+        - name: RAZORPAY_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: razorpay-key-id
+        - name: RAZORPAY_KEY_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: razorpay-key-secret
+        - name: RAZORPAY_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: razorpay-webhook-secret
+        - name: BETTER_AUTH_URL
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: frontend-url
         resources:
           requests:
             memory: "512Mi"
@@ -56,18 +104,20 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 8000
+            port: 8030
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /health
-            port: 8000
+            port: 8030
           initialDelaySeconds: 5
           periodSeconds: 5
         volumeMounts:
         - name: temp-storage
           mountPath: /app/temp
+      imagePullSecrets:
+      - name: registry-secret
       volumes:
       - name: temp-storage
         emptyDir: {}
@@ -76,6 +126,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: latexy-backend-service
+  namespace: latexy
   labels:
     app: latexy-backend
 spec:
@@ -83,6 +134,6 @@ spec:
     app: latexy-backend
   ports:
   - protocol: TCP
-    port: 8000
-    targetPort: 8000
+    port: 8030
+    targetPort: 8030
   type: ClusterIP
