@@ -344,7 +344,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       // ── Completion provider ────────────────────────────────────────
       const completionDisposable = monaco.languages.registerCompletionItemProvider('latex', {
         triggerCharacters: ['\\', '{'],
-        provideCompletionItems(model, position) {
+        provideCompletionItems(model: import('monaco-editor').editor.ITextModel, position: import('monaco-editor').Position) {
           const text = model.getValueInRange({
             startLineNumber: position.lineNumber,
             startColumn: 1,
@@ -486,7 +486,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
       // ── Folding range provider ─────────────────────────────────────
       const foldingDisposable = monaco.languages.registerFoldingRangeProvider('latex', {
-        provideFoldingRanges(model) {
+        provideFoldingRanges(model: import('monaco-editor').editor.ITextModel) {
           const ranges: any[] = []
           const lines = model.getLinesContent()
 
