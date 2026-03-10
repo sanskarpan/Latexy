@@ -23,7 +23,6 @@ from starlette.websockets import WebSocketState
 
 from app.core.event_bus import EventBusManager
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
