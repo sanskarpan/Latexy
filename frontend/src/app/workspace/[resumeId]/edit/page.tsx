@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -66,7 +66,7 @@ function OutlinePanel({
   latex: string
   onJump: (line: number) => void
 }) {
-  const items = buildOutline(latex)
+  const items = useMemo(() => buildOutline(latex), [latex])
 
   if (items.length === 0) {
     return (
