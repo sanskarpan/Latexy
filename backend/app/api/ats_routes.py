@@ -584,9 +584,6 @@ async def semantic_match_resumes(
     except ImportError:
         raise HTTPException(status_code=503, detail="Embedding service not available")
 
-    if not settings.OPENAI_API_KEY:
-        raise HTTPException(status_code=503, detail="Semantic matching requires an OpenAI API key")
-
     # Fetch resumes (filtered by IDs if provided)
     q = select(Resume).where(Resume.user_id == user_id).limit(20)
     if request.resume_ids:
