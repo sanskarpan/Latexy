@@ -33,6 +33,7 @@ from subprocess import PIPE, STDOUT
 from typing import Any, Dict, List, Optional
 
 import openai
+from celery.exceptions import SoftTimeLimitExceeded
 
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
@@ -60,6 +61,8 @@ _BEFORE, _IN_LATEX, _AFTER_LATEX, _IN_CHANGES = 0, 1, 2, 3
     name="app.workers.orchestrator.optimize_and_compile_task",
     max_retries=1,
     default_retry_delay=60,
+    time_limit=300,
+    soft_time_limit=270,
 )
 def optimize_and_compile_task(
     self,
@@ -206,6 +209,16 @@ def optimize_and_compile_task(
             f"(ATS {ats_score:.1f}, {tokens_used} tokens, {compilation_time:.1f}s)"
         )
         return result
+
+    except SoftTimeLimitExceeded:
+        logger.error(f"Orchestrator task {task_id} exceeded soft time limit for job {job_id}")
+        publish_event(job_id, "job.failed", {
+            "stage": "llm_optimization",
+            "error_code": "timeout",
+            "error_message": "Task exceeded time limit",
+            "retryable": False,
+        })
+        return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
 
     except Exception as exc:
         logger.error(f"Orchestrator task {task_id} raised: {exc}")
@@ -430,6 +443,9 @@ def _run_latex_stage(
     Returns (success, compilation_time, error_message).
     Does NOT publish job.failed — caller is responsible so it can
     include optimized_latex in the failure payload.
+
+    # TODO(refactor): LaTeX compilation logic is also present in latex_worker.py.
+    # Extract to a shared helper function in app/services/latex_service.py.
     """
     job_dir = settings.TEMP_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
