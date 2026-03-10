@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.ats_scoring_service import ATSScoringService, ATSScoreResult
-
+from app.services.ats_scoring_service import ATSScoreResult, ATSScoringService
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
