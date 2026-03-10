@@ -50,18 +50,37 @@ TEST_DATABASE_URL = _to_asyncpg_url(_raw_db_url) if _raw_db_url else ""
 
 # ── Set env before importing app so settings picks them up ───────────────────
 
+os.environ["SKIP_ENV_VALIDATION"] = "true"
+# Always force test secrets — overrides anything in .env so make_jwt() matches settings
+os.environ["JWT_SECRET_KEY"] = "test_jwt_secret_32chars_minimum_!"
+os.environ["BETTER_AUTH_SECRET"] = "test_secret_key_32chars_minimum_!"
 os.environ.setdefault("DATABASE_URL", _raw_db_url)
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 os.environ.setdefault("CELERY_BROKER_URL", "redis://localhost:6379/15")
 os.environ.setdefault("CELERY_RESULT_BACKEND", "redis://localhost:6379/15")
-os.environ.setdefault("BETTER_AUTH_SECRET", "test_secret_key_32chars_minimum_!")
-os.environ.setdefault("JWT_SECRET_KEY", "test_jwt_secret_32chars_minimum_!")
 os.environ.setdefault("OPENAI_API_KEY", "sk-test")
+# DEBUG=true in tests to get verbose error messages in responses.
+# Production validation is tested explicitly in test_health.py via DEBUG=false assertions.
 os.environ.setdefault("DEBUG", "true")
 
 import sys
 
 sys.path.insert(0, str(_backend_dir))
+
+
+# ── Infrastructure pre-flight checks ─────────────────────────────────────────
+
+
+@pytest.fixture(scope="session", autouse=True)
+def check_infrastructure():
+    """Fail fast if Redis is unavailable."""
+    import redis as sync_redis
+    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    try:
+        r = sync_redis.from_url(redis_url, socket_connect_timeout=3)
+        r.ping()
+    except Exception as e:
+        pytest.fail(f"Redis not available at {redis_url}: {e}. Start Redis before running tests.")
 
 from app.database.connection import Base, get_db
 from app.main import app
@@ -135,6 +154,14 @@ async def test_engine():
 
     # Cleanup: delete rows inserted by tests (identified by test_ prefix)
     async with engine.begin() as conn:
+        # Delete child rows first (FK constraints)
+        await conn.execute(text("DELETE FROM resumes WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')"))
+        await conn.execute(text("DELETE FROM compilations WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')"))
+        await conn.execute(text("DELETE FROM optimizations WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')"))
+        await conn.execute(text("DELETE FROM usage_analytics WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')"))
+        await conn.execute(text("DELETE FROM deep_analysis_trials WHERE device_fingerprint LIKE 'test_%'"))
+        await conn.execute(text("DELETE FROM resume_job_matches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')"))
+        # Then delete parent rows
         await conn.execute(text("DELETE FROM session WHERE token LIKE 'test_sess_%'"))
         await conn.execute(text("DELETE FROM users WHERE email LIKE 'test_%@example.com'"))
     await engine.dispose()
@@ -202,6 +229,33 @@ async def _insert_session(db: AsyncSession, user_id: str, expired: bool = False)
     )
     await db.commit()
     return token
+
+
+@pytest.fixture
+async def expired_auth_headers(db_session: AsyncSession) -> dict:
+    """Create headers with an expired session token."""
+    from datetime import datetime, timedelta, timezone
+
+    expired_token = f"test_sess_expired_{uuid.uuid4().hex}"
+    now = datetime.now(timezone.utc)
+    expires_at = now - timedelta(hours=1)
+
+    await db_session.execute(
+        text(
+            'INSERT INTO session (id, "userId", "expiresAt", token) '
+            "VALUES (:id, :user_id, :expires_at, :token) "
+            'ON CONFLICT (token) DO UPDATE SET "expiresAt" = :expires_at'
+        ),
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": "test-user-for-expired",
+            "expires_at": expires_at,
+            "token": expired_token,
+        },
+    )
+    await db_session.commit()
+
+    return {"Authorization": f"Bearer {expired_token}"}
 
 
 @pytest.fixture
