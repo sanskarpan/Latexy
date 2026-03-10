@@ -168,3 +168,13 @@ class TestLegacyJWT:
         )
         # Optional-auth: expired JWT ≠ 401
         assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+class TestExpiredSession:
+    """Expired session tokens are treated as anonymous; required-auth endpoints return 401."""
+
+    async def test_expired_token_returns_401(self, client: AsyncClient, expired_auth_headers: dict):
+        """Expired session token is treated as anonymous; required-auth endpoint returns 401."""
+        response = await client.get("/resumes/", headers=expired_auth_headers)
+        assert response.status_code == 401
