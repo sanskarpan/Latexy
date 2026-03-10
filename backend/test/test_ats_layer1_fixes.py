@@ -7,8 +7,8 @@ Unit tests for Layer 1 ATS engine fixes:
 """
 
 import pytest
-from app.services.ats_scoring_service import ATSScoringService, ats_scoring_service
 
+from app.services.ats_scoring_service import ATSScoringService, ats_scoring_service
 
 # ────────────────────────────────────────────────────────────────────────────
 #  Text extraction
