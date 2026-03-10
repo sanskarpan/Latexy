@@ -4,6 +4,11 @@ Embedding service for Layer 3 semantic job-description matching.
 Uses OpenAI text-embedding-3-small (1536 dim) to embed resume content
 and job descriptions. Similarity is computed in Python (no pgvector operator
 queries needed for our 1K-10K user scale).
+
+# NOTE: Similarity search is computed in Python (no pgvector SQL operator).
+# The HNSW index in migration 0002 uses pgvector extension but is optional.
+# If pgvector extension is unavailable, performance degrades (no HNSW index)
+# but functionality remains intact.
 """
 
 import hashlib
@@ -92,6 +97,7 @@ class EmbeddingService:
             logger.info(f"Embedded resume {resume_id} ({len(embedding)} dims)")
             return embedding
         except Exception as e:
+            await db.rollback()
             logger.error(f"Failed to embed resume {resume_id}: {e}")
             return None
 
@@ -144,7 +150,7 @@ class EmbeddingService:
         """
         from .ats_scoring_service import ATSScoringService
 
-        similarity_score = round(self.cosine_similarity(resume_emb, jd_emb) * 100, 1)
+        similarity_score = round(max(0.0, self.cosine_similarity(resume_emb, jd_emb)) * 100, 1)
 
         jd_keywords = set(self._extract_keywords(jd_text))
         resume_keywords = set(self._extract_keywords(resume_text))
