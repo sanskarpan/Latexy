@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import PricingCard from '@/components/billing/PricingCard'
 import SubscriptionManager from '@/components/billing/SubscriptionManager'
@@ -26,11 +27,18 @@ interface PricingPlan {
 import { useSession } from '@/lib/auth-client'
 
 export default function BillingPage() {
-  const { data: session } = useSession()
+  const { data: session, isPending } = useSession()
+  const router = useRouter()
   const [plans, setPlans] = useState<Record<string, PricingPlan>>({})
   const [loading, setLoading] = useState(true)
   const [activePlan, setActivePlan] = useState<string | null>(null)
   const [showPlans, setShowPlans] = useState(false)
+
+  useEffect(() => {
+    if (!isPending && !session) {
+      router.push('/login')
+    }
+  }, [session, isPending, router])
 
   useEffect(() => {
     const fetchPlans = async () => {
@@ -52,11 +60,16 @@ export default function BillingPage() {
       return
     }
 
+    if (!session?.user?.email) {
+      toast.error('Please sign in to subscribe to a plan')
+      return
+    }
+
     setActivePlan(planId)
     const result = await apiClient.createSubscription(
-      planId, 
-      session?.user?.email || 'guest@latexy.com', 
-      session?.user?.name || 'Guest User'
+      planId,
+      session.user.email,
+      session.user.name || ''
     )
     setActivePlan(null)
 
