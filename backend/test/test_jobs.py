@@ -223,24 +223,32 @@ class TestJobSubmissionErrorPaths:
     async def test_combined_job_missing_job_description(
         self, client: AsyncClient, auth_headers: dict
     ):
-        """combined job requires both latex_content and job_description."""
-        resp = await client.post(
-            "/jobs/submit",
-            json={"job_type": "combined", "latex_content": VALID_LATEX},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 400
+        """combined job without job_description is accepted (JD is optional)."""
+        with patch(
+            "app.workers.orchestrator.submit_optimize_and_compile",
+            return_value=None,
+        ):
+            resp = await client.post(
+                "/jobs/submit",
+                json={"job_type": "combined", "latex_content": VALID_LATEX},
+                headers=auth_headers,
+            )
+        assert resp.status_code == 200
 
     async def test_llm_optimization_missing_job_description(
         self, client: AsyncClient, auth_headers: dict
     ):
-        """llm_optimization requires both latex_content and job_description."""
-        resp = await client.post(
-            "/jobs/submit",
-            json={"job_type": "llm_optimization", "latex_content": VALID_LATEX},
-            headers=auth_headers,
-        )
-        assert resp.status_code == 400
+        """llm_optimization without job_description is accepted (JD is optional)."""
+        with patch(
+            "app.workers.llm_worker.submit_resume_optimization",
+            return_value=None,
+        ):
+            resp = await client.post(
+                "/jobs/submit",
+                json={"job_type": "llm_optimization", "latex_content": VALID_LATEX},
+                headers=auth_headers,
+            )
+        assert resp.status_code == 200
 
     async def test_submit_with_empty_metadata_dict(
         self, client: AsyncClient, auth_headers: dict
