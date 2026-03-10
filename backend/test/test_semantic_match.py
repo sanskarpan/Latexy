@@ -253,3 +253,70 @@ class TestSemanticMatchEndpoint:
             data = response.json()
             assert data["success"] is True
             assert isinstance(data["results"], list)
+
+
+class TestSemanticMatchIntegration:
+    """Integration tests for /ats/semantic-match endpoint with DB state."""
+
+    @pytest.mark.asyncio
+    async def test_semantic_match_with_resume(self, client, auth_headers, db_session):
+        """When user has a resume with embedding, returns similarity score."""
+        import uuid
+        from unittest.mock import AsyncMock, patch
+
+        from sqlalchemy import text
+
+        # Resolve the user_id associated with the auth_headers session token
+        raw_token = auth_headers["Authorization"].split(" ", 1)[1]
+        row = await db_session.execute(
+            text('SELECT "userId" FROM session WHERE token = :token'),
+            {"token": raw_token},
+        )
+        user_id = row.scalar_one()
+
+        # Create a test resume with a pre-computed embedding
+        resume_id = str(uuid.uuid4())
+        embedding = [0.1] * 1536  # 1536-dim vector
+
+        await db_session.execute(
+            text("""
+                INSERT INTO resumes (id, user_id, title, latex_content, content_embedding, created_at, updated_at)
+                VALUES (:id, :user_id, :title, :content, :embedding, NOW(), NOW())
+            """),
+            {
+                "id": resume_id,
+                "user_id": user_id,
+                "title": "Test Resume for Semantic Match",
+                "content": r"\section{Experience} Python developer",
+                "embedding": embedding,
+            },
+        )
+        await db_session.commit()
+
+        with patch("app.services.embedding_service.embedding_service") as mock_svc:
+            mock_svc.embed_job_description = AsyncMock(return_value=[0.1] * 1536)
+            mock_svc.semantic_keyword_match = AsyncMock(return_value={
+                "similarity_score": 75.0,
+                "matched_keywords": ["python"],
+                "missing_keywords": ["rust"],
+                "semantic_gaps": {},
+            })
+
+            response = await client.post(
+                "/ats/semantic-match",
+                json={
+                    "job_description": "Looking for a Python engineer with 5+ years of experience in cloud infrastructure and microservices",
+                },
+                headers=auth_headers,
+            )
+
+        # Cleanup
+        await db_session.execute(
+            text("DELETE FROM resumes WHERE id = :id"), {"id": resume_id}
+        )
+        await db_session.commit()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert isinstance(data["results"], list)
