@@ -78,14 +78,14 @@ data:
       # Latexy Backend
       - job_name: 'latexy-backend'
         static_configs:
-          - targets: ['latexy-backend-service:8000']
+          - targets: ['latexy-backend-service:8030']
         metrics_path: /metrics
         scrape_interval: 30s
 
       # Latexy Frontend (if metrics endpoint exists)
       - job_name: 'latexy-frontend'
         static_configs:
-          - targets: ['latexy-frontend-service:3000']
+          - targets: ['latexy-frontend-service:5180']
         metrics_path: /metrics
         scrape_interval: 30s
 
