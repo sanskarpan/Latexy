@@ -13,6 +13,7 @@ import uuid
 from typing import Any, Dict, Optional
 
 import openai
+from celery.exceptions import SoftTimeLimitExceeded
 
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
@@ -28,6 +29,8 @@ logger = get_logger(__name__)
     name="app.workers.llm_worker.optimize_resume_task",
     max_retries=2,
     default_retry_delay=120,
+    time_limit=180,
+    soft_time_limit=150,
 )
 def optimize_resume_task(
     self,
@@ -214,17 +217,32 @@ def optimize_resume_task(
         )
         return result
 
+    except SoftTimeLimitExceeded:
+        logger.error(f"LLM task {task_id} exceeded soft time limit for job {job_id}")
+        publish_event(job_id, "job.failed", {
+            "stage": "llm_optimization",
+            "error_code": "timeout",
+            "error_message": "Task exceeded time limit",
+            "retryable": False,
+        })
+        return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
+
     except Exception as exc:
         logger.error(f"LLM task {task_id} raised: {exc}")
         is_rate_limit = "rate limit" in str(exc).lower()
-        retryable = self.request.retries < self.max_retries and not is_rate_limit
+        has_retries_left = self.request.retries < self.max_retries
+        retryable = has_retries_left
         publish_event(job_id, "job.failed", {
             "stage": "llm_optimization",
             "error_code": "llm_error",
             "error_message": str(exc),
             "retryable": retryable,
         })
-        if retryable:
+        if has_retries_left:
+            if is_rate_limit:
+                # Exponential backoff: 30s, 60s, 120s — avoids hammering the API.
+                backoff = 30 * (2 ** self.request.retries)
+                raise self.retry(exc=exc, countdown=backoff)
             raise self.retry(countdown=120, exc=exc)
         return {"success": False, "job_id": job_id, "error": str(exc)}
 
