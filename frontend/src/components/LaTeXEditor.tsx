@@ -5,6 +5,7 @@ import { useEffect, useImperativeHandle, useRef, forwardRef } from 'react'
 let _latexLanguageRegistered = false
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type { LogLine } from '@/hooks/useJobStream'
+import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
 
 export interface LaTeXEditorRef {
   setValue: (value: string) => void
@@ -143,35 +144,6 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
   return errors
 }
-
-// ── Sample template ────────────────────────────────────────────────────────
-
-const SAMPLE_LATEX = `\\documentclass[11pt,a4paper]{article}
-\\usepackage[margin=0.72in]{geometry}
-\\usepackage{enumitem}
-\\setlist{nosep}
-
-\\begin{document}
-\\begin{center}
-{\\LARGE\\textbf{Your Name}} \\\\
-\\vspace{1mm}
-Your Desired Role \\\\
-Email: you@example.com | linkedin.com/in/yourprofile
-\\end{center}
-
-\\section{Summary}
-Briefly describe your career goals and key achievements here.
-
-\\section{Experience}
-\\textbf{Role Title, Company Name} \\hfill 2022 – Present
-\\begin{itemize}
-  \\item Key achievement or responsibility
-  \\item Another important impact you made
-\\end{itemize}
-
-\\section{Skills}
-Skill 1, Skill 2, Skill 3, Technology A, Framework B
-\\end{document}`
 
 // ── Component ─────────────────────────────────────────────────────────────
 
@@ -335,7 +307,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         base: 'vs-dark',
         inherit: true,
         rules: [
-          { token: 'comment',         foreground: '555566', fontStyle: 'italic' },
+          { token: 'comment',         foreground: '6b7280', fontStyle: 'italic' },
           { token: 'keyword.structure', foreground: 'fb923c', fontStyle: 'bold' }, // orange - sections
           { token: 'keyword.doc',     foreground: '818cf8' },                       // indigo - doc cmds
           { token: 'keyword.font',    foreground: '67e8f9' },                       // cyan - font cmds
@@ -351,7 +323,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           { token: 'number',          foreground: '86efac' },                       // green
         ],
         colors: {
-          'editor.background':            '#07090f',
+          'editor.background':            '#0d1117',
           'editor.foreground':            '#e2e8f0',
           'editor.lineHighlightBackground': '#0f1420',
           'editor.selectionBackground':   '#1e3a5f',
@@ -369,8 +341,6 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           'editorGutter.background':      '#07090f',
         },
       })
-      monaco.editor.setTheme('latexy-dark')
-
       // ── Completion provider ────────────────────────────────────────
       const completionDisposable = monaco.languages.registerCompletionItemProvider('latex', {
         triggerCharacters: ['\\', '{'],
@@ -636,19 +606,16 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
         _latexLanguageRegistered = true
       } // end !_latexLanguageRegistered
+      monaco.editor.setTheme('latexy-dark')
 
       // ── Keyboard shortcuts ─────────────────────────────────────────
       if (onSave) {
-        editor.addCommand(
-          monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
-          () => onSave()
-        )
+        const d = editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSave())
+        if (d) disposablesRef.current.push(d)
       }
       if (onCompile) {
-        editor.addCommand(
-          monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-          () => onCompile()
-        )
+        const d = editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onCompile())
+        if (d) disposablesRef.current.push(d)
       }
 
       // ── Cursor change listener ─────────────────────────────────────
@@ -676,7 +643,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               Start writing or use a sample template.
             </p>
             <button
-              onClick={() => onChange(SAMPLE_LATEX)}
+              onClick={() => onChange(BLANK_RESUME_TEMPLATE)}
               className="mt-4 rounded-lg border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08]"
             >
               Insert Sample Resume
