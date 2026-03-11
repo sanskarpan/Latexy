@@ -20,17 +20,17 @@ class ParserFactory:
 
     def _register_parsers(self):
         """Register all available parsers."""
-        from .latex_parser import LaTeXParser
-        from .pdf_parser import PDFParser
         from .docx_parser import DOCXParser
-        from .markdown_parser import MarkdownParser
-        from .text_parser import TextParser
         from .html_parser import HTMLParser
+        from .image_parser import ImageParser
         from .json_parser import JSONParser
-        from .yaml_parser import YAMLParser
+        from .latex_parser import LaTeXParser
+        from .markdown_parser import MarkdownParser
+        from .pdf_parser import PDFParser
+        from .text_parser import TextParser
         from .toml_parser import TOMLParser
         from .xml_parser import XMLParser
-        from .image_parser import ImageParser
+        from .yaml_parser import YAMLParser
 
         self._parsers[ResumeFormat.LATEX] = LaTeXParser
         self._parsers[ResumeFormat.PDF] = PDFParser

@@ -5,7 +5,6 @@ Receives pre-extracted structured data (ParsedResume.to_dict()) so the
 expensive I/O (file reading, parsing) happens synchronously in the API layer,
 while only the LLM call runs async in the worker.
 """
-import re
 import time
 import uuid
 from typing import Any, Dict, Optional
@@ -16,7 +15,7 @@ from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..services.document_converter_service import document_converter_service
-from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
+from ..workers.event_publisher import publish_event, publish_job_result
 
 logger = get_logger(__name__)
 

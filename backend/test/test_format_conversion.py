@@ -7,13 +7,11 @@ Tests cover:
 - Format detection edge cases
 """
 
-import io
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
-
 
 # ── Sample content fixtures ────────────────────────────────────────────────────
 

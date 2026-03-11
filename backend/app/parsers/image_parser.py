@@ -16,7 +16,7 @@ class ImageParser(AbstractParser):
     async def parse(self, file_content: bytes, filename: str = "") -> ParsedResume:
         try:
             import pytesseract
-            from PIL import Image, ImageEnhance, ImageFilter
+            from PIL import Image, ImageEnhance
         except ImportError as e:
             raise ValueError(f"OCR libraries not installed: {e}. Run: pip install pytesseract Pillow")
 
@@ -57,8 +57,8 @@ def ocr_pdf_bytes(pdf_content: bytes) -> str:
     Converts PDF pages to images then runs Tesseract.
     """
     try:
-        from pdf2image import convert_from_bytes
         import pytesseract
+        from pdf2image import convert_from_bytes
     except ImportError as e:
         raise ValueError(f"OCR PDF libraries not installed: {e}. Run: pip install pdf2image pytesseract")
 

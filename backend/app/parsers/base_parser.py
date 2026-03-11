@@ -222,7 +222,7 @@ class AbstractParser(ABC):
         if github_match:
             contact.github = f"github.com/{github_match.group(1)}"
         # Try to extract name: usually first non-empty line, not an email/url
-        lines = [l.strip() for l in text.split('\n') if l.strip()]
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
         for line in lines[:5]:
             if '@' not in line and 'http' not in line and len(line.split()) <= 5:
                 contact.name = line

@@ -28,7 +28,7 @@ class TOMLParser(AbstractParser):
 
         try:
             # Check if it follows JSON Resume schema (basics, work, education, skills)
-            from .json_parser import JSONParser, JSON_RESUME_KEYS
+            from .json_parser import JSON_RESUME_KEYS, JSONParser
             if isinstance(data, dict) and JSON_RESUME_KEYS.intersection(data.keys()):
                 jp = JSONParser()
                 return jp._parse_json_resume_schema(data, filename)

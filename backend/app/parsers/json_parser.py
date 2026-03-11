@@ -5,7 +5,7 @@ import json
 import logging
 from typing import Optional
 
-from .base_parser import AbstractParser, ParsedResume, ContactInfo
+from .base_parser import AbstractParser, ContactInfo, ParsedResume
 
 logger = logging.getLogger(__name__)
 

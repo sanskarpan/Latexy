@@ -9,7 +9,6 @@ from fastapi import HTTPException, UploadFile
 
 from ..core.config import settings
 
-
 ALLOWED_EXTENSIONS = {
     '.tex', '.latex', '.ltx',
     '.pdf',

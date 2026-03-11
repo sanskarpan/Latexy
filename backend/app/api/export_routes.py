@@ -7,7 +7,6 @@ POST /export/content/{fmt}      — export from raw LaTeX (no auth, for /try pag
 """
 import json
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response

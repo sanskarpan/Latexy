@@ -4,7 +4,7 @@ content to LaTeX. Uses hybrid approach: structured extraction + raw text.
 """
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 

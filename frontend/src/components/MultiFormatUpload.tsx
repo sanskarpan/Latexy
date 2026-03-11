@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
-import { Upload, File, FileText, Image, Code, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { Upload, File, FileText, Image as ImageIcon, Code, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useFormatConversion } from '@/hooks/useFormatConversion'
 
@@ -22,7 +22,7 @@ const ACCEPTED_FORMATS = [
 function getFileIcon(filename: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
   if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp'].includes(ext))
-    return <Image className="w-4 h-4 text-violet-300" />
+    return <ImageIcon className="w-4 h-4 text-violet-300" />
   if (['tex', 'latex', 'ltx'].includes(ext))
     return <Code className="w-4 h-4 text-orange-300" />
   if (['pdf'].includes(ext))

@@ -3,10 +3,9 @@ Document Export Service - Converts LaTeX resume content to other formats.
 All conversions are rule-based (no LLM), synchronous, and fast (<200ms).
 """
 import io
-import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +185,7 @@ class DocumentExportService:
     def to_json(self, latex_content: str) -> Dict[str, Any]:
         """Convert LaTeX resume to JSON Resume schema (https://jsonresume.org/schema)."""
         text = self._to_plain_text(latex_content)
-        lines = [l.strip() for l in text.split('\n') if l.strip()]
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
 
         # Extract basic contact info
         import re as _re
@@ -300,7 +299,6 @@ class DocumentExportService:
         try:
             from docx import Document
             from docx.shared import Inches, Pt, RGBColor
-            from docx.enum.text import WD_ALIGN_PARAGRAPH
         except ImportError:
             raise ValueError("python-docx not installed. Run: pip install python-docx")
 

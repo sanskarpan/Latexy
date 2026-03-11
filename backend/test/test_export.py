@@ -10,7 +10,6 @@ Tests cover:
 
 import json
 import uuid
-from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
@@ -124,6 +123,7 @@ class TestDocumentExportService:
 
     def test_to_yaml_is_valid_yaml(self):
         import yaml
+
         from app.services.document_export_service import document_export_service
         result = document_export_service.to_yaml(VALID_LATEX)
         parsed = yaml.safe_load(result)
@@ -137,6 +137,7 @@ class TestDocumentExportService:
 
     def test_to_xml_is_valid_xml(self):
         from lxml import etree
+
         from app.services.document_export_service import document_export_service
         result = document_export_service.to_xml(VALID_LATEX)
         root = etree.fromstring(result.encode())
@@ -454,7 +455,6 @@ class TestExportResume:
         await db_session.commit()
 
         # Create session token
-        import re as _re
         from datetime import datetime, timedelta, timezone
         token = f"test_sess_{uuid.uuid4().hex}"
         expires = datetime.now(timezone.utc) + timedelta(days=1)
