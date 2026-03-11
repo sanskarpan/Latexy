@@ -20,41 +20,36 @@ class ParserFactory:
 
     def _register_parsers(self):
         """Register all available parsers."""
-        # Lazy import to avoid circular dependencies
-
-        # LaTeX parser (passthrough - already in LaTeX format)
+        from .docx_parser import DOCXParser
+        from .html_parser import HTMLParser
+        from .image_parser import ImageParser
+        from .json_parser import JSONParser
         from .latex_parser import LaTeXParser
+        from .markdown_parser import MarkdownParser
+        from .pdf_parser import PDFParser
+        from .text_parser import TextParser
+        from .toml_parser import TOMLParser
+        from .xml_parser import XMLParser
+        from .yaml_parser import YAMLParser
+
         self._parsers[ResumeFormat.LATEX] = LaTeXParser
+        self._parsers[ResumeFormat.PDF] = PDFParser
+        self._parsers[ResumeFormat.DOCX] = DOCXParser
+        # NOTE: .doc (OLE2 binary) is distinct from .docx (ZIP/OOXML).
+        # DOCXParser.validate() will reject OLE2 content with a clear error.
+        # This mapping provides a best-effort attempt for modern .doc files that
+        # are actually OOXML internally; true legacy OLE2 .doc will fail gracefully.
+        self._parsers[ResumeFormat.DOC] = DOCXParser
+        self._parsers[ResumeFormat.MARKDOWN] = MarkdownParser
+        self._parsers[ResumeFormat.TEXT] = TextParser
+        self._parsers[ResumeFormat.HTML] = HTMLParser
+        self._parsers[ResumeFormat.JSON] = JSONParser
+        self._parsers[ResumeFormat.YAML] = YAMLParser
+        self._parsers[ResumeFormat.TOML] = TOMLParser
+        self._parsers[ResumeFormat.XML] = XMLParser
+        self._parsers[ResumeFormat.IMAGE] = ImageParser
 
-        # PDF parser (Phase 15)
-        # from .pdf_parser import PDFParser
-        # self._parsers[ResumeFormat.PDF] = PDFParser
-
-        # DOCX parser (Phase 15)
-        # from .docx_parser import DOCXParser
-        # self._parsers[ResumeFormat.DOCX] = DOCXParser
-
-        # Markdown parser (Phase 16)
-        # from .markdown_parser import MarkdownParser
-        # self._parsers[ResumeFormat.MARKDOWN] = MarkdownParser
-
-        # Text parser (Phase 16)
-        # from .text_parser import TextParser
-        # self._parsers[ResumeFormat.TEXT] = TextParser
-
-        # HTML parser (Phase 16)
-        # from .html_parser import HTMLParser
-        # self._parsers[ResumeFormat.HTML] = HTMLParser
-
-        # JSON parser (Phase 17)
-        # from .json_parser import JSONParser
-        # self._parsers[ResumeFormat.JSON] = JSONParser
-
-        # YAML parser (Phase 17)
-        # from .yaml_parser import YAMLParser
-        # self._parsers[ResumeFormat.YAML] = YAMLParser
-
-        logger.info(f"Registered {len(self._parsers)} parsers")
+        logger.info(f"Registered {len(self._parsers)} parsers: {list(self._parsers.keys())}")
 
     def get_parser(self, format_type: ResumeFormat) -> Optional[AbstractParser]:
         """

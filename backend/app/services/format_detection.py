@@ -21,6 +21,9 @@ class ResumeFormat(Enum):
     HTML = "html"
     JSON = "json"
     YAML = "yaml"
+    IMAGE = "image"
+    TOML = "toml"
+    XML = "xml"
     UNKNOWN = "unknown"
 
 
@@ -30,7 +33,7 @@ class FormatDetectionService:
     # Format configurations
     FORMAT_CONFIG = {
         ResumeFormat.LATEX: {
-            "extensions": [".tex", ".latex"],
+            "extensions": [".tex", ".latex", ".ltx"],
             "mime_types": ["text/x-tex", "application/x-tex", "application/x-latex"],
             "max_size": 2 * 1024 * 1024,  # 2 MB
             "magic_bytes": None
@@ -56,7 +59,7 @@ class FormatDetectionService:
             "magic_bytes": b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"  # OLE2
         },
         ResumeFormat.MARKDOWN: {
-            "extensions": [".md", ".markdown"],
+            "extensions": [".md", ".markdown", ".mdx"],
             "mime_types": ["text/markdown", "text/x-markdown"],
             "max_size": 1 * 1024 * 1024,  # 1 MB
             "magic_bytes": None
@@ -84,7 +87,25 @@ class FormatDetectionService:
             "mime_types": ["text/yaml", "application/x-yaml", "text/x-yaml"],
             "max_size": 1 * 1024 * 1024,  # 1 MB
             "magic_bytes": None
-        }
+        },
+        ResumeFormat.IMAGE: {
+            "extensions": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp"],
+            "mime_types": ["image/jpeg", "image/png", "image/gif", "image/bmp", "image/tiff", "image/webp"],
+            "max_size": 10 * 1024 * 1024,  # 10 MB
+            "magic_bytes": None  # multiple magic bytes, handled in detect_format_from_content
+        },
+        ResumeFormat.TOML: {
+            "extensions": [".toml"],
+            "mime_types": ["application/toml", "text/toml"],
+            "max_size": 1 * 1024 * 1024,  # 1 MB
+            "magic_bytes": None
+        },
+        ResumeFormat.XML: {
+            "extensions": [".xml"],
+            "mime_types": ["application/xml", "text/xml"],
+            "max_size": 2 * 1024 * 1024,  # 2 MB
+            "magic_bytes": b"<?xml"
+        },
     }
 
     def detect_format_from_filename(self, filename: str) -> ResumeFormat:
@@ -139,6 +160,23 @@ class FormatDetectionService:
                             continue
                     logger.info(f"Detected format {format_type.value} from magic bytes")
                     return format_type
+
+        # Check image magic bytes
+        image_magic = {
+            b"\xFF\xD8\xFF": ResumeFormat.IMAGE,  # JPEG
+            b"\x89PNG": ResumeFormat.IMAGE,        # PNG
+            b"GIF8": ResumeFormat.IMAGE,           # GIF
+            b"BM": ResumeFormat.IMAGE,             # BMP
+            b"II*\x00": ResumeFormat.IMAGE,        # TIFF little-endian
+            b"MM\x00*": ResumeFormat.IMAGE,        # TIFF big-endian
+            b"RIFF": ResumeFormat.IMAGE,           # WEBP (RIFF header)
+        }
+        for magic, fmt in image_magic.items():
+            if content.startswith(magic):
+                # Extra validation for WEBP: check for 'WEBP' at byte 8
+                if magic == b"RIFF" and not (len(content) >= 12 and content[8:12] == b"WEBP"):
+                    continue
+                return fmt
 
         # Fallback to filename detection
         if filename:
@@ -251,7 +289,9 @@ class FormatDetectionService:
             ResumeFormat.TEXT,
             ResumeFormat.HTML,
             ResumeFormat.JSON,
-            ResumeFormat.YAML
+            ResumeFormat.YAML,
+            ResumeFormat.TOML,
+            ResumeFormat.XML,
         ]
 
     def requires_parsing(self, format_type: ResumeFormat) -> bool:

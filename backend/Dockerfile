@@ -12,6 +12,9 @@ RUN apt-get update && apt-get install -y \
     texlive-fonts-extra \
     texlive-lang-english \
     curl \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching

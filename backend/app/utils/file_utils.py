@@ -9,6 +9,20 @@ from fastapi import HTTPException, UploadFile
 
 from ..core.config import settings
 
+ALLOWED_EXTENSIONS = {
+    '.tex', '.latex', '.ltx',
+    '.pdf',
+    '.docx', '.doc',
+    '.md', '.markdown', '.mdx',
+    '.txt', '.text',
+    '.html', '.htm',
+    '.json',
+    '.yaml', '.yml',
+    '.toml',
+    '.xml',
+    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp',
+}
+
 
 def validate_file_upload(file: UploadFile) -> None:
     """Validate uploaded file."""
@@ -18,10 +32,19 @@ def validate_file_upload(file: UploadFile) -> None:
             detail=f"File too large. Maximum size: {settings.MAX_FILE_SIZE} bytes"
         )
 
-    if not file.filename or not file.filename.endswith('.tex'):
+    if not file.filename:
         raise HTTPException(
             status_code=400,
-            detail="File must be a .tex file"
+            detail="Filename is required"
+        )
+
+    # Check extension against allowed set
+    import os
+    ext = os.path.splitext(file.filename.lower())[1]
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{ext}'. Supported: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
         )
 
 

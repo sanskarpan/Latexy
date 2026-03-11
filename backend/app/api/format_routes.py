@@ -2,12 +2,14 @@
 Format Detection and Multi-Format Support API Routes
 """
 
-from typing import List
+import uuid
+from typing import List, Optional
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from ..core.logging import get_logger
+from ..middleware.auth_middleware import get_current_user_optional
 from ..parsers.parser_factory import parser_factory
 from ..services.format_detection import ResumeFormat, format_detection_service
 
@@ -223,3 +225,103 @@ async def validate_file_format(file: UploadFile = File(...)):
         logger.error(f"Error validating file: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
+class UploadForConversionResponse(BaseModel):
+    """Response for file upload endpoint."""
+    success: bool
+    job_id: Optional[str] = None
+    format: str
+    filename: str
+    is_direct: bool            # True = LaTeX passthrough or structured, no LLM needed
+    latex_content: Optional[str] = None  # Only set when is_direct=True
+
+
+@router.post("/upload", response_model=UploadForConversionResponse)
+async def upload_for_conversion(
+    file: UploadFile = File(...),
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
+    """
+    Upload a resume file in any supported format.
+
+    - LaTeX files (.tex/.latex/.ltx): returned directly (no conversion)
+    - JSON/YAML with JSON Resume schema: returned directly (no conversion)
+    - All other formats: queued as LLM conversion job, returns job_id
+    """
+    try:
+        content = await file.read()
+        filename = file.filename or "upload"
+
+        # Detect format
+        detected_format = format_detection_service.detect_format(
+            filename=filename,
+            mime_type=file.content_type,
+            content=content,
+        )
+
+        if detected_format == ResumeFormat.UNKNOWN:
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported file format. Could not detect format from '{filename}'",
+            )
+
+        # Validate file size
+        is_valid_size, size_error = format_detection_service.validate_file_size(
+            len(content), detected_format
+        )
+        if not is_valid_size:
+            raise HTTPException(status_code=413, detail=size_error)
+
+        # Get parser
+        parser = parser_factory.get_parser(detected_format)
+        if not parser:
+            raise HTTPException(
+                status_code=415,
+                detail=f"No parser available for {detected_format.value} format",
+            )
+
+        # Parse the file (sync extraction, fast)
+        try:
+            parsed = await parser.parse(content, filename)
+        except ValueError as ve:
+            raise HTTPException(status_code=422, detail=str(ve))
+
+        # LaTeX passthrough — return content directly
+        if detected_format == ResumeFormat.LATEX:
+            return UploadForConversionResponse(
+                success=True,
+                format="latex",
+                filename=filename,
+                is_direct=True,
+                latex_content=parsed.raw_text,
+            )
+
+        # Queue LLM conversion job
+        from ..api.job_routes import _write_initial_redis_state
+        from ..workers.converter_worker import submit_document_conversion
+
+        job_id = str(uuid.uuid4())
+        estimated_seconds = 45
+        await _write_initial_redis_state(job_id, "document_conversion", user_id, estimated_seconds)
+
+        submit_document_conversion(
+            extracted_data=parsed.to_dict(),
+            source_format=detected_format.value,
+            job_id=job_id,
+            user_id=user_id,
+        )
+
+        logger.info(f"Queued document conversion job {job_id} for {filename} ({detected_format.value})")
+        return UploadForConversionResponse(
+            success=True,
+            job_id=job_id,
+            format=detected_format.value,
+            filename=filename,
+            is_direct=False,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error in upload_for_conversion: {exc}")
+        raise HTTPException(status_code=500, detail="Internal server error")

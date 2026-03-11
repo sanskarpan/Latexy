@@ -197,6 +197,15 @@ export interface UserAnalyticsTimeseriesResponse {
 //  API client class                                                   //
 // ------------------------------------------------------------------ //
 
+export interface UploadForConversionResponse {
+  success: boolean
+  job_id?: string
+  format: string
+  filename: string
+  is_direct: boolean
+  latex_content?: string
+}
+
 export interface SemanticMatchResult {
   resume_id: string
   resume_title: string
@@ -214,9 +223,14 @@ export interface SemanticMatchResult {
 
 class ApiClient {
   private authToken: string | null = null
+  readonly baseUrl: string = API_BASE
 
   setAuthToken(token: string | null): void {
     this.authToken = token
+  }
+
+  getAuthToken(): string | null {
+    return this.authToken
   }
 
   private headers(extra: Record<string, string> = {}): HeadersInit {
@@ -635,6 +649,60 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(body),
     })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Multi-format file I/O                                           //
+  // ---------------------------------------------------------------- //
+
+  private getAuthHeader(): Record<string, string> {
+    const token =
+      this.authToken ??
+      (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null)
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  }
+
+  // Upload a file for conversion to LaTeX
+  async uploadForConversion(file: File): Promise<UploadForConversionResponse> {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await fetch(`${this.baseUrl}/formats/upload`, {
+      method: 'POST',
+      headers: this.getAuthHeader(),
+      body: formData,
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || `Upload failed: ${response.status}`)
+    }
+    return response.json()
+  }
+
+  // Export a saved resume in a specific format (returns Blob for download)
+  async exportResume(resumeId: string, format: string): Promise<Blob> {
+    const response = await fetch(`${this.baseUrl}/export/${resumeId}/${format}`, {
+      headers: this.getAuthHeader(),
+    })
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.status}`)
+    }
+    return response.blob()
+  }
+
+  // Export raw LaTeX content in a specific format (for /try page, no auth needed)
+  async exportContent(latexContent: string, format: string): Promise<Blob> {
+    const response = await fetch(`${this.baseUrl}/export/content/${format}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getAuthHeader(),
+      },
+      body: JSON.stringify({ latex_content: latexContent }),
+    })
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.status}`)
+    }
+    return response.blob()
   }
 }
 

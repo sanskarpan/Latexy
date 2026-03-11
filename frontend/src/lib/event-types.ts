@@ -16,6 +16,7 @@ export type EventType =
   | 'ats.deep_complete'
   | 'sys.heartbeat'
   | 'sys.error'
+  | 'document.convert_complete'
 
 export interface BaseEvent {
   event_id: string
@@ -170,6 +171,14 @@ export interface SystemErrorEvent extends BaseEvent {
   message: string
 }
 
+export interface DocumentConvertCompleteEvent extends BaseEvent {
+  type: 'document.convert_complete'
+  source_format: string
+  latex_content: string
+  tokens_used: number
+  conversion_time: number
+}
+
 // ------------------------------------------------------------------ //
 //  Union type                                                         //
 // ------------------------------------------------------------------ //
@@ -187,6 +196,7 @@ export type AnyEvent =
   | ATSDeepCompleteEvent
   | HeartbeatEvent
   | SystemErrorEvent
+  | DocumentConvertCompleteEvent
 
 // ------------------------------------------------------------------ //
 //  WebSocket protocol messages                                        //

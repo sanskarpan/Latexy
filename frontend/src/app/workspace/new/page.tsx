@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api-client'
 import { toast } from 'sonner'
-import FileUpload from '@/components/FileUpload'
+import MultiFormatUpload from '@/components/MultiFormatUpload'
 
 const templates = [
   {
@@ -153,14 +153,14 @@ export default function NewResumePage() {
         >
           <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Mode</p>
           <h2 className="mt-2 text-lg font-semibold text-white">Import File</h2>
-          <p className="mt-1 text-sm text-zinc-400">Upload an existing `.tex` file and continue from current content.</p>
+          <p className="mt-1 text-sm text-zinc-400">Upload any resume format and continue from current content.</p>
         </button>
       </section>
 
       <section className="surface-panel edge-highlight overflow-hidden">
         {importMode ? (
           <div className="p-6">
-            <FileUpload onFileUpload={setImportedContent} />
+            <MultiFormatUpload onFileUpload={setImportedContent} />
             {importedContent && (
               <p className="mt-3 text-xs uppercase tracking-[0.12em] text-emerald-300">File parsed successfully ({importedContent.length} chars)</p>
             )}

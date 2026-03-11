@@ -63,6 +63,11 @@ from .format_routes import router as format_router
 
 router.include_router(format_router)
 
+# Include Export routes
+from .export_routes import router as export_router
+
+router.include_router(export_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():

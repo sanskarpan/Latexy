@@ -22,6 +22,8 @@ import {
   ChevronRight as ChevronRightIcon,
   History,
   AlertTriangle,
+  Upload,
+  X,
 } from 'lucide-react'
 import { apiClient, type OptimizationHistoryEntry } from '@/lib/api-client'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
@@ -30,6 +32,8 @@ import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import DeepAnalysisPanel from '@/components/ats/DeepAnalysisPanel'
+import ExportDropdown from '@/components/ExportDropdown'
+import MultiFormatUpload from '@/components/MultiFormatUpload'
 import { Brain } from 'lucide-react'
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history'
@@ -735,6 +739,7 @@ export default function ResumeEditPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [compileJobId, setCompileJobId] = useState<string | null>(null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [showImportModal, setShowImportModal] = useState(false)
 
   // Layout
   const [rightTab, setRightTab] = useState<RightTab>('preview')
@@ -1092,6 +1097,16 @@ export default function ResumeEditPage() {
 
         <div className="flex shrink-0 items-center gap-1">
           <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+          >
+            <Upload size={12} />
+            Import
+          </button>
+
+          <ExportDropdown resumeId={resumeId} variant="toolbar" />
+
+          <button
             onClick={handleSave}
             disabled={isSaving}
             className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
@@ -1326,6 +1341,36 @@ export default function ResumeEditPage() {
           </div>
         </aside>
       </main>
+
+      {/* Import modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl shadow-black/60 p-6">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-base font-semibold text-zinc-100">Import Resume File</h3>
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs text-zinc-500 mb-5">
+              This will replace the current editor content. Make sure to save first.
+            </p>
+            <MultiFormatUpload
+              onFileUpload={(content) => {
+                if (content) {
+                  editorRef.current?.setValue(content)
+                  setLatexContent(content)
+                  setShowImportModal(false)
+                  toast.success('File imported successfully')
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <DeepAnalysisPanel
         isOpen={deepPanelOpen}

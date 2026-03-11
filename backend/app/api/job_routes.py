@@ -175,6 +175,7 @@ async def submit_job(
             "llm_optimization": 60,
             "combined": 90,
             "ats_scoring": 20,
+            "document_conversion": 45,
         }
         estimated_time = estimated_times.get(request.job_type, 60)
         if request.user_plan in ("pro", "byok"):
