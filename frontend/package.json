@@ -52,7 +52,7 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.0.0",
         "cmdk": "^1.1.1",
-        "framer-motion": "^12.23.22",
+        "framer-motion": "^12.35.2",
         "lucide-react": "^0.302.0",
         "next": "14.0.4",
         "pako": "^2.1.0",
