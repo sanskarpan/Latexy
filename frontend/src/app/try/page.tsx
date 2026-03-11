@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useRef } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Upload, X } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/api-client'
@@ -12,6 +12,8 @@ import LaTeXEditor, { LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import DeepAnalysisPanel from '@/components/ats/DeepAnalysisPanel'
+import MultiFormatUpload from '@/components/MultiFormatUpload'
+import ExportDropdown from '@/components/ExportDropdown'
 import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
 const CATEGORY_LABELS: Record<string, string> = {
   formatting: 'Formatting',
@@ -29,6 +31,7 @@ export default function TryPage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [logsOpen, setLogsOpen] = useState(false)
   const [deepPanelOpen, setDeepPanelOpen] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [deepAnalysisJobId, setDeepAnalysisJobId] = useState<string | null>(null)
   const [deepAnalysisUsesRemaining, setDeepAnalysisUsesRemaining] = useState<number | null>(null)
   const [isDeepAnalysisRunning, setIsDeepAnalysisRunning] = useState(false)
@@ -207,6 +210,13 @@ export default function TryPage() {
               >
                 Clear Source
               </button>
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10 flex items-center gap-1.5"
+              >
+                <Upload size={12} />
+                Import File
+              </button>
             </div>
 
             <div className="flex-1 min-h-0 flex flex-col gap-4">
@@ -227,7 +237,7 @@ export default function TryPage() {
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-3 flex-shrink-0">
+            <div className="mt-4 flex flex-wrap gap-3 flex-shrink-0 items-center">
               <button
                 onClick={() => runCompile('compile')}
                 disabled={isSubmitting || isProcessing || (!session && !trialStatus.canRun)}
@@ -242,6 +252,10 @@ export default function TryPage() {
               >
                 {isSubmitting ? 'Running…' : 'Optimize + Compile'}
               </button>
+              <ExportDropdown
+                latexContent={editorRef.current?.getValue() || latexContent}
+                onPdfExport={handleDownload}
+              />
             </div>
           </section>
 
@@ -392,6 +406,36 @@ export default function TryPage() {
         onRun={handleRunDeepAnalysis}
         isRunning={isDeepAnalysisRunning}
       />
+
+      {/* Import modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl shadow-black/60 p-6">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-base font-semibold text-zinc-100">Import Resume File</h3>
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs text-zinc-500 mb-5">
+              This will replace the current editor content.
+            </p>
+            <MultiFormatUpload
+              onFileUpload={(content) => {
+                if (content) {
+                  editorRef.current?.setValue(content)
+                  setLatexContent(content)
+                  setShowImportModal(false)
+                  toast.success('File imported successfully')
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
