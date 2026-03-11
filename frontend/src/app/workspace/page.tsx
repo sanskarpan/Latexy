@@ -7,6 +7,7 @@ import { apiClient, type JobStateResponse, type ResumeResponse, type SemanticMat
 import { useSession } from '@/lib/auth-client'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import SemanticMatchModal from '@/components/ats/SemanticMatchModal'
+import ExportDropdown from '@/components/ExportDropdown'
 
 export default function WorkspacePage() {
   const { data: session, isPending: sessionLoading } = useSession()
@@ -189,6 +190,9 @@ export default function WorkspacePage() {
                       Optimize
                     </Link>
                   </div>
+                  <div className="mt-2">
+                    <ExportDropdown resumeId={resume.id} variant="card" />
+                  </div>
                 </article>
               ))}
             </div>
@@ -230,7 +234,7 @@ export default function WorkspacePage() {
                       )}
                       <td className="px-4 py-3 text-right text-sm text-zinc-400">{new Date(resume.updated_at).toLocaleDateString()}</td>
                       <td className="px-4 py-3 text-right">
-                        <div className="inline-flex gap-2">
+                        <div className="inline-flex gap-2 items-center">
                           <Link
                             href={`/workspace/${resume.id}/edit`}
                             className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white"
@@ -243,6 +247,7 @@ export default function WorkspacePage() {
                           >
                             Optimize
                           </Link>
+                          <ExportDropdown resumeId={resume.id} variant="toolbar" />
                         </div>
                       </td>
                     </tr>
