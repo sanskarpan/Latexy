@@ -85,7 +85,7 @@ def convert_document_task(
         })
 
         start_time = time.time()
-        client = openai.OpenAI(api_key=api_key)
+        client = openai.OpenAI(api_key=api_key, timeout=60.0)
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
@@ -127,8 +127,9 @@ def convert_document_task(
             "tokens_used": tokens_used,
         }
         publish_job_result(job_id, result)
+        # Do NOT re-emit latex_content here — it's already persisted via publish_job_result.
+        # The client fetches it from /jobs/{job_id}/result after seeing job.completed.
         publish_event(job_id, "job.completed", {
-            "latex_content": latex_content,
             "source_format": source_format,
             "conversion_time": conversion_time,
             "tokens_used": tokens_used,
@@ -153,6 +154,10 @@ def convert_document_task(
         return {"success": False, "job_id": job_id, "error": str(exc)}
 
     except Exception as exc:
+        # Re-raise Celery's own Retry sentinel so it isn't swallowed as an "internal" failure
+        from celery.exceptions import Retry
+        if isinstance(exc, Retry):
+            raise
         logger.error(f"Converter task {task_id} raised: {exc}")
         retryable = self.request.retries < self.max_retries
         publish_event(job_id, "job.failed", {

@@ -82,29 +82,46 @@ class LaTeXParser(AbstractParser):
         except Exception as e:
             return False, f"Validation error: {str(e)}"
 
+    @staticmethod
+    def _extract_brace_content(text: str, cmd_end: int) -> str:
+        """
+        Extract the content of a LaTeX brace group starting at cmd_end.
+        Handles nested braces correctly, e.g. \author{John {Jr.} Smith}.
+        Returns the inner content string, or empty string if not found.
+        """
+        if cmd_end >= len(text) or text[cmd_end] != '{':
+            return ''
+        depth = 0
+        start = cmd_end + 1
+        for i in range(cmd_end, len(text)):
+            if text[i] == '{':
+                depth += 1
+            elif text[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    return text[start:i].strip()
+        return ''
+
     def _extract_basic_info(self, latex_content: str, parsed_resume: ParsedResume):
         """
         Extract basic information from LaTeX for display purposes.
         This is optional and provides better UX.
+        Uses brace-aware extraction to handle nested braces correctly.
         """
         try:
             # Try to extract author name if specified
-            if '\\author{' in latex_content:
-                start = latex_content.find('\\author{') + 8
-                end = latex_content.find('}', start)
-                if end > start:
-                    name = latex_content[start:end].strip()
-                    if name:
-                        parsed_resume.contact.name = name
+            author_pos = latex_content.find('\\author{')
+            if author_pos >= 0:
+                name = self._extract_brace_content(latex_content, author_pos + len('\\author'))
+                if name:
+                    parsed_resume.contact.name = name
 
             # Try to extract title
-            if '\\title{' in latex_content:
-                start = latex_content.find('\\title{') + 7
-                end = latex_content.find('}', start)
-                if end > start:
-                    title = latex_content[start:end].strip()
-                    if title:
-                        parsed_resume.metadata['document_title'] = title
+            title_pos = latex_content.find('\\title{')
+            if title_pos >= 0:
+                title = self._extract_brace_content(latex_content, title_pos + len('\\title'))
+                if title:
+                    parsed_resume.metadata['document_title'] = title
 
         except Exception as e:
             logger.debug(f"Could not extract basic info from LaTeX: {e}")

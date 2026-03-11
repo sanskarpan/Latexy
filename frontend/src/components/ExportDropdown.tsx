@@ -35,6 +35,10 @@ interface ExportDropdownProps {
   variant?: 'toolbar' | 'card' | 'inline'
 }
 
+/**
+ * Download a blob as a file. Revokes the object URL after a short delay
+ * to ensure the browser has time to start the download before cleanup.
+ */
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -43,7 +47,8 @@ function downloadBlob(blob: Blob, filename: string) {
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  // Delay revocation to ensure the download has started
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export default function ExportDropdown({
@@ -61,7 +66,10 @@ export default function ExportDropdown({
 
   useEffect(() => { setMounted(true) }, [])
 
+  const isExporting = loading !== null
+
   function openDropdown() {
+    if (isExporting) return
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect()
       setDropdownPos({
@@ -73,6 +81,9 @@ export default function ExportDropdown({
   }
 
   async function handleExport(format: ExportFormatKey) {
+    // Prevent concurrent exports
+    if (isExporting) return
+
     if (format === 'pdf') {
       setIsOpen(false)
       if (onPdfExport) {
@@ -83,23 +94,34 @@ export default function ExportDropdown({
       return
     }
 
+    // Validate content before hitting the API
+    const hasContent = resumeId || (latexContent && latexContent.trim().length > 0)
+    if (!hasContent) {
+      toast.error('No resume content to export — write something first')
+      setIsOpen(false)
+      return
+    }
+
     setLoading(format)
     setIsOpen(false)
     try {
       let blob: Blob
       if (resumeId) {
         blob = await apiClient.exportResume(resumeId, format)
-      } else if (latexContent) {
-        blob = await apiClient.exportContent(latexContent, format)
       } else {
-        throw new Error('No resume content to export')
+        blob = await apiClient.exportContent(latexContent!, format)
       }
 
       const formatInfo = EXPORT_FORMATS.find(f => f.key === format)
       downloadBlob(blob, `resume.${format}`)
       toast.success(`Downloaded as ${formatInfo?.label || format}`)
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Export failed'
+      let message = err instanceof Error ? err.message : 'Export failed'
+      if (message.includes('400')) message = 'Resume content is empty or invalid'
+      else if (message.includes('403')) message = 'Access denied to this resume'
+      else if (message.includes('404')) message = 'Resume not found'
+      else if (message.includes('500') || message.includes('502') || message.includes('503'))
+        message = 'Server error — please try again'
       toast.error(message)
     } finally {
       setLoading(null)
@@ -110,14 +132,11 @@ export default function ExportDropdown({
   const triggerCls = (() => {
     const base = 'flex items-center gap-1.5 transition disabled:opacity-50'
     if (variant === 'toolbar') {
-      // Matches Import / Save in the editor header
       return `${base} rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200`
     }
     if (variant === 'card') {
-      // Matches Edit / Optimize buttons inside resume cards
       return `${base} w-full justify-center rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-white/10`
     }
-    // 'inline' — matches Compile / Optimize+Compile on /try page
     return `${base} rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm text-zinc-200 hover:bg-white/10`
   })()
 
@@ -129,10 +148,10 @@ export default function ExportDropdown({
       <button
         ref={triggerRef}
         onClick={openDropdown}
-        disabled={loading !== null}
+        disabled={isExporting}
         className={triggerCls}
       >
-        {loading ? (
+        {isExporting ? (
           <Loader2 size={iconSize} className="animate-spin" />
         ) : (
           <Download size={iconSize} />
@@ -170,8 +189,8 @@ export default function ExportDropdown({
                   <button
                     key={fmt.key}
                     onClick={() => handleExport(fmt.key)}
-                    disabled={isLoading}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-white/[0.05] disabled:opacity-50"
+                    disabled={isExporting}  // Disable ALL items while any export is in progress
+                    className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-white/[0.05] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? (
                       <Loader2 size={14} className="shrink-0 animate-spin text-orange-300" />

@@ -5,7 +5,7 @@ Format Detection and Multi-Format Support API Routes
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from ..core.logging import get_logger
@@ -240,7 +240,6 @@ class UploadForConversionResponse(BaseModel):
 async def upload_for_conversion(
     file: UploadFile = File(...),
     user_id: Optional[str] = Depends(get_current_user_optional),
-    http_request: Request = None,
 ):
     """
     Upload a resume file in any supported format.
@@ -295,16 +294,6 @@ async def upload_for_conversion(
                 filename=filename,
                 is_direct=True,
                 latex_content=parsed.raw_text,
-            )
-
-        # Structured format (JSON Resume schema) — also direct if latex_content set
-        if parsed.metadata.get("is_structured") and parsed.metadata.get("latex_content"):
-            return UploadForConversionResponse(
-                success=True,
-                format=detected_format.value,
-                filename=filename,
-                is_direct=True,
-                latex_content=parsed.metadata["latex_content"],
             )
 
         # Queue LLM conversion job

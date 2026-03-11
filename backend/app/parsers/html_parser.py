@@ -21,8 +21,10 @@ class HTMLParser(AbstractParser):
         try:
             soup = BeautifulSoup(file_content, 'lxml')
 
-            # Remove non-content elements
-            for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'meta', 'link']):
+            # Remove purely decorative/navigation elements
+            # NOTE: <header> and <footer> are intentionally kept because many resume
+            # templates place the candidate's name, contact block, and links there.
+            for tag in soup(['script', 'style', 'nav', 'meta', 'link', 'noscript']):
                 tag.decompose()
 
             # Extract section headers

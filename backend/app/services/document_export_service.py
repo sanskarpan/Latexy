@@ -116,9 +116,10 @@ class DocumentExportService:
         text = re.sub(r'\\begin\{[^}]*\}', '', text)
         text = re.sub(r'\\end\{[^}]*\}', '', text)
 
-        # Remove remaining LaTeX commands (with optional args)
-        text = re.sub(r'\\[a-zA-Z]+\*?(?:\[[^\]]*\])?(?:\{[^}]*\})*', '', text)
-        text = re.sub(r'\\[a-zA-Z]+\*?', '', text)
+        # Remove LaTeX command names but KEEP their brace-enclosed arguments.
+        # e.g. \resumeSubheading{Company}{Role} → "Company Role"
+        # Pattern: strip \cmdname and optional [...] arg, but leave the {...} content.
+        text = re.sub(r'\\[a-zA-Z]+\*?(?:\[[^\]]*\])?', '', text)
         # Remove lone backslashes
         text = re.sub(r'\\', '', text)
 
@@ -140,9 +141,10 @@ class DocumentExportService:
             md_content = self.to_markdown(latex_content)
             body = mistune.html(md_content)
         except ImportError:
-            # Fallback: basic HTML from text
+            # Fallback: basic HTML from text — escape to prevent XSS
+            import html as _html
             text = self.to_text(latex_content)
-            paragraphs = [f'<p>{p}</p>' for p in text.split('\n\n') if p.strip()]
+            paragraphs = [f'<p>{_html.escape(p)}</p>' for p in text.split('\n\n') if p.strip()]
             body = '\n'.join(paragraphs)
 
         return (

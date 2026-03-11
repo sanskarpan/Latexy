@@ -20,8 +20,13 @@ class YAMLParser(AbstractParser):
         except ImportError:
             raise ValueError("PyYAML not installed")
 
+        if not file_content:
+            raise ValueError("YAML file is empty")
         try:
-            text = file_content.decode('utf-8', errors='ignore')
+            try:
+                text = file_content.decode('utf-8')
+            except UnicodeDecodeError:
+                text = file_content.decode('latin-1')
             data = yaml.safe_load(text)
         except Exception as e:
             raise ValueError(f"Invalid YAML file: {e}")
@@ -42,9 +47,15 @@ class YAMLParser(AbstractParser):
             raise ValueError(f"Failed to parse YAML: {str(e)}")
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
+        if not file_content:
+            return False, "File is empty"
         try:
             import yaml
-            yaml.safe_load(file_content.decode('utf-8', errors='ignore'))
+            try:
+                text = file_content.decode('utf-8')
+            except UnicodeDecodeError:
+                text = file_content.decode('latin-1')
+            yaml.safe_load(text)
             return True, None
         except Exception as e:
             return False, f"Invalid YAML: {e}"

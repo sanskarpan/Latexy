@@ -21,8 +21,17 @@ class TOMLParser(AbstractParser):
             except ImportError:
                 raise ValueError("TOML support requires Python 3.11+ (tomllib built-in) or tomli package")
 
+        if not file_content:
+            raise ValueError("TOML file is empty")
         try:
-            data = tomllib.loads(file_content.decode('utf-8', errors='ignore'))
+            # TOML is strictly UTF-8; reject files with invalid encoding rather than silently dropping bytes
+            try:
+                text = file_content.decode('utf-8')
+            except UnicodeDecodeError as ue:
+                raise ValueError(f"TOML file contains invalid UTF-8 encoding: {ue}")
+            data = tomllib.loads(text)
+        except ValueError:
+            raise
         except Exception as e:
             raise ValueError(f"Invalid TOML file: {e}")
 
@@ -46,12 +55,18 @@ class TOMLParser(AbstractParser):
         return self._build_parsed_resume(raw, filename)
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
+        if not file_content:
+            return False, "File is empty"
         try:
             try:
                 import tomllib
             except ImportError:
                 import tomli as tomllib
-            tomllib.loads(file_content.decode('utf-8', errors='ignore'))
+            try:
+                text = file_content.decode('utf-8')
+            except UnicodeDecodeError as ue:
+                return False, f"TOML file contains invalid UTF-8 encoding: {ue}"
+            tomllib.loads(text)
             return True, None
         except Exception as e:
             return False, f"Invalid TOML: {e}"

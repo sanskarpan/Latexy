@@ -60,6 +60,9 @@ def _convert_latex(latex_content: str, fmt: str) -> bytes:
     raise ValueError(f"Unknown format: {fmt}")
 
 
+MAX_EXPORT_CONTENT_BYTES = 512 * 1024  # 512 KB — enough for any single resume
+
+
 class ExportContentRequest(BaseModel):
     latex_content: str
 
@@ -98,6 +101,8 @@ async def export_resume(
             raise HTTPException(status_code=404, detail="Resume not found")
         if resume.user_id != user_id:
             raise HTTPException(status_code=403, detail="Access denied")
+        if not (resume.latex_content or "").strip():
+            raise HTTPException(status_code=400, detail="Resume has no content to export")
 
         content_bytes = _convert_latex(resume.latex_content, fmt)
         mime_type, filename = EXPORT_FORMATS[fmt]
@@ -129,6 +134,12 @@ async def export_content(fmt: str, body: ExportContentRequest):
 
     if not body.latex_content.strip():
         raise HTTPException(status_code=400, detail="latex_content cannot be empty")
+
+    if len(body.latex_content.encode('utf-8')) > MAX_EXPORT_CONTENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Content too large (max {MAX_EXPORT_CONTENT_BYTES // 1024} KB)",
+        )
 
     try:
         content_bytes = _convert_latex(body.latex_content, fmt)

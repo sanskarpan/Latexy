@@ -45,6 +45,19 @@ class DOCXParser(AbstractParser):
             raise ValueError(f"Failed to parse DOCX: {str(e)}")
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
+        if not file_content:
+            return False, "File is empty"
         if not file_content.startswith(b"PK"):
             return False, "Not a valid DOCX file (missing ZIP/PK header)"
+        # Verify it's actually a DOCX, not just any ZIP archive
+        try:
+            import zipfile
+            with zipfile.ZipFile(io.BytesIO(file_content)) as z:
+                names = z.namelist()
+            if not any(n.startswith('word/') for n in names):
+                return False, "Not a valid DOCX file (missing 'word/' directory in ZIP)"
+        except zipfile.BadZipFile:
+            return False, "Not a valid DOCX file (corrupt ZIP archive)"
+        except Exception:
+            pass  # If zip check fails for any other reason, proceed to parse
         return True, None

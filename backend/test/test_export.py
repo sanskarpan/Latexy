@@ -136,11 +136,11 @@ class TestDocumentExportService:
         assert len(result) > 0
 
     def test_to_xml_is_valid_xml(self):
-        from lxml import etree
+        import defusedxml.ElementTree as ET
 
         from app.services.document_export_service import document_export_service
         result = document_export_service.to_xml(VALID_LATEX)
-        root = etree.fromstring(result.encode())
+        root = ET.fromstring(result.encode())
         assert root is not None
 
     def test_to_xml_has_resume_root(self):

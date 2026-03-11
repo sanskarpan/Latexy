@@ -1,23 +1,46 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Upload, File, FileText, Image as ImageIcon, Code, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useFormatConversion } from '@/hooks/useFormatConversion'
 
-const ACCEPTED_FORMATS = [
-  '.tex', '.latex', '.ltx',
-  '.pdf',
-  '.docx', '.doc',
-  '.md', '.markdown', '.mdx',
-  '.txt', '.text',
-  '.html', '.htm',
-  '.json',
-  '.yaml', '.yml',
-  '.toml',
-  '.xml',
-  '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp',
-].join(',')
+// Extensions accepted by the file input (also used for drag-and-drop validation)
+const ACCEPTED_EXTENSIONS = new Set([
+  'tex', 'latex', 'ltx',
+  'pdf',
+  'docx', 'doc',
+  'md', 'markdown', 'mdx',
+  'txt', 'text',
+  'html', 'htm',
+  'json',
+  'yaml', 'yml',
+  'toml',
+  'xml',
+  'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp',
+])
+
+const ACCEPTED_FORMATS = Array.from(ACCEPTED_EXTENSIONS).map(e => `.${e}`).join(',')
+
+// Per-format file size limits in bytes (mirrors backend format_detection.py)
+const SIZE_LIMITS: Record<string, number> = {
+  pdf: 10 * 1024 * 1024,
+  jpg: 10 * 1024 * 1024, jpeg: 10 * 1024 * 1024,
+  png: 10 * 1024 * 1024, gif: 10 * 1024 * 1024,
+  bmp: 10 * 1024 * 1024, tiff: 10 * 1024 * 1024, webp: 10 * 1024 * 1024,
+  docx: 5 * 1024 * 1024, doc: 5 * 1024 * 1024,
+  tex: 2 * 1024 * 1024, latex: 2 * 1024 * 1024, ltx: 2 * 1024 * 1024,
+}
+const DEFAULT_SIZE_LIMIT = 2 * 1024 * 1024  // 2 MB for all other formats
+
+function getSizeLimit(ext: string): number {
+  return SIZE_LIMITS[ext] ?? DEFAULT_SIZE_LIMIT
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`
+  return `${(bytes / 1024).toFixed(0)} KB`
+}
 
 function getFileIcon(filename: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
@@ -60,18 +83,63 @@ export default function MultiFormatUpload({ onFileUpload }: MultiFormatUploadPro
   const inputRef = useRef<HTMLInputElement>(null)
   const { status, progress, convertedLatex, error, startConversion, reset } = useFormatConversion()
 
+  const isConverting = status === 'uploading' || status === 'converting'
+
   const isTexFile = (filename: string) => {
     const ext = filename.split('.').pop()?.toLowerCase() || ''
     return ['tex', 'latex', 'ltx'].includes(ext)
   }
 
+  /**
+   * Validate a File before processing:
+   * - Must have a recognised extension
+   * - Must not be empty (zero bytes)
+   * - Must not exceed the per-format size limit
+   * Returns null if valid, or an error string.
+   */
+  const validateFile = (file: File): string | null => {
+    const ext = file.name.split('.').pop()?.toLowerCase() || ''
+
+    if (!ACCEPTED_EXTENSIONS.has(ext)) {
+      return `Unsupported file type ".${ext}". Supported: PDF, Word, LaTeX, Markdown, JSON, YAML, HTML, images, and more.`
+    }
+
+    if (file.size === 0) {
+      return 'The file is empty (0 bytes). Please choose a valid file.'
+    }
+
+    const limit = getSizeLimit(ext)
+    if (file.size > limit) {
+      return `File is too large (${formatBytes(file.size)}). Maximum for ${getFormatLabel(file.name)} is ${formatBytes(limit)}.`
+    }
+
+    return null
+  }
+
   const handleFile = useCallback(async (file: File) => {
+    // Guard: ignore new uploads while a conversion is already in progress
+    if (isConverting) {
+      toast.error('Please wait for the current upload to finish')
+      return
+    }
+
+    const validationError = validateFile(file)
+    if (validationError) {
+      toast.error(validationError)
+      return
+    }
+
     setUploadedFile(file.name)
 
     // LaTeX files — read directly, no server call needed
     if (isTexFile(file.name)) {
       try {
         const content = await file.text()
+        if (!content.trim()) {
+          toast.error('LaTeX file is empty')
+          setUploadedFile(null)
+          return
+        }
         onFileUpload(content)
       } catch {
         toast.error('Error reading LaTeX file')
@@ -86,19 +154,22 @@ export default function MultiFormatUpload({ onFileUpload }: MultiFormatUploadPro
       onFileUpload(result)
       toast.success(`${getFormatLabel(file.name)} file converted to LaTeX`)
     }
-  }, [onFileUpload, startConversion])
+  }, [onFileUpload, startConversion, isConverting])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Watch for async conversion completion
+  // Watch for async conversion completion — must be in useEffect to avoid render-phase side effects
   const prevStatusRef = useRef(status)
-  const prevStatus = prevStatusRef.current
-  prevStatusRef.current = status
-  if (status === 'done' && convertedLatex && prevStatus === 'converting') {
-    onFileUpload(convertedLatex)
-    toast.success('File converted to LaTeX successfully')
-  }
-  if (status === 'error' && error && prevStatus !== 'error') {
-    toast.error(`Conversion failed: ${error}`)
-  }
+  useEffect(() => {
+    const prevStatus = prevStatusRef.current
+    prevStatusRef.current = status
+
+    if (status === 'done' && convertedLatex && prevStatus === 'converting') {
+      onFileUpload(convertedLatex)
+      toast.success('File converted to LaTeX successfully')
+    }
+    if (status === 'error' && error && prevStatus !== 'error') {
+      toast.error(`Conversion failed: ${error}`)
+    }
+  })
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -148,7 +219,7 @@ export default function MultiFormatUpload({ onFileUpload }: MultiFormatUploadPro
   }
 
   // Converting state
-  if (status === 'uploading' || status === 'converting') {
+  if (isConverting) {
     return (
       <div className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4">
         <div className="flex items-center gap-3 mb-3">

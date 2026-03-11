@@ -289,7 +289,9 @@ class FormatDetectionService:
             ResumeFormat.TEXT,
             ResumeFormat.HTML,
             ResumeFormat.JSON,
-            ResumeFormat.YAML
+            ResumeFormat.YAML,
+            ResumeFormat.TOML,
+            ResumeFormat.XML,
         ]
 
     def requires_parsing(self, format_type: ResumeFormat) -> bool:

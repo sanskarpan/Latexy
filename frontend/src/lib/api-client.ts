@@ -655,15 +655,20 @@ class ApiClient {
   //  Multi-format file I/O                                           //
   // ---------------------------------------------------------------- //
 
+  private getAuthHeader(): Record<string, string> {
+    const token =
+      this.authToken ??
+      (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null)
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  }
+
   // Upload a file for conversion to LaTeX
   async uploadForConversion(file: File): Promise<UploadForConversionResponse> {
     const formData = new FormData()
     formData.append('file', file)
     const response = await fetch(`${this.baseUrl}/formats/upload`, {
       method: 'POST',
-      headers: this.authToken
-        ? { Authorization: `Bearer ${this.authToken}` }
-        : {},
+      headers: this.getAuthHeader(),
       body: formData,
     })
     if (!response.ok) {
@@ -676,9 +681,7 @@ class ApiClient {
   // Export a saved resume in a specific format (returns Blob for download)
   async exportResume(resumeId: string, format: string): Promise<Blob> {
     const response = await fetch(`${this.baseUrl}/export/${resumeId}/${format}`, {
-      headers: this.authToken
-        ? { Authorization: `Bearer ${this.authToken}` }
-        : {},
+      headers: this.getAuthHeader(),
     })
     if (!response.ok) {
       throw new Error(`Export failed: ${response.status}`)
@@ -692,7 +695,7 @@ class ApiClient {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
+        ...this.getAuthHeader(),
       },
       body: JSON.stringify({ latex_content: latexContent }),
     })

@@ -10,11 +10,16 @@ from .base_parser import AbstractParser, ParsedResume
 
 logger = logging.getLogger(__name__)
 
+MAX_PDF_PAGES = 50  # Hard limit to prevent processing arbitrarily large PDFs
+
 
 class PDFParser(AbstractParser):
     """Parser for PDF resume files."""
 
     async def parse(self, file_content: bytes, filename: str = "") -> ParsedResume:
+        if not file_content:
+            raise ValueError("PDF file is empty")
+
         try:
             import pdfplumber
         except ImportError:
@@ -23,7 +28,12 @@ class PDFParser(AbstractParser):
         try:
             pages_text = []
             with pdfplumber.open(io.BytesIO(file_content)) as pdf:
-                for page in pdf.pages:
+                total_pages = len(pdf.pages)
+                if total_pages > MAX_PDF_PAGES:
+                    logger.warning(
+                        f"PDF has {total_pages} pages; truncating to first {MAX_PDF_PAGES}: {filename}"
+                    )
+                for page in pdf.pages[:MAX_PDF_PAGES]:
                     text = page.extract_text(x_tolerance=3, y_tolerance=3)
                     if text:
                         pages_text.append(text)
@@ -50,6 +60,8 @@ class PDFParser(AbstractParser):
             raise ValueError(f"Failed to parse PDF: {str(e)}")
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
+        if not file_content:
+            return False, "File is empty"
         if not file_content.startswith(b"%PDF"):
             return False, "Not a valid PDF file (missing %PDF header)"
         return True, None

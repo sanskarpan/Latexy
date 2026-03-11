@@ -35,7 +35,11 @@ class ParserFactory:
         self._parsers[ResumeFormat.LATEX] = LaTeXParser
         self._parsers[ResumeFormat.PDF] = PDFParser
         self._parsers[ResumeFormat.DOCX] = DOCXParser
-        self._parsers[ResumeFormat.DOC] = DOCXParser   # .doc uses DOCX parser (best effort)
+        # NOTE: .doc (OLE2 binary) is distinct from .docx (ZIP/OOXML).
+        # DOCXParser.validate() will reject OLE2 content with a clear error.
+        # This mapping provides a best-effort attempt for modern .doc files that
+        # are actually OOXML internally; true legacy OLE2 .doc will fail gracefully.
+        self._parsers[ResumeFormat.DOC] = DOCXParser
         self._parsers[ResumeFormat.MARKDOWN] = MarkdownParser
         self._parsers[ResumeFormat.TEXT] = TextParser
         self._parsers[ResumeFormat.HTML] = HTMLParser

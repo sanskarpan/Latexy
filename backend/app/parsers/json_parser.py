@@ -17,8 +17,14 @@ class JSONParser(AbstractParser):
     """Parser for JSON resume files."""
 
     async def parse(self, file_content: bytes, filename: str = "") -> ParsedResume:
+        if not file_content:
+            raise ValueError("JSON file is empty")
         try:
-            text = file_content.decode('utf-8', errors='ignore')
+            # Try strict UTF-8 first; fall back to latin-1 (preserves all bytes without dropping)
+            try:
+                text = file_content.decode('utf-8')
+            except UnicodeDecodeError:
+                text = file_content.decode('latin-1')
             data = json.loads(text)
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise ValueError(f"Invalid JSON file: {e}")
@@ -92,8 +98,14 @@ class JSONParser(AbstractParser):
         return parsed
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
+        if not file_content:
+            return False, "File is empty"
         try:
-            json.loads(file_content.decode('utf-8', errors='ignore'))
+            try:
+                text = file_content.decode('utf-8')
+            except UnicodeDecodeError:
+                text = file_content.decode('latin-1')
+            json.loads(text)
             return True, None
         except json.JSONDecodeError as e:
             return False, f"Invalid JSON: {e}"
