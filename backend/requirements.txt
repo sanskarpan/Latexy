@@ -39,7 +39,7 @@ openai==1.54.4
 tiktoken==0.8.0
 
 # Database
-SQLAlchemy==2.0.41
+SQLAlchemy==2.0.48
 alembic==1.16.1
 asyncpg==0.30.0
 psycopg2-binary==2.9.10
