@@ -33,9 +33,10 @@ interface TemplateCardProps {
   template: TemplateResponse
   onSelect: (id: string) => void
   onPreview: (id: string) => void
+  disabled?: boolean
 }
 
-export default function TemplateCard({ template, onSelect, onPreview }: TemplateCardProps) {
+export default function TemplateCard({ template, onSelect, onPreview, disabled }: TemplateCardProps) {
   const style = CATEGORY_STYLES[template.category] ?? DEFAULT_STYLE
   const [imgFailed, setImgFailed] = useState(false)
 
@@ -48,6 +49,8 @@ export default function TemplateCard({ template, onSelect, onPreview }: Template
           <img
             src={template.thumbnail_url}
             alt={`${template.name} preview`}
+            loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover object-top"
             onError={() => setImgFailed(true)}
           />
@@ -59,11 +62,12 @@ export default function TemplateCard({ template, onSelect, onPreview }: Template
           </div>
         )}
 
-        {/* Hover overlay with Preview button */}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+        {/* Overlay with Preview button — visible on hover/focus */}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
           <button
             onClick={() => onPreview(template.id)}
-            className="flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
+            aria-label={`Preview ${template.name}`}
+            className="flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-orange-300/50"
           >
             <Eye size={13} />
             Preview
@@ -88,7 +92,8 @@ export default function TemplateCard({ template, onSelect, onPreview }: Template
         {/* Use Template button */}
         <button
           onClick={() => onSelect(template.id)}
-          className="mt-auto w-full rounded-lg border border-orange-300/25 bg-orange-300/10 py-2 text-xs font-semibold text-orange-200 transition hover:bg-orange-300/20 hover:border-orange-300/40"
+          disabled={disabled}
+          className="mt-auto w-full rounded-lg border border-orange-300/25 bg-orange-300/10 py-2 text-xs font-semibold text-orange-200 transition hover:bg-orange-300/20 hover:border-orange-300/40 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Use Template
         </button>
