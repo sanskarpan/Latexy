@@ -2,7 +2,10 @@
 MinIO / S3-compatible storage service.
 
 Wraps boto3 for uploading, downloading, and checking objects in the configured bucket.
+Uses a module-level singleton client to avoid per-request client creation overhead.
 """
+
+import threading
 
 import boto3
 from botocore.exceptions import ClientError
@@ -12,15 +15,23 @@ from ..core.logging import get_logger
 
 logger = get_logger(__name__)
 
+_client = None
+_client_lock = threading.Lock()
+
 
 def _get_client():
-    return boto3.client(
-        "s3",
-        endpoint_url=settings.MINIO_ENDPOINT,
-        aws_access_key_id=settings.MINIO_ACCESS_KEY,
-        aws_secret_access_key=settings.MINIO_SECRET_KEY,
-        region_name="us-east-1",
-    )
+    global _client
+    if _client is None:
+        with _client_lock:
+            if _client is None:
+                _client = boto3.client(
+                    "s3",
+                    endpoint_url=settings.MINIO_ENDPOINT,
+                    aws_access_key_id=settings.MINIO_ACCESS_KEY,
+                    aws_secret_access_key=settings.MINIO_SECRET_KEY,
+                    region_name="us-east-1",
+                )
+    return _client
 
 
 def upload_bytes(key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
@@ -53,5 +64,7 @@ def file_exists(key: str) -> bool:
     try:
         client.head_object(Bucket=settings.MINIO_BUCKET, Key=key)
         return True
-    except ClientError:
-        return False
+    except ClientError as e:
+        if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
+            return False
+        raise
