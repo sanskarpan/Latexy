@@ -33,7 +33,8 @@ export default function RootLayout({
             </div>
             <Toaster
               richColors
-              position="top-right"
+              position="bottom-right"
+              duration={1500}
               toastOptions={{
                 className: 'border border-white/10 bg-zinc-950 text-zinc-100',
               }}
