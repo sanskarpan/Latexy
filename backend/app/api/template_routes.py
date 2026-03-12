@@ -290,5 +290,5 @@ async def use_template(
     await db.commit()
     await db.refresh(resume)
 
-    logger.info(f"User {user_id} created resume {resume.id} from template {template_id} ({t.name})")
+    logger.info("User %s created resume %s from template %s (%s)", user_id, resume.id, template_id, t.name)
     return {"resume_id": resume.id, "title": resume.title}
