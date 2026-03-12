@@ -16,8 +16,8 @@ export default function SignInForm() {
     setError('')
     try {
       const result = await signIn.email({ email, password })
-      if (result.error?.message) {
-        setError(result.error.message)
+      if (result.error) {
+        setError(result.error.message || 'Sign in failed')
       } else {
         window.location.href = '/workspace'
       }
