@@ -35,6 +35,7 @@ def compile_latex_task(
     user_plan: str = "free",
     device_fingerprint: Optional[str] = None,
     metadata: Optional[Dict] = None,
+    resume_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Compile LaTeX content to PDF, streaming each pdflatex log line as
@@ -178,6 +179,19 @@ def compile_latex_task(
             logger.info(
                 f"LaTeX task {task_id} succeeded for job {job_id} ({pdf_size} bytes)"
             )
+
+            # Auto-save checkpoint if resume_id is known
+            _resume_id = resume_id or (metadata or {}).get("resume_id")
+            if _resume_id and user_id:
+                try:
+                    from .auto_save_worker import record_auto_save_checkpoint
+                    record_auto_save_checkpoint.apply_async(
+                        args=[_resume_id, user_id, latex_content],
+                        queue="cleanup",
+                    )
+                except Exception as auto_exc:
+                    logger.warning(f"Failed to enqueue auto-save for resume {_resume_id}: {auto_exc}")
+
             return result
 
         error_msg = f"pdflatex exited with code {proc.returncode}"
@@ -215,6 +229,7 @@ def submit_latex_compilation(
     device_fingerprint: Optional[str] = None,
     priority: Optional[int] = None,
     metadata: Optional[Dict] = None,
+    resume_id: Optional[str] = None,
 ) -> str:
     """Enqueue compile_latex_task on the latex queue."""
     if priority is None:
@@ -228,6 +243,7 @@ def submit_latex_compilation(
             "user_plan": user_plan,
             "device_fingerprint": device_fingerprint,
             "metadata": metadata,
+            "resume_id": resume_id,
         },
         priority=priority,
         queue="latex",
