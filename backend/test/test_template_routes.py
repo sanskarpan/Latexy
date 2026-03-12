@@ -6,7 +6,7 @@ Tests cover:
   - GET /templates/          (list, category filter, search)
   - GET /templates/{id}      (detail with latex_content)
   - POST /templates/{id}/use  (authenticated — creates resume)
-  - Error cases: 404, 400 bad category, 401 unauthenticated use
+  - Error cases: 404, 400 bad category, 401 unauthenticated use, invalid UUID
 """
 
 from __future__ import annotations
@@ -39,9 +39,9 @@ _VALID_LATEX_2 = r"""
 
 
 async def _insert_template(db_session, **kwargs) -> ResumeTemplate:
-    """Insert a test template and return it."""
+    """Insert a test template and return it. Names prefixed with test_tmpl_ for cleanup."""
     defaults = dict(
-        name="Test SWE Template",
+        name="test_tmpl_SWE Template",
         description="A test template for software engineers",
         category="software_engineering",
         tags=["software_engineering"],
@@ -51,6 +51,9 @@ async def _insert_template(db_session, **kwargs) -> ResumeTemplate:
         sort_order=0,
     )
     defaults.update(kwargs)
+    # Ensure test prefix for cleanup
+    if not defaults["name"].startswith("test_tmpl_"):
+        defaults["name"] = f"test_tmpl_{defaults['name']}"
     t = ResumeTemplate(**defaults)
     db_session.add(t)
     await db_session.commit()
@@ -85,13 +88,10 @@ class TestListCategories:
 
     async def test_inactive_templates_excluded(self, client: AsyncClient, db_session):
         """Inactive templates should NOT appear in category counts."""
-        t = await _insert_template(db_session, name="Inactive Template", is_active=False)
+        await _insert_template(db_session, name="test_tmpl_Inactive Cat", is_active=False)
         data = (await client.get("/templates/categories")).json()
-        # Find the category
         cat_entry = next((c for c in data if c["category"] == "software_engineering"), None)
-        # Count active ones manually
         if cat_entry:
-            # Just assert count is non-negative (inactive should not inflate it)
             assert cat_entry["count"] >= 0
 
 
@@ -124,8 +124,8 @@ class TestListTemplates:
         assert "latex_content" not in item  # must NOT be in list response
 
     async def test_filter_by_category(self, client: AsyncClient, db_session):
-        t1 = await _insert_template(db_session, name="Finance Template", category="finance")
-        t2 = await _insert_template(db_session, name="SWE Template", category="software_engineering")
+        t1 = await _insert_template(db_session, name="test_tmpl_Finance One", category="finance")
+        t2 = await _insert_template(db_session, name="test_tmpl_SWE One", category="software_engineering")
         data = (await client.get("/templates/?category=finance")).json()
         ids = [d["id"] for d in data]
         assert t1.id in ids
@@ -136,32 +136,32 @@ class TestListTemplates:
         assert resp.status_code == 400
 
     async def test_filter_all_category_returns_all(self, client: AsyncClient, db_session):
-        await _insert_template(db_session, name="T1", category="finance")
-        await _insert_template(db_session, name="T2", category="software_engineering")
+        await _insert_template(db_session, name="test_tmpl_AllCat1", category="finance")
+        await _insert_template(db_session, name="test_tmpl_AllCat2", category="software_engineering")
         all_data = (await client.get("/templates/")).json()
         all_cat_data = (await client.get("/templates/?category=all")).json()
         assert len(all_data) == len(all_cat_data)
 
     async def test_search_by_name(self, client: AsyncClient, db_session):
-        await _insert_template(db_session, name="UniqueSearchableName42")
-        data = (await client.get("/templates/?search=UniqueSearchableName42")).json()
-        assert any(d["name"] == "UniqueSearchableName42" for d in data)
+        await _insert_template(db_session, name="test_tmpl_UniqueSearchable42")
+        data = (await client.get("/templates/?search=UniqueSearchable42")).json()
+        assert any("UniqueSearchable42" in d["name"] for d in data)
 
     async def test_search_case_insensitive(self, client: AsyncClient, db_session):
-        await _insert_template(db_session, name="CaseInsensitiveTemplate99")
-        data = (await client.get("/templates/?search=caseinsensitivetemplate99")).json()
-        assert any(d["name"] == "CaseInsensitiveTemplate99" for d in data)
+        await _insert_template(db_session, name="test_tmpl_CaseTest99")
+        data = (await client.get("/templates/?search=casetest99")).json()
+        assert any("CaseTest99" in d["name"] for d in data)
 
     async def test_inactive_template_excluded_from_list(self, client: AsyncClient, db_session):
         t_inactive = await _insert_template(
-            db_session, name="ShouldNotAppearInList", is_active=False
+            db_session, name="test_tmpl_ShouldNotAppear", is_active=False
         )
         data = (await client.get("/templates/")).json()
         ids = [d["id"] for d in data]
         assert t_inactive.id not in ids
 
     async def test_category_label_populated(self, client: AsyncClient, db_session):
-        await _insert_template(db_session, category="finance")
+        await _insert_template(db_session, name="test_tmpl_FinLabel", category="finance")
         data = (await client.get("/templates/?category=finance")).json()
         assert len(data) >= 1
         assert data[0]["category_label"] == "Finance"
@@ -188,7 +188,7 @@ class TestGetTemplate:
         assert resp.status_code == 404
 
     async def test_404_for_inactive_template(self, client: AsyncClient, db_session):
-        t = await _insert_template(db_session, name="InactiveDetail", is_active=False)
+        t = await _insert_template(db_session, name="test_tmpl_InactiveDetail", is_active=False)
         resp = await client.get(f"/templates/{t.id}")
         assert resp.status_code == 404
 
@@ -199,6 +199,11 @@ class TestGetTemplate:
                       "thumbnail_url", "pdf_url", "sort_order", "latex_content"):
             assert field in data
 
+    async def test_invalid_uuid_returns_404(self, client: AsyncClient):
+        """Non-UUID template_id should return 404, not 500."""
+        resp = await client.get("/templates/not-a-valid-uuid")
+        assert resp.status_code == 404
+
 
 # ---------------------------------------------------------------------------
 # POST /templates/{id}/use
@@ -207,6 +212,7 @@ class TestGetTemplate:
 async def _create_auth_headers(db_session) -> dict:
     """Insert a user + Better Auth session row; return Authorization headers."""
     from datetime import datetime, timedelta, timezone
+
     from sqlalchemy import text
 
     user_id = str(uuid.uuid4())
@@ -252,7 +258,7 @@ class TestUseTemplate:
         assert uuid.UUID(data["resume_id"])  # must be valid UUID
 
     async def test_title_defaults_to_template_name(self, client: AsyncClient, db_session):
-        t = await _insert_template(db_session, name="AutoTitleTemplate")
+        t = await _insert_template(db_session, name="test_tmpl_AutoTitle")
         headers = await _create_auth_headers(db_session)
         resp = await client.post(
             f"/templates/{t.id}/use",
@@ -260,7 +266,7 @@ class TestUseTemplate:
             headers=headers,
         )
         assert resp.status_code == 200
-        assert resp.json()["title"] == "AutoTitleTemplate"
+        assert resp.json()["title"] == "test_tmpl_AutoTitle"
 
     async def test_created_resume_has_correct_content(self, client: AsyncClient, db_session):
         t = await _insert_template(db_session, latex_content=_VALID_LATEX_2)
@@ -297,7 +303,7 @@ class TestUseTemplate:
         assert resp.status_code == 404
 
     async def test_returns_404_for_inactive_template(self, client: AsyncClient, db_session):
-        t = await _insert_template(db_session, name="InactiveUse", is_active=False)
+        t = await _insert_template(db_session, name="test_tmpl_InactiveUse", is_active=False)
         headers = await _create_auth_headers(db_session)
         resp = await client.post(
             f"/templates/{t.id}/use",
@@ -308,7 +314,7 @@ class TestUseTemplate:
 
     async def test_multiple_users_can_use_same_template(self, client: AsyncClient, db_session):
         """Using the same template twice should create two independent resumes."""
-        t = await _insert_template(db_session, name="SharedTemplate")
+        t = await _insert_template(db_session, name="test_tmpl_SharedTemplate")
 
         h1 = await _create_auth_headers(db_session)
         h2 = await _create_auth_headers(db_session)
@@ -317,6 +323,16 @@ class TestUseTemplate:
         r2 = (await client.post(f"/templates/{t.id}/use", json={"title": "R2"}, headers=h2)).json()
 
         assert r1["resume_id"] != r2["resume_id"]
+
+    async def test_returns_404_for_invalid_uuid(self, client: AsyncClient, db_session):
+        """Non-UUID template_id should return 404, not 500."""
+        headers = await _create_auth_headers(db_session)
+        resp = await client.post(
+            "/templates/not-a-uuid/use",
+            json={"title": "Bad UUID"},
+            headers=headers,
+        )
+        assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
