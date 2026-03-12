@@ -35,8 +35,8 @@ load_dotenv(_root_dir / ".env")
 
 def _to_asyncpg_url(url: str) -> str:
     """Convert a sync postgresql:// URL to postgresql+asyncpg:// format."""
-    # Add asyncpg driver
-    url = re.sub(r"^postgresql(\+\w+)?://", "postgresql+asyncpg://", url)
+    # Normalise any postgres:// or postgresql+driver:// to asyncpg
+    url = re.sub(r"^postgres(ql)?(\+\w+)?://", "postgresql+asyncpg://", url)
     # asyncpg uses ssl=require not sslmode=require
     url = url.replace("sslmode=require", "ssl=require")
     # Remove channel_binding (psycopg3-only param)
