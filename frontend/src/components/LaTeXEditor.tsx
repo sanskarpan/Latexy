@@ -23,6 +23,8 @@ interface LaTeXEditorProps {
   onCursorChange?: (line: number) => void
   /** When set, scrolls editor to this line (from PDF SyncTeX click) */
   syncLine?: number | null
+  /** When provided (auto-compile enabled), fires 2s after last keystroke with current content */
+  onAutoCompile?: (content: string) => void
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -149,12 +151,14 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile },
     ref
   ) {
     const editorRef = useRef<any>(null)
     const monacoRef = useRef<any>(null)
     const disposablesRef = useRef<any[]>([])
+    const autoCompileRef = useRef(onAutoCompile)
+    autoCompileRef.current = onAutoCompile
 
     useImperativeHandle(ref, () => ({
       setValue(content: string) {
@@ -236,6 +240,28 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         editorRef.current?.deltaDecorations(decs, [])
       }, 2000)
     }, [syncLine])
+
+    // Auto-compile: debounce 2s after last keystroke
+    useEffect(() => {
+      const editor = editorRef.current
+      if (!editor) return
+
+      let timer: ReturnType<typeof setTimeout> | null = null
+      const disposable = editor.onDidChangeModelContent(() => {
+        if (!autoCompileRef.current) return
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(() => {
+          const model = editor.getModel()
+          if (!model || model.getValueLength() < 100) return
+          autoCompileRef.current?.(editor.getValue())
+        }, 2000)
+      })
+
+      return () => {
+        disposable.dispose()
+        if (timer) clearTimeout(timer)
+      }
+    }, []) // stable — uses ref for callback
 
     // Cleanup on unmount
     useEffect(() => {
@@ -707,6 +733,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             {readOnly ? 'Read-only — job running' : 'LaTeX editor'}
           </span>
           <div className="flex items-center gap-3 text-zinc-700">
+            {onAutoCompile && (
+              <span className="flex items-center gap-1 text-[10px] text-orange-400/70">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400/70" />
+                Auto
+              </span>
+            )}
             <span>{value.length.toLocaleString()} chars</span>
             {onSave && <span className="text-zinc-800">⌘S save · ⌘↵ compile</span>}
           </div>
