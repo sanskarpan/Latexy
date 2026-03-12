@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         env_file=(_root_dir / ".env", _backend_dir / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
-        extra="ignore",   # silently ignore MINIO_*, NEXT_PUBLIC_*, etc.
+        extra="ignore",   # silently ignore NEXT_PUBLIC_*, etc.
     )
 
     # Application
