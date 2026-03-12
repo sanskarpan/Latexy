@@ -8,6 +8,7 @@ import { signOut, useSession } from '@/lib/auth-client'
 
 const guestNav = [
   { label: 'Platform', href: '/platform' },
+  { label: 'Templates', href: '/templates' },
   { label: 'Pricing', href: '/billing' },
   { label: 'Resources', href: '/resources' },
   { label: 'FAQ', href: '/faq' },
@@ -16,6 +17,7 @@ const guestNav = [
 const appNav = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Workspace', href: '/workspace' },
+  { label: 'Templates', href: '/templates' },
   { label: 'Studio', href: '/try' },
 ]
 
