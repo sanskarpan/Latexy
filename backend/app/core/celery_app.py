@@ -170,7 +170,8 @@ def init_worker_process(sender=None, **kwargs):
 
     # Also init async Redis so tasks using asyncio.run(redis_manager.*()) work
     try:
-        import asyncio
+        import asyncio  # noqa: I001
+
         from ..core.redis import redis_manager
         asyncio.run(redis_manager.init_redis())
         logger.info("Worker process: async Redis initialised")
