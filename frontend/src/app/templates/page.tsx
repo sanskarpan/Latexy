@@ -87,6 +87,7 @@ export default function TemplatesPage() {
   }, [])
 
   const handleUseTemplate = useCallback(async (id: string) => {
+    if (usingTemplateId) return
     if (!session) {
       router.push('/login')
       return
@@ -101,7 +102,7 @@ export default function TemplatesPage() {
     } finally {
       setUsingTemplateId(null)
     }
-  }, [session, router])
+  }, [session, router, usingTemplateId])
 
   const handleUseFromPreview = useCallback((id: string) => {
     setPreviewTemplateId(null)
@@ -198,6 +199,7 @@ export default function TemplatesPage() {
                   template={template}
                   onSelect={handleUseTemplate}
                   onPreview={handlePreview}
+                  disabled={usingTemplateId !== null}
                 />
                 {usingTemplateId === template.id && (
                   <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/60 backdrop-blur-sm">
