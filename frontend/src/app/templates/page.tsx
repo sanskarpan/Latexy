@@ -193,12 +193,21 @@ export default function TemplatesPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredTemplates.map(template => (
-              <TemplateCard
-                key={template.id}
-                template={template}
-                onSelect={handleUseTemplate}
-                onPreview={handlePreview}
-              />
+              <div key={template.id} className="relative">
+                <TemplateCard
+                  template={template}
+                  onSelect={handleUseTemplate}
+                  onPreview={handlePreview}
+                />
+                {usingTemplateId === template.id && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/60 backdrop-blur-sm">
+                    <div className="flex items-center gap-2 text-xs text-white">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-orange-300" />
+                      Creating…
+                    </div>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
