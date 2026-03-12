@@ -17,10 +17,10 @@ export default function SignUpForm() {
     setError('')
     try {
       const result = await signUp.email({ email, password, name })
-      if (result.error) {
-        setError(result.error.message || 'Sign up failed')
+      if (result.error?.message) {
+        setError(result.error.message)
       } else {
-        window.location.href = '/dashboard'
+        window.location.href = '/workspace'
       }
     } catch {
       setError('An unexpected error occurred')
