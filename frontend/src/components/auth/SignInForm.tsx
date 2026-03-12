@@ -16,10 +16,10 @@ export default function SignInForm() {
     setError('')
     try {
       const result = await signIn.email({ email, password })
-      if (result.error) {
-        setError(result.error.message || 'Sign in failed')
+      if (result.error?.message) {
+        setError(result.error.message)
       } else {
-        window.location.href = '/dashboard'
+        window.location.href = '/workspace'
       }
     } catch {
       setError('An unexpected error occurred')
