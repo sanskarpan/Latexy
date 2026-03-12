@@ -20,8 +20,6 @@ from dotenv import load_dotenv
 load_dotenv(_backend / ".env")
 load_dotenv(_backend.parent / ".env")
 
-import re
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -51,13 +49,9 @@ def _pretty_name(stem: str) -> str:
 
 async def seed():
     from app.core.config import settings
+    from app.utils.db_url import normalize_database_url
 
-    db_url = settings.DATABASE_URL
-    # Ensure asyncpg driver
-    db_url = re.sub(r"^postgresql(\+\w+)?://", "postgresql+asyncpg://", db_url)
-    db_url = db_url.replace("sslmode=require", "ssl=require")
-    # Strip channel_binding — not supported by asyncpg
-    db_url = re.sub(r"[&?]channel_binding=[^&]*", "", db_url)
+    db_url = normalize_database_url(settings.DATABASE_URL)
 
     engine = create_async_engine(db_url, echo=False)
     Session = async_sessionmaker(engine, expire_on_commit=False)
