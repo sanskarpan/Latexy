@@ -42,15 +42,15 @@ def record_auto_save_checkpoint(
 
 
 async def _do_auto_save(resume_id: str, user_id: str, latex_content: str) -> None:
+    # Build async engine from settings
+    import os
+
     from sqlalchemy import delete as sa_delete
     from sqlalchemy import select
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from ..database.models import Optimization
     from ..utils.db_url import normalize_database_url
-
-    # Build async engine from settings
-    import os
     raw_url = os.environ.get("DATABASE_URL", "")
     if not raw_url:
         logger.warning("DATABASE_URL not set — cannot auto-save checkpoint")
