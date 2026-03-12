@@ -40,8 +40,9 @@ _VALID_LATEX_2 = r"""
 
 async def _insert_template(db_session, **kwargs) -> ResumeTemplate:
     """Insert a test template and return it. Names prefixed with test_tmpl_ for cleanup."""
+    unique_suffix = uuid.uuid4().hex[:8]
     defaults = dict(
-        name="test_tmpl_SWE Template",
+        name=f"test_tmpl_SWE Template {unique_suffix}",
         description="A test template for software engineers",
         category="software_engineering",
         tags=["software_engineering"],
