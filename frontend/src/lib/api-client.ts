@@ -30,6 +30,7 @@ export interface JobSubmitRequest {
   target_sections?: string[]
   custom_instructions?: string
   model?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface OptimizationHistoryEntry {
@@ -426,12 +427,14 @@ class ApiClient {
     latex_content: string
     device_fingerprint?: string
     user_plan?: string
+    resume_id?: string
   }): Promise<JobSubmitResponse> {
     return this.submitJob({
       job_type: 'latex_compilation',
       latex_content: body.latex_content,
       device_fingerprint: body.device_fingerprint,
       user_plan: body.user_plan,
+      metadata: body.resume_id ? { resume_id: body.resume_id } : undefined,
     })
   }
 
@@ -444,6 +447,7 @@ class ApiClient {
     target_sections?: string[]
     custom_instructions?: string
     model?: string
+    resume_id?: string
   }): Promise<JobSubmitResponse> {
     return this.submitJob({
       job_type: 'combined',
@@ -455,6 +459,7 @@ class ApiClient {
       target_sections: body.target_sections,
       custom_instructions: body.custom_instructions,
       model: body.model,
+      metadata: body.resume_id ? { resume_id: body.resume_id } : undefined,
     })
   }
 
@@ -689,6 +694,50 @@ class ApiClient {
     return response.blob()
   }
 
+  // ---------------------------------------------------------------- //
+  //  Checkpoints / version history                                    //
+  // ---------------------------------------------------------------- //
+
+  async createCheckpoint(
+    resumeId: string,
+    label: string
+  ): Promise<{ id: string; created_at: string; label: string }> {
+    return this.request(`/resumes/${encodeURIComponent(resumeId)}/checkpoints`, {
+      method: 'POST',
+      body: JSON.stringify({ label }),
+    })
+  }
+
+  async listCheckpoints(
+    resumeId: string,
+    limit: number = 50,
+    offset: number = 0
+  ): Promise<CheckpointEntry[]> {
+    return this.request<CheckpointEntry[]>(
+      `/resumes/${encodeURIComponent(resumeId)}/checkpoints?limit=${limit}&offset=${offset}`
+    )
+  }
+
+  async getCheckpointContent(
+    resumeId: string,
+    checkpointId: string
+  ): Promise<CheckpointContentResponse> {
+    return this.request<CheckpointContentResponse>(
+      `/resumes/${encodeURIComponent(resumeId)}/checkpoints/${encodeURIComponent(checkpointId)}/content`
+    )
+  }
+
+  async deleteCheckpoint(resumeId: string, checkpointId: string): Promise<void> {
+    const res = await fetch(
+      `${API_BASE}/resumes/${encodeURIComponent(resumeId)}/checkpoints/${encodeURIComponent(checkpointId)}`,
+      { method: 'DELETE', headers: this.headers() }
+    )
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.detail || `Delete failed (${res.status})`)
+    }
+  }
+
   // Export raw LaTeX content in a specific format (for /try page, no auth needed)
   async exportContent(latexContent: string, format: string): Promise<Blob> {
     const response = await fetch(`${this.baseUrl}/export/content/${format}`, {
@@ -786,6 +835,28 @@ export interface TemplateCategoryCount {
   category: string
   label: string
   count: number
+}
+
+// ------------------------------------------------------------------ //
+//  Checkpoint / version history types                                 //
+// ------------------------------------------------------------------ //
+
+export interface CheckpointEntry {
+  id: string
+  created_at: string
+  checkpoint_label: string | null
+  is_checkpoint: boolean
+  is_auto_save: boolean
+  optimization_level: string | null
+  ats_score: number | null
+  changes_count: number
+  has_content: boolean
+}
+
+export interface CheckpointContentResponse {
+  original_latex: string
+  optimized_latex: string
+  checkpoint_label: string | null
 }
 
 // ------------------------------------------------------------------ //
