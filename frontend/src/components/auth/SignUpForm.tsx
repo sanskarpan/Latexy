@@ -20,7 +20,7 @@ export default function SignUpForm() {
       if (result.error) {
         setError(result.error.message || 'Sign up failed')
       } else {
-        window.location.href = '/dashboard'
+        window.location.href = '/workspace'
       }
     } catch {
       setError('An unexpected error occurred')

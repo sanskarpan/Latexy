@@ -1,0 +1,72 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.75in, right=0.75in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{0,100,80}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\color{accent}\rule{\textwidth}{0.5pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=accent}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Ethan Brown, Ph.D.}}\\[3pt]
+  {\large \textcolor{accent}{Research Scientist -- Biotech}}\\[4pt]
+  Cambridge, MA \quad|\quad
+  \href{mailto:ethan.brown@email.com}{ethan.brown@email.com} \quad|\quad
+  (617) 555-0372 \quad|\quad
+  \href{https://linkedin.com/in/ethanbrown-biotech}{LinkedIn}
+\end{center}
+
+\section{Summary}
+Translational research scientist with Ph.D. in molecular biology and 6 years of industry experience in gene therapy and antibody drug development. Expertise in CRISPR screening, AAV manufacturing, flow cytometry, and IND-enabling studies. Co-inventor on 2 patents.
+
+\section{Experience}
+
+\noindent\textbf{Senior Research Scientist -- Gene Therapy} \hfill \textit{Feb 2021 -- Present}\\
+\textit{Editas Medicine, Cambridge, MA}
+\begin{itemize}
+  \item Lead in vivo research program for CRISPR base editing therapy targeting CEP290 (LCA10); designed and executed mouse and non-human primate efficacy and toxicology studies.
+  \item Developed high-throughput AAV production process increasing yield by 3x while reducing COGS by 40\%; transferred process to GMP manufacturing.
+  \item Optimized LNP formulation for liver-targeted mRNA delivery achieving 85\% hepatocyte transfection in vivo; results supported IND filing for LCA10 program (2024).
+  \item Supervised 2 scientists and 1 research associate; mentored associate scientist through independent research project resulting in co-authorship on \textit{Nature Medicine} paper.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Research Scientist} \hfill \textit{July 2017 -- Jan 2021}\\
+\textit{AstraZeneca, Cambridge, MA}
+\begin{itemize}
+  \item Generated and characterized 80+ antibody candidates against validated oncology targets; advanced 4 candidates through lead optimization to bispecific antibody stage.
+  \item Established cell line development platform for antibody production (CHO, HEK293); reduced development timeline from 12 to 7 weeks.
+  \item Contributed to 2 patent filings for novel antibody-antigen combinations.
+\end{itemize}
+
+\section{Technical Skills}
+\textbf{Molecular Biology:} CRISPR-Cas9/base editing, cloning, lentiviral/AAV vector production, qPCR, WB, ELISA\\
+\textbf{Cell Biology:} Primary cell culture (iPSC, T cells, hepatocytes), flow cytometry (15-color panels), live imaging\\
+\textbf{In Vivo:} Mouse (C57BL/6, transgenic), NHP study management, retinal/systemic delivery, necropsy\\
+\textbf{Analytics:} FlowJo, GraphPad Prism, R (basic), ImageJ, SnapGene
+
+\section{Publications}
+\begin{enumerate}[leftmargin=*, label={[\arabic*]}]
+  \item \textbf{E. Brown}, K. Maeder, et al. ``Efficient Base Editing in the Retina via Subretinal AAV Delivery.'' \textit{Nature Medicine} 30(1), 2024.
+  \item A. Liu, \textbf{E. Brown}, et al. ``Optimized LNP Formulations for Hepatocyte-Targeted mRNA Delivery.'' \textit{Molecular Therapy} 29(8), 2021.
+\end{enumerate}
+
+\section{Education}
+\textbf{Ph.D. Molecular Biology}, MIT \hfill \textit{May 2017}\\
+Dissertation: \textit{CRISPR-Mediated Correction of Retinal Dystrophy in Mouse Models}\\
+Advisor: Prof. Feng Zhang \quad|\quad NSF Graduate Research Fellow\\[3pt]
+\textbf{B.S. Biochemistry}, Johns Hopkins University \hfill \textit{May 2012} \quad GPA: 3.92/4.0
+
+\end{document}

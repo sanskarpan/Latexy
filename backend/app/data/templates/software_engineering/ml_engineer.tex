@@ -1,0 +1,82 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.7in, right=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{0,102,153}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\color{accent}\rule{\textwidth}{0.6pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=accent, linkcolor=accent}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Priya Sharma}}\\[3pt]
+  {\large \textcolor{accent}{Machine Learning Engineer}}\\[4pt]
+  Seattle, WA \quad|\quad
+  \href{mailto:priya.sharma@email.com}{priya.sharma@email.com} \quad|\quad
+  (206) 555-0281 \quad|\quad
+  \href{https://example.com/scholar/priyasharma}{Google Scholar} \quad|\quad
+  \href{https://github.com/priyasharma-ml}{GitHub}
+\end{center}
+
+\section{Summary}
+ML Engineer with 6 years of experience taking models from research to production. Expertise in NLP, recommendation systems, and MLOps. Published 5 peer-reviewed papers; shipped ML systems serving 50M+ users daily.
+
+\section{Experience}
+
+\noindent\textbf{Senior Machine Learning Engineer} \hfill \textit{Feb 2021 -- Present}\\
+\textit{Amazon, Seattle, WA}
+\begin{itemize}
+  \item Led development of a transformer-based product recommendation model (350M parameters) that increased click-through rate by 14\% and generated \$220M incremental annual revenue.
+  \item Designed and built an end-to-end MLOps platform on AWS SageMaker reducing model deployment cycle from 3 weeks to 2 days; adopted by 7 ML teams.
+  \item Implemented real-time feature store using Apache Flink + DynamoDB serving 200K inference requests/sec at p99 < 15\,ms.
+  \item Co-authored internal whitepaper on embedding compression that reduced model serving costs by 35\% without accuracy loss.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Machine Learning Engineer} \hfill \textit{June 2018 -- Jan 2021}\\
+\textit{Spotify, New York, NY}
+\begin{itemize}
+  \item Built multi-armed bandit exploration system for playlist recommendation, improving 30-day user retention by 8\%.
+  \item Trained and deployed BERT-based content classification model achieving 93\% precision/recall on podcast tagging at 10K items/sec.
+  \item Developed distributed hyperparameter optimization framework on Kubernetes, reducing experimentation cost by 40\%.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{ML Research Intern} \hfill \textit{May 2017 -- Aug 2017}\\
+\textit{Google Brain, Mountain View, CA}
+\begin{itemize}
+  \item Implemented variational autoencoder for molecule generation; findings contributed to NeurIPS 2017 workshop paper.
+\end{itemize}
+
+\section{Technical Skills}
+\begin{tabular}{@{}ll}
+\textbf{ML Frameworks:}    & PyTorch, TensorFlow, JAX, Hugging Face Transformers, scikit-learn \\
+\textbf{MLOps:}            & SageMaker, MLflow, Kubeflow, DVC, BentoML, Weights \& Biases \\
+\textbf{Data:}             & Spark, Flink, Airflow, dbt, Hive, BigQuery, Redshift \\
+\textbf{Languages:}        & Python, Scala, C++, SQL, Bash \\
+\textbf{Infrastructure:}   & AWS, Kubernetes, Docker, Terraform, Ray \\
+\end{tabular}
+
+\section{Publications}
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{P. Sharma}, R. Chen, K. Singh. ``Efficient Transformer Compression for Low-Latency Recommendation.'' \textit{RecSys 2022}.
+  \item \textbf{P. Sharma}, M. Lopez. ``Contextual Bandits with Delayed Feedback in Streaming Environments.'' \textit{KDD 2021}.
+  \item A. Kim, \textbf{P. Sharma}, et al. ``Self-Supervised Audio Representation Learning for Music Tagging.'' \textit{ICASSP 2020}.
+\end{enumerate}
+
+\section{Education}
+\textbf{M.S. Computer Science} (Machine Learning), Stanford University \hfill \textit{June 2018}\\
+\textbf{B.Tech Computer Science \& Engineering}, IIT Bombay \hfill \textit{May 2016} \quad GPA: 9.1/10
+
+\end{document}

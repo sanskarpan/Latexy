@@ -19,7 +19,7 @@ export default function SignInForm() {
       if (result.error) {
         setError(result.error.message || 'Sign in failed')
       } else {
-        window.location.href = '/dashboard'
+        window.location.href = '/workspace'
       }
     } catch {
       setError('An unexpected error occurred')

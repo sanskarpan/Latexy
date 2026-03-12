@@ -1,0 +1,87 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.7in, right=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{210,90,0}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\color{accent}\rule{\textwidth}{0.8pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=accent, linkcolor=accent}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Jordan Lee}}\\[3pt]
+  {\large \textcolor{accent}{Senior Software Engineer}}\\[4pt]
+  Austin, TX \quad|\quad
+  \href{mailto:jordan.lee@email.com}{jordan.lee@email.com} \quad|\quad
+  (512) 555-0374 \quad|\quad
+  \href{https://github.com/jordanlee}{github.com/jordanlee}
+\end{center}
+
+\section{Summary}
+Results-driven Senior Software Engineer with 8+ years building distributed systems at scale. Expert in backend architecture, cloud-native infrastructure, and cross-team technical leadership. Passionate about developer experience, observability, and eliminating toil through automation.
+
+\section{Technical Skills}
+\begin{tabular}{@{}ll}
+\textbf{Languages:}        & Rust, Go, Python, Java, TypeScript, C++ \\
+\textbf{Cloud \& Infra:}   & AWS, GCP, Terraform, Kubernetes, Helm, ArgoCD \\
+\textbf{Databases:}        & PostgreSQL, MongoDB, DynamoDB, ClickHouse, Redis \\
+\textbf{Messaging:}        & Kafka, RabbitMQ, AWS SQS/SNS, Pub/Sub \\
+\textbf{Observability:}    & Prometheus, Grafana, Jaeger, OpenTelemetry, DataDog \\
+\textbf{CI/CD:}            & GitHub Actions, Jenkins, Buildkite, Spinnaker \\
+\end{tabular}
+
+\section{Experience}
+
+\noindent\textbf{Senior Software Engineer -- Platform} \hfill \textit{Jan 2021 -- Present}\\
+\textit{Figma, Austin, TX}
+\begin{itemize}
+  \item Architected a multi-tenant job scheduling system in Rust processing 10M+ background tasks/day with configurable priority queues, dead-letter handling, and at-least-once delivery guarantees.
+  \item Reduced infra spend by \$800K/year by consolidating 60+ microservices onto shared Kubernetes clusters with Karpenter autoscaling and spot instance fallback.
+  \item Designed and implemented a service mesh migration from Istio to Linkerd, cutting proxy CPU overhead by 45\% and improving tail latency.
+  \item Drove adoption of OpenTelemetry across 25 services, enabling end-to-end distributed tracing and reducing MTTR from 45 min to 12 min.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Software Engineer II} \hfill \textit{March 2018 -- Dec 2020}\\
+\textit{Uber, San Francisco, CA}
+\begin{itemize}
+  \item Built a real-time geospatial indexing service in Go handling 50K location updates/sec with consistent read-after-write semantics using CRDTs.
+  \item Implemented sharded rate-limiting in Redis with sliding window algorithm; adopted by 8 downstream teams, preventing 99.9\% of abuse events.
+  \item Reduced CI pipeline duration by 60\% through parallelized test execution and smarter caching strategies in Bazel.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Software Engineer} \hfill \textit{July 2016 -- Feb 2018}\\
+\textit{Pivotal Labs, New York, NY}
+\begin{itemize}
+  \item Delivered 5 client-facing web applications using TDD/BDD practices; maintained 95\%+ test coverage across all projects.
+\end{itemize}
+
+\section{Projects}
+
+\noindent\textbf{Oxide} \textcolor{accent}{|} \href{https://github.com/jordanlee/oxide}{github.com/jordanlee/oxide} \quad \textit{Rust}
+\begin{itemize}
+  \item Lock-free concurrent hashmap with MVCC snapshots; 2.1k GitHub stars, featured in This Week in Rust.
+\end{itemize}
+
+\noindent\textbf{Fluxgate} \textcolor{accent}{|} \href{https://github.com/jordanlee/fluxgate}{github.com/jordanlee/fluxgate} \quad \textit{Go}
+\begin{itemize}
+  \item API gateway with rate limiting, JWT validation, and circuit breaker; deployed at 3 startups in production.
+\end{itemize}
+
+\section{Education}
+\textbf{B.S. Computer Science}, Georgia Institute of Technology \hfill \textit{May 2016}\\
+Specialization: Systems \& Architecture \quad|\quad GPA: 3.9/4.0
+
+\end{document}

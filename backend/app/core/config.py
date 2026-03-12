@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         env_file=(_root_dir / ".env", _backend_dir / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
-        extra="ignore",   # silently ignore MINIO_*, NEXT_PUBLIC_*, etc.
+        extra="ignore",   # silently ignore NEXT_PUBLIC_*, etc.
     )
 
     # Application
@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = Field(default="", description="Default Anthropic API key")
     OPENROUTER_API_KEY: str = Field(default="", description="Default OpenRouter API key")
     GEMINI_API_KEY: str = Field(default="", description="Default Google Gemini API key")
+
+    # MinIO / S3 Configuration
+    MINIO_ENDPOINT: str = Field(default="http://localhost:9000", description="MinIO S3 endpoint URL")
+    MINIO_ACCESS_KEY: str = Field(default="minioadmin", description="MinIO access key")
+    MINIO_SECRET_KEY: str = Field(default="minioadmin_secret", description="MinIO secret key")
+    MINIO_BUCKET: str = Field(default="latexy", description="MinIO bucket name")
 
     # File Management
     PDF_RETENTION_TIME: int = 3600  # Keep PDFs for 1 hour (3600 seconds)

@@ -252,3 +252,6 @@ Thumbs.db
 
 .cursor
 FE-inspiration/
+
+# Playwright test results
+frontend/test-results/

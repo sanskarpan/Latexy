@@ -154,9 +154,8 @@ from celery.signals import worker_process_init  # noqa: E402
 def init_worker_process(sender=None, **kwargs):
     """
     Called once per Celery worker OS process on startup.
-    Initialises the synchronous Redis client used by event_publisher.py.
-    This ensures every worker has its own Redis connection without
-    any asyncio involvement.
+    Initialises both the synchronous Redis client (for event_publisher)
+    and the async Redis clients (for cleanup/health tasks that use asyncio.run()).
     """
     try:
         from ..workers.event_publisher import initialize_worker_redis
@@ -168,6 +167,16 @@ def init_worker_process(sender=None, **kwargs):
     except Exception as exc:
         logger.error(f"Worker process: failed to initialise Redis: {exc}")
         raise
+
+    # Also init async Redis so tasks using asyncio.run(redis_manager.*()) work
+    try:
+        import asyncio  # noqa: I001
+
+        from ..core.redis import redis_manager
+        asyncio.run(redis_manager.init_redis())
+        logger.info("Worker process: async Redis initialised")
+    except Exception as exc:
+        logger.warning(f"Worker process: async Redis init failed (non-critical): {exc}")
 
 
 # Import tasks to register them

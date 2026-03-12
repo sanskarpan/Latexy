@@ -1,0 +1,71 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.7in, right=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{255,87,34}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\color{accent}\rule{\textwidth}{0.6pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=accent}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Ryan Cooper}}\\[3pt]
+  {\large \textcolor{accent}{Growth Marketing Manager}}\\[4pt]
+  San Francisco, CA \quad|\quad
+  \href{mailto:ryan.cooper@example.com}{ryan.cooper@example.com} \quad|\quad
+  (415) 555-0297 \quad|\quad
+  \href{https://example.com/in/ryancooper}{example.com/in/ryancooper}
+\end{center}
+
+\section{Summary}
+Data-obsessed growth marketer with 7 years scaling B2B and B2C acquisition funnels. Expert in paid acquisition, conversion rate optimization, lifecycle marketing, and cross-channel experimentation. Reduced CAC by 40\% and improved LTV/CAC ratio from 2.1 to 4.8 across two companies.
+
+\section{Experience}
+
+\noindent\textbf{Growth Marketing Manager} \hfill \textit{April 2021 -- Present}\\
+\textit{Notion, San Francisco, CA}
+\begin{itemize}
+  \item Own paid acquisition channels (\$6M annual budget across Google, Meta, LinkedIn, Programmatic); grew qualified pipeline by 85\% YoY while reducing blended CAC by 32\%.
+  \item Built and launched first-ever PLG email nurture program (8 sequences, 40+ emails); increased free-to-paid conversion from 4.2\% to 6.8\% in 6 months.
+  \item Led landing page optimization program (20+ A/B tests/year); best-performing test improved SEM conversion rate by 64\%, contributing \$1.8M incremental ARR.
+  \item Implemented multi-touch attribution model in dbt + Looker; finally enabled reliable CAC reporting by channel; led to 30\% budget reallocation toward highest-ROI channels.
+  \item LTV/CAC ratio improved from 2.8 to 5.1 over tenure through combined CAC reduction and retention improvements.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Performance Marketing Manager} \hfill \textit{Aug 2018 -- March 2021}\\
+\textit{Faire, San Francisco, CA}
+\begin{itemize}
+  \item Scaled paid social from \$200K to \$2.4M/month while maintaining CAC under \$90 (below target); contributed to 4x revenue growth during tenure.
+  \item Built automated bidding scripts in Python for Google Ads; improved ROAS from 2.4 to 3.9 without manual intervention.
+  \item Launched referral program generating 22\% of new business sign-ups; lowest-CAC acquisition channel within 3 months of launch.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Digital Marketing Specialist} \hfill \textit{June 2016 -- July 2018}\\
+\textit{Zendesk, San Francisco, CA}
+\begin{itemize}
+  \item Managed SEM campaigns (\$800K budget); improved SMB conversion rate by 28\% through query segmentation and ad copy optimization.
+\end{itemize}
+
+\section{Skills}
+\textbf{Channels:} Google Ads, Meta Ads, LinkedIn Ads, programmatic, SEO, email, referral\\
+\textbf{Analytics:} SQL, Python (pandas), Amplitude, Mixpanel, Tableau, Looker, Google Analytics 4\\
+\textbf{Tools:} HubSpot, Marketo, Iterable, Braze, Segment, Heap, Optimizely\\
+\textbf{Frameworks:} AARRR, cohort analysis, LTV modeling, multi-touch attribution, A/B testing
+
+\section{Education}
+\textbf{B.S. Marketing}, UC San Diego \hfill \textit{May 2016} \quad GPA: 3.74/4.0
+
+\end{document}

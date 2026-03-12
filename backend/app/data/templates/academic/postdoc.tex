@@ -1,0 +1,73 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.75in, bottom=0.75in, left=0.85in, right=0.85in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{titlesec}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\rule{\textwidth}{0.5pt}]
+\titlespacing{\section}{0pt}{10pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=blue}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Dr. Yuki Tanaka}}\\[4pt]
+  Postdoctoral Research Fellow -- Computational Biology\\[3pt]
+  Broad Institute of MIT and Harvard, Cambridge, MA 02142\\
+  \href{mailto:ytanaka@broadinstitute.org}{ytanaka@broadinstitute.org} \quad|\quad
+  (617) 555-0394 \quad|\quad
+  \href{https://yukitanaka.github.io}{yukitanaka.github.io}
+\end{center}
+
+\section{Research Summary}
+Computational biologist specializing in single-cell genomics, probabilistic modeling of gene regulatory networks, and machine learning methods for multi-omics data integration. Developing scalable tools used by 200+ labs worldwide.
+
+\section{Positions}
+\noindent\textbf{Postdoctoral Fellow} \hfill \textit{Sept 2022 -- Present}\\
+\textit{Broad Institute, Regev Lab, Cambridge, MA}\\
+\textit{Project:} Scalable variational inference for single-cell multi-omics data integration
+
+\section{Education}
+\textbf{Ph.D. Computational Biology}, ETH Zurich \hfill \textit{Aug 2022}\\
+Dissertation: \textit{Probabilistic Models for Gene Regulatory Inference from Single-Cell Data}\\
+Advisor: Prof. Niko Beerenwinkel \quad|\quad GPA: 5.9/6.0 (summa cum laude)\\[3pt]
+\textbf{M.Sc. Bioinformatics}, University of Tokyo \hfill \textit{March 2018}\\
+\textbf{B.Sc. Biology}, Osaka University \hfill \textit{March 2016}
+
+\section{Peer-Reviewed Publications}
+\begin{enumerate}[leftmargin=*, label={[\arabic*]}]
+  \item \textbf{Y. Tanaka}, F. Wolf, A. Regev. ``Multi-Modal Variational Autoencoders for Joint scRNA+ATAC Integration.'' \textit{Nature Methods} 21(3), 2024. (IF: 28.1)
+  \item \textbf{Y. Tanaka}, K. Pelkmans, N. Beerenwinkel. ``Scalable Bayesian Inference of Cell-Type Specific Gene Regulatory Networks.'' \textit{Cell Systems} 15(2), 2023.
+  \item M. Laehnemann, \textbf{Y. Tanaka}, et al. ``Eleven Grand Challenges in Single-Cell Data Science.'' \textit{Genome Biology} 21, 2020. (750+ citations)
+  \item \textbf{Y. Tanaka}, R. Satija. ``Optimal Transport for Single-Cell Trajectory Inference.'' \textit{PLOS Computational Biology} 18(6), 2022.
+  \item S. Kim, \textbf{Y. Tanaka}, et al. ``Deep Generative Models for Drug Response Prediction.'' \textit{Bioinformatics} 38(4), 2022.
+\end{enumerate}
+
+\section{Conference Presentations}
+\begin{itemize}
+  \item \textbf{Talk}: ``Disentangled Latent Spaces for scRNA-seq Batch Correction.'' ISMB 2023, Lyon, France.
+  \item \textbf{Poster}: ``VIMM: Variational Inference for Multi-Modal Genomics.'' RECOMB 2023.
+  \item \textbf{Talk}: ``Probabilistic Gene Regulatory Network Inference at Scale.'' ECCB 2022 (Best Presentation Award).
+\end{itemize}
+
+\section{Software}
+\noindent\textbf{scIntegrate} (\href{https://github.com/ytanaka/scIntegrate}{github.com/ytanaka/scIntegrate}) -- Python package for multi-omics integration; 1.2k GitHub stars, 80+ citations.\\
+\noindent\textbf{GRNinfer} (\href{https://github.com/ytanaka/grninfer}{github.com/ytanaka/grninfer}) -- Scalable GRN inference; published in \textit{Bioinformatics}.
+
+\section{Teaching \& Mentorship}
+\begin{itemize}
+  \item Teaching Assistant: Computational Biology (ETH Zurich, 2019--2021); rated 5.7/6.0
+  \item Mentored 4 rotation students and 2 master's thesis students; 3 have first-author publications
+\end{itemize}
+
+\section{Grants \& Awards}
+EMBO Long-Term Fellowship (2022--2024) \quad|\quad ETH Medal for Outstanding Ph.D. Thesis (2022)\\
+JSPS Overseas Research Fellowship (declined in favor of EMBO, 2022)
+
+\end{document}

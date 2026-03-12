@@ -1,0 +1,83 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.65in, bottom=0.65in, left=0.8in, right=0.8in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{titlesec}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\rule{\textwidth}{0.5pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=blue}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Ravi Mehta}}\\[4pt]
+  Applying for Ph.D. in Natural Language Processing\\[3pt]
+  Bangalore, India \quad|\quad
+  \href{mailto:ravi.mehta@gmail.com}{ravi.mehta@gmail.com} \quad|\quad
+  +91 98765 43210 \quad|\quad
+  \href{https://ravimehta.github.io}{ravimehta.github.io}
+\end{center}
+
+\section{Research Interests}
+Large language models, multilingual NLP, low-resource language understanding, reasoning and grounding in neural models.
+
+\section{Education}
+\noindent\textbf{B.Tech Computer Science \& Engineering} \hfill \textit{May 2024}\\
+\textit{Indian Institute of Technology Madras, Chennai, India}\\
+CGPA: 9.4/10.0 \quad|\quad Department Rank: 2 of 112 \quad|\quad Institute Silver Medal\\
+\textit{Relevant Courses:} NLP, Deep Learning, Probabilistic Graphical Models, Algorithms, Linear Algebra
+
+\section{Research Experience}
+
+\noindent\textbf{Undergraduate Research Assistant} \hfill \textit{Jan 2023 -- May 2024}\\
+\textit{IITM NLP Lab, Advisor: Prof. Balaraman Ravindran}
+\begin{itemize}
+  \item Investigated cross-lingual transfer for code-switching detection in Dravidian languages (Tamil--English, Kannada--English); achieved 4.2\% F1 improvement over mBERT baselines using adapter-based fine-tuning.
+  \item Built a distillation pipeline compressing LLaMA-2 7B to a 350M parameter model retaining 91\% benchmark performance; submitted to EMNLP 2024.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Research Intern} \hfill \textit{May 2023 -- Aug 2023}\\
+\textit{Microsoft Research India, Bangalore}
+\begin{itemize}
+  \item Contributed to multilingual instruction-tuning dataset curation for 11 Indic languages; designed filtering heuristics reducing noise by 38\%.
+  \item Co-authored technical report on low-resource language model evaluation; presented findings to research team of 20.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Visiting Research Student} \hfill \textit{Jan 2024 -- Apr 2024}\\
+\textit{CoAStaL NLP Group, University of Copenhagen, (Remote)}
+\begin{itemize}
+  \item Reproduced and extended results from a morphological inflection paper; identified error in original evaluation protocol; reported to authors.
+\end{itemize}
+
+\section{Publications \& Preprints}
+\begin{enumerate}[leftmargin=*, label={[\arabic*]}]
+  \item \textbf{R. Mehta}, A. Sharma, B. Ravindran. ``Adapter-Based Cross-Lingual Transfer for Dravidian Code-Switching.'' \textit{EACL 2024 Findings}.
+  \item \textbf{R. Mehta}, P. Kumar. ``Task-Arithmetic Knowledge Composition for Multilingual LLMs.'' \textit{arXiv:2405.XXXXX} (under review at EMNLP 2024).
+\end{enumerate}
+
+\section{Test Scores}
+\textbf{GRE General:} Verbal 165 (96th), Quantitative 170 (97th), AW 4.5\\
+\textbf{TOEFL:} 115/120 (R:30, L:29, S:27, W:29)
+
+\section{Technical Skills}
+\textbf{Languages:} Python, C++, Bash\\
+\textbf{Frameworks:} PyTorch, Hugging Face Transformers, JAX, LangChain\\
+\textbf{Tools:} SLURM, Weights \& Biases, Git, Docker, LaTeX
+
+\section{Awards \& Honors}
+\begin{itemize}
+  \item Prime Minister's Research Fellowship (PMRF) -- selected (2024)
+  \item Google Research India Scholar Award (2023)
+  \item IITM Merit Scholarship (top 2\% academically, 2020--2024)
+\end{itemize}
+
+\end{document}

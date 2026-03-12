@@ -1,0 +1,78 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.7in, right=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{56,142,60}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\color{accent}\rule{\textwidth}{0.5pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=accent}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Maria Garcia}}\\[3pt]
+  {\large \textcolor{accent}{Junior Web Developer}}\\[4pt]
+  Miami, FL \quad|\quad
+  \href{mailto:maria.garcia.dev@email.com}{maria.garcia.dev@email.com} \quad|\quad
+  (305) 555-0749 \quad|\quad
+  \href{https://mariagarcia.dev}{mariagarcia.dev} \quad|\quad
+  \href{https://github.com/mariagarcia-dev}{GitHub}
+\end{center}
+
+\section{About Me}
+Career changer from hospitality management to software development. Completed a 6-month full-stack bootcamp after 4 years managing hotel operations. Bringing strong project management, communication, and client-facing skills to a technical role. Active open-source contributor with 3 deployed side projects.
+
+\section{Technical Skills}
+\textbf{Languages:} JavaScript (ES6+), TypeScript, HTML5, CSS3, Python\\
+\textbf{Frontend:} React, Next.js, Tailwind CSS, Vite, React Query\\
+\textbf{Backend:} Node.js, Express.js, FastAPI, REST APIs, GraphQL (basics)\\
+\textbf{Databases:} PostgreSQL, MySQL, MongoDB, Firebase\\
+\textbf{Tools:} Git, GitHub, Docker (basics), Vercel, Netlify, Postman, Figma (review)
+
+\section{Projects}
+
+\noindent\textbf{HotelBoard} \textcolor{accent}{|} \href{https://hotelboard.mariagarcia.dev}{Live Demo} \textcolor{accent}{|} \href{https://github.com/mariagarcia-dev/hotelboard}{GitHub}
+\begin{itemize}
+  \item Full-stack hotel management dashboard (React, Express, PostgreSQL); features room availability calendar, reservation CRUD, and automated guest email confirmations.
+  \item Deployed on Railway (backend) and Vercel (frontend); 50+ real-world users testing from hospitality contacts.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{MiReceta} \textcolor{accent}{|} \href{https://mireceta.vercel.app}{mireceta.vercel.app} \textcolor{accent}{|} \href{https://github.com/mariagarcia-dev/mireceta}{GitHub}
+\begin{itemize}
+  \item Spanish-language recipe sharing platform (Next.js 14, Prisma, Neon PostgreSQL, Cloudinary for image upload); 120+ registered users.
+  \item Implemented full auth (NextAuth.js), ingredient search with fuzzy matching, and recipe rating system.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{BudgetFlow} \textcolor{accent}{|} \href{https://github.com/mariagarcia-dev/budgetflow}{GitHub}
+\begin{itemize}
+  \item Personal finance tracker (React, Python FastAPI, SQLite); visualizes monthly spending with Chart.js; users can import CSV bank exports.
+\end{itemize}
+
+\section{Education}
+
+\noindent\textbf{Full-Stack Web Development Bootcamp}, App Academy, San Francisco \hfill \textit{Jan 2025 -- June 2025}\\
+1000+ hours of intensive instruction; final project grade: 96/100\\[4pt]
+\noindent\textbf{B.S. Hospitality Management}, Florida International University \hfill \textit{May 2019}\\
+GPA: 3.71/4.0 \quad|\quad Hospitality Student Leadership Award
+
+\section{Relevant Work (Pre-Career Change)}
+
+\noindent\textbf{Assistant Hotel Manager}, Marriott Biscayne Bay, Miami, FL \hfill \textit{2019 -- 2024}
+\begin{itemize}
+  \item Managed 45-person front desk and concierge team; resolved 300+ guest issues monthly with 94\% satisfaction score.
+  \item Led implementation of property management system upgrade (Opera Cloud); trained 80 staff, project delivered on time.
+\end{itemize}
+
+\end{document}

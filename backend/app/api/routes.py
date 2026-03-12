@@ -68,6 +68,11 @@ from .export_routes import router as export_router
 
 router.include_router(export_router)
 
+# Include Template routes
+from .template_routes import router as template_router
+
+router.include_router(template_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():

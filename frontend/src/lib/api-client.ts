@@ -704,6 +704,33 @@ class ApiClient {
     }
     return response.blob()
   }
+
+  // ---------------------------------------------------------------- //
+  //  Templates                                                       //
+  // ---------------------------------------------------------------- //
+
+  async getTemplates(category?: string, search?: string): Promise<TemplateResponse[]> {
+    const params = new URLSearchParams()
+    if (category && category !== 'all') params.set('category', category)
+    if (search) params.set('search', search)
+    const qs = params.toString()
+    return this.request<TemplateResponse[]>(`/templates/${qs ? `?${qs}` : ''}`)
+  }
+
+  async getTemplateCategories(): Promise<TemplateCategoryCount[]> {
+    return this.request<TemplateCategoryCount[]>('/templates/categories')
+  }
+
+  async getTemplate(id: string): Promise<TemplateDetailResponse> {
+    return this.request<TemplateDetailResponse>(`/templates/${encodeURIComponent(id)}`)
+  }
+
+  async useTemplate(id: string, title?: string): Promise<{ resume_id: string; title: string }> {
+    return this.request<{ resume_id: string; title: string }>(
+      `/templates/${encodeURIComponent(id)}/use`,
+      { method: 'POST', body: JSON.stringify({ title: title || null }) }
+    )
+  }
 }
 
 // Singleton
@@ -733,6 +760,32 @@ export function getWebSocketUrl(): string {
     process.env.NEXT_PUBLIC_WS_URL ??
     (API_BASE.replace(/^http/, 'ws'))
   return `${base}/ws/jobs`
+}
+
+// ------------------------------------------------------------------ //
+//  Template types                                                     //
+// ------------------------------------------------------------------ //
+
+export interface TemplateResponse {
+  id: string
+  name: string
+  description: string | null
+  category: string
+  category_label: string
+  tags: string[]
+  thumbnail_url: string | null
+  pdf_url: string | null
+  sort_order: number
+}
+
+export interface TemplateDetailResponse extends TemplateResponse {
+  latex_content: string
+}
+
+export interface TemplateCategoryCount {
+  category: string
+  label: string
+  count: number
 }
 
 // ------------------------------------------------------------------ //

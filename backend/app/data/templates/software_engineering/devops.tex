@@ -1,0 +1,80 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.7in, right=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{80,80,80}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\rule{\textwidth}{0.6pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=blue, linkcolor=blue}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Sam Rivera}}\\[3pt]
+  {\large Site Reliability Engineer}\\[4pt]
+  Denver, CO \quad|\quad
+  \href{mailto:sam.rivera@email.com}{sam.rivera@email.com} \quad|\quad
+  (720) 555-0839 \quad|\quad
+  \href{https://linkedin.com/in/samrivera}{linkedin.com/in/samrivera}
+\end{center}
+
+\section{Summary}
+SRE/DevOps engineer with 7 years of experience building and operating large-scale infrastructure. Deep expertise in Kubernetes, CI/CD pipelines, infrastructure-as-code, and incident management. Reduced on-call burden by 60\% across two organizations through proactive automation and observability investments.
+
+\section{Experience}
+
+\noindent\textbf{Senior Site Reliability Engineer} \hfill \textit{April 2021 -- Present}\\
+\textit{Datadog, Denver, CO (Remote)}
+\begin{itemize}
+  \item Maintain 99.995\% availability SLA for ingest pipeline processing 1.5 trillion data points/day across 20 AWS regions.
+  \item Designed multi-region active-active failover architecture using Route53, ALB, and custom health check orchestration; reduced RTO from 8 min to 45 sec.
+  \item Built Terraform module library (60+ modules) adopted by all 15 engineering teams, standardizing resource provisioning and cutting infrastructure PR review time by 70\%.
+  \item Implemented chaos engineering practice using Chaos Mesh and LitmusChaos; uncovered and fixed 9 critical resilience gaps before they caused incidents.
+  \item Reduced on-call alert noise by 65\% through SLO-based alerting migration and elimination of symptom-less pages.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{DevOps Engineer} \hfill \textit{Jan 2018 -- March 2021}\\
+\textit{PagerDuty, San Francisco, CA}
+\begin{itemize}
+  \item Managed Kubernetes clusters across 3 environments (GKE) running 150+ microservices; implemented GitOps with ArgoCD, reducing deployment errors by 80\%.
+  \item Automated database failover and backup validation for 40 PostgreSQL clusters using custom Golang operator; eliminated manual runbook execution.
+  \item Established incident management process (Runbooks, blameless postmortems, GameDays); reduced repeat incidents by 50\% in first year.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Linux Systems Administrator} \hfill \textit{June 2016 -- Dec 2017}\\
+\textit{CenturyLink, Denver, CO}
+\begin{itemize}
+  \item Managed 400+ bare-metal and VMware servers; automated patching with Ansible, reducing maintenance windows from 6 hours to 45 minutes.
+\end{itemize}
+
+\section{Technical Skills}
+\begin{tabular}{@{}ll}
+\textbf{Cloud:}            & AWS (EKS, RDS, Lambda, S3, CloudFormation), GCP, Azure \\
+\textbf{Containers:}       & Kubernetes, Docker, Helm, Kustomize, Karpenter, Linkerd \\
+\textbf{IaC:}              & Terraform, Ansible, Pulumi, CloudFormation \\
+\textbf{Observability:}    & Prometheus, Grafana, Loki, Tempo, OpenTelemetry, Datadog \\
+\textbf{CI/CD:}            & GitHub Actions, ArgoCD, Spinnaker, Buildkite, Jenkins \\
+\textbf{Languages:}        & Go, Python, Bash, HCL \\
+\end{tabular}
+
+\section{Certifications}
+\textbf{AWS Solutions Architect -- Professional} \hfill \textit{2023}\\
+\textbf{Certified Kubernetes Administrator (CKA)} \hfill \textit{2022}\\
+\textbf{Google Cloud Professional DevOps Engineer} \hfill \textit{2021}
+
+\section{Education}
+\textbf{B.S. Information Technology}, University of Colorado Denver \hfill \textit{May 2016}
+
+\end{document}

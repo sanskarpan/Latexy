@@ -1,0 +1,117 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.55in, bottom=0.55in, left=0.6in, right=0.6in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+
+\pagestyle{empty}
+\setlist{nosep, leftmargin=*}
+\hypersetup{colorlinks=true, urlcolor=blue}
+
+\newcommand{\leftsection}[1]{%
+  \vspace{6pt}\noindent\textbf{\small\MakeUppercase{#1}}\vspace{1pt}\\
+  \noindent\rule{\linewidth}{0.4pt}\vspace{3pt}%
+}
+\newcommand{\rightsection}[1]{%
+  \vspace{6pt}\noindent\textbf{\large #1}\vspace{1pt}\\
+  \noindent\rule{\linewidth}{0.4pt}\vspace{3pt}%
+}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Nathan Clark}}\\[3pt]
+  Sales Engineer \quad|\quad
+  \href{mailto:nathan.clark@email.com}{nathan.clark@email.com} \quad|\quad
+  (512) 555-0384 \quad|\quad
+  Austin, TX
+\end{center}
+\noindent\rule{\textwidth}{0.8pt}
+
+\vspace{8pt}
+
+\noindent
+\begin{minipage}[t]{0.33\textwidth}
+
+\leftsection{Contact}
+\small
+\href{https://linkedin.com/in/nathanclark}{LinkedIn}\\
+\href{https://github.com/nathanclark}{GitHub}\\
+(512) 555-0384
+
+\leftsection{Technical Skills}
+\small
+Python, SQL, Bash\\
+REST APIs, JSON, YAML\\
+AWS, GCP, Azure\\
+Salesforce, Gong\\
+Docker, Kubernetes\\
+Postman, Swagger
+
+\leftsection{Sales Tools}
+\small
+Salesforce CRM\\
+Outreach, SalesLoft\\
+Clari, Chorus\\
+Zendesk, Jira\\
+Confluence
+
+\leftsection{Certifications}
+\small
+AWS Solutions Architect\\
+(Associate, 2022)\\[2pt]
+Salesforce Certified\\
+Administrator (2020)\\[2pt]
+Kubernetes CKA (2023)
+
+\leftsection{Education}
+\small
+\textbf{B.S. Computer Science}\\
+UT Austin\\
+\textit{May 2015} --- GPA 3.74
+
+\leftsection{Languages}
+\small
+English (native)\\
+Spanish (professional)
+
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.63\textwidth}
+
+\rightsection{Professional Summary}
+\small Sales Engineer with 8 years bridging technical depth and customer-facing consultative selling at enterprise SaaS companies. Skilled at technical discovery, solution architecture, proof-of-concept delivery, and closing complex deals with Fortune 500 engineering and DevOps buyers.
+
+\rightsection{Experience}
+
+\noindent\textbf{\small Senior Sales Engineer} \hfill \textit{\small Jan 2021 -- Present}\\
+\textit{\small Datadog, Austin, TX}
+\begin{itemize}\small
+  \item Drive technical win strategy for 20+ enterprise accounts/year; maintained 74\% win rate on competitive deals.
+  \item Delivered 60+ custom technical demos and POC environments; average POC-to-close cycle of 28 days.
+  \item Developed reusable demo library (12 scenarios) adopted by 8-person SE team, saving 4 hrs/deal.
+  \item Supported \$8.2M ACV in closed-won enterprise deals in FY2023; contributed to 3 seven-figure expansions.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{\small Sales Engineer} \hfill \textit{\small July 2018 -- Dec 2020}\\
+\textit{\small HashiCorp, San Francisco, CA (Remote)}
+\begin{itemize}\small
+  \item Presented Vault and Terraform to DevOps, security, and platform engineering teams at 150+ accounts.
+  \item Built and delivered POC environments for complex multi-cloud Terraform use cases; closed 12 enterprise accounts totaling \$3.1M ARR.
+  \item Created technical enablement content (labs, videos, architecture diagrams) used by global SE team.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{\small Associate Sales Engineer} \hfill \textit{\small Aug 2015 -- June 2018}\\
+\textit{\small Rackspace, San Antonio, TX}
+\begin{itemize}\small
+  \item Provided pre-sales technical support for cloud migration deals; helped close \$1.8M in first-year bookings.
+\end{itemize}
+
+\end{minipage}
+
+\end{document}

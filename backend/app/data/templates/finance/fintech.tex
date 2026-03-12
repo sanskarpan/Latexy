@@ -1,0 +1,71 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.7in, right=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{0,153,102}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\color{accent}\rule{\textwidth}{0.6pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=accent}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Daniel Park}}\\[3pt]
+  {\large \textcolor{accent}{Product Manager -- FinTech}}\\[4pt]
+  San Francisco, CA \quad|\quad
+  \href{mailto:daniel.park@email.com}{daniel.park@email.com} \quad|\quad
+  (415) 555-0328 \quad|\quad
+  \href{https://linkedin.com/in/danielpark}{linkedin.com/in/danielpark}
+\end{center}
+
+\section{Summary}
+Product Manager with hybrid finance and engineering background. 7 years building financial products at the intersection of consumer banking, payments infrastructure, and regulatory compliance. Led 0-to-1 launches generating \$40M+ ARR.
+
+\section{Experience}
+
+\noindent\textbf{Senior Product Manager -- Payments Platform} \hfill \textit{Feb 2022 -- Present}\\
+\textit{Brex, San Francisco, CA}
+\begin{itemize}
+  \item Owned end-to-end product roadmap for international wire transfers; shipped 12-currency support in 5 months, expanding addressable market by 35\% and generating \$22M new ARR.
+  \item Led cross-functional team (8 engineers, 2 designers, compliance, legal) to launch real-time ACH transfers 18 hours ahead of schedule; achieved 99.97\% transaction success rate at launch.
+  \item Defined and shipped KYB (Know Your Business) onboarding flow, reducing fraud-related chargebacks by 60\% and cutting manual review queue by 45\%.
+  \item Ran 12 pricing experiments using Bayesian A/B framework; optimized interchange fee structure contributing \$4M additional annual margin.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Product Manager -- Consumer Lending} \hfill \textit{July 2019 -- Jan 2022}\\
+\textit{Affirm, San Francisco, CA}
+\begin{itemize}
+  \item Launched BNPL product for grocery vertical with 3 anchor merchant partners; \$180M GMV in first year.
+  \item Built adaptive underwriting decisioning flow reducing declined-but-creditworthy users by 22\% through income verification integrations with Plaid and Argyle.
+  \item Defined and tracked 15 North Star and guardrail metrics; created weekly leadership dashboard adopted across 6 product areas.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Associate Product Manager} \hfill \textit{Aug 2017 -- June 2019}\\
+\textit{Goldman Sachs (Marcus), New York, NY}
+\begin{itemize}
+  \item Contributed to redesign of savings account onboarding, reducing drop-off at identity verification step by 30\%.
+\end{itemize}
+
+\section{Skills}
+\textbf{Finance:} Payments (ACH, SWIFT, card networks), lending, KYC/AML, regulatory compliance (CFPB, FDIC)\\
+\textbf{Product:} Roadmapping, user research, A/B testing, OKRs, PRDs, stakeholder management\\
+\textbf{Technical:} SQL, basic Python, Figma, Mixpanel, Amplitude, Jira, Confluence\\
+\textbf{Tools:} Stripe API, Plaid, Alloy, Sardine
+
+\section{Education}
+\textbf{M.B.A.}, Harvard Business School \hfill \textit{May 2019}\\
+\textbf{B.S. Computer Science}, Carnegie Mellon University \hfill \textit{May 2015} \quad GPA: 3.8/4.0
+
+\end{document}

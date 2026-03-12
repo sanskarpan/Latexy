@@ -35,8 +35,8 @@ load_dotenv(_root_dir / ".env")
 
 def _to_asyncpg_url(url: str) -> str:
     """Convert a sync postgresql:// URL to postgresql+asyncpg:// format."""
-    # Add asyncpg driver
-    url = re.sub(r"^postgresql(\+\w+)?://", "postgresql+asyncpg://", url)
+    # Normalise any postgres:// or postgresql+driver:// to asyncpg
+    url = re.sub(r"^postgres(ql)?(\+\w+)?://", "postgresql+asyncpg://", url)
     # asyncpg uses ssl=require not sslmode=require
     url = url.replace("sslmode=require", "ssl=require")
     # Remove channel_binding (psycopg3-only param)
@@ -161,6 +161,8 @@ async def test_engine():
         await conn.execute(text("DELETE FROM usage_analytics WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')"))
         await conn.execute(text("DELETE FROM deep_analysis_trials WHERE device_fingerprint LIKE 'test_%'"))
         await conn.execute(text("DELETE FROM resume_job_matches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')"))
+        # Clean up test templates (inserted by test_template_routes — all prefixed with test_tmpl_)
+        await conn.execute(text("DELETE FROM resume_templates WHERE name LIKE 'test_tmpl_%'"))
         # Then delete parent rows
         await conn.execute(text("DELETE FROM session WHERE token LIKE 'test_sess_%'"))
         await conn.execute(text("DELETE FROM users WHERE email LIKE 'test_%@example.com'"))
