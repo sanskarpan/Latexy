@@ -315,7 +315,7 @@ versions side-by-side in a Monaco diff editor.
 localStorage. Zero backend changes.
 
 ### 3A · LaTeXEditor Component
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add prop: `onAutoCompile?: (content: string) => void`
   - Inside `useEffect` where Monaco is initialized (after `editor` is created):
     ```typescript
@@ -336,7 +336,7 @@ localStorage. Zero backend changes.
     empty-doc compiles on initial load)
 
 ### 3B · Auto-Compile State Hook
-- [ ] Create `frontend/src/hooks/useAutoCompile.ts`:
+- [x] Create `frontend/src/hooks/useAutoCompile.ts`:
   ```typescript
   // Manages auto-compile enabled/disabled state with localStorage persistence
   export function useAutoCompile() {
@@ -353,7 +353,7 @@ localStorage. Zero backend changes.
   ```
 
 ### 3C · `/try` Page Wiring
-- [ ] In `frontend/src/app/try/page.tsx`:
+- [x] In `frontend/src/app/try/page.tsx`:
   - Add `const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()`
   - Pass `onAutoCompile={autoCompile && !isSubmitting ? (content) => runCompile('compile') : undefined}`
     to `LaTeXEditor`
@@ -365,16 +365,16 @@ localStorage. Zero backend changes.
   - When auto-compile fires, set `isSubmitting = true` (blocks manual compile during auto)
 
 ### 3D · Edit/Optimize Pages
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Same `useAutoCompile` hook integration
   - Same "Auto" toggle button
   - `onAutoCompile` triggers compile-only (not optimize+compile)
-- [ ] In `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`:
   - Auto-compile available; triggers compile-only (not the full optimize pipeline)
   - Show "Auto" toggle in editor toolbar
 
 ### 3E · Status Bar Indicator
-- [ ] In `frontend/src/components/LaTeXEditor.tsx` (or parent pages):
+- [x] In `frontend/src/components/LaTeXEditor.tsx` (or parent pages):
   - When `onAutoCompile` is defined (auto-compile active): show a subtle animated pulse dot +
     "Auto" label in editor status bar
   - While debounce is counting down (keystroke happened, timer running): show "Compiling in 2s..."
