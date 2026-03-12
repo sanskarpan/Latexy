@@ -56,7 +56,8 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://localhost:9000}
+      # MinIO: set MINIO_ENDPOINT in .env (use http://host.docker.internal:9000 for host-side MinIO on macOS)
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://host.docker.internal:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin_secret}
       - MINIO_BUCKET=${MINIO_BUCKET:-latexy}
@@ -96,7 +97,7 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - DATABASE_URL=${DATABASE_URL:?DATABASE_URL must be set}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://localhost:9000}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://host.docker.internal:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin_secret}
       - MINIO_BUCKET=${MINIO_BUCKET:-latexy}
