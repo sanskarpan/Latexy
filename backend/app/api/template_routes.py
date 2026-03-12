@@ -10,6 +10,7 @@ Endpoints:
   POST /templates/{id}/use         — authenticated; create a Resume from this template
 """
 
+import uuid as _uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -86,6 +87,15 @@ class UseTemplateRequest(BaseModel):
 # ------------------------------------------------------------------ #
 #  Helpers                                                            #
 # ------------------------------------------------------------------ #
+
+def _validate_uuid(value: str) -> str:
+    """Validate that value is a proper UUID string. Raises 404 if not."""
+    try:
+        _uuid.UUID(value)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Template not found")
+    return value
+
 
 def _category_label(category: str) -> str:
     return CATEGORY_LABELS.get(category, category.replace("_", " ").title())
@@ -174,10 +184,32 @@ async def list_templates(
 
 
 @router.head("/{template_id}/thumbnail")
+async def head_template_thumbnail(template_id: str):
+    """Check if a thumbnail exists in MinIO (lightweight — no body download)."""
+    _validate_uuid(template_id)
+    try:
+        if not storage_service.file_exists(f"templates/{template_id}.png"):
+            raise HTTPException(status_code=404, detail="Thumbnail not found")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("MinIO error checking thumbnail for %s", template_id)
+        raise HTTPException(status_code=502, detail="Storage unavailable")
+    return Response(
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @router.get("/{template_id}/thumbnail")
 async def get_template_thumbnail(template_id: str):
     """Serve the pre-compiled PNG thumbnail from MinIO."""
-    data = storage_service.download_bytes(f"templates/{template_id}.png")
+    _validate_uuid(template_id)
+    try:
+        data = storage_service.download_bytes(f"templates/{template_id}.png")
+    except Exception:
+        logger.exception("MinIO error fetching thumbnail for %s", template_id)
+        raise HTTPException(status_code=502, detail="Storage unavailable")
     if data is None:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
     return Response(
@@ -188,10 +220,32 @@ async def get_template_thumbnail(template_id: str):
 
 
 @router.head("/{template_id}/pdf")
+async def head_template_pdf(template_id: str):
+    """Check if a PDF exists in MinIO (lightweight — no body download)."""
+    _validate_uuid(template_id)
+    try:
+        if not storage_service.file_exists(f"templates/{template_id}.pdf"):
+            raise HTTPException(status_code=404, detail="PDF not found")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("MinIO error checking PDF for %s", template_id)
+        raise HTTPException(status_code=502, detail="Storage unavailable")
+    return Response(
+        media_type="application/pdf",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @router.get("/{template_id}/pdf")
 async def get_template_pdf(template_id: str):
     """Serve the pre-compiled PDF from MinIO."""
-    data = storage_service.download_bytes(f"templates/{template_id}.pdf")
+    _validate_uuid(template_id)
+    try:
+        data = storage_service.download_bytes(f"templates/{template_id}.pdf")
+    except Exception:
+        logger.exception("MinIO error fetching PDF for %s", template_id)
+        raise HTTPException(status_code=502, detail="Storage unavailable")
     if data is None:
         raise HTTPException(status_code=404, detail="PDF not found")
     return Response(
@@ -204,6 +258,7 @@ async def get_template_pdf(template_id: str):
 @router.get("/{template_id}", response_model=TemplateDetailResponse)
 async def get_template(template_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     """Get full template details including latex_content."""
+    _validate_uuid(template_id)
     t = await db.get(ResumeTemplate, template_id)
     if not t or not t.is_active:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -218,6 +273,7 @@ async def use_template(
     user_id: str = Depends(get_current_user_required),
 ):
     """Create a new resume from a template. Requires authentication."""
+    _validate_uuid(template_id)
     t = await db.get(ResumeTemplate, template_id)
     if not t or not t.is_active:
         raise HTTPException(status_code=404, detail="Template not found")
