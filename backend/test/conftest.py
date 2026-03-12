@@ -161,6 +161,8 @@ async def test_engine():
         await conn.execute(text("DELETE FROM usage_analytics WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')"))
         await conn.execute(text("DELETE FROM deep_analysis_trials WHERE device_fingerprint LIKE 'test_%'"))
         await conn.execute(text("DELETE FROM resume_job_matches WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')"))
+        # Clean up test templates (inserted by test_template_routes — all prefixed with test_tmpl_)
+        await conn.execute(text("DELETE FROM resume_templates WHERE name LIKE 'test_tmpl_%'"))
         # Then delete parent rows
         await conn.execute(text("DELETE FROM session WHERE token LIKE 'test_sess_%'"))
         await conn.execute(text("DELETE FROM users WHERE email LIKE 'test_%@example.com'"))
