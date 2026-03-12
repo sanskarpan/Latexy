@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { FileText, Code, Layers, Eye } from 'lucide-react'
+import { FileText, Eye } from 'lucide-react'
 import type { TemplateResponse } from '@/lib/api-client'
 
 // ------------------------------------------------------------------ //
