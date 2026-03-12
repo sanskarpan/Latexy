@@ -34,13 +34,18 @@ from app.services import storage_service
 
 
 def _db_url() -> str:
+    import re
     url = os.environ.get("DATABASE_URL", "")
     if not url:
         raise RuntimeError("DATABASE_URL not set")
+    # Ensure asyncpg driver
+    url = re.sub(r"^postgresql(\+\w+)?://", "postgresql+asyncpg://", url)
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-    elif url.startswith("postgresql://") and "+asyncpg" not in url:
-        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    # asyncpg uses ssl=require not sslmode=require
+    url = url.replace("sslmode=require", "ssl=require")
+    # Strip channel_binding — not supported by asyncpg
+    url = re.sub(r"[&?]channel_binding=[^&]*", "", url)
     return url
 
 
