@@ -1,0 +1,71 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.7in, right=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{0,70,127}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\color{accent}\rule{\textwidth}{0.6pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=accent}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Anika Patel}}\\[3pt]
+  {\large \textcolor{accent}{Quantitative Analyst}}\\[4pt]
+  New York, NY \quad|\quad
+  \href{mailto:anika.patel@email.com}{anika.patel@email.com} \quad|\quad
+  (646) 555-0294 \quad|\quad
+  \href{https://linkedin.com/in/anikapatel}{linkedin.com/in/anikapatel}
+\end{center}
+
+\section{Summary}
+Quantitative analyst with expertise in derivatives pricing, statistical arbitrage, and high-frequency trading system development. Strong mathematical foundation in stochastic calculus, econometrics, and numerical methods. Proficient in C++ for latency-critical systems and Python for research.
+
+\section{Experience}
+
+\noindent\textbf{Quantitative Researcher -- Equities} \hfill \textit{Aug 2021 -- Present}\\
+\textit{Two Sigma Investments, New York, NY}
+\begin{itemize}
+  \item Developed alpha-generating signals for US equities using alternative data sources (satellite imagery, credit card transactions, web scraping); signals contributed \$18M Sharpe-adjusted PnL in first year.
+  \item Built mean-reversion statistical arbitrage strategy on pairs of ETF/futures instruments; live since Q1 2022 with Sharpe ratio of 2.4 and max drawdown below 4\%.
+  \item Designed Monte Carlo simulation engine in C++ for path-dependent exotic options pricing (barrier, lookback); reduced pricing latency from 120\,ms to 8\,ms.
+  \item Implemented portfolio optimization using Black-Litterman model with dynamic risk budgeting; reduced portfolio volatility by 15\% while maintaining returns.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Quantitative Analyst -- Fixed Income Derivatives} \hfill \textit{June 2018 -- July 2021}\\
+\textit{JPMorgan Chase, New York, NY}
+\begin{itemize}
+  \item Maintained and extended interest rate derivatives pricing library (swaptions, caps/floors) using Hull-White and SABR models; calibrated to daily market quotes using Levenberg-Marquardt optimization.
+  \item Built real-time Greeks calculation system for \$2B interest rate options book using adjoint algorithmic differentiation; 10x speed improvement over finite difference.
+  \item Automated daily P\&L attribution reports using Python/Bloomberg API, eliminating 3 hours of manual work per desk per day.
+\end{itemize}
+
+\section{Technical Skills}
+\begin{tabular}{@{}ll}
+\textbf{Languages:}        & C++ (17), Python, R, MATLAB, SQL \\
+\textbf{Math/Stats:}       & Stochastic calculus, Monte Carlo, PDE methods, time-series, ML \\
+\textbf{Finance:}          & Derivatives pricing, risk management, portfolio optimization, factor models \\
+\textbf{Tools:}            & Bloomberg Terminal, FactSet, pandas, NumPy, SciPy, QuantLib \\
+\end{tabular}
+
+\section{Education}
+\textbf{M.S. Financial Mathematics}, University of Chicago \hfill \textit{June 2018}\\
+\textit{Thesis:} Calibration of Rough Volatility Models via Neural Networks \quad GPA: 3.97/4.0\\[3pt]
+\textbf{B.S. Mathematics}, Indian Institute of Technology Delhi \hfill \textit{May 2016}\\
+Gold Medalist -- Top GPA in graduating class
+
+\section{Certifications}
+CFA Charterholder (2022) \quad|\quad FRM Part I \& II (2020) \quad|\quad Series 7 \& 63 (licensed)
+
+\end{document}

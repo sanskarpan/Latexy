@@ -1,0 +1,79 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.75in, right=0.75in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{array}
+
+\definecolor{bar}{RGB}{60,120,180}
+
+\pagestyle{empty}
+\setlist{nosep, leftmargin=*}
+\hypersetup{colorlinks=true, urlcolor=bar, linkcolor=bar}
+
+\newcommand{\sectionbar}[1]{%
+  \vspace{6pt}%
+  \noindent\textcolor{bar}{\rule{3pt}{14pt}}%
+  \hspace{4pt}{\large\textbf{#1}}%
+  \vspace{4pt}%
+}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Jamie Wilson}}\\[3pt]
+  \textcolor{bar}{Data Analyst}\\[4pt]
+  Seattle, WA \quad|\quad
+  \href{mailto:jamie.wilson@email.com}{jamie.wilson@email.com} \quad|\quad
+  (206) 555-0473 \quad|\quad
+  \href{https://linkedin.com/in/jamiewilson}{linkedin.com/in/jamiewilson}
+\end{center}
+
+\noindent\rule{\textwidth}{0.3pt}
+
+\sectionbar{Summary}
+
+\noindent Data Analyst with 5 years turning complex datasets into strategic decisions. Expertise in SQL, Python, and data visualization. Delivered analyses impacting \$50M+ in revenue across e-commerce, logistics, and SaaS verticals.
+
+\sectionbar{Experience}
+
+\noindent\textbf{Senior Data Analyst} \hfill \textit{Nov 2021 -- Present}\\
+\textit{Amazon, Seattle, WA}
+\begin{itemize}
+  \item Developed seller health scoring model using 80+ behavioral features; flagged \$12M in fraudulent seller activity in Q1 2023.
+  \item Built automated weekly reporting suite (Python + Redshift) replacing 20 hours/week of manual Excel work across 5 team members.
+  \item Partnered with product team on 15 experiments; designed power analyses, defined metrics, and delivered clear recommendations to leadership.
+  \item Created Quicksight dashboard suite adopted by 200+ analysts across 6 business units.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Data Analyst} \hfill \textit{June 2019 -- Oct 2021}\\
+\textit{Convoy, Seattle, WA}
+\begin{itemize}
+  \item Analyzed carrier matching algorithm performance; insights led to re-ranking model reducing empty miles by 8\%.
+  \item Built freight cost forecasting model (ARIMA + external factors) with 6\% MAPE; used in quarterly planning.
+  \item Designed and maintained 12 operational dashboards in Tableau; became go-to analytics resource for ops leadership.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Business Analyst Intern} \hfill \textit{June 2018 -- Aug 2018}\\
+\textit{Redfin, Seattle, WA}
+\begin{itemize}
+  \item Analyzed agent performance data across 20 markets; findings incorporated into quarterly agent review process.
+\end{itemize}
+
+\sectionbar{Technical Skills}
+
+\noindent\textbf{Languages \& Tools:} Python (pandas, numpy, matplotlib, scikit-learn), R, SQL (advanced), Bash\\
+\textbf{Data Platforms:} Redshift, BigQuery, Snowflake, Databricks, dbt, Airflow\\
+\textbf{Visualization:} Tableau, Looker, Quicksight, Plotly\\
+\textbf{Statistics:} A/B testing, regression, time-series, causal inference
+
+\sectionbar{Education}
+
+\noindent\textbf{B.S. Statistics}, University of Washington \hfill \textit{June 2019} \quad GPA: 3.81/4.0
+
+\end{document}

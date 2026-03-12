@@ -1,0 +1,75 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.7in, right=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{100,60,160}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\color{accent}\rule{\textwidth}{0.6pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=accent, linkcolor=accent}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Emily Walsh}}\\[3pt]
+  {\large \textcolor{accent}{Data Scientist}}\\[4pt]
+  Chicago, IL \quad|\quad
+  \href{mailto:emily.walsh@email.com}{emily.walsh@email.com} \quad|\quad
+  (312) 555-0653 \quad|\quad
+  \href{https://linkedin.com/in/emilywalsh}{linkedin.com/in/emilywalsh} \quad|\quad
+  \href{https://kaggle.com/emilywalsh}{Kaggle Expert}
+\end{center}
+
+\section{Summary}
+Data Scientist with a statistics Ph.D. and 5 years of industry experience translating messy data into measurable business outcomes. Skilled in causal inference, experimentation design, time-series forecasting, and communicating findings to executive stakeholders.
+
+\section{Experience}
+
+\noindent\textbf{Senior Data Scientist} \hfill \textit{Sept 2021 -- Present}\\
+\textit{Instacart, Chicago, IL (Remote)}
+\begin{itemize}
+  \item Developed a demand forecasting model (LightGBM + temporal features) for 80K+ SKUs across 500 markets; reduced inventory waste by 18\%, saving \$14M annually.
+  \item Designed and analyzed 40+ A/B experiments (power analysis, randomization checks, CUPED variance reduction); contributed directly to 3 product launches generating \$30M+ in incremental revenue.
+  \item Built causal inference framework using difference-in-differences and synthetic control methods to evaluate \$25M promotional spend; identified 40\% of promotions as ROI-negative.
+  \item Created executive-facing dashboards in Tableau integrating real-time data from Snowflake; reduced ad-hoc data requests from leadership by 55\%.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Data Scientist} \hfill \textit{July 2018 -- Aug 2021}\\
+\textit{Capital One, Chicago, IL}
+\begin{itemize}
+  \item Built credit risk scorecard using logistic regression with regularization; improved Gini coefficient by 6 points, reducing charge-off rate by \$8M/year.
+  \item Deployed customer churn prediction model (XGBoost) achieving 0.87 AUC; enabled targeted retention campaigns with 3.2x ROI.
+  \item Automated weekly risk reporting pipeline (Python + SQL) replacing 15 hours/week of manual analyst work.
+\end{itemize}
+
+\section{Technical Skills}
+\begin{tabular}{@{}ll}
+\textbf{Languages:}        & Python, R, SQL, Scala \\
+\textbf{ML Libraries:}     & scikit-learn, LightGBM, XGBoost, statsmodels, Prophet, PyTorch \\
+\textbf{Data:}             & Spark, dbt, Airflow, Snowflake, BigQuery, Redshift \\
+\textbf{Visualization:}    & Tableau, Looker, matplotlib, seaborn, Plotly \\
+\textbf{Statistics:}       & Bayesian inference, causal inference, survival analysis, time-series \\
+\end{tabular}
+
+\section{Education}
+\textbf{Ph.D. Statistics}, University of Chicago \hfill \textit{June 2018}\\
+Dissertation: \textit{Robust Variance Estimation in High-Dimensional Sequential Experiments}\\[3pt]
+\textbf{B.S. Mathematics \& Statistics}, University of Michigan \hfill \textit{May 2013} \quad GPA: 3.95/4.0
+
+\section{Publications \& Recognition}
+\begin{itemize}
+  \item E. Walsh, P. Huang. ``Variance Reduction in Online Experimentation via Covariate Adjustment.'' \textit{JSM Proceedings}, 2020.
+  \item Kaggle Competitions Expert (top 3\% globally); 2nd place, M5 Forecasting Competition (2020).
+\end{itemize}
+
+\end{document}

@@ -1,0 +1,80 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.7in, right=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{25,118,210}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\color{accent}\rule{\textwidth}{0.5pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=accent}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Tyler Brooks}}\\[3pt]
+  {\large \textcolor{accent}{Software Engineer (New Grad)}}\\[4pt]
+  Seattle, WA \quad|\quad
+  \href{mailto:tyler.brooks@email.com}{tyler.brooks@email.com} \quad|\quad
+  (206) 555-0384 \quad|\quad
+  \href{https://github.com/tylerbrooks}{github.com/tylerbrooks} \quad|\quad
+  \href{https://linkedin.com/in/tylerbrooks}{LinkedIn}
+\end{center}
+
+\section{Education}
+\noindent\textbf{B.S. Computer Science}, University of Washington \hfill \textit{June 2025}\\
+GPA: 3.84/4.0 \quad|\quad Dean's List (6 semesters) \quad|\quad UW CSE Excellence Award\\
+\textit{Relevant Coursework:} Data Structures, Algorithms, Systems Programming, Distributed Systems, Machine Learning, Databases, Web Development
+
+\section{Internship Experience}
+
+\noindent\textbf{Software Engineering Intern -- Backend Platform} \hfill \textit{June 2024 -- Sept 2024}\\
+\textit{Amazon, Seattle, WA}
+\begin{itemize}
+  \item Designed and implemented a new batch processing API in Java (Spring Boot) for Seller Central operations; handled 500K records/day with idempotent retry logic.
+  \item Wrote 95 unit tests and 20 integration tests achieving 100\% coverage on new code paths; PR merged to production within internship timeline.
+  \item Presented design doc and demo to org of 40+ engineers; received return offer.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Software Engineering Intern -- Data Infrastructure} \hfill \textit{June 2023 -- Sept 2023}\\
+\textit{Tableau (Salesforce), Seattle, WA}
+\begin{itemize}
+  \item Built Python ETL pipeline migrating 5 years of customer telemetry data from legacy PostgreSQL to Snowflake; migrated 2TB of data with zero loss verified.
+  \item Automated data quality checks saving 3 hours/week of manual analyst verification.
+\end{itemize}
+
+\section{Projects}
+
+\noindent\textbf{MapleChat} \quad \href{https://github.com/tylerbrooks/maplechat}{github.com/tylerbrooks/maplechat}
+\begin{itemize}
+  \item Real-time group chat application (React, Node.js, Socket.io, PostgreSQL, Docker); supports 100 concurrent users with message persistence and read receipts.
+\end{itemize}
+
+\noindent\textbf{ShelfTrack} \quad \href{https://github.com/tylerbrooks/shelftrack}{github.com/tylerbrooks/shelftrack}
+\begin{itemize}
+  \item Personal library tracker with book recommendation engine (Python Flask, SQLite, scikit-learn collaborative filter); 40+ active users via Vercel deployment.
+\end{itemize}
+
+\noindent\textbf{UW Campus Route Optimizer} \quad \textit{Senior Capstone}
+\begin{itemize}
+  \item Built Dijkstra's algorithm-based campus navigation app with real-time accessibility constraints; won 2nd place in UW CSE Senior Showcase 2025.
+\end{itemize}
+
+\section{Technical Skills}
+\textbf{Languages:} Java, Python, JavaScript/TypeScript, C, SQL, HTML/CSS\\
+\textbf{Frameworks:} React, Node.js, Spring Boot, Flask, Express.js\\
+\textbf{Tools:} Git, Docker, PostgreSQL, Snowflake, AWS (EC2, S3, Lambda), Linux
+
+\section{Activities}
+UW ACM Vice President (2023--2024) \quad|\quad HackUW Organizer \quad|\quad UW Sailing Team
+
+\end{document}

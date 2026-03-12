@@ -1,0 +1,82 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.7in, right=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{22,160,133}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\color{accent}\rule{\textwidth}{0.6pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=accent, linkcolor=accent}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Marcus Chen}}\\[3pt]
+  {\large \textcolor{accent}{Full-Stack Developer}}\\[4pt]
+  New York, NY \quad|\quad
+  \href{mailto:marcus.chen@email.com}{marcus.chen@email.com} \quad|\quad
+  (917) 555-0447 \quad|\quad
+  \href{https://marcuschen.dev}{marcuschen.dev} \quad|\quad
+  \href{https://github.com/marcuschen}{github.com/marcuschen}
+\end{center}
+
+\section{Experience}
+
+\noindent\textbf{Senior Full-Stack Developer} \hfill \textit{March 2022 -- Present}\\
+\textit{Notion, New York, NY}
+\begin{itemize}
+  \item Built the real-time collaborative editing engine for tables using operational transforms in TypeScript, supporting 100K concurrent users with sub-100\,ms sync.
+  \item Redesigned the public API (REST + GraphQL) serving 2B requests/month; reduced error rate from 0.8\% to 0.05\% and improved average response time by 42\%.
+  \item Implemented server-side rendering with Next.js App Router, improving LCP from 4.2s to 1.1s on the marketing site.
+  \item Architected a plugin SDK used by 300+ third-party integrations, defining versioning policies and backward compatibility guarantees.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Full-Stack Developer} \hfill \textit{Sept 2019 -- Feb 2022}\\
+\textit{Linear, Remote}
+\begin{itemize}
+  \item Developed drag-and-drop kanban board with keyboard accessibility, virtual scrolling for 10K+ items, and real-time conflict resolution.
+  \item Built GitHub/GitLab integration syncing 500K+ issue state transitions daily; maintained 99.95\% sync reliability.
+  \item Migrated frontend data layer from Redux to Zustand + React Query, reducing bundle size by 22\% and eliminating 80\% of data-fetching boilerplate.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Junior Web Developer} \hfill \textit{July 2017 -- Aug 2019}\\
+\textit{Webflow, San Francisco, CA}
+\begin{itemize}
+  \item Implemented 12 responsive UI components in React with full Storybook documentation and 100\% unit test coverage.
+\end{itemize}
+
+\section{Skills}
+
+\noindent\textbf{Frontend:} React, Next.js, TypeScript, Tailwind CSS, Radix UI, Framer Motion, WebSockets\\
+\textbf{Backend:} Node.js, Python (FastAPI, Django), PostgreSQL, Redis, GraphQL, REST, gRPC\\
+\textbf{Infrastructure:} AWS, Vercel, Docker, GitHub Actions, Terraform\\
+\textbf{Testing:} Jest, Playwright, Cypress, Vitest, pytest
+
+\section{Projects}
+
+\noindent\textbf{Boardly} \textcolor{accent}{|} \href{https://github.com/marcuschen/boardly}{github.com/marcuschen/boardly}
+\begin{itemize}
+  \item Open-source Trello-like project board built with Next.js 14, Drizzle ORM, and WebSocket-powered live collaboration. 1.4k stars.
+\end{itemize}
+
+\noindent\textbf{APIForge} \textcolor{accent}{|} \href{https://apiforge.dev}{apiforge.dev}
+\begin{itemize}
+  \item SaaS tool for API mocking and contract testing; 800 active users, built solo in 6 weeks.
+\end{itemize}
+
+\section{Education}
+\textbf{B.S. Computer Science}, New York University \hfill \textit{May 2017}\\
+Minor: Mathematics \quad|\quad GPA: 3.75/4.0
+
+\end{document}

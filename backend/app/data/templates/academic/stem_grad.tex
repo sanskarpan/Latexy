@@ -1,0 +1,80 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.75in, right=0.75in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{titlesec}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\rule{\textwidth}{0.5pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=blue}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Kevin Liu}}\\[3pt]
+  M.S. Computer Science, Carnegie Mellon University\\[4pt]
+  Pittsburgh, PA \quad|\quad
+  \href{mailto:kevin.liu@cmu.edu}{kevin.liu@cmu.edu} \quad|\quad
+  (412) 555-0561 \quad|\quad
+  \href{https://github.com/kevinliu-cs}{github.com/kevinliu-cs}
+\end{center}
+
+\section{Education}
+\noindent\textbf{M.S. Computer Science}, Carnegie Mellon University \hfill \textit{May 2025}\\
+Specialization: Machine Learning Systems \quad|\quad GPA: 3.93/4.0\\
+\textit{Thesis:} \textit{Adaptive Batching Strategies for Low-Latency Transformer Inference at Scale}\\
+Advisor: Prof. Zhihao Jia, CMU Parallel Data Lab\\[4pt]
+\noindent\textbf{B.S. Computer Science \& Mathematics}, University of Illinois Urbana-Champaign \hfill \textit{May 2023}\\
+GPA: 3.88/4.0 \quad|\quad University Honors \quad|\quad James Scholar
+
+\section{Research Experience}
+
+\noindent\textbf{Graduate Research Assistant} \hfill \textit{Aug 2023 -- Present}\\
+\textit{CMU Parallel Data Lab, Pittsburgh, PA}
+\begin{itemize}
+  \item Designing and implementing adaptive batching algorithms for LLM inference, reducing GPU memory fragmentation by 30\% and throughput by 2.1x on A100 hardware.
+  \item Profiled bottlenecks in FlashAttention-2 using CUDA profiling tools; identified memory bandwidth inefficiencies in KV-cache eviction; submitted fix merged into upstream.
+  \item Benchmarked 6 open-source inference frameworks (vLLM, TensorRT-LLM, TGI, DeepSpeed-MII) on diverse workloads; results adopted by lab for framework recommendations.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Undergraduate Research Assistant} \hfill \textit{Jan 2022 -- May 2023}\\
+\textit{UIUC Systems Research Group, Advisor: Prof. Tianyin Xu}
+\begin{itemize}
+  \item Analyzed 1,500 production incidents from cloud providers; categorized root causes; findings published at OSDI 2023 (3rd author).
+  \item Developed static analysis tool in Python to detect misconfiguration anti-patterns in Kubernetes YAML files; open-sourced, 400+ stars.
+\end{itemize}
+
+\section{Industry Experience}
+
+\noindent\textbf{Software Engineering Intern -- Infrastructure} \hfill \textit{May 2024 -- Aug 2024}\\
+\textit{Meta, Menlo Park, CA}
+\begin{itemize}
+  \item Optimized data parallelism strategy for PyTorch DDP training on 256-GPU clusters; reduced communication overhead by 22\%.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Software Engineering Intern} \hfill \textit{May 2022 -- Aug 2022}\\
+\textit{Databricks, San Francisco, CA}
+\begin{itemize}
+  \item Implemented adaptive query execution optimization in Apache Spark (Scala); reduced runtime for skewed joins by 35\%.
+\end{itemize}
+
+\section{Technical Skills}
+\textbf{Languages:} Python, C++, CUDA, Scala, Java, SQL, Bash\\
+\textbf{ML/Systems:} PyTorch, JAX, TensorRT, CUDA programming, MPI, NCCL, Triton\\
+\textbf{Infrastructure:} Kubernetes, Docker, Slurm, AWS, GCP
+
+\section{Publications}
+\begin{enumerate}[leftmargin=*, label={[\arabic*]}]
+  \item T. Xu, \textbf{K. Liu}, et al. ``Understanding and Detecting Configuration Issues in Distributed Systems.'' \textit{OSDI 2023}.
+  \item \textbf{K. Liu}, Z. Jia. ``AdapBatch: Adaptive Request Batching for LLM Inference.'' \textit{MLSys 2025} (under review).
+\end{enumerate}
+
+\end{document}

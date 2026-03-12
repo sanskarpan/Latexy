@@ -1,0 +1,72 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.7in, bottom=0.7in, left=0.8in, right=0.8in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{parskip}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=false}
+\setlength{\parskip}{0pt}
+
+\begin{document}
+
+\noindent{\LARGE \textbf{Chris Taylor}}\\
+Software Engineer\\[2pt]
+Boston, MA \quad
+\href{mailto:chris.taylor@email.com}{chris.taylor@email.com} \quad
+(617) 555-0284 \quad
+\href{https://github.com/christaylor}{github.com/christaylor}
+
+\vspace{10pt}
+\noindent\textbf{Experience}
+\vspace{3pt}
+
+\noindent\textbf{Software Engineer}, Wayfair \hfill \textit{Jan 2022 -- Present}\\
+Boston, MA
+\begin{itemize}
+  \item Built search relevance ranking pipeline in Python serving 5M queries/day, improving click-through rate by 17\%.
+  \item Refactored legacy catalog ingestion service from PHP to Go; reduced processing time from 8 hours to 45 minutes.
+  \item Improved CI/CD pipeline reliability from 94\% to 99.2\% by addressing flaky integration tests and stabilizing test database seeding.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Software Engineer}, HubSpot \hfill \textit{June 2019 -- Dec 2021}\\
+Cambridge, MA
+\begin{itemize}
+  \item Developed email deliverability scoring system in Java, reducing spam complaint rate by 22\% across 12,000 sending domains.
+  \item Built internal GraphQL API aggregating data from 8 microservices; reduced dashboard load time from 6s to 0.8s.
+  \item On-call rotation lead for CRM data platform (500K+ active users); maintained 99.95\% uptime SLA.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Software Engineering Intern}, Rapid7 \hfill \textit{May 2018 -- Aug 2018}\\
+Boston, MA
+\begin{itemize}
+  \item Implemented vulnerability severity scoring API consumed by 3 internal security dashboards.
+\end{itemize}
+
+\vspace{10pt}
+\noindent\textbf{Education}
+\vspace{3pt}
+
+\noindent\textbf{B.S. Computer Science}, Boston University \hfill \textit{May 2019}\\
+GPA: 3.76/4.0
+
+\vspace{10pt}
+\noindent\textbf{Skills}
+\vspace{3pt}
+
+\noindent Python, Go, Java, TypeScript, SQL, PostgreSQL, Redis, Kafka, AWS, Docker, Kubernetes, Terraform, Git
+
+\vspace{10pt}
+\noindent\textbf{Projects}
+\vspace{3pt}
+
+\noindent\textbf{Logsmith} -- Structured logging library for Go with JSON output and log-level filtering; 600+ GitHub stars.\\
+\noindent\textbf{Ratify} -- API rate limiting middleware for Express.js; used by 5 production applications.
+
+\end{document}

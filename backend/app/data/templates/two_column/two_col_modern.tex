@@ -1,0 +1,130 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0in, bottom=0in, left=0in, right=0in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+
+\definecolor{sidebar}{RGB}{30,50,80}
+\definecolor{sidetext}{RGB}{220,230,245}
+\definecolor{accent}{RGB}{80,140,200}
+
+\pagestyle{empty}
+\setlist{nosep, leftmargin=*}
+\hypersetup{colorlinks=true, urlcolor=accent}
+
+\begin{document}
+
+\noindent
+\colorbox{sidebar}{%
+  \begin{minipage}[t][0.975\textheight]{0.31\textwidth}
+  \vspace{8pt}
+  \color{sidetext}
+  \hspace{6pt}
+  \begin{minipage}[t]{0.88\linewidth}
+
+  \begin{center}
+    {\large\textbf{\color{white}Tyler Scott}}\\[2pt]
+    \textit{\color{accent}Software Architect}
+  \end{center}
+
+  \vspace{8pt}
+  \noindent\textcolor{accent}{\rule{\linewidth}{0.5pt}}
+
+  \vspace{4pt}
+  \noindent\textbf{\small\color{white}CONTACT}\\[2pt]
+  \small
+  Seattle, WA\\
+  \href{mailto:tyler.scott@email.com}{\color{accent}tyler.scott@email.com}\\
+  (206) 555-0284\\
+  \href{https://linkedin.com/in/tylerscott}{\color{accent}linkedin.com/in/tylerscott}
+
+  \vspace{6pt}
+  \noindent\textcolor{accent}{\rule{\linewidth}{0.5pt}}
+
+  \vspace{4pt}
+  \noindent\textbf{\small\color{white}SKILLS}\\[2pt]
+  \small
+  System Design\\
+  Distributed Systems\\
+  Cloud Architecture\\
+  Microservices\\
+  Event-Driven Design\\
+  API Design (REST/gRPC)\\
+  Kubernetes\\
+  Terraform, Pulumi\\
+  AWS, GCP\\
+  PostgreSQL, Cassandra\\
+  Kafka, RabbitMQ\\
+  Go, Python, Java, Rust
+
+  \vspace{6pt}
+  \noindent\textcolor{accent}{\rule{\linewidth}{0.5pt}}
+
+  \vspace{4pt}
+  \noindent\textbf{\small\color{white}EDUCATION}\\[2pt]
+  \small
+  \textbf{\color{white}M.S. Computer Science}\\
+  University of Washington\\
+  \textit{2012}\\[4pt]
+  \textbf{\color{white}B.S. Computer Science}\\
+  Oregon State University\\
+  \textit{2010, GPA 3.88}
+
+  \vspace{6pt}
+  \noindent\textcolor{accent}{\rule{\linewidth}{0.5pt}}
+
+  \vspace{4pt}
+  \noindent\textbf{\small\color{white}CERTIFICATIONS}\\[2pt]
+  \small
+  AWS Solutions Architect\\
+  Professional (2023)\\[2pt]
+  GCP Professional Cloud\\
+  Architect (2022)\\[2pt]
+  CKA (2021)
+
+  \end{minipage}
+  \end{minipage}%
+}%
+\hspace{6pt}
+\begin{minipage}[t]{0.65\textwidth}
+\vspace{8pt}
+
+{\large\textbf{Summary}}\\
+\rule{\linewidth}{0.4pt}\\[2pt]
+\small
+Software Architect with 13 years designing large-scale distributed systems for cloud-native applications. Led architecture for platforms serving 10M+ users. Strong communicator bridging business requirements and engineering execution.
+
+\vspace{6pt}
+{\large\textbf{Experience}}\\
+\rule{\linewidth}{0.4pt}
+
+\noindent\textbf{Principal Software Architect} \hfill \textit{March 2020 -- Present}\\
+\textit{Microsoft, Seattle, WA}
+\small\begin{itemize}
+  \item Define technical architecture for Azure API Management platform (20M+ calls/day); led migration from .NET monolith to Go microservices, improving P99 latency from 380ms to 42ms.
+  \item Established architectural review board (ARB) process for 12 engineering teams; governance ensures scalability and security standards across 35 services.
+  \item Authored 6 internal architecture decision records (ADRs) adopted as standards for Azure compute team.
+  \item Mentored 3 senior engineers toward staff/principal promotion; two promoted within 12 months.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Staff Software Engineer} \hfill \textit{May 2016 -- Feb 2020}\\
+\textit{Expedia, Bellevue, WA}
+\small\begin{itemize}
+  \item Architected real-time hotel pricing engine handling 50K requests/sec with 99.99\% uptime; replaced legacy SOAP services.
+  \item Led platform initiative consolidating 25 data pipelines onto unified Kafka + Flink streaming architecture; reduced operational overhead by 60\%.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Senior Software Engineer} \hfill \textit{June 2012 -- April 2016}\\
+\textit{Amazon, Seattle, WA}
+\small\begin{itemize}
+  \item Contributed to order routing and fulfillment selection systems; shipped 3 major features handling millions of daily orders.
+\end{itemize}
+
+\end{minipage}
+
+\end{document}

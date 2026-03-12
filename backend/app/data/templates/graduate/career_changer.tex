@@ -1,0 +1,75 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.7in, right=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{titlesec}
+
+\definecolor{accent}{RGB}{100,40,140}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{}{0em}{}[\color{accent}\rule{\textwidth}{0.5pt}]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=accent}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Susan Hall}}\\[3pt]
+  {\large \textcolor{accent}{Technical Writer}} \quad (Former Educator)\\[4pt]
+  Portland, OR \quad|\quad
+  \href{mailto:susan.hall@email.com}{susan.hall@email.com} \quad|\quad
+  (503) 555-0482 \quad|\quad
+  \href{https://susanhalldocs.com}{susanhalldocs.com} \quad|\quad
+  \href{https://linkedin.com/in/susanhall-tw}{LinkedIn}
+\end{center}
+
+\section{Summary}
+Technical writer with 2 years of software documentation experience and 8 years as a high school computer science and AP English teacher. Combines deep instructional design expertise with technical aptitude to produce documentation that genuinely helps users succeed. Specialize in developer documentation, API references, and end-user guides.
+
+\section{Technical Writing Experience}
+
+\noindent\textbf{Technical Writer II} \hfill \textit{Sept 2023 -- Present}\\
+\textit{Cloudflare, Portland, OR (Remote)}
+\begin{itemize}
+  \item Own documentation for Cloudflare Workers (serverless platform); maintain 80+ pages of developer docs, tutorials, and API references serving 500K+ monthly readers.
+  \item Reduced ticket volume attributed to documentation gaps by 24\% in first year through structured content audits and user feedback integration.
+  \item Developed and delivered docs-as-code workflow (Markdown + GitHub + Vale linter + Cloudflare Pages CI) adopted by 6-person docs team; reduced publish-to-live time from 2 days to 15 minutes.
+  \item Interviewed 8 engineers and 5 PMs to document Workers KV and R2 storage products for GA launch; docs praised in launch blog post and Hacker News thread.
+\end{itemize}
+
+\vspace{4pt}
+\noindent\textbf{Junior Technical Writer} \hfill \textit{Jan 2022 -- Aug 2023}\\
+\textit{Zendesk, San Francisco, CA (Remote)}
+\begin{itemize}
+  \item Wrote and maintained REST API reference docs for Zendesk Support API (JSON schema, endpoint descriptions, code examples in Python, Ruby, Node.js).
+  \item Migrated 120+ legacy Confluence articles to Zendesk Developer Docs platform; improved article findability scores from 52\% to 78\%.
+\end{itemize}
+
+\section{Teaching Experience (Transferable Skills)}
+
+\noindent\textbf{High School Computer Science \& AP English Teacher} \hfill \textit{Aug 2013 -- Dec 2021}\\
+\textit{Lincoln High School, Portland Public Schools, OR}
+\begin{itemize}
+  \item Taught AP CS Principles, AP English Language, and Intro to Web Development; instructional design of 5 full-year curricula.
+  \item Led school's ``Docs for Non-Profits'' club: students wrote user guides for 3 local non-profit software systems.
+  \item Student test scores averaged 4.2/5 on AP exams over 6 years; Oregon DreamAhead Educator Award (2019).
+\end{itemize}
+
+\section{Technical Skills}
+\textbf{Writing \& Docs:} Markdown, RST, DITA/XML, AsciiDoc, Confluence, Notion, Google Docs\\
+\textbf{Dev Tools:} Git, GitHub, VS Code, Vale linter, Postman, Swagger/OpenAPI\\
+\textbf{Languages:} HTML, CSS, Python (intermediate), JavaScript (basics)\\
+\textbf{Platforms:} ReadMe, GitBook, MkDocs, Docusaurus, Zendesk Guide
+
+\section{Education}
+\textbf{M.A. English (Technical \& Professional Writing Concentration)}, Portland State University \hfill \textit{Dec 2021}\\
+\textbf{B.S. Computer Science + B.A. English} (Double Major), University of Oregon \hfill \textit{May 2013}\\
+GPA: 3.79/4.0 \quad|\quad Honors College Graduate
+
+\end{document}

@@ -1,0 +1,92 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.6in, bottom=0.6in, left=0.7in, right=0.7in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{parskip}
+
+\setlist{nosep, leftmargin=*}
+\pagestyle{empty}
+\hypersetup{colorlinks=true, urlcolor=black, linkcolor=black}
+
+\newcommand{\sectionrule}{%
+  \vspace{-4pt}\rule{\textwidth}{0.4pt}\vspace{2pt}%
+}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE \textbf{Alex Johnson}}\\[4pt]
+  San Francisco, CA \quad|\quad
+  \href{mailto:alex.johnson@email.com}{alex.johnson@email.com} \quad|\quad
+  (415) 555-0192 \quad|\quad
+  \href{https://linkedin.com/in/alexjohnson}{linkedin.com/in/alexjohnson} \quad|\quad
+  \href{https://github.com/alexjohnson}{github.com/alexjohnson}
+\end{center}
+
+\vspace{2pt}
+
+\noindent\textbf{\large EXPERIENCE}\\
+\sectionrule
+
+\noindent\textbf{Senior Software Engineer} \hfill \textit{June 2021 -- Present}\\
+\textit{Stripe, San Francisco, CA}
+\begin{itemize}
+  \item Designed and shipped a distributed rate-limiting service in Go, handling 2M+ requests/sec with p99 latency under 3\,ms across 12 global regions.
+  \item Reduced payment processing pipeline latency by 28\% by replacing synchronous database calls with async event-driven architecture using Kafka and Redis Streams.
+  \item Led migration of legacy PHP monolith modules to Go microservices, eliminating 40K lines of technical debt and improving deploy frequency from weekly to daily.
+  \item Mentored 4 junior engineers through structured code reviews, onboarding docs, and bi-weekly 1:1s; two were promoted within 18 months.
+\end{itemize}
+
+\vspace{6pt}
+\noindent\textbf{Software Engineer} \hfill \textit{August 2018 -- May 2021}\\
+\textit{Cloudflare, San Francisco, CA}
+\begin{itemize}
+  \item Built a real-time log analytics pipeline in Python processing 500GB/day of edge logs, surfacing insights in an internal dashboard used by 200+ engineers.
+  \item Developed AWS Lambda functions for automated certificate renewal, reducing on-call incidents related to certificate expiry by 95\%.
+  \item Contributed 15+ patches to an open-source DNS library (3.2k GitHub stars), improving DNSSEC validation performance by 18\%.
+\end{itemize}
+
+\vspace{6pt}
+\noindent\textbf{Software Engineering Intern} \hfill \textit{May 2017 -- August 2017}\\
+\textit{Dropbox, San Francisco, CA}
+\begin{itemize}
+  \item Implemented a file deduplication algorithm that reduced storage costs by \$120K/year on the internal tooling infrastructure.
+\end{itemize}
+
+\vspace{4pt}
+
+\noindent\textbf{\large EDUCATION}\\
+\sectionrule
+
+\noindent\textbf{B.S. Computer Science}, University of California, Berkeley \hfill \textit{May 2018}\\
+GPA: 3.82/4.0 \quad|\quad Dean's List (4 semesters)
+
+\vspace{4pt}
+
+\noindent\textbf{\large SKILLS}\\
+\sectionrule
+
+\noindent\textbf{Languages:} Python, Go, TypeScript, SQL, Bash\\
+\textbf{Infrastructure:} AWS (EC2, Lambda, S3, RDS, EKS), Docker, Kubernetes, Terraform\\
+\textbf{Databases:} PostgreSQL, Redis, Cassandra, BigQuery\\
+\textbf{Tools:} Kafka, gRPC, GitHub Actions, Datadog, PagerDuty
+
+\vspace{4pt}
+
+\noindent\textbf{\large PROJECTS}\\
+\sectionrule
+
+\noindent\textbf{OpenTrace} \quad \href{https://github.com/alexjohnson/opentrace}{github.com/alexjohnson/opentrace}
+\begin{itemize}
+  \item Open-source distributed tracing library for Go; 800+ GitHub stars, used in 3 production systems.
+\end{itemize}
+
+\noindent\textbf{CacheFlow} \quad \href{https://github.com/alexjohnson/cacheflow}{github.com/alexjohnson/cacheflow}
+\begin{itemize}
+  \item Adaptive LRU/LFU hybrid cache in Go with TTL support and Prometheus metrics integration.
+\end{itemize}
+
+\end{document}
