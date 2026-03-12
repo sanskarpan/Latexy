@@ -27,9 +27,9 @@ export const getSession = () => authClient.getSession()
 
 // Social OAuth helpers
 export const signInWithGoogle = () =>
-  authClient.signIn.social({ provider: 'google', callbackURL: '/dashboard' })
+  authClient.signIn.social({ provider: 'google', callbackURL: '/workspace' })
 
 export const signInWithGithub = () =>
-  authClient.signIn.social({ provider: 'github', callbackURL: '/dashboard' })
+  authClient.signIn.social({ provider: 'github', callbackURL: '/workspace' })
 
 export default authClient
