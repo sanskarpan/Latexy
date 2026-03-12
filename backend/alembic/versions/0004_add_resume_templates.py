@@ -25,7 +25,8 @@ def upgrade() -> None:
             latex_content TEXT      NOT NULL,
             is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
             sort_order  INTEGER     NOT NULL DEFAULT 0,
-            created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_resume_templates_category_name UNIQUE (category, name)
         );
     """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_templates_category ON resume_templates(category);")
