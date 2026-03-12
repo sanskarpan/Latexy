@@ -8,7 +8,6 @@ Usage:
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -23,7 +22,7 @@ load_dotenv(_backend.parent / ".env")
 
 import re
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 # ------------------------------------------------------------------
