@@ -219,6 +219,22 @@ class Payment(Base):
     user: Mapped["User"] = relationship("User", back_populates="payments")
     subscription: Mapped[Optional["Subscription"]] = relationship("Subscription", back_populates="payments")
 
+class ResumeTemplate(Base):
+    """Global resume templates available to all users."""
+    __tablename__ = "resume_templates"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list)
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(String(500))
+    latex_content: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 # Create indexes for performance
 Index('idx_users_email', User.email)
 Index('idx_device_trials_fingerprint', DeviceTrial.device_fingerprint)
