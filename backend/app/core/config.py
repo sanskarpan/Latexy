@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = Field(default="", description="Default OpenRouter API key")
     GEMINI_API_KEY: str = Field(default="", description="Default Google Gemini API key")
 
+    # MinIO / S3 Configuration
+    MINIO_ENDPOINT: str = Field(default="http://localhost:9000", description="MinIO S3 endpoint URL")
+    MINIO_ACCESS_KEY: str = Field(default="minioadmin", description="MinIO access key")
+    MINIO_SECRET_KEY: str = Field(default="minioadmin_secret", description="MinIO secret key")
+    MINIO_BUCKET: str = Field(default="latexy", description="MinIO bucket name")
+
     # File Management
     PDF_RETENTION_TIME: int = 3600  # Keep PDFs for 1 hour (3600 seconds)
 
