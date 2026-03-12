@@ -34,19 +34,11 @@ from app.services import storage_service
 
 
 def _db_url() -> str:
-    import re
+    from app.utils.db_url import normalize_database_url
     url = os.environ.get("DATABASE_URL", "")
     if not url:
         raise RuntimeError("DATABASE_URL not set")
-    # Ensure asyncpg driver
-    url = re.sub(r"^postgresql(\+\w+)?://", "postgresql+asyncpg://", url)
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-    # asyncpg uses ssl=require not sslmode=require
-    url = url.replace("sslmode=require", "ssl=require")
-    # Strip channel_binding — not supported by asyncpg
-    url = re.sub(r"[&?]channel_binding=[^&]*", "", url)
-    return url
+    return normalize_database_url(url)
 
 
 async def main():
@@ -66,69 +58,74 @@ async def main():
     skipped = 0
     failed = 0
 
-    for t in templates:
-        png_key = f"templates/{t.id}.png"
-        pdf_key = f"templates/{t.id}.pdf"
-
-        if storage_service.file_exists(png_key) and storage_service.file_exists(pdf_key):
-            print(f"  SKIP  {t.name} (already compiled)")
-            skipped += 1
-            continue
-
-        print(f"  COMPILE  {t.name} ... ", end="", flush=True)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tex_path = Path(tmpdir) / "template.tex"
-            tex_path.write_text(t.latex_content, encoding="utf-8")
-
-            # Run pdflatex twice for references
-            ok = True
-            for _pass in range(2):
-                result = subprocess.run(
-                    ["pdflatex", "-interaction=nonstopmode", "-output-directory", tmpdir, str(tex_path)],
-                    capture_output=True,
-                    timeout=60,
-                )
-                if result.returncode != 0 and _pass == 1:
-                    print(f"FAIL (pdflatex exit {result.returncode})")
-                    stderr = result.stderr.decode(errors="replace")[-500:] if result.stderr else ""
-                    if stderr:
-                        print(f"    stderr: {stderr}")
-                    ok = False
-
-            if not ok:
-                failed += 1
-                continue
-
-            pdf_path = Path(tmpdir) / "template.pdf"
-            if not pdf_path.exists():
-                print("FAIL (no PDF produced)")
-                failed += 1
-                continue
-
-            # Upload PDF
-            storage_service.upload_bytes(pdf_key, pdf_path.read_bytes(), "application/pdf")
-
-            # Convert first page to PNG
+    try:
+        for t in templates:
             try:
-                from pdf2image import convert_from_path
+                png_key = f"templates/{t.id}.png"
+                pdf_key = f"templates/{t.id}.pdf"
 
-                images = convert_from_path(str(pdf_path), first_page=1, last_page=1, dpi=150)
-                if images:
-                    import io
-                    buf = io.BytesIO()
-                    images[0].save(buf, format="PNG")
-                    storage_service.upload_bytes(png_key, buf.getvalue(), "image/png")
+                if storage_service.file_exists(png_key) and storage_service.file_exists(pdf_key):
+                    print(f"  SKIP  {t.name} (already compiled)")
+                    skipped += 1
+                    continue
+
+                print(f"  COMPILE  {t.name} ... ", end="", flush=True)
+
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    tex_path = Path(tmpdir) / "template.tex"
+                    tex_path.write_text(t.latex_content, encoding="utf-8")
+
+                    # Run pdflatex twice for references
+                    ok = True
+                    for _pass in range(2):
+                        result = subprocess.run(
+                            ["pdflatex", "-interaction=nonstopmode", "-output-directory", tmpdir, str(tex_path)],
+                            capture_output=True,
+                            timeout=60,
+                        )
+                        if result.returncode != 0 and _pass == 1:
+                            print(f"FAIL (pdflatex exit {result.returncode})")
+                            stderr = result.stderr.decode(errors="replace")[-500:] if result.stderr else ""
+                            if stderr:
+                                print(f"    stderr: {stderr}")
+                            ok = False
+
+                    if not ok:
+                        failed += 1
+                        continue
+
+                    pdf_path = Path(tmpdir) / "template.pdf"
+                    if not pdf_path.exists():
+                        print("FAIL (no PDF produced)")
+                        failed += 1
+                        continue
+
+                    # Upload PDF
+                    storage_service.upload_bytes(pdf_key, pdf_path.read_bytes(), "application/pdf")
+
+                    # Convert first page to PNG
+                    try:
+                        from pdf2image import convert_from_path
+
+                        images = convert_from_path(str(pdf_path), first_page=1, last_page=1, dpi=150)
+                        if images:
+                            import io
+                            buf = io.BytesIO()
+                            images[0].save(buf, format="PNG")
+                            storage_service.upload_bytes(png_key, buf.getvalue(), "image/png")
+                    except Exception as e:
+                        print(f"WARN (PDF ok, PNG failed: {e})")
+                        compiled += 1
+                        continue
+
+                    print("OK")
+                    compiled += 1
             except Exception as e:
-                print(f"WARN (PDF ok, PNG failed: {e})")
-                # PDF is still uploaded, just no thumbnail
-                compiled += 1
-                continue
+                print(f"ERROR ({e})")
+                failed += 1
+    finally:
+        await engine.dispose()
 
-            print("OK")
-            compiled += 1
-
-    await engine.dispose()
     print(f"\nDone: {compiled} compiled, {skipped} skipped, {failed} failed")
 
 
