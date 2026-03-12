@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState, useRef } from 'react'
-import { ChevronDown, Upload, X } from 'lucide-react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
+import { ChevronDown, Upload, X, Zap } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/api-client'
@@ -14,6 +14,7 @@ import PDFPreview from '@/components/PDFPreview'
 import DeepAnalysisPanel from '@/components/ats/DeepAnalysisPanel'
 import MultiFormatUpload from '@/components/MultiFormatUpload'
 import ExportDropdown from '@/components/ExportDropdown'
+import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
 const CATEGORY_LABELS: Record<string, string> = {
   formatting: 'Formatting',
@@ -37,6 +38,7 @@ export default function TryPage() {
   const [isDeepAnalysisRunning, setIsDeepAnalysisRunning] = useState(false)
   const [deepAnalysisError, setDeepAnalysisError] = useState<string | null>(null)
 
+  const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
@@ -131,6 +133,23 @@ export default function TryPage() {
     }
   }
 
+  const handleAutoCompile = useCallback(async (content: string) => {
+    if (isProcessing || isSubmitting) return
+    if (!session && !trialStatus.canRun) return
+    setIsSubmitting(true)
+    try {
+      if (!session) await apiClient.trackUsage(trialStatus.fingerprint, 'compile')
+      const response = await apiClient.compileLatex({ latex_content: content, device_fingerprint: trialStatus.fingerprint })
+      if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
+      setActiveJobId(response.job_id)
+      if (!session) trialStatus.incrementUsage()
+    } catch {
+      // Silent fail for auto-compile
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [isProcessing, isSubmitting, session, trialStatus])
+
   const statusTone = useMemo(() => {
     if (stream.status === 'completed') return 'text-emerald-300'
     if (stream.status === 'failed') return 'text-rose-300'
@@ -221,7 +240,12 @@ export default function TryPage() {
 
             <div className="flex-1 min-h-0 flex flex-col gap-4">
               <div className="flex-1 min-h-0 rounded-xl border border-white/10 bg-slate-950/70 overflow-hidden">
-                <LaTeXEditor ref={editorRef} value={latexContent} onChange={setLatexContent} />
+                <LaTeXEditor
+                  ref={editorRef}
+                  value={latexContent}
+                  onChange={setLatexContent}
+                  onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
+                />
               </div>
               <div className="h-32 flex-shrink-0 flex flex-col">
                 <div className="mb-2 flex items-center justify-between">
@@ -238,6 +262,18 @@ export default function TryPage() {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-3 flex-shrink-0 items-center">
+              <button
+                onClick={toggleAutoCompile}
+                title="Auto-compile on change (2s debounce)"
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                  autoCompile
+                    ? 'border-orange-500/30 bg-orange-500/20 text-orange-300'
+                    : 'border-white/15 bg-white/5 text-zinc-500 hover:text-zinc-200 hover:bg-white/10'
+                }`}
+              >
+                <Zap size={12} />
+                Auto
+              </button>
               <button
                 onClick={() => runCompile('compile')}
                 disabled={isSubmitting || isProcessing || (!session && !trialStatus.canRun)}
