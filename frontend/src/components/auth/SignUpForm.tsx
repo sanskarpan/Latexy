@@ -17,8 +17,8 @@ export default function SignUpForm() {
     setError('')
     try {
       const result = await signUp.email({ email, password, name })
-      if (result.error?.message) {
-        setError(result.error.message)
+      if (result.error) {
+        setError(result.error.message || 'Sign up failed')
       } else {
         window.location.href = '/workspace'
       }
