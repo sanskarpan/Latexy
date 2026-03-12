@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { X, FileText, Code } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import type { TemplateDetailResponse } from '@/lib/api-client'
@@ -52,6 +52,7 @@ export default function TemplatePreviewModal({
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('pdf')
   const [pdfFailed, setPdfFailed] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
 
   // Close on Escape
   useEffect(() => {
@@ -64,32 +65,51 @@ export default function TemplatePreviewModal({
 
   // Fetch template detail when id changes
   useEffect(() => {
+    // Abort any in-flight request
+    abortRef.current?.abort()
+
     if (!templateId) {
       setTemplate(null)
       return
     }
+
+    const controller = new AbortController()
+    abortRef.current = controller
+    let cancelled = false
+
     setLoading(true)
     setError(null)
     setViewMode('pdf')
     setPdfFailed(false)
+
     apiClient
       .getTemplate(templateId)
       .then(async (tmpl) => {
+        if (cancelled) return
         setTemplate(tmpl)
         // Probe the PDF endpoint — if 404, fall back to LaTeX view
         if (tmpl.pdf_url) {
           try {
-            const res = await fetch(tmpl.pdf_url, { method: 'HEAD' })
-            if (!res.ok) setPdfFailed(true)
+            const res = await fetch(tmpl.pdf_url, { method: 'HEAD', signal: controller.signal })
+            if (!res.ok && !cancelled) setPdfFailed(true)
           } catch {
-            setPdfFailed(true)
+            if (!cancelled) setPdfFailed(true)
           }
         } else {
           setPdfFailed(true)
         }
       })
-      .catch(() => setError('Failed to load template'))
-      .finally(() => setLoading(false))
+      .catch(() => {
+        if (!cancelled) setError('Failed to load template')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [templateId])
 
   if (!templateId) return null
@@ -126,6 +146,7 @@ export default function TemplatePreviewModal({
           )}
           <button
             onClick={onClose}
+            aria-label="Close preview"
             className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/8 hover:text-zinc-300"
           >
             <X size={18} />
@@ -183,10 +204,13 @@ export default function TemplatePreviewModal({
                 {/* View mode toggle */}
                 <div className="flex items-center gap-1 border-b border-white/8 px-4 py-2">
                   <button
-                    onClick={() => setViewMode('pdf')}
+                    onClick={() => !pdfFailed && setViewMode('pdf')}
+                    disabled={pdfFailed}
                     className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${
                       effectiveView === 'pdf'
                         ? 'bg-white/10 text-white'
+                        : pdfFailed
+                        ? 'text-zinc-700 cursor-not-allowed'
                         : 'text-zinc-500 hover:text-zinc-300'
                     }`}
                   >
