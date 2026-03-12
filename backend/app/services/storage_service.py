@@ -8,6 +8,7 @@ Uses a module-level singleton client to avoid per-request client creation overhe
 import threading
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from ..core.config import settings
@@ -30,6 +31,11 @@ def _get_client():
                     aws_access_key_id=settings.MINIO_ACCESS_KEY,
                     aws_secret_access_key=settings.MINIO_SECRET_KEY,
                     region_name="us-east-1",
+                    config=Config(
+                        connect_timeout=5,
+                        read_timeout=15,
+                        retries={"max_attempts": 3, "mode": "standard"},
+                    ),
                 )
     return _client
 
