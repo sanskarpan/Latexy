@@ -1,4 +1,7 @@
 # Latexy
+<img width="1382" height="744" alt="image" src="https://github.com/user-attachments/assets/21b1f42d-158d-4174-97b2-59d22d8285c9" />
+
+
 
 AI-powered LaTeX resume builder. Paste your `.tex` source, describe the role, and get an ATS-optimized resume compiled to PDF — in seconds.
 
