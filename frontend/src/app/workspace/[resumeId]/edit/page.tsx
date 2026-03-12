@@ -36,7 +36,8 @@ import MultiFormatUpload from '@/components/MultiFormatUpload'
 import VersionHistoryPanel from '@/components/VersionHistoryPanel'
 import SaveCheckpointPopover from '@/components/SaveCheckpointPopover'
 import DiffViewerModal from '@/components/DiffViewerModal'
-import { Brain } from 'lucide-react'
+import { useAutoCompile } from '@/hooks/useAutoCompile'
+import { Brain, Zap } from 'lucide-react'
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
@@ -656,6 +657,9 @@ export default function ResumeEditPage() {
   const [diffCheckpointB, setDiffCheckpointB] = useState<CheckpointEntry | null>(null)
   const [showDiffModal, setShowDiffModal] = useState(false)
 
+  // Auto-compile
+  const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
+
   // SyncTeX
   const [syncFromLine, setSyncFromLine] = useState<number | null>(null)
   const [cursorLine, setCursorLine] = useState<number | null>(null)
@@ -675,7 +679,7 @@ export default function ResumeEditPage() {
   const { state: aiStream } = useJobStream(aiJobId)
   const { state: deepStream } = useJobStream(deepAnalysisJobId)
 
-  // Load resume
+  // Load resume and auto-compile on load
   useEffect(() => {
     const fetchResume = async () => {
       try {
@@ -683,6 +687,16 @@ export default function ResumeEditPage() {
         setTitle(data.title)
         setLatexContent(data.latex_content)
         editorRef.current?.setValue(data.latex_content)
+
+        // Auto-compile on load so user sees PDF immediately
+        if (data.latex_content && data.latex_content.length >= 100) {
+          try {
+            const r = await apiClient.compileLatex({ latex_content: data.latex_content, user_plan: 'pro', resume_id: resumeId })
+            if (r.success && r.job_id) setCompileJobId(r.job_id)
+          } catch {
+            // Silent — user can compile manually
+          }
+        }
       } catch {
         toast.error('Failed to load resume')
         router.push('/workspace')
@@ -902,6 +916,7 @@ export default function ResumeEditPage() {
     setShowDiffModal(false)
   }, [])
 
+
   const handleDownload = async () => {
     const id = compileStream.pdfJobId ?? aiStream.pdfJobId ?? compileJobId ?? aiJobId
     if (!id) return
@@ -958,6 +973,21 @@ export default function ResumeEditPage() {
   const isCompiling = compileStream.status === 'queued' || compileStream.status === 'processing'
   const isAiRunning = aiStream.status === 'queued' || aiStream.status === 'processing'
   const isAnyRunning = isCompiling || isAiRunning
+
+  // Auto-compile handler (compile-only, not optimize)
+  const handleAutoCompile = useCallback(async (content: string) => {
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    try {
+      const r = await apiClient.compileLatex({ latex_content: content, user_plan: 'pro', resume_id: resumeId })
+      if (!r.success || !r.job_id) throw new Error(r.message)
+      setCompileJobId(r.job_id)
+    } catch {
+      // Silent fail for auto-compile — don't spam toasts
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [isSubmitting, resumeId])
 
   const logLines = isCompiling || compileStream.logLines.length > 0
     ? compileStream.logLines
@@ -1028,6 +1058,19 @@ export default function ResumeEditPage() {
           <SaveCheckpointPopover resumeId={resumeId} onSaved={handleCheckpointSaved} />
 
           <div className="mx-1 h-3.5 w-px bg-white/[0.08]" />
+
+          <button
+            onClick={toggleAutoCompile}
+            title="Auto-compile on change (2s debounce)"
+            className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+              autoCompile
+                ? 'bg-orange-500/20 text-orange-300 ring-1 ring-orange-500/30'
+                : 'text-zinc-600 hover:text-zinc-300'
+            }`}
+          >
+            <Zap size={11} />
+            Auto
+          </button>
 
           <button
             onClick={runCompile}
@@ -1112,6 +1155,7 @@ export default function ResumeEditPage() {
               onCompile={runCompile}
               onCursorChange={handleCursorChange}
               syncLine={syncFromLine}
+              onAutoCompile={autoCompile && !isAnyRunning ? handleAutoCompile : undefined}
             />
           </div>
         </section>
@@ -1321,6 +1365,20 @@ export default function ResumeEditPage() {
           {statusText}
         </span>
         <div className="flex items-center gap-3">
+          {aiStream.atsScore != null && (
+            <span
+              className={`flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-bold tabular-nums ${
+                aiStream.atsScore >= 80
+                  ? 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/20'
+                  : aiStream.atsScore >= 60
+                  ? 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/20'
+                  : 'bg-rose-500/15 text-rose-400 ring-1 ring-rose-500/20'
+              }`}
+              title="ATS compatibility score from last AI optimization"
+            >
+              ATS {Math.round(aiStream.atsScore)}
+            </span>
+          )}
           {cursorLine && (
             <span className="text-[10px] tabular-nums text-zinc-700">
               Ln {cursorLine}
