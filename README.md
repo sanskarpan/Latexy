@@ -2,11 +2,13 @@
 
 AI-powered LaTeX resume builder. Paste your `.tex` source, describe the role, and get an ATS-optimized resume compiled to PDF — in seconds.
 
+- **50+ resume templates** — professional LaTeX templates across 12 industries, with PDF thumbnails and live preview
 - **ATS scoring** — rule-based analysis with section detection, keyword coverage, and formatting checks
 - **LLM optimization** — GPT-4o / GPT-4o-mini rewrites your resume content for the target JD
 - **Semantic matching** — pgvector cosine similarity ranks your resumes against any job description
 - **Deep analysis** — section-by-section LLM breakdown with strength/improvement per section
 - **Real-time streaming** — WebSocket events stream LaTeX logs and LLM tokens live to the editor
+- **Multi-format import** — upload PDF, Word, Markdown, or LaTeX files and convert to editable `.tex`
 - **BYOK** — bring your own OpenAI / Anthropic / Gemini / OpenRouter key
 - **Subscription tiers** — Free · Basic · Pro · BYOK
 
@@ -20,9 +22,15 @@ cp .env.example .env        # edit DATABASE_URL, BETTER_AUTH_SECRET, OPENAI_API_
 
 # 2. Build and start everything
 make run
+
+# 3. Seed templates (first time only)
+docker exec latexy-backend python -m app.scripts.seed_templates
+
+# 4. Compile template thumbnails & PDFs (first time, or after adding new templates)
+docker exec latexy-backend python -m app.scripts.compile_templates
 ```
 
-That single command builds all images and starts:
+That starts the full dev stack:
 
 | Service | URL |
 |---------|-----|
@@ -49,20 +57,44 @@ Browser
 FastAPI
   ├─ Publishes job state to Redis Pub/Sub  latexy:events:{job_id}
   ├─ Replays history from Redis Streams    latexy:stream:{job_id}
+  ├─ Serves template thumbnails/PDFs from MinIO (S3)
   └─ Enqueues tasks → Celery (Redis broker)
 
 Celery Workers (queues)
-  ├─ latex     — pdflatex in Docker texlive container
+  ├─ latex     — pdflatex compilation
   ├─ llm       — OpenAI streaming tokens
   ├─ combined  — LLM optimise then compile (orchestrator)
   ├─ ats       — ATS scoring + embedding
   ├─ cleanup   — temp file & expired job removal
   └─ email     — notification tasks
+
+Storage
+  ├─ PostgreSQL 16 (pgvector) — users, resumes, templates, sessions, subscriptions
+  ├─ Redis 7                  — job state, Pub/Sub events, Streams replay, Celery broker
+  └─ MinIO                    — template PDFs, thumbnails (S3-compatible)
 ```
 
 **Auth:** [Better Auth](https://better-auth.com) on the Next.js layer; FastAPI validates sessions via a direct `SELECT` on the `session` table.
 
 **Embeddings:** `text-embedding-3-small` stored as `ARRAY(Float)` in PostgreSQL with a pgvector HNSW index. Computed on save, used for `/ats/semantic-match`.
+
+---
+
+## Pages
+
+| Route | Description |
+|-------|-------------|
+| `/` | Landing page |
+| `/login`, `/signup` | Authentication |
+| `/templates` | Public template library — browse, preview, and use 50+ templates |
+| `/dashboard` | Analytics KPI cards, activity chart, recent runs |
+| `/workspace` | Resume list (grid/table), search, create/edit/optimize |
+| `/workspace/new` | Create resume from template, blank, or file import |
+| `/workspace/[id]/edit` | Monaco LaTeX editor with live compile |
+| `/workspace/[id]/optimize` | LLM optimization with ATS scoring |
+| `/try` | Resume Studio — try without signing up |
+| `/billing` | Subscription management |
+| `/byok` | BYOK API key management |
 
 ---
 
@@ -85,6 +117,18 @@ make test             # pytest + eslint/build
 make lint             # ruff + eslint
 ```
 
+### Scripts
+
+```bash
+# Seed resume templates into the database (idempotent — upserts on name+category)
+docker exec latexy-backend python -m app.scripts.seed_templates
+
+# Compile all templates to PDF + PNG thumbnails and upload to MinIO
+# Idempotent — skips templates that already have both files in MinIO
+# Run this after seeding templates, or after adding/updating any template
+docker exec latexy-backend python -m app.scripts.compile_templates
+```
+
 ### Running tests
 
 ```bash
@@ -98,16 +142,20 @@ Tests require `DATABASE_URL` and `REDIS_URL` in the environment (the CI workflow
 
 ## Environment variables
 
-Copy `backend/.env.example` and fill in values. Key variables:
+Copy `.env.example` and fill in values. Key variables:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | ✓ | `postgresql+asyncpg://user:pass@host:5432/latexy` |
-| `BETTER_AUTH_SECRET` | ✓ | 48+ char random secret |
-| `JWT_SECRET_KEY` | ✓ | 32+ char random secret |
-| `REDIS_URL` | ✓ | `redis://localhost:6379/0` |
+| `DATABASE_URL` | Yes | `postgresql+asyncpg://user:pass@host:5432/latexy` |
+| `BETTER_AUTH_SECRET` | Yes | 48+ char random secret |
+| `JWT_SECRET_KEY` | Yes | 32+ char random secret |
+| `REDIS_URL` | Yes | `redis://localhost:6379/0` |
 | `OPENAI_API_KEY` | — | Enables LLM optimize + ATS deep analysis |
-| `API_KEY_ENCRYPTION_KEY` | ✓ | Fernet key for BYOK encryption |
+| `API_KEY_ENCRYPTION_KEY` | Yes | Fernet key for BYOK encryption |
+| `MINIO_ENDPOINT` | — | Defaults to `http://minio:9000` in Docker |
+| `MINIO_ACCESS_KEY` | — | Defaults to `minioadmin` |
+| `MINIO_SECRET_KEY` | — | Defaults to `minioadmin_secret` |
+| `MINIO_BUCKET` | — | Defaults to `latexy` |
 | `RAZORPAY_KEY_ID` | — | Payments (India) |
 | `RAZORPAY_KEY_SECRET` | — | Payments (India) |
 | `RAZORPAY_WEBHOOK_SECRET` | — | Webhook signature validation |
@@ -129,12 +177,19 @@ openssl rand -hex 32      # JWT_SECRET_KEY
 | `GET` | `/jobs/{id}/result` | Final job result |
 | `DELETE` | `/jobs/{id}` | Request cancellation |
 | `WS` | `/ws/jobs` | WebSocket — subscribe to live events for any job |
+| `GET` | `/templates/` | List all active templates (with thumbnail/pdf URLs) |
+| `GET` | `/templates/{id}` | Template detail (includes LaTeX source) |
+| `GET` | `/templates/{id}/thumbnail` | Pre-compiled PNG thumbnail |
+| `GET` | `/templates/{id}/pdf` | Pre-compiled PDF |
+| `POST` | `/templates/{id}/use` | Create a resume from a template (auth required) |
 | `GET` | `/ats/score` | Rule-based ATS score for a resume |
-| `POST` | `/ats/deep-analyze` | Queue LLM deep analysis (on-demand, trial-gated for anon) |
+| `POST` | `/ats/deep-analyze` | Queue LLM deep analysis (trial-gated for anon) |
 | `POST` | `/ats/semantic-match` | Rank resumes by cosine similarity to a JD |
 | `GET/POST` | `/resumes/` | Resume CRUD |
 | `GET` | `/resumes/{id}/optimization-history` | Past optimization records |
 | `POST` | `/byok/keys` | Add / validate a BYOK API key |
+| `POST` | `/formats/upload` | Upload PDF/Word/Markdown for conversion to LaTeX |
+| `GET` | `/export/{resumeId}/{format}` | Export resume in various formats |
 | `GET` | `/health` | Health check |
 
 WebSocket event types: `job.queued` · `job.started` · `job.progress` · `job.completed` · `job.failed` · `job.cancelled` · `log.line` · `llm.token` · `llm.complete` · `ats.complete` · `ats.deep_complete`
@@ -152,12 +207,14 @@ WebSocket event types: `job.queued` · `job.started` · `job.progress` · `job.c
 │
 ├── backend/
 │   ├── app/
-│   │   ├── api/                # FastAPI routers
+│   │   ├── api/                # FastAPI routers (jobs, templates, ATS, BYOK, resumes…)
 │   │   ├── core/               # config, Redis, Celery, event bus
+│   │   ├── data/templates/     # LaTeX .tex files organised by category
 │   │   ├── database/           # SQLAlchemy models + connection
 │   │   ├── middleware/         # auth validation
 │   │   ├── models/             # Pydantic event/LLM schemas
-│   │   ├── services/           # ATS scoring, LLM, embedding, payments…
+│   │   ├── scripts/            # seed_templates, compile_templates
+│   │   ├── services/           # ATS scoring, LLM, storage (MinIO), payments…
 │   │   └── workers/            # Celery tasks (latex, llm, ats, orchestrator…)
 │   ├── alembic/                # DB migrations
 │   ├── test/                   # pytest suite (~530 tests)
@@ -166,8 +223,8 @@ WebSocket event types: `job.queued` · `job.started` · `job.progress` · `job.c
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── app/                # Next.js pages
-│   │   ├── components/         # React components (editor, PDF preview, ATS panels…)
+│   │   ├── app/                # Next.js pages (templates, workspace, dashboard…)
+│   │   ├── components/         # React components (editor, PDF preview, template cards…)
 │   │   ├── hooks/              # useJobStream, useATSScoring, useTrialStatus…
 │   │   └── lib/                # api-client, ws-client, auth, event types
 │   └── Dockerfile.dev / Dockerfile.prod
