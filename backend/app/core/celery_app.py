@@ -22,6 +22,7 @@ celery_app = Celery(
         "app.workers.ats_worker",
         "app.workers.orchestrator",
         "app.workers.auto_save_worker",
+        "app.workers.cover_letter_worker",
     ]
 )
 
@@ -42,6 +43,7 @@ celery_app.conf.update(
         "app.workers.ats_worker.*": {"queue": "ats"},
         "app.workers.orchestrator.*": {"queue": "combined"},
         "app.workers.auto_save_worker.*": {"queue": "cleanup"},
+        "app.workers.cover_letter_worker.*": {"queue": "llm"},
     },
 
     # Task configuration
@@ -187,6 +189,7 @@ try:
         ats_worker,
         auto_save_worker,
         cleanup_worker,
+        cover_letter_worker,
         email_worker,
         latex_worker,
         llm_worker,
