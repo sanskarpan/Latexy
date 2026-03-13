@@ -177,12 +177,15 @@ class TestListCheckpoints:
     async def test_list_after_create(
         self, client: AsyncClient, auth_headers: dict
     ):
+        import asyncio
+
         resume_id = await _create_resume(client, auth_headers)
         await client.post(
             f"/resumes/{resume_id}/checkpoints",
             headers=auth_headers,
             json={"label": "Alpha"},
         )
+        await asyncio.sleep(0.05)  # ensure distinct created_at timestamps
         await client.post(
             f"/resumes/{resume_id}/checkpoints",
             headers=auth_headers,
@@ -496,17 +499,15 @@ class TestAutoSaveWorker:
     """Test the _do_auto_save function directly (no Celery broker needed)."""
 
     async def test_auto_save_creates_record(
-        self, db_session: AsyncSession, auth_headers: dict, client: AsyncClient
+        self, db_session: AsyncSession, db_session_factory, auth_headers: dict, client: AsyncClient
     ):
         resume_id = await _create_resume(client, auth_headers)
         user_id = await _get_user_id(db_session, auth_headers)
 
         from app.workers.auto_save_worker import _do_auto_save
 
-        await _do_auto_save(resume_id, user_id, _LATEX)
+        await _do_auto_save(resume_id, user_id, _LATEX, session_factory=db_session_factory)
 
-        # Expire cached state so we see the worker's changes
-        db_session.expire_all()
         result = await db_session.execute(
             select(Optimization).where(
                 Optimization.resume_id == resume_id,
@@ -520,7 +521,7 @@ class TestAutoSaveWorker:
         assert rows[0].optimized_latex == _LATEX
 
     async def test_auto_save_dedup_within_5_min(
-        self, db_session: AsyncSession, auth_headers: dict, client: AsyncClient
+        self, db_session: AsyncSession, db_session_factory, auth_headers: dict, client: AsyncClient
     ):
         """Second auto-save within 5 minutes should be skipped."""
         resume_id = await _create_resume(client, auth_headers)
@@ -528,11 +529,9 @@ class TestAutoSaveWorker:
 
         from app.workers.auto_save_worker import _do_auto_save
 
-        await _do_auto_save(resume_id, user_id, _LATEX)
-        await _do_auto_save(resume_id, user_id, _LATEX_V2)  # should be deduped
+        await _do_auto_save(resume_id, user_id, _LATEX, session_factory=db_session_factory)
+        await _do_auto_save(resume_id, user_id, _LATEX_V2, session_factory=db_session_factory)  # should be deduped
 
-        # Expire cached state so we see the worker's changes
-        db_session.expire_all()
         result = await db_session.execute(
             select(Optimization).where(
                 Optimization.resume_id == resume_id,
@@ -543,7 +542,7 @@ class TestAutoSaveWorker:
         assert len(rows) == 1  # only first was saved
 
     async def test_auto_save_pruning(
-        self, db_session: AsyncSession, auth_headers: dict, client: AsyncClient
+        self, db_session: AsyncSession, db_session_factory, auth_headers: dict, client: AsyncClient
     ):
         """Auto-save should prune to keep only 20 records."""
         resume_id = await _create_resume(client, auth_headers)
@@ -569,13 +568,11 @@ class TestAutoSaveWorker:
             db_session.add(cp)
         await db_session.commit()
 
-        # Now run auto-save — should insert + prune (uses its own DB session)
         from app.workers.auto_save_worker import _do_auto_save
 
-        await _do_auto_save(resume_id, user_id, _LATEX_V2)
+        await _do_auto_save(resume_id, user_id, _LATEX_V2, session_factory=db_session_factory)
 
-        # Expire cached state so we see the worker's changes
-        db_session.expire_all()
+        # Use a fresh query since _do_auto_save committed via its own session
         result = await db_session.execute(
             select(Optimization).where(
                 Optimization.resume_id == resume_id,
