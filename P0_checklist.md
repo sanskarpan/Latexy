@@ -388,7 +388,7 @@ localStorage. Zero backend changes.
 controls and streaming output. Linked to a resume, stored in DB.
 
 ### 4A · Database Migration
-- [ ] Create `backend/alembic/versions/0004_add_cover_letters.py`
+- [x] Create `backend/alembic/versions/0006_add_cover_letters.py`
   - New table `cover_letters`:
     ```sql
     id UUID PK DEFAULT gen_random_uuid()
@@ -408,12 +408,12 @@ controls and streaming output. Linked to a resume, stored in DB.
   - Indexes: `idx_cover_letters_user`, `idx_cover_letters_resume`
 
 ### 4B · Backend Model
-- [ ] Add `CoverLetter` SQLAlchemy model to `backend/app/database/models.py`
+- [x] Add `CoverLetter` SQLAlchemy model to `backend/app/database/models.py`
   - Relationship: `resume: Mapped[Resume] = relationship(back_populates="cover_letters")`
   - Add reverse relation on `Resume`: `cover_letters: Mapped[List["CoverLetter"]] = relationship(...)`
 
 ### 4C · LLM Prompt Design
-- [ ] Design cover letter system prompt (critical — determines quality):
+- [x] Design cover letter system prompt (critical — determines quality):
   - Extract resume metadata: candidate name, current role, key skills from LaTeX
   - Extract from JD: company name, role title, key requirements
   - System prompt:
@@ -433,7 +433,7 @@ controls and streaming output. Linked to a resume, stored in DB.
   - Wrap output in `<<<LATEX>>>...<<<END_LATEX>>>` delimiters (same pattern as orchestrator.py)
 
 ### 4D · Cover Letter Worker
-- [ ] Create `backend/app/workers/cover_letter_worker.py`
+- [x] Create `backend/app/workers/cover_letter_worker.py`
   - Task `generate_cover_letter_task` on `llm` queue (reuse existing LLM queue — no infra changes)
   - Params: `resume_latex, job_description, tone, length_preference, job_id, user_id, cover_letter_id, user_api_key=None, model=None`
   - Event flow mirrors `llm_worker.py`:
@@ -449,7 +449,7 @@ controls and streaming output. Linked to a resume, stored in DB.
   - Helper function: `submit_cover_letter_generation(...)` — enqueues task
 
 ### 4E · Cover Letter Routes
-- [ ] Create `backend/app/api/cover_letter_routes.py`
+- [x] Create `backend/app/api/cover_letter_routes.py`
   ```
   POST /cover-letters/generate        — auth required
   GET  /cover-letters/{id}            — auth required
@@ -465,10 +465,10 @@ controls and streaming output. Linked to a resume, stored in DB.
     - Fire `submit_cover_letter_generation(...)`
     - Return `{ job_id, cover_letter_id }`
   - `PUT /cover-letters/{id}`: allows updating `latex_content` (for manual edits post-generation)
-- [ ] Register router in `backend/app/main.py`
+- [x] Register router in `backend/app/api/routes.py`
 
 ### 4F · Frontend — Cover Letter Page
-- [ ] Create `frontend/src/app/workspace/[resumeId]/cover-letter/page.tsx`
+- [x] Create `frontend/src/app/workspace/[resumeId]/cover-letter/page.tsx`
   - Layout: 2-column (left sidebar config, right Monaco + PDF)
   - **Left sidebar:**
     - Company name input (text, optional)
@@ -493,13 +493,13 @@ controls and streaming output. Linked to a resume, stored in DB.
   - Route navigation: workspace resume card → actions dropdown → "Cover Letter" option
 
 ### 4G · Frontend — Workspace Integration
-- [ ] In `frontend/src/app/workspace/page.tsx`:
+- [x] In `frontend/src/app/workspace/page.tsx`:
   - Add "Cover Letter" to resume card action dropdown (alongside "Edit" and "Optimize")
   - Link to `/workspace/{resumeId}/cover-letter`
   - If cover letters exist: show small badge count (e.g. "2 CLs") on resume card
 
 ### 4H · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   generateCoverLetter(params: GenerateCoverLetterRequest): Promise<{ job_id: string; cover_letter_id: string }>
   getCoverLetter(id: string): Promise<CoverLetterResponse>
@@ -509,13 +509,13 @@ controls and streaming output. Linked to a resume, stored in DB.
   ```
 
 ### 4I · Tests
-- [ ] `backend/test/test_cover_letter_routes.py`:
+- [x] `backend/test/test_cover_letter_routes.py`:
   - POST generate — creates cover_letter record, returns job_id
   - GET cover letter — auth ownership enforced
   - PUT update latex_content
   - DELETE
   - GET list for resume
-- [ ] `backend/test/test_cover_letter_worker.py`:
+- [x] `backend/test/test_cover_letter_worker.py`:
   - Task fires correct events (job.started, llm.token, llm.complete, job.completed)
   - Saves latex_content to DB on completion
   - Handles SoftTimeLimitExceeded gracefully
