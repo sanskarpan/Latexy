@@ -16,6 +16,7 @@ export type JobType =
   | 'llm_optimization'
   | 'combined'
   | 'ats_scoring'
+  | 'cover_letter_generation'
 
 export type OptimizationLevel = 'conservative' | 'balanced' | 'aggressive'
 
@@ -780,6 +781,112 @@ class ApiClient {
       { method: 'POST', body: JSON.stringify({ title: title || null }) }
     )
   }
+
+  // ---------------------------------------------------------------- //
+  //  Cover letters                                                    //
+  // ---------------------------------------------------------------- //
+
+  async listCoverLetters(
+    page: number = 1,
+    limit: number = 20,
+    search: string = ''
+  ): Promise<PaginatedCoverLettersResponse> {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+    if (search) params.set('search', search)
+    return this.request<PaginatedCoverLettersResponse>(
+      `/cover-letters/?${params.toString()}`
+    )
+  }
+
+  async getCoverLetterStats(): Promise<CoverLetterStatsResponse> {
+    return this.request<CoverLetterStatsResponse>('/cover-letters/stats')
+  }
+
+  async generateCoverLetter(
+    params: GenerateCoverLetterRequest
+  ): Promise<GenerateCoverLetterResponse> {
+    return this.request<GenerateCoverLetterResponse>('/cover-letters/generate', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+  }
+
+  async getCoverLetter(id: string): Promise<CoverLetterResponse> {
+    return this.request<CoverLetterResponse>(
+      `/cover-letters/${encodeURIComponent(id)}`
+    )
+  }
+
+  async updateCoverLetter(
+    id: string,
+    latexContent: string
+  ): Promise<CoverLetterResponse> {
+    return this.request<CoverLetterResponse>(
+      `/cover-letters/${encodeURIComponent(id)}`,
+      { method: 'PUT', body: JSON.stringify({ latex_content: latexContent }) }
+    )
+  }
+
+  async deleteCoverLetter(id: string): Promise<void> {
+    await fetch(`${API_BASE}/cover-letters/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: this.headers(),
+    })
+  }
+
+  async getResumeCoverLetters(resumeId: string): Promise<CoverLetterResponse[]> {
+    return this.request<CoverLetterResponse[]>(
+      `/cover-letters/resume/${encodeURIComponent(resumeId)}`
+    )
+  }
+
+  // ── Analytics tracking ────────────────────────────────────────────
+
+  async trackEvent(eventType: string, metadata?: Record<string, unknown>): Promise<void> {
+    try {
+      await this.request<{ message: string }>('/analytics/track', {
+        method: 'POST',
+        body: JSON.stringify({ event_type: eventType, metadata }),
+      })
+    } catch {
+      // Non-critical — don't disrupt user flow
+    }
+  }
+
+  async trackCompilation(compilationId: string, compilationStatus: string, compilationTime?: number): Promise<void> {
+    try {
+      const params = new URLSearchParams({ compilation_id: compilationId, status: compilationStatus })
+      if (compilationTime != null) params.set('compilation_time', String(compilationTime))
+      await this.request<{ message: string }>(`/analytics/track/compilation?${params.toString()}`, {
+        method: 'POST',
+      })
+    } catch {
+      // Non-critical
+    }
+  }
+
+  async trackOptimization(optimizationId: string, provider: string, model: string, tokensUsed?: number): Promise<void> {
+    try {
+      const params = new URLSearchParams({ optimization_id: optimizationId, provider, model })
+      if (tokensUsed != null) params.set('tokens_used', String(tokensUsed))
+      await this.request<{ message: string }>(`/analytics/track/optimization?${params.toString()}`, {
+        method: 'POST',
+      })
+    } catch {
+      // Non-critical
+    }
+  }
+
+  async trackFeatureUsage(feature: string): Promise<void> {
+    try {
+      const params = new URLSearchParams({ feature })
+      await this.request<{ message: string }>(`/analytics/track/feature-usage?${params.toString()}`, {
+        method: 'POST',
+      })
+    } catch {
+      // Non-critical
+    }
+  }
 }
 
 // Singleton
@@ -857,6 +964,61 @@ export interface CheckpointContentResponse {
   original_latex: string
   optimized_latex: string
   checkpoint_label: string | null
+}
+
+// ------------------------------------------------------------------ //
+//  Cover letter types                                                //
+// ------------------------------------------------------------------ //
+
+export type CoverLetterTone = 'formal' | 'conversational' | 'enthusiastic'
+export type CoverLetterLength = '3_paragraphs' | '4_paragraphs' | 'detailed'
+
+export interface GenerateCoverLetterRequest {
+  resume_id: string
+  job_description: string
+  company_name?: string
+  role_title?: string
+  tone: CoverLetterTone
+  length_preference: CoverLetterLength
+}
+
+export interface GenerateCoverLetterResponse {
+  success: boolean
+  job_id: string
+  cover_letter_id: string
+  message: string
+}
+
+export interface CoverLetterResponse {
+  id: string
+  user_id: string | null
+  resume_id: string
+  job_description: string | null
+  company_name: string | null
+  role_title: string | null
+  tone: string
+  length_preference: string
+  latex_content: string | null
+  pdf_path: string | null
+  generation_job_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CoverLetterListItem extends CoverLetterResponse {
+  resume_title: string
+}
+
+export interface PaginatedCoverLettersResponse {
+  cover_letters: CoverLetterListItem[]
+  total: number
+  page: number
+  limit: number
+  pages: number
+}
+
+export interface CoverLetterStatsResponse {
+  total: number
 }
 
 // ------------------------------------------------------------------ //
