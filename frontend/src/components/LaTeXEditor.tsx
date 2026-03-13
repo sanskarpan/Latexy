@@ -25,6 +25,8 @@ interface LaTeXEditorProps {
   syncLine?: number | null
   /** When provided (auto-compile enabled), fires 2s after last keystroke with current content */
   onAutoCompile?: (content: string) => void
+  /** Hide the "Insert Sample Resume" empty-state button (e.g. on cover letter pages) */
+  hideEmptyAction?: boolean
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -151,7 +153,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -666,14 +668,16 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
             <p className="text-sm uppercase tracking-[0.14em] text-zinc-600">Empty document</p>
             <p className="mt-2 max-w-sm text-xs text-zinc-600">
-              Start writing or use a sample template.
+              {hideEmptyAction ? 'Content will appear here once generated.' : 'Start writing or use a sample template.'}
             </p>
-            <button
-              onClick={() => onChange(BLANK_RESUME_TEMPLATE)}
-              className="mt-4 rounded-lg border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08]"
-            >
-              Insert Sample Resume
-            </button>
+            {!hideEmptyAction && (
+              <button
+                onClick={() => onChange(BLANK_RESUME_TEMPLATE)}
+                className="mt-4 rounded-lg border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08]"
+              >
+                Insert Sample Resume
+              </button>
+            )}
           </div>
         ) : (
           <div className="min-h-0 flex-1">
