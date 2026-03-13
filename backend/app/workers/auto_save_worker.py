@@ -2,8 +2,8 @@
 Auto-save worker — creates checkpoint records after successful compilations.
 
 Runs on the 'cleanup' queue (lightweight, no Redis pub/sub needed).
-Uses synchronous DB access via sqlalchemy sync engine to avoid asyncio
-complications inside Celery workers.
+Uses async DB access wrapped in asyncio.run() for compatibility with
+Celery's prefork worker pool.
 """
 
 from __future__ import annotations
@@ -41,26 +41,42 @@ def record_auto_save_checkpoint(
     asyncio.run(_do_auto_save(resume_id, user_id, latex_content))
 
 
-async def _do_auto_save(resume_id: str, user_id: str, latex_content: str) -> None:
-    # Build async engine from settings
-    import os
+async def _do_auto_save(
+    resume_id: str,
+    user_id: str,
+    latex_content: str,
+    session_factory=None,
+) -> None:
+    """
+    Core auto-save logic.
 
+    Args:
+        session_factory: Optional async session factory for dependency injection
+            (used in tests). When None, creates its own engine from DATABASE_URL.
+    """
     from sqlalchemy import delete as sa_delete
     from sqlalchemy import select
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from ..database.models import Optimization
-    from ..utils.db_url import normalize_database_url
-    raw_url = os.environ.get("DATABASE_URL", "")
-    if not raw_url:
-        logger.warning("DATABASE_URL not set — cannot auto-save checkpoint")
-        return
-    db_url = normalize_database_url(raw_url)
-    engine = create_async_engine(db_url, echo=False)
-    Session = async_sessionmaker(engine, expire_on_commit=False)
+
+    engine = None
+    if session_factory is None:
+        import os
+
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from ..utils.db_url import normalize_database_url
+
+        raw_url = os.environ.get("DATABASE_URL", "")
+        if not raw_url:
+            logger.warning("DATABASE_URL not set — cannot auto-save checkpoint")
+            return
+        db_url = normalize_database_url(raw_url)
+        engine = create_async_engine(db_url, echo=False)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     try:
-        async with Session() as session:
+        async with session_factory() as session:
             # Dedup: check if latest auto-save is < 5 min old
             result = await session.execute(
                 select(Optimization)
@@ -133,4 +149,5 @@ async def _do_auto_save(resume_id: str, user_id: str, latex_content: str) -> Non
 
             logger.info(f"Auto-save checkpoint created for resume {resume_id}")
     finally:
-        await engine.dispose()
+        if engine is not None:
+            await engine.dispose()
