@@ -12,7 +12,6 @@ import {
   Download,
   FileText,
   Terminal,
-  RotateCcw,
   Loader2,
   CheckCircle2,
   AlertCircle,
@@ -25,7 +24,7 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { apiClient, type OptimizationHistoryEntry } from '@/lib/api-client'
+import { apiClient, type CheckpointEntry } from '@/lib/api-client'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
@@ -34,7 +33,11 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import DeepAnalysisPanel from '@/components/ats/DeepAnalysisPanel'
 import ExportDropdown from '@/components/ExportDropdown'
 import MultiFormatUpload from '@/components/MultiFormatUpload'
-import { Brain } from 'lucide-react'
+import VersionHistoryPanel from '@/components/VersionHistoryPanel'
+import SaveCheckpointPopover from '@/components/SaveCheckpointPopover'
+import DiffViewerModal from '@/components/DiffViewerModal'
+import { useAutoCompile } from '@/hooks/useAutoCompile'
+import { Brain, Zap } from 'lucide-react'
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
@@ -361,9 +364,7 @@ interface AIPanelProps {
   setJobDescription: (v: string) => void
   optLevel: OptLevel
   setOptLevel: (v: OptLevel) => void
-  undoCount: number
   onRun: () => void
-  onUndo: () => void
   onApplyAnyway: () => void
   outline: OutlineItem[]
   targetSections: string[]
@@ -383,9 +384,7 @@ function AIPanel({
   setJobDescription,
   optLevel,
   setOptLevel,
-  undoCount,
   onRun,
-  onUndo,
   onApplyAnyway,
   outline,
   targetSections,
@@ -479,23 +478,13 @@ function AIPanel({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={onUndo}
-              disabled={undoCount === 0}
-              className="flex items-center justify-center gap-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] py-2.5 text-xs font-medium text-zinc-400 transition hover:border-white/10 hover:text-zinc-200 disabled:opacity-30"
-            >
-              <RotateCcw size={12} />
-              {undoCount > 0 ? `Undo (${undoCount})` : 'Undo'}
-            </button>
-            <button
-              onClick={onRun}
-              disabled={isSubmitting}
-              className="flex items-center justify-center gap-1.5 rounded-xl bg-violet-500/20 py-2.5 text-xs font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
-            >
-              <Sparkles size={12} /> Run again
-            </button>
-          </div>
+          <button
+            onClick={onRun}
+            disabled={isSubmitting}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-violet-500/20 py-2.5 text-xs font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
+          >
+            <Sparkles size={12} /> Run again
+          </button>
 
           <button
             onClick={onOpenDeepAnalysis}
@@ -569,20 +558,6 @@ function AIPanel({
             scores for recruiter visibility.
           </p>
 
-          {undoCount > 0 && (
-            <div className="flex items-center justify-between rounded-xl border border-amber-400/20 bg-amber-400/[0.05] px-3 py-2.5">
-              <span className="text-[11px] text-amber-300">
-                {undoCount} undo {undoCount === 1 ? 'state' : 'states'} available
-              </span>
-              <button
-                onClick={onUndo}
-                className="flex items-center gap-1 text-[11px] font-semibold text-amber-200 transition hover:text-white"
-              >
-                <RotateCcw size={11} /> Undo
-              </button>
-            </div>
-          )}
-
           <ModelSelector value={model} onChange={setModel} />
           <LevelSelector value={optLevel} onChange={setOptLevel} />
           <JDInput value={jobDescription} onChange={setJobDescription} />
@@ -636,93 +611,7 @@ function AIPanel({
   )
 }
 
-// ─── History Panel ────────────────────────────────────────────────────────────
-
-function HistoryPanel({
-  resumeId,
-  onRestore,
-}: {
-  resumeId: string
-  onRestore: (latex: string, label: string) => void
-}) {
-  const [history, setHistory] = useState<OptimizationHistoryEntry[]>([])
-  const [loading, setLoading] = useState(true)
-  const [restoringId, setRestoringId] = useState<string | null>(null)
-
-  useEffect(() => {
-    apiClient.getOptimizationHistory(resumeId)
-      .then(setHistory)
-      .catch(() => toast.error('Failed to load history'))
-      .finally(() => setLoading(false))
-  }, [resumeId])
-
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 size={16} className="animate-spin text-zinc-600" />
-      </div>
-    )
-  }
-
-  if (history.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 p-6 text-center">
-        <History size={20} className="text-zinc-700" />
-        <p className="text-[11px] text-zinc-600">No optimization history yet.<br />Run AI Optimize to create your first entry.</p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="overflow-y-auto p-3 space-y-2">
-      <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-700">
-        {history.length} optimization{history.length !== 1 ? 's' : ''}
-      </p>
-      {history.map((entry) => {
-        const date = new Date(entry.created_at)
-        const label = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-        return (
-          <div
-            key={entry.id}
-            className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.05] bg-black/30 px-3 py-2.5"
-          >
-            <div className="min-w-0">
-              <p className="text-[11px] font-medium text-zinc-300 truncate">{label}</p>
-              <div className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-600">
-                {entry.ats_score != null && (
-                  <span className={
-                    entry.ats_score >= 80 ? 'text-emerald-500' :
-                    entry.ats_score >= 60 ? 'text-amber-500' : 'text-rose-500'
-                  }>ATS {Math.round(entry.ats_score)}</span>
-                )}
-                <span>{entry.changes_count} changes</span>
-                {entry.tokens_used && <span>{entry.tokens_used.toLocaleString()} tok</span>}
-              </div>
-            </div>
-            <button
-              disabled={restoringId === entry.id}
-              onClick={async () => {
-                setRestoringId(entry.id)
-                try {
-                  const result = await apiClient.restoreOptimization(resumeId, entry.id)
-                  onRestore(result.latex_content, `Restore ${label}`)
-                  toast.success('Restored optimization')
-                } catch {
-                  toast.error('Failed to restore')
-                } finally {
-                  setRestoringId(null)
-                }
-              }}
-              className="shrink-0 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[10px] font-semibold text-zinc-400 transition hover:border-violet-400/30 hover:text-violet-200 disabled:opacity-40"
-            >
-              {restoringId === entry.id ? <Loader2 size={10} className="animate-spin" /> : 'Restore'}
-            </button>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
+// ─── History Panel (now uses VersionHistoryPanel component) ────────────────
 
 // ─── Main page ───────────────────────────────────────────────────────────────
 
@@ -762,6 +651,15 @@ export default function ResumeEditPage() {
   const [targetSections, setTargetSections] = useState<string[]>([])
   const [customInstructions, setCustomInstructions] = useState('')
 
+  // Version history / diff
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
+  const [diffCheckpointA, setDiffCheckpointA] = useState<CheckpointEntry | null>(null)
+  const [diffCheckpointB, setDiffCheckpointB] = useState<CheckpointEntry | null>(null)
+  const [showDiffModal, setShowDiffModal] = useState(false)
+
+  // Auto-compile
+  const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
+
   // SyncTeX
   const [syncFromLine, setSyncFromLine] = useState<number | null>(null)
   const [cursorLine, setCursorLine] = useState<number | null>(null)
@@ -781,7 +679,7 @@ export default function ResumeEditPage() {
   const { state: aiStream } = useJobStream(aiJobId)
   const { state: deepStream } = useJobStream(deepAnalysisJobId)
 
-  // Load resume
+  // Load resume and auto-compile on load
   useEffect(() => {
     const fetchResume = async () => {
       try {
@@ -789,6 +687,16 @@ export default function ResumeEditPage() {
         setTitle(data.title)
         setLatexContent(data.latex_content)
         editorRef.current?.setValue(data.latex_content)
+
+        // Auto-compile on load so user sees PDF immediately
+        if (data.latex_content && data.latex_content.length >= 100) {
+          try {
+            const r = await apiClient.compileLatex({ latex_content: data.latex_content, user_plan: 'pro', resume_id: resumeId })
+            if (r.success && r.job_id) setCompileJobId(r.job_id)
+          } catch {
+            // Silent — user can compile manually
+          }
+        }
       } catch {
         toast.error('Failed to load resume')
         router.push('/workspace')
@@ -908,17 +816,6 @@ export default function ResumeEditPage() {
     setUndoStack((prev) => [...prev.slice(-9), { label, latex: current }])
   }, [latexContent])
 
-  const handleUndo = useCallback(() => {
-    setUndoStack((prev) => {
-      if (prev.length === 0) return prev
-      const entry = prev[prev.length - 1]
-      editorRef.current?.setValue(entry.latex)
-      setLatexContent(entry.latex)
-      toast.success(`Restored: ${entry.label}`)
-      return prev.slice(0, -1)
-    })
-  }, [])
-
   // ── Handlers ────────────────────────────────────────────────────────────
   const handleSave = async () => {
     const content = editorRef.current?.getValue() || latexContent
@@ -939,7 +836,7 @@ export default function ResumeEditPage() {
     if (!content.trim()) { toast.error('Nothing to compile'); return }
     setIsSubmitting(true)
     try {
-      const r = await apiClient.compileLatex({ latex_content: content, user_plan: 'pro' })
+      const r = await apiClient.compileLatex({ latex_content: content, user_plan: 'pro', resume_id: resumeId })
       if (!r.success || !r.job_id) throw new Error(r.message)
       setCompileJobId(r.job_id)
       setRightTab('logs')
@@ -964,6 +861,7 @@ export default function ResumeEditPage() {
         target_sections: targetSections.length > 0 ? targetSections : undefined,
         custom_instructions: customInstructions.trim() || undefined,
         model,
+        resume_id: resumeId,
       })
       if (!r.success || !r.job_id) throw new Error(r.message)
       pushUndo('Before AI optimization')
@@ -985,12 +883,39 @@ export default function ResumeEditPage() {
     toast.success('Applied optimized LaTeX — fix the compile errors manually')
   }, [aiStream.streamingLatex, pushUndo])
 
-  // Feature 1: restore from history
-  const handleHistoryRestore = useCallback((latex: string, label: string) => {
-    pushUndo(`Before ${label}`)
+  // Version history: restore from checkpoint
+  const handleHistoryRestore = useCallback((latex: string) => {
+    pushUndo('Before restore')
     editorRef.current?.setValue(latex)
     setLatexContent(latex)
   }, [pushUndo])
+
+  // Version history: compare two checkpoints
+  const handleCompare = useCallback((a: CheckpointEntry, b: CheckpointEntry) => {
+    setDiffCheckpointA(a)
+    setDiffCheckpointB(b)
+    setShowDiffModal(true)
+  }, [])
+
+  // Version history: restore from diff viewer
+  const handleDiffRestore = useCallback((latex: string) => {
+    pushUndo('Before diff restore')
+    editorRef.current?.setValue(latex)
+    setLatexContent(latex)
+    setShowDiffModal(false)
+    toast.success('Version restored from diff')
+  }, [pushUndo])
+
+  // Checkpoint saved callback
+  const handleCheckpointSaved = useCallback(() => {
+    setHistoryRefreshKey((k) => k + 1)
+  }, [])
+
+  // Close diff modal
+  const handleCloseDiff = useCallback(() => {
+    setShowDiffModal(false)
+  }, [])
+
 
   const handleDownload = async () => {
     const id = compileStream.pdfJobId ?? aiStream.pdfJobId ?? compileJobId ?? aiJobId
@@ -1048,6 +973,21 @@ export default function ResumeEditPage() {
   const isCompiling = compileStream.status === 'queued' || compileStream.status === 'processing'
   const isAiRunning = aiStream.status === 'queued' || aiStream.status === 'processing'
   const isAnyRunning = isCompiling || isAiRunning
+
+  // Auto-compile handler (compile-only, not optimize)
+  const handleAutoCompile = useCallback(async (content: string) => {
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    try {
+      const r = await apiClient.compileLatex({ latex_content: content, user_plan: 'pro', resume_id: resumeId })
+      if (!r.success || !r.job_id) throw new Error(r.message)
+      setCompileJobId(r.job_id)
+    } catch {
+      // Silent fail for auto-compile — don't spam toasts
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [isSubmitting, resumeId])
 
   const logLines = isCompiling || compileStream.logLines.length > 0
     ? compileStream.logLines
@@ -1115,7 +1055,22 @@ export default function ResumeEditPage() {
             {isSaving ? 'Saving…' : 'Save'}
           </button>
 
+          <SaveCheckpointPopover resumeId={resumeId} onSaved={handleCheckpointSaved} />
+
           <div className="mx-1 h-3.5 w-px bg-white/[0.08]" />
+
+          <button
+            onClick={toggleAutoCompile}
+            title="Auto-compile on change (2s debounce)"
+            className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+              autoCompile
+                ? 'bg-orange-500/20 text-orange-300 ring-1 ring-orange-500/30'
+                : 'text-zinc-600 hover:text-zinc-300'
+            }`}
+          >
+            <Zap size={11} />
+            Auto
+          </button>
 
           <button
             onClick={runCompile}
@@ -1200,6 +1155,7 @@ export default function ResumeEditPage() {
               onCompile={runCompile}
               onCursorChange={handleCursorChange}
               syncLine={syncFromLine}
+              onAutoCompile={autoCompile && !isAnyRunning ? handleAutoCompile : undefined}
             />
           </div>
         </section>
@@ -1250,11 +1206,6 @@ export default function ResumeEditPage() {
                 {id === 'logs' && isCompiling && (
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400" />
                 )}
-                {id === 'ai' && undoStack.length > 0 && !isAiRunning && (
-                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/30 px-1 text-[9px] font-bold text-amber-300">
-                    {undoStack.length}
-                  </span>
-                )}
               </button>
             ))}
 
@@ -1292,9 +1243,7 @@ export default function ResumeEditPage() {
                 setJobDescription={setJobDescription}
                 optLevel={optLevel}
                 setOptLevel={setOptLevel}
-                undoCount={undoStack.length}
                 onRun={runAiOptimize}
-                onUndo={handleUndo}
                 onApplyAnyway={handleApplyAnyway}
                 outline={outline}
                 targetSections={targetSections}
@@ -1336,7 +1285,12 @@ export default function ResumeEditPage() {
             )}
 
             {rightTab === 'history' && (
-              <HistoryPanel resumeId={resumeId} onRestore={handleHistoryRestore} />
+              <VersionHistoryPanel
+                resumeId={resumeId}
+                onRestore={handleHistoryRestore}
+                onCompare={handleCompare}
+                refreshKey={historyRefreshKey}
+              />
             )}
           </div>
         </aside>
@@ -1383,6 +1337,18 @@ export default function ResumeEditPage() {
         isRunning={isDeepRunning}
       />
 
+      {/* Diff viewer modal */}
+      {showDiffModal && (
+        <DiffViewerModal
+          resumeId={resumeId}
+          checkpointA={diffCheckpointA}
+          checkpointB={diffCheckpointB}
+          currentLatex={editorRef.current?.getValue() || latexContent}
+          onRestore={handleDiffRestore}
+          onClose={handleCloseDiff}
+        />
+      )}
+
       {/* ── STATUS BAR ── */}
       <footer className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#0a0a0a] px-3">
         <span
@@ -1399,6 +1365,20 @@ export default function ResumeEditPage() {
           {statusText}
         </span>
         <div className="flex items-center gap-3">
+          {aiStream.atsScore != null && (
+            <span
+              className={`flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-bold tabular-nums ${
+                aiStream.atsScore >= 80
+                  ? 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/20'
+                  : aiStream.atsScore >= 60
+                  ? 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/20'
+                  : 'bg-rose-500/15 text-rose-400 ring-1 ring-rose-500/20'
+              }`}
+              title="ATS compatibility score from last AI optimization"
+            >
+              ATS {Math.round(aiStream.atsScore)}
+            </span>
+          )}
           {cursorLine && (
             <span className="text-[10px] tabular-nums text-zinc-700">
               Ln {cursorLine}

@@ -78,6 +78,7 @@ def optimize_and_compile_task(
     custom_instructions: Optional[str] = None,
     model: Optional[str] = None,
     metadata: Optional[Dict] = None,
+    resume_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Full pipeline: LLM optimize → pdflatex compile → ATS score.
@@ -210,6 +211,19 @@ def optimize_and_compile_task(
             f"Orchestrator task {task_id} succeeded for job {job_id} "
             f"(ATS {ats_score:.1f}, {tokens_used} tokens, {compilation_time:.1f}s)"
         )
+
+        # Auto-save checkpoint if resume_id is known
+        _resume_id = resume_id or (metadata or {}).get("resume_id")
+        if _resume_id and user_id:
+            try:
+                from .auto_save_worker import record_auto_save_checkpoint
+                record_auto_save_checkpoint.apply_async(
+                    args=[_resume_id, user_id, optimized_latex],
+                    queue="cleanup",
+                )
+            except Exception as auto_exc:
+                logger.warning(f"Failed to enqueue auto-save for resume {_resume_id}: {auto_exc}")
+
         return result
 
     except SoftTimeLimitExceeded:
@@ -567,6 +581,7 @@ def submit_optimize_and_compile(
     model: Optional[str] = None,
     priority: Optional[int] = None,
     metadata: Optional[Dict] = None,
+    resume_id: Optional[str] = None,
 ) -> str:
     """Enqueue optimize_and_compile_task on the combined queue."""
     if priority is None:
@@ -585,6 +600,7 @@ def submit_optimize_and_compile(
             "custom_instructions": custom_instructions,
             "model": model,
             "metadata": metadata,
+            "resume_id": resume_id,
         },
         priority=priority,
         queue="combined",

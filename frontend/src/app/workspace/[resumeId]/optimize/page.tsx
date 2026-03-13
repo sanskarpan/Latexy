@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/api-client'
 import { useJobStream } from '@/hooks/useJobStream'
+import { useAutoCompile } from '@/hooks/useAutoCompile'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
@@ -26,6 +28,7 @@ export default function OptimizationSuitePage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [baselineLatex, setBaselineLatex] = useState('')
 
+  const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
@@ -37,6 +40,16 @@ export default function OptimizationSuitePage() {
         setResume(data)
         setBaselineLatex(data.latex_content)
         editorRef.current?.setValue(data.latex_content)
+
+        // Auto-compile on load so user sees PDF immediately
+        if (data.latex_content && data.latex_content.length >= 100) {
+          try {
+            const r = await apiClient.compileLatex({ latex_content: data.latex_content, user_plan: 'pro', resume_id: resumeId })
+            if (r.success && r.job_id) setActiveJobId(r.job_id)
+          } catch {
+            // Silent
+          }
+        }
       } catch {
         toast.error('Failed to load resume')
         router.push('/workspace')
@@ -115,6 +128,20 @@ export default function OptimizationSuitePage() {
     editorRef.current.setValue(baselineLatex)
     toast.success('Original resume restored in editor')
   }
+
+  const handleAutoCompile = useCallback(async (content: string) => {
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    try {
+      const response = await apiClient.compileLatex({ latex_content: content, user_plan: 'pro', resume_id: resumeId })
+      if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
+      setActiveJobId(response.job_id)
+    } catch {
+      // Silent fail
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [isSubmitting, resumeId])
 
   const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
@@ -199,13 +226,33 @@ export default function OptimizationSuitePage() {
           <div className="grid gap-6 xl:grid-cols-2">
             <section className="surface-panel edge-highlight flex h-[620px] flex-col overflow-hidden">
               <div className="flex h-11 items-center justify-between border-b border-white/10 bg-white/[0.03] px-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">LaTeX Source</p>
+                <div className="flex items-center gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">LaTeX Source</p>
+                  <button
+                    onClick={toggleAutoCompile}
+                    title="Auto-compile on change (2s debounce)"
+                    className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition ${
+                      autoCompile
+                        ? 'bg-orange-500/20 text-orange-300 ring-1 ring-orange-500/30'
+                        : 'text-zinc-600 hover:text-zinc-300'
+                    }`}
+                  >
+                    <Zap size={10} />
+                    Auto
+                  </button>
+                </div>
                 <button onClick={restoreOriginal} className="text-xs font-semibold text-zinc-300 transition hover:text-white">
                   Restore Original
                 </button>
               </div>
               <div className="min-h-0 flex-1 bg-black/20">
-                <LaTeXEditor ref={editorRef} value={resume?.latex_content || ''} onChange={() => {}} readOnly={isProcessing} />
+                <LaTeXEditor
+                  ref={editorRef}
+                  value={resume?.latex_content || ''}
+                  onChange={() => {}}
+                  readOnly={isProcessing}
+                  onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
+                />
               </div>
             </section>
 

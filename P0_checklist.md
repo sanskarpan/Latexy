@@ -168,7 +168,7 @@ a real `resume_templates` DB table with category filtering, thumbnail previews, 
 versions side-by-side in a Monaco diff editor.
 
 ### 2A · Database Migration
-- [ ] Create `backend/alembic/versions/0003_add_checkpoint_columns.py`
+- [x] Create `backend/alembic/versions/0005_add_checkpoint_columns.py`
   - Add columns to `optimizations` table:
     ```sql
     ALTER TABLE optimizations ADD COLUMN checkpoint_label TEXT;
@@ -181,12 +181,12 @@ versions side-by-side in a Monaco diff editor.
   - Regular optimizations: both flags `false` (no change to existing records)
 
 ### 2B · Backend Model Update
-- [ ] Update `Optimization` model in `backend/app/database/models.py`:
+- [x] Update `Optimization` model in `backend/app/database/models.py`:
   - Add columns: `checkpoint_label: Mapped[Optional[str]]`, `is_checkpoint: Mapped[bool] = False`,
     `is_auto_save: Mapped[bool] = False`
 
 ### 2C · Backend API — New Endpoints in `resume_routes.py`
-- [ ] `POST /resumes/{resume_id}/checkpoints`
+- [x] `POST /resumes/{resume_id}/checkpoints`
   - Auth required, verify resume ownership
   - Body: `{ label: str }` (required, max 100 chars)
   - Creates `Optimization` record:
@@ -198,7 +198,7 @@ versions side-by-side in a Monaco diff editor.
   - Returns `{ id: str, created_at: datetime, label: str }`
   - Rate limit: max 20 manual checkpoints per resume (enforce in endpoint)
 
-- [ ] `GET /resumes/{resume_id}/checkpoints`
+- [x] `GET /resumes/{resume_id}/checkpoints`
   - Auth required, verify ownership
   - Returns full checkpoint list (checkpoints + auto-saves + optimizations) sorted by `created_at DESC`
   - New response schema `CheckpointEntry`:
@@ -216,18 +216,18 @@ versions side-by-side in a Monaco diff editor.
   - Does NOT include `original_latex`/`optimized_latex` in list (too heavy)
   - Pagination: `?limit=50&offset=0`
 
-- [ ] `GET /resumes/{resume_id}/checkpoints/{checkpoint_id}/content`
+- [x] `GET /resumes/{resume_id}/checkpoints/{checkpoint_id}/content`
   - Auth required, verify ownership of both resume and checkpoint
   - Returns `{ original_latex: str, optimized_latex: str, checkpoint_label: str }`
   - Used by diff viewer to load content on-demand (lazy — only load when user opens diff)
 
-- [ ] `DELETE /resumes/{resume_id}/checkpoints/{checkpoint_id}`
+- [x] `DELETE /resumes/{resume_id}/checkpoints/{checkpoint_id}`
   - Auth required
   - Only allow deleting `is_checkpoint=true` entries (not regular optimization records — those have history value)
   - Soft delete: set `checkpoint_label = '[deleted]'`, or hard delete is fine
 
 ### 2D · Auto-Save on Compile
-- [ ] In `backend/app/workers/latex_worker.py`:
+- [x] In `backend/app/workers/latex_worker.py`:
   - After successful compilation (before `publish_job_result`), fire async task:
     ```python
     from .auto_save_worker import record_auto_save_checkpoint
@@ -240,7 +240,7 @@ versions side-by-side in a Monaco diff editor.
   - The `resume_id` must be passed into `compile_latex_task` — add it as an optional parameter
   - In job_meta (Redis `latexy:job:{job_id}:meta`), store `resume_id` if present; read it in worker
 
-- [ ] Create `backend/app/workers/auto_save_worker.py`:
+- [x] Create `backend/app/workers/auto_save_worker.py`:
   ```python
   @celery_app.task(name='record_auto_save_checkpoint', queue='cleanup')
   def record_auto_save_checkpoint(resume_id: str, user_id: str, latex_content: str):
@@ -251,7 +251,7 @@ versions side-by-side in a Monaco diff editor.
   ```
 
 ### 2E · Frontend — DiffViewerModal Component
-- [ ] Create `frontend/src/components/DiffViewerModal.tsx`
+- [x] Create `frontend/src/components/DiffViewerModal.tsx`
   - Props:
     ```typescript
     {
@@ -274,8 +274,8 @@ versions side-by-side in a Monaco diff editor.
   - Close button + Escape key handler
   - Loading skeleton while content fetches
 
-### 2F · Frontend — HistoryPanel Enhancement
-- [ ] Enhance existing `HistoryPanel` component (find at `frontend/src/components/` or inline in
+### 2F · Frontend — VersionHistoryPanel Component
+- [x] Create `frontend/src/components/VersionHistoryPanel.tsx` (find at `frontend/src/components/` or inline in
   optimize page) to support:
   - Fetch from new `GET /resumes/{id}/checkpoints` endpoint instead of old optimization-history
   - Each entry shows:
@@ -292,16 +292,16 @@ versions side-by-side in a Monaco diff editor.
   - Timeline visual: vertical line with dots connecting entries
 
 ### 2G · Frontend — Save Checkpoint Button
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx` (and optimize page header):
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx` (and optimize page header):
   - Add "Save Checkpoint" button (bookmark icon) in editor header
   - Click → small inline popover (not modal): label text input + "Save" button + "Cancel"
   - On save: calls `POST /resumes/{id}/checkpoints`, shows toast "Checkpoint saved"
   - Input validation: label required, max 100 chars
-- [ ] Auto-save indicator in editor status bar: "Auto-saved N min ago" (updated after each
+- [x] Auto-save indicator in editor status bar: "Auto-saved N min ago" (updated after each
   successful compile, reading from last checkpoint's `created_at`)
 
 ### 2H · Tests
-- [ ] `backend/test/test_checkpoints.py`:
+- [x] `backend/test/test_checkpoints.py`:
   - Create manual checkpoint, list it, fetch content, restore, delete
   - Auto-save deduplication (second call within 5 min is skipped)
   - Max 20 auto-saves per resume pruning
@@ -315,7 +315,7 @@ versions side-by-side in a Monaco diff editor.
 localStorage. Zero backend changes.
 
 ### 3A · LaTeXEditor Component
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add prop: `onAutoCompile?: (content: string) => void`
   - Inside `useEffect` where Monaco is initialized (after `editor` is created):
     ```typescript
@@ -336,7 +336,7 @@ localStorage. Zero backend changes.
     empty-doc compiles on initial load)
 
 ### 3B · Auto-Compile State Hook
-- [ ] Create `frontend/src/hooks/useAutoCompile.ts`:
+- [x] Create `frontend/src/hooks/useAutoCompile.ts`:
   ```typescript
   // Manages auto-compile enabled/disabled state with localStorage persistence
   export function useAutoCompile() {
@@ -353,7 +353,7 @@ localStorage. Zero backend changes.
   ```
 
 ### 3C · `/try` Page Wiring
-- [ ] In `frontend/src/app/try/page.tsx`:
+- [x] In `frontend/src/app/try/page.tsx`:
   - Add `const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()`
   - Pass `onAutoCompile={autoCompile && !isSubmitting ? (content) => runCompile('compile') : undefined}`
     to `LaTeXEditor`
@@ -365,16 +365,16 @@ localStorage. Zero backend changes.
   - When auto-compile fires, set `isSubmitting = true` (blocks manual compile during auto)
 
 ### 3D · Edit/Optimize Pages
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Same `useAutoCompile` hook integration
   - Same "Auto" toggle button
   - `onAutoCompile` triggers compile-only (not optimize+compile)
-- [ ] In `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`:
   - Auto-compile available; triggers compile-only (not the full optimize pipeline)
   - Show "Auto" toggle in editor toolbar
 
 ### 3E · Status Bar Indicator
-- [ ] In `frontend/src/components/LaTeXEditor.tsx` (or parent pages):
+- [x] In `frontend/src/components/LaTeXEditor.tsx` (or parent pages):
   - When `onAutoCompile` is defined (auto-compile active): show a subtle animated pulse dot +
     "Auto" label in editor status bar
   - While debounce is counting down (keystroke happened, timer running): show "Compiling in 2s..."

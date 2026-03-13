@@ -83,8 +83,7 @@ export default function NewResumePage() {
   const [search, setSearch] = useState('')
   const [loadingTemplates, setLoadingTemplates] = useState(true)
 
-  // ---- selected template (for creating from template) ----
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  // ---- preview modal ----
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null)
 
   // ---- submit state ----
@@ -136,18 +135,34 @@ export default function NewResumePage() {
   [categories])
 
   // ---- handlers ----
+  const handleUseTemplate = useCallback(async (id: string) => {
+    const trimmedTitle = title.trim()
+    const template = templates.find(t => t.id === id)
+    const finalTitle = trimmedTitle || template?.name || 'Untitled Resume'
+
+    setIsCreating(true)
+    try {
+      const result = await apiClient.useTemplate(id, finalTitle)
+      toast.success('Resume created from template')
+      router.push(`/workspace/${result.resume_id}/edit`)
+    } catch {
+      toast.error('Failed to create resume')
+      setIsCreating(false)
+    }
+  }, [title, templates, router])
+
   const handleSelectTemplate = useCallback((id: string) => {
-    setSelectedTemplateId(id)
-  }, [])
+    handleUseTemplate(id)
+  }, [handleUseTemplate])
 
   const handlePreviewTemplate = useCallback((id: string) => {
     setPreviewTemplateId(id)
   }, [])
 
   const handleUseFromPreview = useCallback((id: string) => {
-    setSelectedTemplateId(id)
     setPreviewTemplateId(null)
-  }, [])
+    handleUseTemplate(id)
+  }, [handleUseTemplate])
 
   const handleCreate = async () => {
     const trimmedTitle = title.trim()
@@ -164,7 +179,6 @@ export default function NewResumePage() {
     setIsCreating(true)
     try {
       if (mode === 'import') {
-        // Import mode: create directly with imported content
         const created = await apiClient.createResume({
           title: trimmedTitle,
           latex_content: importedContent,
@@ -172,11 +186,6 @@ export default function NewResumePage() {
         })
         toast.success('Resume created from import')
         router.push(`/workspace/${created.id}/edit`)
-      } else if (selectedTemplateId) {
-        // Use template via /templates/{id}/use endpoint
-        const result = await apiClient.useTemplate(selectedTemplateId, trimmedTitle)
-        toast.success('Resume created from template')
-        router.push(`/workspace/${result.resume_id}/edit`)
       } else {
         // Blank resume
         const created = await apiClient.createResume({
@@ -197,8 +206,6 @@ export default function NewResumePage() {
     !!title.trim() &&
     !isCreating &&
     (mode === 'import' ? !!importedContent : true)
-
-  const selectedTemplate = templates.find(t => t.id === selectedTemplateId)
 
   // ---------------------------------------------------------------- //
   //  Render                                                           //
@@ -306,12 +313,9 @@ export default function NewResumePage() {
 
               {/* Blank option */}
               <button
-                onClick={() => setSelectedTemplateId(null)}
-                className={`shrink-0 rounded-xl border px-4 py-2 text-xs font-medium transition ${
-                  selectedTemplateId === null
-                    ? 'border-zinc-400/40 bg-zinc-400/10 text-zinc-200'
-                    : 'border-white/10 text-zinc-500 hover:border-white/20 hover:text-zinc-300'
-                }`}
+                onClick={handleCreate}
+                disabled={isCreating}
+                className="shrink-0 rounded-xl border border-white/10 px-4 py-2 text-xs font-medium text-zinc-500 transition hover:border-white/20 hover:text-zinc-300 disabled:opacity-40"
               >
                 Start from Blank
               </button>
@@ -344,23 +348,6 @@ export default function NewResumePage() {
               ))}
             </div>
 
-            {/* Selected template indicator */}
-            {selectedTemplate && (
-              <div className="flex items-center justify-between rounded-xl border border-orange-300/20 bg-orange-300/5 px-4 py-3">
-                <p className="text-sm text-zinc-200">
-                  <span className="text-zinc-500 text-xs mr-2">Selected:</span>
-                  {selectedTemplate.name}
-                  <span className="ml-2 text-xs text-zinc-500">({selectedTemplate.category_label})</span>
-                </p>
-                <button
-                  onClick={() => setSelectedTemplateId(null)}
-                  className="text-zinc-500 hover:text-zinc-300"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            )}
-
             {/* Template grid */}
             {loadingTemplates ? (
               /* Skeleton */
@@ -381,39 +368,31 @@ export default function NewResumePage() {
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredTemplates.map(template => (
-                  <div
+                  <TemplateCard
                     key={template.id}
-                    className={`transition ${
-                      selectedTemplateId === template.id
-                        ? 'ring-2 ring-orange-300/60 ring-offset-2 ring-offset-zinc-950 rounded-xl'
-                        : ''
-                    }`}
-                  >
-                    <TemplateCard
-                      template={template}
-                      onSelect={handleSelectTemplate}
-                      onPreview={handlePreviewTemplate}
-                    />
-                  </div>
+                    template={template}
+                    onSelect={handleSelectTemplate}
+                    onPreview={handlePreviewTemplate}
+                    disabled={isCreating}
+                  />
                 ))}
               </div>
             )}
           </section>
         )}
 
-        {/* Create button */}
-        <div className="flex items-center justify-end gap-3">
-          {mode === 'template' && !selectedTemplateId && (
-            <p className="text-xs text-zinc-500">No template selected — will create a blank resume</p>
-          )}
-          <button
-            onClick={handleCreate}
-            disabled={!canCreate}
-            className="btn-accent px-8 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {isCreating ? 'Creating…' : 'Create Resume'}
-          </button>
-        </div>
+        {/* Create button — shown for import mode or blank resume creation */}
+        {mode === 'import' && (
+          <div className="flex items-center justify-end gap-3">
+            <button
+              onClick={handleCreate}
+              disabled={!canCreate}
+              className="btn-accent px-8 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isCreating ? 'Creating…' : 'Create Resume'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Preview modal (portal-like; renders on top) */}

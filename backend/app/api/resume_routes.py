@@ -2,8 +2,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -328,3 +328,182 @@ async def restore_optimization(
     resume.updated_at = datetime.now()
     await db.commit()
     return {"success": True, "latex_content": opt.optimized_latex}
+
+
+# ── Checkpoints (version history) ────────────────────────────────────────
+
+class CreateCheckpointRequest(BaseModel):
+    label: str = Field(..., min_length=1, max_length=100)
+
+
+class CheckpointEntry(BaseModel):
+    id: str
+    created_at: datetime
+    checkpoint_label: Optional[str] = None
+    is_checkpoint: bool
+    is_auto_save: bool
+    optimization_level: Optional[str] = None
+    ats_score: Optional[float] = None
+    changes_count: int
+    has_content: bool = True
+
+
+class CheckpointContentResponse(BaseModel):
+    original_latex: str
+    optimized_latex: str
+    checkpoint_label: Optional[str] = None
+
+
+async def _verify_resume_ownership(
+    db: AsyncSession, resume_id: str, user_id: str
+) -> Resume:
+    result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    return resume
+
+
+@router.post("/{resume_id}/checkpoints", status_code=status.HTTP_201_CREATED)
+async def create_checkpoint(
+    resume_id: str,
+    body: CreateCheckpointRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Create a manual checkpoint (named snapshot) of the current resume content."""
+    resume = await _verify_resume_ownership(db, resume_id, user_id)
+
+    # Enforce max 20 manual checkpoints per resume
+    count_result = await db.execute(
+        select(func.count(Optimization.id)).where(
+            Optimization.resume_id == resume_id,
+            Optimization.user_id == user_id,
+            Optimization.is_checkpoint.is_(True),
+            Optimization.is_auto_save.is_(False),
+        )
+    )
+    if (count_result.scalar() or 0) >= 20:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum 20 manual checkpoints per resume. Delete older ones first.",
+        )
+
+    cp = Optimization(
+        id=str(uuid4()),
+        user_id=user_id,
+        resume_id=resume_id,
+        original_latex=resume.latex_content,
+        optimized_latex=resume.latex_content,
+        job_description="",
+        provider="checkpoint",
+        model="manual",
+        is_checkpoint=True,
+        is_auto_save=False,
+        checkpoint_label=body.label,
+    )
+    db.add(cp)
+    await db.commit()
+    await db.refresh(cp)
+
+    return {"id": cp.id, "created_at": cp.created_at, "label": cp.checkpoint_label}
+
+
+@router.get("/{resume_id}/checkpoints", response_model=List[CheckpointEntry])
+async def list_checkpoints(
+    resume_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """List all checkpoints + auto-saves + optimizations for a resume (newest first)."""
+    await _verify_resume_ownership(db, resume_id, user_id)
+
+    result = await db.execute(
+        select(Optimization)
+        .where(Optimization.resume_id == resume_id, Optimization.user_id == user_id)
+        .order_by(Optimization.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    rows = result.scalars().all()
+
+    return [
+        CheckpointEntry(
+            id=r.id,
+            created_at=r.created_at,
+            checkpoint_label=r.checkpoint_label,
+            is_checkpoint=r.is_checkpoint,
+            is_auto_save=r.is_auto_save,
+            optimization_level=(
+                r.model if not r.is_checkpoint else None
+            ),
+            ats_score=float(r.ats_score) if r.ats_score is not None else None,
+            changes_count=len(r.changes_made) if isinstance(r.changes_made, list) else 0,
+            has_content=True,
+        )
+        for r in rows
+    ]
+
+
+@router.get("/{resume_id}/checkpoints/{checkpoint_id}/content", response_model=CheckpointContentResponse)
+async def get_checkpoint_content(
+    resume_id: str,
+    checkpoint_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Fetch the full LaTeX content of a specific checkpoint/optimization."""
+    await _verify_resume_ownership(db, resume_id, user_id)
+
+    result = await db.execute(
+        select(Optimization).where(
+            Optimization.id == checkpoint_id,
+            Optimization.resume_id == resume_id,
+            Optimization.user_id == user_id,
+        )
+    )
+    cp = result.scalar_one_or_none()
+    if not cp:
+        raise HTTPException(status_code=404, detail="Checkpoint not found")
+
+    return CheckpointContentResponse(
+        original_latex=cp.original_latex,
+        optimized_latex=cp.optimized_latex,
+        checkpoint_label=cp.checkpoint_label,
+    )
+
+
+@router.delete("/{resume_id}/checkpoints/{checkpoint_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_checkpoint(
+    resume_id: str,
+    checkpoint_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Delete a manual checkpoint. Only is_checkpoint=True entries can be deleted."""
+    await _verify_resume_ownership(db, resume_id, user_id)
+
+    result = await db.execute(
+        select(Optimization).where(
+            Optimization.id == checkpoint_id,
+            Optimization.resume_id == resume_id,
+            Optimization.user_id == user_id,
+        )
+    )
+    cp = result.scalar_one_or_none()
+    if not cp:
+        raise HTTPException(status_code=404, detail="Checkpoint not found")
+
+    if not cp.is_checkpoint or cp.is_auto_save:
+        raise HTTPException(
+            status_code=400,
+            detail="Only manual checkpoint entries can be deleted. Auto-saves and optimization records are preserved for history.",
+        )
+
+    await db.delete(cp)
+    await db.commit()
+    return None

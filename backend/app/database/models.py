@@ -137,6 +137,10 @@ class Optimization(Base):
     changes_made: Mapped[Optional[dict]] = mapped_column(JSON)
     # Layer 3: embedding of the job description used for this optimization
     job_desc_embedding: Mapped[Optional[List[float]]] = mapped_column(ARRAY(Float), nullable=True)
+    # Version history / checkpoint fields
+    checkpoint_label: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_checkpoint: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    is_auto_save: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships

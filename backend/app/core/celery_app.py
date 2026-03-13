@@ -21,6 +21,7 @@ celery_app = Celery(
         "app.workers.cleanup_worker",
         "app.workers.ats_worker",
         "app.workers.orchestrator",
+        "app.workers.auto_save_worker",
     ]
 )
 
@@ -40,6 +41,7 @@ celery_app.conf.update(
         "app.workers.cleanup_worker.*": {"queue": "cleanup"},
         "app.workers.ats_worker.*": {"queue": "ats"},
         "app.workers.orchestrator.*": {"queue": "combined"},
+        "app.workers.auto_save_worker.*": {"queue": "cleanup"},
     },
 
     # Task configuration
@@ -183,6 +185,7 @@ def init_worker_process(sender=None, **kwargs):
 try:
     from ..workers import (  # noqa: F401
         ats_worker,
+        auto_save_worker,
         cleanup_worker,
         email_worker,
         latex_worker,
