@@ -170,9 +170,14 @@ async def test_engine():
 
 
 @pytest.fixture
-async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
-    factory = async_sessionmaker(test_engine, expire_on_commit=False)
-    async with factory() as session:
+async def db_session_factory(test_engine):
+    """Expose the async session factory for tests that need to inject it."""
+    return async_sessionmaker(test_engine, expire_on_commit=False)
+
+
+@pytest.fixture
+async def db_session(db_session_factory) -> AsyncGenerator[AsyncSession, None]:
+    async with db_session_factory() as session:
         yield session
         await session.rollback()
 
