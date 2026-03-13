@@ -76,7 +76,20 @@ export default function TryPage() {
       }
     }
     fetchPdf()
-  }, [stream.status, stream.pdfJobId])
+
+    // Track analytics on completion/failure
+    if (stream.status === 'completed' && activeJobId) {
+      apiClient.trackCompilation(activeJobId, 'completed')
+      if (stream.tokensUsed) {
+        apiClient.trackOptimization(activeJobId, 'openai', 'gpt-4o-mini', stream.tokensUsed)
+        apiClient.trackFeatureUsage('optimize')
+      } else {
+        apiClient.trackFeatureUsage('compile')
+      }
+    } else if (stream.status === 'failed' && activeJobId) {
+      apiClient.trackCompilation(activeJobId, 'failed')
+    }
+  }, [stream.status, stream.pdfJobId, activeJobId, stream.tokensUsed])
 
   useEffect(() => {
     return () => {
