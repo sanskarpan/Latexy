@@ -232,9 +232,12 @@ export default function VersionHistoryPanel({
               />
 
               {/* Card */}
-              <button
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => toggleSelect(entry.id)}
-                className={`flex w-full flex-col gap-1 rounded-lg border p-2.5 text-left transition ${
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSelect(entry.id) } }}
+                className={`flex w-full cursor-pointer flex-col gap-1 rounded-lg border p-2.5 text-left transition ${
                   isSelected
                     ? 'border-orange-300/30 bg-orange-300/5'
                     : 'border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.04]'
@@ -308,7 +311,7 @@ export default function VersionHistoryPanel({
                     )}
                   </div>
                 </div>
-              </button>
+              </div>
             </div>
           )
         })}
