@@ -657,6 +657,19 @@ class ApiClient {
     })
   }
 
+  async quickScoreATS(
+    latexContent: string,
+    jobDescription?: string,
+  ): Promise<QuickScoreResponse> {
+    return this.request<QuickScoreResponse>('/ats/quick-score', {
+      method: 'POST',
+      body: JSON.stringify({
+        latex_content: latexContent,
+        job_description: jobDescription ?? null,
+      }),
+    })
+  }
+
   // ---------------------------------------------------------------- //
   //  Multi-format file I/O                                           //
   // ---------------------------------------------------------------- //
@@ -1019,6 +1032,14 @@ export interface PaginatedCoverLettersResponse {
 
 export interface CoverLetterStatsResponse {
   total: number
+}
+
+export interface QuickScoreResponse {
+  score: number
+  grade: string
+  sections_found: string[]
+  missing_sections: string[]
+  keyword_match_percent: number | null
 }
 
 // ------------------------------------------------------------------ //
