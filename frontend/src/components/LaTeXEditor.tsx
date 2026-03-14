@@ -6,6 +6,7 @@ let _latexLanguageRegistered = false
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type { LogLine } from '@/hooks/useJobStream'
 import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
+import ATSScoreBadge from '@/components/ATSScoreBadge'
 
 export interface LaTeXEditorRef {
   setValue: (value: string) => void
@@ -25,6 +26,14 @@ interface LaTeXEditorProps {
   syncLine?: number | null
   /** When provided (auto-compile enabled), fires 2s after last keystroke with current content */
   onAutoCompile?: (content: string) => void
+  /** Hide the "Insert Sample Resume" empty-state button (e.g. on cover letter pages) */
+  hideEmptyAction?: boolean
+  /** Live ATS quick-score value (null = not scored yet) */
+  atsScore?: number | null
+  /** Whether ATS quick-score is loading */
+  atsScoreLoading?: boolean
+  /** Callback when user clicks the ATS badge */
+  onATSBadgeClick?: () => void
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -151,7 +160,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -666,14 +675,16 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
             <p className="text-sm uppercase tracking-[0.14em] text-zinc-600">Empty document</p>
             <p className="mt-2 max-w-sm text-xs text-zinc-600">
-              Start writing or use a sample template.
+              {hideEmptyAction ? 'Content will appear here once generated.' : 'Start writing or use a sample template.'}
             </p>
-            <button
-              onClick={() => onChange(BLANK_RESUME_TEMPLATE)}
-              className="mt-4 rounded-lg border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08]"
-            >
-              Insert Sample Resume
-            </button>
+            {!hideEmptyAction && (
+              <button
+                onClick={() => onChange(BLANK_RESUME_TEMPLATE)}
+                className="mt-4 rounded-lg border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08]"
+              >
+                Insert Sample Resume
+              </button>
+            )}
           </div>
         ) : (
           <div className="min-h-0 flex-1">
@@ -738,6 +749,13 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400/70" />
                 Auto
               </span>
+            )}
+            {(atsScore !== undefined || atsScoreLoading) && (
+              <ATSScoreBadge
+                score={atsScore ?? null}
+                loading={atsScoreLoading ?? false}
+                onClick={onATSBadgeClick}
+              />
             )}
             <span>{value.length.toLocaleString()} chars</span>
             {onSave && <span className="text-zinc-800">⌘S save · ⌘↵ compile</span>}

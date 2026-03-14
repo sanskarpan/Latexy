@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   apiClient,
+  type CoverLetterStatsResponse,
   type JobStateResponse,
   type ResumeStats,
   type UserAnalyticsResponse,
@@ -27,6 +28,7 @@ export default function DashboardPage() {
   const [analytics, setAnalytics] = useState<UserAnalyticsResponse | null>(null)
   const [timeseries, setTimeseries] = useState<UserAnalyticsTimeseriesResponse | null>(null)
   const [stats, setStats] = useState<ResumeStats | null>(null)
+  const [clStats, setClStats] = useState<CoverLetterStatsResponse | null>(null)
   const [recentJobs, setRecentJobs] = useState<JobStateResponse[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -42,16 +44,18 @@ export default function DashboardPage() {
     const fetchDashboardData = async () => {
       setLoading(true)
       try {
-        const [analyticsData, timeseriesData, statsData, jobsData] = await Promise.all([
+        const [analyticsData, timeseriesData, statsData, jobsData, clStatsData] = await Promise.all([
           apiClient.getMyAnalytics(selectedRange),
           apiClient.getMyAnalyticsTimeseries(selectedRange),
           apiClient.getResumeStats(),
           apiClient.listJobs(),
+          apiClient.getCoverLetterStats().catch(() => ({ total: 0 })),
         ])
 
         setAnalytics(analyticsData)
         setTimeseries(timeseriesData)
         setStats(statsData)
+        setClStats(clStatsData)
         setRecentJobs([...(jobsData.jobs || [])].sort((a, b) => b.last_updated - a.last_updated).slice(0, 10))
       } catch (error) {
         if (process.env.NODE_ENV === 'development') {
@@ -117,12 +121,17 @@ export default function DashboardPage() {
         note: 'Documents in workspace',
       },
       {
+        label: 'Cover Letters',
+        value: `${clStats?.total ?? 0}`,
+        note: 'Generated cover letters',
+      },
+      {
         label: 'Usage Velocity',
         value: `${avgDailyActions}/day`,
         note: 'Average tracked actions',
       },
     ]
-  }, [analytics, stats, selectedRange])
+  }, [analytics, stats, clStats, selectedRange])
 
   if (sessionLoading) {
     return (
@@ -182,9 +191,9 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {loading
-          ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="surface-card h-28 animate-pulse" />)
+          ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="surface-card h-28 animate-pulse" />)
           : kpis.map((item) => (
               <article key={item.label} className="surface-card edge-highlight p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">{item.label}</p>

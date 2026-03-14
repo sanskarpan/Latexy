@@ -21,6 +21,7 @@ from ..database.connection import get_db
 from ..database.models import DeepAnalysisTrial, Resume
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from ..services.api_key_service import api_key_service
+from ..services.ats_quick_scorer import quick_score_latex
 from ..services.ats_scoring_service import ats_scoring_service
 from ..workers.ats_worker import deep_analyze_ats_task, submit_ats_scoring, submit_job_description_analysis
 
@@ -396,6 +397,42 @@ async def get_supported_industries():
     except Exception as e:
         logger.error(f"Error getting supported industries: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ── Quick Score (lightweight, no auth, no DB) ────────────────────────────
+
+
+class QuickScoreRequest(BaseModel):
+    latex_content: str = Field(..., max_length=200_000)
+    job_description: Optional[str] = Field(None, max_length=10_000)
+
+
+class QuickScoreResponse(BaseModel):
+    score: int
+    grade: str
+    sections_found: List[str]
+    missing_sections: List[str]
+    keyword_match_percent: Optional[float]
+
+
+@router.post("/quick-score", response_model=QuickScoreResponse)
+async def quick_score_ats(request: QuickScoreRequest):
+    """
+    Lightweight ATS quick-score — pure Python, no LLM, no DB writes.
+    Returns score 0-100 with grade and section analysis.
+    No auth required (works for /try anonymous users).
+    """
+    if not request.latex_content.strip():
+        raise HTTPException(status_code=400, detail="LaTeX content is required")
+
+    result = quick_score_latex(request.latex_content, request.job_description)
+    return QuickScoreResponse(
+        score=result.score,
+        grade=result.grade,
+        sections_found=result.sections_found,
+        missing_sections=result.missing_sections,
+        keyword_match_percent=result.keyword_match_percent,
+    )
 
 
 _JOB_TTL = 86400

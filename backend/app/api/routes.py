@@ -73,6 +73,11 @@ from .template_routes import router as template_router
 
 router.include_router(template_router)
 
+# Include Cover Letter routes
+from .cover_letter_routes import router as cover_letter_router
+
+router.include_router(cover_letter_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():

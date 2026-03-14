@@ -388,7 +388,7 @@ localStorage. Zero backend changes.
 controls and streaming output. Linked to a resume, stored in DB.
 
 ### 4A · Database Migration
-- [ ] Create `backend/alembic/versions/0004_add_cover_letters.py`
+- [x] Create `backend/alembic/versions/0006_add_cover_letters.py`
   - New table `cover_letters`:
     ```sql
     id UUID PK DEFAULT gen_random_uuid()
@@ -408,12 +408,12 @@ controls and streaming output. Linked to a resume, stored in DB.
   - Indexes: `idx_cover_letters_user`, `idx_cover_letters_resume`
 
 ### 4B · Backend Model
-- [ ] Add `CoverLetter` SQLAlchemy model to `backend/app/database/models.py`
+- [x] Add `CoverLetter` SQLAlchemy model to `backend/app/database/models.py`
   - Relationship: `resume: Mapped[Resume] = relationship(back_populates="cover_letters")`
   - Add reverse relation on `Resume`: `cover_letters: Mapped[List["CoverLetter"]] = relationship(...)`
 
 ### 4C · LLM Prompt Design
-- [ ] Design cover letter system prompt (critical — determines quality):
+- [x] Design cover letter system prompt (critical — determines quality):
   - Extract resume metadata: candidate name, current role, key skills from LaTeX
   - Extract from JD: company name, role title, key requirements
   - System prompt:
@@ -433,7 +433,7 @@ controls and streaming output. Linked to a resume, stored in DB.
   - Wrap output in `<<<LATEX>>>...<<<END_LATEX>>>` delimiters (same pattern as orchestrator.py)
 
 ### 4D · Cover Letter Worker
-- [ ] Create `backend/app/workers/cover_letter_worker.py`
+- [x] Create `backend/app/workers/cover_letter_worker.py`
   - Task `generate_cover_letter_task` on `llm` queue (reuse existing LLM queue — no infra changes)
   - Params: `resume_latex, job_description, tone, length_preference, job_id, user_id, cover_letter_id, user_api_key=None, model=None`
   - Event flow mirrors `llm_worker.py`:
@@ -449,7 +449,7 @@ controls and streaming output. Linked to a resume, stored in DB.
   - Helper function: `submit_cover_letter_generation(...)` — enqueues task
 
 ### 4E · Cover Letter Routes
-- [ ] Create `backend/app/api/cover_letter_routes.py`
+- [x] Create `backend/app/api/cover_letter_routes.py`
   ```
   POST /cover-letters/generate        — auth required
   GET  /cover-letters/{id}            — auth required
@@ -465,10 +465,10 @@ controls and streaming output. Linked to a resume, stored in DB.
     - Fire `submit_cover_letter_generation(...)`
     - Return `{ job_id, cover_letter_id }`
   - `PUT /cover-letters/{id}`: allows updating `latex_content` (for manual edits post-generation)
-- [ ] Register router in `backend/app/main.py`
+- [x] Register router in `backend/app/api/routes.py`
 
 ### 4F · Frontend — Cover Letter Page
-- [ ] Create `frontend/src/app/workspace/[resumeId]/cover-letter/page.tsx`
+- [x] Create `frontend/src/app/workspace/[resumeId]/cover-letter/page.tsx`
   - Layout: 2-column (left sidebar config, right Monaco + PDF)
   - **Left sidebar:**
     - Company name input (text, optional)
@@ -493,13 +493,13 @@ controls and streaming output. Linked to a resume, stored in DB.
   - Route navigation: workspace resume card → actions dropdown → "Cover Letter" option
 
 ### 4G · Frontend — Workspace Integration
-- [ ] In `frontend/src/app/workspace/page.tsx`:
+- [x] In `frontend/src/app/workspace/page.tsx`:
   - Add "Cover Letter" to resume card action dropdown (alongside "Edit" and "Optimize")
   - Link to `/workspace/{resumeId}/cover-letter`
   - If cover letters exist: show small badge count (e.g. "2 CLs") on resume card
 
 ### 4H · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   generateCoverLetter(params: GenerateCoverLetterRequest): Promise<{ job_id: string; cover_letter_id: string }>
   getCoverLetter(id: string): Promise<CoverLetterResponse>
@@ -509,13 +509,13 @@ controls and streaming output. Linked to a resume, stored in DB.
   ```
 
 ### 4I · Tests
-- [ ] `backend/test/test_cover_letter_routes.py`:
+- [x] `backend/test/test_cover_letter_routes.py`:
   - POST generate — creates cover_letter record, returns job_id
   - GET cover letter — auth ownership enforced
   - PUT update latex_content
   - DELETE
   - GET list for resume
-- [ ] `backend/test/test_cover_letter_worker.py`:
+- [x] `backend/test/test_cover_letter_worker.py`:
   - Task fires correct events (job.started, llm.token, llm.complete, job.completed)
   - Saves latex_content to DB on completion
   - Handles SoftTimeLimitExceeded gracefully
@@ -640,7 +640,7 @@ be compared side-by-side with parent in a diff view, and are grouped in the work
 keystroke. Lightweight (<300ms) endpoint with no LLM or DB writes.
 
 ### 6A · Backend — Quick Score Service
-- [ ] Create `backend/app/services/ats_quick_scorer.py`
+- [x] Create `backend/app/services/ats_quick_scorer.py`
   - Function `quick_score_latex(latex_content: str, job_description: Optional[str] = None) -> QuickScoreResult`
   - `QuickScoreResult` dataclass: `score: int, grade: str, sections_found: List[str], missing_sections: List[str], keyword_match_percent: Optional[float]`
   - Algorithm (pure Python, no network calls, target < 50ms):
@@ -670,7 +670,7 @@ keystroke. Lightweight (<300ms) endpoint with no LLM or DB writes.
     ```
 
 ### 6B · Backend — Quick Score Endpoint
-- [ ] Add `POST /ats/quick-score` to `backend/app/api/ats_routes.py`
+- [x] Add `POST /ats/quick-score` to `backend/app/api/ats_routes.py`
   - New Pydantic models:
     ```python
     class QuickScoreRequest(BaseModel):
@@ -696,7 +696,7 @@ keystroke. Lightweight (<300ms) endpoint with no LLM or DB writes.
   - Add rate limiting: 20 req/min per IP (use SlowAPI or custom middleware)
 
 ### 6C · Frontend — useQuickATSScore Hook
-- [ ] Create `frontend/src/hooks/useQuickATSScore.ts`
+- [x] Create `frontend/src/hooks/useQuickATSScore.ts`
   ```typescript
   export function useQuickATSScore(latexContent: string, jobDescription?: string) {
     const [score, setScore] = useState<number | null>(null)
@@ -728,7 +728,7 @@ keystroke. Lightweight (<300ms) endpoint with no LLM or DB writes.
   - Also expose `refetch()` for immediate on-demand score (e.g. after compile completes)
 
 ### 6D · Frontend — ATSScoreBadge Component
-- [ ] Create `frontend/src/components/ATSScoreBadge.tsx`
+- [x] Create `frontend/src/components/ATSScoreBadge.tsx`
   ```tsx
   // Props: score: number | null, loading: boolean, onClick?: () => void
   //
@@ -746,7 +746,7 @@ keystroke. Lightweight (<300ms) endpoint with no LLM or DB writes.
   ```
 
 ### 6E · Frontend — LaTeXEditor Status Bar Integration
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add props: `atsScore?: number | null`, `atsScoreLoading?: boolean`, `onATSBadgeClick?: () => void`
   - In status bar (where char count is shown):
     ```tsx
@@ -760,22 +760,22 @@ keystroke. Lightweight (<300ms) endpoint with no LLM or DB writes.
     ```
 
 ### 6F · Frontend — Page Integration
-- [ ] In `frontend/src/app/try/page.tsx`:
+- [x] In `frontend/src/app/try/page.tsx`:
   - `const { score: quickScore, loading: quickScoreLoading } = useQuickATSScore(latexContent, jobDescription)`
   - Pass to `LaTeXEditor`: `atsScore={quickScore} atsScoreLoading={quickScoreLoading}`
   - `onATSBadgeClick`: scroll to/open the deep ATS analysis panel
   - After compile completes: call `refetch()` immediately (don't wait 10s after a compile)
 
-- [ ] Same in `frontend/src/app/workspace/[resumeId]/edit/page.tsx` and optimize page
+- [x] Same in `frontend/src/app/workspace/[resumeId]/edit/page.tsx` and optimize page
 
 ### 6G · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   quickScoreATS(latexContent: string, jobDescription?: string): Promise<QuickScoreResponse>
   ```
 
 ### 6H · Tests
-- [ ] `backend/test/test_ats_quick_score.py`:
+- [x] `backend/test/test_ats_quick_score.py`:
   - Empty content → score low
   - Well-formed resume → score ≥70
   - Resume with JD → keyword_match_percent present
@@ -1113,14 +1113,14 @@ Recommended build order:
 
 ## Shared Infrastructure Needed
 
-- [ ] **`MonacoDiffEditor`** — import from `@monaco-editor/react`; needed by Features 2 and 5.
+- [x] **`MonacoDiffEditor`** — import from `@monaco-editor/react`; needed by Features 2 and 5.
   Verify it's in `package.json`; add if missing: `pnpm add @monaco-editor/react`
 - [ ] **SlowAPI rate limiting** — for `/ats/quick-score` and `/ai/explain-error` endpoints.
   Add `slowapi` to `backend/requirements.txt`; configure limiter in `backend/app/main.py`
-- [ ] **`pdf2image` + `Pillow`** — for thumbnail generation in Feature 1.
+- [x] **`pdf2image` + `Pillow`** — for thumbnail generation in Feature 1.
   Add to `backend/requirements.txt` (only needed in scripts, not main app)
-- [ ] **Alembic migrations must run in order** — Features 1–5 each add a migration. Run all before
+- [x] **Alembic migrations must run in order** — Features 1–5 each add a migration. Run all before
   testing any feature: `cd backend && alembic upgrade head`
-- [ ] **`cover_letter` celery task** — uses existing `llm` queue, no new queue configuration needed
-- [ ] **Status bar layout** — Features 3, 6, and 8 all add elements to `LaTeXEditor` status bar.
+- [x] **`cover_letter` celery task** — uses existing `llm` queue, no new queue configuration needed
+- [~] **Status bar layout** — Features 3, 6, and 8 all add elements to `LaTeXEditor` status bar.
   Coordinate layout: `[Auto ●] [~2 pages ⚠] [ATS 74] [1,234 chars] [⌘S save · ⌘↵ compile]`

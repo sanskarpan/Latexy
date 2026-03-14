@@ -21,7 +21,7 @@ const appNav = [
   { label: 'Studio', href: '/try' },
 ]
 
-const fullscreenPatterns = [/^\/workspace\/[^/]+\/edit$/, /^\/workspace\/[^/]+\/optimize$/]
+const fullscreenPatterns = [/^\/workspace\/[^/]+\/edit$/, /^\/workspace\/[^/]+\/optimize$/, /^\/workspace\/[^/]+\/cover-letter$/]
 
 export default function GlobalHeader() {
   const pathname = usePathname()

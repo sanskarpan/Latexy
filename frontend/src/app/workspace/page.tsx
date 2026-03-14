@@ -176,18 +176,24 @@ export default function WorkspacePage() {
                   <h3 className="mt-2 line-clamp-2 text-lg font-semibold text-white">{resume.title}</h3>
                   <p className="mt-2 text-xs text-zinc-500">Updated {new Date(resume.updated_at).toLocaleDateString()}</p>
 
-                  <div className="mt-6 grid grid-cols-2 gap-2 text-xs">
+                  <div className="mt-6 flex flex-wrap gap-2 text-xs">
                     <Link
                       href={`/workspace/${resume.id}/edit`}
-                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center font-semibold text-zinc-200 transition hover:bg-white/10"
+                      className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center font-semibold text-zinc-200 transition hover:bg-white/10"
                     >
                       Edit
                     </Link>
                     <Link
                       href={`/workspace/${resume.id}/optimize`}
-                      className="rounded-lg border border-orange-300/20 bg-orange-300/10 px-3 py-2 text-center font-semibold text-orange-200 transition hover:bg-orange-300/20"
+                      className="flex-1 rounded-lg border border-orange-300/20 bg-orange-300/10 px-3 py-2 text-center font-semibold text-orange-200 transition hover:bg-orange-300/20"
                     >
                       Optimize
+                    </Link>
+                    <Link
+                      href={`/workspace/${resume.id}/cover-letter`}
+                      className="rounded-lg border border-violet-300/20 bg-violet-300/10 px-3 py-2 text-center font-semibold text-violet-200 transition hover:bg-violet-300/20"
+                    >
+                      CL
                     </Link>
                   </div>
                   <div className="mt-2">
@@ -246,6 +252,12 @@ export default function WorkspacePage() {
                             className="rounded-lg border border-orange-300/25 bg-orange-300/10 px-3 py-1.5 text-xs font-semibold text-orange-200 transition hover:bg-orange-300/20"
                           >
                             Optimize
+                          </Link>
+                          <Link
+                            href={`/workspace/${resume.id}/cover-letter`}
+                            className="rounded-lg border border-violet-300/25 bg-violet-300/10 px-3 py-1.5 text-xs font-semibold text-violet-200 transition hover:bg-violet-300/20"
+                          >
+                            CL
                           </Link>
                           <ExportDropdown resumeId={resume.id} variant="toolbar" />
                         </div>

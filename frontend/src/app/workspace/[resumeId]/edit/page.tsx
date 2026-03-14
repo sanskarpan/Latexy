@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   Upload,
   X,
+  Mail,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry } from '@/lib/api-client'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
@@ -37,6 +38,7 @@ import VersionHistoryPanel from '@/components/VersionHistoryPanel'
 import SaveCheckpointPopover from '@/components/SaveCheckpointPopover'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
+import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { Brain, Zap } from 'lucide-react'
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history'
@@ -675,6 +677,8 @@ export default function ResumeEditPage() {
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
 
+  const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent)
+
   const { state: compileStream } = useJobStream(compileJobId)
   const { state: aiStream } = useJobStream(aiJobId)
   const { state: deepStream } = useJobStream(deepAnalysisJobId)
@@ -691,7 +695,7 @@ export default function ResumeEditPage() {
         // Auto-compile on load so user sees PDF immediately
         if (data.latex_content && data.latex_content.length >= 100) {
           try {
-            const r = await apiClient.compileLatex({ latex_content: data.latex_content, user_plan: 'pro', resume_id: resumeId })
+            const r = await apiClient.compileLatex({ latex_content: data.latex_content, resume_id: resumeId })
             if (r.success && r.job_id) setCompileJobId(r.job_id)
           } catch {
             // Silent — user can compile manually
@@ -713,7 +717,7 @@ export default function ResumeEditPage() {
     editorRef.current.setValue(aiStream.streamingLatex)
   }, [aiStream.streamingLatex])
 
-  // When AI completes, commit streamed content to React state + record optimization
+  // When AI completes, commit streamed content to React state + record optimization + track
   useEffect(() => {
     if (aiStream.status === 'completed') {
       const finalLatex = editorRef.current?.getValue() || ''
@@ -729,9 +733,23 @@ export default function ResumeEditPage() {
           tokens_used: aiStream.tokensUsed ?? undefined,
           job_description: jobDescription.trim() || undefined,
         }).catch(() => {}) // non-critical
+        // Track optimization for analytics
+        apiClient.trackOptimization(aiJobId, 'openai', model, aiStream.tokensUsed ?? undefined)
+        apiClient.trackFeatureUsage('ai_optimization')
       }
     }
   }, [aiStream.status]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track compilation completion for analytics
+  useEffect(() => {
+    if (compileStream.status === 'completed' && compileJobId) {
+      apiClient.trackCompilation(compileJobId, 'completed')
+      apiClient.trackFeatureUsage('compile')
+      refetchATS()
+    } else if (compileStream.status === 'failed' && compileJobId) {
+      apiClient.trackCompilation(compileJobId, 'failed')
+    }
+  }, [compileStream.status, compileJobId, refetchATS])
 
   // Load PDF after either job completes
   useEffect(() => {
@@ -836,7 +854,7 @@ export default function ResumeEditPage() {
     if (!content.trim()) { toast.error('Nothing to compile'); return }
     setIsSubmitting(true)
     try {
-      const r = await apiClient.compileLatex({ latex_content: content, user_plan: 'pro', resume_id: resumeId })
+      const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId })
       if (!r.success || !r.job_id) throw new Error(r.message)
       setCompileJobId(r.job_id)
       setRightTab('logs')
@@ -856,8 +874,7 @@ export default function ResumeEditPage() {
         latex_content: content,
         job_description: jobDescription.trim() || undefined,
         optimization_level: optLevel,
-        user_plan: 'pro',
-        // Feature 3: pass section and instruction filters
+                // Feature 3: pass section and instruction filters
         target_sections: targetSections.length > 0 ? targetSections : undefined,
         custom_instructions: customInstructions.trim() || undefined,
         model,
@@ -979,7 +996,7 @@ export default function ResumeEditPage() {
     if (isSubmitting) return
     setIsSubmitting(true)
     try {
-      const r = await apiClient.compileLatex({ latex_content: content, user_plan: 'pro', resume_id: resumeId })
+      const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId })
       if (!r.success || !r.job_id) throw new Error(r.message)
       setCompileJobId(r.job_id)
     } catch {
@@ -1045,6 +1062,14 @@ export default function ResumeEditPage() {
           </button>
 
           <ExportDropdown resumeId={resumeId} variant="toolbar" />
+
+          <Link
+            href={`/workspace/${resumeId}/cover-letter`}
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-violet-300/80 transition hover:bg-violet-500/10 hover:text-violet-200"
+          >
+            <Mail size={12} />
+            Cover Letter
+          </Link>
 
           <button
             onClick={handleSave}
@@ -1156,6 +1181,9 @@ export default function ResumeEditPage() {
               onCursorChange={handleCursorChange}
               syncLine={syncFromLine}
               onAutoCompile={autoCompile && !isAnyRunning ? handleAutoCompile : undefined}
+              atsScore={quickATSScore}
+              atsScoreLoading={quickATSLoading}
+              onATSBadgeClick={() => setDeepPanelOpen(true)}
             />
           </div>
         </section>

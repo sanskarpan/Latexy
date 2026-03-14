@@ -1,29 +1,26 @@
-version: '3.9'
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Latexy — Local Development Stack
 #
-# Services:
-#   postgres   — PostgreSQL 16 database (port 5432)
-#   redis      — Redis 7 (Celery broker + event bus, port 6379)
-#   minio      — MinIO (S3 API internal-only, Console → localhost:9091)
-#   backend    — FastAPI app → localhost:8030 (auto-runs migrations)
-#   worker     — Celery worker (latex, llm, combined, ats queues)
-#   beat       — Celery beat (scheduled tasks)
-#   flower     — Celery monitoring UI → localhost:5555
-#   frontend   — Next.js dev server → localhost:5180
+# All host-side ports and container names are parameterised so multiple
+# worktrees can run side-by-side against the shared infra (postgres, redis,
+# minio).
 #
-# Quick start (everything):
-#   docker compose up --build
-#
-# Host port map:
+# Default (slot 1 / main worktree) — just `docker compose up`:
 #   5180  → Next.js frontend
 #   8030  → FastAPI backend + WebSocket
 #   5434  → PostgreSQL (for DB clients like TablePlus)
 #   5555  → Flower (Celery monitor)
 #   9091  → MinIO Web Console
-#   Redis + MinIO S3 API are internal-only (no host binding)
+#
+# Extra worktrees — use the helper script:
+#   ./scripts/worktree-up.sh w2      # backend 8031, frontend 5181, flower 5556
+#   ./scripts/worktree-up.sh w3      # backend 8032, frontend 5182, flower 5557
+#
+# Or manually:
+#   SLOT=2 docker compose -p latexy-w2 up backend worker frontend
 # ─────────────────────────────────────────────────────────────────────────────
+
+x-slot: &slot "${SLOT:-1}"
 
 x-backend-env: &backend-env
   DATABASE_URL: postgresql://latexy:latexy_password@postgres:5432/latexy
@@ -35,8 +32,8 @@ x-backend-env: &backend-env
   MINIO_ACCESS_KEY: minioadmin
   MINIO_SECRET_KEY: minioadmin_secret
   MINIO_BUCKET: latexy
-  BETTER_AUTH_URL: http://localhost:5180
-  CORS_ORIGINS: '["http://localhost:5180","http://127.0.0.1:5180"]'
+  BETTER_AUTH_URL: http://localhost:${FRONTEND_PORT:-5180}
+  CORS_ORIGINS: '["http://localhost:${FRONTEND_PORT:-5180}","http://127.0.0.1:${FRONTEND_PORT:-5180}","http://localhost:5180","http://localhost:5181","http://localhost:5182","http://localhost:5183"]'
   TEMP_DIR: /app/temp
   PYTHONPATH: /app
 
@@ -47,7 +44,7 @@ services:
     container_name: latexy-postgres
     restart: unless-stopped
     ports:
-      - "5434:5432"
+      - "${DB_PORT:-5434}:5432"
     environment:
       POSTGRES_USER: latexy
       POSTGRES_PASSWORD: latexy_password
@@ -66,10 +63,8 @@ services:
     image: redis:7-alpine
     container_name: latexy-redis
     restart: unless-stopped
-    # No host port — services access via Docker network (redis:6379)
-    # Uncomment below if you need redis-cli from your Mac:
-    # ports:
-    #   - "6380:6379"
+    ports:
+      - "6379:6379"
     command: >
       redis-server
       --appendonly yes
@@ -89,7 +84,8 @@ services:
     container_name: latexy-minio
     restart: unless-stopped
     ports:
-      - "9091:9001"   # Web console at localhost:9091 (S3 API stays internal)
+      - "9000:9000"
+      - "${MINIO_CONSOLE_PORT:-9091}:9001"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin_secret
@@ -124,13 +120,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: latexy-backend
+    container_name: latexy-backend-${SLOT:-1}
     restart: unless-stopped
-    # Run migrations then start the server
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8030 --log-level info --reload --reload-dir /app/app"
     ports:
-      - "8030:8030"
+      - "${BACKEND_PORT:-8030}:8030"
     environment:
       <<: *backend-env
       PORT: 8030
@@ -139,7 +134,7 @@ services:
       - .env
     volumes:
       - ./backend:/app
-      - backend_temp:/app/temp
+      - backend_temp_${SLOT:-1}:/app/temp
     depends_on:
       postgres:
         condition: service_healthy
@@ -157,7 +152,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: latexy-worker
+    container_name: latexy-worker-${SLOT:-1}
     restart: unless-stopped
     command: >
       watchmedo auto-restart --directory=/app/app --pattern="*.py" --recursive --
@@ -171,7 +166,7 @@ services:
       - .env
     volumes:
       - ./backend:/app
-      - backend_temp:/app/temp
+      - backend_temp_${SLOT:-1}:/app/temp
     depends_on:
       postgres:
         condition: service_healthy
@@ -189,7 +184,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: latexy-beat
+    container_name: latexy-beat-${SLOT:-1}
     restart: unless-stopped
     command: >
       watchmedo auto-restart --directory=/app/app --pattern="*.py" --recursive --
@@ -200,7 +195,7 @@ services:
       - .env
     volumes:
       - ./backend:/app
-      - celery_beat_data:/var/lib/celery
+      - celery_beat_data_${SLOT:-1}:/var/lib/celery
     depends_on:
       redis:
         condition: service_healthy
@@ -212,23 +207,23 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
-    container_name: latexy-frontend
+    container_name: latexy-frontend-${SLOT:-1}
     restart: unless-stopped
     ports:
-      - "5180:5180"
+      - "${FRONTEND_PORT:-5180}:${FRONTEND_PORT:-5180}"
     environment:
-      # Server-side: Better Auth pg pool connects to the local postgres container
       DATABASE_URL: postgresql://latexy:latexy_password@postgres:5432/latexy
-      BETTER_AUTH_URL: http://localhost:5180
-      # Client-side defaults in next.config.js already point to localhost:8030
-      # Secrets (BETTER_AUTH_SECRET, JWT_SECRET_KEY, OPENAI_API_KEY, etc.)
-      # come from the env_file below
+      BETTER_AUTH_URL: http://localhost:${FRONTEND_PORT:-5180}
+      NEXT_PUBLIC_APP_URL: http://localhost:${FRONTEND_PORT:-5180}
+      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8030}
+      NEXT_PUBLIC_WS_URL: ws://localhost:${BACKEND_PORT:-8030}
+      PORT: ${FRONTEND_PORT:-5180}
     env_file:
       - .env
     volumes:
       - ./frontend:/app
-      - /app/node_modules   # keep container's installed node_modules
-      - /app/.next          # keep container's build cache
+      - /app/node_modules
+      - /app/.next
     depends_on:
       postgres:
         condition: service_healthy
@@ -240,11 +235,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: latexy-flower
+    container_name: latexy-flower-${SLOT:-1}
     restart: unless-stopped
     command: celery -A app.core.celery_app flower --port=5555
     ports:
-      - "5555:5555"
+      - "${FLOWER_PORT:-5555}:5555"
     environment:
       <<: *backend-env
     env_file:
@@ -259,8 +254,14 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
-  backend_temp:
-  celery_beat_data:
+  backend_temp_1:
+  backend_temp_2:
+  backend_temp_3:
+  backend_temp_4:
+  celery_beat_data_1:
+  celery_beat_data_2:
+  celery_beat_data_3:
+  celery_beat_data_4:
 
 networks:
   default:
