@@ -114,8 +114,17 @@ export interface ResumeBase {
 export interface ResumeResponse extends ResumeBase {
   id: string
   user_id: string
+  parent_resume_id?: string | null
+  variant_count?: number
   created_at: string
   updated_at: string
+}
+
+export interface DiffWithParentResponse {
+  parent_latex: string
+  parent_title: string
+  variant_latex: string
+  variant_title: string
 }
 
 export interface ResumeCreate extends ResumeBase {}
@@ -736,6 +745,25 @@ class ApiClient {
       const body = await res.json().catch(() => ({}))
       throw new Error(body.detail || `Delete failed (${res.status})`)
     }
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Resume variants / fork                                           //
+  // ---------------------------------------------------------------- //
+
+  async forkResume(resumeId: string, title?: string): Promise<ResumeResponse> {
+    return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/fork`, {
+      method: 'POST',
+      body: JSON.stringify({ title: title || null }),
+    })
+  }
+
+  async getResumeVariants(resumeId: string): Promise<ResumeResponse[]> {
+    return this.request<ResumeResponse[]>(`/resumes/${encodeURIComponent(resumeId)}/variants`)
+  }
+
+  async getResumeDiffWithParent(resumeId: string): Promise<DiffWithParentResponse> {
+    return this.request<DiffWithParentResponse>(`/resumes/${encodeURIComponent(resumeId)}/diff-with-parent`)
   }
 
   // Export raw LaTeX content in a specific format (for /try page, no auth needed)
