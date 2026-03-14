@@ -25,7 +25,7 @@ import {
   X,
   Mail,
 } from 'lucide-react'
-import { apiClient, type CheckpointEntry } from '@/lib/api-client'
+import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ResumeResponse } from '@/lib/api-client'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
@@ -39,7 +39,8 @@ import SaveCheckpointPopover from '@/components/SaveCheckpointPopover'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
-import { Brain, Zap } from 'lucide-react'
+import { Brain, GitFork, Zap } from 'lucide-react'
+
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
@@ -673,6 +674,15 @@ export default function ResumeEditPage() {
   const [isDeepRunning, setIsDeepRunning] = useState(false)
   const [deepAnalysisError, setDeepAnalysisError] = useState<string | null>(null)
 
+  // Variant awareness
+  const [parentResumeId, setParentResumeId] = useState<string | null>(null)
+  const [parentTitle, setParentTitle] = useState<string | null>(null)
+  const [parentDiffData, setParentDiffData] = useState<DiffWithParentResponse | null>(null)
+  const [showParentDiff, setShowParentDiff] = useState(false)
+  const [forkPopoverOpen, setForkPopoverOpen] = useState(false)
+  const [forkTitleInput, setForkTitleInput] = useState('')
+  const [isForkingResume, setIsForkingResume] = useState(false)
+
   const activePdfJobId = useRef<string | null>(null)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
@@ -691,6 +701,13 @@ export default function ResumeEditPage() {
         setTitle(data.title)
         setLatexContent(data.latex_content)
         editorRef.current?.setValue(data.latex_content)
+        setParentResumeId(data.parent_resume_id ?? null)
+        // Fetch parent title if this is a variant
+        if (data.parent_resume_id) {
+          apiClient.getResume(data.parent_resume_id).then(p => setParentTitle(p.title)).catch(() => {
+            setParentResumeId(null) // parent was deleted
+          })
+        }
 
         // Auto-compile on load so user sees PDF immediately
         if (data.latex_content && data.latex_content.length >= 100) {
@@ -987,6 +1004,40 @@ export default function ResumeEditPage() {
     editorRef.current?.highlightLine(line)
   }, [])
 
+  // Variant handlers
+  const handleCompareWithParent = useCallback(async () => {
+    try {
+      const data = await apiClient.getResumeDiffWithParent(resumeId)
+      setParentDiffData(data)
+      setShowParentDiff(true)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load diff')
+    }
+  }, [resumeId])
+
+  const handleParentDiffRestore = useCallback((latex: string) => {
+    pushUndo('Before restore from parent diff')
+    editorRef.current?.setValue(latex)
+    setLatexContent(latex)
+    setShowParentDiff(false)
+    toast.success('Version restored')
+  }, [pushUndo])
+
+  const handleCreateVariant = useCallback(async () => {
+    if (isForkingResume) return
+    setIsForkingResume(true)
+    try {
+      const newResume = await apiClient.forkResume(resumeId, forkTitleInput || undefined)
+      setForkPopoverOpen(false)
+      setForkTitleInput('')
+      router.push(`/workspace/${newResume.id}/edit`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create variant')
+    } finally {
+      setIsForkingResume(false)
+    }
+  }, [resumeId, forkTitleInput, isForkingResume, router])
+
   const isCompiling = compileStream.status === 'queued' || compileStream.status === 'processing'
   const isAiRunning = aiStream.status === 'queued' || aiStream.status === 'processing'
   const isAnyRunning = isCompiling || isAiRunning
@@ -1071,6 +1122,36 @@ export default function ResumeEditPage() {
             Cover Letter
           </Link>
 
+          {/* Create Variant button */}
+          <div className="relative">
+            <button
+              onClick={() => { setForkPopoverOpen(v => !v); setForkTitleInput(`${title} — Variant`) }}
+              className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+            >
+              <GitFork size={12} />
+              Variant
+            </button>
+            {forkPopoverOpen && (
+              <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-white/10 bg-zinc-950 p-3 shadow-xl">
+                <input
+                  type="text"
+                  value={forkTitleInput}
+                  onChange={e => setForkTitleInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleCreateVariant(); if (e.key === 'Escape') setForkPopoverOpen(false) }}
+                  placeholder="Variant title"
+                  autoFocus
+                  className="w-full rounded-md border border-white/10 bg-black/40 px-2 py-1.5 text-xs text-zinc-100 outline-none focus:border-orange-300/40 mb-2"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setForkPopoverOpen(false)} className="px-2 py-1 text-[10px] text-zinc-500 hover:text-zinc-300">Cancel</button>
+                  <button onClick={handleCreateVariant} disabled={isForkingResume} className="rounded-md bg-orange-500/20 px-3 py-1 text-[10px] font-semibold text-orange-200 ring-1 ring-orange-400/20 hover:bg-orange-500/30 disabled:opacity-50">
+                    {isForkingResume ? 'Creating...' : 'Create'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={handleSave}
             disabled={isSaving}
@@ -1123,6 +1204,21 @@ export default function ResumeEditPage() {
           </button>
         </div>
       </header>
+
+      {/* Variant banner */}
+      {parentResumeId && parentTitle && (
+        <div className="flex h-7 shrink-0 items-center justify-between border-b border-orange-500/10 bg-orange-500/5 px-4">
+          <span className="text-xs text-zinc-400">
+            Variant of: <span className="font-medium text-zinc-300">{parentTitle}</span>
+          </span>
+          <button
+            onClick={handleCompareWithParent}
+            className="text-xs font-semibold text-orange-300 transition hover:text-orange-200"
+          >
+            Compare with Parent
+          </button>
+        </div>
+      )}
 
       {/* Resize drag overlay */}
       {isDraggingResize && (
@@ -1374,6 +1470,21 @@ export default function ResumeEditPage() {
           currentLatex={editorRef.current?.getValue() || latexContent}
           onRestore={handleDiffRestore}
           onClose={handleCloseDiff}
+        />
+      )}
+
+      {/* Parent diff modal */}
+      {showParentDiff && parentDiffData && (
+        <DiffViewerModal
+          resumeId={resumeId}
+          checkpointA={null}
+          checkpointB={null}
+          onRestore={handleParentDiffRestore}
+          onClose={() => setShowParentDiff(false)}
+          parentLatex={parentDiffData.parent_latex}
+          parentTitle={parentDiffData.parent_title}
+          variantLatex={parentDiffData.variant_latex}
+          variantTitle={parentDiffData.variant_title}
         />
       )}
 
