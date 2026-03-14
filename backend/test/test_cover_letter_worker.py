@@ -1,6 +1,5 @@
 """Tests for cover letter worker — prompt building and task event flow."""
 
-import uuid
 from typing import Iterator
 from unittest.mock import MagicMock, patch
 
