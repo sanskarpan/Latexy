@@ -89,11 +89,21 @@ class Resume(Base):
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
     # Layer 3: vector embedding for semantic job matching (1536-dim OpenAI text-embedding-3-small)
     content_embedding: Mapped[Optional[List[float]]] = mapped_column(ARRAY(Float), nullable=True)
+    # Variant / fork system: self-referential parent link
+    parent_resume_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="resumes")
+    parent: Mapped[Optional["Resume"]] = relationship(
+        "Resume", remote_side="Resume.id", foreign_keys=[parent_resume_id], back_populates="variants"
+    )
+    variants: Mapped[List["Resume"]] = relationship(
+        "Resume", back_populates="parent", foreign_keys="[Resume.parent_resume_id]"
+    )
     compilations: Mapped[List["Compilation"]] = relationship("Compilation", back_populates="resume")
     optimizations: Mapped[List["Optimization"]] = relationship("Optimization", back_populates="resume", cascade="all, delete-orphan")
     cover_letters: Mapped[List["CoverLetter"]] = relationship("CoverLetter", back_populates="resume", cascade="all, delete-orphan")
