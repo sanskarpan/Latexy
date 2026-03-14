@@ -15,6 +15,7 @@ import DeepAnalysisPanel from '@/components/ats/DeepAnalysisPanel'
 import MultiFormatUpload from '@/components/MultiFormatUpload'
 import ExportDropdown from '@/components/ExportDropdown'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
+import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
 const CATEGORY_LABELS: Record<string, string> = {
   formatting: 'Formatting',
@@ -39,6 +40,7 @@ export default function TryPage() {
   const [deepAnalysisError, setDeepAnalysisError] = useState<string | null>(null)
 
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
+  const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent, jobDescription)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
@@ -77,6 +79,9 @@ export default function TryPage() {
     }
     fetchPdf()
 
+    // Refresh ATS quick-score immediately after compile
+    if (stream.status === 'completed') refetchATS()
+
     // Track analytics on completion/failure
     if (stream.status === 'completed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'completed')
@@ -89,7 +94,7 @@ export default function TryPage() {
     } else if (stream.status === 'failed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'failed')
     }
-  }, [stream.status, stream.pdfJobId, activeJobId, stream.tokensUsed])
+  }, [stream.status, stream.pdfJobId, activeJobId, stream.tokensUsed, refetchATS])
 
   useEffect(() => {
     return () => {
@@ -258,6 +263,9 @@ export default function TryPage() {
                   value={latexContent}
                   onChange={setLatexContent}
                   onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
+                  atsScore={quickATSScore}
+                  atsScoreLoading={quickATSLoading}
+                  onATSBadgeClick={() => setDeepPanelOpen(true)}
                 />
               </div>
               <div className="h-32 flex-shrink-0 flex flex-col">
