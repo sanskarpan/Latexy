@@ -1,17 +1,15 @@
 """Tests for cover letter API routes."""
 
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
+from conftest import _insert_session
 from httpx import AsyncClient
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from conftest import _insert_session
-
 from app.database.models import CoverLetter, Resume
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -123,7 +121,7 @@ class TestGenerateCoverLetter:
             "/cover-letters/generate",
             json={
                 "resume_id": str(uuid.uuid4()),  # non-existent
-                "job_description": "Test JD",
+                "job_description": "Test job description for non-existent resume",
                 "tone": "formal",
                 "length_preference": "3_paragraphs",
             },
@@ -323,8 +321,6 @@ class TestListResumeCoverLetters:
         user_id, _, headers = test_user_with_resume
 
         # Create a second resume with no cover letters
-        from app.database.models import Resume
-        from sqlalchemy.ext.asyncio import AsyncSession
 
         response = await client.get(
             f"/cover-letters/resume/{uuid.uuid4()}",  # Non-existent resume
