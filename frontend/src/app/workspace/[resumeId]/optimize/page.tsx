@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { apiClient } from '@/lib/api-client'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
+import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
@@ -29,6 +30,7 @@ export default function OptimizationSuitePage() {
   const [baselineLatex, setBaselineLatex] = useState('')
 
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
+  const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(resume?.latex_content || '', jobDescription)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
@@ -92,10 +94,11 @@ export default function OptimizationSuitePage() {
       apiClient.trackCompilation(activeJobId, 'completed')
       apiClient.trackOptimization(activeJobId, 'openai', 'gpt-4o-mini', stream.tokensUsed ?? undefined)
       apiClient.trackFeatureUsage('optimize')
+      refetchATS()
     } else if (stream.status === 'failed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'failed')
     }
-  }, [stream.status, stream.pdfJobId, activeJobId, stream.tokensUsed])
+  }, [stream.status, stream.pdfJobId, activeJobId, stream.tokensUsed, refetchATS])
 
   useEffect(() => {
     return () => {
@@ -266,6 +269,8 @@ export default function OptimizationSuitePage() {
                   onChange={() => {}}
                   readOnly={isProcessing}
                   onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
+                  atsScore={quickATSScore}
+                  atsScoreLoading={quickATSLoading}
                 />
               </div>
             </section>
