@@ -6,6 +6,7 @@ let _latexLanguageRegistered = false
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type { LogLine } from '@/hooks/useJobStream'
 import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
+import ATSScoreBadge from '@/components/ATSScoreBadge'
 
 export interface LaTeXEditorRef {
   setValue: (value: string) => void
@@ -27,6 +28,12 @@ interface LaTeXEditorProps {
   onAutoCompile?: (content: string) => void
   /** Hide the "Insert Sample Resume" empty-state button (e.g. on cover letter pages) */
   hideEmptyAction?: boolean
+  /** Live ATS quick-score value (null = not scored yet) */
+  atsScore?: number | null
+  /** Whether ATS quick-score is loading */
+  atsScoreLoading?: boolean
+  /** Callback when user clicks the ATS badge */
+  onATSBadgeClick?: () => void
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -153,7 +160,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -742,6 +749,13 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400/70" />
                 Auto
               </span>
+            )}
+            {(atsScore !== undefined || atsScoreLoading) && (
+              <ATSScoreBadge
+                score={atsScore ?? null}
+                loading={atsScoreLoading ?? false}
+                onClick={onATSBadgeClick}
+              />
             )}
             <span>{value.length.toLocaleString()} chars</span>
             {onSave && <span className="text-zinc-800">⌘S save · ⌘↵ compile</span>}
