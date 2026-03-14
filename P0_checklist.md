@@ -528,12 +528,12 @@ controls and streaming output. Linked to a resume, stored in DB.
 be compared side-by-side with parent in a diff view, and are grouped in the workspace UI.
 
 ### 5A · Database Migration
-- [ ] Create `backend/alembic/versions/0005_add_resume_parent.py`
+- [x] Create `backend/alembic/versions/0006_add_resume_parent.py`
   ```sql
   ALTER TABLE resumes ADD COLUMN parent_resume_id UUID REFERENCES resumes(id) ON DELETE SET NULL;
   CREATE INDEX idx_resumes_parent_id ON resumes(parent_resume_id);
   ```
-- [ ] Update `Resume` model in `backend/app/database/models.py`:
+- [x] Update `Resume` model in `backend/app/database/models.py`:
   ```python
   parent_resume_id: Mapped[Optional[uuid.UUID]] = mapped_column(
       ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
@@ -541,16 +541,16 @@ be compared side-by-side with parent in a diff view, and are grouped in the work
   ```
 
 ### 5B · Backend Schema Updates
-- [ ] Update `ResumeResponse` Pydantic schema in `resume_routes.py`:
+- [x] Update `ResumeResponse` Pydantic schema in `resume_routes.py`:
   - Add `parent_resume_id: Optional[str] = None`
   - Add `variant_count: int = 0` (computed via subquery or separate count query)
-- [ ] Update `GET /resumes/` list endpoint to:
+- [x] Update `GET /resumes/` list endpoint to:
   - Include `parent_resume_id` in each returned resume
   - Add optional `?parent_id=<uuid>` filter to list variants of a specific parent
   - Add `variant_count` to each resume (subquery: `SELECT COUNT(*) FROM resumes r2 WHERE r2.parent_resume_id = r.id`)
 
 ### 5C · Backend — Fork Endpoint
-- [ ] Add `POST /resumes/{resume_id}/fork` to `backend/app/api/resume_routes.py`:
+- [x] Add `POST /resumes/{resume_id}/fork` to `backend/app/api/resume_routes.py`:
   - Auth required, verify ownership
   - Body: `{ title?: str }`
   - Creates new `Resume`:
@@ -569,35 +569,35 @@ be compared side-by-side with parent in a diff view, and are grouped in the work
   - Records `UsageAnalytics` event `resume_forked`
 
 ### 5D · Backend — Variant Listing & Diff
-- [ ] Add `GET /resumes/{resume_id}/variants`:
+- [x] Add `GET /resumes/{resume_id}/variants`:
   - Auth required, verify ownership of parent resume
   - Returns `List[ResumeResponse]` of all direct children (where `parent_resume_id = resume_id`)
   - Ordered by `created_at DESC`
 
-- [ ] Add `GET /resumes/{resume_id}/diff-with-parent`:
+- [x] Add `GET /resumes/{resume_id}/diff-with-parent`:
   - Auth required, verify ownership of variant
   - If `parent_resume_id` is null → 400 "This resume has no parent"
   - Fetches parent resume (verify parent also owned by same user)
   - Returns `{ parent_latex: str, parent_title: str, variant_latex: str, variant_title: str }`
 
 ### 5E · Frontend — DiffViewerModal (Reused from Feature 2)
-- [ ] The `DiffViewerModal` from Feature 2 (2E) is designed generically enough to reuse here
+- [x] The `DiffViewerModal` from Feature 2 (2E) is designed generically enough to reuse here
   - Add a new usage mode: `mode: 'parent-diff'` where left = parent latex, right = variant latex
   - No checkpoint fetch needed in this mode — content passed directly
   - "Restore to Parent" button → calls update API to set variant's `latex_content = parent_latex`
 
 ### 5F · Frontend — Fork Action
-- [ ] In `frontend/src/app/workspace/page.tsx`:
+- [x] In `frontend/src/app/workspace/page.tsx`:
   - Add "Create Variant" to resume card actions dropdown
   - On click: small modal/popover with title input (pre-filled with `"${resume.title} — Variant"`)
   - "Create" → calls `forkResume(resume.id, title)` → navigates to `/workspace/{new_id}/edit`
 
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Add "Create Variant" button in editor header (fork icon)
   - Same inline title input + fork action
 
 ### 5G · Frontend — Workspace Grouping
-- [ ] In `frontend/src/app/workspace/page.tsx`:
+- [x] In `frontend/src/app/workspace/page.tsx`:
   - After fetching resumes, build variant map:
     ```typescript
     const masterResumes = resumes.filter(r => !r.parent_resume_id)
@@ -615,7 +615,7 @@ be compared side-by-side with parent in a diff view, and are grouped in the work
   - "Create Variant" in both master and variant card dropdowns (variants can be further forked)
 
 ### 5H · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   forkResume(resumeId: string, title?: string): Promise<ResumeResponse>
   getResumeVariants(resumeId: string): Promise<ResumeResponse[]>
@@ -623,14 +623,17 @@ be compared side-by-side with parent in a diff view, and are grouped in the work
   ```
 
 ### 5I · Tests
-- [ ] `backend/test/test_resume_variants.py`:
+- [x] `backend/test/test_resume_variants.py`:
   - Fork creates new resume with correct parent_resume_id
   - Fork title defaults to "{parent} — Variant"
-  - Can't fork another user's resume → 403
+  - Can't fork another user's resume → 404 (matches existing ownership pattern)
   - `GET /variants` returns only direct children
   - `GET /diff-with-parent` returns both latex contents
   - `GET /diff-with-parent` on resume with no parent → 400
   - List endpoint includes `variant_count`
+  - Fork of fork (unlimited depth)
+  - Variant count zero for leaf
+  - Fork clones tags
 
 ---
 
