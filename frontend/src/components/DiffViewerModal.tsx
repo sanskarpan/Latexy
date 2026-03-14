@@ -15,6 +15,11 @@ interface DiffViewerModalProps {
   currentLatex?: string                 // used when checkpointB is null
   onRestore: (latex: string) => void
   onClose: () => void
+  // Parent-diff mode (variant comparison)
+  parentLatex?: string
+  parentTitle?: string
+  variantLatex?: string
+  variantTitle?: string
 }
 
 function makeLabel(cp: CheckpointEntry): string {
@@ -30,7 +35,12 @@ export default function DiffViewerModal({
   currentLatex,
   onRestore,
   onClose,
+  parentLatex,
+  parentTitle,
+  variantLatex,
+  variantTitle,
 }: DiffViewerModalProps) {
+  const isParentDiffMode = parentLatex !== undefined
   const [leftLatex, setLeftLatex] = useState<string | null>(null)
   const [rightLatex, setRightLatex] = useState<string | null>(null)
   const [leftLabel, setLeftLabel] = useState('')
@@ -59,6 +69,16 @@ export default function DiffViewerModal({
   }, [])
 
   useEffect(() => {
+    // Parent-diff mode: data is already provided via props
+    if (isParentDiffMode) {
+      setLeftLatex(parentLatex!)
+      setLeftLabel(parentTitle ?? 'Parent')
+      setRightLatex(variantLatex ?? '')
+      setRightLabel(variantTitle ?? 'Variant')
+      setLoading(false)
+      return
+    }
+
     if (!checkpointA) return
 
     let cancelled = false
@@ -101,7 +121,7 @@ export default function DiffViewerModal({
       })
 
     return () => { cancelled = true }
-  }, [checkpointA, checkpointB, resumeId, currentLatex])
+  }, [checkpointA, checkpointB, resumeId, currentLatex, isParentDiffMode, parentLatex, parentTitle, variantLatex, variantTitle])
 
   // Close on Escape — use ref to avoid re-registering on every render
   useEffect(() => {
@@ -120,7 +140,7 @@ export default function DiffViewerModal({
     if (rightLatex) onRestore(rightLatex)
   }, [rightLatex, onRestore])
 
-  if (!checkpointA) return null
+  if (!checkpointA && !isParentDiffMode) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -135,15 +155,15 @@ export default function DiffViewerModal({
               className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-white/20 hover:text-white disabled:opacity-40"
             >
               <RotateCcw size={12} />
-              Restore Left
+              {isParentDiffMode ? 'Restore to Parent' : 'Restore Left'}
             </button>
             <button
               onClick={handleRestoreRight}
-              disabled={!rightLatex || !checkpointB}
+              disabled={!rightLatex || (!checkpointB && !isParentDiffMode)}
               className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-white/20 hover:text-white disabled:opacity-40"
             >
               <RotateCcw size={12} />
-              Restore Right
+              {isParentDiffMode ? 'Keep Variant' : 'Restore Right'}
             </button>
             <button
               onClick={onClose}
