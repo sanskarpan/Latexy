@@ -1,16 +1,16 @@
 """Cover letter generation and management API routes."""
 
 import json
+import math
 import time
 import uuid
 from datetime import datetime
 from typing import List, Optional
 
-import math
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func as sa_func, or_, select
+from sqlalchemy import func as sa_func
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
