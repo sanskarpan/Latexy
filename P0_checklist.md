@@ -640,7 +640,7 @@ be compared side-by-side with parent in a diff view, and are grouped in the work
 keystroke. Lightweight (<300ms) endpoint with no LLM or DB writes.
 
 ### 6A · Backend — Quick Score Service
-- [ ] Create `backend/app/services/ats_quick_scorer.py`
+- [x] Create `backend/app/services/ats_quick_scorer.py`
   - Function `quick_score_latex(latex_content: str, job_description: Optional[str] = None) -> QuickScoreResult`
   - `QuickScoreResult` dataclass: `score: int, grade: str, sections_found: List[str], missing_sections: List[str], keyword_match_percent: Optional[float]`
   - Algorithm (pure Python, no network calls, target < 50ms):
@@ -670,7 +670,7 @@ keystroke. Lightweight (<300ms) endpoint with no LLM or DB writes.
     ```
 
 ### 6B · Backend — Quick Score Endpoint
-- [ ] Add `POST /ats/quick-score` to `backend/app/api/ats_routes.py`
+- [x] Add `POST /ats/quick-score` to `backend/app/api/ats_routes.py`
   - New Pydantic models:
     ```python
     class QuickScoreRequest(BaseModel):
@@ -696,7 +696,7 @@ keystroke. Lightweight (<300ms) endpoint with no LLM or DB writes.
   - Add rate limiting: 20 req/min per IP (use SlowAPI or custom middleware)
 
 ### 6C · Frontend — useQuickATSScore Hook
-- [ ] Create `frontend/src/hooks/useQuickATSScore.ts`
+- [x] Create `frontend/src/hooks/useQuickATSScore.ts`
   ```typescript
   export function useQuickATSScore(latexContent: string, jobDescription?: string) {
     const [score, setScore] = useState<number | null>(null)
@@ -728,7 +728,7 @@ keystroke. Lightweight (<300ms) endpoint with no LLM or DB writes.
   - Also expose `refetch()` for immediate on-demand score (e.g. after compile completes)
 
 ### 6D · Frontend — ATSScoreBadge Component
-- [ ] Create `frontend/src/components/ATSScoreBadge.tsx`
+- [x] Create `frontend/src/components/ATSScoreBadge.tsx`
   ```tsx
   // Props: score: number | null, loading: boolean, onClick?: () => void
   //
@@ -746,7 +746,7 @@ keystroke. Lightweight (<300ms) endpoint with no LLM or DB writes.
   ```
 
 ### 6E · Frontend — LaTeXEditor Status Bar Integration
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add props: `atsScore?: number | null`, `atsScoreLoading?: boolean`, `onATSBadgeClick?: () => void`
   - In status bar (where char count is shown):
     ```tsx
@@ -760,22 +760,22 @@ keystroke. Lightweight (<300ms) endpoint with no LLM or DB writes.
     ```
 
 ### 6F · Frontend — Page Integration
-- [ ] In `frontend/src/app/try/page.tsx`:
+- [x] In `frontend/src/app/try/page.tsx`:
   - `const { score: quickScore, loading: quickScoreLoading } = useQuickATSScore(latexContent, jobDescription)`
   - Pass to `LaTeXEditor`: `atsScore={quickScore} atsScoreLoading={quickScoreLoading}`
   - `onATSBadgeClick`: scroll to/open the deep ATS analysis panel
   - After compile completes: call `refetch()` immediately (don't wait 10s after a compile)
 
-- [ ] Same in `frontend/src/app/workspace/[resumeId]/edit/page.tsx` and optimize page
+- [x] Same in `frontend/src/app/workspace/[resumeId]/edit/page.tsx` and optimize page
 
 ### 6G · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   quickScoreATS(latexContent: string, jobDescription?: string): Promise<QuickScoreResponse>
   ```
 
 ### 6H · Tests
-- [ ] `backend/test/test_ats_quick_score.py`:
+- [x] `backend/test/test_ats_quick_score.py`:
   - Empty content → score low
   - Well-formed resume → score ≥70
   - Resume with JD → keyword_match_percent present
@@ -1113,14 +1113,14 @@ Recommended build order:
 
 ## Shared Infrastructure Needed
 
-- [ ] **`MonacoDiffEditor`** — import from `@monaco-editor/react`; needed by Features 2 and 5.
+- [x] **`MonacoDiffEditor`** — import from `@monaco-editor/react`; needed by Features 2 and 5.
   Verify it's in `package.json`; add if missing: `pnpm add @monaco-editor/react`
 - [ ] **SlowAPI rate limiting** — for `/ats/quick-score` and `/ai/explain-error` endpoints.
   Add `slowapi` to `backend/requirements.txt`; configure limiter in `backend/app/main.py`
-- [ ] **`pdf2image` + `Pillow`** — for thumbnail generation in Feature 1.
+- [x] **`pdf2image` + `Pillow`** — for thumbnail generation in Feature 1.
   Add to `backend/requirements.txt` (only needed in scripts, not main app)
-- [ ] **Alembic migrations must run in order** — Features 1–5 each add a migration. Run all before
+- [x] **Alembic migrations must run in order** — Features 1–5 each add a migration. Run all before
   testing any feature: `cd backend && alembic upgrade head`
-- [ ] **`cover_letter` celery task** — uses existing `llm` queue, no new queue configuration needed
-- [ ] **Status bar layout** — Features 3, 6, and 8 all add elements to `LaTeXEditor` status bar.
+- [x] **`cover_letter` celery task** — uses existing `llm` queue, no new queue configuration needed
+- [~] **Status bar layout** — Features 3, 6, and 8 all add elements to `LaTeXEditor` status bar.
   Coordinate layout: `[Auto ●] [~2 pages ⚠] [ATS 74] [1,234 chars] [⌘S save · ⌘↵ compile]`
