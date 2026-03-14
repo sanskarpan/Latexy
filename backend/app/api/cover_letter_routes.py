@@ -34,7 +34,7 @@ _JOB_TTL = 86400  # 24 hours
 
 class GenerateCoverLetterRequest(BaseModel):
     resume_id: str
-    job_description: str = Field(..., max_length=10_000)
+    job_description: str = Field(..., min_length=10, max_length=10_000)
     company_name: Optional[str] = Field(None, max_length=255)
     role_title: Optional[str] = Field(None, max_length=255)
     tone: str = Field("formal", pattern=r"^(formal|conversational|enthusiastic)$")
