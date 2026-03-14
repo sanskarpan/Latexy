@@ -38,6 +38,7 @@ import VersionHistoryPanel from '@/components/VersionHistoryPanel'
 import SaveCheckpointPopover from '@/components/SaveCheckpointPopover'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
+import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { Brain, Zap } from 'lucide-react'
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history'
@@ -676,6 +677,8 @@ export default function ResumeEditPage() {
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
 
+  const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent)
+
   const { state: compileStream } = useJobStream(compileJobId)
   const { state: aiStream } = useJobStream(aiJobId)
   const { state: deepStream } = useJobStream(deepAnalysisJobId)
@@ -742,10 +745,11 @@ export default function ResumeEditPage() {
     if (compileStream.status === 'completed' && compileJobId) {
       apiClient.trackCompilation(compileJobId, 'completed')
       apiClient.trackFeatureUsage('compile')
+      refetchATS()
     } else if (compileStream.status === 'failed' && compileJobId) {
       apiClient.trackCompilation(compileJobId, 'failed')
     }
-  }, [compileStream.status, compileJobId])
+  }, [compileStream.status, compileJobId, refetchATS])
 
   // Load PDF after either job completes
   useEffect(() => {
@@ -1177,6 +1181,9 @@ export default function ResumeEditPage() {
               onCursorChange={handleCursorChange}
               syncLine={syncFromLine}
               onAutoCompile={autoCompile && !isAnyRunning ? handleAutoCompile : undefined}
+              atsScore={quickATSScore}
+              atsScoreLoading={quickATSLoading}
+              onATSBadgeClick={() => setDeepPanelOpen(true)}
             />
           </div>
         </section>
