@@ -1,7 +1,7 @@
 """Database models for Latexy application."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import uuid4
 
 from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
@@ -89,6 +89,10 @@ class Resume(Base):
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
     # Layer 3: vector embedding for semantic job matching (1536-dim OpenAI text-embedding-3-small)
     content_embedding: Mapped[Optional[List[float]]] = mapped_column(ARRAY(Float), nullable=True)
+    # Per-resume settings (compiler preference, custom flags, etc.)
+    # Note: "metadata" is reserved by SQLAlchemy's Declarative API, so we use
+    # resume_settings as the Python attribute name while keeping the DB column "metadata".
+    resume_settings: Mapped[Optional[Dict]] = mapped_column("metadata", JSONB, nullable=True, default={})
     # Variant / fork system: self-referential parent link
     parent_resume_id: Mapped[Optional[str]] = mapped_column(
         UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
