@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
 import { GitFork, Zap } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiClient, type DiffWithParentResponse } from '@/lib/api-client'
+import { apiClient, type DiffWithParentResponse, type ExplainErrorResponse } from '@/lib/api-client'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
@@ -16,6 +16,7 @@ import PDFPreview from '@/components/PDFPreview'
 import ATSScoreCard from '@/components/ATSScoreCard'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
 
 export default function OptimizationSuitePage() {
   const params = useParams()
@@ -38,6 +39,12 @@ export default function OptimizationSuitePage() {
   const [forkPopoverOpen, setForkPopoverOpen] = useState(false)
   const [forkTitleInput, setForkTitleInput] = useState('')
   const [isForkingResume, setIsForkingResume] = useState(false)
+
+  // Error explainer
+  const [explainerOpen, setExplainerOpen] = useState(false)
+  const [explainerLoading, setExplainerLoading] = useState(false)
+  const [explainerData, setExplainerData] = useState<ExplainErrorResponse | null>(null)
+  const [explainerLine, setExplainerLine] = useState<number | null>(null)
 
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(resume?.latex_content || '', jobDescription)
@@ -195,6 +202,36 @@ export default function OptimizationSuitePage() {
     }
   }, [resumeId, forkTitleInput, isForkingResume, router])
 
+  const handleExplainError = useCallback(async (error: { line: number; message: string; surroundingLatex: string }) => {
+    setExplainerLine(error.line)
+    setExplainerOpen(true)
+    setExplainerLoading(true)
+    setExplainerData(null)
+    try {
+      const result = await apiClient.explainLatexError({
+        error_message: error.message,
+        surrounding_latex: error.surroundingLatex,
+        error_line: error.line,
+      })
+      setExplainerData(result)
+    } catch {
+      setExplainerData({
+        success: false, explanation: 'Failed to analyze error.',
+        suggested_fix: 'Check the error message manually.', corrected_code: null,
+        source: 'error', cached: false, processing_time: 0,
+      })
+    } finally {
+      setExplainerLoading(false)
+    }
+  }, [])
+
+  const handleApplyExplainerFix = useCallback(() => {
+    if (!explainerData?.corrected_code || explainerLine == null) return
+    editorRef.current?.applyFix(explainerLine, explainerData.corrected_code)
+    setExplainerOpen(false)
+    toast.success('Fix applied')
+  }, [explainerData, explainerLine])
+
   const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
   if (isLoading) {
@@ -346,16 +383,28 @@ export default function OptimizationSuitePage() {
                   Restore Original
                 </button>
               </div>
-              <div className="min-h-0 flex-1 bg-black/20">
+              <div className="relative min-h-0 flex-1 bg-black/20">
                 <LaTeXEditor
                   ref={editorRef}
                   value={resume?.latex_content || ''}
                   onChange={() => {}}
                   readOnly={isProcessing}
+                  logLines={stream.logLines}
                   onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
                   atsScore={quickATSScore}
                   atsScoreLoading={quickATSLoading}
+                  onExplainError={handleExplainError}
                 />
+                <div className="absolute inset-x-0 bottom-0 z-10">
+                  <ErrorExplainerPanel
+                    isOpen={explainerOpen}
+                    isLoading={explainerLoading}
+                    data={explainerData}
+                    errorLine={explainerLine}
+                    onClose={() => setExplainerOpen(false)}
+                    onApplyFix={handleApplyExplainerFix}
+                  />
+                </div>
               </div>
             </section>
 
