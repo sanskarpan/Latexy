@@ -407,6 +407,75 @@ class TestLatexExceptionHandling:
         assert failed[-1].args[2]["error_code"] == "internal"
 
 
+# ── Page count extraction ─────────────────────────────────────────────────────
+
+class TestLatexPageCount:
+
+    PAGE_COUNT_LINE = "Output written on resume.pdf (2 pages, 54321 bytes).\n"
+    SINGLE_PAGE_LINE = "Output written on output.pdf (1 page, 12345 bytes).\n"
+
+    def test_page_count_extracted_from_log(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, [self.PAGE_COUNT_LINE])),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=54321)),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+        assert result["page_count"] == 2
+
+    def test_page_count_in_job_completed_event(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, [self.PAGE_COUNT_LINE])),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=54321)),
+        ):
+            lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+        completed = [c for c in mock_publish.call_args_list if c.args[1] == "job.completed"]
+        assert completed[0].args[2]["page_count"] == 2
+
+    def test_page_count_none_when_not_in_logs(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, ["Normal pdflatex output\n"])),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=999)),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+        assert result["page_count"] is None
+
+    def test_single_page_extracted(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, [self.SINGLE_PAGE_LINE])),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=12345)),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+        assert result["page_count"] == 1
+
+    def test_page_count_from_last_occurrence(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        """Multiple output lines — last page count line wins."""
+        lines = [
+            "Output written on pass1.pdf (1 page, 1000 bytes).\n",
+            "Output written on pass2.pdf (3 pages, 3000 bytes).\n",
+        ]
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, lines)),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=3000)),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+        assert result["page_count"] == 3
+
+
 # ── submit_latex_compilation helper ──────────────────────────────────────────
 
 class TestSubmitLatexCompilation:
