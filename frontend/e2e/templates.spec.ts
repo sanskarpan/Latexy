@@ -304,6 +304,21 @@ test.describe('Template Gallery with mocked API', () => {
   })
 
   test('clicking Use This Template triggers API call and navigates', async ({ page }) => {
+    // Mock auth so the edit page doesn't redirect back to /login
+    await page.route('**/api/auth/get-session', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          session: { id: 's-1', userId: 'user-1', token: 'test-token', expiresAt: '2099-01-01T00:00:00Z' },
+          user: { id: 'user-1', email: 'test@example.com', name: 'Test User' },
+        }),
+      })
+    )
+    // Mock resumes endpoint so edit page loads without error
+    await page.route((url) => url.pathname.startsWith('/resumes'), (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', title: 'Test', latex_content: '', created_at: '', updated_at: '' }) })
+    )
     const card = page.locator('.group').first()
     await card.hover()
     await card.getByRole('button', { name: 'Preview' }).click()
