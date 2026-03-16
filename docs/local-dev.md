@@ -84,8 +84,8 @@ call is a no-op if `latexy-postgres` is already running.
 ### Stopping
 
 ```bash
-./scripts/dev.sh stop app     # stops just this directory's slot (reads .dev-pids)
-./scripts/dev.sh stop infra   # stops shared infra (affects ALL clones)
+./scripts/dev.sh stop app     # stops just this directory's app processes (reads .dev-pids)
+./scripts/dev.sh stop infra   # stops shared infra — affects ALL clones, use with care
 ```
 
 ### Prerequisites
@@ -112,7 +112,8 @@ Everything runs in Docker containers. Slot is auto-detected (no need to specify 
 # Stop
 ./scripts/worktree-up.sh stop         # stop this directory's slot (reads .dev-slot)
 ./scripts/worktree-up.sh stop w2      # stop slot 2 explicitly
-./scripts/worktree-up.sh stop all     # stop ALL slots + shared infra
+./scripts/worktree-up.sh stop all     # stop all app slots (infra stays running)
+./scripts/worktree-up.sh stop infra   # stop shared infra (postgres, redis, minio)
 
 # Logs
 ./scripts/worktree-up.sh logs         # tail this directory's slot logs
