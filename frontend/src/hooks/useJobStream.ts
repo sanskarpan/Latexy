@@ -39,6 +39,8 @@ export interface JobStreamState {
   compilationTime: number | null
   optimizationTime: number | null
   tokensUsed: number | null
+  /** Page count from last successful pdflatex compile */
+  pageCount: number | null
   error: string | null
   errorCode: string | null
   retryable: boolean
@@ -59,6 +61,7 @@ const initialState: JobStreamState = {
   compilationTime: null,
   optimizationTime: null,
   tokensUsed: null,
+  pageCount: null,
   error: null,
   errorCode: null,
   retryable: false,
@@ -99,14 +102,17 @@ function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStre
         tokensUsed: event.tokens_total,
       }
 
-    case 'log.line':
+    case 'log.line': {
+      const pageCountMatch = event.line?.match(/Output written on .+?\((\d+) page/)
       return {
         ...state,
         logLines: [
           ...state.logLines,
           { source: event.source, line: event.line, is_error: event.is_error },
         ],
+        ...(pageCountMatch ? { pageCount: parseInt(pageCountMatch[1], 10) } : {}),
       }
+    }
 
     case 'job.completed':
       return {
@@ -122,6 +128,7 @@ function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStre
         compilationTime: event.compilation_time,
         optimizationTime: event.optimization_time,
         tokensUsed: event.tokens_used,
+        pageCount: event.page_count ?? state.pageCount,
         error: null,
         errorCode: null,
       }
