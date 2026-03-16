@@ -794,7 +794,7 @@ at the error line. Click it → LLM explains the error in plain English + sugges
 patches the editor in one click.
 
 ### 7A · Backend — Explain Error Endpoint
-- [ ] Add `POST /ai/explain-error` to a new `backend/app/api/ai_routes.py`
+- [x] Add `POST /ai/explain-error` to a new `backend/app/api/ai_routes.py`
   (or add to existing `routes.py`; prefer new file for clean separation)
   - Pydantic models:
     ```python
@@ -831,10 +831,10 @@ patches the editor in one click.
   - Error fallback: if LLM unavailable, return generic helpful message based on error pattern
     matching (e.g. "Undefined control sequence" → "You used a LaTeX command that doesn't exist...")
 
-- [ ] Register `ai_router` in `backend/app/main.py`
+- [x] Register `ai_router` in `backend/app/main.py`
 
 ### 7B · Backend — Error Pattern Fallback
-- [ ] Create `backend/app/services/latex_error_patterns.py`
+- [x] Create `backend/app/services/latex_error_patterns.py`
   - Dict of known LaTeX error patterns → human-readable explanations (no LLM needed for these):
     ```python
     ERROR_PATTERNS = {
@@ -852,13 +852,13 @@ patches the editor in one click.
   - Used when LLM is unavailable or as immediate pre-LLM response
 
 ### 7C · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   explainLatexError(request: ExplainErrorRequest): Promise<ExplainErrorResponse>
   ```
 
 ### 7D · Frontend — ErrorExplainerPanel Component
-- [ ] Create `frontend/src/components/ErrorExplainerPanel.tsx`
+- [x] Create `frontend/src/components/ErrorExplainerPanel.tsx`
   - Props:
     ```typescript
     {
@@ -882,7 +882,7 @@ patches the editor in one click.
   - Do not render when `error === null`
 
 ### 7E · Frontend — LaTeXEditor Code Lens Integration
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add prop: `onExplainError?: (error: LogError, surroundingLatex: string) => void`
   - After `setModelMarkers(...)` is called (when log errors are parsed), register a Code Lens provider:
     ```typescript
@@ -923,7 +923,7 @@ patches the editor in one click.
   - `logErrors` needs to be a `useRef` (mutable, accessed in closure) rather than local variable
 
 ### 7F · Frontend — Apply Fix Logic
-- [ ] In parent pages (try/page.tsx, optimize/page.tsx, edit/page.tsx):
+- [x] In parent pages (try/page.tsx, optimize/page.tsx, edit/page.tsx):
   - State: `explainTarget: LogError | null`, `errorExplanation: ExplainErrorResponse | null`, `isExplaining: boolean`
   - When `onExplainError` fires:
     1. Set `explainTarget` and `isExplaining = true`
@@ -943,7 +943,7 @@ patches the editor in one click.
   - Render `<ErrorExplainerPanel>` below editor
 
 ### 7G · Tests
-- [ ] `backend/test/test_ai_routes.py`:
+- [x] `backend/test/test_ai_routes.py`:
   - POST explain-error → returns explanation, cached=false
   - POST same error again → cached=true (no LLM call)
   - Missing required field → 422
