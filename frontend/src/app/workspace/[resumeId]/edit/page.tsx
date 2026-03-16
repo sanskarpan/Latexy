@@ -1099,6 +1099,31 @@ export default function ResumeEditPage() {
     }
   }, [isSubmitting, resumeId])
 
+  const pageCount = compileStream.pageCount ?? aiStream.pageCount ?? null
+
+  const TRIM_INSTRUCTION = "Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names."
+
+  const handleTrimToOnePage = useCallback(async () => {
+    const content = editorRef.current?.getValue() || latexContent
+    setIsAiSubmitting(true)
+    try {
+      const r = await apiClient.optimizeAndCompile({
+        latex_content: content,
+        optimization_level: 'aggressive',
+        custom_instructions: TRIM_INSTRUCTION,
+        resume_id: resumeId,
+      })
+      if (!r.success || !r.job_id) throw new Error(r.message)
+      pushUndo('Before AI trim (1 page)')
+      setAiJobId(r.job_id)
+      toast.success('AI trim started — condensing to 1 page…')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Trim failed')
+    } finally {
+      setIsAiSubmitting(false)
+    }
+  }, [latexContent, resumeId, pushUndo, TRIM_INSTRUCTION])
+
   const logLines = isCompiling || compileStream.logLines.length > 0
     ? compileStream.logLines
     : aiStream.logLines
@@ -1308,6 +1333,21 @@ export default function ResumeEditPage() {
               {title || 'Untitled'}.tex
             </div>
           </div>
+          {/* Page overflow warning banner */}
+          {pageCount !== null && pageCount > 1 && (
+            <div className="flex shrink-0 items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-4 py-1.5">
+              <span className="text-[11px] text-amber-400">
+                ⚠ Your resume is {pageCount} pages. Most recruiters prefer 1 page.
+              </span>
+              <button
+                onClick={handleTrimToOnePage}
+                disabled={isAiSubmitting || isAnyRunning}
+                className="ml-3 text-[11px] text-amber-300 underline hover:text-amber-100 disabled:opacity-50"
+              >
+                Trim with AI →
+              </button>
+            </div>
+          )}
           <div className="relative min-h-0 flex-1">
             <LaTeXEditor
               ref={editorRef}
@@ -1323,6 +1363,7 @@ export default function ResumeEditPage() {
               atsScoreLoading={quickATSLoading}
               onATSBadgeClick={() => setDeepPanelOpen(true)}
               onExplainError={handleExplainError}
+              pageCount={pageCount}
             />
             <div className="absolute inset-x-0 bottom-0 z-10">
               <ErrorExplainerPanel
