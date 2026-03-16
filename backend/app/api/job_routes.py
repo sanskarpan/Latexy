@@ -200,7 +200,12 @@ async def submit_job(
 
         # Resolve compiler: explicit request field > resume metadata > default
         compiler = settings.DEFAULT_LATEX_COMPILER
-        if request.compiler and request.compiler in settings.ALLOWED_LATEX_COMPILERS:
+        if request.compiler:
+            if request.compiler not in settings.ALLOWED_LATEX_COMPILERS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported compiler '{request.compiler}'. Allowed: {settings.ALLOWED_LATEX_COMPILERS}",
+                )
             compiler = request.compiler
         elif safe_meta.get("resume_id") and user_id:
             # Look up resume's stored compiler preference
