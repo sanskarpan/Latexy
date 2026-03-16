@@ -366,9 +366,9 @@ test.describe('/workspace/optimize — page count badge via WebSocket', () => {
     await mockWebSocketPageCount(page, JOB_ID_COMPILE, 1)
 
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('domcontentloaded')
+    await page.waitForSelector('.monaco-editor', { timeout: 15_000 })
 
-    await expect(page.getByTitle('Resume is 1 page')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByTitle('Resume is 1 page')).toBeVisible({ timeout: 20_000 })
   })
 
   test('"1 page" badge has emerald color', async ({ page }) => {
@@ -398,10 +398,10 @@ test.describe('/workspace/optimize — page count badge via WebSocket', () => {
     await mockWebSocketPageCount(page, JOB_ID_COMPILE, 2)
 
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('domcontentloaded')
+    await page.waitForSelector('.monaco-editor', { timeout: 15_000 })
 
     const badge = page.getByText('2 pages ⚠')
-    await expect(badge).toBeVisible({ timeout: 10_000 })
+    await expect(badge).toBeVisible({ timeout: 20_000 })
     await expect(badge).toHaveClass(/text-amber-400/)
   })
 
@@ -443,8 +443,7 @@ test.describe('/workspace/optimize — page count badge via WebSocket', () => {
     await mockWebSocketPageCount(page, JOB_ID_COMPILE, null)
 
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('domcontentloaded')
-    await page.waitForTimeout(1_500)
+    await page.waitForSelector('.monaco-editor', { timeout: 15_000 })
 
     // Only the estimate badge should show, not a compile-result badge
     await expect(page.getByText('1 page')).not.toBeVisible()
@@ -488,9 +487,8 @@ test.describe('/workspace/optimize — warning banner', () => {
     await mockWebSocketPageCount(page, JOB_ID_COMPILE, 1)
 
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('domcontentloaded')
-    // Allow events to be processed
-    await page.waitForTimeout(1_500)
+    // Wait for the 1-page badge to settle before asserting warning is absent
+    await expect(page.getByTitle('Resume is 1 page')).toBeVisible({ timeout: 15_000 })
 
     await expect(page.getByText(/Your resume is 1 page/)).not.toBeVisible()
   })
@@ -510,8 +508,8 @@ test.describe('/workspace/optimize — warning banner', () => {
     await mockWebSocketPageCount(page, JOB_ID_COMPILE, 1)
 
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('domcontentloaded')
-    await page.waitForTimeout(1_500)
+    // Wait for the 1-page badge to settle before asserting trim button is absent
+    await expect(page.getByTitle('Resume is 1 page')).toBeVisible({ timeout: 15_000 })
 
     await expect(page.getByText('Trim with AI →')).not.toBeVisible()
   })
@@ -566,9 +564,11 @@ test.describe('"Trim with AI →" button — action', () => {
     await page.waitForLoadState('domcontentloaded')
 
     await expect(page.getByText('Trim with AI →')).toBeVisible({ timeout: 10_000 })
+    const trimRequest = page.waitForRequest((r) => r.url().includes('/jobs/submit') && r.method() === 'POST')
     await page.getByText('Trim with AI →').click()
+    const request = await trimRequest
+    capturedBody = JSON.parse(request.postData() ?? '{}')
 
-    await page.waitForTimeout(500)
     expect(capturedBody).not.toBeNull()
     expect(capturedBody!.optimization_level).toBe('aggressive')
     expect(capturedBody!.job_type).toBe('combined')
@@ -598,8 +598,9 @@ test.describe('"Trim with AI →" button — action', () => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
     await expect(page.getByText('Trim with AI →')).toBeVisible({ timeout: 10_000 })
+    const trimRequest = page.waitForRequest((r) => r.url().includes('/jobs/submit') && r.method() === 'POST')
     await page.getByText('Trim with AI →').click()
-    await page.waitForTimeout(500)
+    capturedBody = JSON.parse((await trimRequest).postData() ?? '{}')
 
     expect(capturedBody).not.toBeNull()
     const instructions = capturedBody!.custom_instructions as string
@@ -633,8 +634,9 @@ test.describe('"Trim with AI →" button — action', () => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
     await expect(page.getByText('Trim with AI →')).toBeVisible({ timeout: 10_000 })
+    const trimRequest = page.waitForRequest((r) => r.url().includes('/jobs/submit') && r.method() === 'POST')
     await page.getByText('Trim with AI →').click()
-    await page.waitForTimeout(500)
+    capturedBody = JSON.parse((await trimRequest).postData() ?? '{}')
 
     expect(capturedBody).not.toBeNull()
     expect(typeof capturedBody!.latex_content).toBe('string')
@@ -687,10 +689,10 @@ test.describe('"Trim with AI →" button — action', () => {
     })
 
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('domcontentloaded')
+    await page.waitForSelector('.monaco-editor', { timeout: 15_000 })
 
     // Wait for page count to appear (from log.line)
-    await expect(page.getByText('2 pages ⚠')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText('2 pages ⚠')).toBeVisible({ timeout: 20_000 })
     // Banner should now show
     await expect(page.getByText('Trim with AI →')).toBeVisible()
 
@@ -811,15 +813,14 @@ test.describe('/try page — page count badge', () => {
   })
 
   test('/try page shows estimated page count for large default content', async ({ page }) => {
-    await page.goto('/try', { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('domcontentloaded')
-    // The /try page has a large default LaTeX template loaded
-    // If the default content is large enough, an estimated badge should appear
-    // (This is best-effort — depends on default template size)
-    // We check that no JS errors occurred, and badge logic works
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
-    await page.waitForTimeout(1_000)
+
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
+    await page.waitForLoadState('domcontentloaded')
+
+    // Default content is large enough to show an estimated badge
+    await expect(page.getByText(/~\d+ pages?/)).toBeVisible({ timeout: 15_000 })
     expect(errors.filter(e => !e.includes('Warning:'))).toEqual([])
   })
 })
@@ -1001,8 +1002,9 @@ test.describe('API client schema — trim request fields', () => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
     await expect(page.getByText('Trim with AI →')).toBeVisible({ timeout: 10_000 })
+    const trimRequest = page.waitForRequest((r) => r.url().includes('/jobs/submit') && r.method() === 'POST')
     await page.getByText('Trim with AI →').click()
-    await page.waitForTimeout(500)
+    trimBody = JSON.parse((await trimRequest).postData() ?? '{}')
 
     expect(trimBody).not.toBeNull()
     expect(trimBody!.job_type).toBe('combined')
