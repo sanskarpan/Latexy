@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { apiClient } from '@/lib/api-client'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
+import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
@@ -29,6 +30,7 @@ export default function OptimizationSuitePage() {
   const [baselineLatex, setBaselineLatex] = useState('')
 
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
+  const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(resume?.latex_content || '', jobDescription)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
@@ -44,7 +46,7 @@ export default function OptimizationSuitePage() {
         // Auto-compile on load so user sees PDF immediately
         if (data.latex_content && data.latex_content.length >= 100) {
           try {
-            const r = await apiClient.compileLatex({ latex_content: data.latex_content, user_plan: 'pro', resume_id: resumeId })
+            const r = await apiClient.compileLatex({ latex_content: data.latex_content, resume_id: resumeId })
             if (r.success && r.job_id) setActiveJobId(r.job_id)
           } catch {
             // Silent
@@ -86,7 +88,17 @@ export default function OptimizationSuitePage() {
     }
 
     fetchPdf()
-  }, [stream.status, stream.pdfJobId])
+
+    // Track completion for analytics
+    if (stream.status === 'completed' && activeJobId) {
+      apiClient.trackCompilation(activeJobId, 'completed')
+      apiClient.trackOptimization(activeJobId, 'openai', 'gpt-4o-mini', stream.tokensUsed ?? undefined)
+      apiClient.trackFeatureUsage('optimize')
+      refetchATS()
+    } else if (stream.status === 'failed' && activeJobId) {
+      apiClient.trackCompilation(activeJobId, 'failed')
+    }
+  }, [stream.status, stream.pdfJobId, activeJobId, stream.tokensUsed, refetchATS])
 
   useEffect(() => {
     return () => {
@@ -107,7 +119,6 @@ export default function OptimizationSuitePage() {
         latex_content: currentContent,
         job_description: jobDescription,
         optimization_level: 'balanced',
-        user_plan: 'pro',
       })
 
       if (!response.success || !response.job_id) {
@@ -133,7 +144,7 @@ export default function OptimizationSuitePage() {
     if (isSubmitting) return
     setIsSubmitting(true)
     try {
-      const response = await apiClient.compileLatex({ latex_content: content, user_plan: 'pro', resume_id: resumeId })
+      const response = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
       setActiveJobId(response.job_id)
     } catch {
@@ -164,6 +175,12 @@ export default function OptimizationSuitePage() {
         <div className="flex gap-2">
           <Link href={`/workspace/${resumeId}/edit`} className="btn-ghost px-4 py-2 text-xs">
             Back to Editor
+          </Link>
+          <Link
+            href={`/workspace/${resumeId}/cover-letter`}
+            className="rounded-lg border border-violet-300/25 bg-violet-300/10 px-4 py-2 text-xs font-semibold text-violet-200 transition hover:bg-violet-300/20"
+          >
+            Cover Letter
           </Link>
           <span className="rounded-lg border border-orange-300/25 bg-orange-300/10 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-200">
             Pro Pipeline
@@ -252,6 +269,8 @@ export default function OptimizationSuitePage() {
                   onChange={() => {}}
                   readOnly={isProcessing}
                   onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
+                  atsScore={quickATSScore}
+                  atsScoreLoading={quickATSLoading}
                 />
               </div>
             </section>

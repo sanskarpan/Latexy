@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client, redis_manager
 from ..database.connection import get_db
+from ..database.models import Compilation
 from ..middleware.auth_middleware import get_current_user_optional
 from ..workers.ats_worker import submit_ats_scoring
 from ..workers.cleanup_worker import submit_expired_jobs_cleanup, submit_temp_files_cleanup
@@ -176,6 +177,7 @@ async def submit_job(
             "combined": 90,
             "ats_scoring": 20,
             "document_conversion": 45,
+            "cover_letter_generation": 60,
         }
         estimated_time = estimated_times.get(request.job_type, 60)
         if request.user_plan in ("pro", "byok"):
@@ -273,6 +275,23 @@ async def submit_job(
                 detail=f"Unsupported job_type: {request.job_type!r}",
             )
 
+        # Save Compilation record for analytics (non-blocking)
+        if user_id and request.job_type in ("latex_compilation", "combined"):
+            try:
+                resume_id = safe_meta.get("resume_id")
+                compilation = Compilation(
+                    user_id=user_id,
+                    job_id=job_id,
+                    status="processing",
+                    resume_id=resume_id if resume_id else None,
+                    device_fingerprint=request.device_fingerprint,
+                )
+                db.add(compilation)
+                await db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to create compilation record: {e}")
+                await db.rollback()
+
         return JobSubmissionResponse(
             success=True,
             job_id=job_id,
@@ -308,7 +327,10 @@ async def get_job_state(job_id: str):
 
 
 @router.get("/{job_id}/result", response_model=JobResultResponse)
-async def get_job_result(job_id: str):
+async def get_job_result(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+):
     """Fetch the final job result (available after job.completed event)."""
     try:
         r = await get_redis_client()
@@ -319,6 +341,29 @@ async def get_job_result(job_id: str):
                 detail="Job result not available yet or job not found",
             )
         result_data = json.loads(raw)
+
+        # Update Compilation record with final status (non-blocking)
+        try:
+            from sqlalchemy import update
+            final_status = "completed" if result_data.get("success") else "failed"
+            compilation_time = result_data.get("compilation_time")
+            pdf_size = result_data.get("pdf_size")
+            error_msg = result_data.get("error")
+            await db.execute(
+                update(Compilation)
+                .where(Compilation.job_id == job_id)
+                .values(
+                    status=final_status,
+                    compilation_time=compilation_time,
+                    pdf_size=pdf_size,
+                    error_message=error_msg[:500] if error_msg else None,
+                )
+            )
+            await db.commit()
+        except Exception as e:
+            logger.debug(f"Compilation record update skipped: {e}")
+            await db.rollback()
+
         return JobResultResponse(
             success=result_data.get("success", False),
             job_id=job_id,

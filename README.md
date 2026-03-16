@@ -103,6 +103,32 @@ Storage
 
 ## Development
 
+### Local dev (recommended)
+
+Docker only runs infra (Postgres, Redis, MinIO). App processes run locally with live logs in your terminal:
+
+```bash
+./scripts/dev.sh              # start infra + app (Ctrl+C to stop app)
+./scripts/dev.sh stop         # stop everything
+./scripts/dev.sh stop app     # stop app only, keep infra running
+./scripts/dev.sh stop infra   # stop Docker infra
+```
+
+### Full Docker dev
+
+Everything runs in Docker containers (detached). Supports multiple worktree slots:
+
+```bash
+./scripts/worktree-up.sh          # slot 1 — default ports
+./scripts/worktree-up.sh w2       # slot 2 — backend 8031, frontend 5181
+./scripts/worktree-up.sh w3       # slot 3 — backend 8032, frontend 5182
+./scripts/worktree-up.sh stop w2  # stop slot 2
+./scripts/worktree-up.sh stop all # stop everything
+./scripts/worktree-up.sh logs w2  # tail logs for slot 2
+```
+
+See [docs/local-dev.md](docs/local-dev.md) for the full multi-worktree guide.
+
 ### Makefile targets
 
 ```bash

@@ -37,6 +37,7 @@ class User(Base):
     payments: Mapped[List["Payment"]] = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
     usage_analytics: Mapped[List["UsageAnalytics"]] = relationship("UsageAnalytics", back_populates="user")
     resume_job_matches: Mapped[List["ResumeJobMatch"]] = relationship("ResumeJobMatch", back_populates="user", cascade="all, delete-orphan")
+    cover_letters: Mapped[List["CoverLetter"]] = relationship("CoverLetter", back_populates="user")
 
 class DeviceTrial(Base):
     """Device trial tracking for freemium model."""
@@ -95,6 +96,7 @@ class Resume(Base):
     user: Mapped["User"] = relationship("User", back_populates="resumes")
     compilations: Mapped[List["Compilation"]] = relationship("Compilation", back_populates="resume")
     optimizations: Mapped[List["Optimization"]] = relationship("Optimization", back_populates="resume", cascade="all, delete-orphan")
+    cover_letters: Mapped[List["CoverLetter"]] = relationship("CoverLetter", back_populates="resume", cascade="all, delete-orphan")
 
 class Compilation(Base):
     """Compilation history for tracking LaTeX compilations."""
@@ -222,6 +224,29 @@ class Payment(Base):
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="payments")
     subscription: Mapped[Optional["Subscription"]] = relationship("Subscription", back_populates="payments")
+
+class CoverLetter(Base):
+    """Cover letter generated from a resume."""
+    __tablename__ = "cover_letters"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    resume_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_description: Mapped[Optional[str]] = mapped_column(Text)
+    company_name: Mapped[Optional[str]] = mapped_column(String(255))
+    role_title: Mapped[Optional[str]] = mapped_column(String(255))
+    tone: Mapped[str] = mapped_column(String(50), default="formal")
+    length_preference: Mapped[str] = mapped_column(String(50), default="3_paragraphs")
+    latex_content: Mapped[Optional[str]] = mapped_column(Text)
+    pdf_path: Mapped[Optional[str]] = mapped_column(String(500))
+    generation_job_id: Mapped[Optional[str]] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="cover_letters")
+    resume: Mapped["Resume"] = relationship("Resume", back_populates="cover_letters")
+
 
 class ResumeTemplate(Base):
     """Global resume templates available to all users."""
