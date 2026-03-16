@@ -939,7 +939,7 @@ test.describe('No regressions — page count coexists with ATS badge', () => {
 
     // The editor status bar should still render other info alongside the page count badge
     // (char count is always rendered, showing the status bar is intact)
-    await expect(page.locator('text=/\\d[,\\d]* chars/')).toBeVisible()
+    await expect(page.locator('text=/\\d[,\\d]* chars/').first()).toBeVisible()
 
     // No JS errors — ATS hook + page count badge coexist without crashing
     expect(errors.filter((e) => !e.toLowerCase().includes('warning'))).toHaveLength(0)
@@ -961,7 +961,7 @@ test.describe('No regressions — page count coexists with ATS badge', () => {
     await expect(page.getByText(/~\d+ pages?/)).toBeVisible({ timeout: 15_000 })
 
     // Status bar intact (char count alongside estimate badge)
-    await expect(page.locator('text=/\\d[,\\d]* chars/')).toBeVisible()
+    await expect(page.locator('text=/\\d[,\\d]* chars/').first()).toBeVisible()
 
     // No JS errors — hooks coexist
     expect(errors.filter((e) => !e.toLowerCase().includes('warning'))).toHaveLength(0)
