@@ -36,6 +36,10 @@ x-backend-env: &backend-env
   CORS_ORIGINS: '["http://localhost:${FRONTEND_PORT:-5180}","http://127.0.0.1:${FRONTEND_PORT:-5180}","http://localhost:5180","http://localhost:5181","http://localhost:5182","http://localhost:5183"]'
   TEMP_DIR: /app/temp
   PYTHONPATH: /app
+  # Store .pyc files in a Docker-native volume (not the macOS-mounted source dir).
+  # This avoids recompiling 1600+ Python files from the slow macOS volume mount on
+  # every container restart — reducing cold-start from ~7min to ~45s.
+  PYTHONPYCACHEPREFIX: /pycache
 
 services:
   # ── PostgreSQL (pgvector-enabled for semantic matching) ─────────────────────
@@ -123,7 +127,9 @@ services:
     container_name: latexy-backend-${SLOT:-1}
     restart: unless-stopped
     command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8030 --log-level info --reload --reload-dir /app/app"
+      sh -c "alembic upgrade head &&
+             python -m compileall /app/app -q &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8030 --log-level info --reload --reload-dir /app/app"
     ports:
       - "${BACKEND_PORT:-8030}:8030"
     environment:
@@ -135,6 +141,7 @@ services:
     volumes:
       - ./backend:/app
       - backend_temp_${SLOT:-1}:/app/temp
+      - backend_pycache_${SLOT:-1}:/pycache
     depends_on:
       postgres:
         condition: service_healthy
@@ -167,6 +174,7 @@ services:
     volumes:
       - ./backend:/app
       - backend_temp_${SLOT:-1}:/app/temp
+      - backend_pycache_${SLOT:-1}:/pycache
     depends_on:
       postgres:
         condition: service_healthy
@@ -195,6 +203,7 @@ services:
       - .env
     volumes:
       - ./backend:/app
+      - backend_pycache_${SLOT:-1}:/pycache
       - celery_beat_data_${SLOT:-1}:/var/lib/celery
     depends_on:
       redis:
@@ -258,6 +267,12 @@ volumes:
   backend_temp_2:
   backend_temp_3:
   backend_temp_4:
+  # Python bytecode cache — stored in Docker-native volumes (not the macOS mount)
+  # so .pyc files are reused across container restarts without recompiling from source.
+  backend_pycache_1:
+  backend_pycache_2:
+  backend_pycache_3:
+  backend_pycache_4:
   celery_beat_data_1:
   celery_beat_data_2:
   celery_beat_data_3:
