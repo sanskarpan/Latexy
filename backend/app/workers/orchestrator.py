@@ -529,7 +529,7 @@ def _run_latex_stage(
                 is_error = True
             publish_event(job_id, "log.line", {
                 "line": stripped,
-                "source": "pdflatex",
+                "source": compiler,
                 "is_error": is_error,
             })
 
