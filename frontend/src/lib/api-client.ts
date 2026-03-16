@@ -232,6 +232,22 @@ export interface SemanticMatchResult {
   note?: string
 }
 
+export interface ExplainErrorRequest {
+  error_message: string
+  surrounding_latex?: string
+  error_line?: number
+}
+
+export interface ExplainErrorResponse {
+  success: boolean
+  explanation: string
+  suggested_fix: string
+  corrected_code: string | null
+  source: 'pattern' | 'llm' | 'error'
+  cached: boolean
+  processing_time: number
+}
+
 class ApiClient {
   private authToken: string | null = null
   readonly baseUrl: string = API_BASE
@@ -927,6 +943,17 @@ class ApiClient {
     } catch {
       // Non-critical
     }
+  }
+
+  // ---------------------------------------------------------------- //
+  //  AI error explainer                                               //
+  // ---------------------------------------------------------------- //
+
+  async explainLatexError(body: ExplainErrorRequest): Promise<ExplainErrorResponse> {
+    return this.request<ExplainErrorResponse>('/ai/explain-error', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
   }
 }
 
