@@ -25,7 +25,7 @@ import {
   X,
   Mail,
 } from 'lucide-react'
-import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type ResumeResponse } from '@/lib/api-client'
+import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ResumeResponse } from '@/lib/api-client'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
@@ -38,6 +38,7 @@ import VersionHistoryPanel from '@/components/VersionHistoryPanel'
 import SaveCheckpointPopover from '@/components/SaveCheckpointPopover'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
+import CompilerSelector from '@/components/CompilerSelector'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { Brain, GitFork, Zap } from 'lucide-react'
@@ -691,6 +692,9 @@ export default function ResumeEditPage() {
   const [explainerData, setExplainerData] = useState<ExplainErrorResponse | null>(null)
   const [explainerLine, setExplainerLine] = useState<number | null>(null)
 
+  // Compiler preference (stored in resume metadata)
+  const [compiler, setCompiler] = useState<LatexCompiler>('pdflatex')
+
   const activePdfJobId = useRef<string | null>(null)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
@@ -709,6 +713,11 @@ export default function ResumeEditPage() {
         setTitle(data.title)
         setLatexContent(data.latex_content)
         editorRef.current?.setValue(data.latex_content)
+        // Load compiler preference from resume metadata
+        const savedCompiler = data.metadata?.compiler as LatexCompiler | undefined
+        if (savedCompiler && ['pdflatex', 'xelatex', 'lualatex'].includes(savedCompiler)) {
+          setCompiler(savedCompiler)
+        }
         setParentResumeId(data.parent_resume_id ?? null)
         // Fetch parent title if this is a variant
         if (data.parent_resume_id) {
@@ -720,7 +729,8 @@ export default function ResumeEditPage() {
         // Auto-compile on load so user sees PDF immediately
         if (data.latex_content && data.latex_content.length >= 100) {
           try {
-            const r = await apiClient.compileLatex({ latex_content: data.latex_content, resume_id: resumeId })
+            const initCompiler = (data.metadata?.compiler as LatexCompiler | undefined) ?? 'pdflatex'
+            const r = await apiClient.compileLatex({ latex_content: data.latex_content, resume_id: resumeId, compiler: initCompiler })
             if (r.success && r.job_id) { setCompileJobId(r.job_id); setLastStartedJobKind('compile') }
           } catch {
             // Silent — user can compile manually
@@ -879,7 +889,7 @@ export default function ResumeEditPage() {
     if (!content.trim()) { toast.error('Nothing to compile'); return }
     setIsSubmitting(true)
     try {
-      const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId })
+      const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!r.success || !r.job_id) throw new Error(r.message)
       setCompileJobId(r.job_id)
       setLastStartedJobKind('compile')
@@ -905,6 +915,7 @@ export default function ResumeEditPage() {
         custom_instructions: customInstructions.trim() || undefined,
         model,
         resume_id: resumeId,
+        compiler,
       })
       if (!r.success || !r.job_id) throw new Error(r.message)
       pushUndo('Before AI optimization')
@@ -1092,7 +1103,7 @@ export default function ResumeEditPage() {
     if (isSubmitting) return
     setIsSubmitting(true)
     try {
-      const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId })
+      const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!r.success || !r.job_id) throw new Error(r.message)
       setCompileJobId(r.job_id)
       setLastStartedJobKind('compile')
@@ -1101,7 +1112,7 @@ export default function ResumeEditPage() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [isSubmitting, resumeId])
+  }, [isSubmitting, resumeId, compiler])
 
   const pageCount = lastStartedJobKind === 'ai'
     ? aiStream.pageCount
@@ -1236,6 +1247,15 @@ export default function ResumeEditPage() {
           </button>
 
           <SaveCheckpointPopover resumeId={resumeId} onSaved={handleCheckpointSaved} />
+
+          <div className="mx-1 h-3.5 w-px bg-white/[0.08]" />
+
+          <CompilerSelector
+            resumeId={resumeId}
+            current={compiler}
+            onChange={setCompiler}
+            disabled={isAnyRunning}
+          />
 
           <div className="mx-1 h-3.5 w-px bg-white/[0.08]" />
 
