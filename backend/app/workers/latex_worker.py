@@ -39,7 +39,7 @@ def compile_latex_task(
     device_fingerprint: Optional[str] = None,
     metadata: Optional[Dict] = None,
     resume_id: Optional[str] = None,
-    compiler: str = "pdflatex",
+    compiler: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Compile LaTeX content to PDF, streaming each pdflatex log line as
@@ -49,9 +49,10 @@ def compile_latex_task(
     if job_id is None:
         job_id = str(uuid.uuid4())
 
-    # Validate and sanitise compiler choice
+    # Resolve and validate compiler — None means "use configured default"
+    compiler = compiler or settings.DEFAULT_LATEX_COMPILER
     if compiler not in settings.ALLOWED_LATEX_COMPILERS:
-        logger.warning(f"Invalid compiler '{compiler}', falling back to pdflatex")
+        logger.warning(f"Invalid compiler '{compiler}', falling back to {settings.DEFAULT_LATEX_COMPILER}")
         compiler = settings.DEFAULT_LATEX_COMPILER
 
     task_id = self.request.id
@@ -139,7 +140,7 @@ def compile_latex_task(
             )
             publish_event(job_id, "log.line", {
                 "line": stripped,
-                "source": "pdflatex",
+                "source": compiler,
                 "is_error": is_error_line,
             })
 
@@ -248,11 +249,12 @@ def submit_latex_compilation(
     priority: Optional[int] = None,
     metadata: Optional[Dict] = None,
     resume_id: Optional[str] = None,
-    compiler: str = "pdflatex",
+    compiler: Optional[str] = None,
 ) -> str:
     """Enqueue compile_latex_task on the latex queue."""
     if priority is None:
         priority = get_task_priority(user_plan)
+    compiler = compiler or settings.DEFAULT_LATEX_COMPILER
 
     compile_latex_task.apply_async(
         args=[latex_content],
