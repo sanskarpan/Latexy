@@ -6,6 +6,7 @@ them all at once.  Uses subprocess.Popen for line-by-line stdout
 streaming.  Zero asyncio — all Redis I/O goes through event_publisher.
 """
 
+import re
 import subprocess
 import time
 import uuid
@@ -19,6 +20,8 @@ from ..services.latex_service import latex_service
 from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
 
 logger = get_logger(__name__)
+
+PAGE_COUNT_RE = re.compile(r"Output written on .*?\((\d+) page", re.IGNORECASE)
 
 
 @celery_app.task(
@@ -112,10 +115,16 @@ def compile_latex_task(
         )
 
         # ── Stream log lines ─────────────────────────────────────────
+        page_count: Optional[int] = None
         for line in proc.stdout:
             stripped = line.rstrip()
             if not stripped:
                 continue
+
+            # Extract page count from pdflatex summary line
+            m = PAGE_COUNT_RE.search(stripped)
+            if m:
+                page_count = int(m.group(1))
 
             is_error_line = (
                 "error" in stripped.lower()
@@ -165,6 +174,7 @@ def compile_latex_task(
                 "pdf_job_id": job_id,
                 "compilation_time": compilation_time,
                 "pdf_size": pdf_size,
+                "page_count": page_count,
             }
             publish_job_result(job_id, result)
             publish_event(job_id, "job.completed", {
@@ -175,6 +185,7 @@ def compile_latex_task(
                 "compilation_time": compilation_time,
                 "optimization_time": 0.0,
                 "tokens_used": 0,
+                "page_count": page_count,
             })
             logger.info(
                 f"LaTeX task {task_id} succeeded for job {job_id} ({pdf_size} bytes)"

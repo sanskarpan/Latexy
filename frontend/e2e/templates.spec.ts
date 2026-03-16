@@ -58,19 +58,24 @@ test.describe('Template Gallery Page (/workspace/new)', () => {
   })
 
   test('create button is disabled when title is empty', async ({ page }) => {
+    // Create Resume button appears in import mode; switch to it
+    await page.locator('h2:has-text("Import File")').click()
     const createBtn = page.getByRole('button', { name: /Create Resume/ })
     await expect(createBtn).toBeDisabled()
   })
 
-  test('create button is enabled when title is entered', async ({ page }) => {
+  test('create button is disabled without a file even with title', async ({ page }) => {
+    // Import mode requires both a title AND a file; title alone is not enough
+    await page.locator('h2:has-text("Import File")').click()
     const input = page.locator('input[placeholder*="Senior Backend"]')
     await input.fill('My Test Resume')
     const createBtn = page.getByRole('button', { name: /Create Resume/ })
-    await expect(createBtn).toBeEnabled()
+    await expect(createBtn).toBeDisabled()
   })
 
-  test('shows "No template selected" message when blank', async ({ page }) => {
-    await expect(page.getByText(/No template selected/)).toBeVisible()
+  test('title input is empty on initial load', async ({ page }) => {
+    const input = page.locator('input[placeholder*="Senior Backend"]')
+    await expect(input).toHaveValue('')
   })
 
   test('has back to workspace link', async ({ page }) => {
@@ -226,39 +231,43 @@ test.describe('Template Gallery with mocked API', () => {
   })
 
   // ---- Template selection (using card's "Use Template" button) ----
+  // Note: clicking "Use Template" immediately calls the API and navigates to the edit page.
+  // There is no intermediate "selection" state — the action is immediate.
 
-  test('clicking card "Use Template" selects a template', async ({ page }) => {
-    // Card "Use Template" buttons are inside .group cards
+  test('clicking card "Use Template" calls the use API', async ({ page }) => {
     const cardUseBtn = page.locator('.group').first().getByRole('button', { name: 'Use Template' })
+    const requestPromise = page.waitForRequest((r) => r.url().includes('/use') && r.method() === 'POST')
     await cardUseBtn.click()
-    await expect(page.getByText('Selected:')).toBeVisible()
+    const request = await requestPromise
+    expect(request.url()).toContain('/templates/')
   })
 
-  test('selected template shows name in indicator', async ({ page }) => {
+  test('Use Template sends the correct template ID to the API', async ({ page }) => {
     const cardUseBtn = page.locator('.group').first().getByRole('button', { name: 'Use Template' })
+    const requestPromise = page.waitForRequest((r) => r.url().includes('/use') && r.method() === 'POST')
     await cardUseBtn.click()
-    // The selected indicator should contain the template name
-    const indicator = page.locator('.border-orange-300\\/20')
-    await expect(indicator).toBeVisible()
-    await expect(indicator).toContainText('SWE Clean Resume')
+    const request = await requestPromise
+    expect(request.url()).toContain(MOCK_TEMPLATES[0].id)
   })
 
-  test('deselecting template via X removes indicator', async ({ page }) => {
+  test('Use Template uses template name as title when title field is empty', async ({ page }) => {
     const cardUseBtn = page.locator('.group').first().getByRole('button', { name: 'Use Template' })
+    const requestPromise = page.waitForRequest((r) => r.url().includes('/use') && r.method() === 'POST')
     await cardUseBtn.click()
-    await expect(page.getByText('Selected:')).toBeVisible()
-    // Click the X in the selected indicator
-    const indicator = page.locator('.border-orange-300\\/20')
-    await indicator.locator('button').click()
-    await expect(page.getByText('Selected:')).not.toBeVisible()
+    const request = await requestPromise
+    const body = await request.postDataJSON()
+    expect(body.title).toBe(MOCK_TEMPLATES[0].name)
   })
 
-  test('"Start from Blank" deselects template', async ({ page }) => {
+  test('Use Template uses provided title from input field', async ({ page }) => {
+    const titleInput = page.locator('input[placeholder*="Senior Backend"]')
+    await titleInput.fill('My Custom Title')
     const cardUseBtn = page.locator('.group').first().getByRole('button', { name: 'Use Template' })
+    const requestPromise = page.waitForRequest((r) => r.url().includes('/use') && r.method() === 'POST')
     await cardUseBtn.click()
-    await expect(page.getByText('Selected:')).toBeVisible()
-    await page.getByText('Start from Blank').click()
-    await expect(page.getByText('Selected:')).not.toBeVisible()
+    const request = await requestPromise
+    const body = await request.postDataJSON()
+    expect(body.title).toBe('My Custom Title')
   })
 
   // ---- Template preview modal ----
@@ -294,14 +303,31 @@ test.describe('Template Gallery with mocked API', () => {
     await expect(page.getByRole('button', { name: 'Use This Template' })).toBeVisible()
   })
 
-  test('clicking Use This Template selects and closes modal', async ({ page }) => {
+  test('clicking Use This Template triggers API call and navigates', async ({ page }) => {
+    // Mock auth so the edit page doesn't redirect back to /login
+    await page.route('**/api/auth/get-session', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          session: { id: 's-1', userId: 'user-1', token: 'test-token', expiresAt: '2099-01-01T00:00:00Z' },
+          user: { id: 'user-1', email: 'test@example.com', name: 'Test User' },
+        }),
+      })
+    )
+    // Mock resumes endpoint so edit page loads without error
+    await page.route((url) => url.pathname.startsWith('/resumes'), (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', title: 'Test', latex_content: '', created_at: '', updated_at: '' }) })
+    )
     const card = page.locator('.group').first()
     await card.hover()
     await card.getByRole('button', { name: 'Preview' }).click()
     await page.waitForLoadState('networkidle')
+    const requestPromise = page.waitForRequest((r) => r.url().includes('/use') && r.method() === 'POST')
     await page.getByRole('button', { name: 'Use This Template' }).click()
-    await expect(page.locator('.fixed.inset-0')).not.toBeVisible()
-    await expect(page.getByText('Selected:')).toBeVisible()
+    await requestPromise
+    // After successful use, navigates to the edit page
+    await expect(page).toHaveURL(/\/workspace\/.*\/edit/)
   })
 
   test('pressing Escape closes preview modal', async ({ page }) => {
@@ -344,7 +370,8 @@ test.describe('Template Gallery with mocked API', () => {
     await card.hover()
     await card.getByRole('button', { name: 'Preview' }).click()
     await page.waitForLoadState('networkidle')
-    await expect(page.getByText('LaTeX Source Preview')).toBeVisible()
+    // No thumbnail/pdf_url: falls back to showing latex content directly
+    await expect(page.getByRole('button', { name: 'LaTeX Source' })).toBeVisible()
     await expect(page.getByText('\\documentclass{article}')).toBeVisible()
   })
 

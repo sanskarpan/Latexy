@@ -18,6 +18,9 @@ import DiffViewerModal from '@/components/DiffViewerModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
 
+const TRIM_INSTRUCTION =
+  'Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names.'
+
 export default function OptimizationSuitePage() {
   const params = useParams()
   const router = useRouter()
@@ -232,6 +235,30 @@ export default function OptimizationSuitePage() {
     toast.success('Fix applied')
   }, [explainerData, explainerLine])
 
+  const handleTrimToOnePage = useCallback(async () => {
+    const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
+    if (!currentContent.trim()) return
+    setIsSubmitting(true)
+    setPdfUrl(null)
+    try {
+      const response = await apiClient.optimizeAndCompile({
+        latex_content: currentContent,
+        job_description: jobDescription,
+        optimization_level: 'aggressive',
+        custom_instructions: TRIM_INSTRUCTION,
+      })
+      if (!response.success || !response.job_id) {
+        throw new Error(response.message || 'Failed to start trim')
+      }
+      setActiveJobId(response.job_id)
+      toast.success('Trimming to 1 page…')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Trim failed')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [resume?.latex_content, jobDescription])
+
   const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
   if (isLoading) {
@@ -383,6 +410,20 @@ export default function OptimizationSuitePage() {
                   Restore Original
                 </button>
               </div>
+              {stream.pageCount !== null && stream.pageCount > 1 && (
+                <div className="flex shrink-0 items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-4 py-1.5">
+                  <span className="text-[11px] text-amber-400">
+                    ⚠ Your resume is {stream.pageCount} pages. Most recruiters prefer 1 page.
+                  </span>
+                  <button
+                    onClick={handleTrimToOnePage}
+                    disabled={isSubmitting || isProcessing}
+                    className="ml-3 text-[11px] text-amber-300 underline hover:text-amber-100 disabled:opacity-50"
+                  >
+                    Trim with AI →
+                  </button>
+                </div>
+              )}
               <div className="relative min-h-0 flex-1 bg-black/20">
                 <LaTeXEditor
                   ref={editorRef}
@@ -394,6 +435,7 @@ export default function OptimizationSuitePage() {
                   atsScore={quickATSScore}
                   atsScoreLoading={quickATSLoading}
                   onExplainError={handleExplainError}
+                  pageCount={stream.pageCount}
                 />
                 <div className="absolute inset-x-0 bottom-0 z-10">
                   <ErrorExplainerPanel

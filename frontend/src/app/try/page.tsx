@@ -205,6 +205,33 @@ export default function TryPage() {
     toast.success('Fix applied')
   }, [explainerData, explainerLine])
 
+  const TRIM_INSTRUCTION = "Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names."
+
+  const handleTrimToOnePage = useCallback(async () => {
+    const currentContent = editorRef.current?.getValue() || latexContent
+    if (!currentContent.trim()) return
+    if (!session && !trialStatus.canRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
+    setIsSubmitting(true)
+    try {
+      if (!session) await apiClient.trackUsage(trialStatus.fingerprint, 'combined')
+      const response = await apiClient.optimizeAndCompile({
+        latex_content: currentContent,
+        job_description: jobDescription,
+        optimization_level: 'aggressive',
+        custom_instructions: TRIM_INSTRUCTION,
+        device_fingerprint: trialStatus.fingerprint,
+      })
+      if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to start trim')
+      setActiveJobId(response.job_id)
+      if (!session) trialStatus.incrementUsage()
+      toast.success('Trimming to 1 page…')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Trim failed')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [latexContent, jobDescription, session, trialStatus, TRIM_INSTRUCTION])
+
   const statusTone = useMemo(() => {
     if (stream.status === 'completed') return 'text-emerald-300'
     if (stream.status === 'failed') return 'text-rose-300'
@@ -294,6 +321,21 @@ export default function TryPage() {
             </div>
 
             <div className="flex-1 min-h-0 flex flex-col gap-4">
+              {/* Page overflow warning banner */}
+              {stream.pageCount !== null && stream.pageCount > 1 && (
+                <div className="flex-shrink-0 flex items-center justify-between rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-2">
+                  <span className="text-xs text-amber-400">
+                    ⚠ Your resume is {stream.pageCount} pages. Most recruiters prefer 1 page.
+                  </span>
+                  <button
+                    onClick={handleTrimToOnePage}
+                    disabled={isSubmitting || isProcessing}
+                    className="ml-3 text-xs text-amber-300 underline hover:text-amber-100 disabled:opacity-50"
+                  >
+                    Trim with AI →
+                  </button>
+                </div>
+              )}
               <div className="relative flex-1 min-h-0 rounded-xl border border-white/10 bg-slate-950/70 overflow-hidden">
                 <LaTeXEditor
                   ref={editorRef}
@@ -305,6 +347,7 @@ export default function TryPage() {
                   atsScoreLoading={quickATSLoading}
                   onATSBadgeClick={() => setDeepPanelOpen(true)}
                   onExplainError={handleExplainError}
+                  pageCount={stream.pageCount}
                 />
                 <div className="absolute inset-x-0 bottom-0 z-10">
                   <ErrorExplainerPanel

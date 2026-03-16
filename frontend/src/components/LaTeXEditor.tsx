@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useImperativeHandle, useRef, forwardRef } from 'react'
+import { useEffect, useImperativeHandle, useMemo, useRef, forwardRef } from 'react'
 
 let _latexLanguageRegistered = false
 import Editor, { type OnMount } from '@monaco-editor/react'
@@ -37,6 +37,8 @@ interface LaTeXEditorProps {
   onATSBadgeClick?: () => void
   /** Called when user clicks "Explain this error" CodeLens */
   onExplainError?: (error: { line: number; message: string; surroundingLatex: string }) => void
+  /** Actual page count from last compile result (null = not compiled yet) */
+  pageCount?: number | null
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -163,7 +165,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -173,6 +175,14 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     autoCompileRef.current = onAutoCompile
     const onExplainErrorRef = useRef(onExplainError)
     onExplainErrorRef.current = onExplainError
+
+    // Pre-compile page count estimate (~50 text lines per page)
+    const estimatedPageCount = useMemo(() => {
+      if (!value || value.length < 100 || pageCount !== null && pageCount !== undefined) return null
+      const lines = value.split('\n').filter(l => !l.trim().startsWith('%'))
+      const textLines = lines.filter(l => !l.trim().startsWith('\\') || l.includes('item'))
+      return Math.max(1, Math.round(textLines.length / 50))
+    }, [value, pageCount])
 
     useImperativeHandle(ref, () => ({
       setValue(content: string) {
@@ -815,6 +825,28 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 Auto
               </span>
             )}
+            {/* Page count badge — actual (post-compile) or estimated (pre-compile) */}
+            {(pageCount !== null && pageCount !== undefined) ? (
+              <span
+                title={`Resume is ${pageCount} page${pageCount === 1 ? '' : 's'}`}
+                className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md ${
+                  pageCount === 1
+                    ? 'text-emerald-400 bg-emerald-500/10'
+                    : pageCount === 2
+                    ? 'text-amber-400 bg-amber-500/10'
+                    : 'text-rose-400 bg-rose-500/10 animate-pulse'
+                }`}
+              >
+                {pageCount} {pageCount === 1 ? 'page' : 'pages'}{pageCount > 1 ? ' ⚠' : ''}
+              </span>
+            ) : estimatedPageCount !== null ? (
+              <span
+                title="Estimated page count (compile for exact count)"
+                className="text-[10px] text-zinc-600 px-1.5"
+              >
+                ~{estimatedPageCount} {estimatedPageCount === 1 ? 'page' : 'pages'}
+              </span>
+            ) : null}
             {(atsScore !== undefined || atsScoreLoading) && (
               <ATSScoreBadge
                 score={atsScore ?? null}

@@ -72,6 +72,7 @@ export interface JobCompletedEvent extends BaseEvent {
   compilation_time: number
   optimization_time: number
   tokens_used: number
+  page_count?: number | null
 }
 
 export interface JobFailedEvent extends BaseEvent {

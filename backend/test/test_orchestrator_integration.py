@@ -48,7 +48,7 @@ class TestDockerFallback:
             (job_dir / "resume.pdf").write_bytes(b"%PDF-1.4")
             (job_dir / "resume.tex").write_text(sample_tex)
 
-            success, _, _ = _run_latex_stage(job_id, sample_tex)
+            success, *_ = _run_latex_stage(job_id, sample_tex)
 
             assert mock_popen.called
             cmd = mock_popen.call_args[0][0]
@@ -235,7 +235,7 @@ class TestCompileFailPreservesLatex:
             patch("app.workers.orchestrator._run_llm_stage",
                   return_value=(optimized_latex, [{"section": "S", "change_type": "modified", "reason": "r"}], 100, 1.0)),
             patch("app.workers.orchestrator._run_latex_stage",
-                  return_value=(False, 0.5, "pdflatex exited with code 1. See log.line events for details.")),
+                  return_value=(False, 0.5, "pdflatex exited with code 1. See log.line events for details.", None)),
             patch("app.workers.orchestrator.settings") as mock_settings,
         ):
             mock_settings.OPENAI_API_KEY = "fake-key"

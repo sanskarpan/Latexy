@@ -139,7 +139,7 @@ class TestJobState:
     ):
         """State should be readable immediately after job submission."""
         with patch(
-            "app.workers.latex_worker.submit_latex_compilation",
+            "app.api.job_routes.submit_latex_compilation",
             return_value=None,
         ):
             submit = await client.post(

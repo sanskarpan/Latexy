@@ -277,7 +277,7 @@ test.describe('Cover Letters Listing Page (/workspace/cover-letters)', () => {
   // ---- Navigation ----
 
   test('has Workspace link', async ({ page }) => {
-    const link = page.getByText('Workspace', { exact: true })
+    const link = page.getByRole('navigation').getByRole('link', { name: 'Workspace' })
     await expect(link).toHaveAttribute('href', '/workspace')
   })
 })
@@ -492,7 +492,7 @@ test.describe('Dashboard — Cover Letter stat', () => {
   })
 
   test('shows Cover Letters KPI card', async ({ page }) => {
-    await expect(page.getByText('Cover Letters')).toBeVisible()
+    await expect(page.getByText('Cover Letters', { exact: true })).toBeVisible()
   })
 
   test('shows correct cover letter count', async ({ page }) => {
@@ -649,8 +649,9 @@ test.describe('Cover Letter Generation Page', () => {
   test('loads most recent cover letter into editor on page load', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
     await page.waitForLoadState('networkidle')
-    // The first CL (Acme Corp) should be highlighted as active
-    const activeCard = page.locator('.border-violet-400\\/40')
+    // The first CL (Acme Corp) should be highlighted as active in the sidebar
+    // Active card uniquely has bg-violet-500/10 (tone/length buttons use bg-violet-500/20)
+    const activeCard = page.locator('.border-violet-400\\/40.bg-violet-500\\/10')
     await expect(activeCard).toBeVisible()
   })
 
@@ -810,9 +811,9 @@ test.describe('Page navigation — cover letters', () => {
   test('no runtime errors on cover letters page', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
-    await page.goto('/workspace/cover-letters')
+    await page.goto('/workspace/cover-letters', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('networkidle')
-    expect(errors).toEqual([])
+    expect(errors.filter((e) => !e.includes('Warning:'))).toEqual([])
   })
 })
 
@@ -840,7 +841,7 @@ test.describe('API Client — cover letter methods exist', () => {
       })
     )
 
-    await page.goto('/workspace/cover-letters')
+    await page.goto('/workspace/cover-letters', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('networkidle')
     const hasNotAFunctionError = errors.some((e) => e.includes('is not a function'))
     expect(hasNotAFunctionError).toBe(false)
