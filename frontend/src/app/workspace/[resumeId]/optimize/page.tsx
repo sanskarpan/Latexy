@@ -6,7 +6,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
 import { GitFork, Zap } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiClient, type DiffWithParentResponse, type ExplainErrorResponse } from '@/lib/api-client'
+import { apiClient, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler } from '@/lib/api-client'
+import CompilerSelector from '@/components/CompilerSelector'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
@@ -43,6 +44,9 @@ export default function OptimizationSuitePage() {
   const [forkTitleInput, setForkTitleInput] = useState('')
   const [isForkingResume, setIsForkingResume] = useState(false)
 
+  // Compiler selection
+  const [compiler, setCompiler] = useState<LatexCompiler>('pdflatex')
+
   // Error explainer
   const [explainerOpen, setExplainerOpen] = useState(false)
   const [explainerLoading, setExplainerLoading] = useState(false)
@@ -69,10 +73,15 @@ export default function OptimizationSuitePage() {
           })
         }
 
+        // Load compiler preference
+        const loadedCompiler = data.metadata?.compiler as LatexCompiler | undefined
+        const resolvedCompiler: LatexCompiler = loadedCompiler && ['pdflatex', 'xelatex', 'lualatex'].includes(loadedCompiler) ? loadedCompiler : 'pdflatex'
+        setCompiler(resolvedCompiler)
+
         // Auto-compile on load so user sees PDF immediately
         if (data.latex_content && data.latex_content.length >= 100) {
           try {
-            const r = await apiClient.compileLatex({ latex_content: data.latex_content, resume_id: resumeId })
+            const r = await apiClient.compileLatex({ latex_content: data.latex_content, resume_id: resumeId, compiler: resolvedCompiler })
             if (r.success && r.job_id) setActiveJobId(r.job_id)
           } catch {
             // Silent
@@ -145,6 +154,7 @@ export default function OptimizationSuitePage() {
         latex_content: currentContent,
         job_description: jobDescription,
         optimization_level: 'balanced',
+        compiler,
       })
 
       if (!response.success || !response.job_id) {
@@ -170,7 +180,7 @@ export default function OptimizationSuitePage() {
     if (isSubmitting) return
     setIsSubmitting(true)
     try {
-      const response = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId })
+      const response = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
       setActiveJobId(response.job_id)
     } catch {
@@ -178,7 +188,7 @@ export default function OptimizationSuitePage() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [isSubmitting, resumeId])
+  }, [isSubmitting, resumeId, compiler])
 
   const handleCompareWithParent = useCallback(async () => {
     try {
@@ -405,6 +415,13 @@ export default function OptimizationSuitePage() {
                     <Zap size={10} />
                     Auto
                   </button>
+                  <span className="h-4 w-px bg-white/10" />
+                  <CompilerSelector
+                    resumeId={resumeId}
+                    current={compiler}
+                    onChange={setCompiler}
+                    disabled={isProcessing || isSubmitting}
+                  />
                 </div>
                 <button onClick={restoreOriginal} className="text-xs font-semibold text-zinc-300 transition hover:text-white">
                   Restore Original
