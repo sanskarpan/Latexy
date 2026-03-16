@@ -1,13 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { apiClient, type JobStateResponse, type ResumeResponse, type SemanticMatchResult } from '@/lib/api-client'
+import { GitFork, ChevronDown, ChevronRight, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { apiClient, type DiffWithParentResponse, type JobStateResponse, type ResumeResponse, type SemanticMatchResult } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import SemanticMatchModal from '@/components/ats/SemanticMatchModal'
 import ExportDropdown from '@/components/ExportDropdown'
+import DiffViewerModal from '@/components/DiffViewerModal'
 
 export default function WorkspacePage() {
   const { data: session, isPending: sessionLoading } = useSession()
@@ -21,6 +24,15 @@ export default function WorkspacePage() {
   const [matchResults, setMatchResults] = useState<SemanticMatchResult[]>([])
   const [isMatchLoading, setIsMatchLoading] = useState(false)
   const [matchError, setMatchError] = useState<string | null>(null)
+
+  // Variant state
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
+  const [forkModalResumeId, setForkModalResumeId] = useState<string | null>(null)
+  const [forkTitle, setForkTitle] = useState('')
+  const [isForking, setIsForking] = useState(false)
+  const [diffData, setDiffData] = useState<DiffWithParentResponse | null>(null)
+  const [showDiffModal, setShowDiffModal] = useState(false)
+  const [diffVariantId, setDiffVariantId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!sessionLoading && !session) {
@@ -54,11 +66,76 @@ export default function WorkspacePage() {
     [resumes, searchQuery]
   )
 
+  // Group resumes into masters (no parent) and variants
+  const { masterResumes, variantMap } = useMemo(() => {
+    const masters = filteredResumes.filter(r => !r.parent_resume_id)
+    const vMap: Record<string, ResumeResponse[]> = {}
+    filteredResumes.filter(r => r.parent_resume_id).forEach(r => {
+      vMap[r.parent_resume_id!] ??= []
+      vMap[r.parent_resume_id!].push(r)
+    })
+    return { masterResumes: masters, variantMap: vMap }
+  }, [filteredResumes])
+
   const matchMap = useMemo(() => {
     const m: Record<string, SemanticMatchResult> = {}
     for (const r of matchResults) m[r.resume_id] = r
     return m
   }, [matchResults])
+
+  const toggleExpand = useCallback((parentId: string) => {
+    setExpandedParents(prev => {
+      const s = new Set(prev)
+      s.has(parentId) ? s.delete(parentId) : s.add(parentId)
+      return s
+    })
+  }, [])
+
+  const handleFork = useCallback(async (resumeId: string, title: string) => {
+    setIsForking(true)
+    try {
+      const newResume = await apiClient.forkResume(resumeId, title || undefined)
+      setForkModalResumeId(null)
+      setForkTitle('')
+      router.push(`/workspace/${newResume.id}/edit`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create variant')
+    } finally {
+      setIsForking(false)
+    }
+  }, [router])
+
+  const handleCompareWithParent = useCallback(async (resumeId: string) => {
+    try {
+      const data = await apiClient.getResumeDiffWithParent(resumeId)
+      setDiffData(data)
+      setDiffVariantId(resumeId)
+      setShowDiffModal(true)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load diff')
+    }
+  }, [])
+
+  const handleDiffRestore = useCallback(async (latex: string) => {
+    if (!diffVariantId) return
+    try {
+      await apiClient.updateResume(diffVariantId, { latex_content: latex })
+      toast.success('Variant updated')
+      setShowDiffModal(false)
+    } catch {
+      toast.error('Failed to update variant')
+    }
+  }, [diffVariantId])
+
+  const openForkModal = useCallback((resumeId: string, resumeTitle: string) => {
+    setForkModalResumeId(resumeId)
+    setForkTitle(`${resumeTitle} — Variant`)
+  }, [])
+
+  // Variant count for a resume (from API + local grouping)
+  const getVariantCount = useCallback((resume: ResumeResponse) => {
+    return Math.max(resume.variant_count ?? 0, variantMap[resume.id]?.length ?? 0)
+  }, [variantMap])
 
   if (sessionLoading) {
     return (
@@ -81,6 +158,86 @@ export default function WorkspacePage() {
       </div>
     )
   }
+
+  // Shared card renderer for both master and variant resumes
+  const renderResumeCard = (resume: ResumeResponse, isVariant = false, parentTitle?: string) => (
+    <article key={resume.id} className={`surface-card edge-highlight flex flex-col p-5 ${isVariant ? 'border-l-2 border-l-orange-500/20' : ''}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+            {isVariant ? 'Variant' : 'Resume'}
+          </p>
+          {!isVariant && getVariantCount(resume) > 0 && (
+            <button
+              onClick={() => toggleExpand(resume.id)}
+              className="flex items-center gap-1 rounded-md bg-orange-500/10 px-2 py-0.5 text-[10px] font-semibold text-orange-300 ring-1 ring-orange-400/20 transition hover:bg-orange-500/20"
+            >
+              <GitFork size={10} />
+              {getVariantCount(resume)}
+              {expandedParents.has(resume.id) ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+            </button>
+          )}
+        </div>
+        {matchMap[resume.id] && matchMap[resume.id].similarity_score != null && (
+          <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${
+            (matchMap[resume.id].similarity_score as number) >= 0.8
+              ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20'
+              : (matchMap[resume.id].similarity_score as number) >= 0.6
+              ? 'bg-amber-500/10 text-amber-300 ring-amber-400/20'
+              : 'bg-rose-500/10 text-rose-300 ring-rose-400/20'
+          }`}>
+            {Math.round((matchMap[resume.id].similarity_score as number) * 100)}% match
+          </span>
+        )}
+      </div>
+      <h3 className="mt-2 line-clamp-2 text-lg font-semibold text-white">{resume.title}</h3>
+      {isVariant && parentTitle && (
+        <p className="mt-0.5 text-[10px] text-zinc-500">Variant of: {parentTitle}</p>
+      )}
+      <p className="mt-2 text-xs text-zinc-500">Updated {new Date(resume.updated_at).toLocaleDateString()}</p>
+
+      <div className="mt-6 grid grid-cols-2 gap-2 text-xs">
+        <Link
+          href={`/workspace/${resume.id}/edit`}
+          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center font-semibold text-zinc-200 transition hover:bg-white/10"
+        >
+          Edit
+        </Link>
+        <Link
+          href={`/workspace/${resume.id}/optimize`}
+          className="rounded-lg border border-orange-300/20 bg-orange-300/10 px-3 py-2 text-center font-semibold text-orange-200 transition hover:bg-orange-300/20"
+        >
+          Optimize
+        </Link>
+        <Link
+          href={`/workspace/${resume.id}/cover-letter`}
+          className="col-span-2 rounded-lg border border-violet-300/20 bg-violet-300/10 px-3 py-2 text-center font-semibold text-violet-200 transition hover:bg-violet-300/20"
+        >
+          Cover Letter
+        </Link>
+      </div>
+      <div className="mt-2 flex gap-2">
+        <button
+          onClick={() => openForkModal(resume.id, resume.title)}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200"
+        >
+          <GitFork size={11} />
+          Fork
+        </button>
+        {isVariant && resume.parent_resume_id && (
+          <button
+            onClick={() => handleCompareWithParent(resume.id)}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-violet-400/20 bg-violet-500/[0.06] px-3 py-2 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/10"
+          >
+            Compare
+          </button>
+        )}
+      </div>
+      <div className="mt-2">
+        <ExportDropdown resumeId={resume.id} variant="card" />
+      </div>
+    </article>
+  )
 
   return (
     <div className="content-shell space-y-6">
@@ -156,51 +313,19 @@ export default function WorkspacePage() {
               )}
             </div>
           ) : viewMode === 'grid' ? (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredResumes.map((resume) => (
-                <article key={resume.id} className="surface-card edge-highlight flex flex-col p-5">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Resume</p>
-                    {matchMap[resume.id] && matchMap[resume.id].similarity_score != null && (
-                      <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${
-                        (matchMap[resume.id].similarity_score as number) >= 0.8
-                          ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20'
-                          : (matchMap[resume.id].similarity_score as number) >= 0.6
-                          ? 'bg-amber-500/10 text-amber-300 ring-amber-400/20'
-                          : 'bg-rose-500/10 text-rose-300 ring-rose-400/20'
-                      }`}>
-                        {Math.round((matchMap[resume.id].similarity_score as number) * 100)}% match
-                      </span>
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {masterResumes.map((resume) => (
+                  <div key={resume.id}>
+                    {renderResumeCard(resume)}
+                    {expandedParents.has(resume.id) && variantMap[resume.id] && (
+                      <div className="ml-6 mt-2 space-y-3 border-l-2 border-orange-500/20 pl-4">
+                        {variantMap[resume.id].map((variant) => renderResumeCard(variant, true, resume.title))}
+                      </div>
                     )}
                   </div>
-                  <h3 className="mt-2 line-clamp-2 text-lg font-semibold text-white">{resume.title}</h3>
-                  <p className="mt-2 text-xs text-zinc-500">Updated {new Date(resume.updated_at).toLocaleDateString()}</p>
-
-                  <div className="mt-6 flex flex-wrap gap-2 text-xs">
-                    <Link
-                      href={`/workspace/${resume.id}/edit`}
-                      className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center font-semibold text-zinc-200 transition hover:bg-white/10"
-                    >
-                      Edit
-                    </Link>
-                    <Link
-                      href={`/workspace/${resume.id}/optimize`}
-                      className="flex-1 rounded-lg border border-orange-300/20 bg-orange-300/10 px-3 py-2 text-center font-semibold text-orange-200 transition hover:bg-orange-300/20"
-                    >
-                      Optimize
-                    </Link>
-                    <Link
-                      href={`/workspace/${resume.id}/cover-letter`}
-                      className="rounded-lg border border-violet-300/20 bg-violet-300/10 px-3 py-2 text-center font-semibold text-violet-200 transition hover:bg-violet-300/20"
-                    >
-                      CL
-                    </Link>
-                  </div>
-                  <div className="mt-2">
-                    <ExportDropdown resumeId={resume.id} variant="card" />
-                  </div>
-                </article>
-              ))}
+                ))}
+              </div>
             </div>
           ) : (
             <div className="surface-panel edge-highlight overflow-hidden">
@@ -214,55 +339,122 @@ export default function WorkspacePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/10">
-                  {filteredResumes.map((resume) => (
-                    <tr key={resume.id}>
-                      <td className="px-4 py-3">
-                        <Link href={`/workspace/${resume.id}/edit`} className="text-sm font-medium text-white transition hover:text-orange-200">
-                          {resume.title}
-                        </Link>
-                      </td>
-                      {matchResults.length > 0 && (
-                        <td className="px-4 py-3 text-right">
-                          {matchMap[resume.id] && matchMap[resume.id].similarity_score != null ? (
-                            <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${
-                              (matchMap[resume.id].similarity_score as number) >= 0.8
-                                ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20'
-                                : (matchMap[resume.id].similarity_score as number) >= 0.6
-                                ? 'bg-amber-500/10 text-amber-300 ring-amber-400/20'
-                                : 'bg-rose-500/10 text-rose-300 ring-rose-400/20'
-                            }`}>
-                              {Math.round((matchMap[resume.id].similarity_score as number) * 100)}%
-                            </span>
-                          ) : (
-                            <span className="text-zinc-700">—</span>
-                          )}
+                  {masterResumes.map((resume) => (
+                    <>
+                      <tr key={resume.id}>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            {getVariantCount(resume) > 0 && (
+                              <button
+                                onClick={() => toggleExpand(resume.id)}
+                                className="flex items-center gap-1 text-orange-400 transition hover:text-orange-300"
+                              >
+                                {expandedParents.has(resume.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              </button>
+                            )}
+                            <Link href={`/workspace/${resume.id}/edit`} className="text-sm font-medium text-white transition hover:text-orange-200">
+                              {resume.title}
+                            </Link>
+                            {getVariantCount(resume) > 0 && (
+                              <span className="flex items-center gap-1 rounded-md bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-orange-300">
+                                <GitFork size={9} />{getVariantCount(resume)}
+                              </span>
+                            )}
+                          </div>
                         </td>
-                      )}
-                      <td className="px-4 py-3 text-right text-sm text-zinc-400">{new Date(resume.updated_at).toLocaleDateString()}</td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="inline-flex gap-2 items-center">
-                          <Link
-                            href={`/workspace/${resume.id}/edit`}
-                            className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white"
-                          >
-                            Edit
-                          </Link>
-                          <Link
-                            href={`/workspace/${resume.id}/optimize`}
-                            className="rounded-lg border border-orange-300/25 bg-orange-300/10 px-3 py-1.5 text-xs font-semibold text-orange-200 transition hover:bg-orange-300/20"
-                          >
-                            Optimize
-                          </Link>
-                          <Link
-                            href={`/workspace/${resume.id}/cover-letter`}
-                            className="rounded-lg border border-violet-300/25 bg-violet-300/10 px-3 py-1.5 text-xs font-semibold text-violet-200 transition hover:bg-violet-300/20"
-                          >
-                            CL
-                          </Link>
-                          <ExportDropdown resumeId={resume.id} variant="toolbar" />
-                        </div>
-                      </td>
-                    </tr>
+                        {matchResults.length > 0 && (
+                          <td className="px-4 py-3 text-right">
+                            {matchMap[resume.id] && matchMap[resume.id].similarity_score != null ? (
+                              <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${
+                                (matchMap[resume.id].similarity_score as number) >= 0.8
+                                  ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20'
+                                  : (matchMap[resume.id].similarity_score as number) >= 0.6
+                                  ? 'bg-amber-500/10 text-amber-300 ring-amber-400/20'
+                                  : 'bg-rose-500/10 text-rose-300 ring-rose-400/20'
+                              }`}>
+                                {Math.round((matchMap[resume.id].similarity_score as number) * 100)}%
+                              </span>
+                            ) : (
+                              <span className="text-zinc-700">—</span>
+                            )}
+                          </td>
+                        )}
+                        <td className="px-4 py-3 text-right text-sm text-zinc-400">{new Date(resume.updated_at).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="inline-flex gap-2 items-center">
+                            <Link
+                              href={`/workspace/${resume.id}/edit`}
+                              className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white"
+                            >
+                              Edit
+                            </Link>
+                            <Link
+                              href={`/workspace/${resume.id}/optimize`}
+                              className="rounded-lg border border-orange-300/25 bg-orange-300/10 px-3 py-1.5 text-xs font-semibold text-orange-200 transition hover:bg-orange-300/20"
+                            >
+                              Optimize
+                            </Link>
+                            <Link
+                              href={`/workspace/${resume.id}/cover-letter`}
+                              className="rounded-lg border border-violet-300/25 bg-violet-300/10 px-3 py-1.5 text-xs font-semibold text-violet-200 transition hover:bg-violet-300/20"
+                            >
+                              CL
+                            </Link>
+                            <button
+                              onClick={() => openForkModal(resume.id, resume.title)}
+                              className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-400 transition hover:border-white/20 hover:text-zinc-200"
+                            >
+                              <GitFork size={11} />
+                              Fork
+                            </button>
+                            <ExportDropdown resumeId={resume.id} variant="toolbar" />
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedParents.has(resume.id) && variantMap[resume.id]?.map((variant) => (
+                        <tr key={variant.id} className="bg-white/[0.01]">
+                          <td className="py-3 pl-12 pr-4">
+                            <div className="flex items-center gap-2">
+                              <GitFork size={11} className="text-orange-500/50" />
+                              <Link href={`/workspace/${variant.id}/edit`} className="text-sm font-medium text-zinc-300 transition hover:text-orange-200">
+                                {variant.title}
+                              </Link>
+                              <span className="text-[10px] text-zinc-600">variant</span>
+                            </div>
+                          </td>
+                          {matchResults.length > 0 && (
+                            <td className="px-4 py-3 text-right">
+                              <span className="text-zinc-700">—</span>
+                            </td>
+                          )}
+                          <td className="px-4 py-3 text-right text-sm text-zinc-500">{new Date(variant.updated_at).toLocaleDateString()}</td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="inline-flex gap-2 items-center">
+                              <Link
+                                href={`/workspace/${variant.id}/edit`}
+                                className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white"
+                              >
+                                Edit
+                              </Link>
+                              <button
+                                onClick={() => handleCompareWithParent(variant.id)}
+                                className="rounded-lg border border-violet-400/20 bg-violet-500/[0.06] px-3 py-1.5 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/10"
+                              >
+                                Compare
+                              </button>
+                              <button
+                                onClick={() => openForkModal(variant.id, variant.title)}
+                                className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-400 transition hover:border-white/20 hover:text-zinc-202"
+                              >
+                                <GitFork size={11} />
+                                Fork
+                              </button>
+                              <ExportDropdown resumeId={variant.id} variant="toolbar" />
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </>
                   ))}
                 </tbody>
               </table>
@@ -296,11 +488,65 @@ export default function WorkspacePage() {
           <section className="surface-panel edge-highlight p-5">
             <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300">Workflow Tip</h3>
             <p className="mt-2 text-sm text-zinc-400">
-              Run one baseline compile before optimization so you can compare output and quality signals more clearly.
+              Use <strong className="text-zinc-300">Fork</strong> to create role-specific variants of a resume. Edit each variant independently, then compare with the parent to review changes.
             </p>
           </section>
         </aside>
       </div>
+
+      {/* Fork modal */}
+      {forkModalResumeId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setForkModalResumeId(null)}>
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-white">Create Variant</h3>
+              <button onClick={() => setForkModalResumeId(null)} className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs text-zinc-500 mb-4">This creates a linked copy you can customize for a specific role.</p>
+            <input
+              type="text"
+              value={forkTitle}
+              onChange={e => setForkTitle(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !isForking) handleFork(forkModalResumeId, forkTitle); if (e.key === 'Escape') setForkModalResumeId(null) }}
+              placeholder="Variant title"
+              autoFocus
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40 mb-4"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setForkModalResumeId(null)}
+                className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 transition hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleFork(forkModalResumeId, forkTitle)}
+                disabled={isForking}
+                className="btn-accent px-4 py-2 text-xs disabled:opacity-50"
+              >
+                {isForking ? 'Creating...' : 'Create Variant'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Diff modal */}
+      {showDiffModal && diffData && (
+        <DiffViewerModal
+          resumeId=""
+          checkpointA={null}
+          checkpointB={null}
+          onRestore={handleDiffRestore}
+          onClose={() => setShowDiffModal(false)}
+          parentLatex={diffData.parent_latex}
+          parentTitle={diffData.parent_title}
+          variantLatex={diffData.variant_latex}
+          variantTitle={diffData.variant_title}
+        />
+      )}
 
       <SemanticMatchModal
         isOpen={matchModalOpen}

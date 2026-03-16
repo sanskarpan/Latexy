@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { ChevronDown, Upload, X, Zap } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, type ExplainErrorResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useTrialStatus } from '@/hooks/useTrialStatus'
@@ -14,6 +14,7 @@ import PDFPreview from '@/components/PDFPreview'
 import DeepAnalysisPanel from '@/components/ats/DeepAnalysisPanel'
 import MultiFormatUpload from '@/components/MultiFormatUpload'
 import ExportDropdown from '@/components/ExportDropdown'
+import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
@@ -38,6 +39,12 @@ export default function TryPage() {
   const [deepAnalysisUsesRemaining, setDeepAnalysisUsesRemaining] = useState<number | null>(null)
   const [isDeepAnalysisRunning, setIsDeepAnalysisRunning] = useState(false)
   const [deepAnalysisError, setDeepAnalysisError] = useState<string | null>(null)
+
+  // Error explainer
+  const [explainerOpen, setExplainerOpen] = useState(false)
+  const [explainerLoading, setExplainerLoading] = useState(false)
+  const [explainerData, setExplainerData] = useState<ExplainErrorResponse | null>(null)
+  const [explainerLine, setExplainerLine] = useState<number | null>(null)
 
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent, jobDescription)
@@ -168,6 +175,36 @@ export default function TryPage() {
     }
   }, [isProcessing, isSubmitting, session, trialStatus])
 
+  const handleExplainError = useCallback(async (error: { line: number; message: string; surroundingLatex: string }) => {
+    setExplainerLine(error.line)
+    setExplainerOpen(true)
+    setExplainerLoading(true)
+    setExplainerData(null)
+    try {
+      const result = await apiClient.explainLatexError({
+        error_message: error.message,
+        surrounding_latex: error.surroundingLatex,
+        error_line: error.line,
+      })
+      setExplainerData(result)
+    } catch {
+      setExplainerData({
+        success: false, explanation: 'Failed to analyze error.',
+        suggested_fix: 'Check the error message manually.', corrected_code: null,
+        source: 'error', cached: false, processing_time: 0,
+      })
+    } finally {
+      setExplainerLoading(false)
+    }
+  }, [])
+
+  const handleApplyExplainerFix = useCallback(() => {
+    if (!explainerData?.corrected_code || explainerLine == null) return
+    editorRef.current?.applyFix(explainerLine, explainerData.corrected_code)
+    setExplainerOpen(false)
+    toast.success('Fix applied')
+  }, [explainerData, explainerLine])
+
   const statusTone = useMemo(() => {
     if (stream.status === 'completed') return 'text-emerald-300'
     if (stream.status === 'failed') return 'text-rose-300'
@@ -257,16 +294,28 @@ export default function TryPage() {
             </div>
 
             <div className="flex-1 min-h-0 flex flex-col gap-4">
-              <div className="flex-1 min-h-0 rounded-xl border border-white/10 bg-slate-950/70 overflow-hidden">
+              <div className="relative flex-1 min-h-0 rounded-xl border border-white/10 bg-slate-950/70 overflow-hidden">
                 <LaTeXEditor
                   ref={editorRef}
                   value={latexContent}
                   onChange={setLatexContent}
+                  logLines={stream.logLines}
                   onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
                   atsScore={quickATSScore}
                   atsScoreLoading={quickATSLoading}
                   onATSBadgeClick={() => setDeepPanelOpen(true)}
+                  onExplainError={handleExplainError}
                 />
+                <div className="absolute inset-x-0 bottom-0 z-10">
+                  <ErrorExplainerPanel
+                    isOpen={explainerOpen}
+                    isLoading={explainerLoading}
+                    data={explainerData}
+                    errorLine={explainerLine}
+                    onClose={() => setExplainerOpen(false)}
+                    onApplyFix={handleApplyExplainerFix}
+                  />
+                </div>
               </div>
               <div className="h-32 flex-shrink-0 flex flex-col">
                 <div className="mb-2 flex items-center justify-between">

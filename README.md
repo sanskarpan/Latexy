@@ -103,31 +103,36 @@ Storage
 
 ## Development
 
-### Local dev (recommended)
+### Local dev — hybrid (recommended)
 
-Docker only runs infra (Postgres, Redis, MinIO). App processes run locally with live logs in your terminal:
+Infra (Postgres, Redis, MinIO) runs in Docker once — shared across all clones. App processes
+run locally with live reload and logs in your terminal. **Port slot is auto-detected** — if
+8030/5180 are taken by another clone, slot 2 (8031/5181) is picked automatically.
 
 ```bash
-./scripts/dev.sh              # start infra + app (Ctrl+C to stop app)
-./scripts/dev.sh stop         # stop everything
-./scripts/dev.sh stop app     # stop app only, keep infra running
-./scripts/dev.sh stop infra   # stop Docker infra
+./scripts/dev.sh              # start infra (if not running) + app on first free slot
+./scripts/dev.sh infra        # start shared Docker infra only (idempotent)
+./scripts/dev.sh app          # start app processes only
+./scripts/dev.sh status       # show what is running and on which ports
+./scripts/dev.sh stop app     # stop this clone's app processes (infra stays up)
+./scripts/dev.sh stop infra   # stop shared Docker infra
 ```
 
 ### Full Docker dev
 
-Everything runs in Docker containers (detached). Supports multiple worktree slots:
+Everything runs in Docker containers. Slot is **auto-detected** — no need to specify `w2` manually.
 
 ```bash
-./scripts/worktree-up.sh          # slot 1 — default ports
-./scripts/worktree-up.sh w2       # slot 2 — backend 8031, frontend 5181
-./scripts/worktree-up.sh w3       # slot 3 — backend 8032, frontend 5182
-./scripts/worktree-up.sh stop w2  # stop slot 2
-./scripts/worktree-up.sh stop all # stop everything
-./scripts/worktree-up.sh logs w2  # tail logs for slot 2
+./scripts/worktree-up.sh          # start — auto-detects free slot
+./scripts/worktree-up.sh w2       # start — force slot 2 (backend 8031, frontend 5181)
+./scripts/worktree-up.sh stop     # stop this clone's slot (reads .dev-slot)
+./scripts/worktree-up.sh stop all # stop all app slots (infra stays running)
+./scripts/worktree-up.sh stop infra # stop shared infra (postgres, redis, minio)
+./scripts/worktree-up.sh logs     # tail this clone's logs
+./scripts/worktree-up.sh status   # show all running slots
 ```
 
-See [docs/local-dev.md](docs/local-dev.md) for the full multi-worktree guide.
+See [docs/local-dev.md](docs/local-dev.md) for the full multi-clone guide.
 
 ### Makefile targets
 

@@ -78,6 +78,11 @@ from .cover_letter_routes import router as cover_letter_router
 
 router.include_router(cover_letter_router)
 
+# Include AI tool routes
+from .ai_routes import router as ai_router
+
+router.include_router(ai_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():

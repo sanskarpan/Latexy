@@ -12,6 +12,7 @@ export interface LaTeXEditorRef {
   setValue: (value: string) => void
   getValue: () => string
   highlightLine: (line: number) => void
+  applyFix: (line: number, correctedCode: string) => void
 }
 
 interface LaTeXEditorProps {
@@ -34,6 +35,8 @@ interface LaTeXEditorProps {
   atsScoreLoading?: boolean
   /** Callback when user clicks the ATS badge */
   onATSBadgeClick?: () => void
+  /** Called when user clicks "Explain this error" CodeLens */
+  onExplainError?: (error: { line: number; message: string; surroundingLatex: string }) => void
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -160,7 +163,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -168,6 +171,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     const disposablesRef = useRef<any[]>([])
     const autoCompileRef = useRef(onAutoCompile)
     autoCompileRef.current = onAutoCompile
+    const onExplainErrorRef = useRef(onExplainError)
+    onExplainErrorRef.current = onExplainError
 
     useImperativeHandle(ref, () => ({
       setValue(content: string) {
@@ -184,6 +189,19 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         editorRef.current.revealLineInCenter(line)
         editorRef.current.setPosition({ lineNumber: line, column: 1 })
         editorRef.current.focus()
+      },
+      applyFix(line: number, correctedCode: string) {
+        const editor = editorRef.current
+        const monaco = monacoRef.current
+        if (!editor || !monaco) return
+        const model = editor.getModel()
+        if (!model) return
+        const lineNum = Math.min(line, model.getLineCount())
+        const lineContent = model.getLineContent(lineNum)
+        editor.executeEdits('error-fix', [{
+          range: new monaco.Range(lineNum, 1, lineNum, lineContent.length + 1),
+          text: correctedCode,
+        }])
       },
     }))
 
@@ -219,6 +237,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       })
 
       monaco.editor.setModelMarkers(model, 'latex-log', markers)
+
+      // Refresh CodeLens so "Explain this error" links appear for new markers
+      editor.trigger('latexy', 'editor.action.refreshCodeLenses', null)
     }, [logLines])
 
     // Sync editor position from PDF click
@@ -642,6 +663,50 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         _latexLanguageRegistered = true
       } // end !_latexLanguageRegistered
       monaco.editor.setTheme('latexy-dark')
+
+      // ── CodeLens provider (Explain this error) ──────────────────────
+      // Register a unique command that CodeLens items can reference
+      const explainCmdId = editor.addCommand(0, (_ctx: any, lineNumber: number, message: string) => {
+        const model = editor.getModel()
+        if (!model || !onExplainErrorRef.current) return
+        const startLine = Math.max(1, lineNumber - 3)
+        const endLine = Math.min(model.getLineCount(), lineNumber + 3)
+        const lines: string[] = []
+        for (let i = startLine; i <= endLine; i++) {
+          lines.push(model.getLineContent(i))
+        }
+        onExplainErrorRef.current({
+          line: lineNumber,
+          message,
+          surroundingLatex: lines.join('\n'),
+        })
+      })
+
+      const codeLensDisposable = monaco.languages.registerCodeLensProvider('latex', {
+        provideCodeLenses(model: import('monaco-editor').editor.ITextModel) {
+          const markers = monaco.editor.getModelMarkers({ owner: 'latex-log' })
+          const lenses: any[] = []
+          const seenLines = new Set<number>()
+          for (const marker of markers) {
+            if (marker.severity !== monaco.MarkerSeverity.Error || seenLines.has(marker.startLineNumber)) continue
+            seenLines.add(marker.startLineNumber)
+            lenses.push({
+              range: new monaco.Range(marker.startLineNumber, 1, marker.startLineNumber, 1),
+              id: `explain-${marker.startLineNumber}`,
+              command: {
+                id: explainCmdId!,
+                title: '$(lightbulb) Explain this error',
+                arguments: [marker.startLineNumber, marker.message],
+              },
+            })
+          }
+          return { lenses, dispose() {} }
+        },
+        resolveCodeLens(_model: import('monaco-editor').editor.ITextModel, codeLens: any) {
+          return codeLens
+        },
+      })
+      disposablesRef.current.push(codeLensDisposable)
 
       // ── Keyboard shortcuts ─────────────────────────────────────────
       if (onSave) {

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..database.models import Optimization, Resume
+from ..database.models import Optimization, Resume, UsageAnalytics
 from ..middleware.auth_middleware import get_current_user_required
 
 logger = get_logger(__name__)
@@ -37,6 +37,8 @@ class ResumeUpdate(BaseModel):
 class ResumeResponse(ResumeBase):
     id: str
     user_id: str
+    parent_resume_id: Optional[str] = None
+    variant_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -101,10 +103,24 @@ async def create_resume(
 
     return resume
 
+def _variant_count_subquery():
+    """Correlated subquery counting direct child variants of each resume."""
+    from sqlalchemy.orm import aliased
+    ChildResume = aliased(Resume)
+    return (
+        select(func.count(ChildResume.id))
+        .where(ChildResume.parent_resume_id == Resume.id)
+        .correlate(Resume)
+        .scalar_subquery()
+        .label("variant_count")
+    )
+
+
 @router.get("/")
 async def list_resumes(
     page: int = 1,
     limit: int = 20,
+    parent_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required)
 ):
@@ -113,22 +129,33 @@ async def list_resumes(
     limit = max(1, min(limit, 100))
     offset = (page - 1) * limit
 
+    filters = [Resume.user_id == user_id]
+    if parent_id is not None:
+        filters.append(Resume.parent_resume_id == parent_id)
+
     count_result = await db.execute(
-        select(func.count(Resume.id)).where(Resume.user_id == user_id)
+        select(func.count(Resume.id)).where(*filters)
     )
     total = count_result.scalar() or 0
 
+    variant_count_sq = _variant_count_subquery()
     result = await db.execute(
-        select(Resume)
-        .where(Resume.user_id == user_id)
+        select(Resume, variant_count_sq)
+        .where(*filters)
         .order_by(Resume.updated_at.desc())
         .offset(offset)
         .limit(limit)
     )
-    resumes = result.scalars().all()
+    rows = result.all()
+
+    resumes_out = []
+    for resume, vc in rows:
+        d = ResumeResponse.model_validate(resume).model_dump()
+        d["variant_count"] = vc or 0
+        resumes_out.append(d)
 
     return {
-        "resumes": [ResumeResponse.model_validate(r).model_dump() for r in resumes],
+        "resumes": resumes_out,
         "total": total,
         "page": page,
         "limit": limit,
@@ -142,13 +169,18 @@ async def get_resume(
     user_id: str = Depends(get_current_user_required)
 ):
     """Get a specific resume by ID."""
+    variant_count_sq = _variant_count_subquery()
     result = await db.execute(
-        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
+        select(Resume, variant_count_sq)
+        .where(Resume.id == resume_id, Resume.user_id == user_id)
     )
-    resume = result.scalar_one_or_none()
-    if not resume:
+    row = result.one_or_none()
+    if not row:
         raise HTTPException(status_code=404, detail="Resume not found")
-    return resume
+    resume, vc = row
+    resp = ResumeResponse.model_validate(resume)
+    resp.variant_count = vc or 0
+    return resp
 
 @router.put("/{resume_id}", response_model=ResumeResponse)
 async def update_resume(
@@ -201,6 +233,124 @@ async def delete_resume(
         raise HTTPException(status_code=404, detail="Resume not found")
     await db.commit()
     return None
+
+
+# ── Variant / Fork system ─────────────────────────────────────────────────
+
+class ForkResumeRequest(BaseModel):
+    title: Optional[str] = None
+
+
+class DiffWithParentResponse(BaseModel):
+    parent_latex: str
+    parent_title: str
+    variant_latex: str
+    variant_title: str
+
+
+@router.post("/{resume_id}/fork", response_model=ResumeResponse, status_code=status.HTTP_201_CREATED)
+async def fork_resume(
+    resume_id: str,
+    body: ForkResumeRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required)
+):
+    """Create a variant (fork) of an existing resume."""
+    parent = await _verify_resume_ownership(db, resume_id, user_id)
+
+    variant_title = body.title or f"{parent.title} — Variant"
+    variant = Resume(
+        id=str(uuid4()),
+        user_id=user_id,
+        title=variant_title,
+        latex_content=parent.latex_content,
+        is_template=False,
+        tags=list(parent.tags) if parent.tags else None,
+        parent_resume_id=parent.id,
+    )
+    db.add(variant)
+
+    # Record analytics event
+    analytics = UsageAnalytics(
+        id=str(uuid4()),
+        user_id=user_id,
+        action="resume_forked",
+        resource_type="resume",
+        event_metadata={"parent_resume_id": parent.id, "variant_resume_id": variant.id},
+    )
+    db.add(analytics)
+
+    await db.commit()
+    await db.refresh(variant)
+
+    # Fire-and-forget embedding task
+    if settings.OPENAI_API_KEY:
+        try:
+            from ..workers.ats_worker import embed_resume_task
+            embed_resume_task.apply_async(
+                kwargs={"resume_id": str(variant.id), "latex_content": variant.latex_content,
+                        "user_id": user_id},
+                queue="ats", priority=1,
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to enqueue embedding for variant {variant.id}: {exc}")
+
+    resp = ResumeResponse.model_validate(variant)
+    resp.variant_count = 0
+    return resp
+
+
+@router.get("/{resume_id}/variants", response_model=List[ResumeResponse])
+async def list_variants(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required)
+):
+    """List all direct child variants of a resume."""
+    await _verify_resume_ownership(db, resume_id, user_id)
+
+    variant_count_sq = _variant_count_subquery()
+    result = await db.execute(
+        select(Resume, variant_count_sq)
+        .where(Resume.parent_resume_id == resume_id, Resume.user_id == user_id)
+        .order_by(Resume.created_at.desc())
+    )
+    rows = result.all()
+
+    out = []
+    for resume, vc in rows:
+        d = ResumeResponse.model_validate(resume)
+        d.variant_count = vc or 0
+        out.append(d)
+    return out
+
+
+@router.get("/{resume_id}/diff-with-parent", response_model=DiffWithParentResponse)
+async def diff_with_parent(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required)
+):
+    """Get diff data between a variant and its parent resume."""
+    variant = await _verify_resume_ownership(db, resume_id, user_id)
+
+    if not variant.parent_resume_id:
+        raise HTTPException(status_code=400, detail="This resume has no parent")
+
+    # Fetch parent (must be owned by same user)
+    result = await db.execute(
+        select(Resume).where(Resume.id == variant.parent_resume_id, Resume.user_id == user_id)
+    )
+    parent = result.scalar_one_or_none()
+    if not parent:
+        raise HTTPException(status_code=400, detail="Parent resume not found")
+
+    return DiffWithParentResponse(
+        parent_latex=parent.latex_content,
+        parent_title=parent.title,
+        variant_latex=variant.latex_content,
+        variant_title=variant.title,
+    )
 
 
 # ── Optimization history ──────────────────────────────────────────────────
