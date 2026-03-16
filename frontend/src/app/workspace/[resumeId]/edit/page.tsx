@@ -631,6 +631,7 @@ export default function ResumeEditPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [compileJobId, setCompileJobId] = useState<string | null>(null)
+  const [lastStartedJobKind, setLastStartedJobKind] = useState<'compile' | 'ai'>('compile')
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
 
@@ -720,7 +721,7 @@ export default function ResumeEditPage() {
         if (data.latex_content && data.latex_content.length >= 100) {
           try {
             const r = await apiClient.compileLatex({ latex_content: data.latex_content, resume_id: resumeId })
-            if (r.success && r.job_id) setCompileJobId(r.job_id)
+            if (r.success && r.job_id) { setCompileJobId(r.job_id); setLastStartedJobKind('compile') }
           } catch {
             // Silent — user can compile manually
           }
@@ -881,6 +882,7 @@ export default function ResumeEditPage() {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId })
       if (!r.success || !r.job_id) throw new Error(r.message)
       setCompileJobId(r.job_id)
+      setLastStartedJobKind('compile')
       setRightTab('logs')
       toast.success('Compilation started')
     } catch (e) {
@@ -907,6 +909,7 @@ export default function ResumeEditPage() {
       if (!r.success || !r.job_id) throw new Error(r.message)
       pushUndo('Before AI optimization')
       setAiJobId(r.job_id)
+      setLastStartedJobKind('ai')
       toast.success('AI optimization started')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'AI optimization failed')
@@ -1092,6 +1095,7 @@ export default function ResumeEditPage() {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId })
       if (!r.success || !r.job_id) throw new Error(r.message)
       setCompileJobId(r.job_id)
+      setLastStartedJobKind('compile')
     } catch {
       // Silent fail for auto-compile — don't spam toasts
     } finally {
@@ -1099,7 +1103,9 @@ export default function ResumeEditPage() {
     }
   }, [isSubmitting, resumeId])
 
-  const pageCount = compileStream.pageCount ?? aiStream.pageCount ?? null
+  const pageCount = lastStartedJobKind === 'ai'
+    ? aiStream.pageCount
+    : compileStream.pageCount
 
   const TRIM_INSTRUCTION = "Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names."
 
@@ -1116,6 +1122,7 @@ export default function ResumeEditPage() {
       if (!r.success || !r.job_id) throw new Error(r.message)
       pushUndo('Before AI trim (1 page)')
       setAiJobId(r.job_id)
+      setLastStartedJobKind('ai')
       toast.success('AI trim started — condensing to 1 page…')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Trim failed')
