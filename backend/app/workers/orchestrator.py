@@ -50,6 +50,7 @@ logger = get_logger(__name__)
 
 # Delimiter markers for structured LLM output (Fix 2)
 _LS = "<<<LATEX>>>"
+_PAGE_COUNT_RE = re.compile(r"Output written on .*?\((\d+) page", re.IGNORECASE)
 _LE = "<<<END_LATEX>>>"
 _CS = "<<<CHANGES>>>"
 _CE = "<<<END_CHANGES>>>"
@@ -139,7 +140,7 @@ def optimize_and_compile_task(
             "message": "Starting LaTeX compilation",
         })
 
-        compilation_ok, compilation_time, compile_error = _run_latex_stage(
+        compilation_ok, compilation_time, compile_error, page_count = _run_latex_stage(
             job_id=job_id,
             latex_content=optimized_latex,
         )
@@ -195,6 +196,7 @@ def optimize_and_compile_task(
             "optimization_time": optimization_time,
             "tokens_used": tokens_used,
             "optimized_latex": optimized_latex,
+            "page_count": page_count,
         }
 
         publish_job_result(job_id, result)
@@ -206,6 +208,7 @@ def optimize_and_compile_task(
             "compilation_time": compilation_time,
             "optimization_time": optimization_time,
             "tokens_used": tokens_used,
+            "page_count": page_count,
         })
         logger.info(
             f"Orchestrator task {task_id} succeeded for job {job_id} "
@@ -452,12 +455,12 @@ def _run_llm_stage(
 def _run_latex_stage(
     job_id: str,
     latex_content: str,
-) -> tuple[bool, float, str]:
+) -> tuple[bool, float, str, Optional[int]]:
     """
     Write LaTeX, run pdflatex (Docker if available, else local pdflatex)
     with line-by-line log streaming.
 
-    Returns (success, compilation_time, error_message).
+    Returns (success, compilation_time, error_message, page_count).
     Does NOT publish job.failed — caller is responsible so it can
     include optimized_latex in the failure payload.
     """
@@ -504,9 +507,15 @@ def _run_latex_stage(
         cwd=cwd,
     )
 
+    page_count: Optional[int] = None
     for line in proc.stdout:
         stripped = line.rstrip()
         if stripped:
+            # Extract page count from pdflatex summary line
+            m = _PAGE_COUNT_RE.search(stripped)
+            if m:
+                page_count = int(m.group(1))
+
             is_error = "error" in stripped.lower() or stripped.startswith("!")
             if "fatal" in stripped.lower():
                 is_error = True
@@ -518,20 +527,20 @@ def _run_latex_stage(
 
         if is_cancelled(job_id):
             proc.kill()
-            return False, time.time() - start_time, "cancelled"
+            return False, time.time() - start_time, "cancelled", None
 
         if time.time() - start_time > timeout:
             proc.kill()
-            return False, time.time() - start_time, f"LaTeX compilation timed out after {timeout}s"
+            return False, time.time() - start_time, f"LaTeX compilation timed out after {timeout}s", None
 
     proc.wait()
     compilation_time = time.time() - start_time
 
     pdf_file = job_dir / "resume.pdf"
     if proc.returncode == 0 and pdf_file.exists():
-        return True, compilation_time, ""
+        return True, compilation_time, "", page_count
 
-    return False, compilation_time, f"pdflatex exited with code {proc.returncode}"
+    return False, compilation_time, f"pdflatex exited with code {proc.returncode}", None
 
 
 def _run_ats_stage(
