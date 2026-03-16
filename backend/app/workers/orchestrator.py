@@ -80,6 +80,7 @@ def optimize_and_compile_task(
     model: Optional[str] = None,
     metadata: Optional[Dict] = None,
     resume_id: Optional[str] = None,
+    compiler: str = "pdflatex",
 ) -> Dict[str, Any]:
     """
     Full pipeline: LLM optimize → pdflatex compile → ATS score.
@@ -143,6 +144,7 @@ def optimize_and_compile_task(
         compilation_ok, compilation_time, compile_error, page_count = _run_latex_stage(
             job_id=job_id,
             latex_content=optimized_latex,
+            compiler=compiler,
         )
 
         if is_cancelled(job_id):
@@ -209,6 +211,7 @@ def optimize_and_compile_task(
             "optimization_time": optimization_time,
             "tokens_used": tokens_used,
             "page_count": page_count,
+            "compiler": compiler,
         })
         logger.info(
             f"Orchestrator task {task_id} succeeded for job {job_id} "
@@ -455,15 +458,20 @@ def _run_llm_stage(
 def _run_latex_stage(
     job_id: str,
     latex_content: str,
+    compiler: str = "pdflatex",
 ) -> tuple[bool, float, str, Optional[int]]:
     """
-    Write LaTeX, run pdflatex (Docker if available, else local pdflatex)
+    Write LaTeX, run the requested compiler (Docker if available, else local binary)
     with line-by-line log streaming.
 
     Returns (success, compilation_time, error_message, page_count).
     Does NOT publish job.failed — caller is responsible so it can
     include optimized_latex in the failure payload.
     """
+    # Validate compiler
+    if compiler not in settings.ALLOWED_LATEX_COMPILERS:
+        compiler = settings.DEFAULT_LATEX_COMPILER
+
     job_dir = Path(settings.TEMP_DIR) / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
     tex_file = job_dir / "resume.tex"
@@ -475,7 +483,7 @@ def _run_latex_stage(
             "-v", f"{job_dir}:/workdir",
             "-w", "/workdir",
             settings.LATEX_DOCKER_IMAGE,
-            "pdflatex",
+            compiler,
             "-interaction=nonstopmode",
             "-halt-on-error",
             "-synctex=1",
@@ -484,7 +492,7 @@ def _run_latex_stage(
         cwd = None
     else:
         cmd = [
-            "pdflatex",
+            compiler,
             "-interaction=nonstopmode",
             "-halt-on-error",
             "-synctex=1",
@@ -540,7 +548,7 @@ def _run_latex_stage(
     if proc.returncode == 0 and pdf_file.exists():
         return True, compilation_time, "", page_count
 
-    return False, compilation_time, f"pdflatex exited with code {proc.returncode}", None
+    return False, compilation_time, f"{compiler} exited with code {proc.returncode}", None
 
 
 def _run_ats_stage(
@@ -591,6 +599,7 @@ def submit_optimize_and_compile(
     priority: Optional[int] = None,
     metadata: Optional[Dict] = None,
     resume_id: Optional[str] = None,
+    compiler: str = "pdflatex",
 ) -> str:
     """Enqueue optimize_and_compile_task on the combined queue."""
     if priority is None:
@@ -610,9 +619,10 @@ def submit_optimize_and_compile(
             "model": model,
             "metadata": metadata,
             "resume_id": resume_id,
+            "compiler": compiler,
         },
         priority=priority,
         queue="combined",
     )
-    logger.info(f"Submitted optimize-and-compile for job {job_id}")
+    logger.info(f"Submitted optimize-and-compile for job {job_id} (compiler={compiler})")
     return job_id
