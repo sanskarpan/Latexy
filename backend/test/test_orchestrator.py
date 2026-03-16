@@ -392,6 +392,79 @@ class TestOrchestratorFullPipeline:
         res, _ = self._run_full(mock_publish, mock_result_store, mock_not_cancelled, mock_scoring_service)
         assert res["pdf_job_id"] == res["job_id"]
 
+    def test_successful_pipeline_has_page_count_field(
+        self, mock_publish, mock_result_store, mock_not_cancelled, mock_scoring_service
+    ):
+        res, _ = self._run_full(mock_publish, mock_result_store, mock_not_cancelled, mock_scoring_service)
+        assert "page_count" in res
+
+    def test_successful_pipeline_job_completed_has_page_count(
+        self, mock_publish, mock_result_store, mock_not_cancelled, mock_scoring_service
+    ):
+        _, calls = self._run_full(mock_publish, mock_result_store, mock_not_cancelled, mock_scoring_service)
+        completed = [c for c in calls if c.args[1] == "job.completed"]
+        assert completed, "job.completed event not emitted"
+        assert "page_count" in completed[0].args[2]
+
+
+# ── Page count extraction ─────────────────────────────────────────────────────
+
+class TestOrchestratorPageCount:
+    """Tests that _run_latex_stage correctly extracts page count from pdflatex logs."""
+
+    PAGE_COUNT_LINE = "Output written on output.pdf (2 pages, 54321 bytes).\n"
+    SINGLE_PAGE_LINE = "Output written on output.pdf (1 page, 12345 bytes).\n"
+
+    def _run_with_stdout(self, stdout_lines, mock_publish, mock_result_store, mock_scoring_service):
+        job_id = str(uuid.uuid4())
+        llm_response = json.dumps({"optimized_latex": GOOD_LATEX, "changes": []})
+        tokens = list(llm_response)
+        mock_proc = _make_popen(returncode=0, stdout_lines=stdout_lines)
+        with (
+            patch("app.workers.orchestrator.openai.OpenAI") as mock_openai_cls,
+            patch("app.workers.orchestrator.subprocess.Popen", return_value=mock_proc),
+            patch("app.workers.orchestrator.is_cancelled", return_value=False),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=54321)),
+        ):
+            mock_client = MagicMock()
+            mock_openai_cls.return_value = mock_client
+            mock_client.chat.completions.create.return_value = _make_openai_stream(tokens)
+            res = optimize_and_compile_task.apply(
+                args=[GOOD_LATEX, None],
+                kwargs={"job_id": job_id, "user_api_key": "sk-test"},
+            ).result
+        return res, mock_publish.call_args_list
+
+    def test_page_count_extracted_from_pdflatex_output(
+        self, mock_publish, mock_result_store, mock_scoring_service
+    ):
+        res, _ = self._run_with_stdout([self.PAGE_COUNT_LINE], mock_publish, mock_result_store, mock_scoring_service)
+        assert res["page_count"] == 2
+
+    def test_single_page_extracted(
+        self, mock_publish, mock_result_store, mock_scoring_service
+    ):
+        res, _ = self._run_with_stdout([self.SINGLE_PAGE_LINE], mock_publish, mock_result_store, mock_scoring_service)
+        assert res["page_count"] == 1
+
+    def test_page_count_none_when_line_absent(
+        self, mock_publish, mock_result_store, mock_scoring_service
+    ):
+        res, _ = self._run_with_stdout(["pdflatex normal output\n"], mock_publish, mock_result_store, mock_scoring_service)
+        assert res["page_count"] is None
+
+    def test_page_count_in_job_completed_event(
+        self, mock_publish, mock_result_store, mock_scoring_service
+    ):
+        _, calls = self._run_with_stdout(
+            [self.PAGE_COUNT_LINE], mock_publish, mock_result_store, mock_scoring_service
+        )
+        completed = [c for c in calls if c.args[1] == "job.completed"]
+        assert completed[0].args[2]["page_count"] == 2
+
 
 # ── JSON parse fallback ───────────────────────────────────────────────────────
 
