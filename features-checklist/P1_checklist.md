@@ -3137,17 +3137,20 @@ Recommended build order:
 
 ## Shared Infrastructure Needed
 
-- [ ] **`httpx`** — add to `backend/requirements.txt` if not present (used by Features 14, 33)
-  - Already likely present via other dependencies; verify: `grep httpx backend/requirements.txt`
-- [ ] **`@dnd-kit/core` + `@dnd-kit/sortable`** — for Feature 15 kanban drag-and-drop
+- [ ] **`httpx`** — **NOT in `backend/requirements.txt`** — must add before implementing Features 14, 33
+  - Add: `httpx==0.27.0` (async HTTP client for Crossref/arXiv/job-scraper calls)
+  - `pip install httpx` then freeze to `backend/requirements.txt`
+- [ ] **`@dnd-kit/core` + `@dnd-kit/sortable`** — not in `package.json` — needed for Feature 15 kanban
   - `pnpm add @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities`
-- [ ] **`recharts`** — for Feature 18 radar chart
-  - `pnpm add recharts` (check if not already installed)
-- [ ] **SlowAPI / Redis rate limiting** — for Features 13, 33 (already needed from P0 checklist)
-  - `pip install slowapi` in `backend/requirements.txt`
-  - Or: implement simple Redis counter middleware (avoids extra dep)
+- [ ] **`recharts`** — not in `package.json` — needed for Feature 18 radar chart
+  - `pnpm add recharts`
+  - Note: `framer-motion@^12.35.2` is already present (can use for animations instead of recharts transitions)
+- [ ] **Rate limiting middleware** — `backend/app/middleware/rate_limiting.py` already has a full
+  Redis-based `RateLimitMiddleware` — just not registered in `main.py`. Wire it up (needed for P0
+  ATS/AI endpoints and P1 Features 13, 33). No SlowAPI dep needed.
 - [ ] **Celery Beat scheduler** — for Feature 19 weekly digest
-  - Already supported by `celery[redis]`; just needs schedule config in `celery_app.py`
+  - `celery==5.3.4` already present in requirements.txt — just needs schedule config in `celery_app.py`
+  - `beautifulsoup4==4.12.3` already present — used directly by Feature 33 scraper
   - Production: run a separate `celery beat` process (`make run` docker-compose may need update)
 - [ ] **Status bar layout** — Features 9 adds compiler indicator; Features 11 adds timeout badge;
   all should coordinate with P0's ATS badge and page count badge already in status bar

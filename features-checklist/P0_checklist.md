@@ -1118,8 +1118,10 @@ Recommended build order:
 
 - [x] **`MonacoDiffEditor`** — import from `@monaco-editor/react`; needed by Features 2 and 5.
   Verify it's in `package.json`; add if missing: `pnpm add @monaco-editor/react`
-- [ ] **SlowAPI rate limiting** — for `/ats/quick-score` and `/ai/explain-error` endpoints.
-  Add `slowapi` to `backend/requirements.txt`; configure limiter in `backend/app/main.py`
+- [~] **Rate limiting middleware** — `backend/app/middleware/rate_limiting.py` exists with
+  Redis-based `RateLimitMiddleware` + `APIKeyRateLimitMiddleware`, but **not registered** in `main.py`.
+  Wire it in: `app.add_middleware(RateLimitMiddleware, calls_per_minute=20, calls_per_hour=500)`
+  for the AI/ATS endpoints specifically. No SlowAPI dep needed — custom middleware is complete.
 - [x] **`pdf2image` + `Pillow`** — for thumbnail generation in Feature 1.
   Add to `backend/requirements.txt` (only needed in scripts, not main app)
 - [x] **Alembic migrations must run in order** — Features 1–5 each add a migration. Run all before
