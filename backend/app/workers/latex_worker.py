@@ -39,6 +39,7 @@ def compile_latex_task(
     device_fingerprint: Optional[str] = None,
     metadata: Optional[Dict] = None,
     resume_id: Optional[str] = None,
+    compiler: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Compile LaTeX content to PDF, streaming each pdflatex log line as
@@ -48,9 +49,15 @@ def compile_latex_task(
     if job_id is None:
         job_id = str(uuid.uuid4())
 
+    # Resolve and validate compiler — None means "use configured default"
+    compiler = compiler or settings.DEFAULT_LATEX_COMPILER
+    if compiler not in settings.ALLOWED_LATEX_COMPILERS:
+        logger.warning(f"Invalid compiler '{compiler}', falling back to {settings.DEFAULT_LATEX_COMPILER}")
+        compiler = settings.DEFAULT_LATEX_COMPILER
+
     task_id = self.request.id
     worker_id = f"latex-{task_id}"
-    logger.info(f"LaTeX task {task_id} starting for job {job_id}")
+    logger.info(f"LaTeX task {task_id} starting for job {job_id} (compiler={compiler})")
 
     publish_event(job_id, "job.started", {
         "worker_id": worker_id,
@@ -87,12 +94,12 @@ def compile_latex_task(
         publish_event(job_id, "job.progress", {
             "percent": 10,
             "stage": "latex_compilation",
-            "message": "Starting pdflatex compilation",
+            "message": f"Starting {compiler} compilation",
         })
 
         # ── Compile ──────────────────────────────────────────────────
         cmd = [
-            "pdflatex",
+            compiler,
             "-interaction=nonstopmode",
             "-halt-on-error",
             "-synctex=1",
@@ -133,7 +140,7 @@ def compile_latex_task(
             )
             publish_event(job_id, "log.line", {
                 "line": stripped,
-                "source": "pdflatex",
+                "source": compiler,
                 "is_error": is_error_line,
             })
 
@@ -186,6 +193,7 @@ def compile_latex_task(
                 "optimization_time": 0.0,
                 "tokens_used": 0,
                 "page_count": page_count,
+                "compiler": compiler,
             })
             logger.info(
                 f"LaTeX task {task_id} succeeded for job {job_id} ({pdf_size} bytes)"
@@ -205,7 +213,7 @@ def compile_latex_task(
 
             return result
 
-        error_msg = f"pdflatex exited with code {proc.returncode}"
+        error_msg = f"{compiler} exited with code {proc.returncode}"
         publish_event(job_id, "job.failed", {
             "stage": "latex_compilation",
             "error_code": "latex_error",
@@ -241,10 +249,12 @@ def submit_latex_compilation(
     priority: Optional[int] = None,
     metadata: Optional[Dict] = None,
     resume_id: Optional[str] = None,
+    compiler: Optional[str] = None,
 ) -> str:
     """Enqueue compile_latex_task on the latex queue."""
     if priority is None:
         priority = get_task_priority(user_plan)
+    compiler = compiler or settings.DEFAULT_LATEX_COMPILER
 
     compile_latex_task.apply_async(
         args=[latex_content],
@@ -255,9 +265,10 @@ def submit_latex_compilation(
             "device_fingerprint": device_fingerprint,
             "metadata": metadata,
             "resume_id": resume_id,
+            "compiler": compiler,
         },
         priority=priority,
         queue="latex",
     )
-    logger.info(f"Submitted LaTeX compilation for job {job_id}")
+    logger.info(f"Submitted LaTeX compilation for job {job_id} (compiler={compiler})")
     return job_id

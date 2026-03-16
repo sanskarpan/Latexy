@@ -38,31 +38,32 @@ Large features (own sprints):
 
 ---
 
-## Feature 9 — Multiple LaTeX Compilers (XeLaTeX, LuaLaTeX) · P1 · L
+## Feature 9 — Multiple LaTeX Compilers (XeLaTeX, LuaLaTeX) · P1 · L ✅ COMPLETED
 
 **Goal:** Let users choose between `pdflatex`, `xelatex`, and `lualatex` per-resume. The Docker
 texlive image already ships all three — this is backend config + API + frontend selector.
 Compiler preference stored in resume `metadata` JSONB column.
 
 ### 9A · Database Migration — Resume Metadata Column
-- [ ] Create `backend/alembic/versions/0007_add_resume_metadata.py`
+- [x] Create `backend/alembic/versions/0007_add_resume_metadata.py`
   ```sql
   ALTER TABLE resumes ADD COLUMN metadata JSONB DEFAULT '{}';
   COMMENT ON COLUMN resumes.metadata IS 'Per-resume settings: compiler, custom flags, etc.';
   ```
   - No index needed (metadata is read per-resume, not filtered globally)
   - Default `'{}'::jsonb` so existing resumes get an empty object
-- [ ] Update `Resume` model in `backend/app/database/models.py`:
+- [x] Update `Resume` model in `backend/app/database/models.py`:
   ```python
   from sqlalchemy.dialects.postgresql import JSONB
   metadata: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True, default={})
   ```
-- [ ] Update `ResumeResponse` Pydantic schema in `resume_routes.py`:
+  - Note: attribute named `resume_settings` (mapped to `"metadata"` column) to avoid SQLAlchemy reserved name conflict
+- [x] Update `ResumeResponse` Pydantic schema in `resume_routes.py`:
   - Add `metadata: Optional[Dict] = None`
   - Already returns from `GET /resumes/{id}` — just add field
 
 ### 9B · Config — Allowed Compilers
-- [ ] Add to `backend/app/core/config.py`:
+- [x] Add to `backend/app/core/config.py`:
   ```python
   ALLOWED_LATEX_COMPILERS: List[str] = ["pdflatex", "xelatex", "lualatex"]
   DEFAULT_LATEX_COMPILER: str = "pdflatex"
@@ -70,7 +71,7 @@ Compiler preference stored in resume `metadata` JSONB column.
   - Validation: `compiler not in settings.ALLOWED_LATEX_COMPILERS → 400`
 
 ### 9C · Backend — Compile Task Update
-- [ ] In `backend/app/workers/latex_worker.py`:
+- [x] In `backend/app/workers/latex_worker.py`:
   - Add `compiler: str = "pdflatex"` to `compile_latex_task` signature:
     ```python
     def compile_latex_task(
@@ -112,7 +113,7 @@ Compiler preference stored in resume `metadata` JSONB column.
     })
     ```
 
-- [ ] Update `submit_latex_compilation()` helper in `latex_worker.py`:
+- [x] Update `submit_latex_compilation()` helper in `latex_worker.py`:
   ```python
   def submit_latex_compilation(
       latex_content: str,
@@ -135,7 +136,7 @@ Compiler preference stored in resume `metadata` JSONB column.
   ```
 
 ### 9D · Backend — Resume Compiler Preference Endpoint
-- [ ] Add `PATCH /resumes/{resume_id}/settings` to `backend/app/api/resume_routes.py`:
+- [x] Add `PATCH /resumes/{resume_id}/settings` to `backend/app/api/resume_routes.py`:
   - Auth required, verify ownership
   - Body: `{ compiler?: str, custom_flags?: str }`
   - Validates `compiler` is in `ALLOWED_LATEX_COMPILERS`
@@ -144,60 +145,56 @@ Compiler preference stored in resume `metadata` JSONB column.
   - This is a lightweight settings endpoint; no need for a separate route file
 
 ### 9E · Backend — Pass Compiler at Compile Time
-- [ ] In `backend/app/api/routes.py`, `compile_latex_endpoint()`:
-  - When `resume_id` is provided, look up `resume.metadata.get("compiler", "pdflatex")`
+- [x] In `backend/app/api/job_routes.py`, `compile_latex_endpoint()`:
+  - Three-tier resolution: explicit request compiler → resume metadata lookup → default pdflatex
   - Pass to `submit_latex_compilation(..., compiler=compiler)`
-  - When compiling without a resume (anonymous on `/try`): use `pdflatex` (default)
-- [ ] In `backend/app/workers/orchestrator.py` (for optimize+compile pipeline):
+  - When compiling without a resume (anonymous on `/try`): uses `pdflatex` (default)
+- [x] In `backend/app/workers/orchestrator.py` (for optimize+compile pipeline):
   - Similarly accept and pass `compiler` parameter through the orchestration chain
 
 ### 9F · Backend — Job Submit API Update
-- [ ] In `backend/app/api/routes.py`, `JobSubmitRequest` schema:
-  - Add optional `compiler: Optional[str] = "pdflatex"` field
+- [x] In `backend/app/api/job_routes.py`, `JobSubmissionRequest` schema:
+  - Add optional `compiler: Optional[str] = None` field
   - Validated against `ALLOWED_LATEX_COMPILERS` in endpoint handler
   - Pass to `submit_latex_compilation()`
 
 ### 9G · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   updateResumeSettings(
     resumeId: string,
     settings: { compiler?: 'pdflatex' | 'xelatex' | 'lualatex'; custom_flags?: string }
   ): Promise<ResumeResponse>
   ```
-- [ ] Update `ResumeResponse` interface: add `metadata?: { compiler?: string; [key: string]: unknown }`
+- [x] Update `ResumeResponse` interface: add `metadata?: { compiler?: string; [key: string]: unknown }`
+- [x] Added `LatexCompiler` type export and `compiler` param to `compileLatex()` / `optimizeAndCompile()`
 
 ### 9H · Frontend — Compiler Selector in Editor Toolbar
-- [ ] Create `frontend/src/components/CompilerSelector.tsx`:
-  ```tsx
-  // Props: current: string, onChange: (compiler: string) => void, disabled?: boolean
-  // Renders as a small dropdown in editor toolbar
-  // Options: "pdflatex" (default), "xelatex" (Unicode/fonts), "lualatex" (advanced)
-  // Each option has a short description tooltip:
-  //   pdflatex → "Standard (fastest, widest compatibility)"
-  //   xelatex  → "Unicode + custom fonts via fontspec"
-  //   lualatex → "Modern engine with Lua scripting"
-  // On change: call apiClient.updateResumeSettings(resumeId, { compiler })
-  // Show toast: "Compiler changed to XeLaTeX — next compile will use it"
-  ```
-- [ ] Mount in `frontend/src/app/workspace/[resumeId]/edit/page.tsx` editor toolbar
-  - Read initial value from `resume.metadata?.compiler ?? 'pdflatex'`
-  - Only show on authenticated resume edit pages (not on `/try`)
+- [x] Create `frontend/src/components/CompilerSelector.tsx`:
+  - Props: `current`, `onChange`, `disabled`, `resumeId`
+  - Dropdown with pdflatex/xelatex/lualatex options with description tooltips
+  - On change: calls `apiClient.updateResumeSettings()`, shows toast
+  - Cyan styling for non-pdflatex engines
+- [x] Mount in `frontend/src/app/workspace/[resumeId]/edit/page.tsx` editor toolbar
+  - Reads initial value from `resume.metadata?.compiler ?? 'pdflatex'`
   - Disabled while compilation is running
-- [ ] Mount in `frontend/src/app/workspace/[resumeId]/optimize/page.tsx` as well
+- [x] Mount in `frontend/src/app/workspace/[resumeId]/optimize/page.tsx` as well
 
 ### 9I · Frontend — Compiler in Job Submit
-- [ ] When submitting a compile job on edit page:
-  - Read `resume.metadata?.compiler` and pass as `compiler` in job submit body
-  - Default to `"pdflatex"` if not set
+- [x] When submitting a compile job on edit page:
+  - Reads `compiler` state and passes as `compiler` in job submit body
+  - Defaults to `"pdflatex"` if not set
 
 ### 9J · Tests
-- [ ] `backend/test/test_compiler_selection.py`:
+- [x] `backend/test/test_compiler_selection.py` — 10/10 passing:
   - `PATCH /resumes/{id}/settings` with valid compiler → 200, metadata updated
   - `PATCH /resumes/{id}/settings` with invalid compiler → 400
   - `compile_latex_task` with `compiler="xelatex"` uses xelatex binary (mock subprocess)
   - `compile_latex_task` with `compiler="lualatex"` uses lualatex binary
   - `compile_latex_task` with invalid compiler falls back to `pdflatex`
+- [x] Full test suite: 917/917 passing
+- [x] Live E2E API tests: 17/17 passing against running server
+- [x] Frontend build: zero TypeScript errors
 
 ---
 

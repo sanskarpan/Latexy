@@ -21,10 +21,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client, redis_manager
 from ..database.connection import get_db
-from ..database.models import Compilation
+from ..database.models import Compilation, Resume
 from ..middleware.auth_middleware import get_current_user_optional
 from ..workers.ats_worker import submit_ats_scoring
 from ..workers.cleanup_worker import submit_expired_jobs_cleanup, submit_temp_files_cleanup
@@ -55,6 +56,7 @@ class JobSubmissionRequest(BaseModel):
     custom_instructions: Optional[str] = None
     metadata: Optional[Dict] = None
     model: Optional[str] = None
+    compiler: Optional[str] = None  # "pdflatex" | "xelatex" | "lualatex"
 
 
 class JobSubmissionResponse(BaseModel):
@@ -196,6 +198,33 @@ async def submit_job(
             **safe_meta,
         }
 
+        # Resolve compiler: explicit request field > resume metadata > default
+        compiler = settings.DEFAULT_LATEX_COMPILER
+        if request.compiler:
+            if request.compiler not in settings.ALLOWED_LATEX_COMPILERS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported compiler '{request.compiler}'. Allowed: {settings.ALLOWED_LATEX_COMPILERS}",
+                )
+            compiler = request.compiler
+        elif safe_meta.get("resume_id") and user_id:
+            # Look up resume's stored compiler preference
+            from sqlalchemy import select as sa_select
+            try:
+                resume_result = await db.execute(
+                    sa_select(Resume.resume_settings).where(
+                        Resume.id == safe_meta["resume_id"],
+                        Resume.user_id == user_id,
+                    )
+                )
+                resume_meta = resume_result.scalar_one_or_none()
+                if isinstance(resume_meta, dict):
+                    stored_compiler = resume_meta.get("compiler", "")
+                    if stored_compiler in settings.ALLOWED_LATEX_COMPILERS:
+                        compiler = stored_compiler
+            except Exception as exc:
+                logger.debug(f"Could not fetch resume compiler preference: {exc}")
+
         if request.job_type == "latex_compilation":
             if not request.latex_content:
                 raise HTTPException(
@@ -210,6 +239,7 @@ async def submit_job(
                 user_plan=request.user_plan,
                 device_fingerprint=request.device_fingerprint,
                 metadata=extra_meta,
+                compiler=compiler,
             )
 
         elif request.job_type == "llm_optimization":
@@ -249,6 +279,7 @@ async def submit_job(
                 custom_instructions=request.custom_instructions,
                 model=request.model,
                 metadata=extra_meta,
+                compiler=compiler,
             )
 
         elif request.job_type == "ats_scoring":

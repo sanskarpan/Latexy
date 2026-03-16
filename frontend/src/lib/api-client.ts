@@ -20,6 +20,8 @@ export type JobType =
 
 export type OptimizationLevel = 'conservative' | 'balanced' | 'aggressive'
 
+export type LatexCompiler = 'pdflatex' | 'xelatex' | 'lualatex'
+
 export interface JobSubmitRequest {
   job_type: JobType
   latex_content?: string
@@ -32,6 +34,7 @@ export interface JobSubmitRequest {
   custom_instructions?: string
   model?: string
   metadata?: Record<string, unknown>
+  compiler?: LatexCompiler
 }
 
 export interface OptimizationHistoryEntry {
@@ -117,6 +120,7 @@ export interface ResumeResponse extends ResumeBase {
   user_id: string
   parent_resume_id?: string | null
   variant_count?: number
+  metadata?: { compiler?: string; custom_flags?: string; [key: string]: unknown } | null
   created_at: string
   updated_at: string
 }
@@ -369,6 +373,16 @@ class ApiClient {
     })
   }
 
+  async updateResumeSettings(
+    resumeId: string,
+    settings: { compiler?: LatexCompiler; custom_flags?: string }
+  ): Promise<ResumeResponse> {
+    return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/settings`, {
+      method: 'PATCH',
+      body: JSON.stringify(settings),
+    })
+  }
+
   async getResumeStats(): Promise<ResumeStats> {
     return this.request<ResumeStats>('/resumes/stats')
   }
@@ -454,6 +468,7 @@ class ApiClient {
     device_fingerprint?: string
     user_plan?: string
     resume_id?: string
+    compiler?: LatexCompiler
   }): Promise<JobSubmitResponse> {
     return this.submitJob({
       job_type: 'latex_compilation',
@@ -461,6 +476,7 @@ class ApiClient {
       device_fingerprint: body.device_fingerprint,
       user_plan: body.user_plan,
       metadata: body.resume_id ? { resume_id: body.resume_id } : undefined,
+      compiler: body.compiler,
     })
   }
 
@@ -474,6 +490,7 @@ class ApiClient {
     custom_instructions?: string
     model?: string
     resume_id?: string
+    compiler?: LatexCompiler
   }): Promise<JobSubmitResponse> {
     return this.submitJob({
       job_type: 'combined',
@@ -486,6 +503,7 @@ class ApiClient {
       custom_instructions: body.custom_instructions,
       model: body.model,
       metadata: body.resume_id ? { resume_id: body.resume_id } : undefined,
+      compiler: body.compiler,
     })
   }
 

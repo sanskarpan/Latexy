@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     COMPILE_TIMEOUT: int = 30  # seconds
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
     TEMP_DIR: Path = Path("/tmp/latex_compile")
+    ALLOWED_LATEX_COMPILERS: List[str] = ["pdflatex", "xelatex", "lualatex"]
+    DEFAULT_LATEX_COMPILER: str = "pdflatex"
 
     # Docker
     LATEX_DOCKER_IMAGE: str = "texlive/texlive:latest"

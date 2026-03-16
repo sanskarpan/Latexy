@@ -347,6 +347,8 @@ class TestLatexTimeout:
             ms.COMPILE_TIMEOUT = 30
             ms.TEMP_DIR = __import__("pathlib").Path("/tmp/latexy_test")
             ms.LATEX_DOCKER_IMAGE = "texlive/texlive:latest"
+            ms.ALLOWED_LATEX_COMPILERS = ["pdflatex", "xelatex", "lualatex"]
+            ms.DEFAULT_LATEX_COMPILER = "pdflatex"
             lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
 
         assert mock_proc.kill.called
@@ -364,6 +366,8 @@ class TestLatexTimeout:
             ms.COMPILE_TIMEOUT = 30
             ms.TEMP_DIR = __import__("pathlib").Path("/tmp/latexy_test")
             ms.LATEX_DOCKER_IMAGE = "texlive/texlive:latest"
+            ms.ALLOWED_LATEX_COMPILERS = ["pdflatex", "xelatex", "lualatex"]
+            ms.DEFAULT_LATEX_COMPILER = "pdflatex"
             lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
 
         failed = [c for c in mock_publish.call_args_list if c.args[1] == "job.failed"]

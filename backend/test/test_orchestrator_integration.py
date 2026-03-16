@@ -37,6 +37,8 @@ class TestDockerFallback:
         ):
             mock_settings.TEMP_DIR = tmp_path
             mock_settings.LATEX_DOCKER_IMAGE = "texlive/texlive:latest"
+            mock_settings.ALLOWED_LATEX_COMPILERS = ["pdflatex", "xelatex", "lualatex"]
+            mock_settings.DEFAULT_LATEX_COMPILER = "pdflatex"
 
             # Mock successful pdflatex run
             mock_proc = MagicMock()
@@ -75,6 +77,8 @@ class TestDockerFallback:
         ):
             mock_settings.TEMP_DIR = tmp_path
             mock_settings.LATEX_DOCKER_IMAGE = "texlive/texlive:latest"
+            mock_settings.ALLOWED_LATEX_COMPILERS = ["pdflatex", "xelatex", "lualatex"]
+            mock_settings.DEFAULT_LATEX_COMPILER = "pdflatex"
 
             mock_proc = MagicMock()
             mock_proc.stdout = iter([])

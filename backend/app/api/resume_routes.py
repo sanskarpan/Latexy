@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,11 +39,17 @@ class ResumeResponse(ResumeBase):
     user_id: str
     parent_resume_id: Optional[str] = None
     variant_count: int = 0
+    # resume_settings is the ORM attribute; we expose it as "metadata" in JSON
+    metadata: Optional[Dict[str, Any]] = Field(default=None, validation_alias="resume_settings")
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class ResumeSettingsUpdate(BaseModel):
+    compiler: Optional[str] = None
+    custom_flags: Optional[str] = None
 
 class ResumeStats(BaseModel):
     total_resumes: int
@@ -233,6 +239,46 @@ async def delete_resume(
         raise HTTPException(status_code=404, detail="Resume not found")
     await db.commit()
     return None
+
+
+@router.patch("/{resume_id}/settings", response_model=ResumeResponse)
+async def update_resume_settings(
+    resume_id: str,
+    body: ResumeSettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Update per-resume settings (compiler preference, custom flags, etc.)."""
+    result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    # Validate compiler if provided
+    if body.compiler is not None:
+        if body.compiler not in settings.ALLOWED_LATEX_COMPILERS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid compiler '{body.compiler}'. Allowed: {settings.ALLOWED_LATEX_COMPILERS}",
+            )
+
+    # Merge into existing settings
+    current_meta = dict(resume.resume_settings or {})
+    if body.compiler is not None:
+        current_meta["compiler"] = body.compiler
+    if body.custom_flags is not None:
+        current_meta["custom_flags"] = body.custom_flags
+
+    resume.resume_settings = current_meta
+    resume.updated_at = datetime.now()
+    await db.commit()
+    await db.refresh(resume)
+
+    resp = ResumeResponse.model_validate(resume)
+    resp.variant_count = 0
+    return resp
 
 
 # ── Variant / Fork system ─────────────────────────────────────────────────
