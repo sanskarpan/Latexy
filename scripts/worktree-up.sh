@@ -186,14 +186,34 @@ stop_slot() {
 }
 
 stop_all() {
-  echo -e "${YELLOW}→ Stopping ALL slots + shared infra...${NC}"
+  echo -e "${YELLOW}→ Stopping all app slots (keeping shared infra running)...${NC}"
   cd "$PROJECT_ROOT"
   for s in 1 2 3 4; do
     local pname="latexy-w${s}"
     [[ "$s" -eq 1 ]] && pname="latexy"
-    docker compose -p "$pname" down --remove-orphans 2>&1 | grep -v "obsolete" || true
+    # Stop only app-layer services — do NOT take down the whole project
+    # (which would also stop postgres/redis/minio shared infra)
+    SLOT=$s \
+    BACKEND_PORT=$((8029 + s)) \
+    FRONTEND_PORT=$((5179 + s)) \
+    FLOWER_PORT=$((5554 + s)) \
+      docker compose -p "$pname" stop backend worker beat frontend flower 2>/dev/null || true
+    SLOT=$s \
+    BACKEND_PORT=$((8029 + s)) \
+    FRONTEND_PORT=$((5179 + s)) \
+    FLOWER_PORT=$((5554 + s)) \
+      docker compose -p "$pname" rm -f backend worker beat frontend flower 2>/dev/null || true
   done
-  echo -e "${GREEN}✓ Everything stopped.${NC}"
+  rm -f "$SLOT_FILE"
+  echo -e "${GREEN}✓ All app slots stopped. Shared infra (postgres, redis, minio) still running.${NC}"
+  echo "  Stop infra: docker compose -p latexy stop postgres redis minio"
+}
+
+stop_infra() {
+  echo -e "${YELLOW}→ Stopping shared infra (postgres, redis, minio)...${NC}"
+  cd "$PROJECT_ROOT"
+  docker compose -p latexy stop postgres redis minio 2>/dev/null || true
+  echo -e "${GREEN}✓ Shared infra stopped.${NC}"
 }
 
 tail_logs() {
@@ -239,6 +259,8 @@ case "$ACTION" in
     TARGET="${2:-}"
     if [[ "$TARGET" == "all" ]]; then
       stop_all
+    elif [[ "$TARGET" == "infra" ]]; then
+      stop_infra
     else
       # If explicit slot given use it, else read from .dev-slot file
       local_slot=""
@@ -296,7 +318,8 @@ case "$ACTION" in
     echo "  w2 / w3 / w4   Start — force a specific slot"
     echo "  stop           Stop this directory's slot (reads .dev-slot)"
     echo "  stop w2        Stop slot 2 explicitly"
-    echo "  stop all       Stop ALL slots + shared infra"
+    echo "  stop all       Stop all app slots (infra stays running)"
+    echo "  stop infra     Stop shared infra (postgres, redis, minio)"
     echo "  logs           Tail this directory's slot logs"
     echo "  logs w2        Tail slot 2 logs"
     echo "  status         Show all running slots"
