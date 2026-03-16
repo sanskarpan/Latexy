@@ -57,6 +57,7 @@ class JobCompletedEvent(BaseEvent):
     compilation_time: float
     optimization_time: float
     tokens_used: int
+    page_count: Optional[int] = None
 
 
 class JobFailedEvent(BaseEvent):
