@@ -317,13 +317,13 @@ generated on demand, revocable. Public route renders PDF without login.
 
 ---
 
-## Feature 11 — Compile Timeout per Plan · P1 · S
+## Feature 11 — Compile Timeout per Plan · P1 · S ✅ COMPLETED
 
 **Goal:** Free users get 30s compile timeout; Basic 120s; Pro/BYOK 240s. When timeout hits,
 return `compile_timeout` error code with upgrade CTA. Latency SLA differentiation.
 
 ### 11A · Config — Timeout Tiers
-- [ ] Add to `backend/app/core/config.py`:
+- [x] Add to `backend/app/core/config.py`:
   ```python
   # Compile timeout per subscription plan (seconds)
   COMPILE_TIMEOUT_FREE: int = 30
@@ -332,7 +332,7 @@ return `compile_timeout` error code with upgrade CTA. Latency SLA differentiatio
   COMPILE_TIMEOUT_BYOK: int = 240
   ```
   - Keep existing `COMPILE_TIMEOUT = 30` as fallback for unauthenticated requests
-- [ ] Add helper function in `config.py` or `latex_worker.py`:
+- [x] Add helper function in `config.py` or `latex_worker.py`:
   ```python
   def get_compile_timeout(user_plan: str) -> int:
       return {
@@ -344,7 +344,7 @@ return `compile_timeout` error code with upgrade CTA. Latency SLA differentiatio
   ```
 
 ### 11B · Worker — Enforce Timeout
-- [ ] In `backend/app/workers/latex_worker.py`:
+- [x] In `backend/app/workers/latex_worker.py`:
   - The worker already checks `time.time() - start_time > settings.COMPILE_TIMEOUT` per log line
   - Replace the hardcoded `settings.COMPILE_TIMEOUT` check with `timeout` parameter:
     ```python
