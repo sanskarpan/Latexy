@@ -117,6 +117,7 @@ def optimize_and_compile_task(
         "stage": "llm_optimization",
     })
 
+    current_stage = "llm_optimization"
     try:
         # ================================================================ #
         # Stage 1 — LLM optimization with token streaming (0% → 40%)      #
@@ -136,6 +137,7 @@ def optimize_and_compile_task(
             publish_event(job_id, "job.cancelled", {})
             return {"success": False, "job_id": job_id, "cancelled": True}
 
+        current_stage = "latex_compilation"
         # ================================================================ #
         # Stage 2 — LaTeX compilation with log streaming (40% → 80%)      #
         # ================================================================ #
@@ -178,6 +180,7 @@ def optimize_and_compile_task(
             }
 
         # ================================================================ #
+        current_stage = "ats_scoring"
         # Stage 3 — ATS scoring (80% → 100%)                              #
         # ================================================================ #
         publish_event(job_id, "job.progress", {
@@ -242,11 +245,15 @@ def optimize_and_compile_task(
 
     except SoftTimeLimitExceeded:
         logger.error(f"Orchestrator task {task_id} exceeded soft time limit for job {job_id}")
+        upgrade_msg = (
+            "Upgrade to Pro for a 4-minute compile timeout"
+            if user_plan in ("free", "basic") else None
+        )
         publish_event(job_id, "job.failed", {
-            "stage": "latex_compilation",
+            "stage": current_stage,
             "error_code": "compile_timeout",
             "error_message": f"Task exceeded time limit ({user_plan} plan)",
-            "upgrade_message": "Upgrade to Pro for a 4-minute compile timeout",
+            "upgrade_message": upgrade_msg,
             "user_plan": user_plan,
             "retryable": False,
         })

@@ -12,7 +12,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from ..core.config import settings
+from ..core.config import get_compile_timeout, settings
 from ..core.logging import get_logger
 from ..models.schemas import CompilationResponse
 
@@ -63,7 +63,7 @@ class LaTeXService:
         except Exception:
             return False
 
-    async def compile_latex(self, latex_content: str, job_id: Optional[str] = None) -> CompilationResponse:
+    async def compile_latex(self, latex_content: str, job_id: Optional[str] = None, user_plan: str = "free") -> CompilationResponse:
         """Compile LaTeX content to PDF using Docker with LaTeX."""
         if job_id is None:
             job_id = str(uuid.uuid4())
@@ -105,17 +105,18 @@ class LaTeXService:
                 stderr=asyncio.subprocess.PIPE
             )
 
+            timeout = get_compile_timeout(user_plan)
             try:
                 stdout, stderr = await asyncio.wait_for(
                     process.communicate(),
-                    timeout=settings.COMPILE_TIMEOUT
+                    timeout=timeout
                 )
             except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
                 raise HTTPException(
                     status_code=408,
-                    detail=f"LaTeX compilation timed out after {settings.COMPILE_TIMEOUT} seconds"
+                    detail=f"LaTeX compilation timed out after {timeout} seconds"
                 )
 
             compilation_time = time.time() - start_time

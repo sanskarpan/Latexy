@@ -154,11 +154,15 @@ def compile_latex_task(
             # ── Timeout check ────────────────────────────────────────
             if time.time() - start_time > timeout:
                 proc.kill()
+                upgrade_msg = (
+                    "Upgrade to Pro for a 4-minute compile timeout"
+                    if user_plan in ("free", "basic") else None
+                )
                 publish_event(job_id, "job.failed", {
                     "stage": "latex_compilation",
                     "error_code": "compile_timeout",
                     "error_message": f"Compilation timed out after {int(timeout)}s ({user_plan} plan limit)",
-                    "upgrade_message": "Upgrade to Pro for a 4-minute compile timeout",
+                    "upgrade_message": upgrade_msg,
                     "user_plan": user_plan,
                     "retryable": False,
                 })
@@ -227,11 +231,15 @@ def compile_latex_task(
 
     except SoftTimeLimitExceeded:
         logger.error(f"LaTeX task {task_id} hit soft time limit for job {job_id}")
+        upgrade_msg = (
+            "Upgrade to Pro for a 4-minute compile timeout"
+            if user_plan in ("free", "basic") else None
+        )
         publish_event(job_id, "job.failed", {
             "stage": "latex_compilation",
             "error_code": "compile_timeout",
-            "error_message": f"Compilation timed out ({user_plan} plan limit)",
-            "upgrade_message": "Upgrade to Pro for a 4-minute compile timeout",
+            "error_message": f"Compilation timed out after {int(timeout)}s ({user_plan} plan limit)",
+            "upgrade_message": upgrade_msg,
             "user_plan": user_plan,
             "retryable": False,
         })
