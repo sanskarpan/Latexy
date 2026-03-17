@@ -84,6 +84,9 @@ export interface JobFailedEvent extends BaseEvent {
   /** Present when compilation failed after LLM succeeded — allows "apply anyway" UX */
   optimized_latex?: string
   changes_made?: Array<{ section: string; change_type: string; reason: string }>
+  /** Present when error_code === 'compile_timeout' */
+  upgrade_message?: string
+  user_plan?: string
 }
 
 export interface JobCancelledEvent extends BaseEvent {
