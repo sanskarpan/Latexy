@@ -1,8 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { X, RotateCcw } from 'lucide-react'
-import { DiffEditor, type Monaco } from '@monaco-editor/react'
+import { X, RotateCcw, Maximize2, Minimize2 } from 'lucide-react'
+import { DiffEditor } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 import { toast } from 'sonner'
 import type { CheckpointEntry } from '@/lib/api-client'
@@ -20,6 +20,12 @@ interface DiffViewerModalProps {
   parentTitle?: string
   variantLatex?: string
   variantTitle?: string
+}
+
+interface DiffStats {
+  added: number
+  removed: number
+  changed: number
 }
 
 function makeLabel(cp: CheckpointEntry): string {
@@ -47,18 +53,21 @@ export default function DiffViewerModal({
   const [rightLabel, setRightLabel] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [diffStats, setDiffStats] = useState<DiffStats | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  // confirmRestore holds the latex string to restore once user confirms
+  const [confirmRestore, setConfirmRestore] = useState<string | null>(null)
+
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null)
 
   // Clean up diff editor models before React unmounts the component
-  // This prevents "TextModel got disposed before DiffEditorWidget model got reset"
   useEffect(() => {
     return () => {
       const ed = diffEditorRef.current
       if (ed) {
         try {
-          // Reset the diff editor's model to null before disposal
           ed.setModel(null)
         } catch {
           // Ignore — already disposed
@@ -69,7 +78,6 @@ export default function DiffViewerModal({
   }, [])
 
   useEffect(() => {
-    // Parent-diff mode: data is already provided via props
     if (isParentDiffMode) {
       setLeftLatex(parentLatex!)
       setLeftLabel(parentTitle ?? 'Parent')
@@ -84,9 +92,9 @@ export default function DiffViewerModal({
     let cancelled = false
     setLoading(true)
     setError(false)
+    setDiffStats(null)
     const promises: Promise<void>[] = []
 
-    // Fetch left side (checkpointA)
     promises.push(
       apiClient.getCheckpointContent(resumeId, checkpointA.id).then((data) => {
         if (cancelled) return
@@ -95,7 +103,6 @@ export default function DiffViewerModal({
       })
     )
 
-    // Fetch right side
     if (checkpointB) {
       promises.push(
         apiClient.getCheckpointContent(resumeId, checkpointB.id).then((data) => {
@@ -123,31 +130,74 @@ export default function DiffViewerModal({
     return () => { cancelled = true }
   }, [checkpointA, checkpointB, resumeId, currentLatex, isParentDiffMode, parentLatex, parentTitle, variantLatex, variantTitle])
 
-  // Close on Escape — use ref to avoid re-registering on every render
+  // Close on Escape (but not when confirm dialog is open)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current()
+      if (e.key === 'Escape') {
+        if (confirmRestore !== null) {
+          setConfirmRestore(null)
+        } else {
+          onCloseRef.current()
+        }
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [confirmRestore])
 
   const handleRestoreLeft = useCallback(() => {
-    if (leftLatex) onRestore(leftLatex)
-  }, [leftLatex, onRestore])
+    if (leftLatex) setConfirmRestore(leftLatex)
+  }, [leftLatex])
 
   const handleRestoreRight = useCallback(() => {
-    if (rightLatex) onRestore(rightLatex)
-  }, [rightLatex, onRestore])
+    if (rightLatex) setConfirmRestore(rightLatex)
+  }, [rightLatex])
+
+  const confirmAndRestore = useCallback(() => {
+    if (confirmRestore !== null) {
+      onRestore(confirmRestore)
+      setConfirmRestore(null)
+    }
+  }, [confirmRestore, onRestore])
+
+  const computeDiffStats = useCallback((ed: editor.IStandaloneDiffEditor) => {
+    const changes = ed.getLineChanges()
+    if (!changes) return
+    let added = 0
+    let removed = 0
+    for (const change of changes) {
+      if (change.modifiedEndLineNumber > 0) {
+        added += change.modifiedEndLineNumber - change.modifiedStartLineNumber + 1
+      }
+      if (change.originalEndLineNumber > 0) {
+        removed += change.originalEndLineNumber - change.originalStartLineNumber + 1
+      }
+    }
+    setDiffStats({ added, removed, changed: changes.length })
+  }, [])
 
   if (!checkpointA && !isParentDiffMode) return null
 
+  const modalClasses = isFullscreen
+    ? 'relative flex h-screen w-screen flex-col bg-zinc-950'
+    : 'relative flex h-[85vh] w-[95vw] max-w-7xl flex-col rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl'
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="relative flex h-[85vh] w-[95vw] max-w-7xl flex-col rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl">
+      <div className={modalClasses}>
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
-          <h2 className="text-sm font-semibold text-white">Compare Versions</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold text-white">Compare Versions</h2>
+            {diffStats && (
+              <div className="flex items-center gap-2 text-[11px]">
+                <span className="text-emerald-400">+{diffStats.added}</span>
+                <span className="text-rose-400">−{diffStats.removed}</span>
+                <span className="text-zinc-600">·</span>
+                <span className="text-zinc-500">{diffStats.changed} section{diffStats.changed !== 1 ? 's' : ''} changed</span>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleRestoreLeft}
@@ -164,6 +214,13 @@ export default function DiffViewerModal({
             >
               <RotateCcw size={12} />
               {isParentDiffMode ? 'Keep Variant' : 'Restore Right'}
+            </button>
+            <button
+              onClick={() => setIsFullscreen((v) => !v)}
+              className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/5 hover:text-white"
+              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
             <button
               onClick={onClose}
@@ -185,7 +242,7 @@ export default function DiffViewerModal({
         </div>
 
         {/* Diff editor */}
-        <div className="flex-1 overflow-hidden">
+        <div className="relative flex-1 overflow-hidden">
           {loading ? (
             <div className="flex h-full items-center justify-center">
               <div className="flex items-center gap-2 text-xs text-zinc-500">
@@ -203,7 +260,11 @@ export default function DiffViewerModal({
               modified={rightLatex ?? ''}
               language="latex"
               theme="vs-dark"
-              onMount={(editor) => { diffEditorRef.current = editor }}
+              onMount={(ed) => {
+                diffEditorRef.current = ed
+                // Compute stats on first diff render and on every subsequent update
+                ed.onDidUpdateDiff(() => computeDiffStats(ed))
+              }}
               options={{
                 readOnly: true,
                 minimap: { enabled: false },
@@ -214,6 +275,32 @@ export default function DiffViewerModal({
                 wordWrap: 'on',
               }}
             />
+          )}
+
+          {/* Restore confirmation overlay */}
+          {confirmRestore !== null && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 backdrop-blur-[2px]">
+              <div className="w-80 rounded-xl border border-white/10 bg-zinc-900 p-5 shadow-2xl">
+                <p className="text-sm font-semibold text-zinc-100">Restore this version?</p>
+                <p className="mt-1.5 text-xs text-zinc-500">
+                  This will replace your current editor content. You can undo after closing.
+                </p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    onClick={() => setConfirmRestore(null)}
+                    className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-white/20 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmAndRestore}
+                    className="rounded-lg bg-orange-500/20 px-3 py-1.5 text-xs font-semibold text-orange-200 ring-1 ring-orange-400/20 transition hover:bg-orange-500/30"
+                  >
+                    Restore
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>
