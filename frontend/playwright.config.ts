@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// Latexy2 dev server uses slot 2 (port 5181) when slot 1 is taken by Latexy.
+// Override with PLAYWRIGHT_PORT env var if needed.
+const PORT = parseInt(process.env.PLAYWRIGHT_PORT ?? '5181')
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -11,7 +15,7 @@ export default defineConfig({
   expect: { timeout: 12_000 },
 
   use: {
-    baseURL: 'http://localhost:5180',
+    baseURL: `http://localhost:${PORT}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -25,9 +29,9 @@ export default defineConfig({
 
   /* Start dev server automatically if not already running */
   webServer: {
-    command: 'pnpm dev --port 5180',
-    url: 'http://localhost:5180',
+    command: `pnpm dev --port ${PORT}`,
+    url: `http://localhost:${PORT}`,
     reuseExistingServer: true,
-    timeout: 30_000,
+    timeout: 60_000,
   },
 })
