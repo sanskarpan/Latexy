@@ -576,7 +576,7 @@ export default function TryPage() {
         isLoading={isDeepAnalysisRunning || deepStream.status === 'queued' || deepStream.status === 'processing'}
         analysis={deepStream.deepAnalysis}
         error={deepAnalysisError}
-        usesRemaining={deepAnalysisUsesRemaining}
+        usesRemaining={flags.trial_limits ? deepAnalysisUsesRemaining : null}
         onRun={handleRunDeepAnalysis}
         isRunning={isDeepAnalysisRunning}
         hideUpgradeCtas={!flags.upgrade_ctas}
