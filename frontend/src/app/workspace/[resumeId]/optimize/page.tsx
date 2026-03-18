@@ -4,10 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
-import { GitFork, Zap } from 'lucide-react'
+import { GitFork, History, Zap } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiClient, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler } from '@/lib/api-client'
+import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler } from '@/lib/api-client'
 import CompilerSelector from '@/components/CompilerSelector'
+import VersionHistoryPanel from '@/components/VersionHistoryPanel'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
@@ -46,6 +47,13 @@ export default function OptimizationSuitePage() {
 
   // Compiler selection
   const [compiler, setCompiler] = useState<LatexCompiler>('pdflatex')
+
+  // Version history / checkpoint diff
+  const [showHistory, setShowHistory] = useState(false)
+  const [diffCheckpointA, setDiffCheckpointA] = useState<CheckpointEntry | null>(null)
+  const [diffCheckpointB, setDiffCheckpointB] = useState<CheckpointEntry | null>(null)
+  const [showHistoryDiff, setShowHistoryDiff] = useState(false)
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
 
   // Error explainer
   const [explainerOpen, setExplainerOpen] = useState(false)
@@ -130,6 +138,7 @@ export default function OptimizationSuitePage() {
       apiClient.trackOptimization(activeJobId, 'openai', 'gpt-4o-mini', stream.tokensUsed ?? undefined)
       apiClient.trackFeatureUsage('optimize')
       refetchATS()
+      setHistoryRefreshKey((k) => k + 1)
     } else if (stream.status === 'failed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'failed')
     }
@@ -269,6 +278,18 @@ export default function OptimizationSuitePage() {
     }
   }, [resume?.latex_content, jobDescription])
 
+  const handleHistoryRestore = useCallback((latex: string) => {
+    editorRef.current?.setValue(latex)
+    setShowHistoryDiff(false)
+    toast.success('Version restored')
+  }, [])
+
+  const handleHistoryCompare = useCallback((a: CheckpointEntry, b: CheckpointEntry) => {
+    setDiffCheckpointA(a)
+    setDiffCheckpointB(b)
+    setShowHistoryDiff(true)
+  }, [])
+
   const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
   if (isLoading) {
@@ -394,6 +415,31 @@ export default function OptimizationSuitePage() {
             <div className="mt-4 h-56 overflow-hidden rounded-lg bg-black/60">
               <LogViewer lines={stream.logLines} maxHeight="100%" className="h-full text-[10px]" />
             </div>
+          </section>
+
+          <section className="surface-panel edge-highlight overflow-hidden">
+            <button
+              onClick={() => setShowHistory((v) => !v)}
+              className="flex w-full items-center justify-between px-5 py-3.5 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400 transition hover:text-zinc-200"
+            >
+              <span className="flex items-center gap-2">
+                <History size={13} />
+                Version History
+              </span>
+              <span className="text-[10px] font-normal normal-case tracking-normal text-zinc-600">
+                {showHistory ? 'Hide' : 'Show'}
+              </span>
+            </button>
+            {showHistory && (
+              <div className="max-h-80 overflow-y-auto border-t border-white/5">
+                <VersionHistoryPanel
+                  resumeId={resumeId}
+                  onRestore={handleHistoryRestore}
+                  onCompare={handleHistoryCompare}
+                  refreshKey={historyRefreshKey}
+                />
+              </div>
+            )}
           </section>
         </aside>
 
@@ -539,6 +585,18 @@ export default function OptimizationSuitePage() {
           </AnimatePresence>
         </main>
       </div>
+
+      {/* History checkpoint diff modal */}
+      {showHistoryDiff && diffCheckpointA && (
+        <DiffViewerModal
+          resumeId={resumeId}
+          checkpointA={diffCheckpointA}
+          checkpointB={diffCheckpointB}
+          currentLatex={editorRef.current?.getValue() ?? ''}
+          onRestore={handleHistoryRestore}
+          onClose={() => setShowHistoryDiff(false)}
+        />
+      )}
 
       {/* Parent diff modal */}
       {showParentDiff && parentDiffData && (
