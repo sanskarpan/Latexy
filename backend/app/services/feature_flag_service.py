@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -109,6 +109,7 @@ class FeatureFlagService:
         # 2. Direct sync connection (FastAPI / non-worker context)
         try:
             import redis as _redis
+
             from ..core.config import settings
             r = _redis.from_url(settings.REDIS_URL, decode_responses=True,
                                 socket_connect_timeout=1, socket_timeout=1)
@@ -125,6 +126,7 @@ class FeatureFlagService:
         """Write flag value to Redis (async, best-effort)."""
         try:
             import redis.asyncio as aioredis
+
             from ..core.config import settings
             r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
             await r.set(f"{REDIS_KEY_PREFIX}{key}", "1" if enabled else "0")

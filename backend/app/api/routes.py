@@ -16,8 +16,8 @@ from ..database.connection import get_db
 from ..database.models import Compilation, Resume
 from ..middleware.auth_middleware import get_current_user_optional
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
-from ..services.feature_flag_service import feature_flag_service
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
+from ..services.feature_flag_service import feature_flag_service
 from ..services.latex_compiler import latex_compiler
 from ..services.latex_service import latex_service
 from ..services.llm_service import llm_service
