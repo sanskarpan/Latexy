@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import {
   Sparkles,
@@ -24,8 +24,10 @@ import {
   Upload,
   X,
   Mail,
+  Share2,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ResumeResponse } from '@/lib/api-client'
+import ShareResumeModal from '@/components/ShareResumeModal'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import LogViewer from '@/components/LogViewer'
@@ -713,9 +715,36 @@ export default function ResumeEditPage() {
   // Compiler preference (stored in resume metadata)
   const [compiler, setCompiler] = useState<LatexCompiler>('pdflatex')
 
+  // Share link
+  const [shareModalOpen, setShareModalOpen] = useState(false)
+  const [shareToken, setShareToken] = useState<string | null>(null)
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
+
+  const searchParams = useSearchParams()
   const activePdfJobId = useRef<string | null>(null)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
+
+  // Navigate to line from ?line= search param (set by ProjectSearchModal)
+  useEffect(() => {
+    const lineParam = searchParams.get('line')
+    if (!lineParam) return
+    const lineNumber = parseInt(lineParam, 10)
+    if (isNaN(lineNumber) || lineNumber < 1) return
+    // Wait for editor to mount, then reveal the line
+    const attempt = () => {
+      if (editorRef.current) {
+        editorRef.current.highlightLine(lineNumber)
+        // Clear param from URL without navigation
+        const url = new URL(window.location.href)
+        url.searchParams.delete('line')
+        window.history.replaceState(null, '', url.toString())
+      } else {
+        setTimeout(attempt, 100)
+      }
+    }
+    attempt()
+  }, [searchParams])
 
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent)
 
@@ -736,6 +765,10 @@ export default function ResumeEditPage() {
         if (savedCompiler && ['pdflatex', 'xelatex', 'lualatex'].includes(savedCompiler)) {
           setCompiler(savedCompiler)
         }
+        // Load share token state
+        setShareToken(data.share_token ?? null)
+        setShareUrl(data.share_url ?? null)
+
         setParentResumeId(data.parent_resume_id ?? null)
         // Fetch parent title if this is a variant
         if (data.parent_resume_id) {
@@ -1266,6 +1299,19 @@ export default function ResumeEditPage() {
 
           <SaveCheckpointPopover resumeId={resumeId} onSaved={handleCheckpointSaved} />
 
+          <button
+            onClick={() => setShareModalOpen(true)}
+            title="Share resume"
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition ${
+              shareToken
+                ? 'text-sky-300/90 hover:bg-sky-500/10 hover:text-sky-200'
+                : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200'
+            }`}
+          >
+            <Share2 size={12} />
+            Share
+          </button>
+
           <div className="mx-1 h-3.5 w-px bg-white/[0.08]" />
 
           <CompilerSelector
@@ -1643,6 +1689,18 @@ export default function ResumeEditPage() {
             Upgrade for longer timeouts →
           </a>
         </div>
+      )}
+
+      {/* ── Share modal ── */}
+      {shareModalOpen && (
+        <ShareResumeModal
+          resumeId={resumeId}
+          resumeTitle={title}
+          initialShareToken={shareToken}
+          initialShareUrl={shareUrl}
+          onClose={() => setShareModalOpen(false)}
+          onShareTokenChange={(token, url) => { setShareToken(token); setShareUrl(url) }}
+        />
       )}
 
       {/* ── STATUS BAR ── */}
