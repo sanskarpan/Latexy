@@ -39,7 +39,7 @@ def upgrade() -> None:
             sa.Column('enabled', sa.Boolean(), nullable=False, server_default='true'),
             sa.Column('label', sa.String(255), nullable=False),
             sa.Column('description', sa.Text(), nullable=True),
-            sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()),
+            sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
         )
 
     op.execute(
@@ -64,4 +64,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table('feature_flags')
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if 'feature_flags' in inspector.get_table_names():
+        op.drop_table('feature_flags')

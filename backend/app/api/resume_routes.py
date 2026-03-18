@@ -237,16 +237,21 @@ async def search_resumes(
     """Full-text search across all user resumes (title + LaTeX content)."""
     from sqlalchemy import or_
 
+    where_clause = (
+        Resume.user_id == user_id,
+        Resume.is_template == False,  # noqa: E712
+        or_(
+            Resume.title.ilike(f"%{q}%"),
+            Resume.latex_content.ilike(f"%{q}%"),
+        ),
+    )
+
+    count_stmt = select(func.count()).select_from(Resume).where(*where_clause)
+    total: int = (await db.execute(count_stmt)).scalar_one()
+
     stmt = (
         select(Resume)
-        .where(
-            Resume.user_id == user_id,
-            Resume.is_template == False,  # noqa: E712
-            or_(
-                Resume.title.ilike(f"%{q}%"),
-                Resume.latex_content.ilike(f"%{q}%"),
-            ),
-        )
+        .where(*where_clause)
         .order_by(Resume.updated_at.desc())
         .limit(limit)
     )
@@ -265,7 +270,7 @@ async def search_resumes(
 
     return SearchResponse(
         results=results,
-        total_resumes_matched=len(results),
+        total_resumes_matched=total,
         query=q,
     )
 
