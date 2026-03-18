@@ -106,6 +106,9 @@ class Settings(BaseSettings):
     # Frontend URL (used to build shareable resume links)
     FRONTEND_URL: str = Field(default="http://localhost:5180", description="Frontend base URL for share links")
 
+    # Admin email — user with this email can access /admin/* endpoints
+    ADMIN_EMAIL: str = Field(default="", description="Email of the admin user for /admin/* access")
+
     # Comma-separated list of emails that get TEST_TRIAL_LIMIT instead of TRIAL_LIMIT
     TEST_USER_EMAILS: str = Field(default="", description="Comma-separated test user emails with elevated trial quota")
 
@@ -226,7 +229,17 @@ settings = Settings()
 
 
 def get_compile_timeout(user_plan: str) -> int:
-    """Return compile timeout (seconds) for a given subscription plan."""
+    """Return compile timeout (seconds) for a given subscription plan.
+
+    When the compile_timeouts feature flag is disabled (read from Redis via
+    sync_get_flag), every user gets the max (pro) timeout.
+    """
+    try:
+        from ..services.feature_flag_service import feature_flag_service
+        if not feature_flag_service.sync_get_flag("compile_timeouts"):
+            return settings.COMPILE_TIMEOUT_PRO
+    except Exception:
+        pass
     return {
         "free":  settings.COMPILE_TIMEOUT_FREE,
         "basic": settings.COMPILE_TIMEOUT_BASIC,
