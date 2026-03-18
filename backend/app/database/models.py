@@ -265,6 +265,17 @@ class CoverLetter(Base):
     resume: Mapped["Resume"] = relationship("Resume", back_populates="cover_letters")
 
 
+class FeatureFlag(Base):
+    """Feature flags for independent runtime control of platform restrictions."""
+    __tablename__ = "feature_flags"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class ResumeTemplate(Base):
     """Global resume templates available to all users."""
     __tablename__ = "resume_templates"
