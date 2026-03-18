@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { GitFork, ChevronDown, ChevronRight, X } from 'lucide-react'
+import { GitFork, ChevronDown, ChevronRight, Share2, X, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type DiffWithParentResponse, type JobStateResponse, type ResumeResponse, type SemanticMatchResult } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -11,6 +11,8 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import SemanticMatchModal from '@/components/ats/SemanticMatchModal'
 import ExportDropdown from '@/components/ExportDropdown'
 import DiffViewerModal from '@/components/DiffViewerModal'
+import ShareResumeModal from '@/components/ShareResumeModal'
+import ProjectSearchModal from '@/components/ProjectSearchModal'
 
 export default function WorkspacePage() {
   const { data: session, isPending: sessionLoading } = useSession()
@@ -24,6 +26,28 @@ export default function WorkspacePage() {
   const [matchResults, setMatchResults] = useState<SemanticMatchResult[]>([])
   const [isMatchLoading, setIsMatchLoading] = useState(false)
   const [matchError, setMatchError] = useState<string | null>(null)
+
+  // Project search modal
+  const [projectSearchOpen, setProjectSearchOpen] = useState(false)
+
+  // Cmd+Shift+F global shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        setProjectSearchOpen(true)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
+
+  // Share modal state
+  const [shareModalResumeId, setShareModalResumeId] = useState<string | null>(null)
+  const shareModalResume = useMemo(
+    () => resumes.find(r => r.id === shareModalResumeId) ?? null,
+    [resumes, shareModalResumeId]
+  )
 
   // Variant state
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
@@ -224,6 +248,17 @@ export default function WorkspacePage() {
           <GitFork size={11} />
           Fork
         </button>
+        <button
+          onClick={() => setShareModalResumeId(resume.id)}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+            resume.share_token
+              ? 'border-sky-400/25 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20'
+              : 'border-white/10 bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200'
+          }`}
+        >
+          <Share2 size={11} />
+          Share
+        </button>
         {isVariant && resume.parent_resume_id && (
           <button
             onClick={() => handleCompareWithParent(resume.id)}
@@ -248,6 +283,14 @@ export default function WorkspacePage() {
           <p className="mt-1 text-sm text-zinc-400">Create, edit, and optimize resumes from a single workspace.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setProjectSearchOpen(true)}
+            title="Search resumes (⌘⇧F)"
+            className="btn-ghost px-3 py-2 text-xs flex items-center gap-1.5"
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Search</span>
+          </button>
           <Link href="/workspace/history" className="btn-ghost px-4 py-2 text-xs">
             Run History
           </Link>
@@ -568,6 +611,30 @@ export default function WorkspacePage() {
         isLoading={isMatchLoading}
         error={matchError}
       />
+
+      <ProjectSearchModal
+        open={projectSearchOpen}
+        onClose={() => setProjectSearchOpen(false)}
+      />
+
+      {shareModalResumeId && shareModalResume && (
+        <ShareResumeModal
+          resumeId={shareModalResumeId}
+          resumeTitle={shareModalResume.title}
+          initialShareToken={shareModalResume.share_token}
+          initialShareUrl={shareModalResume.share_url}
+          onClose={() => setShareModalResumeId(null)}
+          onShareTokenChange={(token, url) => {
+            setResumes(prev =>
+              prev.map(r =>
+                r.id === shareModalResumeId
+                  ? { ...r, share_token: token, share_url: url }
+                  : r
+              )
+            )
+          }}
+        />
+      )}
     </div>
   )
 }
