@@ -282,7 +282,7 @@ async def auth_headers(db_session: AsyncSession) -> dict:
             "INSERT INTO users (id, email, name, email_verified, subscription_plan, subscription_status, trial_used) "
             "VALUES (:id, :email, 'Test User', true, 'free', 'active', false) ON CONFLICT DO NOTHING"
         ),
-        {"id": user_id, "email": f"test_{user_id[:8]}@example.com"},
+        {"id": user_id, "email": f"test_{user_id.replace('-', '')}@example.com"},
     )
     await db_session.commit()
     token = await _insert_session(db_session, user_id)
