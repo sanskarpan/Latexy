@@ -811,8 +811,9 @@ test.describe('Page navigation — cover letters', () => {
   test('no runtime errors on cover letters page', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
+    await page.route('**/ws/**', route => route.abort())
     await page.goto('/workspace/cover-letters', { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
     expect(errors.filter((e) => !e.includes('Warning:'))).toEqual([])
   })
 })

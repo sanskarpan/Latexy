@@ -1,9 +1,10 @@
+import secrets
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,10 +42,18 @@ class ResumeResponse(ResumeBase):
     variant_count: int = 0
     # resume_settings is the ORM attribute; we expose it as "metadata" in JSON
     metadata: Optional[Dict[str, Any]] = Field(default=None, validation_alias="resume_settings")
+    share_token: Optional[str] = None
+    share_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @model_validator(mode='after')
+    def _compute_share_url(self) -> 'ResumeResponse':
+        if self.share_token and not self.share_url:
+            self.share_url = f"{settings.FRONTEND_URL}/r/{self.share_token}"
+        return self
 
 
 class ResumeSettingsUpdate(BaseModel):
@@ -55,6 +64,28 @@ class ResumeStats(BaseModel):
     total_resumes: int
     total_templates: int
     last_updated: Optional[datetime]
+
+
+# --- Search schemas ---
+
+class SearchMatch(BaseModel):
+    line_number: int
+    line_content: str
+    context_before: List[str]
+    context_after: List[str]
+    highlight_start: int
+    highlight_end: int
+
+class ResumeSearchResult(BaseModel):
+    resume_id: str
+    resume_title: str
+    updated_at: datetime
+    matches: List[SearchMatch]
+
+class SearchResponse(BaseModel):
+    results: List[ResumeSearchResult]
+    total_resumes_matched: int
+    query: str
 
 # --- Endpoints ---
 
@@ -167,6 +198,82 @@ async def list_resumes(
         "limit": limit,
         "pages": (total + limit - 1) // limit,
     }
+
+def _extract_search_matches(
+    latex_content: Optional[str],
+    query: str,
+    context_lines: int = 2,
+    max_matches: int = 5,
+) -> List[SearchMatch]:
+    if not latex_content:
+        return []
+    lines = latex_content.split("\n")
+    q_lower = query.lower()
+    matches: List[SearchMatch] = []
+    for i, line in enumerate(lines):
+        idx = line.lower().find(q_lower)
+        if idx == -1:
+            continue
+        matches.append(SearchMatch(
+            line_number=i + 1,
+            line_content=line,
+            context_before=lines[max(0, i - context_lines):i],
+            context_after=lines[i + 1:i + 1 + context_lines],
+            highlight_start=idx,
+            highlight_end=idx + len(query),
+        ))
+        if len(matches) >= max_matches:
+            break
+    return matches
+
+
+@router.get("/search", response_model=SearchResponse)
+async def search_resumes(
+    q: str = Query(..., min_length=2, max_length=200),
+    limit: int = Query(default=20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Full-text search across all user resumes (title + LaTeX content)."""
+    from sqlalchemy import or_
+
+    where_clause = (
+        Resume.user_id == user_id,
+        Resume.is_template == False,  # noqa: E712
+        or_(
+            Resume.title.ilike(f"%{q}%"),
+            Resume.latex_content.ilike(f"%{q}%"),
+        ),
+    )
+
+    count_stmt = select(func.count()).select_from(Resume).where(*where_clause)
+    total: int = (await db.execute(count_stmt)).scalar_one()
+
+    stmt = (
+        select(Resume)
+        .where(*where_clause)
+        .order_by(Resume.updated_at.desc())
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+
+    results = []
+    for resume in rows:
+        matches = _extract_search_matches(resume.latex_content, q)
+        # If no latex match but title matched, still return with empty matches list
+        results.append(ResumeSearchResult(
+            resume_id=str(resume.id),
+            resume_title=resume.title,
+            updated_at=resume.updated_at,
+            matches=matches[:3],
+        ))
+
+    return SearchResponse(
+        results=results,
+        total_resumes_matched=total,
+        query=q,
+    )
+
 
 @router.get("/{resume_id}", response_model=ResumeResponse)
 async def get_resume(
@@ -701,5 +808,77 @@ async def delete_checkpoint(
         )
 
     await db.delete(cp)
+    await db.commit()
+    return None
+
+
+# ── Share links ───────────────────────────────────────────────────────────
+
+class ShareLinkResponse(BaseModel):
+    share_token: str
+    share_url: str
+    created_at: datetime
+
+
+@router.post("/{resume_id}/share", response_model=ShareLinkResponse)
+async def create_share_link(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Generate (or return existing) share token for a resume."""
+    resume = await _verify_resume_ownership(db, resume_id, user_id)
+
+    if not resume.share_token:
+        from pathlib import Path
+
+        from ..database.models import Compilation
+
+        # Try to upload the latest PDF to MinIO for persistent serving
+        comp_result = await db.execute(
+            select(Compilation)
+            .where(
+                Compilation.resume_id == resume_id,
+                Compilation.status == "completed",
+            )
+            .order_by(Compilation.created_at.desc())
+            .limit(1)
+        )
+        compilation = comp_result.scalar_one_or_none()
+
+        if compilation and not compilation.pdf_path:
+            temp_pdf = Path(settings.TEMP_DIR) / compilation.job_id / "resume.pdf"
+            if temp_pdf.exists():
+                try:
+                    from ..services.storage_service import upload_bytes
+                    share_key = f"shares/{resume_id}/resume.pdf"
+                    upload_bytes(share_key, temp_pdf.read_bytes(), "application/pdf")
+                    compilation.pdf_path = share_key
+                    logger.info(f"Uploaded PDF to MinIO for resume {resume_id} at {share_key}")
+                except Exception as exc:
+                    logger.warning(f"Could not upload PDF to MinIO for share link: {exc}")
+
+        resume.share_token = secrets.token_urlsafe(24)
+        resume.share_token_created_at = datetime.utcnow()
+        await db.commit()
+        await db.refresh(resume)
+
+    return ShareLinkResponse(
+        share_token=resume.share_token,
+        share_url=f"{settings.FRONTEND_URL}/r/{resume.share_token}",
+        created_at=resume.share_token_created_at,
+    )
+
+
+@router.delete("/{resume_id}/share", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_share_link(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Revoke a share token — the public link immediately stops working."""
+    resume = await _verify_resume_ownership(db, resume_id, user_id)
+    resume.share_token = None
+    resume.share_token_created_at = None
     await db.commit()
     return None

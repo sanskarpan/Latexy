@@ -121,6 +121,8 @@ export interface ResumeResponse extends ResumeBase {
   parent_resume_id?: string | null
   variant_count?: number
   metadata?: { compiler?: string; custom_flags?: string; [key: string]: unknown } | null
+  share_token?: string | null
+  share_url?: string | null
   created_at: string
   updated_at: string
 }
@@ -236,10 +238,45 @@ export interface SemanticMatchResult {
   note?: string
 }
 
+export interface SearchMatch {
+  line_number: number
+  line_content: string
+  context_before: string[]
+  context_after: string[]
+  highlight_start: number
+  highlight_end: number
+}
+
+export interface ResumeSearchResult {
+  resume_id: string
+  resume_title: string
+  updated_at: string
+  matches: SearchMatch[]
+}
+
+export interface SearchResponse {
+  results: ResumeSearchResult[]
+  total_resumes_matched: number
+  query: string
+}
+
 export interface ExplainErrorRequest {
   error_message: string
   surrounding_latex?: string
   error_line?: number
+}
+
+export interface ShareLinkResponse {
+  share_token: string
+  share_url: string
+  created_at: string
+}
+
+export interface SharedResumeResponse {
+  resume_title: string
+  share_token: string
+  pdf_url: string
+  compiled_at: string | null
 }
 
 export interface ExplainErrorResponse {
@@ -972,6 +1009,37 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(body),
     })
+  }
+
+  async searchResumes(query: string, limit = 20): Promise<SearchResponse> {
+    const params = new URLSearchParams({ q: query, limit: String(limit) })
+    return this.request<SearchResponse>(`/resumes/search?${params.toString()}`)
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Share links                                                       //
+  // ---------------------------------------------------------------- //
+
+  async createShareLink(resumeId: string): Promise<ShareLinkResponse> {
+    return this.request<ShareLinkResponse>(
+      `/resumes/${encodeURIComponent(resumeId)}/share`,
+      { method: 'POST' }
+    )
+  }
+
+  async revokeShareLink(resumeId: string): Promise<void> {
+    const res = await fetch(
+      `${API_BASE}/resumes/${encodeURIComponent(resumeId)}/share`,
+      { method: 'DELETE', headers: this.headers() }
+    )
+    if (!res.ok && res.status !== 204) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+    }
+  }
+
+  async getSharedResume(shareToken: string): Promise<SharedResumeResponse> {
+    return this.request<SharedResumeResponse>(`/share/${encodeURIComponent(shareToken)}`)
   }
 }
 

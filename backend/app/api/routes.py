@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.connection import get_db
+from ..database.models import Compilation, Resume
 from ..middleware.auth_middleware import get_current_user_optional
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
@@ -629,4 +630,93 @@ async def razorpay_webhook(
     except Exception as e:
         logger.error(f"Error processing webhook: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ── Public share link endpoint ────────────────────────────────────────────────
+
+class SharedResumeResponse(BaseModel):
+    resume_title: str
+    share_token: str
+    pdf_url: str
+    compiled_at: Optional[str]
+
+
+@router.get("/share/{share_token}", response_model=SharedResumeResponse)
+async def get_shared_resume(
+    share_token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Public endpoint — no auth required.
+    Returns metadata + a presigned PDF URL for a shared resume.
+    """
+    from pathlib import Path
+
+    from sqlalchemy import select as sa_select
+
+    # Find resume by share token
+    result = await db.execute(
+        sa_select(Resume).where(Resume.share_token == share_token)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(
+            status_code=404,
+            detail="Share link not found or has been revoked",
+        )
+
+    # Find latest completed compilation for this resume
+    comp_result = await db.execute(
+        sa_select(Compilation)
+        .where(
+            Compilation.resume_id == resume.id,
+            Compilation.status == "completed",
+        )
+        .order_by(Compilation.created_at.desc())
+        .limit(1)
+    )
+    compilation = comp_result.scalar_one_or_none()
+
+    if not compilation:
+        raise HTTPException(
+            status_code=404,
+            detail="No compiled PDF available yet. Please compile your resume first.",
+        )
+
+    pdf_url: Optional[str] = None
+
+    # Try MinIO first (persistent storage)
+    if compilation.pdf_path:
+        try:
+            from ..services.storage_service import generate_presigned_url
+            pdf_url = generate_presigned_url(compilation.pdf_path, ttl=3600)
+        except Exception as exc:
+            logger.warning(f"Could not generate presigned URL for {compilation.pdf_path}: {exc}")
+
+    # Fallback: temp dir (PDF may still be within retention window)
+    if not pdf_url:
+        temp_pdf = Path(settings.TEMP_DIR) / compilation.job_id / "resume.pdf"
+        if temp_pdf.exists():
+            try:
+                from ..services.storage_service import generate_presigned_url, upload_bytes
+                share_key = f"shares/{resume.id}/resume.pdf"
+                upload_bytes(share_key, temp_pdf.read_bytes(), "application/pdf")
+                compilation.pdf_path = share_key
+                await db.commit()
+                pdf_url = generate_presigned_url(share_key, ttl=3600)
+            except Exception as exc:
+                logger.error(f"Could not upload PDF from temp dir for share {share_token}: {exc}")
+
+    if not pdf_url:
+        raise HTTPException(
+            status_code=404,
+            detail="PDF no longer available. Please recompile your resume and regenerate the share link.",
+        )
+
+    return SharedResumeResponse(
+        resume_title=resume.title,
+        share_token=share_token,
+        pdf_url=pdf_url,
+        compiled_at=compilation.created_at.isoformat() if compilation.created_at else None,
+    )
 

@@ -7,6 +7,7 @@ streaming.  Zero asyncio — all Redis I/O goes through event_publisher.
 """
 
 import re
+import shutil
 import subprocess
 import time
 import uuid
@@ -104,14 +105,32 @@ def compile_latex_task(
         })
 
         # ── Compile ──────────────────────────────────────────────────
-        cmd = [
-            compiler,
-            "-interaction=nonstopmode",
-            "-halt-on-error",
-            "-synctex=1",
-            "-output-directory", str(job_dir),
-            str(tex_file),
-        ]
+        _use_docker = shutil.which("docker") is not None
+        if _use_docker:
+            cmd = [
+                "docker", "run", "--rm",
+                "-v", f"{job_dir}:/workspace",
+                "-w", "/workspace",
+                settings.LATEX_DOCKER_IMAGE,
+                compiler,
+                "-interaction=nonstopmode",
+                "-halt-on-error",
+                "-synctex=1",
+                "-output-directory", "/workspace",
+                "-jobname", "resume",
+                "resume.tex",
+            ]
+            compile_cwd = None
+        else:
+            cmd = [
+                compiler,
+                "-interaction=nonstopmode",
+                "-halt-on-error",
+                "-synctex=1",
+                "-output-directory", str(job_dir),
+                str(tex_file),
+            ]
+            compile_cwd = str(job_dir)
 
         start_time = time.time()
         proc = subprocess.Popen(
@@ -119,7 +138,7 @@ def compile_latex_task(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            cwd=str(job_dir),
+            cwd=compile_cwd,
         )
 
         # ── Stream log lines ─────────────────────────────────────────
