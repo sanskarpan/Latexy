@@ -83,6 +83,8 @@ const DIFF_RESPONSE = {
 // ------------------------------------------------------------------ //
 
 async function mockAuthAndApi(page: Page) {
+  // Abort WebSocket connections so networkidle can settle
+  await page.route('**/ws/**', route => route.abort())
   // Mock auth session
   await page.route('**/api/auth/get-session', (route) =>
     route.fulfill({
