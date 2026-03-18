@@ -36,11 +36,17 @@ class Settings(BaseSettings):
     PORT: int = 8030
 
     # LaTeX Configuration
-    COMPILE_TIMEOUT: int = 30  # seconds
+    COMPILE_TIMEOUT: int = 30  # seconds — fallback for unauthenticated/unknown plan
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
     TEMP_DIR: Path = Path("/tmp/latex_compile")
     ALLOWED_LATEX_COMPILERS: List[str] = ["pdflatex", "xelatex", "lualatex"]
     DEFAULT_LATEX_COMPILER: str = "pdflatex"
+
+    # Compile timeout per subscription plan (seconds)
+    COMPILE_TIMEOUT_FREE: int = 30
+    COMPILE_TIMEOUT_BASIC: int = 120
+    COMPILE_TIMEOUT_PRO: int = 240
+    COMPILE_TIMEOUT_BYOK: int = 240
 
     # Docker
     LATEX_DOCKER_IMAGE: str = "texlive/texlive:latest"
@@ -214,3 +220,13 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+
+def get_compile_timeout(user_plan: str) -> int:
+    """Return compile timeout (seconds) for a given subscription plan."""
+    return {
+        "free":  settings.COMPILE_TIMEOUT_FREE,
+        "basic": settings.COMPILE_TIMEOUT_BASIC,
+        "pro":   settings.COMPILE_TIMEOUT_PRO,
+        "byok":  settings.COMPILE_TIMEOUT_BYOK,
+    }.get(user_plan, settings.COMPILE_TIMEOUT_FREE)

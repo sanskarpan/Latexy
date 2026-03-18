@@ -36,7 +36,7 @@ import openai
 from celery.exceptions import SoftTimeLimitExceeded
 
 from ..core.celery_app import celery_app, get_task_priority
-from ..core.config import settings
+from ..core.config import get_compile_timeout, settings
 from ..core.logging import get_logger
 from ..services.ats_scoring_service import ats_scoring_service
 from ..services.llm_service import llm_service
@@ -62,8 +62,8 @@ _BEFORE, _IN_LATEX, _AFTER_LATEX, _IN_CHANGES = 0, 1, 2, 3
     name="app.workers.orchestrator.optimize_and_compile_task",
     max_retries=1,
     default_retry_delay=60,
-    time_limit=300,
-    soft_time_limit=270,
+    time_limit=600,    # 10 min hard kill — covers Pro/BYOK (240s compile + ~120s LLM + buffer)
+    soft_time_limit=570,
 )
 def optimize_and_compile_task(
     self,
@@ -81,6 +81,7 @@ def optimize_and_compile_task(
     metadata: Optional[Dict] = None,
     resume_id: Optional[str] = None,
     compiler: str = "pdflatex",
+    timeout_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Full pipeline: LLM optimize → pdflatex compile → ATS score.
@@ -96,6 +97,9 @@ def optimize_and_compile_task(
     logger.info(f"Orchestrator task {task_id} starting for job {job_id}")
 
     api_key = user_api_key or settings.OPENAI_API_KEY
+
+    # Resolve per-plan compile timeout
+    compile_timeout = timeout_seconds or get_compile_timeout(user_plan)
 
     # Validate API key BEFORE publishing job.started so the client never sees
     # a confusing started → immediately-failed sequence.
@@ -113,6 +117,7 @@ def optimize_and_compile_task(
         "stage": "llm_optimization",
     })
 
+    current_stage = "llm_optimization"
     try:
         # ================================================================ #
         # Stage 1 — LLM optimization with token streaming (0% → 40%)      #
@@ -132,6 +137,7 @@ def optimize_and_compile_task(
             publish_event(job_id, "job.cancelled", {})
             return {"success": False, "job_id": job_id, "cancelled": True}
 
+        current_stage = "latex_compilation"
         # ================================================================ #
         # Stage 2 — LaTeX compilation with log streaming (40% → 80%)      #
         # ================================================================ #
@@ -145,6 +151,7 @@ def optimize_and_compile_task(
             job_id=job_id,
             latex_content=optimized_latex,
             compiler=compiler,
+            timeout_seconds=compile_timeout,
         )
 
         if is_cancelled(job_id):
@@ -152,12 +159,15 @@ def optimize_and_compile_task(
             return {"success": False, "job_id": job_id, "cancelled": True}
 
         if not compilation_ok:
-            # Fix 3: include optimized_latex and changes_made in failure event
-            # so the frontend can offer an "Apply anyway" option.
+            # Differentiate timeout errors from regular LaTeX errors
+            is_timeout = "timed out" in compile_error or compile_error == "compile_timeout"
+            error_code = "compile_timeout" if is_timeout else "latex_error"
             publish_event(job_id, "job.failed", {
                 "stage": "latex_compilation",
-                "error_code": "latex_error",
+                "error_code": error_code,
                 "error_message": compile_error,
+                **({"upgrade_message": "Upgrade to Pro for a 4-minute compile timeout",
+                    "user_plan": user_plan} if is_timeout else {}),
                 "retryable": False,
                 "optimized_latex": optimized_latex,
                 "changes_made": changes_made,
@@ -170,6 +180,7 @@ def optimize_and_compile_task(
             }
 
         # ================================================================ #
+        current_stage = "ats_scoring"
         # Stage 3 — ATS scoring (80% → 100%)                              #
         # ================================================================ #
         publish_event(job_id, "job.progress", {
@@ -234,13 +245,19 @@ def optimize_and_compile_task(
 
     except SoftTimeLimitExceeded:
         logger.error(f"Orchestrator task {task_id} exceeded soft time limit for job {job_id}")
+        upgrade_msg = (
+            "Upgrade to Pro for a 4-minute compile timeout"
+            if user_plan in ("free", "basic") else None
+        )
         publish_event(job_id, "job.failed", {
-            "stage": "llm_optimization",
-            "error_code": "timeout",
-            "error_message": "Task exceeded time limit",
+            "stage": current_stage,
+            "error_code": "compile_timeout",
+            "error_message": f"Task exceeded time limit ({user_plan} plan)",
+            "upgrade_message": upgrade_msg,
+            "user_plan": user_plan,
             "retryable": False,
         })
-        return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
+        return {"success": False, "job_id": job_id, "error": "compile_timeout"}
 
     except Exception as exc:
         logger.error(f"Orchestrator task {task_id} raised: {exc}")
@@ -459,6 +476,7 @@ def _run_latex_stage(
     job_id: str,
     latex_content: str,
     compiler: str = "pdflatex",
+    timeout_seconds: Optional[int] = None,
 ) -> tuple[bool, float, str, Optional[int]]:
     """
     Write LaTeX, run the requested compiler (Docker if available, else local binary)
@@ -501,11 +519,7 @@ def _run_latex_stage(
         ]
         cwd = str(job_dir)
 
-    try:
-        timeout = float(settings.COMPILE_TIMEOUT)
-    except (TypeError, ValueError, AttributeError):
-        timeout = 120.0
-
+    timeout = float(timeout_seconds) if timeout_seconds else float(settings.COMPILE_TIMEOUT)
     start_time = time.time()
     proc = subprocess.Popen(
         cmd,
@@ -539,7 +553,7 @@ def _run_latex_stage(
 
         if time.time() - start_time > timeout:
             proc.kill()
-            return False, time.time() - start_time, f"LaTeX compilation timed out after {timeout}s", None
+            return False, time.time() - start_time, f"Compilation timed out after {int(timeout)}s", None
 
     proc.wait()
     compilation_time = time.time() - start_time
@@ -600,10 +614,15 @@ def submit_optimize_and_compile(
     metadata: Optional[Dict] = None,
     resume_id: Optional[str] = None,
     compiler: str = "pdflatex",
+    timeout_seconds: Optional[int] = None,
 ) -> str:
     """Enqueue optimize_and_compile_task on the combined queue."""
     if priority is None:
         priority = get_task_priority(user_plan)
+
+    compile_timeout = timeout_seconds or get_compile_timeout(user_plan)
+    # Task time_limit covers both LLM stage (~120s) + compile stage + buffer
+    task_time_limit = compile_timeout + 180
 
     optimize_and_compile_task.apply_async(
         args=[latex_content, job_description],
@@ -620,9 +639,15 @@ def submit_optimize_and_compile(
             "metadata": metadata,
             "resume_id": resume_id,
             "compiler": compiler,
+            "timeout_seconds": compile_timeout,
         },
         priority=priority,
         queue="combined",
+        time_limit=task_time_limit,
+        soft_time_limit=task_time_limit - 30,
     )
-    logger.info(f"Submitted optimize-and-compile for job {job_id} (compiler={compiler})")
+    logger.info(
+        f"Submitted optimize-and-compile for job {job_id} "
+        f"(compiler={compiler}, compile_timeout={compile_timeout}s)"
+    )
     return job_id

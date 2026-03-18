@@ -518,6 +518,24 @@ function AIPanel({
             </div>
           </div>
 
+          {/* Timeout upgrade CTA */}
+          {aiStream.errorCode === 'compile_timeout' && (
+            <div className="flex items-center justify-between rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-2.5">
+              <span className="text-[11px] text-orange-300">
+                ⏱ {aiStream.timeoutError?.plan ?? 'free'} plan limit reached (
+                {aiStream.timeoutError?.plan === 'free' ? '30s'
+                  : aiStream.timeoutError?.plan === 'basic' ? '120s'
+                  : '240s'})
+              </span>
+              <a
+                href="/billing"
+                className="ml-3 shrink-0 text-[11px] font-medium text-orange-200 underline hover:text-orange-100"
+              >
+                Upgrade →
+              </a>
+            </div>
+          )}
+
           {/* Fix 3: Apply anyway when LLM succeeded but compile failed */}
           {aiStream.streamingLatex && (
             <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.07] p-3">
@@ -1607,6 +1625,24 @@ export default function ResumeEditPage() {
           variantLatex={parentDiffData.variant_latex}
           variantTitle={parentDiffData.variant_title}
         />
+      )}
+
+      {/* ── TIMEOUT BANNER (compile stream) ── */}
+      {compileStream.errorCode === 'compile_timeout' && compileStream.timeoutError && (
+        <div className="flex shrink-0 items-center justify-between border-t border-orange-500/20 bg-orange-500/[0.08] px-3 py-1.5">
+          <span className="text-[11px] text-orange-300">
+            ⏱ Compile timed out — {compileStream.timeoutError.plan} plan limit (
+            {compileStream.timeoutError.plan === 'free' ? '30s'
+              : compileStream.timeoutError.plan === 'basic' ? '120s'
+              : '240s'})
+          </span>
+          <a
+            href="/billing"
+            className="ml-3 shrink-0 text-[11px] font-medium text-orange-200 underline hover:text-orange-100"
+          >
+            Upgrade for longer timeouts →
+          </a>
+        </div>
       )}
 
       {/* ── STATUS BAR ── */}

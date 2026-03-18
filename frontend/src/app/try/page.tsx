@@ -336,6 +336,25 @@ export default function TryPage() {
                   </button>
                 </div>
               )}
+
+              {/* Compile timeout banner */}
+              {stream.timeoutError && (
+                <div className="flex-shrink-0 flex items-center justify-between rounded-lg border border-orange-500/20 bg-orange-500/10 px-4 py-2">
+                  <span className="text-xs text-orange-300">
+                    ⏱ Compile timed out — {stream.timeoutError.plan} plan limit ({
+                      stream.timeoutError.plan === 'free' ? '30s'
+                      : stream.timeoutError.plan === 'basic' ? '120s'
+                      : '240s'
+                    })
+                  </span>
+                  <a
+                    href="/billing"
+                    className="ml-3 shrink-0 text-xs font-medium text-orange-200 underline hover:text-orange-100"
+                  >
+                    Upgrade for longer timeouts →
+                  </a>
+                </div>
+              )}
               <div className="relative flex-1 min-h-0 rounded-xl border border-white/10 bg-slate-950/70 overflow-hidden">
                 <LaTeXEditor
                   ref={editorRef}

@@ -372,7 +372,7 @@ class TestLatexTimeout:
 
         failed = [c for c in mock_publish.call_args_list if c.args[1] == "job.failed"]
         assert failed
-        assert failed[-1].args[2]["error_code"] == "timeout"
+        assert failed[-1].args[2]["error_code"] == "compile_timeout"
 
 
 # ── Exception handling ────────────────────────────────────────────────────────

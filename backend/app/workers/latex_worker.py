@@ -13,8 +13,10 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from celery.exceptions import SoftTimeLimitExceeded
+
 from ..core.celery_app import celery_app, get_task_priority
-from ..core.config import settings
+from ..core.config import get_compile_timeout, settings
 from ..core.logging import get_logger
 from ..services.latex_service import latex_service
 from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
@@ -40,6 +42,7 @@ def compile_latex_task(
     metadata: Optional[Dict] = None,
     resume_id: Optional[str] = None,
     compiler: Optional[str] = None,
+    timeout_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Compile LaTeX content to PDF, streaming each pdflatex log line as
@@ -54,6 +57,9 @@ def compile_latex_task(
     if compiler not in settings.ALLOWED_LATEX_COMPILERS:
         logger.warning(f"Invalid compiler '{compiler}', falling back to {settings.DEFAULT_LATEX_COMPILER}")
         compiler = settings.DEFAULT_LATEX_COMPILER
+
+    # Resolve per-plan compile timeout
+    timeout = float(timeout_seconds) if timeout_seconds else float(get_compile_timeout(user_plan))
 
     task_id = self.request.id
     worker_id = f"latex-{task_id}"
@@ -107,11 +113,6 @@ def compile_latex_task(
             str(tex_file),
         ]
 
-        try:
-            timeout = float(settings.COMPILE_TIMEOUT)
-        except (TypeError, ValueError, AttributeError):
-            timeout = 120.0
-
         start_time = time.time()
         proc = subprocess.Popen(
             cmd,
@@ -153,13 +154,19 @@ def compile_latex_task(
             # ── Timeout check ────────────────────────────────────────
             if time.time() - start_time > timeout:
                 proc.kill()
+                upgrade_msg = (
+                    "Upgrade to Pro for a 4-minute compile timeout"
+                    if user_plan in ("free", "basic") else None
+                )
                 publish_event(job_id, "job.failed", {
                     "stage": "latex_compilation",
-                    "error_code": "timeout",
-                    "error_message": f"LaTeX compilation timed out after {timeout}s",
+                    "error_code": "compile_timeout",
+                    "error_message": f"Compilation timed out after {int(timeout)}s ({user_plan} plan limit)",
+                    "upgrade_message": upgrade_msg,
+                    "user_plan": user_plan,
                     "retryable": False,
                 })
-                return {"success": False, "job_id": job_id, "error": "timeout"}
+                return {"success": False, "job_id": job_id, "error": "compile_timeout"}
 
         proc.wait()
         compilation_time = time.time() - start_time
@@ -222,6 +229,22 @@ def compile_latex_task(
         })
         return {"success": False, "job_id": job_id, "error": error_msg}
 
+    except SoftTimeLimitExceeded:
+        logger.error(f"LaTeX task {task_id} hit soft time limit for job {job_id}")
+        upgrade_msg = (
+            "Upgrade to Pro for a 4-minute compile timeout"
+            if user_plan in ("free", "basic") else None
+        )
+        publish_event(job_id, "job.failed", {
+            "stage": "latex_compilation",
+            "error_code": "compile_timeout",
+            "error_message": f"Compilation timed out after {int(timeout)}s ({user_plan} plan limit)",
+            "upgrade_message": upgrade_msg,
+            "user_plan": user_plan,
+            "retryable": False,
+        })
+        return {"success": False, "job_id": job_id, "error": "compile_timeout"}
+
     except Exception as exc:
         logger.error(f"LaTeX task {task_id} raised: {exc}")
         retryable = self.request.retries < self.max_retries
@@ -250,11 +273,13 @@ def submit_latex_compilation(
     metadata: Optional[Dict] = None,
     resume_id: Optional[str] = None,
     compiler: Optional[str] = None,
+    timeout_seconds: Optional[int] = None,
 ) -> str:
     """Enqueue compile_latex_task on the latex queue."""
     if priority is None:
         priority = get_task_priority(user_plan)
     compiler = compiler or settings.DEFAULT_LATEX_COMPILER
+    timeout = timeout_seconds or get_compile_timeout(user_plan)
 
     compile_latex_task.apply_async(
         args=[latex_content],
@@ -266,9 +291,12 @@ def submit_latex_compilation(
             "metadata": metadata,
             "resume_id": resume_id,
             "compiler": compiler,
+            "timeout_seconds": timeout,
         },
         priority=priority,
         queue="latex",
+        time_limit=timeout + 30,       # Celery hard kill
+        soft_time_limit=timeout + 15,  # raises SoftTimeLimitExceeded
     )
-    logger.info(f"Submitted LaTeX compilation for job {job_id} (compiler={compiler})")
+    logger.info(f"Submitted LaTeX compilation for job {job_id} (compiler={compiler}, timeout={timeout}s)")
     return job_id

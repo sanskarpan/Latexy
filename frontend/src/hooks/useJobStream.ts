@@ -23,6 +23,11 @@ export interface ATSDetails {
   warnings: string[]
 }
 
+export interface TimeoutError {
+  plan: string
+  upgradeMessage: string
+}
+
 export interface JobStreamState {
   status: 'idle' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled'
   stage: string
@@ -44,6 +49,8 @@ export interface JobStreamState {
   error: string | null
   errorCode: string | null
   retryable: boolean
+  /** Set when error_code === 'compile_timeout' — used to show upgrade CTA */
+  timeoutError: TimeoutError | null
 }
 
 const initialState: JobStreamState = {
@@ -65,6 +72,7 @@ const initialState: JobStreamState = {
   error: null,
   errorCode: null,
   retryable: false,
+  timeoutError: null,
 }
 
 // ------------------------------------------------------------------ //
@@ -131,6 +139,7 @@ function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStre
         pageCount: event.page_count ?? state.pageCount,
         error: null,
         errorCode: null,
+        timeoutError: null,
       }
 
     case 'ats.deep_complete':
@@ -157,6 +166,12 @@ function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStre
         retryable: event.retryable,
         streamingLatex: event.optimized_latex ?? state.streamingLatex,
         changesMade: event.changes_made ?? state.changesMade,
+        timeoutError: event.error_code === 'compile_timeout'
+          ? {
+              plan: event.user_plan ?? 'free',
+              upgradeMessage: event.upgrade_message ?? 'Upgrade to Pro for a 4-minute compile timeout',
+            }
+          : null,
       }
 
     case 'job.cancelled':
