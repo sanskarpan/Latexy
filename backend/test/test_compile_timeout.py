@@ -95,8 +95,8 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            # First time.time() call → start_time; second → timeout check exceeds limit
-            patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [999.0] * 20),
+            # start_time=0.0, then timeout check returns 999.0 → 999 > 1 → timed out
+            patch("app.workers.latex_worker.time.time", side_effect=[0.0] + [999.0] * 20),
         ):
             mock_proc = MagicMock()
             mock_proc.stdout = _one_log_line()
@@ -132,7 +132,7 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [9999.0] * 20),
+            patch("app.workers.latex_worker.time.time", side_effect=[0.0] + [9999.0] * 20),
         ):
             mock_proc = MagicMock()
             mock_proc.stdout = iter(["log line\n"])
@@ -206,8 +206,8 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            # start_time=0, loop check=200 → 200 > 60 → triggers timeout
-            patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [200.0] * 20),
+            # start_time=0.0, timeout check=200.0 → 200 > 60 → triggers timeout
+            patch("app.workers.latex_worker.time.time", side_effect=[0.0] + [200.0] * 20),
         ):
             mock_proc = MagicMock()
             mock_proc.stdout = iter(["line\n"])
