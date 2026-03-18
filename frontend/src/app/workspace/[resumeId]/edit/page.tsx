@@ -1688,12 +1688,14 @@ export default function ResumeEditPage() {
               : compileStream.timeoutError.plan === 'basic' ? '120s'
               : '240s'})
           </span>
-          <a
-            href="/billing"
-            className="ml-3 shrink-0 text-[11px] font-medium text-orange-200 underline hover:text-orange-100"
-          >
-            Upgrade for longer timeouts →
-          </a>
+          {flags.upgrade_ctas && (
+            <a
+              href="/billing"
+              className="ml-3 shrink-0 text-[11px] font-medium text-orange-200 underline hover:text-orange-100"
+            >
+              Upgrade for longer timeouts →
+            </a>
+          )}
         </div>
       )}
 
