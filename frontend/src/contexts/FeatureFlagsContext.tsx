@@ -20,6 +20,8 @@ const DEFAULT_FLAGS: FeatureFlags = {
   upgrade_ctas: true,
 }
 
+const KNOWN_FLAG_KEYS = Object.keys(DEFAULT_FLAGS) as Array<keyof FeatureFlags>
+
 const FeatureFlagsContext = createContext<FeatureFlags>(DEFAULT_FLAGS)
 
 export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
@@ -33,7 +35,11 @@ export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && typeof data === 'object') {
-          setFlags((prev) => ({ ...prev, ...data }))
+          const safe = KNOWN_FLAG_KEYS.reduce((acc, key) => {
+            if (key in data && typeof data[key] === 'boolean') acc[key] = data[key] as boolean
+            return acc
+          }, {} as Partial<FeatureFlags>)
+          setFlags((prev) => ({ ...prev, ...safe }))
         }
       })
       .catch(() => {
