@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
 import { signOut, useSession } from '@/lib/auth-client'
+import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 const guestNav = [
   { label: 'Platform', href: '/platform' },
@@ -26,6 +27,7 @@ const fullscreenPatterns = [/^\/workspace\/[^/]+\/edit$/, /^\/workspace\/[^/]+\/
 export default function GlobalHeader() {
   const pathname = usePathname()
   const { data: session } = useSession()
+  const flags = useFeatureFlags()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
 
@@ -33,7 +35,10 @@ export default function GlobalHeader() {
     return null
   }
 
-  const activeNav = session ? appNav : guestNav
+  const effectiveGuestNav = flags.billing
+    ? guestNav
+    : guestNav.filter((item) => item.href !== '/billing')
+  const activeNav = session ? appNav : effectiveGuestNav
   const firstName = session?.user.name?.trim().split(' ')[0] || 'Account'
 
   const handleSignOut = async () => {
@@ -102,19 +107,28 @@ export default function GlobalHeader() {
                       >
                         Dashboard
                       </Link>
-                      <Link
-                        href="/billing"
-                        className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        Billing
-                      </Link>
+                      {flags.billing && (
+                        <Link
+                          href="/billing"
+                          className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          Billing
+                        </Link>
+                      )}
                       <Link
                         href="/byok"
                         className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
                         onClick={() => setIsUserMenuOpen(false)}
                       >
                         Settings
+                      </Link>
+                      <Link
+                        href="/admin"
+                        className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        Admin
                       </Link>
                       <div className="my-1 h-px bg-white/10" />
                       <button
