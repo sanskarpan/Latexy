@@ -15,14 +15,20 @@ interface FlagDetail {
 export default function AdminPage() {
   const [flags, setFlags] = useState<FlagDetail[] | null>(null)
   const [forbidden, setForbidden] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
 
   useEffect(() => {
     apiClient.getAdminFeatureFlags()
       .then((data) => setFlags(data))
-      .catch((err: Error) => {
-        if (err.message.includes('403')) setForbidden(true)
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.includes('403') || msg.includes('Forbidden')) {
+          setForbidden(true)
+        } else {
+          setError(msg || 'Failed to load feature flags')
+        }
       })
       .finally(() => setLoading(false))
   }, [])
@@ -55,6 +61,15 @@ export default function AdminPage() {
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
         <p className="text-lg font-semibold text-zinc-300">Not authorized</p>
         <p className="text-sm text-zinc-600">Admin access required. Set ADMIN_EMAIL in backend/.env.</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
+        <p className="text-lg font-semibold text-zinc-300">Failed to load</p>
+        <p className="text-sm text-zinc-600">{error}</p>
       </div>
     )
   }
