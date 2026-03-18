@@ -531,44 +531,52 @@ async def deep_analyze_resume(
     uses_remaining: Optional[int] = None
 
     if user_id is None:
-        # Anonymous — enforce 2-use trial via device_fingerprint
-        if not request.device_fingerprint:
-            raise HTTPException(
-                status_code=401,
-                detail="device_fingerprint is required for anonymous deep analysis"
-            )
-        # Load or create trial record atomically with row lock
-        from sqlalchemy.exc import IntegrityError
-        result = await db.execute(
-            select(DeepAnalysisTrial)
-            .where(DeepAnalysisTrial.device_fingerprint == request.device_fingerprint)
-            .with_for_update()
-        )
-        trial = result.scalar_one_or_none()
-        if trial is None:
-            try:
-                trial = DeepAnalysisTrial(
-                    device_fingerprint=request.device_fingerprint,
-                    usage_count=0,
-                )
-                db.add(trial)
-                await db.flush()
-            except IntegrityError:
-                # Concurrent request created the row — reload with lock
-                await db.rollback()
-                result = await db.execute(
-                    select(DeepAnalysisTrial)
-                    .where(DeepAnalysisTrial.device_fingerprint == request.device_fingerprint)
-                    .with_for_update()
-                )
-                trial = result.scalar_one()
+        # Anonymous — check deep_analysis_trial feature flag first
+        from ..services.feature_flag_service import feature_flag_service
+        deep_trial_enabled = await feature_flag_service.get_flag("deep_analysis_trial", db)
 
-        if trial.usage_count >= settings.DEEP_ANALYSIS_TRIAL_LIMIT:
-            raise HTTPException(
-                status_code=402,
-                detail=f"Trial limit reached ({settings.DEEP_ANALYSIS_TRIAL_LIMIT} free deep analyses). Sign in for unlimited access."
+        if not deep_trial_enabled:
+            # Flag disabled — unlimited deep analysis for all
+            uses_remaining = None
+        else:
+            # Enforce 2-use trial via device_fingerprint
+            if not request.device_fingerprint:
+                raise HTTPException(
+                    status_code=401,
+                    detail="device_fingerprint is required for anonymous deep analysis"
+                )
+            # Load or create trial record atomically with row lock
+            from sqlalchemy.exc import IntegrityError
+            result = await db.execute(
+                select(DeepAnalysisTrial)
+                .where(DeepAnalysisTrial.device_fingerprint == request.device_fingerprint)
+                .with_for_update()
             )
-        uses_remaining = settings.DEEP_ANALYSIS_TRIAL_LIMIT - trial.usage_count - 1
+            trial = result.scalar_one_or_none()
+            if trial is None:
+                try:
+                    trial = DeepAnalysisTrial(
+                        device_fingerprint=request.device_fingerprint,
+                        usage_count=0,
+                    )
+                    db.add(trial)
+                    await db.flush()
+                except IntegrityError:
+                    # Concurrent request created the row — reload with lock
+                    await db.rollback()
+                    result = await db.execute(
+                        select(DeepAnalysisTrial)
+                        .where(DeepAnalysisTrial.device_fingerprint == request.device_fingerprint)
+                        .with_for_update()
+                    )
+                    trial = result.scalar_one()
+
+            if trial.usage_count >= settings.DEEP_ANALYSIS_TRIAL_LIMIT:
+                raise HTTPException(
+                    status_code=402,
+                    detail=f"Trial limit reached ({settings.DEEP_ANALYSIS_TRIAL_LIMIT} free deep analyses). Sign in for unlimited access."
+                )
+            uses_remaining = settings.DEEP_ANALYSIS_TRIAL_LIMIT - trial.usage_count - 1
 
     # Look up BYOK OpenAI key if user is authenticated
     api_key: Optional[str] = None
@@ -579,7 +587,8 @@ async def deep_analyze_resume(
             pass  # Fall back to platform key
 
     # Increment trial counter BEFORE dispatching to avoid counting bypasses on commit failure
-    if user_id is None:
+    # Only when deep_analysis_trial flag is enabled (trial object exists)
+    if user_id is None and deep_trial_enabled and trial is not None:
         trial.usage_count += 1
         trial.last_used = datetime.now(timezone.utc)
         await db.commit()
