@@ -93,6 +93,9 @@ class Resume(Base):
     # Note: "metadata" is reserved by SQLAlchemy's Declarative API, so we use
     # resume_settings as the Python attribute name while keeping the DB column "metadata".
     resume_settings: Mapped[Optional[Dict]] = mapped_column("metadata", JSONB, nullable=True, default={})
+    # Shareable link token (null = not shared)
+    share_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True, index=False)
+    share_token_created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # Variant / fork system: self-referential parent link
     parent_resume_id: Mapped[Optional[str]] = mapped_column(
         UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
