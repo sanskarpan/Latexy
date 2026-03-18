@@ -44,6 +44,7 @@ import CompilerSelector from '@/components/CompilerSelector'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { Brain, GitFork, Zap } from 'lucide-react'
+import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history'
@@ -406,6 +407,7 @@ function AIPanel({
   const isFailed = !isRunning && aiStream.status === 'failed'
   const isIdle = !isRunning && aiStream.status !== 'completed' && aiStream.status !== 'failed'
   const [showCustom, setShowCustom] = useState(false)
+  const flags = useFeatureFlags()
 
   return (
     <div className="flex h-full flex-col overflow-y-auto scrollbar-subtle">
@@ -529,12 +531,14 @@ function AIPanel({
                   : aiStream.timeoutError?.plan === 'basic' ? '120s'
                   : '240s'})
               </span>
-              <a
-                href="/billing"
-                className="ml-3 shrink-0 text-[11px] font-medium text-orange-200 underline hover:text-orange-100"
-              >
-                Upgrade →
-              </a>
+              {flags.upgrade_ctas && (
+                <a
+                  href="/billing"
+                  className="ml-3 shrink-0 text-[11px] font-medium text-orange-200 underline hover:text-orange-100"
+                >
+                  Upgrade →
+                </a>
+              )}
             </div>
           )}
 
@@ -644,6 +648,7 @@ export default function ResumeEditPage() {
   const params = useParams()
   const router = useRouter()
   const resumeId = params.resumeId as string
+  const flags = useFeatureFlags()
 
   // Core state
   const [title, setTitle] = useState('')
@@ -1644,6 +1649,7 @@ export default function ResumeEditPage() {
         usesRemaining={deepAnalysisUsesRemaining}
         onRun={handleOpenDeepAnalysis}
         isRunning={isDeepRunning}
+        hideUpgradeCtas={!flags.upgrade_ctas}
       />
 
       {/* Diff viewer modal */}
