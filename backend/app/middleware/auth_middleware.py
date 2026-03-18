@@ -166,9 +166,10 @@ async def require_admin(
 
     Admin check order:
       1. Better Auth session → look up user's email → compare to ADMIN_EMAIL setting.
-      2. Legacy JWT fallback → check is_admin claim.
+      2. Legacy JWT fallback → check is_admin claim (still accepted even if ADMIN_EMAIL is unset).
 
-    If ADMIN_EMAIL is not set, all users are rejected (safe default).
+    If ADMIN_EMAIL is not set, Better Auth users are rejected; legacy JWT with is_admin=true
+    is still accepted as a fallback.
     """
     token = _extract_token(request, credentials)
     if not token:
