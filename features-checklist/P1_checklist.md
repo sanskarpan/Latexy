@@ -198,13 +198,13 @@ Compiler preference stored in resume `metadata` JSONB column.
 
 ---
 
-## Feature 10 — Shareable Resume Links · P1 · M
+## Feature 10 — Shareable Resume Links · P1 · M ✅ COMPLETED
 
 **Goal:** Generate public `/r/{token}` URLs for sharing compiled resumes. Token is per-resume,
 generated on demand, revocable. Public route renders PDF without login.
 
 ### 10A · Database Migration
-- [ ] Create `backend/alembic/versions/0008_add_resume_share_token.py`
+- [x] Create `backend/alembic/versions/0008_add_resume_share_token.py`
   ```sql
   ALTER TABLE resumes ADD COLUMN share_token TEXT UNIQUE;
   ALTER TABLE resumes ADD COLUMN share_token_created_at TIMESTAMPTZ;
@@ -214,106 +214,56 @@ generated on demand, revocable. Public route renders PDF without login.
   - Unique partial index (only on non-null rows) — efficient for token lookups
 
 ### 10B · Backend Model Update
-- [ ] In `backend/app/database/models.py`, `Resume` model:
+- [x] In `backend/app/database/models.py`, `Resume` model:
   ```python
-  share_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True, index=True)
-  share_token_created_at: Mapped[Optional[datetime]] = mapped_column(
-      TIMESTAMPTZ, nullable=True
-  )
+  share_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True, index=False)
+  share_token_created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
   ```
-- [ ] Update `ResumeResponse` Pydantic schema: add `share_token: Optional[str] = None`,
-  `share_url: Optional[str] = None` (computed: `f"{settings.FRONTEND_URL}/r/{share_token}"`)
-  - Add `FRONTEND_URL: str = "http://localhost:5180"` to `config.py` if not present
+- [x] Update `ResumeResponse` Pydantic schema: add `share_token: Optional[str] = None`,
+  `share_url: Optional[str] = None` (computed via `@model_validator(mode='after')`)
+  - Added `FRONTEND_URL: str = "http://localhost:5180"` to `config.py`
 
 ### 10C · Backend — Share Endpoints
-- [ ] Add to `backend/app/api/resume_routes.py`:
-
-  **`POST /resumes/{resume_id}/share`** — generate share token:
-  ```python
-  import secrets
-  async def create_share_link(resume_id: str, db: AsyncSession, user_id: str) -> dict:
-      resume = await get_resume_or_404(db, resume_id, user_id)
-      if not resume.share_token:
-          resume.share_token = secrets.token_urlsafe(24)  # ~32 char URL-safe token
-          resume.share_token_created_at = datetime.utcnow()
-          await db.commit()
-      return {
-          "share_token": resume.share_token,
-          "share_url": f"{settings.FRONTEND_URL}/r/{resume.share_token}",
-          "created_at": resume.share_token_created_at,
-      }
-  ```
-
-  **`DELETE /resumes/{resume_id}/share`** — revoke share token:
-  - Sets `share_token = None`, `share_token_created_at = None`
-  - Returns 204 No Content
-
-  **`GET /share/{share_token}`** — public endpoint (NO auth required):
-  - Looks up `resume.share_token = share_token`
-  - If not found → 404 `{"detail": "Share link not found or has been revoked"}`
-  - Fetches most recent compilation's `pdf_path` from `compilations` table:
-    ```sql
-    SELECT pdf_path FROM compilations
-    WHERE resume_id = :resume_id AND status = 'success'
-    ORDER BY created_at DESC LIMIT 1
-    ```
-  - If no successful compilation → 404 `{"detail": "No compiled PDF available yet"}`
-  - Generates presigned MinIO URL (60-minute TTL) for the PDF
-  - Returns: `{ resume_title, share_token, pdf_url, compiled_at, page_count? }`
-  - Register this endpoint at root level (not under `/api`) for clean URLs
+- [x] Added to `backend/app/api/resume_routes.py`:
+  - `POST /resumes/{resume_id}/share` — idempotent token generation, lazy PDF upload to MinIO
+  - `DELETE /resumes/{resume_id}/share` — revokes token, returns 204
+- [x] Added `GET /share/{share_token}` to `backend/app/api/routes.py` (root level, no auth)
+  - MinIO presigned URL (1h TTL) + temp dir fallback
+  - Returns `{ resume_title, share_token, pdf_url, compiled_at }`
 
 ### 10D · Frontend — Share Modal Component
-- [ ] Create `frontend/src/components/ShareResumeModal.tsx`:
-  - Triggered from workspace card or edit page header "Share" button
-  - **States:**
-    - No link yet: "Generate shareable link" button → calls `apiClient.createShareLink(resumeId)`
-    - Link exists: Shows `https://latexy.io/r/{token}` with "Copy" button
-    - Copied: "Copied!" with checkmark (2s then resets)
-  - **Revoke section** (below link): "Revoke link" button with confirmation warning
-    - Calls `apiClient.revokeShareLink(resumeId)` → link disappears
-  - **Info text:** "Anyone with this link can view the PDF. They cannot edit the resume."
-  - Created-at date shown: "Link created March 15, 2026"
-  - Loading states for generate and revoke actions
-  - Keyboard: Escape closes modal
+- [x] Created `frontend/src/components/ShareResumeModal.tsx`:
+  - States: no link (Generate button) → link exists (URL + Copy + Revoke)
+  - Two-step revoke confirmation
+  - Escape key + backdrop click close
+  - Copy shows checkmark for 2s
 
 ### 10E · Frontend — API Client Methods
-- [ ] Add to `frontend/src/lib/api-client.ts`:
-  ```typescript
-  createShareLink(resumeId: string): Promise<{ share_token: string; share_url: string; created_at: string }>
-  revokeShareLink(resumeId: string): Promise<void>
-  getSharedResume(shareToken: string): Promise<{ resume_title: string; pdf_url: string; compiled_at: string }>
-  ```
+- [x] Added to `frontend/src/lib/api-client.ts`:
+  - `createShareLink()`, `revokeShareLink()`, `getSharedResume()`
+  - `ShareLinkResponse` and `SharedResumeResponse` interfaces
+  - `ResumeResponse` extended with `share_token` and `share_url` fields
 
 ### 10F · Frontend — Share Button Integration
-- [ ] In `frontend/src/app/workspace/page.tsx` (workspace card):
-  - Add "Share" action to resume card dropdown menu (Share icon)
-  - Opens `ShareResumeModal` with `resumeId`
-  - If `resume.share_token` exists: show filled share icon (blue); else: outline
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx` (edit page header):
-  - Add "Share" button (chain-link icon) next to the "Download" button in header
-  - Same modal behavior
+- [x] `frontend/src/app/workspace/page.tsx`: Share button on every resume card (sky when active)
+- [x] `frontend/src/app/workspace/[resumeId]/edit/page.tsx`: Share button in editor header
 
 ### 10G · Frontend — Public `/r/[token]` Route
-- [ ] Create `frontend/src/app/r/[token]/page.tsx`:
-  - Server component: call backend `GET /share/{token}` on the server side
-  - On error (404): show clean "This link has been revoked or doesn't exist" page
-  - On success: render `PDFPreview` with the presigned `pdf_url`
-  - Page title: `{resume_title} — Resume`
-  - Minimal layout (no nav bar, no auth) — just the PDF viewer
-  - Footer: "Powered by Latexy — Build your LaTeX resume at latexy.io" (subtle branding)
-  - No tracking/analytics on viewer (privacy)
-  - PDF viewer takes full height: `min-h-screen`
+- [x] Created `frontend/src/app/r/[token]/page.tsx`:
+  - Loading spinner → error state (revoked/no PDF) → full-height iframe PDF viewer
+  - Minimal layout (no nav), "View only" header, Latexy branding footer
 
 ### 10H · Tests
-- [ ] `backend/test/test_share_links.py`:
-  - `POST /resumes/{id}/share` → generates token, returns URL
-  - Calling POST again → returns same token (idempotent)
-  - `DELETE /resumes/{id}/share` → revokes, token is null
-  - `GET /share/{token}` after revoke → 404
-  - `GET /share/{nonexistent}` → 404
-  - `GET /share/{token}` with no compilation → 404 with descriptive message
-  - Share endpoints require auth; public GET endpoint works without auth
-  - Cannot access another user's resume share token via POST/DELETE (ownership check)
+- [x] `backend/test/test_share_links.py` — 11/11 passing:
+  - Token creation, idempotency, auth boundaries, ownership checks
+  - Revoke + verify token cleared from ResumeResponse
+  - GET nonexistent/revoked → 404, no compilation → 404, MinIO PDF → 200
+  - `ResumeResponse` includes `share_token` and `share_url` fields
+- [x] `frontend/e2e/share-links.spec.ts` — 46/46 passing:
+  - Workspace Share button states (active/inactive), modal open/close
+  - Generate link flow, copy, revoke with confirmation
+  - Public `/r/[token]` page: loading, error, success, no-auth access
+  - API route verification (POST/DELETE/GET endpoints called correctly)
 
 ---
 
@@ -494,7 +444,7 @@ them to support any two optimization-history entries (not just checkpoints).
 
 ---
 
-## Feature 13 — Project-Wide Search · P1 · S
+## Feature 13 — Project-Wide Search · P1 · S ✅ COMPLETED
 
 **Goal:** Cmd+Shift+F opens a search modal that searches LaTeX content and title across ALL
 user resumes using Postgres full-text search. Results show title, line number, snippet,
