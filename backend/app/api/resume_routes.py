@@ -826,6 +826,7 @@ async def create_share_link(
 
     if not resume.share_token:
         from pathlib import Path
+
         from ..database.models import Compilation
 
         # Try to upload the latest PDF to MinIO for persistent serving
