@@ -7,13 +7,14 @@ import { test, expect } from '@playwright/test'
 test.describe('Template Gallery Page (/workspace/new)', () => {
 
   test.beforeEach(async ({ page }) => {
+    await page.route('**/ws/**', route => route.abort())
     await page.goto('/workspace/new')
   })
 
   test('page loads without runtime errors', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
     expect(errors).toEqual([])
   })
 
@@ -166,6 +167,7 @@ test.describe('Template Gallery with mocked API', () => {
       return route.continue()
     })
 
+    await page.route('**/ws/**', route => route.abort())
     await page.goto('/workspace/new')
     await page.waitForLoadState('networkidle')
   })
@@ -427,24 +429,21 @@ test.describe('API Client methods exist at runtime', () => {
   test('no "is not a function" errors on template page', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
+    await page.route('**/ws/**', route => route.abort())
     await page.goto('/workspace/new')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('load')
     const hasNotAFunctionError = errors.some(e => e.includes('is not a function'))
     expect(hasNotAFunctionError).toBe(false)
   })
 
   test('template API calls are made on page load', async ({ page }) => {
-    const apiCalls: string[] = []
-    await page.route('**/*', async (route) => {
-      const url = route.request().url()
-      if (url.includes('/templates')) {
-        apiCalls.push(url)
-      }
-      await route.continue()
-    })
+    await page.route('**/ws/**', route => route.abort())
+    // Wait for both template API calls rather than networkidle — WS retries block networkidle
+    const categoriesReq = page.waitForRequest(r => r.url().includes('/templates/categories'), { timeout: 12000 })
+    const listReq = page.waitForRequest(r => /\/templates\/(\?|$)/.test(r.url()), { timeout: 12000 })
     await page.goto('/workspace/new')
-    await page.waitForLoadState('networkidle')
-    expect(apiCalls.some(u => u.includes('/templates/categories'))).toBe(true)
-    expect(apiCalls.some(u => u.match(/\/templates\/(\?|$)/))).toBe(true)
+    const [categoriesRequest, listRequest] = await Promise.all([categoriesReq, listReq])
+    expect(categoriesRequest.url()).toContain('/templates/categories')
+    expect(listRequest.url()).toMatch(/\/templates\/(\?|$)/)
   })
 })
