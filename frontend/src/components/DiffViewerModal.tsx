@@ -157,6 +157,7 @@ export default function DiffViewerModal({
     if (confirmRestore !== null) {
       onRestore(confirmRestore)
       setConfirmRestore(null)
+      toast.success('Version restored')
     }
   }, [confirmRestore, onRestore])
 
@@ -216,9 +217,11 @@ export default function DiffViewerModal({
               {isParentDiffMode ? 'Keep Variant' : 'Restore Right'}
             </button>
             <button
+              type="button"
               onClick={() => setIsFullscreen((v) => !v)}
               className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/5 hover:text-white"
               title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             >
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
@@ -279,9 +282,9 @@ export default function DiffViewerModal({
 
           {/* Restore confirmation overlay */}
           {confirmRestore !== null && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 backdrop-blur-[2px]">
+            <div role="dialog" aria-modal="true" aria-labelledby="confirm-restore-title" className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 backdrop-blur-[2px]">
               <div className="w-80 rounded-xl border border-white/10 bg-zinc-900 p-5 shadow-2xl">
-                <p className="text-sm font-semibold text-zinc-100">Restore this version?</p>
+                <p id="confirm-restore-title" className="text-sm font-semibold text-zinc-100">Restore this version?</p>
                 <p className="mt-1.5 text-xs text-zinc-500">
                   This will replace your current editor content. You can undo after closing.
                 </p>
