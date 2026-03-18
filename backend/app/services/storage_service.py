@@ -74,3 +74,13 @@ def file_exists(key: str) -> bool:
         if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
             return False
         raise
+
+
+def generate_presigned_url(key: str, ttl: int = 3600) -> str:
+    """Generate a presigned GET URL for an object (default 1-hour TTL)."""
+    client = _get_client()
+    return client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.MINIO_BUCKET, "Key": key},
+        ExpiresIn=ttl,
+    )
