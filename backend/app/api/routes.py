@@ -650,8 +650,9 @@ async def get_shared_resume(
     Public endpoint — no auth required.
     Returns metadata + a presigned PDF URL for a shared resume.
     """
-    from sqlalchemy import select as sa_select
     from pathlib import Path
+
+    from sqlalchemy import select as sa_select
 
     # Find resume by share token
     result = await db.execute(
@@ -697,7 +698,7 @@ async def get_shared_resume(
         temp_pdf = Path(settings.TEMP_DIR) / compilation.job_id / "resume.pdf"
         if temp_pdf.exists():
             try:
-                from ..services.storage_service import upload_bytes, generate_presigned_url
+                from ..services.storage_service import generate_presigned_url, upload_bytes
                 share_key = f"shares/{resume.id}/resume.pdf"
                 upload_bytes(share_key, temp_pdf.read_bytes(), "application/pdf")
                 compilation.pdf_path = share_key
