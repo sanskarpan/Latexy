@@ -230,6 +230,8 @@ test.describe('Page count — initial state (no compile yet)', () => {
     await mockCommonBackend(page)
     await mockResume(page, MOCK_RESUME_LARGE)
     await mockCompileEndpoint(page)
+    // Abort WebSocket connections so networkidle can settle
+    await page.route('**/ws/**', route => route.abort())
   })
 
   test('/workspace/edit page loads without runtime errors', async ({ page }) => {
