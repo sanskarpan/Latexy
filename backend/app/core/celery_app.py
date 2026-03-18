@@ -129,7 +129,16 @@ QUEUE_CONFIGS = {
 
 
 def get_task_priority(user_plan: str = "free") -> int:
-    """Get task priority based on user plan."""
+    """Get task priority based on user plan.
+
+    When the task_priority feature flag is disabled, everyone gets high priority.
+    """
+    try:
+        from ..services.feature_flag_service import feature_flag_service
+        if not feature_flag_service.sync_get_flag("task_priority"):
+            return TASK_PRIORITY_HIGH
+    except Exception:
+        pass
     priority_mapping = {
         "free": TASK_PRIORITY_LOW,
         "basic": TASK_PRIORITY_NORMAL,
