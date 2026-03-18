@@ -98,6 +98,12 @@ class TrialService:
     ) -> Dict[str, Any]:
         """Check if device/IP is within rate limits."""
         try:
+            from .feature_flag_service import feature_flag_service
+            if not await feature_flag_service.get_flag("trial_limits", db):
+                return {"allowed": True, "reason": None, "waitTime": None}
+        except Exception:
+            pass
+        try:
             now = datetime.now(timezone.utc)
 
             # Check device-based rate limiting
@@ -178,12 +184,20 @@ class TrialService:
     ) -> Dict[str, Any]:
         """Atomically check trial limit and increment usage in one transaction.
 
+        Short-circuits (allows all) when the trial_limits feature flag is disabled.
+
         Uses SELECT FOR UPDATE to prevent concurrent requests from both passing
         the limit check before either increments the counter (TOCTOU race).
 
         Returns a dict with ``success`` bool and, on failure, an ``error`` key
         describing the reason (mirrors ``track_usage`` return shape).
         """
+        try:
+            from .feature_flag_service import feature_flag_service
+            if not await feature_flag_service.get_flag("trial_limits", db):
+                return {"success": True, "usageCount": 0, "remainingUses": 999, "blocked": False}
+        except Exception:
+            pass
         try:
             now = datetime.now(timezone.utc)
 

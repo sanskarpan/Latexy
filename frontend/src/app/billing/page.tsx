@@ -25,10 +25,12 @@ interface PricingPlan {
 }
 
 import { useSession } from '@/lib/auth-client'
+import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 export default function BillingPage() {
   const { data: session, isPending } = useSession()
   const router = useRouter()
+  const flags = useFeatureFlags()
   const [plans, setPlans] = useState<Record<string, PricingPlan>>({})
   const [loading, setLoading] = useState(true)
   const [activePlan, setActivePlan] = useState<string | null>(null)
@@ -85,6 +87,19 @@ export default function BillingPage() {
     }
 
     toast.success('Subscription initialized successfully.')
+  }
+
+  if (!flags.billing) {
+    return (
+      <div className="content-shell">
+        <div className="surface-panel edge-highlight p-6 sm:p-8">
+          <h1 className="text-3xl font-bold text-white tracking-tight">All Features Included</h1>
+          <p className="mt-2 max-w-2xl text-zinc-400">
+            All features are available to everyone — no billing or subscription required.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (

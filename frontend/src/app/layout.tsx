@@ -6,6 +6,7 @@ import { AuthSync } from '@/components/AuthSync'
 import GlobalHeader from '@/components/GlobalHeader'
 import MarketingFooter from '@/components/marketing/MarketingFooter'
 import { Toaster } from 'sonner'
+import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext'
 
 export const metadata: Metadata = {
   title: 'Latexy | Precision Resume Intelligence',
@@ -21,6 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="font-sans antialiased">
+        <FeatureFlagsProvider>
         <NotificationProvider>
           <WebSocketProvider>
             <AuthSync />
@@ -41,6 +43,7 @@ export default function RootLayout({
             />
           </WebSocketProvider>
         </NotificationProvider>
+        </FeatureFlagsProvider>
       </body>
     </html>
   )

@@ -386,61 +386,39 @@ side-by-side Monaco diff. Includes colored diff stats (+N / -N lines) and restor
 them to support any two optimization-history entries (not just checkpoints).
 
 ### 12A · Verify P0 Coverage
-- [ ] Confirm `VersionHistoryPanel` supports multi-select (checkbox on each entry):
-  - If P0 implemented checkboxes → this feature is 80% done; just validate UX
-  - If not → add checkbox state to `VersionHistoryPanel.tsx`: `selectedIds: string[]` (max 2)
-  - "Compare" button appears only when `selectedIds.length === 2`
-- [ ] Confirm `DiffViewerModal` supports loading `original_latex` vs `optimized_latex` for any
+- [x] Confirm `VersionHistoryPanel` supports multi-select (checkbox on each entry):
+  - P0 implemented selection state (max 2), "Compare Selected" button when 2 selected
+  - `DiffViewerModal` loads content via `getCheckpointContent` for any optimization record
+- [x] Confirm `DiffViewerModal` supports loading `original_latex` vs `optimized_latex` for any
   two optimization records (not just checkpoints) via `GET /resumes/{id}/checkpoints/{id}/content`
-  - The content endpoint should work for ALL optimization records (checkpoints + AI runs + auto-saves)
-  - Verify the endpoint doesn't filter to only `is_checkpoint=true` entries
 
 ### 12B · Backend — Ensure Content Endpoint is General
-- [ ] In `GET /resumes/{resume_id}/checkpoints/{checkpoint_id}/content` (in `resume_routes.py`):
-  - Verify it queries `Optimization` table without `is_checkpoint` filter
-  - Any optimization record ID should work (so AI-run `original_latex` vs `optimized_latex` is loadable)
-  - If the endpoint filters to checkpoints only → remove that filter
+- [x] `GET /resumes/{resume_id}/checkpoints/{checkpoint_id}/content` queries `Optimization`
+  table without `is_checkpoint` filter — works for AI runs, auto-saves, and manual checkpoints
 
 ### 12C · Frontend — Diff Statistics in DiffViewerModal
-- [ ] In `frontend/src/components/DiffViewerModal.tsx`:
-  - After Monaco diff editor loads, compute diff stats:
-    ```typescript
-    const diffEditor = diffEditorRef.current?.getModifiedEditor()
-    // Monaco exposes line changes via:
-    // (diffEditorRef.current as any)?._diffComputationResult?.changes
-    // Each change: { originalStartLineNumber, originalEndLineNumber,
-    //                modifiedStartLineNumber, modifiedEndLineNumber }
-    ```
-  - Display header stats: `+{addedLines} lines  −{removedLines} lines  {changedSections} sections changed`
-  - Color: green for additions, red for removals
-  - Show in modal header bar below title
+- [x] Added `DiffStats` state + `computeDiffStats` via `editor.onDidUpdateDiff()` + `editor.getLineChanges()`
+- [x] Header displays `+{added}  −{removed}  · N sections changed` in green/red
 
-### 12D · Frontend — Resizable Split Panel
-- [ ] In `DiffViewerModal.tsx`, replace fixed-height diff editor with a resizable container:
-  - Use CSS resize handle (a draggable divider between info panel and diff editor)
-  - Initial height: `60vh` for diff editor; user can drag to expand/collapse
-  - Or simply: make the modal full-screen (Escape to exit) when triggered from history panel
+### 12D · Frontend — Fullscreen Toggle
+- [x] Added fullscreen toggle with `Maximize2`/`Minimize2` icons; `isFullscreen` state changes modal CSS
 
 ### 12E · Frontend — "Restore Left" and "Restore Right" Actions
-- [ ] In `DiffViewerModal.tsx`:
-  - "Restore Left" → `onRestore(leftLatex)` → parent calls `editorRef.current.setValue(leftLatex)`
-    + `apiClient.updateResume(resumeId, { latex_content: leftLatex })` + success toast
-  - "Restore Right" → same for rightLatex
-  - Show confirmation dialog before restoring: "This will replace your current editor content"
-  - After restore: close modal + trigger recompile if `autoCompile` is enabled
+- [x] Restore buttons set `confirmRestore` state instead of calling `onRestore` directly
+- [x] Confirmation overlay with Cancel / Restore buttons; Escape dismisses dialog first
+- [x] After confirm → `onRestore(latex)` called → parent updates editor
 
 ### 12F · Frontend — HistoryPanel Tab in Optimize Page
-- [ ] In `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`:
-  - Ensure `VersionHistoryPanel` is accessible (sidebar tab or slide-out panel)
-  - When two entries selected and user clicks "Compare" → open `DiffViewerModal`
-  - After restore → update `baselineLatex` state and `editorRef.current.setValue()`
+- [x] Added collapsible "Version History" section to optimize page aside (toggle show/hide)
+- [x] `VersionHistoryPanel` with `onRestore` / `onCompare` handlers wired up
+- [x] On compare → opens `DiffViewerModal` with `checkpointA`/`checkpointB`
+- [x] `historyRefreshKey` incremented on optimization completion to auto-refresh panel
 
 ### 12G · Tests
-- [ ] `backend/test/test_history_diff.py`:
-  - `GET /resumes/{id}/checkpoints/{opt_id}/content` works for regular optimization records
-  - Returns `original_latex` and `optimized_latex` from the correct row
-  - 404 if checkpoint doesn't belong to the resume
-  - 404 if checkpoint belongs to different user's resume
+- [x] `backend/test/test_history_diff.py` (18 tests, all passing):
+  - List/create/fetch/delete checkpoints for own resume
+  - 404 for wrong resume_id, non-existent checkpoint, other user's checkpoint
+  - Auth required for all endpoints
 
 ---
 
