@@ -194,6 +194,7 @@ start_app() {
   CELERY_RESULT_BACKEND="$REDIS" \
   MINIO_ENDPOINT="$MINIO" \
   BETTER_AUTH_URL="http://localhost:${FRONTEND_PORT}" \
+  FRONTEND_URL="http://localhost:${FRONTEND_PORT}" \
   CORS_ORIGINS="$CORS" \
   "$UVICORN" app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" --reload --reload-dir app \
     2>&1 | sed "s/^/[backend]  /" &
