@@ -451,7 +451,7 @@ user resumes using Postgres full-text search. Results show title, line number, s
 highlighted match. Clicking opens the resume with cursor at matching line.
 
 ### 13A · Backend — Search Endpoint
-- [ ] Add `GET /resumes/search` to `backend/app/api/resume_routes.py`:
+- [x] Add `GET /resumes/search` to `backend/app/api/resume_routes.py`:
   - Query params: `q: str` (required, min 2 chars), `limit: int = 20` (max 50)
   - Must add before `GET /resumes/{resume_id}` in router to avoid conflict with `{resume_id}` capture
   - Implementation:
@@ -524,14 +524,14 @@ highlighted match. Clicking opens the resume with cursor at matching line.
   - Minimum 2 chars: `q.strip()` length check → 422 if < 2
 
 ### 13B · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   searchResumes(query: string, limit?: number): Promise<SearchResponse>
   ```
   - Interfaces: `SearchMatch`, `ResumeSearchResult`, `SearchResponse`
 
 ### 13C · Frontend — Search Modal Component
-- [ ] Create `frontend/src/components/ProjectSearchModal.tsx`:
+- [x] Create `frontend/src/components/ProjectSearchModal.tsx`:
   - Opens as a command-palette style modal (centered, `max-w-2xl`)
   - Search input at top with magnifying glass icon, auto-focused on open
   - Results list below with loading indicator
@@ -548,7 +548,7 @@ highlighted match. Clicking opens the resume with cursor at matching line.
   - Keyboard: Up/Down arrows navigate results; Enter opens selected; Escape closes
 
 ### 13D · Frontend — Keyboard Shortcut (Cmd+Shift+F)
-- [ ] In `frontend/src/app/workspace/page.tsx`:
+- [x] In `frontend/src/app/workspace/page.tsx`:
   - Add state: `searchOpen: boolean`
   - Register global `keydown` listener:
     ```typescript
@@ -567,7 +567,7 @@ highlighted match. Clicking opens the resume with cursor at matching line.
   - Also: add search icon button in workspace header (top-right)
 
 ### 13E · Frontend — Open Editor at Line
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Read `searchParams.get('line')` on mount
   - If present: after editor loads, call:
     ```typescript
@@ -577,7 +577,7 @@ highlighted match. Clicking opens the resume with cursor at matching line.
   - Clear the query param from URL after navigation (replace history state)
 
 ### 13F · Tests
-- [ ] `backend/test/test_search.py`:
+- [x] `backend/test/test_search.py`:
   - `GET /resumes/search?q=foo` with 3 resumes where 1 matches → returns 1 result
   - Query too short (1 char) → 422
   - Query matches title only → match in result without latex snippet
