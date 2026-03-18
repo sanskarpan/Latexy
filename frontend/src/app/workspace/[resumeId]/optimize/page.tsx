@@ -281,7 +281,7 @@ export default function OptimizationSuitePage() {
   const handleHistoryRestore = useCallback((latex: string) => {
     editorRef.current?.setValue(latex)
     setShowHistoryDiff(false)
-    toast.success('Version restored')
+    // Toast is fired by the caller (VersionHistoryPanel or DiffViewerModal)
   }, [])
 
   const handleHistoryCompare = useCallback((a: CheckpointEntry, b: CheckpointEntry) => {
