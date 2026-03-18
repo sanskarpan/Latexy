@@ -155,6 +155,8 @@ test.describe('/try page — ATS Quick Score badge', () => {
     await mockAuth(page)
     await mockCommonBackendRoutes(page)
     await mockAtsQuickScore(page)
+    // Abort WebSocket connections so networkidle can settle
+    await page.route('**/ws/**', route => route.abort())
   })
 
   test('page loads without runtime errors', async ({ page }) => {
