@@ -202,7 +202,7 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header: session selector + controls */}
       <div className="shrink-0 border-b border-white/[0.05] bg-black/20 px-3 py-2 space-y-2">
-        {sessions.length > 1 && (
+        {sessions.length > 0 && (
           <select
             value={selectedSessionId ?? ''}
             onChange={e => setSelectedSessionId(e.target.value)}
@@ -302,7 +302,7 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
               <p className="text-center text-[11px] text-zinc-700 py-6">No questions in this category</p>
             ) : (
               (questionsByCategory[activeCategory] ?? []).map((q, i) => (
-                <QuestionCard key={i} q={q} index={i} />
+                <QuestionCard key={q.question} q={q} index={i} />
               ))
             )}
           </div>
@@ -312,8 +312,7 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
       {/* Empty questions state for existing session */}
       {currentSession && currentSession.questions.length === 0 && !isJobRunning && (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-8">
-          <Loader2 size={18} className="text-zinc-700 animate-spin" />
-          <p className="text-center text-[11px] text-zinc-600">Questions are being generated…</p>
+          <p className="text-center text-[11px] text-zinc-600">No questions yet — try generating again.</p>
         </div>
       )}
     </div>
