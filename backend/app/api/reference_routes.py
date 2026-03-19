@@ -136,21 +136,36 @@ async def fetch_references(
             seen.add(stripped)
             unique_ids.append(stripped)
 
-    try:
-        results = await asyncio.wait_for(
-            asyncio.gather(*[_fetch_one(ident) for ident in unique_ids]),
-            timeout=30.0,
-        )
-        entries = list(results)
-    except asyncio.TimeoutError:
-        entries = [
-            BibTeXEntry(
+    tasks = [asyncio.create_task(_fetch_one(ident)) for ident in unique_ids]
+    done, pending = await asyncio.wait(tasks, timeout=30.0)
+
+    # Cancel tasks that did not finish in time
+    for t in pending:
+        t.cancel()
+
+    # Collect results in original order
+    task_index = {t: i for i, t in enumerate(tasks)}
+    entries: list[BibTeXEntry] = [None] * len(tasks)  # type: ignore[list-item]
+    for t in done:
+        i = task_index[t]
+        exc = t.exception()
+        if exc is not None:
+            ident = unique_ids[i]
+            entries[i] = BibTeXEntry(
                 identifier=ident,
-                cite_key=f"ref_{i}",
-                error="Request timed out",
+                cite_key=f"ref_{ident[:16].replace('/', '_')}",
+                error=f"Unexpected error: {type(exc).__name__}",
             )
-            for i, ident in enumerate(unique_ids)
-        ]
+        else:
+            entries[i] = t.result()
+    for t in pending:
+        i = task_index[t]
+        ident = unique_ids[i]
+        entries[i] = BibTeXEntry(
+            identifier=ident,
+            cite_key=f"ref_{ident[:16].replace('/', '_')}",
+            error="Request timed out",
+        )
 
     successful = sum(1 for e in entries if e.bibtex is not None)
 
@@ -182,15 +197,26 @@ async def detect_references(request: DetectReferencesRequest):
             seen.add(doi)
             detected.append(DetectIdentifierResult(raw=m.group(0), normalized=doi, type="doi"))
 
-    # arXiv in URL
-    for m in re.finditer(r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,}(?:v\d+)?)", request.text, re.I):
-        arxiv_id = m.group(1).split("v")[0]
+    # arXiv in URL (new-style and old-style)
+    for m in re.finditer(
+        r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,}(?:v\d+)?|[a-z][\w.-]*/\d{7}(?:v\d+)?)",
+        request.text,
+        re.I,
+    ):
+        arxiv_id = re.sub(r"v\d+$", "", m.group(1), flags=re.I)
         if arxiv_id not in seen:
             seen.add(arxiv_id)
             detected.append(DetectIdentifierResult(raw=m.group(0), normalized=arxiv_id, type="arxiv"))
 
     # Bare arXiv new-style
     for m in re.finditer(r"\b(\d{4}\.\d{4,})(?:v\d+)?\b", request.text):
+        arxiv_id = m.group(1)
+        if arxiv_id not in seen:
+            seen.add(arxiv_id)
+            detected.append(DetectIdentifierResult(raw=m.group(0), normalized=arxiv_id, type="arxiv"))
+
+    # Bare arXiv old-style (e.g. solv-int/9901001v2)
+    for m in re.finditer(r"\b([a-z][\w.-]*/\d{7})(?:v\d+)?\b", request.text, re.I):
         arxiv_id = m.group(1)
         if arxiv_id not in seen:
             seen.add(arxiv_id)
