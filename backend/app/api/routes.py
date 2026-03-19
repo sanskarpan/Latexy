@@ -100,6 +100,13 @@ from .tracker_routes import router as tracker_router
 
 router.include_router(tracker_router)
 
+# Include Interview Prep routes
+from .interview_routes import resume_interview_router
+from .interview_routes import router as interview_router
+
+router.include_router(interview_router)
+router.include_router(resume_interview_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
