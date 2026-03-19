@@ -587,14 +587,14 @@ highlighted match. Clicking opens the resume with cursor at matching line.
 
 ---
 
-## Feature 14 — BibTeX Smart Import (DOI / arXiv) · P1 · M
+## Feature 14 — BibTeX Smart Import (DOI / arXiv) · P1 · M ✅ COMPLETED
 
 **Goal:** In the editor's "References" sidebar tab, users paste a DOI or arXiv ID and get a
 properly formatted BibTeX entry inserted at cursor. Supports batch import of multiple IDs.
 Uses Crossref API (DOI) and arXiv Atom API (arXiv) — both free, no API key needed.
 
 ### 14A · Backend — References Fetch Endpoint
-- [ ] Create `backend/app/api/reference_routes.py`:
+- [x] Create `backend/app/api/reference_routes.py`:
   ```python
   router = APIRouter(prefix="/references", tags=["references"])
   ```
@@ -610,7 +610,7 @@ Uses Crossref API (DOI) and arXiv Atom API (arXiv) — both free, no API key nee
   - Accepts raw text (pasted URLs or IDs), extracts all DOIs and arXiv IDs
   - Returns detected identifiers with type labels
 
-- [ ] Add DOI fetcher using Crossref:
+- [x] Add DOI fetcher using Crossref:
   ```python
   async def fetch_doi_bibtex(doi: str) -> str:
       url = f"https://api.crossref.org/works/{doi}/transform/application/x-bibtex"
@@ -626,7 +626,7 @@ Uses Crossref API (DOI) and arXiv Atom API (arXiv) — both free, no API key nee
   ```
   - Cache result: `cache_manager.set(f"bibtex:doi:{doi}", bibtex, ttl=86400 * 30)` (30 days — stable data)
 
-- [ ] Add arXiv fetcher:
+- [x] Add arXiv fetcher:
   ```python
   async def fetch_arxiv_bibtex(arxiv_id: str) -> str:
       # arXiv Atom API returns structured metadata
@@ -649,7 +649,7 @@ Uses Crossref API (DOI) and arXiv Atom API (arXiv) — both free, no API key nee
   - Use `xml.etree.ElementTree` (stdlib) to parse Atom XML — no extra dependency
   - Cache with `ttl=86400 * 7` (7 days — arXiv entries don't change often)
 
-- [ ] Response schema:
+- [x] Response schema:
   ```python
   class BibTeXEntry(BaseModel):
       identifier: str
@@ -661,23 +661,23 @@ Uses Crossref API (DOI) and arXiv Atom API (arXiv) — both free, no API key nee
       error: Optional[str]   # if fetch failed
   ```
 
-- [ ] Register router in `backend/app/api/routes.py`
+- [x] Register router in `backend/app/api/routes.py`
 
 ### 14B · Backend — Batch Import
-- [ ] In `POST /references/fetch`, batch logic:
+- [x] In `POST /references/fetch`, batch logic:
   - Fire concurrent requests with `asyncio.gather()` (not sequential)
   - Enforce max 20 identifiers per request (Pydantic `max_length=20` on list field)
   - Return partial results (some succeed, some fail)
   - Total timeout: 30s across all concurrent fetches
 
 ### 14C · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   fetchReferences(identifiers: string[]): Promise<BibTeXEntry[]>
   ```
 
 ### 14D · Frontend — References Panel Component
-- [ ] Create `frontend/src/components/ReferencesPanel.tsx`:
+- [x] Create `frontend/src/components/ReferencesPanel.tsx`:
   - Rendered as a sidebar panel/tab in the LaTeX editor
   - **Input section:**
     - Textarea with placeholder: "Paste DOI(s) or arXiv ID(s), one per line\nExamples: 10.1145/3386569.3392408\n2103.00020"
@@ -701,7 +701,7 @@ Uses Crossref API (DOI) and arXiv Atom API (arXiv) — both free, no API key nee
     ```
 
 ### 14E · Frontend — Editor Integration
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Expose `insertAtCursor(text: string)` via `LaTeXEditorRef`:
     ```typescript
     insertAtCursor(text: string): void {
@@ -719,13 +719,13 @@ Uses Crossref API (DOI) and arXiv Atom API (arXiv) — both free, no API key nee
     ```
   - This method is useful for BibTeX AND future features (snippet insert, package manager)
 
-- [ ] Wire `ReferencesPanel` in editor sidebar (tab system):
+- [x] Wire `ReferencesPanel` in editor sidebar (tab system):
   - Add "References" tab to whatever sidebar tabs exist in the editor pages
-  - Pass `onInsertBibTeX={(bibtex) => editorRef.current?.insertAtCursor('\n' + bibtex)}`
+  - Pass `onInsertBibTeX={(bibtex) => editorRef.current?.insertAtCursor(bibtex)}`
   - Pass `onInsertCiteKey={(key) => editorRef.current?.insertAtCursor(key)}`
 
 ### 14F · Tests
-- [ ] `backend/test/test_references.py`:
+- [x] `backend/test/test_references.py` — 27 tests, all pass:
   - Known DOI (`10.1145/1327452.1327492`) → returns valid BibTeX with `@` entry
   - Known arXiv ID (`1706.03762`) → returns BibTeX for "Attention Is All You Need"
   - Invalid DOI → error in result (not 500)
