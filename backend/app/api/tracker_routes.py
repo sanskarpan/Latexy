@@ -284,6 +284,17 @@ async def update_application(
     for field, value in update_data.items():
         setattr(app, field, value)
 
+    # Re-derive logo URL when company name changes
+    if 'company_name' in update_data and update_data['company_name']:
+        app.company_logo_url = _logo_url(update_data['company_name'])
+
+    # Re-fetch ATS score snapshot when resume changes
+    if 'resume_id' in update_data:
+        if update_data['resume_id']:
+            app.ats_score_at_submission = await _get_latest_ats_score(update_data['resume_id'], db)
+        else:
+            app.ats_score_at_submission = None
+
     app.updated_at = datetime.now(timezone.utc)
     await db.commit()
     return _serialize(app)
