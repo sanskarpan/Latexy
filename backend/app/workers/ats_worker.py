@@ -529,6 +529,17 @@ async def _async_deep_analyze(
             "job_match": None,
         }
 
+    # Compute multi-dimensional scores (rule-based, fast)
+    multi_dim_scores: dict = {}
+    try:
+        scoring_result = await ats_scoring_service.score_resume(
+            latex_content=latex_content,
+            job_description=job_description,
+        )
+        multi_dim_scores = scoring_result.multi_dim_scores or {}
+    except Exception as _e:
+        logger.warning(f"Multi-dim scoring failed for job {job_id}: {_e}")
+
     # Publish deep_complete event
     publish_event(job_id, "ats.deep_complete", {
         "overall_score": result.get("overall_score", 0),
@@ -538,6 +549,7 @@ async def _async_deep_analyze(
         "job_match": result.get("job_match"),
         "tokens_used": tokens_used,
         "analysis_time": analysis_time,
+        "multi_dim_scores": multi_dim_scores,
     })
 
     publish_job_result(job_id, {
