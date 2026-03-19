@@ -20,12 +20,15 @@ async def test_user_with_resume(db_session: AsyncSession):
     user_id = str(uuid.uuid4())
     resume_id = str(uuid.uuid4())
 
+    # Use full UUID in email to avoid collisions with leftover rows from prior runs.
+    # ON CONFLICT (id) only suppresses the (impossible) primary-key collision;
+    # email conflicts will surface as a clear error rather than a silent skip.
     await db_session.execute(
         text(
             "INSERT INTO users (id, email, name, email_verified, subscription_plan, subscription_status, trial_used) "
-            "VALUES (:id, :email, 'Test CL User', true, 'pro', 'active', false) ON CONFLICT DO NOTHING"
+            "VALUES (:id, :email, 'Test CL User', true, 'pro', 'active', false) ON CONFLICT (id) DO NOTHING"
         ),
-        {"id": user_id, "email": f"test_{user_id[:8]}@example.com"},
+        {"id": user_id, "email": f"test_{user_id.replace('-', '')}@example.com"},
     )
     await db_session.commit()
 
