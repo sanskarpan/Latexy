@@ -158,6 +158,8 @@ function ApplicationCard({ app, onDelete, onEdit, isDragging = false }: Applicat
               type="button"
               className="fixed inset-0 z-10"
               onClick={() => setMenuOpen(false)}
+              aria-label="Close menu"
+              tabIndex={-1}
             />
             <div className="absolute right-0 top-6 z-20 w-36 rounded-xl border border-white/10 bg-zinc-900 p-1 shadow-xl">
               <button
