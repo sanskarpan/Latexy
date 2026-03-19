@@ -714,7 +714,7 @@ Uses Crossref API (DOI) and arXiv Atom API (arXiv) — both free, no API key nee
 
 ---
 
-## Feature 15 — Job Application Tracker · P1 · L
+## Feature 15 — Job Application Tracker · P1 · L ✅ COMPLETED
 
 **Goal:** Kanban board at `/tracker` where users manage job applications linked to resume variants.
 Cards show company logo, ATS score, status. Drag-and-drop between status columns.
