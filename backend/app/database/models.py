@@ -39,6 +39,7 @@ class User(Base):
     resume_job_matches: Mapped[List["ResumeJobMatch"]] = relationship("ResumeJobMatch", back_populates="user", cascade="all, delete-orphan")
     cover_letters: Mapped[List["CoverLetter"]] = relationship("CoverLetter", back_populates="user")
     job_applications: Mapped[List["JobApplication"]] = relationship("JobApplication", back_populates="user", cascade="all, delete-orphan")
+    interview_preps: Mapped[List["InterviewPrep"]] = relationship("InterviewPrep", back_populates="user", cascade="all, delete-orphan")
 
 class DeviceTrial(Base):
     """Device trial tracking for freemium model."""
@@ -115,6 +116,7 @@ class Resume(Base):
     compilations: Mapped[List["Compilation"]] = relationship("Compilation", back_populates="resume")
     optimizations: Mapped[List["Optimization"]] = relationship("Optimization", back_populates="resume", cascade="all, delete-orphan")
     cover_letters: Mapped[List["CoverLetter"]] = relationship("CoverLetter", back_populates="resume", cascade="all, delete-orphan")
+    interview_preps: Mapped[List["InterviewPrep"]] = relationship("InterviewPrep", back_populates="resume", cascade="all, delete-orphan")
 
 class Compilation(Base):
     """Compilation history for tracking LaTeX compilations."""
@@ -301,6 +303,26 @@ class JobApplication(Base):
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="job_applications")
     resume: Mapped[Optional["Resume"]] = relationship("Resume")
+
+
+class InterviewPrep(Base):
+    """Interview question sets generated per resume/job."""
+    __tablename__ = "interview_prep"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    resume_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    company_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    role_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    questions: Mapped[List[Dict]] = mapped_column(JSONB, default=list, nullable=False, server_default='[]')
+    generation_job_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="interview_preps")
+    resume: Mapped["Resume"] = relationship("Resume", back_populates="interview_preps")
 
 
 class ResumeTemplate(Base):

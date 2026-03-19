@@ -26,6 +26,7 @@ import {
   Mail,
   Share2,
   BookOpen,
+  MessageSquare,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ResumeResponse } from '@/lib/api-client'
 import ShareResumeModal from '@/components/ShareResumeModal'
@@ -35,6 +36,7 @@ import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import DeepAnalysisPanel from '@/components/ats/DeepAnalysisPanel'
+import InterviewPrepPanel from '@/components/InterviewPrepPanel'
 import ExportDropdown from '@/components/ExportDropdown'
 import MultiFormatUpload from '@/components/MultiFormatUpload'
 import VersionHistoryPanel from '@/components/VersionHistoryPanel'
@@ -49,7 +51,7 @@ import { Brain, GitFork, Zap } from 'lucide-react'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
@@ -1503,6 +1505,7 @@ export default function ResumeEditPage() {
                 { id: 'logs', label: 'Logs', icon: Terminal },
                 { id: 'history', label: 'History', icon: History },
                 { id: 'references', label: 'Refs', icon: BookOpen },
+                { id: 'interview', label: 'Interview', icon: MessageSquare },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -1615,6 +1618,15 @@ export default function ResumeEditPage() {
                 onInsertBibTeX={(bibtex) => editorRef.current?.insertAtCursor(bibtex)}
                 onInsertCiteKey={(key) => editorRef.current?.insertAtCursor(key)}
               />
+            )}
+
+            {rightTab === 'interview' && (
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <InterviewPrepPanel
+                  resumeId={resumeId}
+                  defaultJobDescription={jobDescription}
+                />
+              </div>
             )}
           </div>
         </aside>
