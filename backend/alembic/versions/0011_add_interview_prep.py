@@ -29,7 +29,7 @@ def upgrade() -> None:
                 primary_key=True,
                 server_default=sa.text('gen_random_uuid()'),
             ),
-            sa.Column('user_id', sa.Text(), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=True),
+            sa.Column('user_id', postgresql.UUID(as_uuid=False), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=True),
             sa.Column(
                 'resume_id',
                 postgresql.UUID(as_uuid=False),
@@ -54,6 +54,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index('idx_interview_prep_user', table_name='interview_prep')
-    op.drop_index('idx_interview_prep_resume', table_name='interview_prep')
-    op.drop_table('interview_prep')
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if 'interview_prep' in inspector.get_table_names():
+        op.drop_index('idx_interview_prep_user', table_name='interview_prep')
+        op.drop_index('idx_interview_prep_resume', table_name='interview_prep')
+        op.drop_table('interview_prep')
