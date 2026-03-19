@@ -95,8 +95,9 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            # start_time=0.0, timeout check=999.0 → 999.0 - 0.0 > 1 → timed out
-            patch("app.workers.latex_worker.time.time", side_effect=[0.0] + [999.0] * 20),
+            # logger.info() creates a LogRecord which calls time.time() before start_time does;
+            # first 0.0 is consumed by the logger, second 0.0 is start_time, 999.0 trips timeout
+            patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [999.0] * 20),
         ):
             mock_proc = MagicMock()
             mock_proc.stdout = _one_log_line()
@@ -132,7 +133,7 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            patch("app.workers.latex_worker.time.time", side_effect=[0.0] + [9999.0] * 20),
+            patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [9999.0] * 20),
         ):
             mock_proc = MagicMock()
             mock_proc.stdout = iter(["log line\n"])
@@ -206,8 +207,8 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            # start_time=0.0, timeout check=200.0 → 200.0 - 0.0 > 60 → triggers timeout
-            patch("app.workers.latex_worker.time.time", side_effect=[0.0] + [200.0] * 20),
+            # logger.info() consumes first time.time(); start_time=0.0, check=200.0 > 60 → timeout
+            patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [200.0] * 20),
         ):
             mock_proc = MagicMock()
             mock_proc.stdout = iter(["line\n"])
