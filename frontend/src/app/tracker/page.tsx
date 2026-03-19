@@ -269,6 +269,7 @@ export default function TrackerPage() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingApp, setEditingApp] = useState<JobApplication | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [dragSourceCol, setDragSourceCol] = useState<string | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -321,7 +322,9 @@ export default function TrackerPage() {
   )
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string)
+    const id = event.active.id as string
+    setActiveId(id)
+    setDragSourceCol(findColumn(id))
   }
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -350,7 +353,9 @@ export default function TrackerPage() {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
+    const sourceCol = dragSourceCol
     setActiveId(null)
+    setDragSourceCol(null)
     if (!over) return
 
     const activeId = active.id as string
@@ -359,10 +364,9 @@ export default function TrackerPage() {
     const finalCol = COLUMNS.find((c) => c.id === overId)?.id ?? findColumn(overId)
     if (!finalCol) return
 
-    const app = findApp(activeId)
-    if (!app || app.status === finalCol) return
+    // Compare against sourceCol captured at drag start — boardData is already optimistically updated
+    if (!sourceCol || sourceCol === finalCol) return
 
-    // Optimistic update already happened in handleDragOver
     try {
       await apiClient.updateApplicationStatus(activeId, finalCol)
       setStats(await apiClient.getTrackerStats())
