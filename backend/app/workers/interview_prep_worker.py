@@ -150,7 +150,9 @@ def generate_interview_prep_task(
         try:
             parsed = json.loads(raw_content)
             questions: List[Dict] = parsed.get("questions", [])
-        except (json.JSONDecodeError, KeyError) as e:
+            if not questions:
+                logger.warning(f"No questions in parsed response for prep {prep_id}")
+        except json.JSONDecodeError as e:
             logger.error(f"Failed to parse questions JSON for prep {prep_id}: {e}")
             questions = []
 
@@ -216,7 +218,6 @@ def _save_questions(prep_id: str, questions: List[Dict]) -> None:
 
 async def _async_save_questions(prep_id: str, questions: List[Dict]) -> None:
     """Async helper to update interview_prep record with generated questions."""
-    import json as _json
     import os
 
     from sqlalchemy import text
@@ -238,7 +239,7 @@ async def _async_save_questions(prep_id: str, questions: List[Dict]) -> None:
                 text(
                     "UPDATE interview_prep SET questions = :questions, updated_at = NOW() WHERE id = :id"
                 ),
-                {"questions": _json.dumps(questions), "id": prep_id},
+                {"questions": json.dumps(questions), "id": prep_id},
             )
             await session.commit()
     finally:
