@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { GitFork, ChevronDown, ChevronRight, Share2, X, Search } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiClient, type DiffWithParentResponse, type JobStateResponse, type ResumeResponse, type SemanticMatchResult } from '@/lib/api-client'
+import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type SemanticMatchResult } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import SemanticMatchModal from '@/components/ats/SemanticMatchModal'
@@ -13,6 +13,7 @@ import ExportDropdown from '@/components/ExportDropdown'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import ShareResumeModal from '@/components/ShareResumeModal'
 import ProjectSearchModal from '@/components/ProjectSearchModal'
+import AddApplicationModal from '@/components/AddApplicationModal'
 
 export default function WorkspacePage() {
   const { data: session, isPending: sessionLoading } = useSession()
@@ -29,6 +30,12 @@ export default function WorkspacePage() {
 
   // Project search modal
   const [projectSearchOpen, setProjectSearchOpen] = useState(false)
+
+  // Add to tracker modal
+  const [trackerModalResumeId, setTrackerModalResumeId] = useState<string | null>(null)
+  const trackerModalResume = trackerModalResumeId
+    ? resumes.find((r) => r.id === trackerModalResumeId) ?? null
+    : null
 
   // Cmd+Shift+F global shortcut
   useEffect(() => {
@@ -267,6 +274,12 @@ export default function WorkspacePage() {
             Compare
           </button>
         )}
+        <button
+          onClick={() => setTrackerModalResumeId(resume.id)}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
+        >
+          Track
+        </button>
       </div>
       <div className="mt-2">
         <ExportDropdown resumeId={resume.id} variant="card" />
@@ -633,6 +646,15 @@ export default function WorkspacePage() {
               )
             )
           }}
+        />
+      )}
+
+      {trackerModalResumeId && (
+        <AddApplicationModal
+          onClose={() => setTrackerModalResumeId(null)}
+          onCreated={(_app: JobApplication) => setTrackerModalResumeId(null)}
+          prefillResumeId={trackerModalResumeId}
+          prefillResumeTitle={trackerModalResume?.title}
         />
       )}
     </div>
