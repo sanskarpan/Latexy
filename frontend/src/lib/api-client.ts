@@ -1068,6 +1068,48 @@ class ApiClient {
       body: JSON.stringify({ enabled }),
     })
   }
+
+  // ---------------------------------------------------------------- //
+  //  Job Application Tracker                                          //
+  // ---------------------------------------------------------------- //
+
+  async createApplication(body: CreateApplicationRequest): Promise<JobApplication> {
+    return this.request<JobApplication>('/tracker/applications', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async listApplications(statusFilter?: string): Promise<TrackerListResponse> {
+    const params = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : ''
+    return this.request<TrackerListResponse>(`/tracker/applications${params}`)
+  }
+
+  async getApplication(id: string): Promise<JobApplication> {
+    return this.request<JobApplication>(`/tracker/applications/${encodeURIComponent(id)}`)
+  }
+
+  async updateApplication(id: string, body: Partial<CreateApplicationRequest>): Promise<JobApplication> {
+    return this.request<JobApplication>(`/tracker/applications/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async deleteApplication(id: string): Promise<void> {
+    await this.request(`/tracker/applications/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  async updateApplicationStatus(id: string, status: string): Promise<JobApplication> {
+    return this.request<JobApplication>(`/tracker/applications/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    })
+  }
+
+  async getTrackerStats(): Promise<TrackerStats> {
+    return this.request<TrackerStats>('/tracker/stats')
+  }
 }
 
 // Singleton
@@ -1208,6 +1250,52 @@ export interface QuickScoreResponse {
   sections_found: string[]
   missing_sections: string[]
   keyword_match_percent: number | null
+}
+
+// ------------------------------------------------------------------ //
+//  Job Application Tracker types                                     //
+// ------------------------------------------------------------------ //
+
+export interface JobApplication {
+  id: string
+  user_id: string
+  company_name: string
+  role_title: string
+  status: string
+  resume_id: string | null
+  ats_score_at_submission: number | null
+  job_description_text: string | null
+  job_url: string | null
+  company_logo_url: string | null
+  notes: string | null
+  applied_at: string
+  updated_at: string
+  created_at: string
+}
+
+export interface TrackerListResponse {
+  by_status: Record<string, JobApplication[]>
+}
+
+export interface TrackerStats {
+  total_applications: number
+  by_status: Record<string, number>
+  avg_ats_score: number | null
+  applications_this_week: number
+  applications_this_month: number
+  response_rate: number
+  offer_rate: number
+}
+
+export interface CreateApplicationRequest {
+  company_name: string
+  role_title: string
+  status?: string
+  resume_id?: string
+  job_description_text?: string
+  job_url?: string
+  notes?: string
+  applied_at?: string
 }
 
 // ------------------------------------------------------------------ //
