@@ -10,6 +10,7 @@ Supports:
 import re
 import xml.etree.ElementTree as ET
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -38,6 +39,15 @@ _ARXIV_URL_RE = re.compile(
 
 
 class ReferenceService:
+    @staticmethod
+    def _strip_arxiv_version(identifier: str) -> str:
+        """Strip trailing version suffix (v1, v2, …) from an arXiv ID.
+
+        Uses a regex anchored at end-of-string so archive names that contain
+        the letter 'v' (e.g. 'solv-int/9901001v2') are not mangled.
+        """
+        return re.sub(r"v\d+$", "", identifier, flags=re.I)
+
     # ── Identifier detection ──────────────────────────────────────────────────
 
     def detect_type(self, identifier: str) -> Optional[str]:
@@ -61,8 +71,7 @@ class ReferenceService:
         # arXiv in URL
         m = _ARXIV_URL_RE.search(identifier)
         if m:
-            raw_id = m.group(1)
-            return raw_id.split("v")[0], "arxiv"
+            return self._strip_arxiv_version(m.group(1)), "arxiv"
 
         # Bare DOI
         if _DOI_BARE_RE.match(identifier):
@@ -70,11 +79,11 @@ class ReferenceService:
 
         # Bare arXiv (new style)
         if _ARXIV_RE.match(identifier):
-            return identifier.split("v")[0], "arxiv"
+            return self._strip_arxiv_version(identifier), "arxiv"
 
         # Bare arXiv (old style)
         if _ARXIV_OLD_RE.match(identifier):
-            return identifier.split("v")[0], "arxiv"
+            return self._strip_arxiv_version(identifier), "arxiv"
 
         return identifier, None
 
@@ -83,12 +92,16 @@ class ReferenceService:
     async def fetch_doi(self, doi: str) -> dict:
         """Fetch BibTeX for a DOI via Crossref; cache 30 days."""
         cache_key = f"bibtex:doi:{doi}"
-        cached = await cache_manager.get(cache_key)
+        try:
+            cached = await cache_manager.get(cache_key)
+        except Exception as exc:
+            logger.warning("Reference cache read failed for %s: %s", cache_key, exc)
+            cached = None
         if cached:
-            cached["cached"] = True
-            return cached
+            return {**cached, "cached": True}
 
-        url = f"https://api.crossref.org/works/{doi}/transform/application/x-bibtex"
+        encoded_doi = quote(doi, safe="")
+        url = f"https://api.crossref.org/works/{encoded_doi}/transform/application/x-bibtex"
         headers = {
             "User-Agent": "Latexy/1.0 (mailto:support@latexy.io; https://latexy.io)",
         }
@@ -112,7 +125,10 @@ class ReferenceService:
                     "year": int(year_str) if year_str and year_str.isdigit() else None,
                     "cached": False,
                 }
-                await cache_manager.set(cache_key, result, ttl=86400 * 30)
+                try:
+                    await cache_manager.set(cache_key, result, ttl=86400 * 30)
+                except Exception as exc:
+                    logger.warning("Reference cache write failed for %s: %s", cache_key, exc)
                 return result
 
             raise ValueError(f"DOI not found: {doi} (HTTP {response.status_code})")
@@ -126,12 +142,15 @@ class ReferenceService:
 
     async def fetch_arxiv(self, arxiv_id: str) -> dict:
         """Fetch metadata from arXiv Atom API and build BibTeX; cache 7 days."""
-        clean_id = arxiv_id.split("v")[0]
+        clean_id = self._strip_arxiv_version(arxiv_id)
         cache_key = f"bibtex:arxiv:{clean_id}"
-        cached = await cache_manager.get(cache_key)
+        try:
+            cached = await cache_manager.get(cache_key)
+        except Exception as exc:
+            logger.warning("Reference cache read failed for %s: %s", cache_key, exc)
+            cached = None
         if cached:
-            cached["cached"] = True
-            return cached
+            return {**cached, "cached": True}
 
         url = f"https://export.arxiv.org/api/query?id_list={clean_id}"
         try:
@@ -150,7 +169,10 @@ class ReferenceService:
                 "year": meta.get("year"),
                 "cached": False,
             }
-            await cache_manager.set(cache_key, result, ttl=86400 * 7)
+            try:
+                await cache_manager.set(cache_key, result, ttl=86400 * 7)
+            except Exception as exc:
+                logger.warning("Reference cache write failed for %s: %s", cache_key, exc)
             return result
 
         except httpx.TimeoutException:
