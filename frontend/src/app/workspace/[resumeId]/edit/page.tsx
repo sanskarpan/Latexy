@@ -25,6 +25,7 @@ import {
   X,
   Mail,
   Share2,
+  BookOpen,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ResumeResponse } from '@/lib/api-client'
 import ShareResumeModal from '@/components/ShareResumeModal'
@@ -40,6 +41,7 @@ import VersionHistoryPanel from '@/components/VersionHistoryPanel'
 import SaveCheckpointPopover from '@/components/SaveCheckpointPopover'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
+import ReferencesPanel from '@/components/ReferencesPanel'
 import CompilerSelector from '@/components/CompilerSelector'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
@@ -47,7 +49,7 @@ import { Brain, GitFork, Zap } from 'lucide-react'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
@@ -1500,6 +1502,7 @@ export default function ResumeEditPage() {
                 { id: 'ai', label: 'AI', icon: Sparkles },
                 { id: 'logs', label: 'Logs', icon: Terminal },
                 { id: 'history', label: 'History', icon: History },
+                { id: 'references', label: 'Refs', icon: BookOpen },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -1604,6 +1607,13 @@ export default function ResumeEditPage() {
                 onRestore={handleHistoryRestore}
                 onCompare={handleCompare}
                 refreshKey={historyRefreshKey}
+              />
+            )}
+
+            {rightTab === 'references' && (
+              <ReferencesPanel
+                onInsertBibTeX={(bibtex) => editorRef.current?.insertAtCursor(bibtex)}
+                onInsertCiteKey={(key) => editorRef.current?.insertAtCursor(key)}
               />
             )}
           </div>

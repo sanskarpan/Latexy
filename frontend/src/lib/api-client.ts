@@ -289,6 +289,25 @@ export interface ExplainErrorResponse {
   processing_time: number
 }
 
+export interface BibTeXEntry {
+  identifier: string
+  bibtex: string | null
+  cite_key: string
+  title: string | null
+  authors: string | null
+  year: number | null
+  source_type: 'doi' | 'arxiv' | 'unknown' | null
+  cached: boolean
+  error: string | null
+}
+
+export interface FetchReferencesResponse {
+  entries: BibTeXEntry[]
+  total: number
+  successful: number
+  processing_time: number
+}
+
 class ApiClient {
   private authToken: string | null = null
   readonly baseUrl: string = API_BASE
@@ -1008,6 +1027,17 @@ class ApiClient {
     return this.request<ExplainErrorResponse>('/ai/explain-error', {
       method: 'POST',
       body: JSON.stringify(body),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  References (BibTeX import)                                      //
+  // ---------------------------------------------------------------- //
+
+  async fetchReferences(identifiers: string[]): Promise<FetchReferencesResponse> {
+    return this.request<FetchReferencesResponse>('/references/fetch', {
+      method: 'POST',
+      body: JSON.stringify({ identifiers }),
     })
   }
 

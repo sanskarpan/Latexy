@@ -277,10 +277,13 @@ async def expired_auth_headers(db_session: AsyncSession) -> dict:
 async def auth_headers(db_session: AsyncSession) -> dict:
     """Authorization headers with a valid Better Auth session for a test user."""
     user_id = str(uuid.uuid4())
+    # ON CONFLICT (id) only suppresses the primary-key collision (effectively impossible
+    # with a fresh UUID). Email conflicts will raise clearly rather than silently skip
+    # the INSERT, which would leave user_id absent from the users table.
     await db_session.execute(
         text(
             "INSERT INTO users (id, email, name, email_verified, subscription_plan, subscription_status, trial_used) "
-            "VALUES (:id, :email, 'Test User', true, 'free', 'active', false) ON CONFLICT DO NOTHING"
+            "VALUES (:id, :email, 'Test User', true, 'free', 'active', false) ON CONFLICT (id) DO NOTHING"
         ),
         {"id": user_id, "email": f"test_{user_id.replace('-', '')}@example.com"},
     )
