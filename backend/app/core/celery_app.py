@@ -3,6 +3,7 @@ Celery application configuration for Phase 8.
 """
 
 from celery import Celery
+from celery.schedules import crontab
 
 from ..core.config import settings
 from ..core.logging import get_logger
@@ -80,6 +81,11 @@ celery_app.conf.update(
         "health-check": {
             "task": "app.workers.cleanup_worker.health_check_task",
             "schedule": 300.0,  # Run every 5 minutes
+        },
+        # Feature 19 — weekly digest every Monday at 09:00 UTC
+        "weekly-digest-monday-9am": {
+            "task": "app.workers.email_worker.send_weekly_digest_to_all",
+            "schedule": crontab(hour=9, minute=0, day_of_week="monday"),
         },
     },
     beat_schedule_filename="celerybeat-schedule",

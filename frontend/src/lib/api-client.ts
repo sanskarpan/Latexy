@@ -1178,6 +1178,21 @@ class ApiClient {
       throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
     }
   }
+
+  // ---------------------------------------------------------------- //
+  //  Notification preferences (Feature 19)                           //
+  // ---------------------------------------------------------------- //
+
+  async getNotificationPrefs(): Promise<NotificationPrefs> {
+    return this.request<NotificationPrefs>('/settings/notifications')
+  }
+
+  async updateNotificationPrefs(prefs: NotificationPrefs): Promise<NotificationPrefs> {
+    return this.request<NotificationPrefs>('/settings/notifications', {
+      method: 'PUT',
+      body: JSON.stringify(prefs),
+    })
+  }
 }
 
 // Singleton
@@ -1318,6 +1333,11 @@ export interface QuickScoreResponse {
   sections_found: string[]
   missing_sections: string[]
   keyword_match_percent: number | null
+}
+
+export interface NotificationPrefs {
+  job_completed: boolean
+  weekly_digest: boolean
 }
 
 // ------------------------------------------------------------------ //

@@ -25,6 +25,11 @@ class User(Base):
     subscription_id: Mapped[Optional[str]] = mapped_column(String(255))
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     trial_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_notifications: Mapped[Optional[Dict]] = mapped_column(
+        JSONB,
+        nullable=True,
+        default=lambda: {"job_completed": True, "weekly_digest": False},
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

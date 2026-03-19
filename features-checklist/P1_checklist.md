@@ -1204,7 +1204,7 @@ Section Completeness, Page Density, Keyword Density. Surface as a radar/spider c
 
 ---
 
-## Feature 19 — Email Notifications · P1 · S
+## Feature 19 — Email Notifications · P1 · S ✅ COMPLETED
 
 **Goal:** Implement the stub `email_worker.py`. Send job completion emails to opted-in users.
 Weekly digest via Celery Beat. Notification preferences in settings. Uses Resend (primary) or
@@ -2438,7 +2438,7 @@ markers with severity. "Auto-Fix All" for safe automatic fixes. Frontend-only �
 
 ---
 
-## Feature 30 — Smart Code Snippet Auto-Insert · P1 · S
+## Feature 30 — Smart Code Snippet Auto-Insert · P1 · S ✅ COMPLETED
 
 **Goal:** Extend Monaco completion provider in `LaTeXEditor.tsx` with trigger-sequence snippets.
 When user types `\begin{itemize}`, auto-expand with `\item ` lines and cursor positioning.
