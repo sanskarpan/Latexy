@@ -4,15 +4,44 @@ content to LaTeX. Uses hybrid approach: structured extraction + raw text.
 """
 import logging
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+LINKEDIN_SYSTEM_PROMPT = """You are parsing a LinkedIn profile PDF export. LinkedIn PDFs follow a strict structure:
+- Name and headline at top
+- "About" section (summary)
+- "Experience" section: each entry has Company, Title, Dates (Month Year – Month Year or Present), Location, Description bullets
+- "Education" section: Institution, Degree, Field, Dates, Activities
+- "Skills" section: list of skills with endorsement counts
+- "Certifications": Name, Issuing org, Date
+- "Languages": Language, Proficiency level
+- "Recommendations": ignore these (not part of resume)
+- "Honors & Awards", "Publications", "Projects" (if present)
+
+Map these to LaTeX resume sections:
+- Experience → \\section{Experience} with \\resumeSubheading{Company}{Dates}{Title}{Location} (or equivalent \\textbf / \\textit layout)
+- Education → \\section{Education} similarly
+- Skills → \\section{Skills} as comma-separated or grouped list
+- Certifications → \\section{Certifications}
+- Languages → add to Skills section
+
+Use \\documentclass[11pt,letterpaper]{article} with geometry, enumitem, titlesec, fontenc (T1), inputenc (utf8), hyperref packages.
+Set margins: geometry{left=0.75in, right=0.75in, top=0.75in, bottom=0.75in}.
+
+IMPORTANT:
+- Preserve all dates exactly as written
+- Keep all bullet points verbatim (improve formatting but not content)
+- Omit the Recommendations section entirely
+- Return ONLY valid compilable LaTeX code — no markdown, no explanations, no code fences"""
 
 
 class DocumentConverterService:
     """Service for converting parsed resume data to LaTeX via LLM."""
 
-    def build_conversion_prompt(self, structure: dict, source_format: str) -> List[Dict]:
+    def build_conversion_prompt(
+        self, structure: dict, source_format: str, source_hint: Optional[str] = None
+    ) -> List[Dict]:
         """
         Build LLM messages for converting parsed resume structure to LaTeX.
 
@@ -35,21 +64,24 @@ class DocumentConverterService:
         if metadata.get('section_hints'):
             section_hints = metadata['section_hints']
 
-        system = (
-            "You are a professional LaTeX resume generator. "
-            "Convert the provided resume content into a complete, compilable LaTeX document.\n"
-            "RULES:\n"
-            "1. Use \\documentclass[11pt,letterpaper]{article}\n"
-            "2. Use these packages: geometry, enumitem, titlesec, fontenc (T1), inputenc (utf8), hyperref, xcolor\n"
-            "3. Set margins: geometry{left=0.75in, right=0.75in, top=0.75in, bottom=0.75in}\n"
-            "4. Preserve ALL dates, companies, job titles, and achievements EXACTLY as given\n"
-            "5. Organize sections in order: Contact Info, Summary/Objective (if present), "
-            "Experience, Education, Skills, Projects, Certifications, Awards, Other\n"
-            "6. Use \\section*{} for section headings with a \\hrule underneath\n"
-            "7. Use itemize environments with \\item for bullet points\n"
-            "8. Include \\href{mailto:email}{email} for email addresses\n"
-            "9. Return ONLY valid compilable LaTeX code — no markdown, no explanations, no code fences"
-        )
+        if source_hint == "linkedin":
+            system = LINKEDIN_SYSTEM_PROMPT
+        else:
+            system = (
+                "You are a professional LaTeX resume generator. "
+                "Convert the provided resume content into a complete, compilable LaTeX document.\n"
+                "RULES:\n"
+                "1. Use \\documentclass[11pt,letterpaper]{article}\n"
+                "2. Use these packages: geometry, enumitem, titlesec, fontenc (T1), inputenc (utf8), hyperref, xcolor\n"
+                "3. Set margins: geometry{left=0.75in, right=0.75in, top=0.75in, bottom=0.75in}\n"
+                "4. Preserve ALL dates, companies, job titles, and achievements EXACTLY as given\n"
+                "5. Organize sections in order: Contact Info, Summary/Objective (if present), "
+                "Experience, Education, Skills, Projects, Certifications, Awards, Other\n"
+                "6. Use \\section*{} for section headings with a \\hrule underneath\n"
+                "7. Use itemize environments with \\item for bullet points\n"
+                "8. Include \\href{mailto:email}{email} for email addresses\n"
+                "9. Return ONLY valid compilable LaTeX code — no markdown, no explanations, no code fences"
+            )
 
         user_parts = [
             f"Convert this {source_format.upper()} resume to professional LaTeX.\n",
