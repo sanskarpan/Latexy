@@ -148,6 +148,7 @@ export interface ATSDeepAnalysis {
   job_match: ATSJobMatch | null
   tokens_used: number
   analysis_time: number
+  multi_dim_scores?: Record<string, number>
 }
 
 export interface ATSDeepCompleteEvent extends BaseEvent {
@@ -159,6 +160,7 @@ export interface ATSDeepCompleteEvent extends BaseEvent {
   job_match: ATSJobMatch | null
   tokens_used: number
   analysis_time: number
+  multi_dim_scores?: Record<string, number>
 }
 
 // ------------------------------------------------------------------ //
