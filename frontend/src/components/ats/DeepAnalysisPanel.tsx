@@ -1,8 +1,17 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
-import { Brain, X, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, Loader2, Zap } from 'lucide-react'
+import { useEffect } from 'react'
+import { Brain, X, AlertCircle, Zap } from 'lucide-react'
 import type { ATSDeepAnalysis, ATSDeepSection } from '@/lib/event-types'
+import ATSRadarChart from './ATSRadarChart'
+
+const MULTI_DIM_LABELS: { key: string; label: string; description: string }[] = [
+  { key: 'grammar',               label: 'Grammar',          description: 'Tense consistency, punctuation & formatting' },
+  { key: 'bullet_clarity',        label: 'Bullet Clarity',   description: 'Impact-led bullets with quantified achievements' },
+  { key: 'section_completeness',  label: 'Sections',         description: 'Required & recommended sections present' },
+  { key: 'page_density',          label: 'Page Density',     description: 'Content density relative to page length' },
+  { key: 'keyword_density',       label: 'Keyword Density',  description: 'JD keyword alignment (N/A without job description)' },
+]
 
 interface DeepAnalysisPanelProps {
   isOpen: boolean
@@ -76,6 +85,25 @@ function SectionCard({ section }: { section: ATSDeepSection }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function DimensionBar({ label, description, score }: { label: string; description: string; score: number }) {
+  const color = score >= 80 ? '#34d399' : score >= 60 ? '#f59e0b' : '#f87171'
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-medium text-zinc-300">{label}</span>
+        <span className="text-[10px] font-bold tabular-nums" style={{ color }}>{Math.round(score)}</span>
+      </div>
+      <div className="h-1 rounded-full bg-white/[0.05]">
+        <div
+          className="h-1 rounded-full transition-all duration-700"
+          style={{ width: `${score}%`, background: color }}
+        />
+      </div>
+      <p className="text-[9px] text-zinc-600">{description}</p>
     </div>
   )
 }
@@ -224,6 +252,31 @@ export default function DeepAnalysisPanel({
                   </p>
                 </div>
               </div>
+
+              {/* Multi-dimensional score breakdown */}
+              {analysis.multi_dim_scores && Object.keys(analysis.multi_dim_scores).length > 0 && (
+                <div className="space-y-3 rounded-xl border border-white/[0.06] bg-black/30 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+                    Score Breakdown
+                  </p>
+                  <div className="flex justify-center">
+                    <ATSRadarChart scores={analysis.multi_dim_scores} />
+                  </div>
+                  <div className="space-y-2.5 pt-1">
+                    {MULTI_DIM_LABELS.map((dim) => {
+                      const score = analysis.multi_dim_scores?.[dim.key]
+                      return score !== undefined ? (
+                        <DimensionBar
+                          key={dim.key}
+                          label={dim.label}
+                          description={dim.description}
+                          score={score}
+                        />
+                      ) : null
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Sections */}
               {analysis.sections.length > 0 && (

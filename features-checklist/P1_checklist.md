@@ -1087,14 +1087,14 @@ tab in edit page sidebar.
 
 ---
 
-## Feature 18 — Multi-Dimensional Score Card · P1 · M
+## Feature 18 — Multi-Dimensional Score Card · P1 · M ✅ COMPLETED
 
 **Goal:** Extend ATS deep analysis with additional scoring dimensions: Grammar, Bullet Clarity,
 Section Completeness, Page Density, Keyword Density. Surface as a radar/spider chart in
 `DeepAnalysisPanel`. Extends existing `ats_scoring_service.py`.
 
 ### 18A · Backend — Additional Scoring Dimensions
-- [ ] In `backend/app/services/ats_scoring_service.py`, add new dimension methods:
+- [x] In `backend/app/services/ats_scoring_service.py`, add new dimension methods:
 
   **Grammar Score (0–100):**
   ```python
@@ -1169,8 +1169,8 @@ Section Completeness, Page Density, Keyword Density. Surface as a radar/spider c
       ...
   ```
 
-- [ ] Update `_score_deep_analysis()` in `ats_scoring_service.py` to compute all 5 new dimensions
-- [ ] Update `ATSScoreResult` dataclass to include new dimension scores:
+- [x] Update `score_resume()` in `ats_scoring_service.py` to compute all 5 new dimensions
+- [x] Update `ATSScoreResult` dataclass to include new dimension scores:
   ```python
   @dataclass
   class ATSScoreResult:
@@ -1180,45 +1180,27 @@ Section Completeness, Page Density, Keyword Density. Surface as a radar/spider c
   ```
 
 ### 18B · Backend — Event Schema Update
-- [ ] In `backend/app/models/event_schemas.py` (or wherever event schemas live):
-  - Add `multi_dim_scores: Optional[Dict[str, float]] = None` to the ATS deep analysis response
-- [ ] Ensure `GET /ats/deep-analyze` WebSocket event includes `multi_dim_scores` in payload
+- [x] In `backend/app/models/event_schemas.py`:
+  - Add `multi_dim_scores: Optional[Dict[str, float]] = None` to `ATSDeepCompleteEvent`
+- [x] `ats.deep_complete` WebSocket event includes `multi_dim_scores` (computed via `score_resume()` in `_async_deep_analyze`)
 
 ### 18C · Frontend — Radar/Spider Chart Component
-- [ ] Install `recharts` if not present: `pnpm add recharts` (already has visx, but recharts is simpler for radar)
-  - Actually check if `visx` has radar chart: it doesn't natively. Use recharts RadarChart.
-  - OR: hand-roll SVG radar chart (avoids a dep) — actually `recharts` is the simplest option
-  - Check `package.json` first — if `recharts` not present, add it
-- [ ] Create `frontend/src/components/ATSRadarChart.tsx`:
-  ```tsx
-  // Props: scores: { grammar: number; bullet_clarity: number; section_completeness: number;
-  //                  page_density: number; keyword_density: number; keywords: number }
-  // Uses recharts RadarChart:
-  // - 6 axes: Grammar, Bullet Clarity, Sections, Density, Keywords, Overall
-  // - Filled radar area with violet/indigo gradient
-  // - Each axis shows label + score number
-  // - Animated draw on mount (recharts has built-in animation)
-  // - Size: 300×300 responsive
-  ```
+- [x] Hand-rolled SVG pentagon radar chart — no recharts dep needed
+- [x] Created `frontend/src/components/ats/ATSRadarChart.tsx`
 
 ### 18D · Frontend — DeepAnalysisPanel Update
-- [ ] In `frontend/src/components/DeepAnalysisPanel.tsx` (or wherever the ATS deep analysis UI lives):
-  - Add `ATSRadarChart` in a new "Score Breakdown" section at the top of the panel
-  - Show radar chart when `multi_dim_scores` is available
-  - Below chart: list each dimension with progress bar + description:
-    - Grammar: `{score}` — "Action verbs, tense consistency, bullet formatting"
-    - Bullet Clarity: `{score}` — "Impact-led bullets with quantified achievements"
-    - etc.
-  - Existing strengths/improvements sections remain unchanged below
+- [x] In `frontend/src/components/ats/DeepAnalysisPanel.tsx`:
+  - "Score Breakdown" card with radar chart + 5 dimension progress bars
+  - Shown when `multi_dim_scores` is available
+  - Existing sections unchanged below
 
 ### 18E · Tests
-- [ ] `backend/test/test_multi_dim_score.py`:
-  - `_score_bullet_clarity()` on resume with quantified action-verb bullets → score > 70
-  - `_score_bullet_clarity()` on resume with passive-voice bullets → score < 50
-  - `_score_section_completeness()` on complete resume → score > 80
-  - `_score_grammar()` on resume with consistent tense → high score
-  - `_score_page_density()` at 750 words → score > 90
-  - Full `score_resume()` returns `multi_dim_scores` dict with all 5 keys
+- [x] `backend/test/test_multi_dim_score.py` (17 tests, all passing):
+  - `_score_bullet_clarity()` on resume with quantified action-verb bullets → score > 70 ✓
+  - `_score_bullet_clarity()` on resume with passive-voice bullets → score < 50 ✓
+  - `_score_grammar()` on resume with consistent tense → high score ✓
+  - `_score_page_density()` at 750 words → score > 90 ✓
+  - Full `score_resume()` returns `multi_dim_scores` dict with all 5 keys ✓
 
 ---
 

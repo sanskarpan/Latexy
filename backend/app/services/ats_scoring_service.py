@@ -25,6 +25,7 @@ class ATSScoreResult:
     detailed_analysis: Dict[str, Any]
     processing_time: float
     timestamp: str
+    multi_dim_scores: Optional[Dict[str, float]] = None
 
 
 @dataclass
@@ -193,6 +194,103 @@ class ATSScoringService:
         return text.strip()
 
     # ------------------------------------------------------------------ #
+    #  Multi-dimensional scoring methods                                  #
+    # ------------------------------------------------------------------ #
+
+    def _score_grammar(self, text: str) -> float:
+        """Score grammar quality using rule-based checks."""
+        issues = 0
+        # Double spaces
+        if re.search(r'  +', text):
+            issues += 1
+        # Double periods
+        if re.search(r'\.\.', text):
+            issues += 1
+        # Inconsistent tense: flag if both present and past action verbs appear non-trivially
+        present_verbs = re.findall(
+            r'\b(?:manage|develop|lead|build|create|analyze|design|implement|drive|own)\b',
+            text, re.IGNORECASE,
+        )
+        past_verbs = re.findall(
+            r'\b(?:managed|developed|led|built|created|analyzed|designed|implemented|drove|owned)\b',
+            text, re.IGNORECASE,
+        )
+        if present_verbs and past_verbs and len(present_verbs) > 1 and len(past_verbs) > 1:
+            issues += 1
+        return min(100.0, max(0.0, 100.0 - issues * 8))
+
+    def _score_bullet_clarity(self, text: str) -> float:
+        """Score clarity and impact of bullet points (text = raw latex_content)."""
+        bullet_lines = re.findall(r'\\item\s+(.+?)(?=\\item|\\end\{)', text, re.DOTALL)
+        if not bullet_lines:
+            return 0.0
+        action_verbs_lower = {v.lower() for v in self.ACTION_VERBS}
+        passive_patterns = [
+            r'\bwas\s+\w+ed\b', r'\bwere\s+\w+ed\b',
+            r'\bwas responsible for\b', r'\bwere responsible for\b',
+        ]
+        scores = []
+        for bullet in bullet_lines:
+            bullet = bullet.strip()
+            if not bullet:
+                continue
+            score = 0
+            # +30 if starts with action verb
+            first_word = re.split(r'\W+', bullet)[0].lower() if bullet else ''
+            if first_word in action_verbs_lower:
+                score += 30
+            # +30 if contains a number or percentage
+            if re.search(r'\d+%?|\$\d+|\d+[kmb]\b', bullet, re.IGNORECASE):
+                score += 30
+            # +20 if appropriate length (80-160 chars)
+            if 80 <= len(bullet) <= 160:
+                score += 20
+            # +20 if no passive voice
+            if not any(re.search(p, bullet, re.IGNORECASE) for p in passive_patterns):
+                score += 20
+            scores.append(score)
+        return sum(scores) / len(scores) if scores else 0.0
+
+    def _score_section_completeness(self, latex_content: str) -> float:
+        """Score how complete the resume sections are."""
+        sections = re.findall(r'\\section\{([^}]+)\}', latex_content, re.IGNORECASE)
+        sections_lower = [s.lower() for s in sections]
+        required = ['experience', 'work', 'education', 'skills', 'contact']
+        recommended = ['summary', 'objective', 'projects', 'certifications', 'publications']
+        required_found = sum(1 for r in required if any(r in s for s in sections_lower))
+        recommended_found = sum(1 for r in recommended if any(r in s for s in sections_lower))
+        return (required_found / len(required)) * 70 + (recommended_found / len(recommended)) * 30
+
+    def _score_page_density(self, latex_content: str) -> float:
+        """Score content density relative to ideal resume length."""
+        text = self._extract_text_from_latex(latex_content)
+        word_count = len(text.split())
+        if 600 <= word_count <= 900:
+            return 95.0
+        if 400 <= word_count < 600:
+            return 70.0
+        if 900 < word_count <= 1100:
+            return 80.0
+        if word_count < 400:
+            return 50.0
+        return max(30.0, 80.0 - (word_count - 1100) * 0.05)
+
+    def _score_keyword_density(
+        self, text: str, job_description: Optional[str] = None
+    ) -> float:
+        """Score keyword density; neutral 50 when no job description provided."""
+        if not job_description:
+            return 50.0
+        jd_keywords = self._extract_keywords_from_job_description(job_description)
+        if not jd_keywords:
+            return 50.0
+        matched = sum(
+            1 for kw in jd_keywords
+            if re.search(rf'\b{re.escape(kw)}\b', text, re.IGNORECASE)
+        )
+        return min(100.0, (matched / len(jd_keywords)) * 100)
+
+    # ------------------------------------------------------------------ #
     #  Public scoring entry point                                         #
     # ------------------------------------------------------------------ #
 
@@ -214,6 +312,19 @@ class ATSScoringService:
             content_score = await self._score_content(text_content, job_description, industry)
             keyword_score = await self._score_keywords(text_content, job_description, industry)
             readability_score = await self._score_readability(text_content)
+
+            # Multi-dimensional scores (rule-based, fast)
+            multi_dim_scores: Dict[str, float] = {
+                "grammar": round(self._score_grammar(text_content), 1),
+                "bullet_clarity": round(self._score_bullet_clarity(latex_content), 1),
+                "section_completeness": round(
+                    self._score_section_completeness(latex_content), 1
+                ),
+                "page_density": round(self._score_page_density(latex_content), 1),
+                "keyword_density": round(
+                    self._score_keyword_density(text_content, job_description), 1
+                ),
+            }
 
             category_scores = {
                 "formatting": formatting_score["score"],
@@ -267,6 +378,7 @@ class ATSScoringService:
                 detailed_analysis=detailed_analysis,
                 processing_time=processing_time,
                 timestamp=datetime.utcnow().isoformat(),
+                multi_dim_scores=multi_dim_scores,
             )
 
             self.logger.info(f"ATS scoring completed: {overall_score:.1f}/100 in {processing_time:.2f}s")

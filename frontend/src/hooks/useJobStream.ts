@@ -153,6 +153,7 @@ function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStre
           job_match: event.job_match,
           tokens_used: event.tokens_used,
           analysis_time: event.analysis_time,
+          multi_dim_scores: event.multi_dim_scores,
         },
       }
 

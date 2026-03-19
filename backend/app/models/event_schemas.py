@@ -107,6 +107,7 @@ class ATSDeepCompleteEvent(BaseEvent):
     job_match: Optional[Dict[str, Any]] = None
     tokens_used: int
     analysis_time: float
+    multi_dim_scores: Optional[Dict[str, float]] = None
 
 
 # ------------------------------------------------------------------ #
