@@ -965,7 +965,7 @@ accuracy parsing. Add LinkedIn import CTA with step-by-step instructions.
 
 ---
 
-## Feature 17 — Interview Question Generator · P1 · M
+## Feature 17 — Interview Question Generator · P1 · M ✅ COMPLETED
 
 **Goal:** After optimizing for a job, generate role-specific interview questions with STAR hints.
 New Celery task on `llm` queue. Questions saved in DB alongside the resume. "Interview Prep"
