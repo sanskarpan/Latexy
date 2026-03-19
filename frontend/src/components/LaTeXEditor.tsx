@@ -13,6 +13,7 @@ export interface LaTeXEditorRef {
   getValue: () => string
   highlightLine: (line: number) => void
   applyFix: (line: number, correctedCode: string) => void
+  insertAtCursor: (text: string) => void
 }
 
 interface LaTeXEditorProps {
@@ -212,6 +213,21 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           range: new monaco.Range(lineNum, 1, lineNum, lineContent.length + 1),
           text: correctedCode,
         }])
+      },
+      insertAtCursor(text: string) {
+        const editor = editorRef.current
+        const monaco = monacoRef.current
+        if (!editor || !monaco) return
+        const position = editor.getPosition()
+        if (!position) return
+        editor.executeEdits('insert-bibtex', [{
+          range: new monaco.Range(
+            position.lineNumber, position.column,
+            position.lineNumber, position.column,
+          ),
+          text,
+        }])
+        editor.focus()
       },
     }))
 
