@@ -95,8 +95,8 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            # logger consumes first time.time(), start_time=0.0, timeout check=999.0 → timed out
-            patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [999.0] * 20),
+            # start_time=0.0, timeout check=999.0 → 999.0 - 0.0 > 1 → timed out
+            patch("app.workers.latex_worker.time.time", side_effect=[0.0] + [999.0] * 20),
         ):
             mock_proc = MagicMock()
             mock_proc.stdout = _one_log_line()
@@ -132,7 +132,7 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [9999.0] * 20),
+            patch("app.workers.latex_worker.time.time", side_effect=[0.0] + [9999.0] * 20),
         ):
             mock_proc = MagicMock()
             mock_proc.stdout = iter(["log line\n"])
@@ -206,8 +206,8 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            # logger consumes first time.time(), start_time=0.0, timeout check=200.0 → triggers timeout
-            patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [200.0] * 20),
+            # start_time=0.0, timeout check=200.0 → 200.0 - 0.0 > 60 → triggers timeout
+            patch("app.workers.latex_worker.time.time", side_effect=[0.0] + [200.0] * 20),
         ):
             mock_proc = MagicMock()
             mock_proc.stdout = iter(["line\n"])
