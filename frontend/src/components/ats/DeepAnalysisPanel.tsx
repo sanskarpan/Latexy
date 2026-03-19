@@ -13,6 +13,7 @@ interface DeepAnalysisPanelProps {
   usesRemaining: number | null
   onRun: () => void
   isRunning: boolean
+  hideUpgradeCtas?: boolean
 }
 
 function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
@@ -88,6 +89,7 @@ export default function DeepAnalysisPanel({
   usesRemaining,
   onRun,
   isRunning,
+  hideUpgradeCtas = false,
 }: DeepAnalysisPanelProps) {
   // ESC key to close
   useEffect(() => {
@@ -148,7 +150,7 @@ export default function DeepAnalysisPanel({
                 </p>
               </div>
 
-              {usesRemaining !== null && (
+              {usesRemaining !== null && !hideUpgradeCtas && (
                 <div className="flex items-center gap-2 rounded-lg border border-amber-400/20 bg-amber-500/[0.06] px-3 py-2">
                   <span className="text-[11px] text-amber-300">
                     {usesRemaining > 0
@@ -160,7 +162,7 @@ export default function DeepAnalysisPanel({
 
               <button
                 onClick={onRun}
-                disabled={usesRemaining === 0}
+                disabled={!hideUpgradeCtas && usesRemaining === 0}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600/80 to-violet-500/60 py-3 text-sm font-semibold text-white ring-1 ring-violet-400/20 transition hover:from-violet-600 hover:to-violet-500/80 disabled:opacity-40"
               >
                 <Brain size={14} />

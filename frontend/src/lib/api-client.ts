@@ -1071,6 +1071,33 @@ class ApiClient {
   async getSharedResume(shareToken: string): Promise<SharedResumeResponse> {
     return this.request<SharedResumeResponse>(`/share/${encodeURIComponent(shareToken)}`)
   }
+
+  // ---------------------------------------------------------------- //
+  //  Feature flags                                                    //
+  // ---------------------------------------------------------------- //
+
+  async getAdminFeatureFlags(): Promise<Array<{
+    key: string
+    enabled: boolean
+    label: string
+    description: string | null
+    updated_at: string | null
+  }>> {
+    return this.request('/admin/feature-flags')
+  }
+
+  async updateFeatureFlag(key: string, enabled: boolean): Promise<{
+    key: string
+    enabled: boolean
+    label: string
+    description: string | null
+    updated_at: string | null
+  }> {
+    return this.request(`/admin/feature-flags/${encodeURIComponent(key)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    })
+  }
 }
 
 // Singleton

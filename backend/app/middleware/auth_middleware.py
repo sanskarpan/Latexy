@@ -163,8 +163,13 @@ async def require_admin(
 ) -> str:
     """
     Return the current user_id if the user has admin privileges, else raise.
-    Admin status is encoded in legacy JWTs; Better Auth sessions do not
-    carry role claims — extend this if RBAC is required.
+
+    Admin check order:
+      1. Better Auth session → look up user's email → compare to ADMIN_EMAIL setting.
+      2. Legacy JWT fallback → check is_admin claim (still accepted even if ADMIN_EMAIL is unset).
+
+    If ADMIN_EMAIL is not set, Better Auth users are rejected; legacy JWT with is_admin=true
+    is still accepted as a fallback.
     """
     token = _extract_token(request, credentials)
     if not token:
@@ -182,13 +187,28 @@ async def require_admin(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not _jwt_validator.is_admin(token):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin privileges required",
-        )
+    # Check via Better Auth session — compare email to ADMIN_EMAIL
+    if settings.ADMIN_EMAIL:
+        try:
+            from sqlalchemy import text as _text
+            result = await db.execute(
+                _text('SELECT email FROM users WHERE id = :uid'),
+                {"uid": user_id},
+            )
+            row = result.fetchone()
+            if row and row[0].lower() == settings.ADMIN_EMAIL.lower():
+                return user_id
+        except Exception as exc:
+            logger.debug(f"require_admin email lookup failed: {exc}")
 
-    return user_id
+    # Legacy JWT fallback
+    if _jwt_validator.is_admin(token):
+        return user_id
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Admin privileges required",
+    )
 
 
 # ------------------------------------------------------------------ #

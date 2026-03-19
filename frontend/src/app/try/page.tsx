@@ -18,6 +18,7 @@ import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
+import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 const CATEGORY_LABELS: Record<string, string> = {
   formatting: 'Formatting',
   structure: 'Structure',
@@ -27,6 +28,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export default function TryPage() {
+  const flags = useFeatureFlags()
   const [latexContent, setLatexContent] = useState(DEMO_RESUME_TEMPLATE)
   const [jobDescription, setJobDescription] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -54,6 +56,8 @@ export default function TryPage() {
   const { state: deepStream } = useJobStream(deepAnalysisJobId)
   const trialStatus = useTrialStatus()
   const { data: session } = useSession()
+  // When trial_limits flag is off, every visitor can run without restriction
+  const effectiveCanRun = flags.trial_limits ? trialStatus.canRun : true
 
   useEffect(() => {
     if (stream.streamingLatex && editorRef.current) {
@@ -117,7 +121,7 @@ export default function TryPage() {
   const runCompile = async (mode: 'compile' | 'combined') => {
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) { toast.error('LaTeX content is required'); return }
-    if (!session && !trialStatus.canRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
+    if (!session && !effectiveCanRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
     setIsSubmitting(true)
     try {
       if (!session) await apiClient.trackUsage(trialStatus.fingerprint, mode)
@@ -160,7 +164,7 @@ export default function TryPage() {
 
   const handleAutoCompile = useCallback(async (content: string) => {
     if (isProcessing || isSubmitting) return
-    if (!session && !trialStatus.canRun) return
+    if (!session && !effectiveCanRun) return
     setIsSubmitting(true)
     try {
       if (!session) await apiClient.trackUsage(trialStatus.fingerprint, 'compile')
@@ -210,7 +214,7 @@ export default function TryPage() {
   const handleTrimToOnePage = useCallback(async () => {
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) return
-    if (!session && !trialStatus.canRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
+    if (!session && !effectiveCanRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
     setIsSubmitting(true)
     try {
       if (!session) await apiClient.trackUsage(trialStatus.fingerprint, 'combined')
@@ -347,12 +351,14 @@ export default function TryPage() {
                       : '240s'
                     })
                   </span>
-                  <a
-                    href="/billing"
-                    className="ml-3 shrink-0 text-xs font-medium text-orange-200 underline hover:text-orange-100"
-                  >
-                    Upgrade for longer timeouts →
-                  </a>
+                  {flags.upgrade_ctas && (
+                    <a
+                      href="/billing"
+                      className="ml-3 shrink-0 text-xs font-medium text-orange-200 underline hover:text-orange-100"
+                    >
+                      Upgrade for longer timeouts →
+                    </a>
+                  )}
                 </div>
               )}
               <div className="relative flex-1 min-h-0 rounded-xl border border-white/10 bg-slate-950/70 overflow-hidden">
@@ -408,14 +414,14 @@ export default function TryPage() {
               </button>
               <button
                 onClick={() => runCompile('compile')}
-                disabled={isSubmitting || isProcessing || (!session && !trialStatus.canRun)}
+                disabled={isSubmitting || isProcessing || (!session && !effectiveCanRun)}
                 className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {isSubmitting ? 'Compiling…' : 'Compile'}
               </button>
               <button
                 onClick={() => runCompile('combined')}
-                disabled={isSubmitting || isProcessing || (!session && !trialStatus.canRun)}
+                disabled={isSubmitting || isProcessing || (!session && !effectiveCanRun)}
                 className="rounded-lg bg-orange-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-orange-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSubmitting ? 'Running…' : 'Optimize + Compile'}
@@ -570,9 +576,10 @@ export default function TryPage() {
         isLoading={isDeepAnalysisRunning || deepStream.status === 'queued' || deepStream.status === 'processing'}
         analysis={deepStream.deepAnalysis}
         error={deepAnalysisError}
-        usesRemaining={deepAnalysisUsesRemaining}
+        usesRemaining={flags.trial_limits ? deepAnalysisUsesRemaining : null}
         onRun={handleRunDeepAnalysis}
         isRunning={isDeepAnalysisRunning}
+        hideUpgradeCtas={!flags.upgrade_ctas}
       />
 
       {/* Import modal */}

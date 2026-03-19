@@ -835,7 +835,7 @@ test.describe('DiffViewerModal — Parent-diff mode', () => {
     expect(errors).toEqual([])
   })
 
-  test('Restore to Parent button calls update API', async ({ page }) => {
+  test('Restore to Parent button triggers confirmation then calls update API', async ({ page }) => {
     let updateCalled = false
     await page.route('**/resumes/*/fork', (r) => r.continue())
 
@@ -852,6 +852,10 @@ test.describe('DiffViewerModal — Parent-diff mode', () => {
 
     await expect(page.getByRole('button', { name: 'Restore to Parent' })).toBeVisible()
     await page.getByRole('button', { name: 'Restore to Parent' }).click()
+
+    // Confirmation dialog appears — confirm restore
+    await expect(page.getByText('Restore this version?')).toBeVisible({ timeout: 5_000 })
+    await page.locator('.absolute.inset-0.z-10').getByRole('button', { name: 'Restore' }).click()
 
     await page.waitForTimeout(500)
     expect(updateCalled).toBe(true)

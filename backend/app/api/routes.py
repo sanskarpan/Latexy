@@ -17,6 +17,7 @@ from ..database.models import Compilation, Resume
 from ..middleware.auth_middleware import get_current_user_optional
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
+from ..services.feature_flag_service import feature_flag_service
 from ..services.latex_compiler import latex_compiler
 from ..services.latex_service import latex_service
 from ..services.llm_service import llm_service
@@ -88,6 +89,11 @@ router.include_router(ai_router)
 from .reference_routes import router as reference_router
 
 router.include_router(reference_router)
+
+# Include Admin routes (feature flags + public config)
+from .admin_routes import router as admin_router
+
+router.include_router(admin_router)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -522,6 +528,9 @@ async def create_subscription(
 ):
     """Create a new subscription."""
     try:
+        if not await feature_flag_service.get_flag("billing", db):
+            raise HTTPException(status_code=503, detail="Billing is currently disabled")
+
         if not payment_service.is_available():
             raise HTTPException(
                 status_code=503,
