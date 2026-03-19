@@ -378,7 +378,7 @@ return `compile_timeout` error code with upgrade CTA. Latency SLA differentiatio
 
 ---
 
-## Feature 12 — Compilation History Diff Viewer · P1 · M
+## Feature 12 — Compilation History Diff Viewer · P1 · M ✅ COMPLETED
 
 **Goal:** Users can select any two entries from the optimization/checkpoint history and see a
 side-by-side Monaco diff. Includes colored diff stats (+N / -N lines) and restore actions.
