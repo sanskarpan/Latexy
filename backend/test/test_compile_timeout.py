@@ -95,7 +95,8 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            # logger consumes first time.time(), start_time=0.0, timeout check=999.0 → timed out
+            # logger.info() creates a LogRecord which calls time.time() before start_time does;
+            # first 0.0 is consumed by the logger, second 0.0 is start_time, 999.0 trips timeout
             patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [999.0] * 20),
         ):
             mock_proc = MagicMock()
@@ -206,7 +207,7 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            # logger consumes first time.time(), start_time=0.0, timeout check=200.0 → triggers timeout
+            # logger.info() consumes first time.time(); start_time=0.0, check=200.0 > 60 → timeout
             patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [200.0] * 20),
         ):
             mock_proc = MagicMock()

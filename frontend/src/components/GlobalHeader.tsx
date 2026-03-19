@@ -18,6 +18,7 @@ const guestNav = [
 const appNav = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Workspace', href: '/workspace' },
+  { label: 'Tracker', href: '/tracker' },
   { label: 'Templates', href: '/templates' },
   { label: 'Studio', href: '/try' },
 ]

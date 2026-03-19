@@ -378,7 +378,7 @@ return `compile_timeout` error code with upgrade CTA. Latency SLA differentiatio
 
 ---
 
-## Feature 12 — Compilation History Diff Viewer · P1 · M
+## Feature 12 — Compilation History Diff Viewer · P1 · M ✅ COMPLETED
 
 **Goal:** Users can select any two entries from the optimization/checkpoint history and see a
 side-by-side Monaco diff. Includes colored diff stats (+N / -N lines) and restore actions.
@@ -714,7 +714,7 @@ Uses Crossref API (DOI) and arXiv Atom API (arXiv) — both free, no API key nee
 
 ---
 
-## Feature 15 — Job Application Tracker · P1 · L
+## Feature 15 — Job Application Tracker · P1 · L ✅ COMPLETED
 
 **Goal:** Kanban board at `/tracker` where users manage job applications linked to resume variants.
 Cards show company logo, ATS score, status. Drag-and-drop between status columns.

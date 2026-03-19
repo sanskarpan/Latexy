@@ -95,6 +95,11 @@ from .admin_routes import router as admin_router
 
 router.include_router(admin_router)
 
+# Include Job Application Tracker routes
+from .tracker_routes import router as tracker_router
+
+router.include_router(tracker_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():

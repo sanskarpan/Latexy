@@ -38,6 +38,7 @@ class User(Base):
     usage_analytics: Mapped[List["UsageAnalytics"]] = relationship("UsageAnalytics", back_populates="user")
     resume_job_matches: Mapped[List["ResumeJobMatch"]] = relationship("ResumeJobMatch", back_populates="user", cascade="all, delete-orphan")
     cover_letters: Mapped[List["CoverLetter"]] = relationship("CoverLetter", back_populates="user")
+    job_applications: Mapped[List["JobApplication"]] = relationship("JobApplication", back_populates="user", cascade="all, delete-orphan")
 
 class DeviceTrial(Base):
     """Device trial tracking for freemium model."""
@@ -274,6 +275,32 @@ class FeatureFlag(Base):
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class JobApplication(Base):
+    """Job application tracker entry."""
+    __tablename__ = "job_applications"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    company_name: Mapped[str] = mapped_column(Text, nullable=False)
+    role_title: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="applied")
+    resume_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True
+    )
+    ats_score_at_submission: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    job_description_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    job_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    company_logo_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="job_applications")
+    resume: Mapped[Optional["Resume"]] = relationship("Resume")
 
 
 class ResumeTemplate(Base):
