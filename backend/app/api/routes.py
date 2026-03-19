@@ -84,6 +84,11 @@ from .ai_routes import router as ai_router
 
 router.include_router(ai_router)
 
+# Include Reference (BibTeX) routes
+from .reference_routes import router as reference_router
+
+router.include_router(reference_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
