@@ -901,14 +901,14 @@ New `job_applications` DB table with full CRUD API.
 
 ---
 
-## Feature 16 — LinkedIn Profile Import (Structured) · P1 · M
+## Feature 16 — LinkedIn Profile Import (Structured) · P1 · M ✅ COMPLETED
 
 **Goal:** LinkedIn PDF exports have a predictable structure. Add a `source_hint=linkedin` mode
 to the existing `/formats/upload` endpoint that uses a LinkedIn-specific LLM prompt for higher
 accuracy parsing. Add LinkedIn import CTA with step-by-step instructions.
 
 ### 16A · Backend — LinkedIn Parser Variant
-- [ ] In `backend/app/services/document_converter_service.py`, add LinkedIn-specific prompt:
+- [x] In `backend/app/services/document_converter_service.py`, add LinkedIn-specific prompt:
   ```python
   LINKEDIN_SYSTEM_PROMPT = """
   You are parsing a LinkedIn profile PDF export. LinkedIn PDFs follow a strict structure:
@@ -935,43 +935,33 @@ accuracy parsing. Add LinkedIn import CTA with step-by-step instructions.
   - Use the same LaTeX template class as the document being edited
   """
   ```
-- [ ] Add a `source_hint` parameter to the upload/convert pipeline:
-  ```python
-  async def convert_document(
-      file_content: bytes,
-      file_type: str,
-      target_template_id: Optional[str] = None,
-      source_hint: Optional[str] = None,  # ADD: "linkedin" | "resume" | None
-  ) -> str:
-      system_prompt = LINKEDIN_SYSTEM_PROMPT if source_hint == "linkedin" else DEFAULT_SYSTEM_PROMPT
-      ...
-  ```
-- [ ] In `backend/app/api/format_routes.py`, `POST /formats/upload` or `/formats/convert`:
+- [x] Add a `source_hint` parameter to the upload/convert pipeline:
+  - `build_conversion_prompt(structure, source_format, source_hint=None)` added
+  - `source_hint="linkedin"` selects `LINKEDIN_SYSTEM_PROMPT`; anything else uses default
+- [x] In `backend/app/api/format_routes.py`, `POST /formats/upload`:
   - Accept optional `source_hint: str = Form(default=None)` field
-  - Pass to `document_converter_service.convert_document()`
+  - Pass to `submit_document_conversion()` → `convert_document_task` → `build_conversion_prompt`
 
 ### 16B · Frontend — LinkedIn Import UI
-- [ ] In `frontend/src/app/workspace/new/page.tsx` (template gallery page):
-  - Add "Import from LinkedIn" option alongside "Import File" tab
-  - Show step-by-step instructions:
-    ```
-    1. Go to linkedin.com and open your profile
-    2. Click "More" (•••) under your profile photo
-    3. Click "Save to PDF"
-    4. Upload the downloaded PDF below
-    ```
-  - The upload area is the existing `MultiFormatUpload` component — just pass `source_hint="linkedin"`
-  - Show LinkedIn logo + blue accent for this card
+- [x] In `frontend/src/app/workspace/new/page.tsx` (template gallery page):
+  - Added `'linkedin'` mode; 3-column toggle grid (Template / Import File / Import from LinkedIn)
+  - Step-by-step instructions panel with sky-blue accent (numbered steps 1–4)
+  - `MultiFormatUpload` rendered with `sourceHint="linkedin"`
+  - Sky-blue Linkedin icon + border on selected state
 
 ### 16C · Frontend — API Client Update
-- [ ] In `frontend/src/lib/api-client.ts`, `uploadDocument()` or equivalent method:
-  - Add optional `sourceHint?: string` param that gets appended as form field `source_hint`
+- [x] In `frontend/src/lib/api-client.ts`, `uploadForConversion(file, sourceHint?)`:
+  - Optional `sourceHint` appended as `source_hint` form field when present
+- [x] `useFormatConversion.ts` — `startConversion(file, sourceHint?)` threads hint to API client
+- [x] `MultiFormatUpload.tsx` — `sourceHint?` prop passed through to `startConversion`
 
 ### 16D · Tests
-- [ ] `backend/test/test_linkedin_import.py`:
-  - `source_hint=linkedin` → uses `LINKEDIN_SYSTEM_PROMPT` in LLM call (mock LLM, check prompt)
-  - `source_hint=resume` or `null` → uses default prompt
-  - Upload with `source_hint=linkedin` reaches the `document_converter_service` correctly
+- [x] `backend/test/test_linkedin_import.py` — 14 tests, all passing:
+  - `source_hint=linkedin` → uses `LINKEDIN_SYSTEM_PROMPT`
+  - `source_hint=resume` / `null` / unknown → uses default prompt
+  - Upload endpoint passes `source_hint` to worker
+  - LaTeX files are still direct passthrough even with `source_hint=linkedin`
+  - Converter worker `.run()` passes `source_hint` to `build_conversion_prompt`
 
 ---
 

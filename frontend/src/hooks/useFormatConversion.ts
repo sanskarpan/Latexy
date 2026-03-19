@@ -11,7 +11,7 @@ export interface UseFormatConversionReturn {
   progress: number
   convertedLatex: string | null
   error: string | null
-  startConversion: (file: File) => Promise<string | null>
+  startConversion: (file: File, sourceHint?: string) => Promise<string | null>
   reset: () => void
 }
 
@@ -90,7 +90,7 @@ export function useFormatConversion(): UseFormatConversionReturn {
     }
   }, [state.status, state.error, jobId])
 
-  async function startConversion(file: File): Promise<string | null> {
+  async function startConversion(file: File, sourceHint?: string): Promise<string | null> {
     // Cancel any previous timeout
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
@@ -103,7 +103,7 @@ export function useFormatConversion(): UseFormatConversionReturn {
     setJobId(null)
 
     try {
-      const response = await apiClient.uploadForConversion(file)
+      const response = await apiClient.uploadForConversion(file, sourceHint)
 
       if (!mountedRef.current) return null
 

@@ -5,7 +5,7 @@ Format Detection and Multi-Format Support API Routes
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from ..core.logging import get_logger
@@ -239,6 +239,7 @@ class UploadForConversionResponse(BaseModel):
 @router.post("/upload", response_model=UploadForConversionResponse)
 async def upload_for_conversion(
     file: UploadFile = File(...),
+    source_hint: Optional[str] = Form(default=None),
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """
@@ -309,6 +310,7 @@ async def upload_for_conversion(
             source_format=detected_format.value,
             job_id=job_id,
             user_id=user_id,
+            source_hint=source_hint,
         )
 
         logger.info(f"Queued document conversion job {job_id} for {filename} ({detected_format.value})")

@@ -35,6 +35,7 @@ def convert_document_task(
     job_id: Optional[str] = None,
     user_id: Optional[str] = None,
     user_api_key: Optional[str] = None,
+    source_hint: Optional[str] = None,
     metadata: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
@@ -76,7 +77,9 @@ def convert_document_task(
             "message": "Analyzing document structure",
         })
 
-        messages = document_converter_service.build_conversion_prompt(extracted_data, source_format)
+        messages = document_converter_service.build_conversion_prompt(
+            extracted_data, source_format, source_hint=source_hint
+        )
 
         publish_event(job_id, "job.progress", {
             "percent": 40,
@@ -179,6 +182,7 @@ def submit_document_conversion(
     job_id: str,
     user_id: Optional[str] = None,
     user_api_key: Optional[str] = None,
+    source_hint: Optional[str] = None,
     priority: Optional[int] = None,
     metadata: Optional[Dict] = None,
 ) -> str:
@@ -193,6 +197,7 @@ def submit_document_conversion(
             "job_id": job_id,
             "user_id": user_id,
             "user_api_key": user_api_key,
+            "source_hint": source_hint,
             "metadata": metadata,
         },
         priority=priority,

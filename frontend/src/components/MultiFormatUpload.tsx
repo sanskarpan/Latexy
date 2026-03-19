@@ -75,9 +75,10 @@ function getFormatLabel(filename: string): string {
 
 interface MultiFormatUploadProps {
   onFileUpload: (content: string) => void
+  sourceHint?: string
 }
 
-export default function MultiFormatUpload({ onFileUpload }: MultiFormatUploadProps) {
+export default function MultiFormatUpload({ onFileUpload, sourceHint }: MultiFormatUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -149,12 +150,12 @@ export default function MultiFormatUpload({ onFileUpload }: MultiFormatUploadPro
     }
 
     // Other formats — upload for conversion
-    const result = await startConversion(file)
+    const result = await startConversion(file, sourceHint)
     if (result) {
       onFileUpload(result)
       toast.success(`${getFormatLabel(file.name)} file converted to LaTeX`)
     }
-  }, [onFileUpload, startConversion, isConverting])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [onFileUpload, startConversion, isConverting, sourceHint])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Watch for async conversion completion — must be in useEffect to avoid render-phase side effects
   const prevStatusRef = useRef(status)

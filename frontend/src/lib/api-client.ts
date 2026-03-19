@@ -781,9 +781,10 @@ class ApiClient {
   }
 
   // Upload a file for conversion to LaTeX
-  async uploadForConversion(file: File): Promise<UploadForConversionResponse> {
+  async uploadForConversion(file: File, sourceHint?: string): Promise<UploadForConversionResponse> {
     const formData = new FormData()
     formData.append('file', file)
+    if (sourceHint) formData.append('source_hint', sourceHint)
     const response = await fetch(`${this.baseUrl}/formats/upload`, {
       method: 'POST',
       headers: this.getAuthHeader(),

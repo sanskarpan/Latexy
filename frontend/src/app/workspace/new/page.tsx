@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, Upload, LayoutTemplate, X } from 'lucide-react'
+import { Search, Upload, LayoutTemplate, X, Linkedin } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { apiClient } from '@/lib/api-client'
@@ -66,7 +66,7 @@ const CATEGORY_ORDER = [
 //  Page component                                                     //
 // ------------------------------------------------------------------ //
 
-type Mode = 'template' | 'import'
+type Mode = 'template' | 'import' | 'linkedin'
 
 export default function NewResumePage() {
   const router = useRouter()
@@ -171,14 +171,14 @@ export default function NewResumePage() {
       return
     }
 
-    if (mode === 'import' && !importedContent) {
+    if ((mode === 'import' || mode === 'linkedin') && !importedContent) {
       toast.error('Please upload a file first')
       return
     }
 
     setIsCreating(true)
     try {
-      if (mode === 'import') {
+      if (mode === 'import' || mode === 'linkedin') {
         const created = await apiClient.createResume({
           title: trimmedTitle,
           latex_content: importedContent,
@@ -205,7 +205,7 @@ export default function NewResumePage() {
   const canCreate =
     !!title.trim() &&
     !isCreating &&
-    (mode === 'import' ? !!importedContent : true)
+    ((mode === 'import' || mode === 'linkedin') ? !!importedContent : true)
 
   // ---------------------------------------------------------------- //
   //  Render                                                           //
@@ -242,9 +242,9 @@ export default function NewResumePage() {
         </section>
 
         {/* Mode toggle */}
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <button
-            onClick={() => setMode('template')}
+            onClick={() => { setMode('template'); setImportedContent('') }}
             className={`surface-panel edge-highlight flex items-start gap-3 p-5 text-left transition ${
               mode === 'template'
                 ? 'border-orange-300/35 bg-orange-300/[0.05]'
@@ -259,7 +259,7 @@ export default function NewResumePage() {
           </button>
 
           <button
-            onClick={() => setMode('import')}
+            onClick={() => { setMode('import'); setImportedContent('') }}
             className={`surface-panel edge-highlight flex items-start gap-3 p-5 text-left transition ${
               mode === 'import'
                 ? 'border-orange-300/35 bg-orange-300/[0.05]'
@@ -272,6 +272,21 @@ export default function NewResumePage() {
               <p className="mt-0.5 text-xs text-zinc-400">Upload PDF, Word, Markdown, LaTeX, or more.</p>
             </div>
           </button>
+
+          <button
+            onClick={() => { setMode('linkedin'); setImportedContent('') }}
+            className={`surface-panel edge-highlight flex items-start gap-3 p-5 text-left transition ${
+              mode === 'linkedin'
+                ? 'border-sky-400/35 bg-sky-400/[0.05]'
+                : 'hover:bg-white/[0.03]'
+            }`}
+          >
+            <Linkedin className="mt-0.5 h-5 w-5 shrink-0 text-sky-400/80" />
+            <div>
+              <h2 className="text-sm font-semibold text-white">Import from LinkedIn</h2>
+              <p className="mt-0.5 text-xs text-zinc-400">Export your LinkedIn profile as PDF and import it.</p>
+            </div>
+          </button>
         </div>
 
         {/* --- IMPORT MODE --- */}
@@ -281,6 +296,45 @@ export default function NewResumePage() {
             {importedContent && (
               <p className="mt-3 text-xs uppercase tracking-[0.12em] text-emerald-300">
                 File parsed — {importedContent.length.toLocaleString()} characters ready
+              </p>
+            )}
+          </section>
+        )}
+
+        {/* --- LINKEDIN MODE --- */}
+        {mode === 'linkedin' && (
+          <section className="surface-panel edge-highlight p-6 space-y-5">
+            {/* Step-by-step instructions */}
+            <div className="rounded-xl border border-sky-400/15 bg-sky-400/[0.04] p-4">
+              <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-sky-300/80">
+                <Linkedin className="h-3.5 w-3.5" />
+                How to export your LinkedIn profile
+              </h3>
+              <ol className="mt-3 space-y-1.5 text-xs text-zinc-400">
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-400/15 text-[10px] font-bold text-sky-300">1</span>
+                  Go to <span className="text-sky-300">linkedin.com</span> and open your profile
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-400/15 text-[10px] font-bold text-sky-300">2</span>
+                  Click <span className="font-medium text-zinc-300">&ldquo;More&rdquo; (•••)</span> under your profile photo
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-400/15 text-[10px] font-bold text-sky-300">3</span>
+                  Click <span className="font-medium text-zinc-300">&ldquo;Save to PDF&rdquo;</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-400/15 text-[10px] font-bold text-sky-300">4</span>
+                  Upload the downloaded PDF below
+                </li>
+              </ol>
+            </div>
+
+            {/* Upload area — PDF only, LinkedIn-optimised prompt */}
+            <MultiFormatUpload onFileUpload={setImportedContent} sourceHint="linkedin" />
+            {importedContent && (
+              <p className="text-xs uppercase tracking-[0.12em] text-emerald-300">
+                Profile parsed — {importedContent.length.toLocaleString()} characters ready
               </p>
             )}
           </section>
@@ -381,8 +435,8 @@ export default function NewResumePage() {
           </section>
         )}
 
-        {/* Create button — shown for import mode or blank resume creation */}
-        {mode === 'import' && (
+        {/* Create button — shown for import/linkedin mode */}
+        {(mode === 'import' || mode === 'linkedin') && (
           <div className="flex items-center justify-end gap-3">
             <button
               onClick={handleCreate}
