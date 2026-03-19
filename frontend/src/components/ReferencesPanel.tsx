@@ -151,6 +151,7 @@ export default function ReferencesPanel({ onInsertBibTeX, onInsertCiteKey }: Ref
   const [entries, setEntries] = useState<BibTeXEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [fetched, setFetched] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const lines = input.split('\n').filter(l => l.trim())
@@ -159,12 +160,15 @@ export default function ReferencesPanel({ onInsertBibTeX, onInsertCiteKey }: Ref
     if (!lines.length || loading) return
     setLoading(true)
     setFetched(false)
+    setFetchError(null)
     try {
       const resp = await apiClient.fetchReferences(lines)
       setEntries(resp.entries)
       setFetched(true)
-    } catch {
+    } catch (err) {
       setEntries([])
+      setFetched(true)
+      setFetchError(err instanceof Error ? err.message : 'Failed to fetch references')
     } finally {
       setLoading(false)
     }
@@ -243,9 +247,11 @@ export default function ReferencesPanel({ onInsertBibTeX, onInsertCiteKey }: Ref
 
       {/* Results */}
       <div className="flex-1 overflow-y-auto p-3">
-        {fetched && entries.length === 0 && (
+        {fetchError ? (
+          <p className="text-center text-[11px] text-red-400">{fetchError}</p>
+        ) : fetched && entries.length === 0 ? (
           <p className="text-center text-[11px] text-white/25">No results</p>
-        )}
+        ) : null}
 
         {entries.length > 0 && (
           <div className="space-y-2">
