@@ -972,7 +972,7 @@ New Celery task on `llm` queue. Questions saved in DB alongside the resume. "Int
 tab in edit page sidebar.
 
 ### 17A · Database Migration
-- [ ] Create `backend/alembic/versions/0010_add_interview_prep.py`:
+- [x] Create `backend/alembic/versions/0010_add_interview_prep.py`:
   ```sql
   CREATE TABLE interview_prep (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -997,7 +997,7 @@ tab in edit page sidebar.
   ```
 
 ### 17B · Backend Model
-- [ ] Add `InterviewPrep` SQLAlchemy model to `backend/app/database/models.py`:
+- [x] Add `InterviewPrep` SQLAlchemy model to `backend/app/database/models.py`:
   ```python
   class InterviewPrep(Base):
       __tablename__ = "interview_prep"
@@ -1008,7 +1008,7 @@ tab in edit page sidebar.
   ```
 
 ### 17C · Interview Prep Worker
-- [ ] Create `backend/app/workers/interview_prep_worker.py`:
+- [x] Create `backend/app/workers/interview_prep_worker.py`:
   - Task `generate_interview_prep_task` on `llm` queue (no new queue needed)
   - System prompt:
     ```
@@ -1038,7 +1038,7 @@ tab in edit page sidebar.
   - Helper: `submit_interview_prep_generation(resume_id, user_id, job_description, ...)`
 
 ### 17D · Interview Prep Routes
-- [ ] Create `backend/app/api/interview_routes.py`:
+- [x] Create `backend/app/api/interview_routes.py`:
   ```
   POST /interview-prep/generate    — starts generation task, returns { job_id, prep_id }
   GET  /interview-prep/{id}        — get questions for a prep session
@@ -1048,10 +1048,10 @@ tab in edit page sidebar.
   - Body for generate: `{ resume_id, job_description?, company_name?, role_title? }`
   - Auth required
   - Verify resume ownership before generating
-- [ ] Register router in `backend/app/api/routes.py`
+- [x] Register router in `backend/app/api/routes.py`
 
 ### 17E · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   generateInterviewPrep(body: GenerateInterviewPrepRequest): Promise<{ job_id: string; prep_id: string }>
   getInterviewPrep(prepId: string): Promise<InterviewPrepResponse>
@@ -1060,7 +1060,7 @@ tab in edit page sidebar.
   ```
 
 ### 17F · Frontend — Interview Prep Panel
-- [ ] Create `frontend/src/components/InterviewPrepPanel.tsx`:
+- [x] Create `frontend/src/components/InterviewPrepPanel.tsx`:
   - Sidebar panel tab (or slide-out panel) with:
     - "Generate Interview Questions" button
     - Job description input (optional — uses existing resume JD if available)
@@ -1078,7 +1078,7 @@ tab in edit page sidebar.
   - When no questions yet: empty state with "Generate Questions" CTA
 
 ### 17G · Tests
-- [ ] `backend/test/test_interview_prep.py`:
+- [x] `backend/test/test_interview_prep.py`:
   - POST generate → creates `interview_prep` record, returns job_id
   - GET → returns correct questions after job completes (mock LLM response)
   - Questions JSON has expected structure (behavioral, technical, motivational, difficult)
