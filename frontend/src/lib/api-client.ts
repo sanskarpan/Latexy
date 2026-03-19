@@ -1097,7 +1097,14 @@ class ApiClient {
   }
 
   async deleteApplication(id: string): Promise<void> {
-    await this.request(`/tracker/applications/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    const res = await fetch(`${API_BASE}/tracker/applications/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: this.headers(),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+    }
   }
 
   async updateApplicationStatus(id: string, status: string): Promise<JobApplication> {
@@ -1109,6 +1116,36 @@ class ApiClient {
 
   async getTrackerStats(): Promise<TrackerStats> {
     return this.request<TrackerStats>('/tracker/stats')
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Interview Prep                                                  //
+  // ---------------------------------------------------------------- //
+
+  async generateInterviewPrep(body: GenerateInterviewPrepRequest): Promise<GenerateInterviewPrepApiResponse> {
+    return this.request<GenerateInterviewPrepApiResponse>('/interview-prep/generate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async getInterviewPrep(prepId: string): Promise<InterviewPrepResponse> {
+    return this.request<InterviewPrepResponse>(`/interview-prep/${encodeURIComponent(prepId)}`)
+  }
+
+  async listInterviewPrep(resumeId: string): Promise<InterviewPrepResponse[]> {
+    return this.request<InterviewPrepResponse[]>(`/resumes/${encodeURIComponent(resumeId)}/interview-prep`)
+  }
+
+  async deleteInterviewPrep(prepId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/interview-prep/${encodeURIComponent(prepId)}`, {
+      method: 'DELETE',
+      headers: this.headers(),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+    }
   }
 }
 
@@ -1296,6 +1333,44 @@ export interface CreateApplicationRequest {
   job_url?: string
   notes?: string
   applied_at?: string
+}
+
+// ------------------------------------------------------------------ //
+//  Interview Prep types                                              //
+// ------------------------------------------------------------------ //
+
+export interface InterviewQuestion {
+  category: 'behavioral' | 'technical' | 'motivational' | 'difficult'
+  question: string
+  what_interviewer_assesses: string
+  star_hint: string | null
+}
+
+export interface InterviewPrepResponse {
+  id: string
+  user_id: string | null
+  resume_id: string
+  job_description: string | null
+  company_name: string | null
+  role_title: string | null
+  questions: InterviewQuestion[]
+  generation_job_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface GenerateInterviewPrepRequest {
+  resume_id: string
+  job_description?: string
+  company_name?: string
+  role_title?: string
+}
+
+export interface GenerateInterviewPrepApiResponse {
+  success: boolean
+  job_id: string
+  prep_id: string
+  message: string
 }
 
 // ------------------------------------------------------------------ //
