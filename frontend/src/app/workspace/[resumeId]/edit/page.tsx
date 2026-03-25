@@ -1090,9 +1090,11 @@ export default function ResumeEditPage() {
   }, [])
 
   const handleCursorLineChange = useCallback((lineContent: string, lineNumber: number) => {
-    const isItemLine = /^\s*\\item/.test(lineContent)
+    // \b prevents matching \itemsep, \itemize, etc.
+    const isItemLine = /^\s*\\item\b/.test(lineContent)
     setBulletWidgetLine(isItemLine ? lineNumber : null)
-    if (!isItemLine && bulletWidgetOpen) setBulletWidgetOpen(false)
+    // Don't close the widget if it's already open (user is interacting with it)
+    if (!isItemLine && !bulletWidgetOpen) setBulletWidgetLine(null)
   }, [bulletWidgetOpen])
 
   const handleOpenBulletWidget = useCallback(() => {
@@ -1103,7 +1105,11 @@ export default function ResumeEditPage() {
 
   const handleBulletInsert = useCallback((bullet: string) => {
     if (bulletWidgetLine === null) return
-    editorRef.current?.applyFix(bulletWidgetLine, `\\item ${bullet}`)
+    // Preserve existing indentation by reading the current line from the model
+    const allContent = editorRef.current?.getValue() ?? ''
+    const lineText = allContent.split('\n')[bulletWidgetLine - 1] ?? ''
+    const indent = lineText.match(/^(\s*)/)?.[1] ?? ''
+    editorRef.current?.applyFix(bulletWidgetLine, `${indent}\\item ${bullet}`)
     setBulletWidgetOpen(false)
   }, [bulletWidgetLine])
 
