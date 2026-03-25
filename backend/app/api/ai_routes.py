@@ -40,6 +40,24 @@ class GenerateBulletsResponse(BaseModel):
     cached: bool
 
 
+class SummaryVariant(BaseModel):
+    emphasis: str  # "technical" | "leadership" | "unique"
+    title: str
+    text: str
+
+
+class GenerateSummaryRequest(BaseModel):
+    resume_latex: str = Field(..., max_length=50_000)
+    target_role: Optional[str] = Field(None, max_length=200)
+    job_description: Optional[str] = Field(None, max_length=5000)
+    count: int = Field(default=3, ge=1, le=5)
+
+
+class GenerateSummaryResponse(BaseModel):
+    summaries: List[SummaryVariant]
+    cached: bool
+
+
 class ExplainErrorRequest(BaseModel):
     error_message: str = Field(..., min_length=1, max_length=2000)
     surrounding_latex: str = Field(default="", max_length=5000)
@@ -162,6 +180,114 @@ async def generate_bullets(
     except Exception as exc:
         logger.error(f"generate-bullets error: {exc}")
         return GenerateBulletsResponse(bullets=[], cached=False)
+
+
+_SUMMARY_SYSTEM_PROMPT = """\
+You are an expert resume writer. Generate {count} professional summary alternatives for this resume.
+Each summary: 2-3 sentences, punchy, tailored to the role (if provided).
+Variant 1 (technical): Lead with technical skills and technical achievements
+Variant 2 (leadership): Lead with impact, leadership, and results
+Variant 3 (unique): Lead with most distinctive/unusual differentiators
+Each summary: NO filler phrases ("passionate about", "results-driven", "team player")
+Each summary: Start with a strong descriptor of the candidate, not "I" or "My"
+Target role: {target_role}
+Output JSON: {{ "summaries": [{{"emphasis": "technical", "title": "Technical Skills Focus", "text": "..."}}, ...] }}
+Only JSON, no markdown."""
+
+
+def _summary_cache_key(
+    resume_latex: str,
+    target_role: Optional[str],
+    job_description: Optional[str],
+    count: int,
+) -> str:
+    raw = f"{resume_latex[:500]}|{(target_role or '').strip()}|{(job_description or '')[:200].strip()}|{count}"
+    return "ai:summary:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+@router.post("/generate-summary", response_model=GenerateSummaryResponse)
+async def generate_summary(
+    request: GenerateSummaryRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
+    """Generate professional summary alternatives using AI. Auth optional."""
+    cache_key = _summary_cache_key(
+        request.resume_latex,
+        request.target_role,
+        request.job_description,
+        request.count,
+    )
+
+    try:
+        cached = await cache_manager.get(cache_key)
+        if cached and isinstance(cached, dict):
+            summaries = [SummaryVariant(**s) for s in cached.get("summaries", [])]
+            return GenerateSummaryResponse(summaries=summaries, cached=True)
+    except Exception:
+        pass
+
+    api_key: Optional[str] = None
+    if user_id:
+        try:
+            from ..services.api_key_service import api_key_service
+            api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+        except Exception:
+            pass
+    if not api_key and settings.OPENAI_API_KEY:
+        api_key = settings.OPENAI_API_KEY
+
+    if not api_key:
+        logger.warning("generate-summary: no API key available")
+        return GenerateSummaryResponse(summaries=[], cached=False)
+
+    system_prompt = _SUMMARY_SYSTEM_PROMPT.format(
+        count=request.count,
+        target_role=request.target_role or "general",
+    )
+    user_parts = [f"Resume LaTeX:\n{request.resume_latex[:8000]}"]
+    if request.job_description:
+        user_parts.append(f"\nJob description:\n{request.job_description[:2000]}")
+    user_prompt = "\n".join(user_parts)
+
+    try:
+        start = time.monotonic()
+        client = openai.AsyncOpenAI(api_key=api_key)
+        response = await client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=1000,
+            temperature=0.75,
+            response_format={"type": "json_object"},
+        )
+        elapsed = time.monotonic() - start
+        logger.info(f"generate-summary LLM call: {elapsed:.2f}s")
+
+        raw = response.choices[0].message.content or "{}"
+        parsed = json.loads(raw)
+        raw_summaries = parsed.get("summaries", [])
+        summaries: List[SummaryVariant] = []
+        for s in raw_summaries:
+            if isinstance(s, dict) and "emphasis" in s and "title" in s and "text" in s:
+                summaries.append(SummaryVariant(**s))
+
+        try:
+            await cache_manager.set(
+                cache_key,
+                {"summaries": [s.model_dump() for s in summaries]},
+                ttl=1800,
+            )
+        except Exception:
+            pass
+
+        return GenerateSummaryResponse(summaries=summaries, cached=False)
+
+    except Exception as exc:
+        logger.error(f"generate-summary error: {exc}")
+        return GenerateSummaryResponse(summaries=[], cached=False)
 
 
 @router.post("/explain-error", response_model=ExplainErrorResponse)
