@@ -44,6 +44,8 @@ interface LaTeXEditorProps {
   pageCount?: number | null
   /** Called (debounced 200ms) when cursor moves to a different line — fires with raw line content */
   onCursorLineChange?: (lineContent: string, lineNumber: number) => void
+  /** Called when cursor enters or leaves a summary/objective/profile section */
+  onCursorInSummarySection?: (inSummary: boolean) => void
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -222,7 +224,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -234,6 +236,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     onExplainErrorRef.current = onExplainError
     const onCursorLineChangeRef = useRef(onCursorLineChange)
     onCursorLineChangeRef.current = onCursorLineChange
+    const onCursorInSummarySectionRef = useRef(onCursorInSummarySection)
+    onCursorInSummarySectionRef.current = onCursorInSummarySection
 
     // Pre-compile page count estimate (~50 text lines per page)
     const estimatedPageCount = useMemo(() => {
@@ -855,6 +859,32 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         })
         disposablesRef.current.push(lineDisposable)
         disposablesRef.current.push({ dispose: () => { if (lineTimer) clearTimeout(lineTimer) } })
+      }
+
+      // ── Summary section detection (debounced 300ms) ────────────────
+      {
+        let summaryTimer: ReturnType<typeof setTimeout> | null = null
+        const summaryDisposable = editor.onDidChangeCursorPosition((e: any) => {
+          if (!onCursorInSummarySectionRef.current) return
+          if (summaryTimer) clearTimeout(summaryTimer)
+          summaryTimer = setTimeout(() => {
+            const model = editor.getModel()
+            if (!model) return
+            const lineNumber = e.position.lineNumber
+            const lines = model.getValue().split('\n')
+            let inSummary = false
+            for (let i = lineNumber - 1; i >= 0; i--) {
+              if (/\\section\*?\{(summary|objective|profile|about)\}/i.test(lines[i])) {
+                inSummary = true
+                break
+              }
+              if (/\\section\*?\{/i.test(lines[i])) break
+            }
+            onCursorInSummarySectionRef.current?.(inSummary)
+          }, 300)
+        })
+        disposablesRef.current.push(summaryDisposable)
+        disposablesRef.current.push({ dispose: () => { if (summaryTimer) clearTimeout(summaryTimer) } })
       }
 
     }
