@@ -1211,7 +1211,7 @@ Weekly digest via Celery Beat. Notification preferences in settings. Uses Resend
 any SMTP provider via settings.
 
 ### 19A · Config — Email Settings
-- [ ] Add to `backend/app/core/config.py`:
+- [x] Add to `backend/app/core/config.py`:
   ```python
   # Email
   EMAIL_PROVIDER: str = "resend"     # "resend" | "sendgrid" | "smtp"
@@ -1228,7 +1228,7 @@ any SMTP provider via settings.
   - Guard all email sends: `if not settings.EMAIL_ENABLED: return` (graceful no-op)
 
 ### 19B · Backend — Email Service
-- [ ] Create `backend/app/services/email_service.py`:
+- [x] Create `backend/app/services/email_service.py`:
   ```python
   class EmailService:
       async def send_email(
@@ -1253,11 +1253,11 @@ any SMTP provider via settings.
           import httpx
           ...
   ```
-- [ ] Add `resend` to `backend/requirements.txt`: `resend>=2.0.0` OR just use `httpx` directly (simpler)
+- [x] Add `resend` to `backend/requirements.txt`: `resend>=2.0.0` OR just use `httpx` directly (simpler)
   - Using plain `httpx` avoids the dependency
 
 ### 19C · Backend — Email Templates
-- [ ] Create `backend/app/templates/email/` directory:
+- [x] Create `backend/app/templates/email/` directory:
   - `job_completed.html` — "Your {job_type} is complete" with link to result
   - `optimization_complete.html` — "Your resume has been optimized" with ATS score summary
   - `weekly_digest.html` — weekly summary with score trends
@@ -1265,7 +1265,7 @@ any SMTP provider via settings.
   - Plain text fallback for each
 
 ### 19D · Backend — Email Worker Implementation
-- [ ] Replace stub in `backend/app/workers/email_worker.py`:
+- [x] Replace stub in `backend/app/workers/email_worker.py`:
   ```python
   @celery_app.task(name="send_job_completion_email", queue="email")
   def send_job_completion_email(
@@ -1290,7 +1290,7 @@ any SMTP provider via settings.
   ```
 
 ### 19E · Backend — Dispatch from Workers
-- [ ] In `backend/app/workers/latex_worker.py` (after job completion):
+- [x] In `backend/app/workers/latex_worker.py` (after job completion):
   ```python
   # After successful compilation, dispatch email notification
   if user_id:
@@ -1300,21 +1300,21 @@ any SMTP provider via settings.
           countdown=2,  # 2s delay so job result is in Redis first
       )
   ```
-- [ ] Same dispatch in `orchestrator.py` after combined job completes
+- [x] Same dispatch in `orchestrator.py` after combined job completes
 
 ### 19F · Backend — Notification Preferences Column
-- [ ] Create `backend/alembic/versions/0011_add_notification_prefs.py`:
+- [x] Create `backend/alembic/versions/0011_add_notification_prefs.py`:
   ```sql
   ALTER TABLE users ADD COLUMN email_notifications JSONB DEFAULT '{
     "job_completed": true,
     "weekly_digest": false
   }'::jsonb;
   ```
-- [ ] Update `User` model with `email_notifications: Mapped[Optional[Dict]] = mapped_column(JSONB)`
-- [ ] Add `GET /settings/notifications` and `PUT /settings/notifications` endpoints to a new or existing settings route file
+- [x] Update `User` model with `email_notifications: Mapped[Optional[Dict]] = mapped_column(JSONB)`
+- [x] Add `GET /settings/notifications` and `PUT /settings/notifications` endpoints to a new or existing settings route file
 
 ### 19G · Backend — Celery Beat for Weekly Digest
-- [ ] In `backend/app/core/celery_app.py`, add Beat schedule:
+- [x] In `backend/app/core/celery_app.py`, add Beat schedule:
   ```python
   app.conf.beat_schedule = {
       "weekly-digest-monday-9am": {
@@ -1324,19 +1324,19 @@ any SMTP provider via settings.
       },
   }
   ```
-- [ ] Create `backend/app/workers/email_worker.py::send_weekly_digest_to_all()` task:
+- [x] Create `backend/app/workers/email_worker.py::send_weekly_digest_to_all()` task:
   - Queries all users with `email_notifications.weekly_digest = true`
   - Fires individual `send_weekly_digest` subtask per user (fan-out)
 
 ### 19H · Frontend — Notification Preferences
-- [ ] In `frontend/src/app/settings/page.tsx` (or create settings page if it doesn't exist):
+- [x] In `frontend/src/app/settings/page.tsx` (or create settings page if it doesn't exist):
   - "Email Notifications" section:
     - Toggle: "Job completion emails" (default: on)
     - Toggle: "Weekly digest" (default: off)
     - "Save preferences" button → `PUT /settings/notifications`
 
 ### 19I · Tests
-- [ ] `backend/test/test_email_notifications.py`:
+- [x] `backend/test/test_email_notifications.py`:
   - `send_job_completion_email` with `EMAIL_ENABLED=False` → no HTTP call made (mock)
   - `send_job_completion_email` with `EMAIL_ENABLED=True` + valid API key → sends HTTP request to Resend
   - User with `email_notifications.job_completed = false` → task returns without sending
@@ -2445,7 +2445,7 @@ When user types `\begin{itemize}`, auto-expand with `\item ` lines and cursor po
 All client-side, no backend needed.
 
 ### 30A · Frontend — Monaco Snippet Provider
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`, in `handleEditorDidMount`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`, in `handleEditorDidMount`:
   - Register completion provider with Monaco snippet syntax:
     ```typescript
     monaco.languages.registerCompletionItemProvider('latex', {
@@ -2513,7 +2513,7 @@ All client-side, no backend needed.
   - Note: Monaco uses `${}` for tab stops in snippets — ensure correct escaping
 
 ### 30B · Tests
-- [ ] Manual verification:
+- [x] Manual verification:
   - Type `doc` in Monaco → completion popup shows → Tab to expand → full boilerplate inserted
   - Type `\begin{itemize}` → Tab → expands with `\item ` lines and cursor in first item
   - Snippet tab stops: Tab moves between `${1}`, `${2}`, etc.
