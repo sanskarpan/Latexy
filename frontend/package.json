@@ -83,7 +83,7 @@
         "@types/three": "^0.183.1",
         "autoprefixer": "^10.4.16",
         "eslint": "^8.56.0",
-        "eslint-config-next": "14.0.4",
+        "eslint-config-next": "15.5.14",
         "monaco-editor": "0.55.1",
         "postcss": "^8.4.32",
         "prettier": "^3.6.2",
