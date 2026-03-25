@@ -33,6 +33,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ResumeResponse } from '@/lib/api-client'
+import WritingAssistantWidget from '@/components/WritingAssistantWidget'
 import ShareResumeModal from '@/components/ShareResumeModal'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
@@ -737,6 +738,13 @@ export default function ResumeEditPage() {
   const [explainerData, setExplainerData] = useState<ExplainErrorResponse | null>(null)
   const [explainerLine, setExplainerLine] = useState<number | null>(null)
 
+  // Writing assistant
+  const [writingOpen, setWritingOpen] = useState(false)
+  const [writingSelected, setWritingSelected] = useState('')
+  const [writingContext, setWritingContext] = useState('')
+  const [writingRange, setWritingRange] = useState<{ startLine: number; startColumn: number; endLine: number; endColumn: number } | null>(null)
+  const [writingTop, setWritingTop] = useState(0)
+
   // Compiler preference (stored in resume metadata)
   const [compiler, setCompiler] = useState<LatexCompiler>('pdflatex')
 
@@ -1176,6 +1184,30 @@ export default function ResumeEditPage() {
     toast.success('Fix applied')
   }, [explainerData, explainerLine])
 
+  // Writing assistant handlers
+  const handleWritingAssistantAction = useCallback((info: {
+    selectedText: string
+    context: string
+    startLine: number
+    startColumn: number
+    endLine: number
+    endColumn: number
+  }) => {
+    setWritingSelected(info.selectedText)
+    setWritingContext(info.context)
+    setWritingRange({ startLine: info.startLine, startColumn: info.startColumn, endLine: info.endLine, endColumn: info.endColumn })
+    const pos = editorRef.current?.getCaretPosition()
+    setWritingTop(pos?.top ?? 100)
+    setWritingOpen(true)
+  }, [])
+
+  const handleWritingAccept = useCallback((rewrittenText: string) => {
+    if (!writingRange) return
+    editorRef.current?.applyRewrite(writingRange.startLine, writingRange.startColumn, writingRange.endLine, writingRange.endColumn, rewrittenText)
+    setWritingOpen(false)
+    toast.success('Text rewritten')
+  }, [writingRange])
+
   // Variant handlers
   const handleCompareWithParent = useCallback(async () => {
     try {
@@ -1533,6 +1565,7 @@ export default function ResumeEditPage() {
               atsScoreLoading={quickATSLoading}
               onATSBadgeClick={() => setDeepPanelOpen(true)}
               onExplainError={handleExplainError}
+              onWritingAssistantAction={handleWritingAssistantAction}
               pageCount={pageCount}
               onCursorInSummarySection={handleCursorInSummarySection}
             />
@@ -1556,6 +1589,15 @@ export default function ResumeEditPage() {
               onInsert={handleSummaryInsert}
               resumeLatex={latexContent}
               top={summaryWidgetTop}
+            />
+
+            <WritingAssistantWidget
+              isOpen={writingOpen}
+              selectedText={writingSelected}
+              context={writingContext}
+              onAccept={handleWritingAccept}
+              onClose={() => setWritingOpen(false)}
+              top={writingTop}
             />
 
             {/* AI Bullet Widget trigger — shown when cursor is on \item line */}
