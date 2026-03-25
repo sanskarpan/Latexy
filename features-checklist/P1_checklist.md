@@ -1376,7 +1376,7 @@ triggers auto-compile for instant preview. Replaces manual preamble editing for 
   - Actually simpler: hardcode in the frontend component (no backend endpoint needed)
 
 ### 20C · Frontend — LaTeX Preamble Parser/Modifier
-- [ ] Create `frontend/src/lib/latex-preamble.ts`:
+- [x] Create `frontend/src/lib/latex-preamble.ts`:
   ```typescript
   // Utilities for reading/writing common preamble settings
 
@@ -1435,7 +1435,7 @@ triggers auto-compile for instant preview. Replaces manual preamble editing for 
   ```
 
 ### 20D · Frontend — DesignPanel Component
-- [ ] Create `frontend/src/components/DesignPanel.tsx`:
+- [x] Create `frontend/src/components/DesignPanel.tsx`:
   - Props:
     ```typescript
     {
@@ -1475,14 +1475,14 @@ triggers auto-compile for instant preview. Replaces manual preamble editing for 
     (if auto-compile is enabled in parent page)
 
 ### 20E · Frontend — Integration in Edit/Optimize Pages
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Add "Design" tab to sidebar (alongside whatever existing sidebar tabs there are)
   - `onPreambleChange` handler: `editorRef.current?.setValue(newLatex)` + `apiClient.updateResume()`
   - Pass `currentLatex={editorContent}` (live Monaco content, not saved content)
   - Pass `onTriggerCompile={autoCompileEnabled ? triggerCompile : undefined}`
 
 ### 20F · Tests
-- [ ] `frontend` — unit tests for `latex-preamble.ts` utilities:
+- [x] `frontend` — unit tests for `latex-preamble.ts` utilities:
   - `extractFontSizeFromPreamble('\\documentclass[11pt]{article}')` → `'11pt'`
   - `setAccentColorInPreamble(latex, 'FF6B6B')` → inserts correct `\definecolor` in preamble
   - `setMarginsInPreamble(latex, '0.5in')` → updates/inserts `\geometry{margin=0.5in}`
