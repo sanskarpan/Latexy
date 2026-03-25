@@ -111,6 +111,58 @@ const ENVIRONMENTS = [
   'corollary', 'proposition',
 ]
 
+// ── Rich environment snippets (Feature 30) ────────────────────────────────
+// Overrides the generic insertText for specific \begin{env} completions.
+// The text starts AFTER \begin{ so it begins with the env name.
+const RICH_ENV_SNIPPETS: Record<string, string> = {
+  itemize:
+    'itemize}\n\t\\item ${1:First item}\n\t\\item ${2:Second item}\n\\end{itemize}',
+  enumerate:
+    'enumerate}\n\t\\item ${1:First item}\n\t\\item ${2:Second item}\n\\end{enumerate}',
+  tabular:
+    'tabular}{${1:lll}}\n\t${2:Col1} & ${3:Col2} & ${4:Col3} \\\\\\\\\n\t\\hline\n\t${5:Row1} & ${6:Data} & ${7:Data} \\\\\\\\\n\\end{tabular}',
+  equation:
+    'equation}\n\t${1:formula}\n\t\\label{eq:${2:label}}\n\\end{equation}',
+  align:
+    'align}\n\t${1:f(x)} &= ${2:g(x)} \\\\\\\\\n\t      &= ${3:h(x)}\n\\end{align}',
+  figure:
+    'figure}[htbp]\n\t\\centering\n\t\\includegraphics[width=0.8\\textwidth]{${1:filename}}\n\t\\caption{${2:Caption}}\n\t\\label{fig:${3:label}}\n\\end{figure}',
+}
+
+// Standalone keyword snippets — triggered when user types the bare keyword
+interface KeywordSnippet { label: string; insertText: string; documentation: string }
+const KEYWORD_SNIPPETS: Record<string, KeywordSnippet> = {
+  doc: {
+    label: 'doc — document boilerplate',
+    insertText:
+      '\\documentclass[${1:11pt}]{${2:article}}\n\\usepackage[T1]{fontenc}\n\\usepackage[utf8]{inputenc}\n\\usepackage{geometry}\n\\geometry{margin=1in}\n\n\\begin{document}\n\n${3:Content here}\n\n\\end{document}',
+    documentation: 'Full document boilerplate',
+  },
+  sec: {
+    label: 'sec — section with label',
+    insertText: '\\section{${1:Section Title}}\n\\label{sec:${2:label}}\n\n${3}',
+    documentation: 'Section with label',
+  },
+  fig: {
+    label: 'fig — figure environment',
+    insertText:
+      '\\begin{figure}[htbp]\n\t\\centering\n\t\\includegraphics[width=0.8\\textwidth]{${1:filename}}\n\t\\caption{${2:Caption}}\n\t\\label{fig:${3:label}}\n\\end{figure}',
+    documentation: 'Figure with caption and label',
+  },
+  eq: {
+    label: 'eq — numbered equation',
+    insertText:
+      '\\begin{equation}\n\t${1:formula}\n\t\\label{eq:${2:label}}\n\\end{equation}',
+    documentation: 'Numbered equation environment',
+  },
+  tab: {
+    label: 'tab — tabular environment',
+    insertText:
+      '\\begin{tabular}{${1:lll}}\n\t${2:Col1} & ${3:Col2} & ${4:Col3} \\\\\\\\\n\t\\hline\n\t${5:Row1} & ${6:Data} & ${7:Data} \\\\\\\\\n\\end{tabular}',
+    documentation: 'Table with header row',
+  },
+}
+
 // ── Log parser → Monaco markers ───────────────────────────────────────────
 
 interface LogError {
@@ -475,7 +527,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 suggestions.push({
                   label: env,
                   kind: monaco.languages.CompletionItemKind.Module,
-                  insertText: `${env}}\n\t$0\n\\end{${env}}`,
+                  insertText: RICH_ENV_SNIPPETS[env] ?? `${env}}\n\t$0\n\\end{${env}}`,
                   insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
                   range,
                   detail: 'LaTeX environment',
@@ -559,6 +611,27 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 })
               }
             }
+          }
+
+          // Standalone keyword snippets (doc, sec, fig, eq, tab)
+          const word = model.getWordUntilPosition(position)
+          if (word.word && word.word in KEYWORD_SNIPPETS) {
+            const snippet = KEYWORD_SNIPPETS[word.word]
+            const kwRange = {
+              startLineNumber: position.lineNumber,
+              startColumn: word.startColumn,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column,
+            }
+            suggestions.push({
+              label: snippet.label,
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              insertText: snippet.insertText,
+              range: kwRange,
+              documentation: snippet.documentation,
+              sortText: '00' + word.word,
+            })
           }
 
           return { suggestions }

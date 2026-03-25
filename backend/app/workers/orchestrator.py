@@ -241,6 +241,23 @@ def optimize_and_compile_task(
             except Exception as auto_exc:
                 logger.warning(f"Failed to enqueue auto-save for resume {_resume_id}: {auto_exc}")
 
+        # Email notification (Feature 19) — fire-and-forget, non-critical
+        # Guard on _resume_id to avoid broken workspace links in the email
+        if user_id and _resume_id:
+            try:
+                from .email_worker import send_job_completion_email
+                send_job_completion_email.apply_async(
+                    args=[user_id, "llm_optimization", job_id],
+                    kwargs={"result_summary": {
+                        "ats_score": ats_score,
+                        "resume_id": _resume_id,
+                    }},
+                    queue="email",
+                    countdown=3,  # brief delay so job result is readable first
+                )
+            except Exception as email_exc:
+                logger.debug(f"Failed to enqueue completion email: {email_exc}")
+
         return result
 
     except SoftTimeLimitExceeded:

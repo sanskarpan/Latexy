@@ -143,8 +143,7 @@ test-backend:
 	cd $(BACKEND_DIR) && pytest test/ -v --tb=short
 
 test-frontend:
-	cd $(FRONTEND_DIR) && npm test -- --watchAll=false 2>/dev/null \
-	  || echo "No frontend tests configured"
+	cd $(FRONTEND_DIR) && pnpm run test:unit
 
 # ── Linting ────────────────────────────────────────────────────────────────
 lint: lint-backend lint-frontend

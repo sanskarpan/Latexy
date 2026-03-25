@@ -1,531 +1,230 @@
 """
-Email notification worker for Phase 8.
+Email notification worker — Feature 19.
+
+Tasks:
+  send_job_completion_email  — triggered after successful optimization/compile
+  send_weekly_digest         — per-user weekly summary (called by beat fan-out)
+  send_weekly_digest_to_all  — Celery Beat entry point; fans out to per-user tasks
+
+All email sends are guarded by EMAIL_ENABLED in config — disabled by default
+until the operator sets it.
 """
 
+from __future__ import annotations
+
 import asyncio
-import time
-from typing import Any, Dict, List, Optional
+import logging
+import os
+from typing import Any, Dict, Optional
 
 from ..core.celery_app import celery_app
-from ..core.logging import get_logger
-from ..core.redis import job_status_manager
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
-@celery_app.task(bind=True, name="app.workers.email_worker.send_notification_email_task")
-def send_notification_email_task(
-    self,
-    recipient_email: str,
-    subject: str,
-    message: str,
-    user_id: Optional[str] = None,
-    email_type: str = "notification",
-    template_data: Optional[Dict] = None,
-    metadata: Optional[Dict] = None
-) -> Dict[str, Any]:
-    """
-    Send notification email asynchronously.
+# ── send_job_completion_email ─────────────────────────────────────────────────
 
-    Args:
-        recipient_email: Recipient email address
-        subject: Email subject
-        message: Email message body
-        user_id: User ID for tracking
-        email_type: Type of email (notification, completion, error, etc.)
-        template_data: Data for email template
-        metadata: Additional metadata
-
-    Returns:
-        Dict containing email sending result
-    """
-    task_id = self.request.id
-    job_id = f"email_{task_id}"
-
-    logger.info(f"Starting email notification task {task_id} for job {job_id}")
-
-    try:
-        # Set initial status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "processing",
-            {
-                "task_id": task_id,
-                "user_id": user_id,
-                "recipient_email": recipient_email,
-                "email_type": email_type,
-                "started_at": time.time(),
-                "metadata": metadata or {}
-            }
-        ))
-
-        # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            20,
-            "Preparing email"
-        ))
-
-        # For now, we'll simulate email sending since we don't have SMTP configured
-        # In production, you would configure SMTP settings and actually send emails
-
-        # Simulate email preparation time
-        time.sleep(1)
-
-        # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            60,
-            "Sending email"
-        ))
-
-        # Simulate email sending
-        start_time = time.time()
-
-        # TODO: Implement actual email sending with SMTP
-        # For now, just log the email details
-        logger.info(f"Simulated email sent to {recipient_email}")
-        logger.info(f"Subject: {subject}")
-        logger.info(f"Message: {message[:100]}...")
-
-        send_time = time.time() - start_time
-
-        # Update progress
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            90,
-            "Email sent successfully"
-        ))
-
-        # Prepare result data
-        result_data = {
-            "success": True,
-            "task_id": task_id,
-            "job_id": job_id,
-            "message": "Email sent successfully",
-            "recipient_email": recipient_email,
-            "subject": subject,
-            "email_type": email_type,
-            "send_time": send_time,
-            "user_id": user_id,
-            "completed_at": time.time()
-        }
-
-        # Set final status and result
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "completed",
-            {
-                "task_id": task_id,
-                "completed_at": time.time(),
-                "send_time": send_time,
-                "success": True
-            }
-        ))
-
-        asyncio.run(job_status_manager.set_job_result(job_id, result_data))
-
-        # Final progress update
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            100,
-            "Email task completed"
-        ))
-
-        logger.info(f"Email notification task {task_id} completed for job {job_id}")
-        return result_data
-
-    except Exception as e:
-        logger.error(f"Email notification task {task_id} failed for job {job_id}: {e}")
-
-        error_data = {
-            "success": False,
-            "task_id": task_id,
-            "job_id": job_id,
-            "message": f"Email sending error: {str(e)}",
-            "error": str(e),
-            "recipient_email": recipient_email,
-            "subject": subject,
-            "email_type": email_type,
-            "send_time": 0,
-            "completed_at": time.time()
-        }
-
-        # Set error status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "failed",
-            {
-                "task_id": task_id,
-                "error": str(e),
-                "completed_at": time.time()
-            }
-        ))
-
-        asyncio.run(job_status_manager.set_job_result(job_id, error_data))
-
-        # Retry logic for transient errors
-        if self.request.retries < self.max_retries:
-            logger.info(f"Retrying email notification task {task_id} (attempt {self.request.retries + 1})")
-            raise self.retry(countdown=30, exc=e)
-
-        return error_data
-
-
-@celery_app.task(bind=True, name="app.workers.email_worker.send_completion_email_task")
-def send_completion_email_task(
-    self,
-    recipient_email: str,
-    user_name: str,
+@celery_app.task(
+    name="app.workers.email_worker.send_job_completion_email",
+    queue="email",
+    max_retries=2,
+    default_retry_delay=30,
+    ignore_result=True,
+    soft_time_limit=30,
+    time_limit=60,
+)
+def send_job_completion_email(
+    user_id: str,
     job_type: str,
     job_id: str,
-    success: bool,
-    download_url: Optional[str] = None,
-    user_id: Optional[str] = None,
-    metadata: Optional[Dict] = None
-) -> Dict[str, Any]:
-    """
-    Send job completion email asynchronously.
-
-    Args:
-        recipient_email: Recipient email address
-        user_name: User's name
-        job_type: Type of job (compilation, optimization, etc.)
-        job_id: Job ID
-        success: Whether the job was successful
-        download_url: URL to download result (if applicable)
-        user_id: User ID for tracking
-        metadata: Additional metadata
-
-    Returns:
-        Dict containing email sending result
-    """
-    task_id = self.request.id
-    email_job_id = f"completion_email_{task_id}"
-
-    logger.info(f"Starting completion email task {task_id} for job {email_job_id}")
-
-    try:
-        # Prepare email content based on job result
-        if success:
-            subject = f"Your {job_type} is ready!"
-            if job_type == "compilation":
-                message = f"""
-                Hi {user_name},
-
-                Great news! Your LaTeX resume compilation has been completed successfully.
-
-                Job ID: {job_id}
-                Status: Completed
-                {f'Download your PDF: {download_url}' if download_url else ''}
-
-                Thank you for using Latexy!
-
-                Best regards,
-                The Latexy Team
-                """
-            elif job_type == "optimization":
-                message = f"""
-                Hi {user_name},
-
-                Your resume optimization has been completed successfully!
-
-                Job ID: {job_id}
-                Status: Completed
-                {f'Download your optimized resume: {download_url}' if download_url else ''}
-
-                Your resume has been optimized for better ATS compatibility.
-
-                Best regards,
-                The Latexy Team
-                """
-            else:
-                message = f"""
-                Hi {user_name},
-
-                Your {job_type} job has been completed successfully.
-
-                Job ID: {job_id}
-                Status: Completed
-
-                Thank you for using Latexy!
-
-                Best regards,
-                The Latexy Team
-                """
-        else:
-            subject = f"Your {job_type} encountered an issue"
-            message = f"""
-            Hi {user_name},
-
-            We encountered an issue while processing your {job_type} request.
-
-            Job ID: {job_id}
-            Status: Failed
-
-            Please try again or contact our support team if the issue persists.
-
-            Best regards,
-            The Latexy Team
-            """
-
-        # Send the notification email
-        result = send_notification_email_task.apply(
-            args=[recipient_email, subject, message],
-            kwargs={
-                "user_id": user_id,
-                "email_type": "completion",
-                "template_data": {
-                    "user_name": user_name,
-                    "job_type": job_type,
-                    "job_id": job_id,
-                    "success": success,
-                    "download_url": download_url
-                },
-                "metadata": metadata
-            }
-        ).get()
-
-        logger.info(f"Completion email task {task_id} completed for job {email_job_id}")
-        return result
-
-    except Exception as e:
-        logger.error(f"Completion email task {task_id} failed for job {email_job_id}: {e}")
-
-        error_data = {
-            "success": False,
-            "task_id": task_id,
-            "job_id": email_job_id,
-            "message": f"Completion email error: {str(e)}",
-            "error": str(e),
-            "recipient_email": recipient_email,
-            "job_type": job_type,
-            "original_job_id": job_id,
-            "completed_at": time.time()
-        }
-
-        # Don't retry completion emails as they are not critical
-        return error_data
+    result_summary: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Send a job-completion email to the user if they have opted in."""
+    asyncio.run(_async_send_job_completion(user_id, job_type, job_id, result_summary or {}))
 
 
-@celery_app.task(bind=True, name="app.workers.email_worker.send_bulk_notification_task")
-def send_bulk_notification_task(
-    self,
-    recipients: List[str],
-    subject: str,
-    message: str,
-    email_type: str = "bulk_notification",
-    template_data: Optional[Dict] = None,
-    metadata: Optional[Dict] = None
-) -> Dict[str, Any]:
-    """
-    Send bulk notification emails asynchronously.
-
-    Args:
-        recipients: List of recipient email addresses
-        subject: Email subject
-        message: Email message body
-        email_type: Type of email
-        template_data: Data for email template
-        metadata: Additional metadata
-
-    Returns:
-        Dict containing bulk email sending result
-    """
-    task_id = self.request.id
-    job_id = f"bulk_email_{task_id}"
-
-    logger.info(f"Starting bulk email task {task_id} for job {job_id} with {len(recipients)} recipients")
-
-    try:
-        # Set initial status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "processing",
-            {
-                "task_id": task_id,
-                "recipient_count": len(recipients),
-                "email_type": email_type,
-                "started_at": time.time(),
-                "metadata": metadata or {}
-            }
-        ))
-
-        successful_sends = 0
-        failed_sends = 0
-        results = []
-
-        for i, recipient in enumerate(recipients):
-            try:
-                # Update progress
-                progress = int((i / len(recipients)) * 90) + 10
-                asyncio.run(job_status_manager.set_job_progress(
-                    job_id,
-                    progress,
-                    f"Sending email {i+1}/{len(recipients)}"
-                ))
-
-                # Send individual email
-                result = send_notification_email_task.apply(
-                    args=[recipient, subject, message],
-                    kwargs={
-                        "email_type": email_type,
-                        "template_data": template_data,
-                        "metadata": {"bulk_job_id": job_id, "recipient_index": i}
-                    }
-                ).get()
-
-                if result.get("success", False):
-                    successful_sends += 1
-                else:
-                    failed_sends += 1
-
-                results.append({
-                    "recipient": recipient,
-                    "success": result.get("success", False),
-                    "error": result.get("error") if not result.get("success", False) else None
-                })
-
-            except Exception as e:
-                logger.error(f"Failed to send email to {recipient}: {e}")
-                failed_sends += 1
-                results.append({
-                    "recipient": recipient,
-                    "success": False,
-                    "error": str(e)
-                })
-
-        # Prepare result data
-        result_data = {
-            "success": successful_sends > 0,
-            "task_id": task_id,
-            "job_id": job_id,
-            "message": f"Bulk email completed: {successful_sends} successful, {failed_sends} failed",
-            "total_recipients": len(recipients),
-            "successful_sends": successful_sends,
-            "failed_sends": failed_sends,
-            "results": results,
-            "email_type": email_type,
-            "completed_at": time.time()
-        }
-
-        # Set final status and result
-        final_status = "completed" if successful_sends > 0 else "failed"
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            final_status,
-            {
-                "task_id": task_id,
-                "completed_at": time.time(),
-                "successful_sends": successful_sends,
-                "failed_sends": failed_sends,
-                "success": successful_sends > 0
-            }
-        ))
-
-        asyncio.run(job_status_manager.set_job_result(job_id, result_data))
-
-        # Final progress update
-        asyncio.run(job_status_manager.set_job_progress(
-            job_id,
-            100,
-            "Bulk email task completed"
-        ))
-
-        logger.info(f"Bulk email task {task_id} completed for job {job_id}: {successful_sends}/{len(recipients)} successful")
-        return result_data
-
-    except Exception as e:
-        logger.error(f"Bulk email task {task_id} failed for job {job_id}: {e}")
-
-        error_data = {
-            "success": False,
-            "task_id": task_id,
-            "job_id": job_id,
-            "message": f"Bulk email error: {str(e)}",
-            "error": str(e),
-            "total_recipients": len(recipients),
-            "successful_sends": 0,
-            "failed_sends": len(recipients),
-            "completed_at": time.time()
-        }
-
-        # Set error status
-        asyncio.run(job_status_manager.set_job_status(
-            job_id,
-            "failed",
-            {
-                "task_id": task_id,
-                "error": str(e),
-                "completed_at": time.time()
-            }
-        ))
-
-        asyncio.run(job_status_manager.set_job_result(job_id, error_data))
-
-        return error_data
-
-
-# Utility functions to submit email jobs
-def submit_notification_email(
-    recipient_email: str,
-    subject: str,
-    message: str,
-    user_id: Optional[str] = None,
-    email_type: str = "notification",
-    template_data: Optional[Dict] = None,
-    metadata: Optional[Dict] = None
-) -> str:
-    """
-    Submit notification email job to queue.
-
-    Returns:
-        job_id: Job ID for tracking
-    """
-    # Submit task to queue
-    task = send_notification_email_task.apply_async(
-        args=[recipient_email, subject, message],
-        kwargs={
-            "user_id": user_id,
-            "email_type": email_type,
-            "template_data": template_data,
-            "metadata": metadata
-        },
-        queue="email"
-    )
-
-    job_id = f"email_{task.id}"
-    logger.info(f"Submitted notification email job {job_id} with task {task.id}")
-    return job_id
-
-
-def submit_completion_email(
-    recipient_email: str,
-    user_name: str,
+async def _async_send_job_completion(
+    user_id: str,
     job_type: str,
     job_id: str,
-    success: bool,
-    download_url: Optional[str] = None,
-    user_id: Optional[str] = None,
-    metadata: Optional[Dict] = None
-) -> str:
-    """
-    Submit completion email job to queue.
+    result_summary: Dict[str, Any],
+) -> None:
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-    Returns:
-        job_id: Job ID for tracking
-    """
-    # Submit task to queue
-    task = send_completion_email_task.apply_async(
-        args=[recipient_email, user_name, job_type, job_id, success],
-        kwargs={
-            "download_url": download_url,
-            "user_id": user_id,
-            "metadata": metadata
-        },
-        queue="email"
-    )
+    from ..core.config import settings
+    from ..database.models import User
+    from ..services.email_service import email_service, render_job_completed_email
+    from ..utils.db_url import normalize_database_url
 
-    email_job_id = f"completion_email_{task.id}"
-    logger.info(f"Submitted completion email job {email_job_id} with task {task.id}")
-    return email_job_id
+    if not settings.EMAIL_ENABLED:
+        return
+
+    raw_url = os.environ.get("DATABASE_URL", "")
+    if not raw_url:
+        logger.warning("EMAIL: DATABASE_URL not set, skipping completion email")
+        return
+
+    engine = create_async_engine(normalize_database_url(raw_url), echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_factory() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+
+        if not user:
+            logger.warning(f"EMAIL: user {user_id} not found")
+            return
+
+        prefs: Dict = user.email_notifications or {}
+        if not prefs.get("job_completed", True):
+            logger.debug(f"EMAIL: user {user_id} has job_completed notifications disabled")
+            return
+
+        user_name = user.name or user.email.split("@")[0]
+        ats_score = result_summary.get("ats_score")
+        resume_url = f"{settings.FRONTEND_URL}/workspace/{result_summary.get('resume_id', '')}/edit"
+
+        html, text = render_job_completed_email(user_name, job_type, ats_score, resume_url)
+        job_label = "optimization" if job_type == "llm_optimization" else "compilation"
+        await email_service.send_email(
+            to=user.email,
+            subject=f"Your resume {job_label} is complete",
+            html_body=html,
+            text_body=text,
+        )
+    except Exception as exc:
+        logger.error(f"EMAIL: completion email failed for user {user_id}: {exc}")
+    finally:
+        await engine.dispose()
+
+
+# ── send_weekly_digest ────────────────────────────────────────────────────────
+
+@celery_app.task(
+    name="app.workers.email_worker.send_weekly_digest",
+    queue="email",
+    max_retries=1,
+    ignore_result=True,
+    soft_time_limit=60,
+    time_limit=120,
+)
+def send_weekly_digest(user_id: str) -> None:
+    """Send weekly activity digest to a single user."""
+    asyncio.run(_async_send_weekly_digest(user_id))
+
+
+async def _async_send_weekly_digest(user_id: str) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import func, select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from ..core.config import settings
+    from ..database.models import Compilation, Resume, User
+    from ..services.email_service import email_service, render_weekly_digest_email
+    from ..utils.db_url import normalize_database_url
+
+    if not settings.EMAIL_ENABLED:
+        return
+
+    raw_url = os.environ.get("DATABASE_URL", "")
+    if not raw_url:
+        return
+
+    engine = create_async_engine(normalize_database_url(raw_url), echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    since = datetime.now(timezone.utc) - timedelta(days=7)
+
+    try:
+        async with session_factory() as session:
+            user_result = await session.execute(select(User).where(User.id == user_id))
+            user = user_result.scalar_one_or_none()
+            if not user:
+                return
+
+            prefs: Dict = user.email_notifications or {}
+            if not prefs.get("weekly_digest", False):
+                return
+
+            # Resume count this week
+            resume_result = await session.execute(
+                select(func.count()).select_from(Resume).where(
+                    Resume.user_id == user_id,
+                    Resume.created_at >= since,
+                )
+            )
+            resume_count: int = resume_result.scalar_one() or 0
+
+            # Compilation count + avg ATS score this week
+            compile_result = await session.execute(
+                select(func.count(), func.avg(Compilation.ats_score)).where(
+                    Compilation.user_id == user_id,
+                    Compilation.created_at >= since,
+                )
+            )
+            row = compile_result.one()
+            compilation_count: int = row[0] or 0
+            avg_ats: Optional[float] = float(row[1]) if row[1] else None
+
+        user_name = user.name or user.email.split("@")[0]
+        html, text = render_weekly_digest_email(user_name, resume_count, compilation_count, avg_ats)
+        await email_service.send_email(
+            to=user.email,
+            subject="Your weekly Latexy summary",
+            html_body=html,
+            text_body=text,
+        )
+    except Exception as exc:
+        logger.error(f"EMAIL: weekly digest failed for user {user_id}: {exc}")
+    finally:
+        await engine.dispose()
+
+
+# ── send_weekly_digest_to_all ─────────────────────────────────────────────────
+
+@celery_app.task(
+    name="app.workers.email_worker.send_weekly_digest_to_all",
+    queue="email",
+    ignore_result=True,
+)
+def send_weekly_digest_to_all() -> None:
+    """Celery Beat entry point — fans out per-user weekly digest tasks."""
+    asyncio.run(_async_fan_out_weekly_digest())
+
+
+async def _async_fan_out_weekly_digest() -> None:
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from ..core.config import settings
+    from ..database.models import User
+    from ..utils.db_url import normalize_database_url
+
+    if not settings.EMAIL_ENABLED:
+        return
+
+    raw_url = os.environ.get("DATABASE_URL", "")
+    if not raw_url:
+        return
+
+    engine = create_async_engine(normalize_database_url(raw_url), echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_factory() as session:
+            result = await session.execute(
+                select(User.id).where(
+                    User.email_notifications["weekly_digest"].astext == "true"
+                )
+            )
+            user_ids = [row[0] for row in result.all()]
+
+        logger.info(f"EMAIL: fanning out weekly digest to {len(user_ids)} users")
+        for uid in user_ids:
+            send_weekly_digest.apply_async(args=[uid], queue="email", countdown=1)
+    except Exception as exc:
+        logger.error(f"EMAIL: fan-out weekly digest failed: {exc}")
+    finally:
+        await engine.dispose()

@@ -27,6 +27,7 @@ import {
   Share2,
   BookOpen,
   MessageSquare,
+  Palette,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ResumeResponse } from '@/lib/api-client'
 import ShareResumeModal from '@/components/ShareResumeModal'
@@ -44,6 +45,7 @@ import SaveCheckpointPopover from '@/components/SaveCheckpointPopover'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
 import ReferencesPanel from '@/components/ReferencesPanel'
+import DesignPanel from '@/components/DesignPanel'
 import CompilerSelector from '@/components/CompilerSelector'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
@@ -51,7 +53,7 @@ import { Brain, GitFork, Zap } from 'lucide-react'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
@@ -1139,6 +1141,12 @@ export default function ResumeEditPage() {
     toast.success('Version restored')
   }, [pushUndo])
 
+  // ── Design panel — preamble change (Feature 20) ──────────────────────────
+  const handleDesignPreambleChange = useCallback((newLatex: string) => {
+    editorRef.current?.setValue(newLatex)
+    setLatexContent(newLatex)
+  }, [])
+
   const handleCreateVariant = useCallback(async () => {
     if (isForkingResume) return
     setIsForkingResume(true)
@@ -1173,6 +1181,13 @@ export default function ResumeEditPage() {
       setIsSubmitting(false)
     }
   }, [isSubmitting, resumeId, compiler])
+
+  // Design panel — trigger compile after preamble change (Feature 20)
+  const handleDesignTriggerCompile = useCallback(() => {
+    if (isAnyRunning) return
+    const content = editorRef.current?.getValue()
+    if (content?.trim()) handleAutoCompile(content)
+  }, [isAnyRunning, handleAutoCompile])
 
   const pageCount = lastStartedJobKind === 'ai'
     ? aiStream.pageCount
@@ -1506,6 +1521,7 @@ export default function ResumeEditPage() {
                 { id: 'history', label: 'History', icon: History },
                 { id: 'references', label: 'Refs', icon: BookOpen },
                 { id: 'interview', label: 'Interview', icon: MessageSquare },
+                { id: 'design', label: 'Design', icon: Palette },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -1627,6 +1643,14 @@ export default function ResumeEditPage() {
                   defaultJobDescription={jobDescription}
                 />
               </div>
+            )}
+
+            {rightTab === 'design' && (
+              <DesignPanel
+                currentLatex={latexContent}
+                onPreambleChange={handleDesignPreambleChange}
+                onTriggerCompile={autoCompile ? handleDesignTriggerCompile : undefined}
+              />
             )}
           </div>
         </aside>

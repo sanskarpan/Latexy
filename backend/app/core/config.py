@@ -106,6 +106,17 @@ class Settings(BaseSettings):
     # Frontend URL (used to build shareable resume links)
     FRONTEND_URL: str = Field(default="http://localhost:5180", description="Frontend base URL for share links")
 
+    # Email Configuration (Feature 19)
+    EMAIL_ENABLED: bool = Field(default=False, description="Master toggle — set True when email provider is configured")
+    EMAIL_PROVIDER: str = Field(default="resend", description="Email provider: 'resend' | 'smtp'")
+    RESEND_API_KEY: str = Field(default="", description="Resend API key (https://resend.com)")
+    SMTP_HOST: str = Field(default="", description="SMTP server host")
+    SMTP_PORT: int = Field(default=587, description="SMTP server port")
+    SMTP_USER: str = Field(default="", description="SMTP username")
+    SMTP_PASSWORD: str = Field(default="", description="SMTP password")
+    EMAIL_FROM: str = Field(default="noreply@latexy.io", description="From address for outgoing emails")
+    EMAIL_FROM_NAME: str = Field(default="Latexy", description="From name for outgoing emails")
+
     # Admin email — user with this email can access /admin/* endpoints
     ADMIN_EMAIL: str = Field(default="", description="Email of the admin user for /admin/* access")
 

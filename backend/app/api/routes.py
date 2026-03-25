@@ -107,6 +107,11 @@ from .interview_routes import router as interview_router
 router.include_router(interview_router)
 router.include_router(resume_interview_router)
 
+# Include Settings routes (notification preferences — Feature 19)
+from .settings_routes import router as settings_router
+
+router.include_router(settings_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
