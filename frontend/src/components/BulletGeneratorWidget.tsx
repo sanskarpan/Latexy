@@ -28,13 +28,14 @@ export default function BulletGeneratorWidget({
   onInsert,
   top,
 }: BulletGeneratorWidgetProps) {
-  const [jobTitle, setJobTitle]         = useState('')
-  const [responsibility, setResp]       = useState('')
-  const [tone, setTone]                 = useState<Tone>('technical')
-  const [bullets, setBullets]           = useState<string[]>([])
-  const [isLoading, setIsLoading]       = useState(false)
-  const [insertedIdx, setInsertedIdx]   = useState<number | null>(null)
-  const containerRef                    = useRef<HTMLDivElement>(null)
+  const [jobTitle, setJobTitle]           = useState('')
+  const [responsibility, setResp]         = useState('')
+  const [tone, setTone]                   = useState<Tone>('technical')
+  const [bullets, setBullets]             = useState<string[]>([])
+  const [isLoading, setIsLoading]         = useState(false)
+  const [insertedIdx, setInsertedIdx]     = useState<number | null>(null)
+  const [generationAttempted, setAttempted] = useState(false)
+  const containerRef                      = useRef<HTMLDivElement>(null)
 
   // Close on Escape
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function BulletGeneratorWidget({
     if (!responsibility.trim() || isLoading) return
     setIsLoading(true)
     setBullets([])
+    setAttempted(false)
     try {
       const req: GenerateBulletsRequest = {
         job_title:      jobTitle.trim() || 'Professional',
@@ -60,8 +62,9 @@ export default function BulletGeneratorWidget({
       }
       const res = await apiClient.generateBullets(req)
       setBullets(res.bullets)
+      setAttempted(true)
     } catch {
-      // silent — user can retry
+      setAttempted(true)
     } finally {
       setIsLoading(false)
     }
@@ -169,6 +172,13 @@ export default function BulletGeneratorWidget({
               <><Sparkles size={11} /> Generate</>
             )}
           </button>
+
+          {/* Empty / error state after generation attempt */}
+          {generationAttempted && bullets.length === 0 && !isLoading && (
+            <p className="text-center text-[10px] text-rose-400/80">
+              No bullets returned — check your API key or try rephrasing.
+            </p>
+          )}
 
           {/* Results */}
           {bullets.length > 0 && (
