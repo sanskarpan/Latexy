@@ -5,7 +5,7 @@ AI tool routes — error explanation and other AI-powered utilities.
 import hashlib
 import json
 import time
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import openai
 from fastapi import APIRouter, Depends
@@ -31,7 +31,7 @@ class GenerateBulletsRequest(BaseModel):
     job_title: str = Field(..., max_length=200)
     responsibility: str = Field(..., max_length=500)
     context: Optional[str] = Field(None, max_length=1000)
-    tone: str = Field(default="technical")  # technical | leadership | analytical | creative
+    tone: Literal["technical", "leadership", "analytical", "creative"] = "technical"
     count: int = Field(default=5, ge=1, le=10)
 
 
@@ -71,8 +71,14 @@ Return JSON: {{ "bullets": ["Led cross-functional team...", "Engineered scalable
 Only JSON, no markdown."""
 
 
-def _bullet_cache_key(job_title: str, responsibility: str, tone: str, count: int) -> str:
-    raw = f"{job_title}|{responsibility}|{tone}|{count}"
+def _bullet_cache_key(
+    job_title: str,
+    responsibility: str,
+    tone: str,
+    count: int,
+    context: Optional[str] = None,
+) -> str:
+    raw = f"{job_title}|{responsibility}|{tone}|{count}|{(context or '').strip()}"
     return "ai:bullets:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
@@ -84,7 +90,11 @@ async def generate_bullets(
 ):
     """Generate strong resume bullet points using AI. Auth optional."""
     cache_key = _bullet_cache_key(
-        request.job_title, request.responsibility, request.tone, request.count
+        request.job_title,
+        request.responsibility,
+        request.tone,
+        request.count,
+        request.context,
     )
 
     # Check cache
