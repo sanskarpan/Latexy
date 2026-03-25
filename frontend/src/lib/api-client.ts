@@ -289,6 +289,24 @@ export interface ExplainErrorResponse {
   processing_time: number
 }
 
+export interface SummaryVariant {
+  emphasis: string
+  title: string
+  text: string
+}
+
+export interface GenerateSummaryRequest {
+  resume_latex: string
+  target_role?: string
+  job_description?: string
+  count?: number
+}
+
+export interface GenerateSummaryResponse {
+  summaries: SummaryVariant[]
+  cached: boolean
+}
+
 export interface GenerateBulletsRequest {
   job_title: string
   responsibility: string
@@ -1046,6 +1064,13 @@ class ApiClient {
 
   async generateBullets(body: GenerateBulletsRequest): Promise<GenerateBulletsResponse> {
     return this.request<GenerateBulletsResponse>('/ai/generate-bullets', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async generateSummary(body: GenerateSummaryRequest): Promise<GenerateSummaryResponse> {
+    return this.request<GenerateSummaryResponse>('/ai/generate-summary', {
       method: 'POST',
       body: JSON.stringify(body),
     })
