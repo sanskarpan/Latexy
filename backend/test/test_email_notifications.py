@@ -20,9 +20,7 @@ from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
-from httpx import AsyncClient, ASGITransport
-
+from httpx import ASGITransport, AsyncClient
 
 # ── EmailService unit tests ───────────────────────────────────────────────────
 
@@ -182,6 +180,7 @@ def app_with_settings_routes():
     os.environ["SKIP_ENV_VALIDATION"] = "true"
 
     from fastapi import FastAPI
+
     from app.api.settings_routes import router
 
     app = FastAPI()
@@ -192,8 +191,8 @@ def app_with_settings_routes():
 @pytest.fixture
 async def auth_client(app_with_settings_routes) -> AsyncGenerator[AsyncClient, None]:
     """AsyncClient with a mocked auth dependency returning a test user_id."""
-    from app.middleware.auth_middleware import get_current_user_required
     from app.database.connection import get_db
+    from app.middleware.auth_middleware import get_current_user_required
 
     TEST_USER_ID = "test-user-uuid-1234"
 
@@ -216,11 +215,12 @@ class TestNotificationPrefsEndpoints:
     @pytest.mark.asyncio
     async def test_get_returns_defaults_for_new_user(self, app_with_settings_routes):
         """GET /settings/notifications returns default prefs when user has no prefs set."""
-        from app.middleware.auth_middleware import get_current_user_required
-        from app.database.connection import get_db
-
         from unittest.mock import AsyncMock, MagicMock
+
         from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.database.connection import get_db
+        from app.middleware.auth_middleware import get_current_user_required
 
         TEST_USER_ID = "user-no-prefs"
 
@@ -256,9 +256,10 @@ class TestNotificationPrefsEndpoints:
     @pytest.mark.asyncio
     async def test_put_persists_changes(self, app_with_settings_routes):
         """PUT /settings/notifications updates and returns new prefs."""
-        from app.middleware.auth_middleware import get_current_user_required
-        from app.database.connection import get_db
         from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.database.connection import get_db
+        from app.middleware.auth_middleware import get_current_user_required
 
         TEST_USER_ID = "user-put-test"
 
@@ -298,9 +299,10 @@ class TestNotificationPrefsEndpoints:
     @pytest.mark.asyncio
     async def test_put_missing_field_rejected(self, app_with_settings_routes):
         """PUT /settings/notifications with only unknown fields → defaults used (200)."""
-        from app.middleware.auth_middleware import get_current_user_required
-        from app.database.connection import get_db
         from sqlalchemy.ext.asyncio import AsyncSession
+
+        from app.database.connection import get_db
+        from app.middleware.auth_middleware import get_current_user_required
 
         TEST_USER_ID = "user-default-fields"
 
