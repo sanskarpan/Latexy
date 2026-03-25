@@ -76,6 +76,12 @@ export default function SettingsPage() {
                   role="switch"
                   aria-checked={prefs.job_completed}
                   onClick={() => setPrefs((p) => ({ ...p, job_completed: !p.job_completed }))}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault()
+                      setPrefs((p) => ({ ...p, job_completed: !p.job_completed }))
+                    }
+                  }}
                   className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
                     prefs.job_completed ? 'bg-violet-600' : 'bg-white/10'
                   }`}
@@ -107,6 +113,12 @@ export default function SettingsPage() {
                   role="switch"
                   aria-checked={prefs.weekly_digest}
                   onClick={() => setPrefs((p) => ({ ...p, weekly_digest: !p.weekly_digest }))}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault()
+                      setPrefs((p) => ({ ...p, weekly_digest: !p.weekly_digest }))
+                    }
+                  }}
                   className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
                     prefs.weekly_digest ? 'bg-violet-600' : 'bg-white/10'
                   }`}
