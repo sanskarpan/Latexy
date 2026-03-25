@@ -320,6 +320,21 @@ export interface GenerateBulletsResponse {
   cached: boolean
 }
 
+export type RewriteAction = 'improve' | 'shorten' | 'quantify' | 'power_verbs' | 'change_tone' | 'expand'
+
+export interface RewriteRequest {
+  selected_text: string
+  action: RewriteAction
+  context?: string
+  tone?: string
+}
+
+export interface RewriteResponse {
+  rewritten: string
+  action: string
+  cached: boolean
+}
+
 export interface BibTeXEntry {
   identifier: string
   bibtex: string | null
@@ -1071,6 +1086,13 @@ class ApiClient {
 
   async generateSummary(body: GenerateSummaryRequest): Promise<GenerateSummaryResponse> {
     return this.request<GenerateSummaryResponse>('/ai/generate-summary', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async rewriteText(body: RewriteRequest): Promise<RewriteResponse> {
+    return this.request<RewriteResponse>('/ai/rewrite', {
       method: 'POST',
       body: JSON.stringify(body),
     })
