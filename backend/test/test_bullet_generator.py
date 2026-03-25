@@ -20,7 +20,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import AsyncClient
 
-
 # ---------------------------------------------------------------------------
 # Helper: build a fake OpenAI response
 # ---------------------------------------------------------------------------
