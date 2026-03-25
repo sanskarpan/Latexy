@@ -1862,7 +1862,7 @@ section. Generates 3 alternative summaries (technical, leadership, unique). User
 insert. Non-streaming, fast LLM call.
 
 ### 24A · Backend — Summary Generator Endpoint
-- [ ] Add `POST /ai/generate-summary` to `backend/app/api/ai_routes.py`:
+- [x] Add `POST /ai/generate-summary` to `backend/app/api/ai_routes.py`:
   ```python
   class GenerateSummaryRequest(BaseModel):
       resume_latex: str = Field(..., max_length=50_000)  # full resume for context
@@ -1895,7 +1895,7 @@ insert. Non-streaming, fast LLM call.
   - Cache TTL: 1800s (30 min — summaries are context-specific)
 
 ### 24B · Frontend — Summary Detection
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add prop: `onCursorInSummarySection?: (inSummary: boolean) => void`
   - Detect if cursor is in summary section:
     ```typescript
@@ -1914,7 +1914,7 @@ insert. Non-streaming, fast LLM call.
   - Fire `onCursorInSummarySection` from `onDidChangeCursorPosition`
 
 ### 24C · Frontend — SummaryGeneratorWidget Component
-- [ ] Create `frontend/src/components/SummaryGeneratorWidget.tsx`:
+- [x] Create `frontend/src/components/SummaryGeneratorWidget.tsx`:
   - Appears as a small floating button when `inSummarySection = true`:
     - Button: "✨ Generate Summary" (small, `violet` accent, positioned at top of section)
   - On click → opens modal/panel:
@@ -1929,13 +1929,13 @@ insert. Non-streaming, fast LLM call.
       - Simpler: insert at cursor position directly (user positions cursor first)
 
 ### 24D · Frontend — Integration
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Track `cursorInSummarySection: boolean` from `onCursorInSummarySection`
   - Show `SummaryGeneratorWidget` when `cursorInSummarySection === true`
   - Pass full `editorContent` as `resume_latex` for context
 
 ### 24E · Tests
-- [ ] `backend/test/test_summary_generator.py`:
+- [x] `backend/test/test_summary_generator.py`:
   - POST returns 3 summaries (default count)
   - Each summary has `emphasis`, `title`, `text` fields
   - `text` is not empty and doesn't contain JSON artifacts
