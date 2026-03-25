@@ -14,6 +14,8 @@ export interface LaTeXEditorRef {
   highlightLine: (line: number) => void
   applyFix: (line: number, correctedCode: string) => void
   insertAtCursor: (text: string) => void
+  /** Returns pixel position of the cursor relative to the editor container, or null if unavailable */
+  getCaretPosition: () => { top: number; left: number } | null
 }
 
 interface LaTeXEditorProps {
@@ -40,6 +42,8 @@ interface LaTeXEditorProps {
   onExplainError?: (error: { line: number; message: string; surroundingLatex: string }) => void
   /** Actual page count from last compile result (null = not compiled yet) */
   pageCount?: number | null
+  /** Called (debounced 200ms) when cursor moves to a different line — fires with raw line content */
+  onCursorLineChange?: (lineContent: string, lineNumber: number) => void
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -218,7 +222,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -228,6 +232,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     autoCompileRef.current = onAutoCompile
     const onExplainErrorRef = useRef(onExplainError)
     onExplainErrorRef.current = onExplainError
+    const onCursorLineChangeRef = useRef(onCursorLineChange)
+    onCursorLineChangeRef.current = onCursorLineChange
 
     // Pre-compile page count estimate (~50 text lines per page)
     const estimatedPageCount = useMemo(() => {
@@ -280,6 +286,15 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           text,
         }])
         editor.focus()
+      },
+      getCaretPosition() {
+        const editor = editorRef.current
+        if (!editor) return null
+        const position = editor.getPosition()
+        if (!position) return null
+        const pixel = editor.getScrolledVisiblePosition(position)
+        if (!pixel) return null
+        return { top: pixel.top, left: pixel.left }
       },
     }))
 
@@ -823,6 +838,23 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           onCursorChange(e.position.lineNumber)
         })
         disposablesRef.current.push(cursorDisposable)
+      }
+
+      // ── Cursor line-content change (debounced 200ms) ───────────────
+      {
+        let lineTimer: ReturnType<typeof setTimeout> | null = null
+        const lineDisposable = editor.onDidChangeCursorPosition((e: any) => {
+          if (!onCursorLineChangeRef.current) return
+          if (lineTimer) clearTimeout(lineTimer)
+          lineTimer = setTimeout(() => {
+            const model = editor.getModel()
+            if (!model) return
+            const content = model.getLineContent(e.position.lineNumber) ?? ''
+            onCursorLineChangeRef.current?.(content, e.position.lineNumber)
+          }, 200)
+        })
+        disposablesRef.current.push(lineDisposable)
+        disposablesRef.current.push({ dispose: () => { if (lineTimer) clearTimeout(lineTimer) } })
       }
 
     }
