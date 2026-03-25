@@ -289,6 +289,19 @@ export interface ExplainErrorResponse {
   processing_time: number
 }
 
+export interface GenerateBulletsRequest {
+  job_title: string
+  responsibility: string
+  context?: string
+  tone?: 'technical' | 'leadership' | 'analytical' | 'creative'
+  count?: number
+}
+
+export interface GenerateBulletsResponse {
+  bullets: string[]
+  cached: boolean
+}
+
 export interface BibTeXEntry {
   identifier: string
   bibtex: string | null
@@ -1026,6 +1039,13 @@ class ApiClient {
 
   async explainLatexError(body: ExplainErrorRequest): Promise<ExplainErrorResponse> {
     return this.request<ExplainErrorResponse>('/ai/explain-error', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async generateBullets(body: GenerateBulletsRequest): Promise<GenerateBulletsResponse> {
+    return this.request<GenerateBulletsResponse>('/ai/generate-bullets', {
       method: 'POST',
       body: JSON.stringify(body),
     })

@@ -1654,14 +1654,14 @@ Enables agency/platform integrations.
 
 ---
 
-## Feature 22 — AI Bullet Point Generator · P1 · M
+## Feature 22 — AI Bullet Point Generator · P1 · M ✅ COMPLETED
 
 **Goal:** Floating widget appears when editor cursor is on a `\item` line. User describes a task;
 AI generates 5 strong bullet options. Click to insert at cursor. LLM call is non-streaming,
 fast (gpt-4o-mini, ~1s). Frontend-only feature — reuses existing `explainLatexError` API pattern.
 
 ### 22A · Backend — Bullet Generator Endpoint
-- [ ] Add `POST /ai/generate-bullets` to `backend/app/api/ai_routes.py`:
+- [x] Add `POST /ai/generate-bullets` to `backend/app/api/ai_routes.py`:
   ```python
   class GenerateBulletsRequest(BaseModel):
       job_title: str = Field(..., max_length=200)
@@ -1694,13 +1694,13 @@ fast (gpt-4o-mini, ~1s). Frontend-only feature — reuses existing `explainLatex
   - `temperature=0.8` (higher for creative variety)
 
 ### 22B · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   generateBullets(request: GenerateBulletsRequest): Promise<GenerateBulletsResponse>
   ```
 
 ### 22C · Frontend — BulletGeneratorWidget Component
-- [ ] Create `frontend/src/components/BulletGeneratorWidget.tsx`:
+- [x] Create `frontend/src/components/BulletGeneratorWidget.tsx`:
   - Position: floating panel attached to the current `\item` line (positioned near cursor)
   - Triggered by: cursor is on a line matching `/^\s*\\item/`
   - **Widget layout (compact, ~320px wide):**
@@ -1718,7 +1718,7 @@ fast (gpt-4o-mini, ~1s). Frontend-only feature — reuses existing `explainLatex
   - Escape key closes widget
 
 ### 22D · Frontend — Cursor Detection in LaTeXEditor
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add prop: `onCursorLineChange?: (lineContent: string, lineNumber: number) => void`
   - In `handleEditorDidMount`, register:
     ```typescript
@@ -1730,7 +1730,7 @@ fast (gpt-4o-mini, ~1s). Frontend-only feature — reuses existing `explainLatex
   - Debounce at 200ms to avoid excessive calls
 
 ### 22E · Frontend — Integration in Edit Page
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - State: `bulletWidgetOpen: boolean`, `bulletWidgetLine: number | null`
   - `onCursorLineChange` handler:
     ```typescript
@@ -1747,7 +1747,7 @@ fast (gpt-4o-mini, ~1s). Frontend-only feature — reuses existing `explainLatex
   - Position widget near cursor using `editor.getScrolledVisiblePosition(position)` → absolute CSS
 
 ### 22F · Tests
-- [ ] `backend/test/test_bullet_generator.py`:
+- [x] `backend/test/test_bullet_generator.py`:
   - POST returns 5 bullets (default count)
   - Each bullet starts with a capital letter (action verb)
   - `count=3` → returns 3 bullets
