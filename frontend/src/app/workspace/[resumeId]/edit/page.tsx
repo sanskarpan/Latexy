@@ -46,6 +46,7 @@ import DiffViewerModal from '@/components/DiffViewerModal'
 import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
 import ReferencesPanel from '@/components/ReferencesPanel'
 import DesignPanel from '@/components/DesignPanel'
+import BulletGeneratorWidget from '@/components/BulletGeneratorWidget'
 import CompilerSelector from '@/components/CompilerSelector'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
@@ -701,6 +702,11 @@ export default function ResumeEditPage() {
   const [syncFromLine, setSyncFromLine] = useState<number | null>(null)
   const [cursorLine, setCursorLine] = useState<number | null>(null)
 
+  // Bullet generator widget
+  const [bulletWidgetOpen, setBulletWidgetOpen] = useState(false)
+  const [bulletWidgetTop, setBulletWidgetTop] = useState(0)
+  const [bulletWidgetLine, setBulletWidgetLine] = useState<number | null>(null)
+
   // Deep analysis (Layer 2)
   const [deepPanelOpen, setDeepPanelOpen] = useState(false)
   const [deepAnalysisJobId, setDeepAnalysisJobId] = useState<string | null>(null)
@@ -1082,6 +1088,24 @@ export default function ResumeEditPage() {
   const handleCursorChange = useCallback((line: number) => {
     setCursorLine(line)
   }, [])
+
+  const handleCursorLineChange = useCallback((lineContent: string, lineNumber: number) => {
+    const isItemLine = /^\s*\\item/.test(lineContent)
+    setBulletWidgetLine(isItemLine ? lineNumber : null)
+    if (!isItemLine && bulletWidgetOpen) setBulletWidgetOpen(false)
+  }, [bulletWidgetOpen])
+
+  const handleOpenBulletWidget = useCallback(() => {
+    const pos = editorRef.current?.getCaretPosition()
+    setBulletWidgetTop(pos?.top ?? 0)
+    setBulletWidgetOpen(true)
+  }, [])
+
+  const handleBulletInsert = useCallback((bullet: string) => {
+    if (bulletWidgetLine === null) return
+    editorRef.current?.applyFix(bulletWidgetLine, `\\item ${bullet}`)
+    setBulletWidgetOpen(false)
+  }, [bulletWidgetLine])
 
   const handleOutlineJump = useCallback((line: number) => {
     editorRef.current?.highlightLine(line)
@@ -1472,6 +1496,7 @@ export default function ResumeEditPage() {
               onSave={handleSave}
               onCompile={runCompile}
               onCursorChange={handleCursorChange}
+              onCursorLineChange={handleCursorLineChange}
               syncLine={syncFromLine}
               onAutoCompile={autoCompile && !isAnyRunning ? handleAutoCompile : undefined}
               atsScore={quickATSScore}
@@ -1480,6 +1505,27 @@ export default function ResumeEditPage() {
               onExplainError={handleExplainError}
               pageCount={pageCount}
             />
+
+            {/* AI Bullet Widget trigger — shown when cursor is on \item line */}
+            {bulletWidgetLine !== null && !bulletWidgetOpen && (
+              <button
+                onClick={handleOpenBulletWidget}
+                title="AI Bullet Generator"
+                className="absolute left-1 z-20 flex items-center gap-1 rounded-md bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-violet-300 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
+                style={{ top: (editorRef.current?.getCaretPosition()?.top ?? 0) + 2 }}
+              >
+                <Sparkles size={9} />
+                AI
+              </button>
+            )}
+
+            <BulletGeneratorWidget
+              isOpen={bulletWidgetOpen}
+              onClose={() => setBulletWidgetOpen(false)}
+              onInsert={handleBulletInsert}
+              top={bulletWidgetTop}
+            />
+
             <div className="absolute inset-x-0 bottom-0 z-10">
               <ErrorExplainerPanel
                 isOpen={explainerOpen}
