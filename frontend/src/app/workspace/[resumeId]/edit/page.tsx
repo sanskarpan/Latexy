@@ -28,6 +28,9 @@ import {
   BookOpen,
   MessageSquare,
   Palette,
+  Brain,
+  GitFork,
+  Zap,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ResumeResponse } from '@/lib/api-client'
 import ShareResumeModal from '@/components/ShareResumeModal'
@@ -47,10 +50,10 @@ import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
 import ReferencesPanel from '@/components/ReferencesPanel'
 import DesignPanel from '@/components/DesignPanel'
 import BulletGeneratorWidget from '@/components/BulletGeneratorWidget'
+import SummaryGeneratorWidget from '@/components/SummaryGeneratorWidget'
 import CompilerSelector from '@/components/CompilerSelector'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
-import { Brain, GitFork, Zap } from 'lucide-react'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 
@@ -707,6 +710,11 @@ export default function ResumeEditPage() {
   const [bulletWidgetTop, setBulletWidgetTop] = useState(0)
   const [bulletWidgetLine, setBulletWidgetLine] = useState<number | null>(null)
 
+  // Summary generator widget
+  const [summaryWidgetOpen, setSummaryWidgetOpen] = useState(false)
+  const [summaryWidgetTop, setSummaryWidgetTop] = useState(0)
+  const [cursorInSummarySection, setCursorInSummarySection] = useState(false)
+
   // Deep analysis (Layer 2)
   const [deepPanelOpen, setDeepPanelOpen] = useState(false)
   const [deepAnalysisJobId, setDeepAnalysisJobId] = useState<string | null>(null)
@@ -1113,6 +1121,22 @@ export default function ResumeEditPage() {
     setBulletWidgetOpen(false)
   }, [bulletWidgetLine])
 
+  const handleCursorInSummarySection = useCallback((inSummary: boolean) => {
+    setCursorInSummarySection(inSummary)
+    if (!inSummary && summaryWidgetOpen) setSummaryWidgetOpen(false)
+  }, [summaryWidgetOpen])
+
+  const handleOpenSummaryWidget = useCallback(() => {
+    const pos = editorRef.current?.getCaretPosition()
+    setSummaryWidgetTop(pos?.top ?? 0)
+    setSummaryWidgetOpen(true)
+  }, [])
+
+  const handleSummaryInsert = useCallback((text: string) => {
+    editorRef.current?.insertAtCursor(text)
+    setSummaryWidgetOpen(false)
+  }, [])
+
   const handleOutlineJump = useCallback((line: number) => {
     editorRef.current?.highlightLine(line)
   }, [])
@@ -1510,6 +1534,28 @@ export default function ResumeEditPage() {
               onATSBadgeClick={() => setDeepPanelOpen(true)}
               onExplainError={handleExplainError}
               pageCount={pageCount}
+              onCursorInSummarySection={handleCursorInSummarySection}
+            />
+
+            {/* AI Summary Widget trigger — shown when cursor is in summary section */}
+            {cursorInSummarySection && !summaryWidgetOpen && !bulletWidgetOpen && (
+              <button
+                onClick={handleOpenSummaryWidget}
+                title="AI Summary Generator"
+                className="absolute left-1 z-20 flex items-center gap-1 rounded-md bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-violet-300 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
+                style={{ top: (editorRef.current?.getCaretPosition()?.top ?? 0) + 2 }}
+              >
+                <Sparkles size={9} />
+                Summary
+              </button>
+            )}
+
+            <SummaryGeneratorWidget
+              isOpen={summaryWidgetOpen}
+              onClose={() => setSummaryWidgetOpen(false)}
+              onInsert={handleSummaryInsert}
+              resumeLatex={latexContent}
+              top={summaryWidgetTop}
             />
 
             {/* AI Bullet Widget trigger — shown when cursor is on \item line */}
