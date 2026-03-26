@@ -491,6 +491,7 @@ async def quick_tailor_resume(
         is_template=False,
         tags=list(parent.tags) if parent.tags else None,
         parent_resume_id=parent.id,
+        resume_settings=dict(parent.resume_settings or {}),
     )
     db.add(fork)
     await db.commit()
@@ -501,20 +502,25 @@ async def quick_tailor_resume(
     from .job_routes import _write_initial_redis_state
 
     job_id = str(uuid4())
-    await _write_initial_redis_state(job_id, "combined", user_id, 120)
-    submit_optimize_and_compile(
-        latex_content=fork.latex_content,
-        job_description=body.job_description,
-        job_id=job_id,
-        user_id=user_id,
-        optimization_level="aggressive",
-        custom_instructions=(
-            "Tailor this resume for the specific role. "
-            "Maximize keyword alignment with the job description. "
-            "Keep all factual information accurate."
-        ),
-        resume_id=str(fork.id),
-    )
+    try:
+        await _write_initial_redis_state(job_id, "combined", user_id, 120)
+        submit_optimize_and_compile(
+            latex_content=fork.latex_content,
+            job_description=body.job_description,
+            job_id=job_id,
+            user_id=user_id,
+            optimization_level="aggressive",
+            custom_instructions=(
+                "Tailor this resume for the specific role. "
+                "Maximize keyword alignment with the job description. "
+                "Keep all factual information accurate."
+            ),
+            resume_id=str(fork.id),
+        )
+    except Exception:
+        await db.delete(fork)
+        await db.commit()
+        raise
 
     return QuickTailorResponse(fork_id=str(fork.id), job_id=job_id)
 
