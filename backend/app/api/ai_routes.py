@@ -18,6 +18,7 @@ from ..core.redis import cache_manager
 from ..database.connection import get_db
 from ..middleware.auth_middleware import get_current_user_optional
 from ..services.error_explainer_service import error_explainer_service
+from ..services.proofreader_service import ProofreadResponse, proofread_latex
 
 logger = get_logger(__name__)
 
@@ -310,10 +311,9 @@ class ProofreadRequest(BaseModel):
     latex_content: str = Field(..., max_length=200_000)
 
 
-@router.post("/proofread")
-async def proofread_resume(request: ProofreadRequest):
+@router.post("/proofread", response_model=ProofreadResponse)
+async def proofread_resume(request: ProofreadRequest) -> ProofreadResponse:
     """Proofread resume for writing quality issues. Rule-based, no LLM required."""
-    from ..services.proofreader_service import proofread_latex
     return proofread_latex(request.latex_content)
 
 
