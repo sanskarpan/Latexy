@@ -108,7 +108,7 @@ class TestQuickTailorBehaviour:
         with patch(
             "app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock
         ), patch(
-            "app.workers.orchestrator.optimize_and_compile_task"
+            "app.workers.orchestrator.submit_optimize_and_compile"
         ):
             resp = await client.post(
                 f"/resumes/{parent['id']}/quick-tailor",
@@ -129,7 +129,7 @@ class TestQuickTailorBehaviour:
         with patch(
             "app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock
         ), patch(
-            "app.workers.orchestrator.optimize_and_compile_task"
+            "app.workers.orchestrator.submit_optimize_and_compile"
         ):
             resp = await client.post(
                 f"/resumes/{parent['id']}/quick-tailor",
@@ -150,7 +150,7 @@ class TestQuickTailorBehaviour:
         with patch(
             "app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock
         ), patch(
-            "app.workers.orchestrator.optimize_and_compile_task"
+            "app.workers.orchestrator.submit_optimize_and_compile"
         ):
             resp = await client.post(
                 f"/resumes/{parent['id']}/quick-tailor",
@@ -174,7 +174,7 @@ class TestQuickTailorBehaviour:
         with patch(
             "app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock
         ), patch(
-            "app.workers.orchestrator.optimize_and_compile_task"
+            "app.workers.orchestrator.submit_optimize_and_compile"
         ):
             resp = await client.post(
                 f"/resumes/{parent['id']}/quick-tailor",
@@ -194,7 +194,7 @@ class TestQuickTailorBehaviour:
         with patch(
             "app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock
         ), patch(
-            "app.workers.orchestrator.optimize_and_compile_task"
+            "app.workers.orchestrator.submit_optimize_and_compile"
         ):
             resp = await client.post(
                 f"/resumes/{parent['id']}/quick-tailor",
@@ -214,7 +214,7 @@ class TestQuickTailorBehaviour:
         with patch(
             "app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock
         ), patch(
-            "app.workers.orchestrator.optimize_and_compile_task"
+            "app.workers.orchestrator.submit_optimize_and_compile"
         ):
             await client.post(
                 f"/resumes/{parent['id']}/quick-tailor",
@@ -233,9 +233,8 @@ class TestQuickTailorBehaviour:
         with patch(
             "app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock
         ) as mock_redis, patch(
-            "app.workers.orchestrator.optimize_and_compile_task"
-        ) as mock_task:
-            mock_task.apply_async = MagicMock()
+            "app.workers.orchestrator.submit_optimize_and_compile"
+        ) as mock_submit:
             resp = await client.post(
                 f"/resumes/{parent['id']}/quick-tailor",
                 headers=auth_headers,
@@ -244,8 +243,12 @@ class TestQuickTailorBehaviour:
         assert resp.status_code == 201
         # Redis state was initialised for the combined job
         mock_redis.assert_awaited_once()
-        args = mock_redis.call_args
-        assert args[0][1] == "combined"  # job_type
+        redis_args = mock_redis.call_args
+        assert redis_args[0][1] == "combined"  # job_type
+        # submit was called with aggressive optimization
+        mock_submit.assert_called_once()
+        submit_kwargs = mock_submit.call_args.kwargs
+        assert submit_kwargs["optimization_level"] == "aggressive"
 
     async def test_fork_clones_latex_content_from_parent(
         self, client: AsyncClient, auth_headers: dict
@@ -254,7 +257,7 @@ class TestQuickTailorBehaviour:
         with patch(
             "app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock
         ), patch(
-            "app.workers.orchestrator.optimize_and_compile_task"
+            "app.workers.orchestrator.submit_optimize_and_compile"
         ):
             resp = await client.post(
                 f"/resumes/{parent['id']}/quick-tailor",
