@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { Check, Loader2, RefreshCw, Scissors, Sparkles, TrendingUp, X, ZoomIn } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Check, Loader2, MessageSquare, RefreshCw, Scissors, Sparkles, TrendingUp, X, ZoomIn } from 'lucide-react'
 import { apiClient, type RewriteAction } from '@/lib/api-client'
 
 interface ActionDef {
@@ -12,14 +12,20 @@ interface ActionDef {
 }
 
 const ACTIONS: ActionDef[] = [
-  { key: 'improve',     label: 'Improve',     icon: <Sparkles size={11} />,   description: 'Stronger impact & clarity' },
-  { key: 'shorten',     label: 'Shorten',     icon: <Scissors size={11} />,   description: 'Condense by ~50%' },
-  { key: 'quantify',    label: 'Quantify',    icon: <TrendingUp size={11} />, description: 'Add metrics & numbers' },
-  { key: 'power_verbs', label: 'Power Verbs', icon: <Check size={11} />,      description: 'Replace weak verbs' },
-  { key: 'expand',      label: 'Expand',      icon: <ZoomIn size={11} />,     description: 'Add more detail' },
+  { key: 'improve',     label: 'Improve',     icon: <Sparkles size={11} />,      description: 'Stronger impact & clarity' },
+  { key: 'shorten',     label: 'Shorten',     icon: <Scissors size={11} />,      description: 'Condense by ~50%' },
+  { key: 'quantify',    label: 'Quantify',    icon: <TrendingUp size={11} />,    description: 'Add metrics & numbers' },
+  { key: 'power_verbs', label: 'Power Verbs', icon: <Check size={11} />,         description: 'Replace weak verbs' },
+  { key: 'change_tone', label: 'Change Tone', icon: <MessageSquare size={11} />, description: 'Formal or casual style' },
+  { key: 'expand',      label: 'Expand',      icon: <ZoomIn size={11} />,        description: 'Add more detail' },
 ]
 
-type Phase = 'picking' | 'loading' | 'result'
+const TONES = [
+  { key: 'formal', label: 'Formal', description: 'Professional & precise' },
+  { key: 'casual', label: 'Casual', description: 'Friendly & conversational' },
+]
+
+type Phase = 'picking' | 'tone_picking' | 'loading' | 'result'
 
 interface WritingAssistantWidgetProps {
   isOpen: boolean
@@ -40,6 +46,7 @@ export default function WritingAssistantWidget({
 }: WritingAssistantWidgetProps) {
   const [phase, setPhase]               = useState<Phase>('picking')
   const [activeAction, setActiveAction] = useState<RewriteAction | null>(null)
+  const [activeTone, setActiveTone]     = useState<string | null>(null)
   const [rewritten, setRewritten]       = useState<string | null>(null)
   const [error, setError]               = useState<string | null>(null)
 
@@ -48,6 +55,7 @@ export default function WritingAssistantWidget({
     if (isOpen) {
       setPhase('picking')
       setActiveAction(null)
+      setActiveTone(null)
       setRewritten(null)
       setError(null)
     }
@@ -61,8 +69,9 @@ export default function WritingAssistantWidget({
     return () => window.removeEventListener('keydown', handler)
   }, [isOpen, onClose])
 
-  const callApi = async (action: RewriteAction) => {
+  const callApi = async (action: RewriteAction, tone?: string) => {
     setActiveAction(action)
+    setActiveTone(tone ?? null)
     setPhase('loading')
     setError(null)
     setRewritten(null)
@@ -71,6 +80,7 @@ export default function WritingAssistantWidget({
         selected_text: selectedText,
         action,
         context: context || undefined,
+        tone: tone || undefined,
       })
       setRewritten(res.rewritten)
       setPhase('result')
@@ -80,8 +90,17 @@ export default function WritingAssistantWidget({
     }
   }
 
+  const handleActionClick = (key: RewriteAction) => {
+    if (key === 'change_tone') {
+      setActiveAction('change_tone')
+      setPhase('tone_picking')
+    } else {
+      callApi(key)
+    }
+  }
+
   const handleRegenerate = () => {
-    if (activeAction) callApi(activeAction)
+    if (activeAction) callApi(activeAction, activeTone ?? undefined)
   }
 
   if (!isOpen) return null
@@ -107,6 +126,7 @@ export default function WritingAssistantWidget({
             {activeAction && phase !== 'picking' && (
               <span className="rounded-md bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-300 ring-1 ring-violet-400/20">
                 {ACTIONS.find(a => a.key === activeAction)?.label}
+                {activeTone && phase === 'result' && ` · ${activeTone}`}
               </span>
             )}
           </div>
@@ -142,10 +162,39 @@ export default function WritingAssistantWidget({
               {ACTIONS.map(({ key, label, icon, description }) => (
                 <button
                   key={key}
-                  onClick={() => callApi(key)}
+                  onClick={() => handleActionClick(key)}
                   className="flex w-full items-center gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 text-left transition hover:border-violet-400/20 hover:bg-violet-500/[0.08]"
                 >
                   <span className="shrink-0 text-violet-400">{icon}</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[11px] font-semibold text-zinc-200">{label}</span>
+                    <span className="block text-[10px] text-zinc-600">{description}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* ── Phase: tone_picking ─────────────────────────────────── */}
+          {phase === 'tone_picking' && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPhase('picking')}
+                  className="text-[10px] text-zinc-600 transition hover:text-zinc-400"
+                  aria-label="Back to actions"
+                >
+                  ←
+                </button>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Choose tone</p>
+              </div>
+              {TONES.map(({ key, label, description }) => (
+                <button
+                  key={key}
+                  onClick={() => callApi('change_tone', key)}
+                  className="flex w-full items-center gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 text-left transition hover:border-violet-400/20 hover:bg-violet-500/[0.08]"
+                >
+                  <span className="shrink-0 text-violet-400"><MessageSquare size={11} /></span>
                   <span className="flex-1 min-w-0">
                     <span className="block text-[11px] font-semibold text-zinc-200">{label}</span>
                     <span className="block text-[10px] text-zinc-600">{description}</span>
