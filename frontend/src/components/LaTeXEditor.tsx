@@ -307,7 +307,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         const editor = editorRef.current
         const monaco = monacoRef.current
         if (!editor || !monaco) return
-        editor.executeEdits('proofread-autofix', edits.map(e => ({
+        // Sort descending by line then column so earlier edits don't shift
+        // the positions of later ones in the document.
+        const sorted = [...edits].sort(
+          (a, b) => b.startLine - a.startLine || b.startColumn - a.startColumn
+        )
+        editor.executeEdits('proofread-autofix', sorted.map(e => ({
           range: new monaco.Range(e.startLine, e.startColumn, e.endLine, e.endColumn),
           text: e.text,
         })))
