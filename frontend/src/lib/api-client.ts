@@ -307,6 +307,24 @@ export interface GenerateSummaryResponse {
   cached: boolean
 }
 
+export interface ProofreadIssue {
+  line: number
+  column_start: number
+  column_end: number
+  category: 'weak_verb' | 'passive_voice' | 'buzzword' | 'vague' | string
+  severity: 'error' | 'warning' | 'info'
+  message: string
+  suggestion: string | null
+  original_text: string
+  suggested_text: string | null
+}
+
+export interface ProofreadResponse {
+  issues: ProofreadIssue[]
+  summary: Record<string, number>
+  overall_score: number
+}
+
 export interface GenerateBulletsRequest {
   job_title: string
   responsibility: string
@@ -1088,6 +1106,13 @@ class ApiClient {
     return this.request<GenerateSummaryResponse>('/ai/generate-summary', {
       method: 'POST',
       body: JSON.stringify(body),
+    })
+  }
+
+  async proofreadResume(latexContent: string): Promise<ProofreadResponse> {
+    return this.request<ProofreadResponse>('/ai/proofread', {
+      method: 'POST',
+      body: JSON.stringify({ latex_content: latexContent }),
     })
   }
 
