@@ -306,6 +306,17 @@ async def generate_summary(
         return GenerateSummaryResponse(summaries=[], cached=False)
 
 
+class ProofreadRequest(BaseModel):
+    latex_content: str = Field(..., max_length=200_000)
+
+
+@router.post("/proofread")
+async def proofread_resume(request: ProofreadRequest):
+    """Proofread resume for writing quality issues. Rule-based, no LLM required."""
+    from ..services.proofreader_service import proofread_latex
+    return proofread_latex(request.latex_content)
+
+
 @router.post("/explain-error", response_model=ExplainErrorResponse)
 async def explain_latex_error(
     request: ExplainErrorRequest,
