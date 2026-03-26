@@ -26,19 +26,26 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const { state, cancel } = useJobStream(jobId)
+  const { state, cancel, reset } = useJobStream(jobId)
 
   // Watch job completion / failure
   useEffect(() => {
     if (!jobId || step !== 'progress') return
     if (state.status === 'completed') {
-      if (forkId && state.streamingLatex) {
-        apiClient.updateResume(forkId, { latex_content: state.streamingLatex }).catch(() => {
-          // Non-fatal — fork still exists with original content
-        })
+      const saveAndFinish = async () => {
+        if (forkId && state.streamingLatex) {
+          try {
+            await apiClient.updateResume(forkId, { latex_content: state.streamingLatex })
+          } catch {
+            setStep('error')
+            setErrorMessage('Tailoring finished but saving the result failed. Please try again.')
+            return
+          }
+        }
+        setStep('done')
+        onDone?.(forkId!)
       }
-      setStep('done')
-      onDone?.(forkId!)
+      void saveAndFinish()
     } else if (state.status === 'failed' || state.status === 'cancelled') {
       setStep('error')
       setErrorMessage(state.error ?? 'Optimization failed. Please try again.')
@@ -73,25 +80,34 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
   }, [cancel, onClose])
 
   const handleTryAgain = useCallback(() => {
+    reset()
     setStep('form')
     setJobId(null)
     setForkId(null)
     setErrorMessage(null)
-  }, [])
+  }, [reset])
+
+  const handleDismiss = useCallback(() => {
+    if (step === 'progress') {
+      handleCancel()
+    } else {
+      onClose()
+    }
+  }, [step, handleCancel, onClose])
 
   // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') handleDismiss()
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
+  }, [handleDismiss])
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={handleDismiss}
     >
       <div
         className="w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl"
@@ -104,7 +120,7 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
             <h3 className="text-base font-semibold text-white">Quick Tailor</h3>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleDismiss}
             className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300"
           >
             <X size={16} />
