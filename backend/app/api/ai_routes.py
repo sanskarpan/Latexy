@@ -399,8 +399,8 @@ _REWRITE_PROMPTS: Dict[str, str] = {
 }
 
 
-def _rewrite_cache_key(action: str, selected_text: str, tone: Optional[str]) -> str:
-    raw = f"{action}|{selected_text}|{tone or ''}"
+def _rewrite_cache_key(action: str, selected_text: str, tone: Optional[str], context: Optional[str] = None) -> str:
+    raw = f"{action}|{selected_text}|{tone or ''}|{(context or '').strip()}"
     return "ai:rewrite:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
@@ -411,7 +411,7 @@ async def rewrite_text(
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Rewrite selected LaTeX text using AI. Auth optional."""
-    cache_key = _rewrite_cache_key(request.action, request.selected_text, request.tone)
+    cache_key = _rewrite_cache_key(request.action, request.selected_text, request.tone, request.context)
 
     # Check cache
     try:
