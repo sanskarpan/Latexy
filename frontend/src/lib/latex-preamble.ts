@@ -154,6 +154,78 @@ export const LATEX_FONTS: FontOption[] = [
     category: 'sans-serif',
     webPreview: 'Lato, Arial, sans-serif',
   },
+  {
+    name: 'Open Sans',
+    package: 'opensans',
+    command: '\\renewcommand{\\familydefault}{\\sfdefault}',
+    category: 'sans-serif',
+    webPreview: '"Open Sans", Arial, sans-serif',
+  },
+  {
+    name: 'Ubuntu',
+    package: 'ubuntu',
+    command: '\\renewcommand{\\familydefault}{\\sfdefault}',
+    category: 'sans-serif',
+    webPreview: 'Ubuntu, Arial, sans-serif',
+  },
+  {
+    name: 'Cabin',
+    package: 'cabin',
+    command: '\\renewcommand{\\familydefault}{\\sfdefault}',
+    category: 'sans-serif',
+    webPreview: 'Cabin, Arial, sans-serif',
+  },
+  {
+    name: 'Raleway',
+    package: 'raleway',
+    command: '\\renewcommand{\\familydefault}{\\sfdefault}',
+    category: 'sans-serif',
+    webPreview: 'Raleway, Arial, sans-serif',
+  },
+  // ── Monospace ───────────────────────────────────────────────────────────────
+  {
+    name: 'Courier',
+    package: 'courier',
+    command: '\\renewcommand{\\familydefault}{\\ttdefault}',
+    category: 'monospace',
+    webPreview: '"Courier New", Courier, monospace',
+  },
+  {
+    name: 'Inconsolata',
+    package: 'inconsolata',
+    command: '\\renewcommand{\\familydefault}{\\ttdefault}',
+    category: 'monospace',
+    webPreview: 'Inconsolata, "Courier New", monospace',
+  },
+  {
+    name: 'Source Code Pro',
+    package: 'sourcecodepro',
+    command: '\\renewcommand{\\familydefault}{\\ttdefault}',
+    category: 'monospace',
+    webPreview: '"Source Code Pro", "Courier New", monospace',
+  },
+  {
+    name: 'Bera Mono',
+    package: 'beramono',
+    command: '\\renewcommand{\\familydefault}{\\ttdefault}',
+    category: 'monospace',
+    webPreview: '"Bitstream Vera Sans Mono", "Courier New", monospace',
+  },
+  // ── Additional Serif ────────────────────────────────────────────────────────
+  {
+    name: 'Alegreya',
+    package: 'alegreya',
+    command: null,
+    category: 'serif',
+    webPreview: 'Alegreya, Georgia, serif',
+  },
+  {
+    name: 'GFS Didot',
+    package: 'gfsdidot',
+    command: null,
+    category: 'serif',
+    webPreview: 'Didot, "Bodoni MT", Georgia, serif',
+  },
 ]
 
 // All known font packages — used to clean up preamble when switching fonts
