@@ -7,6 +7,7 @@ import Editor, { type OnMount } from '@monaco-editor/react'
 import type { LogLine } from '@/hooks/useJobStream'
 import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import ATSScoreBadge from '@/components/ATSScoreBadge'
+import type { ProofreadIssue } from '@/lib/api-client'
 
 export interface LaTeXEditorRef {
   setValue: (value: string) => void
@@ -14,6 +15,7 @@ export interface LaTeXEditorRef {
   highlightLine: (line: number) => void
   applyFix: (line: number, correctedCode: string) => void
   applyRewrite: (startLine: number, startColumn: number, endLine: number, endColumn: number, text: string) => void
+  applyMultipleRewrites: (edits: Array<{ startLine: number; startColumn: number; endLine: number; endColumn: number; text: string }>) => void
   insertAtCursor: (text: string) => void
   /** Returns pixel position of the cursor relative to the editor container, or null if unavailable */
   getCaretPosition: () => { top: number; left: number } | null
@@ -56,6 +58,8 @@ interface LaTeXEditorProps {
     endLine: number
     endColumn: number
   }) => void
+  /** Proofreader issues to render as inline decorations */
+  proofreadIssues?: ProofreadIssue[]
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -234,12 +238,13 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues },
     ref
   ) {
     const editorRef = useRef<any>(null)
     const monacoRef = useRef<any>(null)
     const disposablesRef = useRef<any[]>([])
+    const proofreaderDecsRef = useRef<any>(null)
     const autoCompileRef = useRef(onAutoCompile)
     autoCompileRef.current = onAutoCompile
     const onExplainErrorRef = useRef(onExplainError)
@@ -296,6 +301,21 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           range: new monaco.Range(startLine, startColumn, endLine, endColumn),
           text,
         }])
+        editor.focus()
+      },
+      applyMultipleRewrites(edits) {
+        const editor = editorRef.current
+        const monaco = monacoRef.current
+        if (!editor || !monaco) return
+        // Sort descending by line then column so earlier edits don't shift
+        // the positions of later ones in the document.
+        const sorted = [...edits].sort(
+          (a, b) => b.startLine - a.startLine || b.startColumn - a.startColumn
+        )
+        editor.executeEdits('proofread-autofix', sorted.map(e => ({
+          range: new monaco.Range(e.startLine, e.startColumn, e.endLine, e.endColumn),
+          text: e.text,
+        })))
         editor.focus()
       },
       insertAtCursor(text: string) {
@@ -389,6 +409,36 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         editorRef.current?.deltaDecorations(decs, [])
       }, 2000)
     }, [syncLine])
+
+    // Apply proofreader decorations when issues change
+    useEffect(() => {
+      const editor = editorRef.current
+      const monaco = monacoRef.current
+      if (!editor || !monaco) return
+
+      if (proofreaderDecsRef.current) {
+        proofreaderDecsRef.current.clear()
+        proofreaderDecsRef.current = null
+      }
+
+      if (!proofreadIssues || proofreadIssues.length === 0) return
+
+      const decorations = proofreadIssues.map(issue => ({
+        range: new monaco.Range(issue.line, issue.column_start, issue.line, issue.column_end),
+        options: {
+          inlineClassName:
+            issue.category === 'passive_voice' ? 'proofreader-passive'
+            : issue.category === 'buzzword' ? 'proofreader-buzzword'
+            : issue.category === 'vague' ? 'proofreader-vague'
+            : 'proofreader-weak',
+          hoverMessage: {
+            value: `**${issue.category.replace(/_/g, ' ')}**: ${issue.message}`,
+          },
+        },
+      }))
+
+      proofreaderDecsRef.current = editor.createDecorationsCollection(decorations)
+    }, [proofreadIssues])
 
     // Auto-compile: debounce 2s after last keystroke
     useEffect(() => {
@@ -948,6 +998,22 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           .synctex-highlight {
             background-color: rgba(245,158,11,0.15) !important;
             border-left: 2px solid #f59e0b !important;
+          }
+          .proofreader-weak {
+            text-decoration: underline wavy #f59e0b;
+            text-underline-offset: 2px;
+          }
+          .proofreader-passive {
+            text-decoration: underline wavy #60a5fa;
+            text-underline-offset: 2px;
+          }
+          .proofreader-buzzword {
+            text-decoration: underline wavy #a78bfa;
+            text-underline-offset: 2px;
+          }
+          .proofreader-vague {
+            text-decoration: underline wavy #f87171;
+            text-underline-offset: 2px;
           }
         `}</style>
         {!value ? (

@@ -1951,7 +1951,7 @@ missing quantification, vague claims). Show as Monaco decorations. Panel lists i
 quick-fix suggestions. Rule-based (fast, no LLM needed for MVP).
 
 ### 25A · Backend — Proofreader Endpoint
-- [ ] Add `POST /ai/proofread` to `backend/app/api/ai_routes.py`:
+- [x] Add `POST /ai/proofread` to `backend/app/api/ai_routes.py`:
   ```python
   class ProofreadRequest(BaseModel):
       latex_content: str = Field(..., max_length=200_000)
@@ -1973,7 +1973,7 @@ quick-fix suggestions. Rule-based (fast, no LLM needed for MVP).
       overall_score: int        # 0-100 based on issue density
   ```
 
-- [ ] Create `backend/app/services/proofreader_service.py`:
+- [x] Create `backend/app/services/proofreader_service.py`:
   ```python
   WEAK_VERB_PATTERNS = [
       (r'\bresponsible for\b', 'Replace with an action verb (Led, Managed, Owned)'),
@@ -2013,13 +2013,13 @@ quick-fix suggestions. Rule-based (fast, no LLM needed for MVP).
   ```
 
 ### 25B · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   proofreadResume(latexContent: string): Promise<ProofreadResponse>
   ```
 
 ### 25C · Frontend — Monaco Decoration Integration
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add prop: `proofreadIssues?: ProofreadIssue[]`
   - When `proofreadIssues` changes, register decorations:
     ```typescript
@@ -2041,7 +2041,7 @@ quick-fix suggestions. Rule-based (fast, no LLM needed for MVP).
     - `proofreader-buzzword`: violet underline
 
 ### 25D · Frontend — ProofreadPanel Component
-- [ ] Create `frontend/src/components/ProofreadPanel.tsx`:
+- [x] Create `frontend/src/components/ProofreadPanel.tsx`:
   - Sidebar panel tab titled "Proofreader"
   - "Run Proofreader" button (triggers API call with current editor content)
   - Loading: "Analyzing writing quality..."
@@ -2056,7 +2056,7 @@ quick-fix suggestions. Rule-based (fast, no LLM needed for MVP).
   - Auto-run option: "Auto-proofread on compile" toggle (runs after each successful compile)
 
 ### 25E · Tests
-- [ ] `backend/test/test_proofreader.py`:
+- [x] `backend/test/test_proofreader.py`:
   - Text with "responsible for" → `weak_verb` issue detected at correct line
   - Text with "was improved by" → `passive_voice` issue detected
   - Text with "synergy" → `buzzword` issue detected
