@@ -497,8 +497,8 @@ async def quick_tailor_resume(
     await db.refresh(fork)
 
     # Submit combined optimize+compile job for the fork
-    from .job_routes import _write_initial_redis_state
     from ..workers.orchestrator import submit_optimize_and_compile
+    from .job_routes import _write_initial_redis_state
 
     job_id = str(uuid4())
     await _write_initial_redis_state(job_id, "combined", user_id, 120)
