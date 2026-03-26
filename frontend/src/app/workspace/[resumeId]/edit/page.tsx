@@ -1810,6 +1810,14 @@ export default function ResumeEditPage() {
                       issue.line, issue.column_end,
                       issue.suggested_text,
                     )
+                    // Remove this issue's decoration immediately
+                    setProofreadIssues(prev =>
+                      prev.filter(i =>
+                        !(i.line === issue.line &&
+                          i.column_start === issue.column_start &&
+                          i.original_text === issue.original_text)
+                      )
+                    )
                   }
                 }}
                 onApplyAllFixes={(issues) => {
@@ -1823,6 +1831,15 @@ export default function ResumeEditPage() {
                         endColumn: i.column_end,
                         text: i.suggested_text!,
                       }))
+                  )
+                  // Clear all applied decorations
+                  const appliedKeys = new Set(
+                    issues.map(i => `${i.line}:${i.column_start}:${i.original_text}`)
+                  )
+                  setProofreadIssues(prev =>
+                    prev.filter(i =>
+                      !appliedKeys.has(`${i.line}:${i.column_start}:${i.original_text}`)
+                    )
                   )
                 }}
                 onProofreadComplete={setProofreadIssues}
