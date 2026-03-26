@@ -50,7 +50,7 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
       setStep('error')
       setErrorMessage(state.error ?? 'Optimization failed. Please try again.')
     }
-  }, [state.status, jobId, step, forkId, state.streamingLatex, onDone])
+  }, [state.status, state.error, state.streamingLatex, jobId, step, forkId, onDone])
 
   const handleSubmit = useCallback(async () => {
     if (jobDescription.trim().length < 10) return
