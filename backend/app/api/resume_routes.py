@@ -453,6 +453,72 @@ async def fork_resume(
     return resp
 
 
+# ── Quick Tailor ──────────────────────────────────────────────────────────────
+
+class QuickTailorRequest(BaseModel):
+    job_description: str = Field(..., min_length=10, max_length=10000)
+    company_name: Optional[str] = Field(None, max_length=200)
+    role_title: Optional[str] = Field(None, max_length=200)
+
+
+class QuickTailorResponse(BaseModel):
+    fork_id: str
+    job_id: str
+
+
+@router.post(
+    "/{resume_id}/quick-tailor",
+    response_model=QuickTailorResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def quick_tailor_resume(
+    resume_id: str,
+    body: QuickTailorRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Fork the resume and kick off an aggressive optimization tailored to the job description."""
+    parent = await _verify_resume_ownership(db, resume_id, user_id)
+
+    label = body.role_title or body.company_name or "Tailored"
+    fork_title = f"{parent.title} — {label}"
+
+    fork = Resume(
+        id=str(uuid4()),
+        user_id=user_id,
+        title=fork_title,
+        latex_content=parent.latex_content,
+        is_template=False,
+        tags=list(parent.tags) if parent.tags else None,
+        parent_resume_id=parent.id,
+    )
+    db.add(fork)
+    await db.commit()
+    await db.refresh(fork)
+
+    # Submit combined optimize+compile job for the fork
+    from .job_routes import _write_initial_redis_state
+    from ..workers.orchestrator import submit_optimize_and_compile
+
+    job_id = str(uuid4())
+    await _write_initial_redis_state(job_id, "combined", user_id, 120)
+    submit_optimize_and_compile(
+        latex_content=fork.latex_content,
+        job_description=body.job_description,
+        job_id=job_id,
+        user_id=user_id,
+        optimization_level="aggressive",
+        custom_instructions=(
+            "Tailor this resume for the specific role. "
+            "Maximize keyword alignment with the job description. "
+            "Keep all factual information accurate."
+        ),
+        resume_id=str(fork.id),
+    )
+
+    return QuickTailorResponse(fork_id=str(fork.id), job_id=job_id)
+
+
 @router.get("/{resume_id}/variants", response_model=List[ResumeResponse])
 async def list_variants(
     resume_id: str,
