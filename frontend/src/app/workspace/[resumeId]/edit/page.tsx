@@ -31,8 +31,9 @@ import {
   Brain,
   GitFork,
   Zap,
+  ShieldCheck,
 } from 'lucide-react'
-import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ResumeResponse } from '@/lib/api-client'
+import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
 import ShareResumeModal from '@/components/ShareResumeModal'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
@@ -52,13 +53,14 @@ import ReferencesPanel from '@/components/ReferencesPanel'
 import DesignPanel from '@/components/DesignPanel'
 import BulletGeneratorWidget from '@/components/BulletGeneratorWidget'
 import SummaryGeneratorWidget from '@/components/SummaryGeneratorWidget'
+import ProofreadPanel from '@/components/ProofreadPanel'
 import CompilerSelector from '@/components/CompilerSelector'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
@@ -715,6 +717,9 @@ export default function ResumeEditPage() {
   const [summaryWidgetOpen, setSummaryWidgetOpen] = useState(false)
   const [summaryWidgetTop, setSummaryWidgetTop] = useState(0)
   const [cursorInSummarySection, setCursorInSummarySection] = useState(false)
+
+  // Proofreader
+  const [proofreadIssues, setProofreadIssues] = useState<ProofreadIssue[]>([])
 
   // Deep analysis (Layer 2)
   const [deepPanelOpen, setDeepPanelOpen] = useState(false)
@@ -1568,6 +1573,7 @@ export default function ResumeEditPage() {
               onWritingAssistantAction={handleWritingAssistantAction}
               pageCount={pageCount}
               onCursorInSummarySection={handleCursorInSummarySection}
+              proofreadIssues={proofreadIssues}
             />
 
             {/* AI Summary Widget trigger — shown when cursor is in summary section */}
@@ -1662,6 +1668,7 @@ export default function ResumeEditPage() {
                 { id: 'references', label: 'Refs', icon: BookOpen },
                 { id: 'interview', label: 'Interview', icon: MessageSquare },
                 { id: 'design', label: 'Design', icon: Palette },
+                { id: 'proofread', label: 'Proof', icon: ShieldCheck },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -1790,6 +1797,35 @@ export default function ResumeEditPage() {
                 currentLatex={latexContent}
                 onPreambleChange={handleDesignPreambleChange}
                 onTriggerCompile={autoCompile ? handleDesignTriggerCompile : undefined}
+              />
+            )}
+
+            {rightTab === 'proofread' && (
+              <ProofreadPanel
+                resumeLatex={latexContent}
+                onApplyFix={(issue) => {
+                  if (issue.suggested_text) {
+                    editorRef.current?.applyRewrite(
+                      issue.line, issue.column_start,
+                      issue.line, issue.column_end,
+                      issue.suggested_text,
+                    )
+                  }
+                }}
+                onApplyAllFixes={(issues) => {
+                  editorRef.current?.applyMultipleRewrites(
+                    issues
+                      .filter(i => i.suggested_text)
+                      .map(i => ({
+                        startLine: i.line,
+                        startColumn: i.column_start,
+                        endLine: i.line,
+                        endColumn: i.column_end,
+                        text: i.suggested_text!,
+                      }))
+                  )
+                }}
+                onProofreadComplete={setProofreadIssues}
               />
             )}
           </div>
