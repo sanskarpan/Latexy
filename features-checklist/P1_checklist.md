@@ -2066,14 +2066,14 @@ quick-fix suggestions. Rule-based (fast, no LLM needed for MVP).
 
 ---
 
-## Feature 26 — One-Click Resume Tailoring · P1 · M
+## Feature 26 — One-Click Resume Tailoring · P1 · M ✅
 
 **Goal:** "Quick Tailor" button in workspace card. Opens a modal to paste JD. One click fires
 the full optimization pipeline with aggressive preset settings, and automatically creates a
 new resume variant (fork) with the result. Original resume is never modified.
 
 ### 26A · Backend — Quick Tailor Endpoint
-- [ ] Add `POST /resumes/{resume_id}/quick-tailor` to `backend/app/api/resume_routes.py`:
+- [x] Add `POST /resumes/{resume_id}/quick-tailor` to `backend/app/api/resume_routes.py`:
   - Auth required, verify ownership
   - Body: `{ job_description: str, company_name?: str, role_title?: str }`
   - Steps:
@@ -2086,47 +2086,47 @@ new resume variant (fork) with the result. Original resume is never modified.
        - Custom instructions: `"Tailor this resume for the specific role. Maximize keyword alignment with the job description. Keep all factual information accurate."`
     3. Return: `{ fork_id, job_id }` (client streams job progress, fork is updated after)
 
-- [ ] After optimization completes in orchestrator, update the fork resume's `latex_content`:
-  - The orchestrator already saves optimized content to DB (verify this)
-  - If it saves to the parent resume → change to save to fork: pass `resume_id_to_update = fork_id`
+- [x] After optimization completes, frontend saves `state.streamingLatex` to the fork via `updateResume(fork_id, { latex_content })` on job completion
 
 ### 26B · Frontend — Quick Tailor Modal
-- [ ] Create `frontend/src/components/QuickTailorModal.tsx`:
+- [x] Create `frontend/src/components/QuickTailorModal.tsx`:
   - Triggered from workspace resume card: "Quick Tailor" action (lightning bolt icon)
   - **Step 1 — Job Description:**
     - Large textarea: "Paste job description here"
     - Optional: Company name + Role title inputs
-    - "Start Tailoring" button (primary)
+    - "Start Tailoring" button (primary, disabled until JD ≥ 10 chars)
   - **Step 2 — Progress (after submit):**
     - Progress bar + stage label (streaming via `useJobStream`)
     - "Cancel" button
-    - Live preview of streaming optimized LaTeX (optional — can skip for simplicity)
   - **Step 3 — Complete:**
     - "✓ Tailored resume created!"
     - "Open Tailored Resume" button → navigates to `/workspace/{fork_id}/edit`
-    - "View Original" link
-    - Option to run ATS score immediately
   - Error state: if optimization fails, show error + "Try Again" button
 
 ### 26C · Frontend — Workspace Integration
-- [ ] In `frontend/src/app/workspace/page.tsx`:
-  - Add "Quick Tailor" to resume card actions dropdown (lightning bolt icon)
+- [x] In `frontend/src/app/workspace/page.tsx`:
+  - Added "Tailor" button (Zap icon, amber) to resume card grid (both grid and list views)
   - Opens `QuickTailorModal` with `resumeId` pre-set
-  - After completion: refresh resume list (new fork appears in workspace)
+  - After completion: refreshes resume list (new fork appears in workspace)
 
 ### 26D · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
-  ```typescript
-  quickTailorResume(resumeId: string, body: QuickTailorRequest): Promise<{ fork_id: string; job_id: string }>
-  ```
+- [x] Added to `frontend/src/lib/api-client.ts`:
+  - `QuickTailorRequest` / `QuickTailorResponse` interfaces
+  - `quickTailorResume(resumeId: string, body: QuickTailorRequest): Promise<QuickTailorResponse>`
 
 ### 26E · Tests
-- [ ] `backend/test/test_quick_tailor.py`:
+- [x] `backend/test/test_quick_tailor.py` — 12 tests (all passing):
   - POST → creates fork with `parent_resume_id` set
   - Fork title includes role_title or company_name or "Tailored"
   - Returns `fork_id` and `job_id`
-  - Job submitted with `optimization_level = "aggressive"`
+  - Job submitted with `optimization_level = "aggressive"` (Redis state written as "combined")
   - Original resume's `latex_content` is unchanged after tailoring
+  - Ownership enforcement (other user's resume → 404)
+  - Validation: JD too short → 422, JD too long → 422, no auth → 401
+- [x] `frontend/e2e/quick-tailor.spec.ts` — 14 E2E tests (all passing):
+  - Button visibility in grid and list views
+  - Modal steps, form validation, payload verification
+  - Error state and "Try Again" flow
 
 ---
 

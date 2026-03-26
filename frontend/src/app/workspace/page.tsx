@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { GitFork, ChevronDown, ChevronRight, Share2, X, Search } from 'lucide-react'
+import { GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type SemanticMatchResult } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -14,6 +14,7 @@ import DiffViewerModal from '@/components/DiffViewerModal'
 import ShareResumeModal from '@/components/ShareResumeModal'
 import ProjectSearchModal from '@/components/ProjectSearchModal'
 import AddApplicationModal from '@/components/AddApplicationModal'
+import QuickTailorModal from '@/components/QuickTailorModal'
 
 export default function WorkspacePage() {
   const { data: session, isPending: sessionLoading } = useSession()
@@ -55,6 +56,9 @@ export default function WorkspacePage() {
     () => resumes.find(r => r.id === shareModalResumeId) ?? null,
     [resumes, shareModalResumeId]
   )
+
+  // Quick Tailor modal state
+  const [quickTailorResume, setQuickTailorResume] = useState<ResumeResponse | null>(null)
 
   // Variant state
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
@@ -227,7 +231,7 @@ export default function WorkspacePage() {
       )}
       <p className="mt-2 text-xs text-zinc-500">Updated {new Date(resume.updated_at).toLocaleDateString()}</p>
 
-      <div className="mt-6 grid grid-cols-2 gap-2 text-xs">
+      <div className="mt-6 grid grid-cols-3 gap-2 text-xs">
         <Link
           href={`/workspace/${resume.id}/edit`}
           className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center font-semibold text-zinc-200 transition hover:bg-white/10"
@@ -240,9 +244,16 @@ export default function WorkspacePage() {
         >
           Optimize
         </Link>
+        <button
+          onClick={() => setQuickTailorResume(resume)}
+          className="flex items-center justify-center gap-1 rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-2 font-semibold text-amber-300 transition hover:bg-amber-500/20"
+        >
+          <Zap size={11} />
+          Tailor
+        </button>
         <Link
           href={`/workspace/${resume.id}/cover-letter`}
-          className="col-span-2 rounded-lg border border-violet-300/20 bg-violet-300/10 px-3 py-2 text-center font-semibold text-violet-200 transition hover:bg-violet-300/20"
+          className="col-span-3 rounded-lg border border-violet-300/20 bg-violet-300/10 px-3 py-2 text-center font-semibold text-violet-200 transition hover:bg-violet-300/20"
         >
           Cover Letter
         </Link>
@@ -457,6 +468,13 @@ export default function WorkspacePage() {
                               CL
                             </Link>
                             <button
+                              onClick={() => setQuickTailorResume(resume)}
+                              className="flex items-center gap-1 rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/20"
+                            >
+                              <Zap size={11} />
+                              Tailor
+                            </button>
+                            <button
                               onClick={() => openForkModal(resume.id, resume.title)}
                               className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-400 transition hover:border-white/20 hover:text-zinc-200"
                             >
@@ -655,6 +673,21 @@ export default function WorkspacePage() {
           onCreated={(_app: JobApplication) => setTrackerModalResumeId(null)}
           prefillResumeId={trackerModalResumeId}
           prefillResumeTitle={trackerModalResume?.title}
+        />
+      )}
+
+      {quickTailorResume && (
+        <QuickTailorModal
+          resumeId={quickTailorResume.id}
+          resumeTitle={quickTailorResume.title}
+          onClose={() => setQuickTailorResume(null)}
+          onDone={(forkId) => {
+            setQuickTailorResume(null)
+            // Refresh resume list so the new fork appears
+            apiClient.listResumes().then((data) => {
+              if (Array.isArray(data)) setResumes(data)
+            }).catch(() => {})
+          }}
         />
       )}
     </div>

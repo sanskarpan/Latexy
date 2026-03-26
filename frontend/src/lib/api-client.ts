@@ -353,6 +353,17 @@ export interface RewriteResponse {
   cached: boolean
 }
 
+export interface QuickTailorRequest {
+  job_description: string
+  company_name?: string
+  role_title?: string
+}
+
+export interface QuickTailorResponse {
+  fork_id: string
+  job_id: string
+}
+
 export interface BibTeXEntry {
   identifier: string
   bibtex: string | null
@@ -1118,6 +1129,13 @@ class ApiClient {
 
   async rewriteText(body: RewriteRequest): Promise<RewriteResponse> {
     return this.request<RewriteResponse>('/ai/rewrite', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async quickTailorResume(resumeId: string, body: QuickTailorRequest): Promise<QuickTailorResponse> {
+    return this.request<QuickTailorResponse>(`/resumes/${resumeId}/quick-tailor`, {
       method: 'POST',
       body: JSON.stringify(body),
     })
