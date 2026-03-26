@@ -255,7 +255,7 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
 
   // ── 8. Accept replaces editor content ────────────────────────────── //
 
-  test('Accept button calls /ai/rewrite and closes the widget', async ({ page }) => {
+  test('Accept button applies rewrite and closes the widget', async ({ page }) => {
     await mockRewriteEndpoint(page)
     await gotoEditPage(page)
     await openWritingAssistantMenu(page)
@@ -432,5 +432,7 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     expect(capturedBody).not.toBeNull()
     expect(capturedBody!.action).toBe('improve')
     expect(capturedBody!.selected_text).toBeTruthy()
+    expect(typeof capturedBody!.context).toBe('string')
+    expect((capturedBody!.context as string).length).toBeGreaterThan(0)
   })
 })
