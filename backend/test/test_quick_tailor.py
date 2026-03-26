@@ -272,8 +272,9 @@ class TestQuickTailorBehaviour:
     ) -> None:
         """Ownership check — another user's resume returns 404."""
         import uuid as _uuid
-        from sqlalchemy import text
+
         from conftest import _insert_session
+        from sqlalchemy import text
 
         # Create a second user
         other_user_id = str(_uuid.uuid4())
