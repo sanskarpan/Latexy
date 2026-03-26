@@ -17,7 +17,6 @@ from typing import Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
 
-
 # ── Response schemas ──────────────────────────────────────────────────────────
 
 
@@ -44,13 +43,12 @@ class ProofreadResponse(BaseModel):
 
 _WEAK_VERB_PATTERNS: List[Tuple[str, str, Optional[str]]] = [
     (r'\bresponsible for\b', 'Replace with an action verb (Led, Managed, Owned)', 'Led'),
-    (r'\bhelped (?:to |with )?\b', 'Replace with a direct action verb', 'Supported'),
+    (r'\bhelped(?: to)?\b', 'Replace with a direct action verb', 'Supported'),
     (r'\bworked on\b', 'Replace with a specific action verb', 'Developed'),
     (r'\bwas involved in\b', 'Replace with an action verb showing ownership', 'Led'),
     (r'\bassisted (?:with|in)\b', 'Replace with a stronger action verb', 'Led'),
     (r'\bparticipated in\b', 'Replace with your specific contribution', 'Contributed to'),
     (r'\bcontributed to\b', 'Replace with a specific action verb', 'Drove'),
-    (r'\bhelped with\b', 'Replace with a direct action verb', 'Owned'),
 ]
 
 _PASSIVE_VOICE_PATTERNS: List[Tuple[str, str, Optional[str]]] = [
@@ -147,15 +145,20 @@ def _body_lines(latex_content: str) -> List[Tuple[int, str]]:
         if r'\end{document}' in line:
             break
 
-        # Skip blank lines and comment-only lines
-        if not stripped or stripped.startswith('%'):
+        # Skip comment-only lines
+        if stripped.startswith('%'):
+            continue
+
+        # Strip inline comments (% ...) while preserving escaped \%
+        content = re.sub(r'(?<!\\)%.*$', '', line).rstrip()
+        if not content.strip():
             continue
 
         # Skip purely structural / non-text command lines
-        if _SKIP_LINE_RE.match(line):
+        if _SKIP_LINE_RE.match(content):
             continue
 
-        result.append((idx, line))
+        result.append((idx, content))
 
     return result
 
