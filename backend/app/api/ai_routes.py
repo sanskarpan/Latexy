@@ -5,7 +5,7 @@ AI tool routes — error explanation and other AI-powered utilities.
 import hashlib
 import json
 import time
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 import openai
 from fastapi import APIRouter, Depends
@@ -55,6 +55,22 @@ class GenerateSummaryRequest(BaseModel):
 
 class GenerateSummaryResponse(BaseModel):
     summaries: List[SummaryVariant]
+    cached: bool
+
+
+RewriteAction = Literal["improve", "shorten", "quantify", "power_verbs", "change_tone", "expand"]
+
+
+class RewriteRequest(BaseModel):
+    selected_text: str = Field(..., min_length=5, max_length=2000)
+    action: RewriteAction
+    context: Optional[str] = Field(None, max_length=1000)
+    tone: Optional[str] = Field(None, max_length=50)
+
+
+class RewriteResponse(BaseModel):
+    rewritten: str
+    action: str
     cached: bool
 
 
@@ -345,3 +361,112 @@ async def explain_latex_error(
             cached=False,
             processing_time=0,
         )
+
+
+# ── Writing assistant ────────────────────────────────────────────────────────
+
+_REWRITE_PROMPTS: Dict[str, str] = {
+    "improve": (
+        "Rewrite for stronger impact and clarity. Keep length similar. "
+        "Return ONLY the rewritten LaTeX text — no explanation, no preamble."
+    ),
+    "shorten": (
+        "Condense to roughly 50% fewer words while preserving the core meaning. "
+        "Eliminate filler words. "
+        "Return ONLY the shortened LaTeX text."
+    ),
+    "quantify": (
+        "Where plausible, add specific metrics, numbers, or percentages to demonstrate scale or impact. "
+        "Keep all LaTeX commands valid. "
+        "Return ONLY the revised LaTeX text."
+    ),
+    "power_verbs": (
+        "Replace weak verbs such as 'responsible for', 'helped with', 'worked on', "
+        "'assisted', 'participated in' with strong action verbs "
+        "(e.g. Led, Engineered, Delivered, Architected, Spearheaded). "
+        "Leave the rest of the text unchanged. "
+        "Return ONLY the revised LaTeX text."
+    ),
+    "change_tone": (
+        "Rewrite in a {tone} tone while keeping all factual content identical. "
+        "Return ONLY the rewritten LaTeX text."
+    ),
+    "expand": (
+        "Elaborate with additional detail and supporting context. "
+        "Limit the increase to roughly 50% more words. Keep LaTeX commands valid. "
+        "Return ONLY the expanded LaTeX text."
+    ),
+}
+
+
+def _rewrite_cache_key(action: str, selected_text: str, tone: Optional[str], context: Optional[str] = None) -> str:
+    raw = f"{action}|{selected_text}|{tone or ''}|{(context or '').strip()}"
+    return "ai:rewrite:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+@router.post("/rewrite", response_model=RewriteResponse)
+async def rewrite_text(
+    request: RewriteRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
+    """Rewrite selected LaTeX text using AI. Auth optional."""
+    cache_key = _rewrite_cache_key(request.action, request.selected_text, request.tone, request.context)
+
+    # Check cache
+    try:
+        cached = await cache_manager.get(cache_key)
+        if cached and isinstance(cached, dict):
+            return RewriteResponse(
+                rewritten=cached["rewritten"], action=request.action, cached=True
+            )
+    except Exception:
+        pass
+
+    # Resolve API key
+    api_key: Optional[str] = None
+    if user_id:
+        try:
+            from ..services.api_key_service import api_key_service
+            api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+        except Exception:
+            pass
+    if not api_key and settings.OPENAI_API_KEY:
+        api_key = settings.OPENAI_API_KEY
+
+    if not api_key:
+        logger.warning("rewrite: no API key available")
+        return RewriteResponse(rewritten=request.selected_text, action=request.action, cached=False)
+
+    system_prompt = _REWRITE_PROMPTS[request.action].format(tone=request.tone or "formal")
+    user_parts = [f"Text to rewrite:\n{request.selected_text}"]
+    if request.context:
+        user_parts.append(f"\nContext (for reference only):\n{request.context}")
+    user_prompt = "\n".join(user_parts)
+
+    try:
+        client = openai.AsyncOpenAI(api_key=api_key)
+        response = await client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=1000,
+            temperature=0.7,
+        )
+
+        rewritten = (response.choices[0].message.content or "").strip()
+        if not rewritten:
+            return RewriteResponse(rewritten=request.selected_text, action=request.action, cached=False)
+
+        try:
+            await cache_manager.set(cache_key, {"rewritten": rewritten}, ttl=3600)
+        except Exception:
+            pass
+
+        return RewriteResponse(rewritten=rewritten, action=request.action, cached=False)
+
+    except Exception as exc:
+        logger.error(f"rewrite error: {exc}")
+        return RewriteResponse(rewritten=request.selected_text, action=request.action, cached=False)

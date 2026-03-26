@@ -13,6 +13,7 @@ export interface LaTeXEditorRef {
   getValue: () => string
   highlightLine: (line: number) => void
   applyFix: (line: number, correctedCode: string) => void
+  applyRewrite: (startLine: number, startColumn: number, endLine: number, endColumn: number, text: string) => void
   insertAtCursor: (text: string) => void
   /** Returns pixel position of the cursor relative to the editor container, or null if unavailable */
   getCaretPosition: () => { top: number; left: number } | null
@@ -46,6 +47,15 @@ interface LaTeXEditorProps {
   onCursorLineChange?: (lineContent: string, lineNumber: number) => void
   /** Called when cursor enters or leaves a summary/objective/profile section */
   onCursorInSummarySection?: (inSummary: boolean) => void
+  /** Called when user right-clicks and selects AI Writing Assistant from context menu */
+  onWritingAssistantAction?: (info: {
+    selectedText: string
+    context: string
+    startLine: number
+    startColumn: number
+    endLine: number
+    endColumn: number
+  }) => void
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -224,7 +234,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -238,6 +248,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     onCursorLineChangeRef.current = onCursorLineChange
     const onCursorInSummarySectionRef = useRef(onCursorInSummarySection)
     onCursorInSummarySectionRef.current = onCursorInSummarySection
+    const onWritingAssistantActionRef = useRef(onWritingAssistantAction)
+    onWritingAssistantActionRef.current = onWritingAssistantAction
 
     // Pre-compile page count estimate (~50 text lines per page)
     const estimatedPageCount = useMemo(() => {
@@ -275,6 +287,16 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           range: new monaco.Range(lineNum, 1, lineNum, lineContent.length + 1),
           text: correctedCode,
         }])
+      },
+      applyRewrite(startLine: number, startColumn: number, endLine: number, endColumn: number, text: string) {
+        const editor = editorRef.current
+        const monaco = monacoRef.current
+        if (!editor || !monaco) return
+        editor.executeEdits('writing-assistant', [{
+          range: new monaco.Range(startLine, startColumn, endLine, endColumn),
+          text,
+        }])
+        editor.focus()
       },
       insertAtCursor(text: string) {
         const editor = editorRef.current
@@ -886,6 +908,37 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         disposablesRef.current.push(summaryDisposable)
         disposablesRef.current.push({ dispose: () => { if (summaryTimer) clearTimeout(summaryTimer) } })
       }
+
+      // ── AI Writing Assistant context menu action ───────────────────
+      const writingActionDisposable = editor.addAction({
+        id: 'latexy.writingAssistant',
+        label: '✨ AI Writing Assistant',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 1.5,
+        precondition: 'editorHasSelection',
+        run: (ed) => {
+          const selection = ed.getSelection()
+          if (!selection) return
+          const model = ed.getModel()
+          if (!model) return
+          const selectedText = model.getValueInRange(selection)
+          if (!selectedText.trim()) return
+          // Collect 5 lines of surrounding context
+          const ctxStart = Math.max(1, selection.startLineNumber - 5)
+          const ctxEnd = Math.min(model.getLineCount(), selection.endLineNumber + 5)
+          const ctxLines: string[] = []
+          for (let i = ctxStart; i <= ctxEnd; i++) ctxLines.push(model.getLineContent(i))
+          onWritingAssistantActionRef.current?.({
+            selectedText,
+            context: ctxLines.join('\n'),
+            startLine: selection.startLineNumber,
+            startColumn: selection.startColumn,
+            endLine: selection.endLineNumber,
+            endColumn: selection.endColumn,
+          })
+        },
+      })
+      if (writingActionDisposable) disposablesRef.current.push(writingActionDisposable)
 
     }
 

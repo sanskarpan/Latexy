@@ -1756,14 +1756,14 @@ fast (gpt-4o-mini, ~1s). Frontend-only feature — reuses existing `explainLatex
 
 ---
 
-## Feature 23 — AI Writing Assistant (In-Editor) · P1 · M
+## Feature 23 — AI Writing Assistant (In-Editor) · P1 · M ✅ COMPLETED
 
 **Goal:** Highlight text in Monaco → right-click context menu shows AI rewrite actions (Improve,
 Shorten, Quantify, Power Verbs, Expand). Shows diff of proposed change. Accept/reject/regenerate.
 LLM call is non-streaming (fast for small selections).
 
 ### 23A · Backend — Writing Assistant Endpoint
-- [ ] Add `POST /ai/rewrite` to `backend/app/api/ai_routes.py`:
+- [x] Add `POST /ai/rewrite` to `backend/app/api/ai_routes.py`:
   ```python
   class RewriteRequest(BaseModel):
       selected_text: str = Field(..., min_length=5, max_length=2000)
@@ -1793,13 +1793,13 @@ LLM call is non-streaming (fast for small selections).
   - Cache: `sha256(action + selected_text + tone).hexdigest()[:16]`, TTL 3600s (shorter — more fresh)
 
 ### 23B · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   rewriteText(request: RewriteRequest): Promise<RewriteResponse>
   ```
 
 ### 23C · Frontend — WritingAssistantWidget Component
-- [ ] Create `frontend/src/components/WritingAssistantWidget.tsx`:
+- [x] Create `frontend/src/components/WritingAssistantWidget.tsx`:
   - Appears when text is selected in Monaco (triggered from context menu or selection toolbar)
   - **Initial state (action picker):**
     - Small floating toolbar above selection (absolute positioned)
@@ -1817,7 +1817,7 @@ LLM call is non-streaming (fast for small selections).
   - Positioning: use `editor.getScrolledVisiblePosition()` for cursor position → absolute CSS offset
 
 ### 23D · Frontend — Monaco Context Menu Integration
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add prop: `onWritingAssistantAction?: (selectedText: string, context: string, lineNumber: number) => void`
   - In `handleEditorDidMount`:
     ```typescript
@@ -1839,14 +1839,14 @@ LLM call is non-streaming (fast for small selections).
     ```
 
 ### 23E · Frontend — Integration in Edit Page
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - State: `writingAssistantState: { selectedText, context, lineNumber, loading, result } | null`
   - `onWritingAssistantAction` handler: sets state, user picks action
   - Apply action: calls `apiClient.rewriteText(...)`, sets `result`
   - Accept handler: `editorRef.current?.executeEdits(...)` to replace selection
 
 ### 23F · Tests
-- [ ] `backend/test/test_writing_assistant.py`:
+- [x] `backend/test/test_writing_assistant.py`:
   - Each action (`improve`, `shorten`, `quantify`, `power_verbs`, `expand`) returns non-empty string
   - `shorten` output is shorter than input (mock LLM: verify prompt says "50% fewer words")
   - `action=invalid` → 422
