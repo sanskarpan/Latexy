@@ -37,6 +37,7 @@ export default function OptimizationSuitePage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [baselineLatex, setBaselineLatex] = useState('')
   const [compareOriginalLatex, setCompareOriginalLatex] = useState<string | null>(null)
+  const [compareAfterLatex, setCompareAfterLatex] = useState<string | null>(null)
   const [showCompareModal, setShowCompareModal] = useState(false)
 
   // Variant awareness
@@ -135,6 +136,11 @@ export default function OptimizationSuitePage() {
 
     fetchPdf()
 
+    // Capture immutable after-snapshot for before/after comparison
+    if (stream.status === 'completed' && compareOriginalLatex !== null) {
+      setCompareAfterLatex(stream.streamingLatex ?? '')
+    }
+
     // Track completion for analytics
     if (stream.status === 'completed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'completed')
@@ -145,7 +151,7 @@ export default function OptimizationSuitePage() {
     } else if (stream.status === 'failed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'failed')
     }
-  }, [stream.status, stream.pdfJobId, activeJobId, stream.tokensUsed, refetchATS])
+  }, [stream.status, stream.pdfJobId, stream.streamingLatex, activeJobId, stream.tokensUsed, refetchATS, compareOriginalLatex])
 
   useEffect(() => {
     return () => {
@@ -521,7 +527,7 @@ export default function OptimizationSuitePage() {
               <div className="flex h-11 items-center justify-between border-b border-white/10 bg-white/[0.03] px-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Output Preview</p>
                 <div className="flex items-center gap-3">
-                  {stream.status === 'completed' && compareOriginalLatex !== null && (
+                  {compareAfterLatex !== null && compareOriginalLatex !== null && (
                     <button
                       onClick={() => setShowCompareModal(true)}
                       className="text-xs font-semibold text-orange-300 transition hover:text-orange-200"
@@ -632,11 +638,12 @@ export default function OptimizationSuitePage() {
       )}
 
       {/* Before/After optimization compare modal */}
-      {showCompareModal && compareOriginalLatex !== null && (
+      {showCompareModal && compareOriginalLatex !== null && compareAfterLatex !== null && (
         <CompareModal
           originalLatex={compareOriginalLatex}
-          optimizedLatex={editorRef.current?.getValue() ?? stream.streamingLatex ?? ''}
+          optimizedLatex={compareAfterLatex}
           optimizedPdfUrl={pdfUrl ?? undefined}
+          compiler={compiler}
           onClose={() => setShowCompareModal(false)}
           onRestore={(latex) => {
             editorRef.current?.setValue(latex)
