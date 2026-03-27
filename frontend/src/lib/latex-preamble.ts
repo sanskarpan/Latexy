@@ -279,7 +279,7 @@ export function setFontInPreamble(
         return false
       }
     }
-    if (/\\renewcommand\{\\familydefault\}\{\\sfdefault\}/.test(stripped)) {
+    if (/\\renewcommand\{\\familydefault\}\{\\(?:sf|tt)default\}/.test(stripped)) {
       return false
     }
     return true
