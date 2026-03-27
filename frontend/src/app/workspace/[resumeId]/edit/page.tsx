@@ -32,6 +32,7 @@ import {
   GitFork,
   Zap,
   ShieldCheck,
+  Package,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
@@ -55,13 +56,14 @@ import DesignPanel from '@/components/DesignPanel'
 import BulletGeneratorWidget from '@/components/BulletGeneratorWidget'
 import SummaryGeneratorWidget from '@/components/SummaryGeneratorWidget'
 import ProofreadPanel from '@/components/ProofreadPanel'
+import PackageManagerPanel from '@/components/PackageManagerPanel'
 import CompilerSelector from '@/components/CompilerSelector'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
@@ -1671,6 +1673,7 @@ export default function ResumeEditPage() {
                 { id: 'interview', label: 'Interview', icon: MessageSquare },
                 { id: 'design', label: 'Design', icon: Palette },
                 { id: 'proofread', label: 'Proof', icon: ShieldCheck },
+                { id: 'packages', label: 'Packages', icon: Package },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -1846,6 +1849,16 @@ export default function ResumeEditPage() {
                   )
                 }}
                 onProofreadComplete={setProofreadIssues}
+              />
+            )}
+
+            {rightTab === 'packages' && (
+              <PackageManagerPanel
+                currentLatex={latexContent}
+                onAddPackage={(newLatex) => {
+                  editorRef.current?.setValue(newLatex)
+                  setLatexContent(newLatex)
+                }}
               />
             )}
           </div>
