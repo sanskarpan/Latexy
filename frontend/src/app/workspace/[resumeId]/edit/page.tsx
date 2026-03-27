@@ -48,6 +48,7 @@ import MultiFormatUpload from '@/components/MultiFormatUpload'
 import VersionHistoryPanel from '@/components/VersionHistoryPanel'
 import SaveCheckpointPopover from '@/components/SaveCheckpointPopover'
 import DiffViewerModal from '@/components/DiffViewerModal'
+import CompareModal from '@/components/CompareModal'
 import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
 import ReferencesPanel from '@/components/ReferencesPanel'
 import DesignPanel from '@/components/DesignPanel'
@@ -700,6 +701,7 @@ export default function ResumeEditPage() {
   const [diffCheckpointA, setDiffCheckpointA] = useState<CheckpointEntry | null>(null)
   const [diffCheckpointB, setDiffCheckpointB] = useState<CheckpointEntry | null>(null)
   const [showDiffModal, setShowDiffModal] = useState(false)
+  const [compareData, setCompareData] = useState<{ original: string; optimized: string } | null>(null)
 
   // Auto-compile
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
@@ -1772,6 +1774,7 @@ export default function ResumeEditPage() {
                 resumeId={resumeId}
                 onRestore={handleHistoryRestore}
                 onCompare={handleCompare}
+                onBeforeAfter={(orig, opt) => setCompareData({ original: orig, optimized: opt })}
                 refreshKey={historyRefreshKey}
               />
             )}
@@ -1915,6 +1918,21 @@ export default function ResumeEditPage() {
           parentTitle={parentDiffData.parent_title}
           variantLatex={parentDiffData.variant_latex}
           variantTitle={parentDiffData.variant_title}
+        />
+      )}
+
+      {/* Before/After optimization compare modal */}
+      {compareData && (
+        <CompareModal
+          originalLatex={compareData.original}
+          optimizedLatex={compareData.optimized}
+          onClose={() => setCompareData(null)}
+          onRestore={(latex) => {
+            editorRef.current?.setValue(latex)
+            setLatexContent(latex)
+            setCompareData(null)
+            toast.success('Original restored')
+          }}
         />
       )}
 
