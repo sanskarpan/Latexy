@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Maximize2, Minimize2, RotateCcw, X } from 'lucide-react'
 import { DiffEditor } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, type LatexCompiler } from '@/lib/api-client'
 import { useJobStream } from '@/hooks/useJobStream'
 import PDFPreview from '@/components/PDFPreview'
 
@@ -24,6 +24,8 @@ interface Props {
   onRestore?: (latex: string) => void
   /** Pre-compiled PDF URL for the optimized version */
   optimizedPdfUrl?: string
+  /** LaTeX compiler used for the optimized version — used when compiling the original */
+  compiler?: LatexCompiler
 }
 
 export default function CompareModal({
@@ -32,6 +34,7 @@ export default function CompareModal({
   onClose,
   onRestore,
   optimizedPdfUrl,
+  compiler,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('diff')
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -140,7 +143,7 @@ export default function CompareModal({
     setIsCompiling(true)
     setCompileError(null)
     try {
-      const res = await apiClient.compileLatex({ latex_content: originalLatex })
+      const res = await apiClient.compileLatex({ latex_content: originalLatex, compiler })
       if (!res.success || !res.job_id) throw new Error(res.message || 'Failed to start compile')
       setOriginalCompileJobId(res.job_id)
     } catch (err) {
@@ -179,11 +182,15 @@ export default function CompareModal({
                 LaTeX Diff
               </button>
               <button
-                onClick={() => setActiveTab('pdf')}
+                onClick={() => optimizedPdfUrl && setActiveTab('pdf')}
+                disabled={!optimizedPdfUrl}
+                title={!optimizedPdfUrl ? 'No compiled PDF available for this comparison' : undefined}
                 className={`rounded-md px-3 py-1 text-xs font-medium transition ${
                   activeTab === 'pdf'
                     ? 'bg-white/10 text-white'
-                    : 'text-zinc-500 hover:text-zinc-300'
+                    : optimizedPdfUrl
+                      ? 'text-zinc-500 hover:text-zinc-300'
+                      : 'cursor-not-allowed text-zinc-700'
                 }`}
               >
                 PDF Preview
