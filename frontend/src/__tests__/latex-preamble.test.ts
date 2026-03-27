@@ -10,6 +10,9 @@ import {
   removeAccentColorFromPreamble,
   setMarginsInPreamble,
   LATEX_FONTS,
+  getInstalledPackages,
+  addPackageToPreamble,
+  removePackageFromPreamble,
 } from '../lib/latex-preamble'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -247,5 +250,121 @@ describe('setFontInPreamble', () => {
       const result = setFontInPreamble(MINIMAL, font.package, font.command)
       expect(result).toContain(`\\usepackage{${font.package}}`)
     }
+  })
+})
+
+// ─── getInstalledPackages ─────────────────────────────────────────────────────
+
+const WITH_THREE_PACKAGES =
+  '\\documentclass[11pt]{article}\n\\usepackage{amsmath}\n\\usepackage{geometry}\n\\usepackage[T1]{fontenc}\n\\begin{document}\n\\end{document}'
+
+const WITH_MULTI_PACKAGE =
+  '\\documentclass{article}\n\\usepackage{amsmath,amssymb,amsthm}\n\\begin{document}\n\\end{document}'
+
+describe('getInstalledPackages', () => {
+  test('returns empty array when no usepackage in preamble', () => {
+    expect(getInstalledPackages(MINIMAL)).toEqual([])
+  })
+
+  test('returns package names from preamble', () => {
+    const pkgs = getInstalledPackages(WITH_THREE_PACKAGES)
+    expect(pkgs).toContain('amsmath')
+    expect(pkgs).toContain('geometry')
+    expect(pkgs).toContain('fontenc')
+    expect(pkgs.length).toBe(3)
+  })
+
+  test('handles optional arguments — \\usepackage[T1]{fontenc}', () => {
+    const pkgs = getInstalledPackages(WITH_THREE_PACKAGES)
+    expect(pkgs).toContain('fontenc')
+  })
+
+  test('splits comma-separated packages — \\usepackage{a,b,c}', () => {
+    const pkgs = getInstalledPackages(WITH_MULTI_PACKAGE)
+    expect(pkgs).toContain('amsmath')
+    expect(pkgs).toContain('amssymb')
+    expect(pkgs).toContain('amsthm')
+    expect(pkgs.length).toBe(3)
+  })
+
+  test('ignores usepackage calls in document body', () => {
+    const doc =
+      '\\documentclass{article}\n\\usepackage{geometry}\n\\begin{document}\n\\usepackage{amsmath}\n\\end{document}'
+    const pkgs = getInstalledPackages(doc)
+    expect(pkgs).toContain('geometry')
+    expect(pkgs).not.toContain('amsmath')
+  })
+})
+
+// ─── addPackageToPreamble ─────────────────────────────────────────────────────
+
+describe('addPackageToPreamble', () => {
+  test('adds \\usepackage{amsmath} after existing packages', () => {
+    const result = addPackageToPreamble(WITH_GEOMETRY, 'amsmath')
+    expect(result).toContain('\\usepackage{amsmath}')
+    // Should appear after \usepackage{geometry}
+    const geoIdx = result.indexOf('\\usepackage{geometry}')
+    const mathIdx = result.indexOf('\\usepackage{amsmath}')
+    expect(mathIdx).toBeGreaterThan(geoIdx)
+  })
+
+  test('inserts before \\begin{document} when no existing packages', () => {
+    const result = addPackageToPreamble(MINIMAL, 'amsmath')
+    expect(result).toContain('\\usepackage{amsmath}')
+    const pkgIdx = result.indexOf('\\usepackage{amsmath}')
+    const docIdx = result.indexOf('\\begin{document}')
+    expect(pkgIdx).toBeLessThan(docIdx)
+  })
+
+  test('idempotent — adding already-present package returns unchanged latex', () => {
+    const once = addPackageToPreamble(MINIMAL, 'amsmath')
+    const twice = addPackageToPreamble(once, 'amsmath')
+    const occurrences = (twice.match(/\\usepackage\{amsmath\}/g) ?? []).length
+    expect(occurrences).toBe(1)
+  })
+
+  test('adds package with options when provided', () => {
+    const result = addPackageToPreamble(MINIMAL, 'hyperref', 'colorlinks=true')
+    expect(result).toContain('\\usepackage[colorlinks=true]{hyperref}')
+  })
+
+  test('new package appears before \\begin{document}', () => {
+    const result = addPackageToPreamble(MINIMAL, 'xcolor')
+    const pkgIdx = result.indexOf('\\usepackage{xcolor}')
+    const docIdx = result.indexOf('\\begin{document}')
+    expect(pkgIdx).toBeLessThan(docIdx)
+    expect(pkgIdx).toBeGreaterThan(-1)
+  })
+})
+
+// ─── removePackageFromPreamble ────────────────────────────────────────────────
+
+describe('removePackageFromPreamble', () => {
+  test('removes \\usepackage{geometry} line', () => {
+    const result = removePackageFromPreamble(WITH_GEOMETRY, 'geometry')
+    expect(result).not.toContain('\\usepackage{geometry}')
+  })
+
+  test('no-op when package not present', () => {
+    const result = removePackageFromPreamble(MINIMAL, 'amsmath')
+    expect(result).toBe(MINIMAL)
+  })
+
+  test('removes package with optional arguments', () => {
+    const doc =
+      '\\documentclass{article}\n\\usepackage[T1]{fontenc}\n\\begin{document}\n\\end{document}'
+    const result = removePackageFromPreamble(doc, 'fontenc')
+    expect(result).not.toContain('fontenc')
+  })
+
+  test('after remove, getInstalledPackages no longer lists the package', () => {
+    const result = removePackageFromPreamble(WITH_THREE_PACKAGES, 'geometry')
+    expect(getInstalledPackages(result)).not.toContain('geometry')
+  })
+
+  test('add then remove is a no-op (round-trip)', () => {
+    const added = addPackageToPreamble(MINIMAL, 'amsmath')
+    const removed = removePackageFromPreamble(added, 'amsmath')
+    expect(getInstalledPackages(removed)).not.toContain('amsmath')
   })
 })
