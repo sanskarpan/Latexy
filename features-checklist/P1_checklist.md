@@ -2201,7 +2201,7 @@ description, usage example. "Add to Preamble" inserts `\usepackage{name}` in cor
 Auto-detects already-installed packages from current preamble.
 
 ### 28A · Frontend — Package Database
-- [ ] Create `frontend/src/data/latex-packages.ts`:
+- [x] Create `frontend/src/data/latex-packages.ts`:
   - Curated list of 200+ most useful LaTeX packages:
     ```typescript
     export const LATEX_PACKAGES: LaTeXPackage[] = [
@@ -2227,7 +2227,7 @@ Auto-detects already-installed packages from current preamble.
   - Categories: layout, fonts, math, tables, graphics, colors, links, bibliography, utils
 
 ### 28B · Frontend — Preamble Package Detection
-- [ ] In `frontend/src/lib/latex-preamble.ts`, add:
+- [x] In `frontend/src/lib/latex-preamble.ts`, add:
   ```typescript
   export function getInstalledPackages(latex: string): string[] {
     const matches = latex.matchAll(/\\usepackage(?:\[[^\]]*\])?\{([^}]+)\}/g)
@@ -2251,7 +2251,7 @@ Auto-detects already-installed packages from current preamble.
   ```
 
 ### 28C · Frontend — PackageManagerPanel Component
-- [ ] Create `frontend/src/components/PackageManagerPanel.tsx`:
+- [x] Create `frontend/src/components/PackageManagerPanel.tsx`:
   - Props:
     ```typescript
     {
@@ -2272,12 +2272,12 @@ Auto-detects already-installed packages from current preamble.
     - "×" button: calls `removePackageFromPreamble(latex, packageName)` → `onAddPackage()`
 
 ### 28D · Frontend — Integration in Edit Page
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Add "Packages" tab to editor sidebar
   - `onAddPackage` handler: `editorRef.current?.setValue(newLatex)` + auto-save
 
 ### 28E · Tests
-- [ ] Unit tests for `latex-preamble.ts` package functions:
+- [x] Unit tests for `latex-preamble.ts` package functions:
   - `getInstalledPackages` on preamble with 3 packages → returns array of 3 names
   - `addPackageToPreamble` adds `\usepackage{amsmath}` after existing packages
   - `addPackageToPreamble` on latex without existing packages → inserts before `\begin{document}`
