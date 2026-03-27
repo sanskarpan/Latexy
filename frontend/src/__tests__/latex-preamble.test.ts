@@ -287,6 +287,20 @@ describe('getInstalledPackages', () => {
     expect(pkgs.length).toBe(3)
   })
 
+  test('ignores commented \\usepackage lines (% \\usepackage{foo})', () => {
+    const doc =
+      '\\documentclass{article}\n% \\usepackage{geometry}\n\\begin{document}\n\\end{document}'
+    expect(getInstalledPackages(doc)).toEqual([])
+  })
+
+  test('ignores inline comment containing usepackage', () => {
+    const doc =
+      '\\documentclass{article}\n\\usepackage{amsmath} % \\usepackage{geometry}\n\\begin{document}\n\\end{document}'
+    const pkgs = getInstalledPackages(doc)
+    expect(pkgs).toContain('amsmath')
+    expect(pkgs).not.toContain('geometry')
+  })
+
   test('ignores usepackage calls in document body', () => {
     const doc =
       '\\documentclass{article}\n\\usepackage{geometry}\n\\begin{document}\n\\usepackage{amsmath}\n\\end{document}'
@@ -366,5 +380,15 @@ describe('removePackageFromPreamble', () => {
     const added = addPackageToPreamble(MINIMAL, 'amsmath')
     const removed = removePackageFromPreamble(added, 'amsmath')
     expect(getInstalledPackages(removed)).not.toContain('amsmath')
+  })
+
+  test('does not remove usepackage-like text in document body', () => {
+    const doc =
+      '\\documentclass{article}\n\\usepackage{geometry}\n\\begin{document}\n\\texttt{\\\\usepackage{geometry}}\n\\end{document}'
+    const result = removePackageFromPreamble(doc, 'geometry')
+    // Package removed from preamble
+    expect(getInstalledPackages(result)).not.toContain('geometry')
+    // Body text preserved unchanged
+    expect(result).toContain('\\texttt{\\\\usepackage{geometry}}')
   })
 })
