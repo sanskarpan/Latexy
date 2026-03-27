@@ -383,3 +383,90 @@ export function setMarginsInPreamble(latex: string, margin: string): string {
   // Add before \begin{document}
   return latex.replace(/(\\begin\{document\})/, `${newGeo}\n$1`)
 }
+
+// ─── Package management ───────────────────────────────────────────────────────
+
+/** Returns all package names currently loaded in the preamble. */
+export function getInstalledPackages(latex: string): string[] {
+  const [preamble] = splitAtDocument(latex)
+  const matches = preamble.matchAll(/\\usepackage(?:\[[^\]]*\])?\{([^}]+)\}/g)
+  return Array.from(matches).flatMap((m) =>
+    m[1].split(',').map((s) => s.trim()).filter(Boolean)
+  )
+}
+
+/** Finds the 0-based index of the last `\usepackage` line in the preamble. */
+function findLastUsepackageLine(latex: string): number {
+  const [preamble] = splitAtDocument(latex)
+  const lines = preamble.split('\n')
+  let last = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (/\\usepackage(?:\[[^\]]*\])?\{[^}]+\}/.test(lines[i])) {
+      last = i
+    }
+  }
+  return last
+}
+
+/**
+ * Inserts `\usepackage[options]{packageName}` into the preamble.
+ * - If the package is already present, returns `latex` unchanged (idempotent).
+ * - Inserts after the last existing `\usepackage` line when one exists.
+ * - Falls back to inserting before `\begin{document}`.
+ */
+export function addPackageToPreamble(
+  latex: string,
+  packageName: string,
+  options?: string
+): string {
+  // Idempotent check — package already loaded
+  const installed = getInstalledPackages(latex)
+  if (installed.includes(packageName)) return latex
+
+  const usePackage = options
+    ? `\\usepackage[${options}]{${packageName}}`
+    : `\\usepackage{${packageName}}`
+
+  const lastPkgLine = findLastUsepackageLine(latex)
+  if (lastPkgLine >= 0) {
+    const lines = latex.split('\n')
+    lines.splice(lastPkgLine + 1, 0, usePackage)
+    return lines.join('\n')
+  }
+
+  // No existing \usepackage — insert before \begin{document}
+  return latex.replace(/(\\begin\{document\})/, `${usePackage}\n$1`)
+}
+
+/**
+ * Removes `\usepackage[...]{packageName}` from the preamble.
+ * Handles optional arguments and multi-package `\usepackage{a,b,c}` lines
+ * by removing the entire line if it only contains `packageName`, or removing
+ * `packageName` from the comma-separated list if there are others.
+ */
+export function removePackageFromPreamble(
+  latex: string,
+  packageName: string
+): string {
+  const escaped = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // Try removing the entire line first (when packageName is the only package on the line)
+  const singleLineRe = new RegExp(
+    `[ \\t]*\\\\usepackage(?:\\[[^\\]]*\\])?\\{${escaped}\\}[ \\t]*\\n?`,
+    'g'
+  )
+  const afterSingle = latex.replace(singleLineRe, '')
+  if (afterSingle !== latex) return afterSingle
+
+  // Package is in a comma-separated list — remove just the name
+  // Case: "pkg," (package followed by comma)
+  latex = latex.replace(
+    new RegExp(`(\\\\usepackage(?:\\[[^\\]]*\\])?\\{[^}]*)\\b${escaped}\\b,\\s*`, 'g'),
+    '$1'
+  )
+  // Case: ",pkg" (package preceded by comma)
+  latex = latex.replace(
+    new RegExp(`,\\s*\\b${escaped}\\b(\\s*\\})`, 'g'),
+    '$1'
+  )
+  return latex
+}
