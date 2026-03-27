@@ -1358,7 +1358,7 @@ triggers auto-compile for instant preview. Replaces manual preamble editing for 
   - The visual editor reads current values from parsed LaTeX preamble on mount
 
 ### 20B · Backend — Font/Color Reference Data
-- [ ] Create `backend/app/data/latex_fonts.json` (or in frontend):
+- [x] Create `backend/app/data/latex_fonts.json` (or in frontend):
   - List of 30 LaTeX fonts with correct `\usepackage{}` declarations:
     ```json
     [

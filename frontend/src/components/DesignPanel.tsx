@@ -168,11 +168,26 @@ export default function DesignPanel({
             </div>
 
             {/* Sans-serif group */}
-            <div className="border-t border-white/[0.04] px-2 pt-2 pb-2">
+            <div className="border-t border-white/[0.04] px-2 pt-2 pb-1">
               <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-800 px-1 mb-1">
                 Sans-Serif
               </p>
               {LATEX_FONTS.filter((f) => f.category === 'sans-serif').map((font) => (
+                <FontRow
+                  key={font.name}
+                  font={font}
+                  active={selectedFont === font.name}
+                  onClick={() => handleFontChange(font.name)}
+                />
+              ))}
+            </div>
+
+            {/* Monospace group */}
+            <div className="border-t border-white/[0.04] px-2 pt-2 pb-2">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-800 px-1 mb-1">
+                Monospace
+              </p>
+              {LATEX_FONTS.filter((f) => f.category === 'monospace').map((font) => (
                 <FontRow
                   key={font.name}
                   font={font}
