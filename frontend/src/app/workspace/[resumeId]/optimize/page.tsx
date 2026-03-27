@@ -636,6 +636,7 @@ export default function OptimizationSuitePage() {
         <CompareModal
           originalLatex={compareOriginalLatex}
           optimizedLatex={editorRef.current?.getValue() ?? stream.streamingLatex ?? ''}
+          optimizedPdfUrl={pdfUrl ?? undefined}
           onClose={() => setShowCompareModal(false)}
           onRestore={(latex) => {
             editorRef.current?.setValue(latex)
