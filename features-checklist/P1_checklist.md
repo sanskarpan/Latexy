@@ -2146,21 +2146,21 @@ rendered twice. No backend changes needed — data is already in `optimization_h
   - True PDF comparison requires Option A; add as enhancement later
 
 ### 27B · Frontend — Trigger in Optimize Page
-- [ ] In `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`:
   - After `stream.status === 'completed'` and optimized PDF is available:
     - Show "Compare with Original" button in results section (next to "Download PDF")
-  - On click: open `CompareModal` with `{ originalLatex, optimizedLatex, optimizedPdfUrl }`
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
-  - History panel entry for optimization runs: "Compare" button → same modal
+  - On click: open `CompareModal` with `{ originalLatex, optimizedLatex }`
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+  - History panel entry for optimization runs: "Before/After" button → same modal
 
 ### 27C · Frontend — CompareModal Component
-- [ ] Create `frontend/src/components/CompareModal.tsx`:
-  - Full-screen modal (or large drawer from bottom)
-  - **Tab toggle:** "LaTeX Diff" | "PDF Preview" (tabs at top)
-  - **LaTeX Diff tab:**
-    - Reuse `DiffViewerModal` internals: `MonacoDiffEditor` with original (left) vs optimized (right)
+- [x] Create `frontend/src/components/CompareModal.tsx`:
+  - Full-screen modal (large, 85vh)
+  - **LaTeX Diff tab (MVP):**
+    - `MonacoDiffEditor` with original (left) vs optimized (right)
     - Diff statistics: "+N / -N lines"
     - "Restore Original" action button
+    - Fullscreen toggle + Escape key close
   - **PDF Preview tab (Phase 2):**
     - Side-by-side `PDFPreview` components (left: original, right: optimized)
     - Synchronized scroll: `onScroll` event on left → set scrollTop on right
@@ -2168,7 +2168,6 @@ rendered twice. No backend changes needed — data is already in `optimization_h
     - "Download Original" and "Download Optimized" buttons
     - Note: Original PDF requires compiling `original_latex` → show "Compile Original" button
       that fires a background compile job; while pending show skeleton
-  - **For MVP:** Only LaTeX Diff tab is required; PDF Preview tab is a nice-to-have
 
 ### 27D · Frontend — Synchronized PDF Scroll
 - [ ] If implementing PDF comparison:
@@ -2186,8 +2185,8 @@ rendered twice. No backend changes needed — data is already in `optimization_h
   ```
 
 ### 27E · Tests
-- [ ] Manual E2E:
-  - Run optimization → "Compare" button appears → opens modal
+- [x] Manual E2E:
+  - Run optimization → "Compare with Original" button appears next to "Download PDF" → opens modal
   - LaTeX Diff shows meaningful differences between original and optimized
   - "Restore Original" replaces editor content with `original_latex`
   - Escape key closes modal
