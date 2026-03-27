@@ -1928,6 +1928,7 @@ export default function ResumeEditPage() {
           optimizedLatex={compareData.optimized}
           onClose={() => setCompareData(null)}
           onRestore={(latex) => {
+            pushUndo('Before restore from compare')
             editorRef.current?.setValue(latex)
             setLatexContent(latex)
             setCompareData(null)
