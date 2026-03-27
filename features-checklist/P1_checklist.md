@@ -2170,19 +2170,11 @@ rendered twice. No backend changes needed — data is already in `optimization_h
       that fires a background compile job; while pending show skeleton
 
 ### 27D · Frontend — Synchronized PDF Scroll
-- [ ] If implementing PDF comparison:
-  ```typescript
-  // In CompareModal, two PDFPreview refs
-  const leftPdfRef = useRef<HTMLDivElement>(null)
-  const rightPdfRef = useRef<HTMLDivElement>(null)
-  const handleLeftScroll = (e: Event) => {
-    if (rightPdfRef.current) {
-      const ratio = (e.target as HTMLDivElement).scrollTop /
-                    (e.target as HTMLDivElement).scrollHeight
-      rightPdfRef.current.scrollTop = ratio * rightPdfRef.current.scrollHeight
-    }
-  }
-  ```
+- [x] PDF Preview tab in `CompareModal`:
+  - Left pane (Before): "Compile Original" button → `apiClient.compileLatex` → `useJobStream` tracks progress → renders `PDFPreview` on completion
+  - Right pane (After): `optimizedPdfUrl` prop (passed from optimize page where PDF is already compiled)
+  - Synchronized scroll: scroll listener on left container → proportional scroll ratio applied to right
+  - Download buttons for both PDFs via `PDFPreview`'s `onDownload` prop
 
 ### 27E · Tests
 - [x] Manual E2E:
