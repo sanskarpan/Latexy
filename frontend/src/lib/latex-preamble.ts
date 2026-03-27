@@ -386,21 +386,36 @@ export function setMarginsInPreamble(latex: string, margin: string): string {
 
 // ─── Package management ───────────────────────────────────────────────────────
 
+/**
+ * Strip LaTeX comments from a string: removes `% ...` to end-of-line,
+ * but preserves `\%` (escaped percent).
+ */
+function stripLatexComments(s: string): string {
+  return s
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('%'))
+    .map((line) => line.replace(/(?<!\\)%.*$/, ''))
+    .join('\n')
+}
+
 /** Returns all package names currently loaded in the preamble. */
 export function getInstalledPackages(latex: string): string[] {
   const [preamble] = splitAtDocument(latex)
-  const matches = preamble.matchAll(/\\usepackage(?:\[[^\]]*\])?\{([^}]+)\}/g)
+  const cleaned = stripLatexComments(preamble)
+  const matches = cleaned.matchAll(/\\usepackage(?:\[[^\]]*\])?\{([^}]+)\}/g)
   return Array.from(matches).flatMap((m) =>
     m[1].split(',').map((s) => s.trim()).filter(Boolean)
   )
 }
 
-/** Finds the 0-based index of the last `\usepackage` line in the preamble. */
+/** Finds the 0-based index of the last non-commented `\usepackage` line in the full latex string. */
 function findLastUsepackageLine(latex: string): number {
   const [preamble] = splitAtDocument(latex)
   const lines = preamble.split('\n')
   let last = -1
   for (let i = 0; i < lines.length; i++) {
+    const stripped = lines[i].trim()
+    if (stripped.startsWith('%')) continue
     if (/\\usepackage(?:\[[^\]]*\])?\{[^}]+\}/.test(lines[i])) {
       last = i
     }
@@ -435,7 +450,10 @@ export function addPackageToPreamble(
   }
 
   // No existing \usepackage — insert before \begin{document}
-  return latex.replace(/(\\begin\{document\})/, `${usePackage}\n$1`)
+  const withDoc = latex.replace(/(\\begin\{document\})/, `${usePackage}\n$1`)
+  if (withDoc !== latex) return withDoc
+  // No \begin{document} at all — prepend to file
+  return `${usePackage}\n${latex}`
 }
 
 /**
@@ -448,25 +466,28 @@ export function removePackageFromPreamble(
   latex: string,
   packageName: string
 ): string {
+  // Operate only on the preamble to avoid touching the document body
+  const [preamble, body] = splitAtDocument(latex)
   const escaped = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
   // Try removing the entire line first (when packageName is the only package on the line)
   const singleLineRe = new RegExp(
     `[ \\t]*\\\\usepackage(?:\\[[^\\]]*\\])?\\{${escaped}\\}[ \\t]*\\n?`,
     'g'
   )
-  const afterSingle = latex.replace(singleLineRe, '')
-  if (afterSingle !== latex) return afterSingle
+  const afterSingle = preamble.replace(singleLineRe, '')
+  if (afterSingle !== preamble) return afterSingle + body
 
   // Package is in a comma-separated list — remove just the name
   // Case: "pkg," (package followed by comma)
-  latex = latex.replace(
+  let modified = preamble.replace(
     new RegExp(`(\\\\usepackage(?:\\[[^\\]]*\\])?\\{[^}]*)\\b${escaped}\\b,\\s*`, 'g'),
     '$1'
   )
   // Case: ",pkg" (package preceded by comma)
-  latex = latex.replace(
+  modified = modified.replace(
     new RegExp(`,\\s*\\b${escaped}\\b(\\s*\\})`, 'g'),
     '$1'
   )
-  return latex
+  return modified + body
 }
