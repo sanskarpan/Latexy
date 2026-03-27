@@ -16,6 +16,8 @@ interface VersionHistoryPanelProps {
   onRestore: (latex: string) => void
   /** Called when exactly 2 entries are selected and "Compare" is clicked */
   onCompare: (a: CheckpointEntry, b: CheckpointEntry) => void
+  /** Called when user clicks "Before/After" on an optimization entry */
+  onBeforeAfter?: (original: string, optimized: string) => void
   /** Increment this to force a refresh (e.g. after creating a checkpoint) */
   refreshKey?: number
 }
@@ -80,12 +82,14 @@ export default function VersionHistoryPanel({
   resumeId,
   onRestore,
   onCompare,
+  onBeforeAfter,
   refreshKey = 0,
 }: VersionHistoryPanelProps) {
   const [entries, setEntries] = useState<CheckpointEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [restoringId, setRestoringId] = useState<string | null>(null)
+  const [beforeAfterId, setBeforeAfterId] = useState<string | null>(null)
 
   // Fetch entries
   useEffect(() => {
@@ -157,6 +161,23 @@ export default function VersionHistoryPanel({
       }
     },
     [resumeId]
+  )
+
+  // Before/After handler for optimization entries
+  const handleBeforeAfter = useCallback(
+    async (entry: CheckpointEntry) => {
+      if (!onBeforeAfter) return
+      setBeforeAfterId(entry.id)
+      try {
+        const result = await apiClient.getCheckpointContent(resumeId, entry.id)
+        onBeforeAfter(result.original_latex, result.optimized_latex)
+      } catch {
+        toast.error('Failed to load optimization diff')
+      } finally {
+        setBeforeAfterId(null)
+      }
+    },
+    [resumeId, onBeforeAfter]
   )
 
   // Compare handler
@@ -293,6 +314,15 @@ export default function VersionHistoryPanel({
                     className="flex items-center gap-1"
                     onClick={(e) => e.stopPropagation()}
                   >
+                    {type === 'optimization' && onBeforeAfter && (
+                      <button
+                        onClick={() => handleBeforeAfter(entry)}
+                        disabled={beforeAfterId === entry.id}
+                        className="rounded px-1.5 py-0.5 text-[10px] text-orange-400/70 transition hover:bg-orange-500/10 hover:text-orange-300 disabled:opacity-40"
+                      >
+                        {beforeAfterId === entry.id ? '…' : 'Before/After'}
+                      </button>
+                    )}
                     <button
                       onClick={() => handleRestore(entry)}
                       disabled={restoringId === entry.id}

@@ -17,6 +17,7 @@ import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import ATSScoreCard from '@/components/ATSScoreCard'
 import DiffViewerModal from '@/components/DiffViewerModal'
+import CompareModal from '@/components/CompareModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
 
@@ -35,6 +36,9 @@ export default function OptimizationSuitePage() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [baselineLatex, setBaselineLatex] = useState('')
+  const [compareOriginalLatex, setCompareOriginalLatex] = useState<string | null>(null)
+  const [compareAfterLatex, setCompareAfterLatex] = useState<string | null>(null)
+  const [showCompareModal, setShowCompareModal] = useState(false)
 
   // Variant awareness
   const [parentResumeId, setParentResumeId] = useState<string | null>(null)
@@ -132,6 +136,11 @@ export default function OptimizationSuitePage() {
 
     fetchPdf()
 
+    // Capture immutable after-snapshot for before/after comparison
+    if (stream.status === 'completed' && compareOriginalLatex !== null) {
+      setCompareAfterLatex(stream.streamingLatex ?? '')
+    }
+
     // Track completion for analytics
     if (stream.status === 'completed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'completed')
@@ -142,7 +151,7 @@ export default function OptimizationSuitePage() {
     } else if (stream.status === 'failed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'failed')
     }
-  }, [stream.status, stream.pdfJobId, activeJobId, stream.tokensUsed, refetchATS])
+  }, [stream.status, stream.pdfJobId, stream.streamingLatex, activeJobId, stream.tokensUsed, refetchATS, compareOriginalLatex])
 
   useEffect(() => {
     return () => {
@@ -155,6 +164,7 @@ export default function OptimizationSuitePage() {
 
   const runOptimization = async () => {
     const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
+    setCompareOriginalLatex(currentContent)
     setIsSubmitting(true)
     setPdfUrl(null)
 
@@ -516,11 +526,21 @@ export default function OptimizationSuitePage() {
             <section className="surface-panel edge-highlight flex h-[620px] flex-col overflow-hidden">
               <div className="flex h-11 items-center justify-between border-b border-white/10 bg-white/[0.03] px-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Output Preview</p>
-                {pdfUrl && (
-                  <a href={pdfUrl} download="optimized_resume.pdf" className="text-xs font-semibold text-zinc-300 transition hover:text-white">
-                    Download PDF
-                  </a>
-                )}
+                <div className="flex items-center gap-3">
+                  {compareAfterLatex !== null && compareOriginalLatex !== null && (
+                    <button
+                      onClick={() => setShowCompareModal(true)}
+                      className="text-xs font-semibold text-orange-300 transition hover:text-orange-200"
+                    >
+                      Compare with Original
+                    </button>
+                  )}
+                  {pdfUrl && (
+                    <a href={pdfUrl} download="optimized_resume.pdf" className="text-xs font-semibold text-zinc-300 transition hover:text-white">
+                      Download PDF
+                    </a>
+                  )}
+                </div>
               </div>
               <div className="min-h-0 flex-1 bg-black/30">
                 <PDFPreview pdfUrl={pdfUrl} isLoading={isProcessing && stream.percent > 40} />
@@ -614,6 +634,22 @@ export default function OptimizationSuitePage() {
           parentTitle={parentDiffData.parent_title}
           variantLatex={parentDiffData.variant_latex}
           variantTitle={parentDiffData.variant_title}
+        />
+      )}
+
+      {/* Before/After optimization compare modal */}
+      {showCompareModal && compareOriginalLatex !== null && compareAfterLatex !== null && (
+        <CompareModal
+          originalLatex={compareOriginalLatex}
+          optimizedLatex={compareAfterLatex}
+          optimizedPdfUrl={pdfUrl ?? undefined}
+          compiler={compiler}
+          onClose={() => setShowCompareModal(false)}
+          onRestore={(latex) => {
+            editorRef.current?.setValue(latex)
+            setShowCompareModal(false)
+            toast.success('Original restored')
+          }}
         />
       )}
     </div>
