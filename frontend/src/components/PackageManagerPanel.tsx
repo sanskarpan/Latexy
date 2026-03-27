@@ -122,20 +122,11 @@ export default function PackageManagerPanel({
             Installed ({installedPackages.size})
           </p>
           <div className="flex flex-wrap gap-1">
-            {[...installedCurated, ...unknownInstalled.map((n) => ({ name: n } as LaTeXPackage))].map((pkg) => (
-              <span
-                key={pkg.name}
-                className="flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300 ring-1 ring-emerald-500/20"
-              >
-                <span className="font-mono">{pkg.name}</span>
-                <button
-                  onClick={() => handleRemove(pkg.name)}
-                  title={`Remove ${pkg.name}`}
-                  className="rounded transition hover:text-emerald-100"
-                >
-                  <X size={9} />
-                </button>
-              </span>
+            {installedCurated.map((pkg) => (
+              <InstalledChip key={pkg.name} name={pkg.name} onRemove={handleRemove} />
+            ))}
+            {unknownInstalled.map((name) => (
+              <InstalledChip key={name} name={name} onRemove={handleRemove} />
             ))}
           </div>
         </div>
@@ -159,6 +150,8 @@ export default function PackageManagerPanel({
                   <div className="flex items-center gap-2 py-2">
                     <button
                       onClick={() => toggleExpand(pkg.name)}
+                      aria-expanded={expanded}
+                      aria-label={`${expanded ? 'Collapse' : 'Expand'} ${pkg.name} details`}
                       className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     >
                       {expanded ? (
@@ -273,6 +266,29 @@ export default function PackageManagerPanel({
         </p>
       </div>
     </div>
+  )
+}
+
+// ─── InstalledChip ────────────────────────────────────────────────────────────
+
+function InstalledChip({
+  name,
+  onRemove,
+}: {
+  name: string
+  onRemove: (name: string) => void
+}) {
+  return (
+    <span className="flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300 ring-1 ring-emerald-500/20">
+      <span className="font-mono">{name}</span>
+      <button
+        onClick={() => onRemove(name)}
+        title={`Remove ${name}`}
+        className="rounded transition hover:text-emerald-100"
+      >
+        <X size={9} />
+      </button>
+    </span>
   )
 }
 
