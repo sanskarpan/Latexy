@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
-import { GitFork, History, Zap } from 'lucide-react'
+import { GitFork, History, Link2, Loader2, Zap } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler } from '@/lib/api-client'
+import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ScrapeJobResponse } from '@/lib/api-client'
 import CompilerSelector from '@/components/CompilerSelector'
 import VersionHistoryPanel from '@/components/VersionHistoryPanel'
 import { useJobStream } from '@/hooks/useJobStream'
@@ -58,6 +58,11 @@ export default function OptimizationSuitePage() {
   const [diffCheckpointB, setDiffCheckpointB] = useState<CheckpointEntry | null>(null)
   const [showHistoryDiff, setShowHistoryDiff] = useState(false)
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
+
+  // URL scraper
+  const [jobUrl, setJobUrl] = useState('')
+  const [isScraping, setIsScraping] = useState(false)
+  const [scrapedMeta, setScrapedMeta] = useState<ScrapeJobResponse | null>(null)
 
   // Error explainer
   const [explainerOpen, setExplainerOpen] = useState(false)
@@ -300,6 +305,27 @@ export default function OptimizationSuitePage() {
     setShowHistoryDiff(true)
   }, [])
 
+  const handleScrapeUrl = useCallback(async () => {
+    if (!jobUrl.trim() || isScraping) return
+    setIsScraping(true)
+    setScrapedMeta(null)
+    try {
+      const result = await apiClient.scrapeJobDescription(jobUrl.trim())
+      if (result.error && !result.description) {
+        toast.error("Couldn't scrape this URL — paste the job description manually")
+        return
+      }
+      if (result.description) setJobDescription(result.description)
+      setScrapedMeta(result)
+      const label = [result.title, result.company].filter(Boolean).join(' · ') || 'job posting'
+      toast.success(`Imported: ${label}`)
+    } catch {
+      toast.error("Couldn't scrape this URL — paste the job description manually")
+    } finally {
+      setIsScraping(false)
+    }
+  }, [jobUrl, isScraping])
+
   const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
   if (isLoading) {
@@ -384,12 +410,64 @@ export default function OptimizationSuitePage() {
               <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Job Description</h2>
               <span className="text-[10px] text-zinc-600">optional</span>
             </div>
+            <div className="mt-3 flex gap-2">
+              <input
+                type="url"
+                value={jobUrl}
+                onChange={(e) => { setJobUrl(e.target.value); setScrapedMeta(null) }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleScrapeUrl() }}
+                placeholder="Paste job URL (Greenhouse, Lever, Workday, Indeed…)"
+                disabled={isProcessing || isScraping}
+                className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-orange-300/40 disabled:opacity-50"
+              />
+              <button
+                onClick={handleScrapeUrl}
+                disabled={!jobUrl.trim() || isProcessing || isScraping}
+                title="Import job description from URL"
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isScraping ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />}
+                {isScraping ? 'Importing…' : 'Import'}
+              </button>
+            </div>
+            {scrapedMeta && !scrapedMeta.error && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {scrapedMeta.title && (
+                  <span className="rounded bg-orange-400/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-300">
+                    {scrapedMeta.title}
+                  </span>
+                )}
+                {scrapedMeta.company && (
+                  <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-400">
+                    {scrapedMeta.company}
+                  </span>
+                )}
+                {scrapedMeta.location && (
+                  <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500">
+                    📍 {scrapedMeta.location}
+                  </span>
+                )}
+                {scrapedMeta.job_type && (
+                  <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500">
+                    {scrapedMeta.job_type}
+                  </span>
+                )}
+                {scrapedMeta.salary && (
+                  <span className="rounded bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                    {scrapedMeta.salary}
+                  </span>
+                )}
+                <span className="ml-auto text-[9px] text-zinc-700">
+                  via {scrapedMeta.source}
+                </span>
+              </div>
+            )}
             <textarea
               value={jobDescription}
               onChange={(event) => setJobDescription(event.target.value)}
               placeholder="Paste a job description to tailor the optimization to a specific role. Leave blank for general improvements."
               disabled={isProcessing}
-              className="scrollbar-subtle mt-3 h-64 w-full resize-none rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-zinc-100 outline-none transition focus:border-orange-300/50"
+              className="scrollbar-subtle mt-2 h-56 w-full resize-none rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-zinc-100 outline-none transition focus:border-orange-300/50"
             />
             <button
               onClick={runOptimization}
