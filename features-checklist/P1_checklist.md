@@ -2518,7 +2518,7 @@ Toggle between normal and "LaTeX-Aware" mode. Preset patterns for section header
 item bullets. No backend changes needed.
 
 ### 31A · Frontend — LaTeX Search Presets
-- [ ] Create `frontend/src/data/latex-search-presets.ts`:
+- [x] Create `frontend/src/data/latex-search-presets.ts`:
   ```typescript
   export const LATEX_SEARCH_PRESETS = [
     {
@@ -2558,7 +2558,7 @@ item bullets. No backend changes needed.
   ```
 
 ### 31B · Frontend — LaTeX Search Panel Component
-- [ ] Create `frontend/src/components/LaTeXSearchPanel.tsx`:
+- [x] Create `frontend/src/components/LaTeXSearchPanel.tsx`:
   - Positioned as a slide-down panel from editor top-right (similar to native Monaco find)
   - **Search input** with regex toggle, case-sensitive toggle, whole-word toggle
   - **Preset dropdown:** "LaTeX Patterns" → shows `LATEX_SEARCH_PRESETS`
@@ -2586,7 +2586,7 @@ item bullets. No backend changes needed.
       ```
 
 ### 31C · Frontend — Keyboard Shortcut
-- [ ] Register Cmd+Shift+H for LaTeX-aware replace (Cmd+H is built-in replace in Monaco)
+- [x] Register Cmd+Shift+H for LaTeX-aware replace (Cmd+H is built-in replace in Monaco)
   - Add custom key binding in `handleEditorDidMount`:
     ```typescript
     editor.addCommand(
@@ -2596,7 +2596,7 @@ item bullets. No backend changes needed.
     ```
 
 ### 31D · Tests
-- [ ] Manual verification:
+- [x] Manual verification:
   - Click "All section headers" preset → Monaco find widget opens with regex pre-filled
   - All `\section{...}` occurrences are highlighted
   - Replace all works with regex groups (e.g. replace `\textbf{X}` with `\textit{X}`)
