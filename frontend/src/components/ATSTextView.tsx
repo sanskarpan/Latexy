@@ -2,32 +2,12 @@
 
 import { useState } from 'react'
 import { Copy, Check, AlertTriangle, CheckCircle, Info } from 'lucide-react'
-
-// ─── Garbling detection ───────────────────────────────────────────────────────
-
-// Unicode ligature characters that indicate pdftotext failed to decode them —
-// means the PDF was compiled without \input{glyphtounicode}.
-const LIGATURE_RE = /[ﬀﬁﬂﬃﬄﬅﬆ]/
-
-// Sequences that look like ATS-garbled column layout: a line that contains
-// both contact-info tokens (email/phone) and experience keywords on the same
-// line (left-col and right-col merged).
-const COLUMN_GARBLE_RE = /[@+]\S+.*(?:experience|education|skills|work|employment)/i
-
-// ─── Section detection ────────────────────────────────────────────────────────
-
-const SECTION_PATTERNS: Array<{ label: string; re: RegExp }> = [
-  { label: 'Contact Info',   re: /\b(email|phone|linkedin|github|@[^\s]+)\b/i },
-  { label: 'Experience',     re: /\b(experience|employment|work history)\b/i },
-  { label: 'Education',      re: /\b(education|university|college|degree|bachelor|master|phd)\b/i },
-  { label: 'Skills',         re: /\b(skills|technologies|proficiencies|languages)\b/i },
-  { label: 'Projects',       re: /\b(projects?|open.?source)\b/i },
-  { label: 'Summary',        re: /\b(summary|objective|profile|about)\b/i },
-]
-
-function detectSections(text: string): string[] {
-  return SECTION_PATTERNS.filter(({ re }) => re.test(text)).map(({ label }) => label)
-}
+import {
+  SECTION_PATTERNS,
+  detectSections,
+  hasLigatureGarbling,
+  hasColumnGarbling,
+} from '@/lib/ats-text-analysis'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -60,10 +40,10 @@ export default function ATSTextView({ extractedText, pageCount }: ATSTextViewPro
     )
   }
 
-  const hasLigatureGarbling = LIGATURE_RE.test(extractedText)
-  const hasColumnGarbling = COLUMN_GARBLE_RE.test(extractedText)
+  const ligatureGarbling = hasLigatureGarbling(extractedText)
+  const columnGarbling = hasColumnGarbling(extractedText)
   const detectedSections = detectSections(extractedText)
-  const hasIssues = hasLigatureGarbling || hasColumnGarbling
+  const hasIssues = ligatureGarbling || columnGarbling
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -91,13 +71,13 @@ export default function ATSTextView({ extractedText, pageCount }: ATSTextViewPro
 
         {/* ── Diagnostics ── */}
         <div className="space-y-1.5">
-          {hasLigatureGarbling && (
+          {ligatureGarbling && (
             <DiagnosticRow
               level="warning"
               message="Unicode ligature characters detected (ﬁ, ﬀ, ﬂ). Add \input{glyphtounicode} to your preamble — the Linter tab shows the fix."
             />
           )}
-          {hasColumnGarbling && (
+          {columnGarbling && (
             <DiagnosticRow
               level="warning"
               message="Possible multi-column garbling: contact info and section headers appear on the same line. Use a single-column layout."
@@ -111,29 +91,25 @@ export default function ATSTextView({ extractedText, pageCount }: ATSTextViewPro
           )}
         </div>
 
-        {/* ── Sections found ── */}
-        {detectedSections.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {detectedSections.map((s) => (
+        {/* ── Sections detected / missing ── */}
+        <div className="flex flex-wrap gap-1">
+          {SECTION_PATTERNS.map(({ label }) => {
+            const found = detectedSections.includes(label)
+            return (
               <span
-                key={s}
-                className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-400"
+                key={label}
+                className={
+                  found
+                    ? 'rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-400'
+                    : 'rounded bg-white/[0.04] px-1.5 py-0.5 text-[9px] text-zinc-600'
+                }
+                title={found ? `${label} detected` : `${label} not found`}
               >
-                {s}
+                {label}
               </span>
-            ))}
-            {SECTION_PATTERNS
-              .filter(({ label }) => !detectedSections.includes(label))
-              .map(({ label }) => (
-                <span
-                  key={label}
-                  className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[9px] text-zinc-600"
-                >
-                  {label}
-                </span>
-              ))}
-          </div>
-        )}
+            )
+          })}
+        </div>
       </div>
 
       {/* ── Extracted text ── */}
