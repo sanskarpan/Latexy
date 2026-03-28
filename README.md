@@ -7,6 +7,8 @@ AI-powered LaTeX resume builder. Paste your `.tex` source, describe the role, an
 
 - **50+ resume templates** — professional LaTeX templates across 12 industries, with PDF thumbnails and live preview
 - **ATS scoring** — rule-based analysis with section detection, keyword coverage, and formatting checks
+- **ATS pre-flight** — extracted plain text from the compiled PDF shows exactly what an ATS parser reads; detects ligature garbling and multi-column layout issues
+- **LaTeX linter** — client-side rule engine with 15+ checks (ATS risks, common errors, glyphtounicode) and one-click auto-fix
 - **LLM optimization** — GPT-4o / GPT-4o-mini rewrites your resume content for the target JD
 - **Semantic matching** — pgvector cosine similarity ranks your resumes against any job description
 - **Deep analysis** — section-by-section LLM breakdown with strength/improvement per section
@@ -226,7 +228,7 @@ openssl rand -hex 32      # JWT_SECRET_KEY
 | `GET` | `/export/{resumeId}/{format}` | Export resume in various formats |
 | `GET` | `/health` | Health check |
 
-WebSocket event types: `job.queued` · `job.started` · `job.progress` · `job.completed` · `job.failed` · `job.cancelled` · `log.line` · `llm.token` · `llm.complete` · `ats.complete` · `ats.deep_complete`
+WebSocket event types: `job.queued` · `job.started` · `job.progress` · `job.pdf_extracted` · `job.completed` · `job.failed` · `job.cancelled` · `log.line` · `llm.token` · `llm.complete` · `ats.complete` · `ats.deep_complete`
 
 ---
 
@@ -251,7 +253,7 @@ WebSocket event types: `job.queued` · `job.started` · `job.progress` · `job.c
 │   │   ├── services/           # ATS scoring, LLM, storage (MinIO), payments…
 │   │   └── workers/            # Celery tasks (latex, llm, ats, orchestrator…)
 │   ├── alembic/                # DB migrations
-│   ├── test/                   # pytest suite (~530 tests)
+│   ├── test/                   # pytest suite (~917 tests)
 │   ├── Dockerfile
 │   └── requirements.txt
 │

@@ -10,6 +10,7 @@ export type EventType =
   | 'job.completed'
   | 'job.failed'
   | 'job.cancelled'
+  | 'job.pdf_extracted'
   | 'llm.token'
   | 'llm.complete'
   | 'log.line'
@@ -164,6 +165,16 @@ export interface ATSDeepCompleteEvent extends BaseEvent {
 }
 
 // ------------------------------------------------------------------ //
+//  PDF text extraction event (ATS pre-flight, Layer 2)              //
+// ------------------------------------------------------------------ //
+
+export interface PDFTextExtractedEvent extends BaseEvent {
+  type: 'job.pdf_extracted'
+  text: string
+  page_count: number
+}
+
+// ------------------------------------------------------------------ //
 //  System Events                                                      //
 // ------------------------------------------------------------------ //
 
@@ -200,6 +211,7 @@ export type AnyEvent =
   | LLMStreamCompleteEvent
   | LogLineEvent
   | ATSDeepCompleteEvent
+  | PDFTextExtractedEvent
   | HeartbeatEvent
   | SystemErrorEvent
   | DocumentConvertCompleteEvent

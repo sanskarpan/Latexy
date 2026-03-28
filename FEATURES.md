@@ -27,6 +27,7 @@
 4. [Editor Features](#4-editor-features)
 5. [Platform & Growth Features](#5-platform--growth-features)
 6. [Priority Matrix](#6-priority-matrix)
+7. [Market Gap Features](#7-market-gap-features) ← new, based on competitive research
 
 ---
 
@@ -746,21 +747,56 @@ A resume-specific proofreader that checks for common writing weaknesses reducing
 
 ---
 
-### 3.9 ATS Simulator (Specific ATS Systems)
+### 3.9 ATS Simulator + PDF Parse Pre-flight Check
 **Priority:** P2 | **Complexity:** L
 
 **Description:**
-Different companies use different ATS systems — Greenhouse, Lever, Workday, Taleo, iCIMS, Ashby — each with different parsing behavior.
+Two related but distinct capabilities. Layer 1 is LaTeX-source-level diagnostics (pre-compile warnings). Layer 2 is post-compile PDF text extraction — showing the user exactly what an ATS would extract from their compiled PDF before they submit it anywhere. Different ATS systems (Greenhouse, Lever, Workday, Taleo, iCIMS, Ashby) each have different parsing behavior which Layer 3 models.
 
-**What to build:**
-- Parse rules knowledge base for major ATS platforms based on known behavior:
-  - Greenhouse: generally good, but multi-column layouts cause section mixing
-  - Taleo: bad at tables/PDFs, prefers plain text
-  - Workday: good PDF parsing, doesn't recognize custom section names
-  - Lever: modern parser, handles most LaTeX PDF outputs well
-- ATS simulator panel: select a target ATS → shows "this is how [ATS] would read your resume" in plain text
-- Highlights sections where the ATS would have parsing errors
-- Specific formatting recommendations per ATS
+**What currently exists:**
+The ATS scoring pipeline (`ats_scoring_service.py`, `ats_quick_scorer.py`, `ats_worker.py`) operates entirely on LaTeX source text — it scores based on keyword presence and structural heuristics applied to the raw `.tex` content. The compile pipeline (`latex_worker.py`) returns only `{pdf_job_id, compilation_time, pdf_size, page_count}` — it never extracts or returns any text from the compiled PDF. This means users have no way to see what an ATS actually reads from their compiled output.
+
+**Layer 1 — LaTeX Pre-flight Linter Rules (extend existing linter)**
+
+Add these rules to `latex-linter.ts` (the linter already runs on source text, zero new infrastructure needed):
+
+- **`missing-glyphtounicode`**: If `\input{glyphtounicode}` is absent from the preamble, flag a warning: "pdflatex will encode text as glyph IDs instead of Unicode — ATS parsers and copy-paste will produce garbled output. Add `\input{glyphtounicode}` and `\pdfgentounicode=1` to your preamble." Severity: `warning`, fixable: true (auto-insert the two lines before `\begin{document}`).
+- **`multicol-ats-risk`**: If `\usepackage{multicol}` or `\begin{multicols}` is present, flag: "Two-column layouts are read left-to-right across both columns by most ATS systems, mixing your contact info with your work experience. Use a single-column layout for ATS-safe output." Severity: `warning`, fixable: false.
+- **`fontawesome-ats-risk`**: If `\usepackage{fontawesome}` or `\usepackage{fontawesome5}` is detected, flag: "FontAwesome icon characters render as unrecognized symbols in ATS plain-text extraction. Replace icon bullets with standard `•` or text." Severity: `info`, fixable: false.
+- **`tabular-layout`**: If `\begin{tabular}` is used outside a math/figure environment, flag: "Tabular environments used for layout cause content to be invisible or mis-ordered in ATS parsing. Consider using standard LaTeX spacing commands instead." Severity: `info`, fixable: false.
+
+**Layer 2 — PDF Text Extraction ("Show What ATS Sees")**
+
+After compilation succeeds, extract the actual text content from the compiled PDF and show it alongside the PDF preview:
+
+- Backend: after `latex_worker.py` produces `resume.pdf`, run `pdftotext -layout resume.pdf -` (already available in the texlive Docker image) and include `extracted_text: str` in the compile result
+- Alternatively use `pymupdf` (fitz) in Python: `doc.load_page(0).get_text("text")` — no subprocess needed
+- New WebSocket event type `job.pdf_extracted` published after successful compile
+- New panel tab "ATS View" in the editor sidebar: shows the raw extracted text in a monospace view with no formatting
+- Diff-style highlighting: sections recognized correctly (green), sections that appear garbled or out of order (red), sections that are completely missing from the extraction (amber)
+- "Copy ATS Text" button to manually paste into any external ATS scanner
+
+**Layer 3 — Per-ATS Behavior Simulation**
+
+Apply known parsing rules for major ATS platforms on top of the extracted text:
+
+- Knowledge base of parse behaviors:
+  - **Greenhouse**: generally good PDF parsing; multi-column layouts cause section mixing
+  - **Taleo** (Oracle): notoriously bad with PDFs; prefers plain text input; tables and graphics cause field mis-assignment
+  - **Workday**: good PDF parsing; doesn't recognize custom section names — must match expected section headers exactly
+  - **Lever**: modern parser; handles most pdflatex PDF output well; struggles with custom fonts
+  - **iCIMS**: moderate PDF support; known issues with special characters and accented letters
+  - **Ashby**: good modern parser; minimal known issues
+- ATS simulator panel: user selects target ATS → system applies platform-specific parse rules to the extracted text → shows "this is how [ATS] would read your resume"
+- Highlights specific sections where that ATS would have parsing errors or drop content
+- Concrete recommendations: "For Taleo: remove tables, use plain section headers matching 'Work Experience', 'Education', 'Skills'"
+- Recommendation: apply `\input{glyphtounicode}` fix for all platforms (always safe)
+
+**Implementation path (incremental):**
+1. Add 4 linter rules to `latex-linter.ts` — 1 day, zero backend changes
+2. Add `pdftotext` call in `latex_worker.py`, include in result, add WebSocket event — 1 day
+3. Build "ATS View" panel tab in frontend — 2 days
+4. Per-ATS simulation layer (Layer 3) — 1 week
 
 ---
 
@@ -1428,6 +1464,173 @@ Real-time collaboration (CRDT) • Track changes • WYSIWYG editor • Mobile a
 
 ---
 
+## 7. Market Gap Features
+
+These features were identified through direct market research as genuine gaps — combinations that no existing product currently covers. They are prioritized for their market differentiation potential, not just incremental product improvement. These are the features that create a defensible moat.
+
+---
+
+### 7.1 Academic CV → Industry Resume Conversion
+**Priority:** P1 | **Complexity:** M
+
+**Description:**
+PhD students, postdocs, and researchers transitioning to industry must convert a multi-page academic CV to a 1-page industry resume. This is one of the most articulated pain points in the CS/research community (constant threads on r/phd, r/MachineLearning, r/csgrad, r/AskAcademia). The conversion is not mere shortening — it requires a complete reframing of how accomplishments are described: publication counts become impact metrics, grant amounts become quantified achievements, teaching experience becomes leadership, conference presentations become speaking engagements.
+
+**Why no good solution exists:**
+- Generic AI resume tools (Rezi, Kickresume, Enhancv) are word-processing tools with no understanding of academic content structure
+- **FirstResume.ai** is the only product specifically targeting this transition, but it is not LaTeX-native — it outputs Word/PDF, not `.tex` source
+- The `document_converter_service.py` in Latexy explicitly tells the LLM to "preserve all dates, companies, achievements EXACTLY" — the opposite of what academic-to-industry conversion requires
+- Researchers specifically are LaTeX users — they write papers in LaTeX, and many maintain their CV in LaTeX. This is Latexy's exact target user.
+
+**What currently exists in Latexy:**
+- `templates/academic/phd_applicant.tex` — academic template (not a conversion tool)
+- `document_converter_service.py` LINKEDIN_SYSTEM_PROMPT — a special conversion mode exists as a pattern
+- `llm_worker.py` `_create_optimization_prompt()` — generic optimizer with `custom_instructions` parameter available but unused for academic detection
+- 3.17 "AI Custom Optimization Persona" has an "Academic Mode" toggle — but this only adjusts optimization tone for writing academic content, not converting from academic to industry format
+
+**What to build:**
+
+**Academic content detector (backend):**
+- Detect academic CV indicators in LaTeX source:
+  - `\section{Publications}`, `\section{Refereed Publications}`, `\section{Conference Papers}` → academic publications sections
+  - `\bibliographystyle`, `\bibliography`, `\cite{}` → bibliography usage
+  - `\section{Teaching}`, `\section{Teaching Experience}` → teaching sections
+  - `\section{Grants}`, `\section{Fellowships}`, `\section{Awards & Honors}` → academic funding
+  - `\section{Research}`, `\section{Research Interests}` → research sections
+  - Long document: >2 pages (page count from compile result)
+- `detect_academic_cv(latex_content) -> AcademicCVReport` in `ats_scoring_service.py` or a new `cv_detector.py`
+- Returns: `is_academic_cv: bool`, `detected_sections: list[str]`, `estimated_pages: int`, `confidence: float`
+
+**Conversion LLM prompt (new job type in `llm_worker.py`):**
+
+The prompt must handle each academic section type with specific transformation rules:
+
+```text
+Publications section:
+  - Keep only the 2-3 most impactful or most recent publications
+  - Reframe as: "Published research on [topic] in [venue] — [impact if available e.g., cited N times]"
+  - If venue is top-tier (NeurIPS, ICML, CVPR, Nature, Science), keep venue name explicitly
+  - Remove co-author lists, page numbers, DOIs
+
+Teaching section:
+  - Reframe as leadership/communication experience
+  - "Taught [course] to [N] undergraduate students" → "Led instruction for [N] students in [topic], receiving [rating] course evaluations"
+  - TA experience → "Mentored and evaluated [N] students"
+
+Grants / Fellowships:
+  - Dollar amounts are quantified achievements — keep them
+  - "NSF Graduate Research Fellowship ($138,000)" stays prominent
+  - "Received [grant] ($X) to fund research on [topic]"
+
+Research Experience:
+  - Focus on concrete deliverables and scale, not methodology
+  - "Developed [system/model] that achieved [metric] improvement over baseline"
+  - Remove: hypothesis-first framing, literature review language, hedged conclusions
+  - Add: owned-outcome framing ("built", "shipped", "reduced", "improved by X%")
+
+Conference Presentations:
+  - "Presented research to [N] attendees at [venue]" → speaking experience signal
+
+Page target:
+  - Output must be 1 page for 0-10 years post-PhD, 2 pages for 10+ years
+  - Prioritize: most recent 5 years; most impactful quantified results; skills relevant to target role
+```
+
+**New Celery task:**
+- `cv_to_resume_task` on the `llm` queue (or a new `mode='cv_to_resume'` parameter on existing `latex_optimization_task`)
+- Input: `latex_content`, `target_industry` (tech/finance/consulting/data-science/product), optional `target_role_description`
+- Output: 1-page LaTeX resume (same `\documentclass` and template structure as input, not a new template)
+- Streams tokens via existing WebSocket pipeline — no new infrastructure
+
+**Frontend UI:**
+
+- **Auto-detection banner**: after a resume is compiled and `is_academic_cv=true` is detected, show a banner in the editor: "This looks like an academic CV (N pages, publication list detected). Want to convert it to a 1-page industry resume?"
+- **Conversion wizard modal** (triggered by banner or explicit button in editor header):
+  - Step 1: Confirm academic → industry conversion (shows detected academic sections to be transformed)
+  - Step 2: Select target industry (Tech/Software Engineering, Data Science/ML, Finance/Quant, Consulting, Product Management, Other)
+  - Step 3: Optional job description paste (improves keyword targeting in the conversion)
+  - Step 4: Conversion runs — streams result into a new resume variant (never overwrites original)
+- Result page: side-by-side MonacoDiffEditor: original CV (left) vs converted resume (right) + both PDFs compiled
+
+**Key differentiation vs. competitors:**
+1. Output is actual LaTeX source (not Word/PDF) — user can continue editing, recompile, use linter, run ATS scoring
+2. The conversion creates a new variant — original multi-page CV preserved for academic job applications
+3. Industry targeting shapes the transformation — a ML PhD converting for a quant hedge fund gets different framing than one targeting a FAANG PM role
+4. Integrates naturally with the ATS scoring pipeline — after conversion, immediately score the 1-page result against a job description
+
+**Validation signal:**
+- r/phd has repeated threads asking specifically about LaTeX CV → industry resume
+- FirstResume.ai exists and charges $20+/month for the same use case without LaTeX output — confirms willingness to pay
+- The academia-to-industry coaching market ($200–500/hour for career coaches) signals high value placed on this transition
+
+---
+
+### 7.2 DOCX Export Quality (Macro-Aware Conversion)
+**Priority:** P1 | **Complexity:** M
+
+**Description:**
+LaTeX → DOCX export is already fully implemented in Latexy (`document_export_service.py` → `to_docx()`, `export_routes.py`, `ExportDropdown` in frontend). The feature exists and is wired end-to-end. However, the current pipeline has a quality ceiling that will produce poor output for the most popular resume templates:
+
+**The current pipeline:**
+`LaTeX source → regex strip (to_markdown()) → python-docx`
+
+The Markdown intermediary stage uses regex to strip LaTeX commands. For resume templates that use custom macros like `\resumeSubheading{Company}{Dates}{Title}{Location}`, `\cventry{year}{degree}{institution}{}{}{}`, or tabular environments for two-column layouts — these get stripped to raw text or dropped entirely, losing the semantic structure.
+
+**Why this matters right now:**
+- Many job application portals (Taleo instances, some Workday configs, certain enterprise HR systems) reject PDF uploads and require `.docx`
+- Overleaf has no DOCX export at all (GitHub issue #668, filed 2019, closed without implementation in 2025)
+- Pandoc — the community's fallback — breaks on custom macros and two-column layouts, producing 70% quality output
+- Latexy's DOCX export is the only clean solution in the market IF the quality is good enough for popular templates
+
+**What to fix:**
+
+**Tier 1 — Jake's Resume / standard single-column templates (highest priority):**
+Jake's Resume (`sb2nov/resume` on GitHub, 7,900+ stars) and similar templates use these custom macros:
+```latex
+\resumeSubheading{Company}{Date}{Title}{Location}
+\resumeItem{bullet text}
+\resumeSubItem{key}{value}
+\resumeItemListStart / \resumeItemListEnd
+```
+These map cleanly to Word document structure:
+- `\resumeSubheading` → bold company name + right-aligned date on one line, italic title + location on next line (mimics standard Word resume formatting)
+- `\resumeItem` → `List Bullet` style paragraph
+- `\resumeSubItem` → bold key + normal value inline
+
+Add macro-specific handlers to `DocumentExportService.to_docx()` that detect and convert these patterns before the regex-stripping stage:
+
+```python
+KNOWN_RESUME_MACROS = {
+    'resumeSubheading': _convert_resume_subheading,  # → heading row + title row
+    'resumeItem': _convert_resume_item,              # → List Bullet paragraph
+    'resumeItemListStart': None,                     # → strip, open list context
+    'resumeItemListEnd': None,                       # → strip, close list context
+    'cventry': _convert_cv_entry,                    # moderncv format
+    'cvevent': _convert_cv_event,                    # altacv format
+    'job': _convert_job_entry,                       # common custom macro
+}
+```
+
+**Tier 2 — Moderncv / AltaCV / two-column templates:**
+These use `multicols` or side-by-side minipages. For DOCX output, collapse to single column (since DOCX itself cannot replicate multi-column resume layouts without complex sectioning). Add a pre-processing step that detects two-column structures and linearizes them: left column content first, then right column content.
+
+**Tier 3 — Pandoc fallback path (optional):**
+For templates that can't be handled by Tier 1/2 macro processing, add an optional Pandoc execution path in `document_export_service.py`:
+- Run `pandoc --from=latex --to=docx input.tex -o output.docx` via subprocess
+- If Pandoc is available and the result is non-empty, use it as fallback
+- Note: Pandoc is not in the current Docker image — would require adding to `backend/Dockerfile`
+
+**Quality target:**
+A Jake's Resume or standard single-column template DOCX output should be usable as-is in Microsoft Word without needing manual cleanup. Formatting: correct section headers, correct bullet indentation, correct bold/italic on company names and dates. A recruiter opening the DOCX should see a recognizable resume, not a wall of unformatted text.
+
+**Why this is worth building now:**
+- The infrastructure is already in place — this is a quality improvement, not a new feature build
+- DOCX export is the single most-asked-about LaTeX resume format question in community forums ("how do I submit my LaTeX resume to [portal that only accepts Word]")
+- No competitor offers this. Overleaf hasn't shipped it in 6 years of open requests.
+- Once quality is good, this becomes a pull marketing asset — "Latexy is the only place you can go from LaTeX source to ATS-quality DOCX in one click"
+
+---
+
 ## Unique Differentiation Thesis
 
 > **Latexy is the only platform where LaTeX precision, AI rewriting, ATS intelligence, and streaming compilation exist as first-class objects in a single real-time pipeline.**
@@ -1435,3 +1638,5 @@ Real-time collaboration (CRDT) • Track changes • WYSIWYG editor • Mobile a
 Overleaf is a LaTeX editor that bolted on AI. Resume builders are drag-and-drop tools that tacked on LaTeX export as an afterthought. Latexy is built from scratch with the AI + ATS + LaTeX feedback loop as the core primitive. No competitor can replicate this without rebuilding from scratch.
 
 The highest-ROI investments are features that **tighten this closed feedback loop**: Real-Time ATS as you type, Auto-Compile, AI Error Explainer, Cover Letter generation from the same resume, Version Diff to track AI improvements over time. Build these first.
+
+The market gap features in Section 7 represent Latexy's strongest long-term moat: Academic CV conversion targets a user who is already a LaTeX power-user, is actively desperate for a solution, and has demonstrable willingness to pay. DOCX export quality makes Latexy the only viable choice for job seekers whose target portals reject PDFs. ATS parse pre-flight (Section 3.9) closes the loop between compilation and submission confidence — no LaTeX tool currently shows users what their compiled PDF actually looks like to a recruiter's ATS.

@@ -118,9 +118,74 @@ const PER_LINE_RULES: PerLineRule[] = [
     severity: 'warning',
     fixable: false,
   },
+  {
+    id: 'multicol-ats-risk',
+    pattern: /\\usepackage(?:\[[^\]]*\])?\{multicols?\}|\\begin\{multicols\*?\}/g,
+    message: 'Multi-column layouts are read left-to-right across both columns by most ATS parsers, mixing section content into gibberish. Use a single-column layout for ATS-safe output.',
+    severity: 'warning',
+    fixable: false,
+  },
+  {
+    id: 'fontawesome-ats-risk',
+    pattern: /\\usepackage(?:\[[^\]]*\])?\{fontawesome/g,
+    message: 'FontAwesome icon characters render as unrecognised symbols in ATS plain-text extraction. Replace icon bullets with standard text or • characters.',
+    severity: 'info',
+    fixable: false,
+  },
+  {
+    id: 'tabular-layout',
+    pattern: /\\begin\{tabular(?:x|\*)?\}/g,
+    message: '\\begin{tabular} used for layout can cause content to be mis-ordered or invisible in ATS parsing. Consider using standard LaTeX spacing commands instead.',
+    severity: 'info',
+    fixable: false,
+  },
 ]
 
 // ─── Cross-line checkers ──────────────────────────────────────────────────────
+
+/**
+ * Warn when \input{glyphtounicode} is absent from the preamble.
+ * Without it, pdflatex encodes text as glyph IDs instead of Unicode — ATS
+ * parsers and copy-paste produce garbled output.
+ * Not needed for XeLaTeX/LuaLaTeX (fontspec handles Unicode natively).
+ */
+function checkGlyphToUnicode(lines: string[]): LintIssue[] {
+  // XeLaTeX / LuaLaTeX don't need glyphtounicode — fontspec handles Unicode
+  const isXeOrLua = lines.some(
+    (l) => !l.trim().startsWith('%') && /\\usepackage(?:\[[^\]]*\])?\{fontspec\}/.test(l)
+  )
+  if (isXeOrLua) return []
+
+  let docclassLine = -1
+  let hasGlyphToUnicode = false
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (line.trim().startsWith('%')) continue
+    if (/\\begin\{document\}/.test(line)) break
+    if (/\\documentclass/.test(line) && docclassLine === -1) docclassLine = i
+    if (/\\input\{glyphtounicode\}/.test(line)) hasGlyphToUnicode = true
+  }
+
+  // Only flag documents that have a \documentclass (i.e. full LaTeX files)
+  if (docclassLine < 0 || hasGlyphToUnicode) return []
+
+  return [
+    {
+      line: docclassLine + 1,
+      column: 1,
+      endColumn: lines[docclassLine].length + 1,
+      severity: 'warning',
+      ruleId: 'missing-glyphtounicode',
+      message:
+        'Missing \\input{glyphtounicode} — pdflatex encodes text as glyph IDs instead of Unicode, causing ATS parsers and copy-paste to produce garbled output. Add \\input{glyphtounicode} and \\pdfgentounicode=1 to your preamble.',
+      fixable: true,
+      // Append the two lines directly after \documentclass
+      fix: (lineContent) =>
+        `${lineContent}\n\\input{glyphtounicode}\n\\pdfgentounicode=1`,
+    },
+  ]
+}
 
 /** hyperref should be loaded last (after geometry, color, etc.) */
 function checkHyperrefOrder(lines: string[]): LintIssue[] {
@@ -133,7 +198,7 @@ function checkHyperrefOrder(lines: string[]): LintIssue[] {
     // Stop scanning at \begin{document}
     if (/\\begin\{document\}/.test(line)) break
 
-    if (/\\usepackage(?:\[[^\]]*\])?\{[^}]*hyperref[^}]*\}/.test(line)) {
+    if (/\\usepackage(?:\[[^\]]*\])?\{hyperref\}/.test(line)) {
       hyperrefLine = i
     }
     if (/\\usepackage/.test(line)) {
@@ -228,6 +293,7 @@ export function lintLatex(content: string): LintIssue[] {
   }
 
   // Cross-line rules
+  issues.push(...checkGlyphToUnicode(lines))
   issues.push(...checkHyperrefOrder(lines))
   issues.push(...checkMissingLabels(lines))
 
@@ -263,5 +329,28 @@ export function autoFixAll(content: string): string {
     return result + commentPart
   })
 
-  return fixed.join('\n')
+  // Cross-line fix: insert \input{glyphtounicode} after \documentclass if missing
+  return _insertGlyphToUnicode(fixed.join('\n'))
+}
+
+/**
+ * Insert `\input{glyphtounicode}` + `\pdfgentounicode=1` on the line
+ * immediately after `\documentclass` if they are absent.
+ * No-ops for XeLaTeX/LuaLaTeX documents (fontspec present).
+ */
+function _insertGlyphToUnicode(content: string): string {
+  const lines = content.split('\n')
+  // Skip if already present or XeLaTeX/LuaLaTeX
+  if (
+    lines.some((l) => !l.trim().startsWith('%') && /\\input\{glyphtounicode\}/.test(l)) ||
+    lines.some((l) => !l.trim().startsWith('%') && /\\usepackage(?:\[[^\]]*\])?\{fontspec\}/.test(l))
+  ) {
+    return content
+  }
+  const idx = lines.findIndex(
+    (l) => !l.trim().startsWith('%') && /\\documentclass/.test(l)
+  )
+  if (idx < 0) return content
+  lines.splice(idx + 1, 0, '\\input{glyphtounicode}', '\\pdfgentounicode=1')
+  return lines.join('\n')
 }

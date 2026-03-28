@@ -7,6 +7,8 @@ describe('lintLatex', () => {
   test('returns empty array for clean LaTeX', () => {
     const clean = [
       '\\documentclass{article}',
+      '\\input{glyphtounicode}',
+      '\\pdfgentounicode=1',
       '\\usepackage{amsmath}',
       '\\begin{document}',
       'Hello \\textbf{world}.',
@@ -115,6 +117,18 @@ describe('lintLatex — hyperref-order', () => {
     ].join('\n')
     expect(lintLatex(content).some((i) => i.ruleId === 'hyperref-order')).toBe(false)
   })
+
+  test('no false positive for package names containing hyperref as substring', () => {
+    // e.g. a hypothetical \usepackage{nohyperref} should NOT trigger
+    const content = [
+      '\\documentclass{article}',
+      '\\usepackage{nohyperref}',
+      '\\usepackage{geometry}',
+      '\\begin{document}',
+      '\\end{document}',
+    ].join('\n')
+    expect(lintLatex(content).some((i) => i.ruleId === 'hyperref-order')).toBe(false)
+  })
 })
 
 // ─── missing-label ────────────────────────────────────────────────────────────
@@ -214,6 +228,147 @@ describe('autoFixAll', () => {
   test('{\\bf text} → \\textbf{text} (declaration group form)', () => {
     const fixed = autoFixAll('{\\bf bold text}')
     expect(fixed).toBe('\\textbf{bold text}')
+  })
+})
+
+// ─── ATS pre-flight rules ─────────────────────────────────────────────────────
+
+describe('lintLatex — missing-glyphtounicode', () => {
+  const withDocclass = (body = '') =>
+    `\\documentclass{article}\n\\begin{document}\n${body}\n\\end{document}`
+
+  test('flags missing \\input{glyphtounicode} in a pdflatex document', () => {
+    const issues = lintLatex(withDocclass())
+    expect(issues.some((i) => i.ruleId === 'missing-glyphtounicode')).toBe(true)
+  })
+
+  test('no issue when \\input{glyphtounicode} is present', () => {
+    const content = `\\documentclass{article}\n\\input{glyphtounicode}\n\\pdfgentounicode=1\n\\begin{document}\n\\end{document}`
+    expect(lintLatex(content).some((i) => i.ruleId === 'missing-glyphtounicode')).toBe(false)
+  })
+
+  test('no issue for XeLaTeX documents (fontspec present)', () => {
+    const content = `\\documentclass{article}\n\\usepackage{fontspec}\n\\begin{document}\n\\end{document}`
+    expect(lintLatex(content).some((i) => i.ruleId === 'missing-glyphtounicode')).toBe(false)
+  })
+
+  test('no issue for snippet without \\documentclass', () => {
+    const issues = lintLatex('Some {\\bf bold} text')
+    expect(issues.some((i) => i.ruleId === 'missing-glyphtounicode')).toBe(false)
+  })
+
+  test('issue is marked fixable', () => {
+    const issues = lintLatex(withDocclass())
+    const issue = issues.find((i) => i.ruleId === 'missing-glyphtounicode')
+    expect(issue?.fixable).toBe(true)
+  })
+
+  test('fix inserts \\input{glyphtounicode} after \\documentclass line', () => {
+    const issues = lintLatex(withDocclass())
+    const issue = issues.find((i) => i.ruleId === 'missing-glyphtounicode')!
+    const fixed = issue.fix!('\\documentclass{article}')
+    expect(fixed).toContain('\\input{glyphtounicode}')
+    expect(fixed).toContain('\\pdfgentounicode=1')
+    expect(fixed.startsWith('\\documentclass{article}')).toBe(true)
+  })
+
+  test('points to the \\documentclass line', () => {
+    const content = `\\documentclass{article}\n\\begin{document}\n\\end{document}`
+    const issue = lintLatex(content).find((i) => i.ruleId === 'missing-glyphtounicode')
+    expect(issue?.line).toBe(1)
+  })
+})
+
+describe('lintLatex — multicol-ats-risk', () => {
+  test('flags \\usepackage{multicol}', () => {
+    expect(lintLatex('\\usepackage{multicol}').some((i) => i.ruleId === 'multicol-ats-risk')).toBe(true)
+  })
+
+  test('flags \\usepackage{multicols}', () => {
+    expect(lintLatex('\\usepackage{multicols}').some((i) => i.ruleId === 'multicol-ats-risk')).toBe(true)
+  })
+
+  test('flags \\begin{multicols}', () => {
+    expect(lintLatex('\\begin{multicols}{2}').some((i) => i.ruleId === 'multicol-ats-risk')).toBe(true)
+  })
+
+  test('flags \\begin{multicols*}', () => {
+    expect(lintLatex('\\begin{multicols*}{2}').some((i) => i.ruleId === 'multicol-ats-risk')).toBe(true)
+  })
+
+  test('no issue for single-column document', () => {
+    expect(lintLatex('\\usepackage{geometry}').some((i) => i.ruleId === 'multicol-ats-risk')).toBe(false)
+  })
+
+  test('not flagged when in comment', () => {
+    expect(lintLatex('% \\usepackage{multicol}').some((i) => i.ruleId === 'multicol-ats-risk')).toBe(false)
+  })
+})
+
+describe('lintLatex — fontawesome-ats-risk', () => {
+  test('flags \\usepackage{fontawesome}', () => {
+    expect(lintLatex('\\usepackage{fontawesome}').some((i) => i.ruleId === 'fontawesome-ats-risk')).toBe(true)
+  })
+
+  test('flags \\usepackage{fontawesome5}', () => {
+    expect(lintLatex('\\usepackage{fontawesome5}').some((i) => i.ruleId === 'fontawesome-ats-risk')).toBe(true)
+  })
+
+  test('flags \\usepackage[fixed]{fontawesome5}', () => {
+    expect(lintLatex('\\usepackage[fixed]{fontawesome5}').some((i) => i.ruleId === 'fontawesome-ats-risk')).toBe(true)
+  })
+
+  test('no issue without fontawesome', () => {
+    expect(lintLatex('\\usepackage{geometry}').some((i) => i.ruleId === 'fontawesome-ats-risk')).toBe(false)
+  })
+})
+
+describe('lintLatex — tabular-layout', () => {
+  test('flags \\begin{tabular}', () => {
+    expect(lintLatex('\\begin{tabular}{lr}').some((i) => i.ruleId === 'tabular-layout')).toBe(true)
+  })
+
+  test('flags \\begin{tabularx}', () => {
+    expect(lintLatex('\\begin{tabularx}{\\textwidth}{lX}').some((i) => i.ruleId === 'tabular-layout')).toBe(true)
+  })
+
+  test('flags \\begin{tabular*}', () => {
+    expect(lintLatex('\\begin{tabular*}{\\textwidth}{lr}').some((i) => i.ruleId === 'tabular-layout')).toBe(true)
+  })
+
+  test('no issue without tabular', () => {
+    expect(lintLatex('\\begin{itemize}').some((i) => i.ruleId === 'tabular-layout')).toBe(false)
+  })
+})
+
+// ─── autoFixAll — glyphtounicode ──────────────────────────────────────────────
+
+describe('autoFixAll — glyphtounicode insertion', () => {
+  test('inserts \\input{glyphtounicode} after \\documentclass when missing', () => {
+    const input = '\\documentclass{article}\n\\begin{document}\n\\end{document}'
+    const result = autoFixAll(input)
+    const lines = result.split('\n')
+    expect(lines[0]).toBe('\\documentclass{article}')
+    expect(lines[1]).toBe('\\input{glyphtounicode}')
+    expect(lines[2]).toBe('\\pdfgentounicode=1')
+  })
+
+  test('does not insert if already present', () => {
+    const input = '\\documentclass{article}\n\\input{glyphtounicode}\n\\pdfgentounicode=1\n\\begin{document}\n\\end{document}'
+    const result = autoFixAll(input)
+    const occurrences = result.split('\\input{glyphtounicode}').length - 1
+    expect(occurrences).toBe(1)
+  })
+
+  test('does not insert for XeLaTeX documents', () => {
+    const input = '\\documentclass{article}\n\\usepackage{fontspec}\n\\begin{document}\n\\end{document}'
+    const result = autoFixAll(input)
+    expect(result).not.toContain('\\input{glyphtounicode}')
+  })
+
+  test('is idempotent', () => {
+    const input = '\\documentclass{article}\n\\begin{document}\n\\end{document}'
+    expect(autoFixAll(autoFixAll(input))).toBe(autoFixAll(input))
   })
 })
 

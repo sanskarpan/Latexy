@@ -111,6 +111,16 @@ class ATSDeepCompleteEvent(BaseEvent):
 
 
 # ------------------------------------------------------------------ #
+#  PDF text extraction event (ATS pre-flight)                        #
+# ------------------------------------------------------------------ #
+
+class PDFTextExtractedEvent(BaseEvent):
+    type: Literal["job.pdf_extracted"] = "job.pdf_extracted"
+    text: str
+    page_count: int
+
+
+# ------------------------------------------------------------------ #
 #  System events                                                      #
 # ------------------------------------------------------------------ #
 
@@ -139,6 +149,7 @@ AnyEvent = Union[
     LLMStreamCompleteEvent,
     LogLineEvent,
     ATSDeepCompleteEvent,
+    PDFTextExtractedEvent,
     HeartbeatEvent,
     SystemErrorEvent,
 ]
@@ -156,6 +167,7 @@ _STATUS_MAP: Dict[str, str] = {
     "job.failed": "failed",
     "job.cancelled": "cancelled",
     "ats.deep_complete": "completed",
+    "job.pdf_extracted": "processing",
 }
 
 

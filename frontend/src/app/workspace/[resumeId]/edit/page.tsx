@@ -1293,6 +1293,9 @@ export default function ResumeEditPage() {
   const pageCount = lastStartedJobKind === 'ai'
     ? aiStream.pageCount
     : compileStream.pageCount
+  const extractedPdfText = lastStartedJobKind === 'ai'
+    ? aiStream.extractedPdfText
+    : compileStream.extractedPdfText
 
   const TRIM_INSTRUCTION = "Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names."
 
@@ -1898,6 +1901,8 @@ export default function ResumeEditPage() {
                   editorRef.current?.setValue(fixed)
                   setLatexContent(fixed)
                 }}
+                extractedPdfText={extractedPdfText}
+                pageCount={pageCount}
               />
             )}
           </div>
