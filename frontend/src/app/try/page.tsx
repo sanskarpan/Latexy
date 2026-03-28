@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { ChevronDown, Upload, X, Zap } from 'lucide-react'
+import { ChevronDown, Link2, Loader2, Upload, X, Zap } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
-import { apiClient, type ExplainErrorResponse } from '@/lib/api-client'
+import { apiClient, type ExplainErrorResponse, type ScrapeJobResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useTrialStatus } from '@/hooks/useTrialStatus'
@@ -41,6 +41,11 @@ export default function TryPage() {
   const [deepAnalysisUsesRemaining, setDeepAnalysisUsesRemaining] = useState<number | null>(null)
   const [isDeepAnalysisRunning, setIsDeepAnalysisRunning] = useState(false)
   const [deepAnalysisError, setDeepAnalysisError] = useState<string | null>(null)
+
+  // URL scraper
+  const [jobUrl, setJobUrl] = useState('')
+  const [isScraping, setIsScraping] = useState(false)
+  const [scrapedMeta, setScrapedMeta] = useState<ScrapeJobResponse | null>(null)
 
   // Error explainer
   const [explainerOpen, setExplainerOpen] = useState(false)
@@ -208,6 +213,27 @@ export default function TryPage() {
     setExplainerOpen(false)
     toast.success('Fix applied')
   }, [explainerData, explainerLine])
+
+  const handleScrapeUrl = useCallback(async () => {
+    if (!jobUrl.trim() || isScraping) return
+    setIsScraping(true)
+    setScrapedMeta(null)
+    try {
+      const result = await apiClient.scrapeJobDescription(jobUrl.trim())
+      if (result.error && !result.description) {
+        toast.error("Couldn't scrape this URL — paste the job description manually")
+        return
+      }
+      if (result.description) setJobDescription(result.description)
+      setScrapedMeta(result)
+      const label = [result.title, result.company].filter(Boolean).join(' · ') || 'job posting'
+      toast.success(`Imported: ${label}`)
+    } catch {
+      toast.error("Couldn't scrape this URL — paste the job description manually")
+    } finally {
+      setIsScraping(false)
+    }
+  }, [jobUrl, isScraping])
 
   const TRIM_INSTRUCTION = "Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names."
 
@@ -385,11 +411,61 @@ export default function TryPage() {
                   />
                 </div>
               </div>
-              <div className="h-32 flex-shrink-0 flex flex-col">
+              <div className="min-h-32 flex-shrink-0 flex flex-col">
                 <div className="mb-2 flex items-center justify-between">
                   <label className="block text-xs uppercase tracking-[0.22em] text-slate-400">Job Description</label>
                   <span className="text-[10px] text-slate-600">optional</span>
                 </div>
+                <div className="mb-1.5 flex gap-2">
+                  <input
+                    type="url"
+                    value={jobUrl}
+                    onChange={(e) => { setJobUrl(e.target.value); setScrapedMeta(null) }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleScrapeUrl() }}
+                    placeholder="Paste job URL (Greenhouse, Lever, Workday, Indeed…)"
+                    disabled={isProcessing || isScraping}
+                    className="flex-1 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-1.5 text-xs text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-orange-300/40 disabled:opacity-50"
+                  />
+                  <button
+                    onClick={handleScrapeUrl}
+                    disabled={!jobUrl.trim() || isProcessing || isScraping}
+                    title="Import job description from URL"
+                    className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {isScraping ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />}
+                    {isScraping ? 'Importing…' : 'Import'}
+                  </button>
+                </div>
+                {scrapedMeta && !scrapedMeta.error && (
+                  <div className="mb-1.5 flex flex-wrap items-center gap-1">
+                    {scrapedMeta.title && (
+                      <span className="rounded bg-orange-400/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-300">
+                        {scrapedMeta.title}
+                      </span>
+                    )}
+                    {scrapedMeta.company && (
+                      <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-400">
+                        {scrapedMeta.company}
+                      </span>
+                    )}
+                    {scrapedMeta.location && (
+                      <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-500">
+                        📍 {scrapedMeta.location}
+                      </span>
+                    )}
+                    {scrapedMeta.job_type && (
+                      <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-500">
+                        {scrapedMeta.job_type}
+                      </span>
+                    )}
+                    {scrapedMeta.salary && (
+                      <span className="rounded bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                        {scrapedMeta.salary}
+                      </span>
+                    )}
+                    <span className="ml-auto text-[9px] text-slate-700">via {scrapedMeta.source}</span>
+                  </div>
+                )}
                 <textarea
                   value={jobDescription}
                   onChange={(e) => setJobDescription(e.target.value)}
