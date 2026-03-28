@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest'
-import { jobStreamReducer, initialState } from '../hooks/useJobStream'
-import type { JobStreamState } from '../hooks/useJobStream'
+import { jobStreamReducer, initialState } from '../hooks/useJobStream.reducer'
+import type { JobStreamState } from '../hooks/useJobStream.reducer'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
