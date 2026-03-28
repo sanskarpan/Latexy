@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Copy, Check, AlertTriangle, CheckCircle, Info } from 'lucide-react'
 import {
   SECTION_PATTERNS,
@@ -20,13 +20,25 @@ interface ATSTextViewProps {
 
 export default function ATSTextView({ extractedText, pageCount }: ATSTextViewProps) {
   const [copied, setCopied] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
 
   const handleCopy = () => {
     if (!extractedText) return
-    navigator.clipboard.writeText(extractedText).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
+    navigator.clipboard.writeText(extractedText)
+      .then(() => {
+        setCopied(true)
+        if (timerRef.current) clearTimeout(timerRef.current)
+        timerRef.current = setTimeout(() => setCopied(false), 2000)
+      })
+      .catch(() => {
+        // Clipboard access unavailable (non-HTTPS or permission denied)
+      })
   }
 
   // ── Empty state ──
