@@ -46,6 +46,8 @@ export interface JobStreamState {
   tokensUsed: number | null
   /** Page count from last successful pdflatex compile */
   pageCount: number | null
+  /** Plain text extracted from the compiled PDF via pdftotext (ATS pre-flight) */
+  extractedPdfText: string | null
   error: string | null
   errorCode: string | null
   retryable: boolean
@@ -69,6 +71,7 @@ const initialState: JobStreamState = {
   optimizationTime: null,
   tokensUsed: null,
   pageCount: null,
+  extractedPdfText: null,
   error: null,
   errorCode: null,
   retryable: false,
@@ -141,6 +144,9 @@ function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStre
         errorCode: null,
         timeoutError: null,
       }
+
+    case 'job.pdf_extracted':
+      return { ...state, extractedPdfText: event.text }
 
     case 'ats.deep_complete':
       return {
