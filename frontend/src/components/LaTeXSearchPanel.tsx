@@ -27,14 +27,14 @@ export default function LaTeXSearchPanel({ presets, onPresetSelect, isOpen, onTo
     return () => document.removeEventListener('mousedown', handler)
   }, [isOpen, onClose])
 
-  // Close on Escape (only when open — don't swallow Monaco's own Escape)
+  // Close on Escape without capturing — other overlay dismiss flows remain unaffected
   useEffect(() => {
     if (!isOpen) return
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose() }
+      if (e.key === 'Escape') onClose()
     }
-    window.addEventListener('keydown', handler, { capture: true })
-    return () => window.removeEventListener('keydown', handler, { capture: true })
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
   }, [isOpen, onClose])
 
   return (
