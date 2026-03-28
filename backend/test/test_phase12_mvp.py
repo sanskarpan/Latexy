@@ -12,7 +12,6 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import User
-from app.main import app
 from app.services.analytics_service import analytics_service
 from app.services.trial_service import trial_service
 
