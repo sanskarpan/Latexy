@@ -81,10 +81,17 @@ export function jobStreamReducer(state: JobStreamState, action: ReducerAction): 
   const event = action as AnyEvent
   switch (event.type) {
     case 'job.queued':
-      return { ...state, status: 'queued', stage: '', percent: 0 }
+      return { ...state, status: 'queued', stage: '', percent: 0, extractedPdfText: null, pageCount: null }
 
     case 'job.started':
-      return { ...state, status: 'processing', stage: event.stage, message: `Starting ${event.stage}` }
+      return {
+        ...state,
+        status: 'processing',
+        stage: event.stage,
+        message: `Starting ${event.stage}`,
+        extractedPdfText: null,
+        pageCount: null,
+      }
 
     case 'job.progress':
       return {
