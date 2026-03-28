@@ -4,7 +4,7 @@
 
 import { useEffect, useReducer, useCallback } from 'react'
 import { wsClient } from '@/lib/ws-client'
-import type { AnyEvent, ATSDeepAnalysis } from '@/lib/event-types'
+import type { AnyEvent, ATSDeepAnalysis, ATSDetails } from '@/lib/event-types'
 
 // ------------------------------------------------------------------ //
 //  State shape                                                        //
@@ -14,13 +14,6 @@ export interface LogLine {
   source: string
   line: string
   is_error: boolean
-}
-
-export interface ATSDetails {
-  category_scores: Record<string, number>
-  recommendations: string[]
-  strengths: string[]
-  warnings: string[]
 }
 
 export interface TimeoutError {
@@ -55,7 +48,7 @@ export interface JobStreamState {
   timeoutError: TimeoutError | null
 }
 
-const initialState: JobStreamState = {
+export const initialState: JobStreamState = {
   status: 'idle',
   stage: '',
   percent: 0,
@@ -82,9 +75,9 @@ const initialState: JobStreamState = {
 //  Reducer                                                            //
 // ------------------------------------------------------------------ //
 
-type ReducerAction = AnyEvent | { type: '__reset__' }
+export type ReducerAction = AnyEvent | { type: '__reset__' }
 
-function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStreamState {
+export function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStreamState {
   if (action.type === '__reset__') return { ...initialState }
   const event = action as AnyEvent
   switch (event.type) {
@@ -146,7 +139,11 @@ function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStre
       }
 
     case 'job.pdf_extracted':
-      return { ...state, extractedPdfText: event.text }
+      return {
+        ...state,
+        extractedPdfText: event.text,
+        pageCount: event.page_count ?? state.pageCount,
+      }
 
     case 'ats.deep_complete':
       return {
