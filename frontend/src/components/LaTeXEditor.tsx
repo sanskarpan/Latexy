@@ -8,6 +8,7 @@ import type { LogLine } from '@/hooks/useJobStream'
 import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import ATSScoreBadge from '@/components/ATSScoreBadge'
 import type { ProofreadIssue } from '@/lib/api-client'
+import type { LintIssue } from '@/lib/latex-linter'
 import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
 import { LATEX_SEARCH_PRESETS, type LatexSearchPreset } from '@/data/latex-search-presets'
 
@@ -62,6 +63,8 @@ interface LaTeXEditorProps {
   }) => void
   /** Proofreader issues to render as inline decorations */
   proofreadIssues?: ProofreadIssue[]
+  /** Linter issues to show as Monaco markers (squiggles) */
+  lintIssues?: LintIssue[]
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -240,7 +243,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -283,8 +286,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             if (state && !state.isRegex) fc.toggleRegex()
             fc.setSearchString(preset.pattern)
           } catch {}
+        } else {
+          editor.getAction('actions.find')?.run()
         }
-        editor.getAction('actions.find')?.run()
       }
       editor.focus()
     }
@@ -472,6 +476,33 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
       proofreaderDecsRef.current = editor.createDecorationsCollection(decorations)
     }, [proofreadIssues])
+
+    // Apply lint markers when lintIssues change
+    useEffect(() => {
+      const monaco = monacoRef.current
+      const editor = editorRef.current
+      if (!monaco || !editor) return
+
+      const model = editor.getModel()
+      if (!model) return
+
+      const markers = (lintIssues ?? []).map((issue) => ({
+        startLineNumber: issue.line,
+        endLineNumber: issue.line,
+        startColumn: issue.column,
+        endColumn: issue.endColumn,
+        severity:
+          issue.severity === 'error'
+            ? monaco.MarkerSeverity.Error
+            : issue.severity === 'warning'
+              ? monaco.MarkerSeverity.Warning
+              : monaco.MarkerSeverity.Info,
+        message: issue.message,
+        source: `latexy-lint(${issue.ruleId})`,
+      }))
+
+      monaco.editor.setModelMarkers(model, 'latex-lint', markers)
+    }, [lintIssues])
 
     // Auto-compile: debounce 2s after last keystroke
     useEffect(() => {
