@@ -112,6 +112,11 @@ from .settings_routes import router as settings_router
 
 router.include_router(settings_router)
 
+# Include Job Board URL Scraper routes (Feature 33)
+from .scraper_routes import router as scraper_router
+
+router.include_router(scraper_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
