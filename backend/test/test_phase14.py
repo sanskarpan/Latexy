@@ -3,7 +3,6 @@ Test Phase 14: Multi-Format Infrastructure
 Tests format detection, parser framework, and file validation.
 """
 
-import asyncio
 import sys
 from pathlib import Path
 
