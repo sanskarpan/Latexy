@@ -1559,19 +1559,4 @@ export interface GenerateInterviewPrepApiResponse {
   message: string
 }
 
-// ------------------------------------------------------------------ //
-//  Legacy aliases (for pages using old import names)                 //
-// ------------------------------------------------------------------ //
 
-export function showSuccessToast(message: string): void {
-  if (typeof window !== 'undefined') {
-    // dynamic import to avoid SSR issues
-    import('sonner').then(({ toast }) => toast.success(message)).catch(() => {})
-  }
-}
-
-export function showErrorToast(message: string): void {
-  if (typeof window !== 'undefined') {
-    import('sonner').then(({ toast }) => toast.error(message)).catch(() => {})
-  }
-}
