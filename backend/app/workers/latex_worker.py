@@ -205,8 +205,19 @@ def compile_latex_task(
             # ── PDF text extraction for ATS pre-flight ───────────────
             extracted_text: Optional[str] = None
             try:
+                if _use_docker:
+                    pt_cmd = [
+                        "docker", "run", "--rm",
+                        "-v", f"{job_dir}:/workspace",
+                        "-w", "/workspace",
+                        settings.LATEX_DOCKER_IMAGE,
+                        "pdftotext", "-layout", "/workspace/resume.pdf", "-",
+                    ]
+                else:
+                    pt_cmd = ["pdftotext", "-layout", str(pdf_file), "-"]
+
                 pt_result = subprocess.run(
-                    ["pdftotext", "-layout", str(pdf_file), "-"],
+                    pt_cmd,
                     capture_output=True,
                     text=True,
                     timeout=10,
@@ -214,7 +225,7 @@ def compile_latex_task(
                 if pt_result.returncode == 0 and pt_result.stdout.strip():
                     extracted_text = pt_result.stdout
             except Exception as pt_exc:
-                logger.debug(f"pdftotext failed for job {job_id}: {pt_exc}")
+                logger.error(f"pdftotext failed for job {job_id}: {pt_exc}")
 
             result = {
                 "success": True,
