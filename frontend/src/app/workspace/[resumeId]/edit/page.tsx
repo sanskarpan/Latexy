@@ -57,13 +57,15 @@ import BulletGeneratorWidget from '@/components/BulletGeneratorWidget'
 import SummaryGeneratorWidget from '@/components/SummaryGeneratorWidget'
 import ProofreadPanel from '@/components/ProofreadPanel'
 import PackageManagerPanel from '@/components/PackageManagerPanel'
+import LinterPanel from '@/components/LinterPanel'
 import CompilerSelector from '@/components/CompilerSelector'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
+import { useLatexLinter } from '@/hooks/useLatexLinter'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
@@ -724,6 +726,10 @@ export default function ResumeEditPage() {
 
   // Proofreader
   const [proofreadIssues, setProofreadIssues] = useState<ProofreadIssue[]>([])
+
+  // Linter
+  const [linterEnabled, setLinterEnabled] = useState(true)
+  const { issues: lintIssues, autoFixAll: runLintAutoFixAll } = useLatexLinter(latexContent, linterEnabled)
 
   // Deep analysis (Layer 2)
   const [deepPanelOpen, setDeepPanelOpen] = useState(false)
@@ -1578,6 +1584,7 @@ export default function ResumeEditPage() {
               pageCount={pageCount}
               onCursorInSummarySection={handleCursorInSummarySection}
               proofreadIssues={proofreadIssues}
+              lintIssues={lintIssues}
             />
 
             {/* AI Summary Widget trigger — shown when cursor is in summary section */}
@@ -1674,6 +1681,7 @@ export default function ResumeEditPage() {
                 { id: 'design', label: 'Design', icon: Palette },
                 { id: 'proofread', label: 'Proof', icon: ShieldCheck },
                 { id: 'packages', label: 'Packages', icon: Package },
+                { id: 'linter', label: 'Linter', icon: AlertTriangle },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -1693,6 +1701,11 @@ export default function ResumeEditPage() {
                 )}
                 {id === 'logs' && isCompiling && (
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400" />
+                )}
+                {id === 'linter' && lintIssues.length > 0 && (
+                  <span className="ml-0.5 rounded bg-amber-500/20 px-1 py-0.5 font-mono text-[8px] text-amber-300">
+                    {lintIssues.length}
+                  </span>
                 )}
               </button>
             ))}
@@ -1858,6 +1871,30 @@ export default function ResumeEditPage() {
                 onAddPackage={(newLatex) => {
                   editorRef.current?.setValue(newLatex)
                   setLatexContent(newLatex)
+                }}
+              />
+            )}
+
+            {rightTab === 'linter' && (
+              <LinterPanel
+                issues={lintIssues}
+                enabled={linterEnabled}
+                onToggleEnabled={setLinterEnabled}
+                onJumpToLine={(line) => editorRef.current?.highlightLine(line)}
+                onApplyFix={(issue) => {
+                  if (!issue.fix) return
+                  const lines = latexContent.split('\n')
+                  const lineContent = lines[issue.line - 1] ?? ''
+                  const fixed = issue.fix(lineContent)
+                  editorRef.current?.applyFix(issue.line, fixed)
+                  const newLines = [...lines]
+                  newLines[issue.line - 1] = fixed
+                  setLatexContent(newLines.join('\n'))
+                }}
+                onAutoFixAll={() => {
+                  const fixed = runLintAutoFixAll(latexContent)
+                  editorRef.current?.setValue(fixed)
+                  setLatexContent(fixed)
                 }}
               />
             )}
