@@ -1883,7 +1883,8 @@ export default function ResumeEditPage() {
                 onJumpToLine={(line) => editorRef.current?.highlightLine(line)}
                 onApplyFix={(issue) => {
                   if (!issue.fix) return
-                  const lines = latexContent.split('\n')
+                  const currentContent = editorRef.current?.getValue() ?? latexContent
+                  const lines = currentContent.split('\n')
                   const lineContent = lines[issue.line - 1] ?? ''
                   const fixed = issue.fix(lineContent)
                   editorRef.current?.applyFix(issue.line, fixed)
@@ -1892,7 +1893,8 @@ export default function ResumeEditPage() {
                   setLatexContent(newLines.join('\n'))
                 }}
                 onAutoFixAll={() => {
-                  const fixed = runLintAutoFixAll(latexContent)
+                  const currentContent = editorRef.current?.getValue() ?? latexContent
+                  const fixed = runLintAutoFixAll(currentContent)
                   editorRef.current?.setValue(fixed)
                   setLatexContent(fixed)
                 }}
