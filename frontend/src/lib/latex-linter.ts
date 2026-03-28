@@ -20,6 +20,40 @@ interface PerLineRule {
   fix?: (lineContent: string) => string
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Context-aware fix for deprecated font-declaration commands.
+ * Handles four patterns:
+ *   {\old text}   → \new{text}
+ *   \old word     → \new{word}   (bare word following whitespace)
+ *   \old{...}     → \new{...}    (already-braced argument)
+ *   \old          → \new         (at command boundary or EOL)
+ */
+function fixDeclarationToCommand(line: string, from: string, to: string): string {
+  // { \old ... } → \new{...}
+  let result = line.replace(
+    new RegExp(`\\{\\\\${from}\\s+([^}]+)\\}`, 'g'),
+    `\\${to}{$1}`
+  )
+  // \old word → \new{word}  (word = next non-space token, not a brace)
+  result = result.replace(
+    new RegExp(`(?<!\\w)\\\\${from}\\s+(\\S[^\\s}]*)`, 'g'),
+    `\\${to}{$1}`
+  )
+  // \old{...} → \new{...}
+  result = result.replace(
+    new RegExp(`(?<!\\w)\\\\${from}\\{`, 'g'),
+    `\\${to}{`
+  )
+  // bare \old at command boundary or end of line
+  result = result.replace(
+    new RegExp(`(?<!\\w)\\\\${from}(?=\\\\|$)`, 'g'),
+    `\\${to}`
+  )
+  return result
+}
+
 // ─── Per-line rules ───────────────────────────────────────────────────────────
 
 const PER_LINE_RULES: PerLineRule[] = [
@@ -29,10 +63,7 @@ const PER_LINE_RULES: PerLineRule[] = [
     message: 'Deprecated: use \\textbf{} instead of \\bf',
     severity: 'warning',
     fixable: true,
-    fix: (line) =>
-      line
-        .replace(/\{\\bf\s+([^}]+)\}/g, '\\textbf{$1}')
-        .replace(/(?<!\w)\\bf(?=\s|\{|\\|$)/g, '\\textbf'),
+    fix: (line) => fixDeclarationToCommand(line, 'bf', 'textbf'),
   },
   {
     id: 'deprecated-it',
@@ -40,10 +71,7 @@ const PER_LINE_RULES: PerLineRule[] = [
     message: 'Deprecated: use \\textit{} instead of \\it',
     severity: 'warning',
     fixable: true,
-    fix: (line) =>
-      line
-        .replace(/\{\\it\s+([^}]+)\}/g, '\\textit{$1}')
-        .replace(/(?<!\w)\\it(?=\s|\{|\\|$)/g, '\\textit'),
+    fix: (line) => fixDeclarationToCommand(line, 'it', 'textit'),
   },
   {
     id: 'deprecated-rm',
@@ -129,18 +157,25 @@ function checkHyperrefOrder(lines: string[]): LintIssue[] {
   ]
 }
 
-/** \section / \subsection not followed by \label within 3 lines */
+/** \section / \subsection not followed by \label within 3 lines.
+ *  Includes the section line itself (for same-line labels) and strips
+ *  inline comments before checking so `% \label{...}` doesn't suppress. */
 function checkMissingLabels(lines: string[]): LintIssue[] {
   const issues: LintIssue[] = []
   const sectionRe = /\\(section|subsection|subsubsection)\*?\{[^}]+\}/
+  const stripComment = (l: string) => l.replace(/(?<!\\)%.*$/, '')
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (line.trim().startsWith('%')) continue
     if (!sectionRe.test(line)) continue
 
-    const lookAhead = lines.slice(i + 1, i + 4).join('\n')
-    if (!/\\label\{/.test(lookAhead)) {
+    // Search window: current line + next 3 lines, all with inline comments stripped
+    const window = [line, ...lines.slice(i + 1, i + 4)]
+      .map(stripComment)
+      .join('\n')
+
+    if (!/\\label\{/.test(window)) {
       const match = sectionRe.exec(line)!
       issues.push({
         line: i + 1,
@@ -204,19 +239,28 @@ export function lintLatex(content: string): LintIssue[] {
 
 // ─── autoFixAll ───────────────────────────────────────────────────────────────
 
-/** Apply all fixable per-line rules to every line. Returns the fixed content. */
+/** Apply all fixable per-line rules to every line. Returns the fixed content.
+ *  Inline comments (% ...) are split off before fixing so fix functions never
+ *  accidentally rewrite comment text. */
 export function autoFixAll(content: string): string {
   const lines = content.split('\n')
 
   const fixed = lines.map((line) => {
+    // Skip pure comment lines entirely
     if (line.trim().startsWith('%')) return line
-    let result = line
+
+    // Split at the first unescaped % to isolate comment
+    const commentIdx = line.search(/(?<!\\)%/)
+    const codePart = commentIdx >= 0 ? line.slice(0, commentIdx) : line
+    const commentPart = commentIdx >= 0 ? line.slice(commentIdx) : ''
+
+    let result = codePart
     for (const rule of PER_LINE_RULES) {
       if (rule.fixable && rule.fix) {
         result = rule.fix(result)
       }
     }
-    return result
+    return result + commentPart
   })
 
   return fixed.join('\n')
