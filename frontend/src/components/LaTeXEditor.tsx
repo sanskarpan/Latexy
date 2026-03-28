@@ -266,17 +266,20 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       const findController = editor.getContribution('editor.contrib.findController') as any
       if (findController) {
         try {
-          // Open Monaco's native find widget, then inject the preset pattern + enable regex
-          editor.getAction('actions.find')?.run()
+          // Ensure regex mode is ON before setting the pattern string.
+          // toggleRegex() has no parameter — it just flips the current state,
+          // so only call it when regex is currently off.
+          const state = findController.getState?.()
+          if (state && !state.isRegex) {
+            findController.toggleRegex()
+          }
           findController.setSearchString(preset.pattern)
-          findController.toggleRegex(true)
         } catch {
-          try { findController.setSearchString(preset.pattern) } catch {}
-          editor.getAction('actions.find')?.run()
+          // No-op — user can still manually enable regex in Monaco's find widget
         }
-      } else {
-        editor.getAction('actions.find')?.run()
       }
+      // Open Monaco's native find widget
+      editor.getAction('actions.find')?.run()
       editor.focus()
     }
 
