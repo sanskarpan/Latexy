@@ -201,6 +201,21 @@ def compile_latex_task(
 
         if proc.returncode == 0 and pdf_file.exists():
             pdf_size = pdf_file.stat().st_size
+
+            # ── PDF text extraction for ATS pre-flight ───────────────
+            extracted_text: Optional[str] = None
+            try:
+                pt_result = subprocess.run(
+                    ["pdftotext", "-layout", str(pdf_file), "-"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if pt_result.returncode == 0 and pt_result.stdout.strip():
+                    extracted_text = pt_result.stdout
+            except Exception as pt_exc:
+                logger.debug(f"pdftotext failed for job {job_id}: {pt_exc}")
+
             result = {
                 "success": True,
                 "job_id": job_id,
@@ -208,8 +223,17 @@ def compile_latex_task(
                 "compilation_time": compilation_time,
                 "pdf_size": pdf_size,
                 "page_count": page_count,
+                "extracted_text": extracted_text,
             }
             publish_job_result(job_id, result)
+
+            # Publish extracted text as a dedicated event before job.completed
+            if extracted_text is not None:
+                publish_event(job_id, "job.pdf_extracted", {
+                    "text": extracted_text,
+                    "page_count": page_count or 1,
+                })
+
             publish_event(job_id, "job.completed", {
                 "pdf_job_id": job_id,
                 "ats_score": 0.0,
