@@ -134,7 +134,7 @@ const PER_LINE_RULES: PerLineRule[] = [
   },
   {
     id: 'tabular-layout',
-    pattern: /\\begin\{tabular\}/g,
+    pattern: /\\begin\{tabular(?:x|\*)?\}/g,
     message: '\\begin{tabular} used for layout can cause content to be mis-ordered or invisible in ATS parsing. Consider using standard LaTeX spacing commands instead.',
     severity: 'info',
     fixable: false,
@@ -198,7 +198,7 @@ function checkHyperrefOrder(lines: string[]): LintIssue[] {
     // Stop scanning at \begin{document}
     if (/\\begin\{document\}/.test(line)) break
 
-    if (/\\usepackage(?:\[[^\]]*\])?\{[^}]*hyperref[^}]*\}/.test(line)) {
+    if (/\\usepackage(?:\[[^\]]*\])?\{hyperref\}/.test(line)) {
       hyperrefLine = i
     }
     if (/\\usepackage/.test(line)) {
