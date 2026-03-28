@@ -266,6 +266,20 @@ export interface ExplainErrorRequest {
   error_line?: number
 }
 
+export interface ScrapeJobResponse {
+  title: string | null
+  company: string | null
+  description: string | null
+  location: string | null
+  job_type: string | null
+  salary: string | null
+  posted_at: string | null
+  url: string
+  cached: boolean
+  source: 'api' | 'json_ld' | 'html' | 'og_tags'
+  error: string | null
+}
+
 export interface ShareLinkResponse {
   share_token: string
   share_url: string
@@ -1301,6 +1315,17 @@ class ApiClient {
     return this.request<NotificationPrefs>('/settings/notifications', {
       method: 'PUT',
       body: JSON.stringify(prefs),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Job Board URL Scraper (Feature 33)                              //
+  // ---------------------------------------------------------------- //
+
+  async scrapeJobDescription(url: string): Promise<ScrapeJobResponse> {
+    return this.request<ScrapeJobResponse>('/scrape-job-description', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
     })
   }
 }
