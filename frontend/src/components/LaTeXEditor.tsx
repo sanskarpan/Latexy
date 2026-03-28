@@ -286,8 +286,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             if (state && !state.isRegex) fc.toggleRegex()
             fc.setSearchString(preset.pattern)
           } catch {}
+        } else {
+          editor.getAction('actions.find')?.run()
         }
-        editor.getAction('actions.find')?.run()
       }
       editor.focus()
     }
