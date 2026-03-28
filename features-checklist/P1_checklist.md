@@ -2282,7 +2282,7 @@ Auto-detects already-installed packages from current preamble.
 markers with severity. "Auto-Fix All" for safe automatic fixes. Frontend-only — no backend needed.
 
 ### 29A · Frontend — Linter Rules
-- [ ] Create `frontend/src/lib/latex-linter.ts`:
+- [x] Create `frontend/src/lib/latex-linter.ts`:
   ```typescript
   export interface LintIssue {
     line: number
@@ -2362,7 +2362,7 @@ markers with severity. "Auto-Fix All" for safe automatic fixes. Frontend-only �
   ```
 
 ### 29B · Frontend — Monaco Marker Registration
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add prop: `lintIssues?: LintIssue[]`
   - When `lintIssues` changes, call `monaco.editor.setModelMarkers(model, 'latex-lint', markers)`:
     ```typescript
@@ -2381,7 +2381,7 @@ markers with severity. "Auto-Fix All" for safe automatic fixes. Frontend-only �
   - Markers appear as squiggles in editor (same as error markers)
 
 ### 29C · Frontend — Lint Hook
-- [ ] Create `frontend/src/hooks/useLatexLinter.ts`:
+- [x] Create `frontend/src/hooks/useLatexLinter.ts`:
   ```typescript
   export function useLatexLinter(latexContent: string, enabled: boolean) {
     const [issues, setIssues] = useState<LintIssue[]>([])
@@ -2409,7 +2409,7 @@ markers with severity. "Auto-Fix All" for safe automatic fixes. Frontend-only �
   ```
 
 ### 29D · Frontend — LinterPanel Component
-- [ ] Create `frontend/src/components/LinterPanel.tsx`:
+- [x] Create `frontend/src/components/LinterPanel.tsx`:
   - "Linter" tab in editor sidebar
   - Toggle: "Enable real-time linting" (default: on)
   - Issues list:
@@ -2420,7 +2420,7 @@ markers with severity. "Auto-Fix All" for safe automatic fixes. Frontend-only �
   - Issue count badge on the "Linter" tab title
 
 ### 29E · Tests
-- [ ] Unit tests for `latex-linter.ts`:
+- [x] Unit tests for `latex-linter.ts`:
   - `\\bf` in content → `deprecated-bf` issue detected
   - `"quoted text"` → `wrong-quotes` issue detected
   - Comment line with `\\bf` → no issue (comments ignored)
