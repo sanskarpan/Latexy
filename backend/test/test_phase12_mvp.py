@@ -416,30 +416,27 @@ class TestIntegrationScenarios:
     @pytest.mark.asyncio
     async def test_complete_user_journey(self, client: AsyncClient, db_session: AsyncSession):
         """Test complete user journey from trial to registration."""
-        device_fingerprint = f"integration_test_{uuid4().hex[:8]}"
+        # Use unique fingerprint and IP to avoid cross-test rate-limit interference
+        unique_suffix = uuid4().hex[:8]
+        device_fingerprint = f"integration_test_{unique_suffix}"
+        unique_ip = f"10.99.{int(unique_suffix[:2], 16)}.{int(unique_suffix[2:4], 16)}"
 
-        # 1. Start as anonymous user — trial should be available
-        status = await trial_service.get_trial_status(
+        # 1. Track usage for the first time (creates trial record if not exists)
+        # NOTE: calling get_trial_status first would set last_used=now (server_default),
+        # triggering the 5-minute cooldown on the subsequent track_usage call.
+        result = await trial_service.track_usage(
             db=db_session,
             device_fingerprint=device_fingerprint,
-            ip_address="192.168.1.1",
+            action="compile",
+            ip_address=unique_ip,
         )
-        assert status["canUse"]
+        assert result["success"], f"track_usage failed: {result}"
 
         # 2. Health check (simulates page load)
         response = await client.get("/health")
         assert response.status_code == 200
 
-        # 3. Track usage via trial service
-        result = await trial_service.track_usage(
-            db=db_session,
-            device_fingerprint=device_fingerprint,
-            action="compile",
-            ip_address="192.168.1.1",
-        )
-        assert result["success"]
-
-        # 4. Check trial status — 1 use consumed
+        # 3. Check trial status — 1 use consumed
         trial_status = await trial_service.get_trial_status(
             db=db_session,
             device_fingerprint=device_fingerprint,
