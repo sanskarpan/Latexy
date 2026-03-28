@@ -68,9 +68,9 @@ def test_parser_factory():
     parser = parser_factory.get_parser(ResumeFormat.LATEX)
     assert parser is not None
 
-    # PDF and DOCX not yet implemented
-    for fmt in [ResumeFormat.PDF, ResumeFormat.DOCX]:
-        assert parser_factory.get_parser(fmt) is None
+    # PDF and DOCX parsers are now implemented
+    assert parser_factory.get_parser(ResumeFormat.PDF) is not None
+    assert parser_factory.get_parser(ResumeFormat.DOCX) is not None
 
 
 async def test_latex_parser():
