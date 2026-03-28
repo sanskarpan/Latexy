@@ -296,6 +296,7 @@ class TestHelpers:
 class TestJsonLdExtraction:
     def test_finds_jobposting_in_script(self):
         from bs4 import BeautifulSoup
+
         from app.services.job_scraper_service import _find_job_ld
         soup = BeautifulSoup(_greenhouse_html("SWE", "BigCo"), "lxml")
         ld = _find_job_ld(soup)
@@ -305,6 +306,7 @@ class TestJsonLdExtraction:
 
     def test_parses_title_company_location_from_ld(self):
         from bs4 import BeautifulSoup
+
         from app.services.job_scraper_service import _find_job_ld, _parse_ld_job
         soup = BeautifulSoup(_greenhouse_html("ML Engineer", "DataCo"), "lxml")
         ld = _find_job_ld(soup)
@@ -318,6 +320,7 @@ class TestJsonLdExtraction:
 
     def test_parses_description_html(self):
         from bs4 import BeautifulSoup
+
         from app.services.job_scraper_service import _find_job_ld, _parse_ld_job
         soup = BeautifulSoup(_greenhouse_html(), "lxml")
         ld = _find_job_ld(soup)
@@ -327,6 +330,7 @@ class TestJsonLdExtraction:
 
     def test_handles_at_graph_wrapper(self):
         from bs4 import BeautifulSoup
+
         from app.services.job_scraper_service import _find_job_ld
         html = """<html><head>
         <script type="application/ld+json">
@@ -342,6 +346,7 @@ class TestJsonLdExtraction:
 
     def test_handles_employment_type_list(self):
         from bs4 import BeautifulSoup
+
         from app.services.job_scraper_service import _find_job_ld, _parse_ld_job
         html = """<html><head><script type="application/ld+json">
         {"@type":"JobPosting","title":"Dev","employmentType":["FULL_TIME","CONTRACTOR"]}
@@ -353,6 +358,7 @@ class TestJsonLdExtraction:
 
     def test_telecommute_location_type_sets_remote(self):
         from bs4 import BeautifulSoup
+
         from app.services.job_scraper_service import _find_job_ld, _parse_ld_job
         html = """<html><head><script type="application/ld+json">
         {"@type":"JobPosting","title":"Dev","jobLocationType":"TELECOMMUTE"}
@@ -393,6 +399,7 @@ class TestIndeedInitialData:
 class TestGenericExtractor:
     def test_picks_best_content_block(self):
         from bs4 import BeautifulSoup
+
         from app.services.job_scraper_service import _extract_generic_html
         soup = BeautifulSoup(_generic_jd_html("Product Manager", "Acme"), "lxml")
         result = _extract_generic_html(soup, "https://example.com/job")
@@ -405,6 +412,7 @@ class TestGenericExtractor:
 
     def test_extracts_og_company_from_meta(self):
         from bs4 import BeautifulSoup
+
         from app.services.job_scraper_service import _extract_generic_html
         soup = BeautifulSoup(_generic_jd_html("Engineer", "MyCompany"), "lxml")
         result = _extract_generic_html(soup, "https://example.com/job")

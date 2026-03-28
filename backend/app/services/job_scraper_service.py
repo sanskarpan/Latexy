@@ -17,7 +17,7 @@ import asyncio
 import hashlib
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
