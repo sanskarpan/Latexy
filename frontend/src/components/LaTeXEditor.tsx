@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useImperativeHandle, useMemo, useRef, forwardRef } from 'react'
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react'
 
 let _latexLanguageRegistered = false
 import Editor, { type OnMount } from '@monaco-editor/react'
@@ -8,6 +8,8 @@ import type { LogLine } from '@/hooks/useJobStream'
 import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import ATSScoreBadge from '@/components/ATSScoreBadge'
 import type { ProofreadIssue } from '@/lib/api-client'
+import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
+import { LATEX_SEARCH_PRESETS, type LatexSearchPreset } from '@/data/latex-search-presets'
 
 export interface LaTeXEditorRef {
   setValue: (value: string) => void
@@ -255,6 +257,28 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     onCursorInSummarySectionRef.current = onCursorInSummarySection
     const onWritingAssistantActionRef = useRef(onWritingAssistantAction)
     onWritingAssistantActionRef.current = onWritingAssistantAction
+
+    const [searchPanelOpen, setSearchPanelOpen] = useState(false)
+
+    function handlePresetSelect(preset: LatexSearchPreset) {
+      const editor = editorRef.current
+      if (!editor) return
+      const findController = editor.getContribution('editor.contrib.findController') as any
+      if (findController) {
+        try {
+          // Open Monaco's native find widget, then inject the preset pattern + enable regex
+          editor.getAction('actions.find')?.run()
+          findController.setSearchString(preset.pattern)
+          findController.toggleRegex(true)
+        } catch {
+          try { findController.setSearchString(preset.pattern) } catch {}
+          editor.getAction('actions.find')?.run()
+        }
+      } else {
+        editor.getAction('actions.find')?.run()
+      }
+      editor.focus()
+    }
 
     // Pre-compile page count estimate (~50 text lines per page)
     const estimatedPageCount = useMemo(() => {
@@ -907,6 +931,14 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         const d = editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onCompile())
         if (d) disposablesRef.current.push(d)
       }
+      // ⌘⇧H — open LaTeX Presets panel
+      {
+        const d = editor.addCommand(
+          monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyH,
+          () => setSearchPanelOpen(true),
+        )
+        if (d) disposablesRef.current.push(d)
+      }
 
       // ── Cursor change listener ─────────────────────────────────────
       if (onCursorChange) {
@@ -1032,7 +1064,14 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             )}
           </div>
         ) : (
-          <div className="min-h-0 flex-1">
+          <div className="relative min-h-0 flex-1">
+            <LaTeXSearchPanel
+              presets={LATEX_SEARCH_PRESETS}
+              isOpen={searchPanelOpen}
+              onToggle={() => setSearchPanelOpen((v) => !v)}
+              onClose={() => setSearchPanelOpen(false)}
+              onPresetSelect={handlePresetSelect}
+            />
             <Editor
               height="100%"
               defaultLanguage="latex"
@@ -1125,7 +1164,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               />
             )}
             <span>{value.length.toLocaleString()} chars</span>
-            {onSave && <span className="text-zinc-800">⌘S save · ⌘↵ compile</span>}
+            {onSave && <span className="text-zinc-800">⌘S save · ⌘↵ compile · ⌘⇧H presets</span>}
           </div>
         </div>
       </div>
