@@ -342,7 +342,7 @@ function _insertGlyphToUnicode(content: string): string {
   const lines = content.split('\n')
   // Skip if already present or XeLaTeX/LuaLaTeX
   if (
-    lines.some((l) => /\\input\{glyphtounicode\}/.test(l)) ||
+    lines.some((l) => !l.trim().startsWith('%') && /\\input\{glyphtounicode\}/.test(l)) ||
     lines.some((l) => !l.trim().startsWith('%') && /\\usepackage(?:\[[^\]]*\])?\{fontspec\}/.test(l))
   ) {
     return content
