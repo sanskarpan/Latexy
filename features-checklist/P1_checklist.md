@@ -2755,7 +2755,7 @@ Backend scrapes title, company, description. Pre-fills the JD textarea in optimi
 Cache scraped JDs by URL hash. Uses `httpx` + `BeautifulSoup4` (already in requirements).
 
 ### 33A · Backend — Scraper Service
-- [ ] Create `backend/app/services/job_scraper_service.py`:
+- [x] Create `backend/app/services/job_scraper_service.py`:
   ```python
   import httpx
   from bs4 import BeautifulSoup
@@ -2835,7 +2835,7 @@ Cache scraped JDs by URL hash. Uses `httpx` + `BeautifulSoup4` (already in requi
   ```
 
 ### 33B · Backend — Scraper Endpoint
-- [ ] Add `POST /scrape-job-description` to `backend/app/api/routes.py`:
+- [x] Add `POST /scrape-job-description` to `backend/app/api/routes.py`:
   ```python
   class ScrapeJobRequest(BaseModel):
       url: str = Field(..., max_length=500)
@@ -2854,13 +2854,13 @@ Cache scraped JDs by URL hash. Uses `httpx` + `BeautifulSoup4` (already in requi
   - Handle errors gracefully — return partial results rather than 500
 
 ### 33C · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   scrapeJobDescription(url: string): Promise<ScrapeJobResponse>
   ```
 
 ### 33D · Frontend — URL Scraper UI
-- [ ] In job description textarea (used in optimize page, try page, quick tailor modal):
+- [x] In job description textarea (used in optimize page, try page, quick tailor modal):
   - Add a URL input row above the textarea:
     ```tsx
     <div className="flex gap-2 mb-2">
@@ -2889,7 +2889,7 @@ Cache scraped JDs by URL hash. Uses `httpx` + `BeautifulSoup4` (already in requi
   - Support platforms note: "LinkedIn, Indeed, Greenhouse, Lever, Workday"
 
 ### 33E · Tests
-- [ ] `backend/test/test_scraper.py`:
+- [x] `backend/test/test_scraper.py`:
   - URL with Greenhouse domain → uses `_extract_greenhouse`
   - Cached URL → `cached=true`, no new HTTP request (mock httpx)
   - Non-200 response → returns `error` field, not 500
