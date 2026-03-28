@@ -1898,6 +1898,8 @@ export default function ResumeEditPage() {
                   editorRef.current?.setValue(fixed)
                   setLatexContent(fixed)
                 }}
+                extractedPdfText={compileStream.extractedPdfText}
+                pageCount={compileStream.pageCount}
               />
             )}
           </div>
