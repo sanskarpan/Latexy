@@ -117,6 +117,18 @@ describe('lintLatex — hyperref-order', () => {
     ].join('\n')
     expect(lintLatex(content).some((i) => i.ruleId === 'hyperref-order')).toBe(false)
   })
+
+  test('no false positive for package names containing hyperref as substring', () => {
+    // e.g. a hypothetical \usepackage{nohyperref} should NOT trigger
+    const content = [
+      '\\documentclass{article}',
+      '\\usepackage{nohyperref}',
+      '\\usepackage{geometry}',
+      '\\begin{document}',
+      '\\end{document}',
+    ].join('\n')
+    expect(lintLatex(content).some((i) => i.ruleId === 'hyperref-order')).toBe(false)
+  })
 })
 
 // ─── missing-label ────────────────────────────────────────────────────────────
@@ -314,6 +326,14 @@ describe('lintLatex — fontawesome-ats-risk', () => {
 describe('lintLatex — tabular-layout', () => {
   test('flags \\begin{tabular}', () => {
     expect(lintLatex('\\begin{tabular}{lr}').some((i) => i.ruleId === 'tabular-layout')).toBe(true)
+  })
+
+  test('flags \\begin{tabularx}', () => {
+    expect(lintLatex('\\begin{tabularx}{\\textwidth}{lX}').some((i) => i.ruleId === 'tabular-layout')).toBe(true)
+  })
+
+  test('flags \\begin{tabular*}', () => {
+    expect(lintLatex('\\begin{tabular*}{\\textwidth}{lr}').some((i) => i.ruleId === 'tabular-layout')).toBe(true)
   })
 
   test('no issue without tabular', () => {
