@@ -174,4 +174,64 @@ describe('autoFixAll', () => {
     const clean = '\\textbf{bold} and \\textit{italic}'
     expect(autoFixAll(clean)).toBe(clean)
   })
+
+  // ── Fix 2: autoFixAll preserves inline comments ──────────────────── //
+
+  test('does not rewrite text inside an inline comment', () => {
+    const line = 'Some code % use "quotes" and {\\bf old} here'
+    const result = autoFixAll(line)
+    // Code part is unchanged (no violations in code)
+    // Comment part must be untouched
+    expect(result).toContain('% use "quotes" and {\\bf old} here')
+  })
+
+  test('fixes code part but leaves comment part unchanged', () => {
+    const line = '"hello" world % keep "this" as-is'
+    const result = autoFixAll(line)
+    // Code part: "hello" → ``hello''
+    expect(result.startsWith("``hello''")).toBe(true)
+    // Comment part: preserved exactly
+    expect(result).toContain('% keep "this" as-is')
+  })
+
+  // ── Fix 4: deprecated-bf/it produce valid LaTeX ───────────────────── //
+
+  test('\\bf word → \\textbf{word} (bare word wrapped in braces)', () => {
+    const fixed = autoFixAll('\\bf bold')
+    expect(fixed).toBe('\\textbf{bold}')
+  })
+
+  test('\\it word → \\textit{word} (bare word wrapped in braces)', () => {
+    const fixed = autoFixAll('\\it italic')
+    expect(fixed).toBe('\\textit{italic}')
+  })
+
+  test('\\bf{text} → \\textbf{text} (braced form unchanged)', () => {
+    const fixed = autoFixAll('\\bf{text}')
+    expect(fixed).toBe('\\textbf{text}')
+  })
+
+  test('{\\bf text} → \\textbf{text} (declaration group form)', () => {
+    const fixed = autoFixAll('{\\bf bold text}')
+    expect(fixed).toBe('\\textbf{bold text}')
+  })
+})
+
+// ─── Fix 3: checkMissingLabels edge cases ─────────────────────────────────────
+
+describe('lintLatex — missing-label edge cases', () => {
+  test('no issue when \\label is on the same line as \\section', () => {
+    const issues = lintLatex('\\section{Intro}\\label{sec:intro}')
+    expect(issues.some((i) => i.ruleId === 'missing-label')).toBe(false)
+  })
+
+  test('issues when \\label is commented out (% \\label{...})', () => {
+    const content = '\\section{Methods}\n% \\label{sec:methods}\nSome text.'
+    expect(lintLatex(content).some((i) => i.ruleId === 'missing-label')).toBe(true)
+  })
+
+  test('no issue when real \\label follows within 3 lines', () => {
+    const content = '\\section{Results}\n\n\\label{sec:results}\nSome text.'
+    expect(lintLatex(content).some((i) => i.ruleId === 'missing-label')).toBe(false)
+  })
 })
