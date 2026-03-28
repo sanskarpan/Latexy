@@ -11,7 +11,6 @@ import type { ProofreadIssue } from '@/lib/api-client'
 import type { LintIssue } from '@/lib/latex-linter'
 import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
 import { LATEX_SEARCH_PRESETS, type LatexSearchPreset } from '@/data/latex-search-presets'
-import type { LintIssue } from '@/lib/latex-linter'
 
 export interface LaTeXEditorRef {
   setValue: (value: string) => void
