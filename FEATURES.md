@@ -771,7 +771,7 @@ After compilation succeeds, extract the actual text content from the compiled PD
 
 - Backend: after `latex_worker.py` produces `resume.pdf`, run `pdftotext -layout resume.pdf -` (already available in the texlive Docker image) and include `extracted_text: str` in the compile result
 - Alternatively use `pymupdf` (fitz) in Python: `doc.load_page(0).get_text("text")` — no subprocess needed
-- New WebSocket event type `job.pdf_text_extracted` published after successful compile
+- New WebSocket event type `job.pdf_extracted` published after successful compile
 - New panel tab "ATS View" in the editor sidebar: shows the raw extracted text in a monospace view with no formatting
 - Diff-style highlighting: sections recognized correctly (green), sections that appear garbled or out of order (red), sections that are completely missing from the extraction (amber)
 - "Copy ATS Text" button to manually paste into any external ATS scanner
@@ -1505,7 +1505,7 @@ PhD students, postdocs, and researchers transitioning to industry must convert a
 
 The prompt must handle each academic section type with specific transformation rules:
 
-```
+```text
 Publications section:
   - Keep only the 2-3 most impactful or most recent publications
   - Reframe as: "Published research on [topic] in [venue] — [impact if available e.g., cited N times]"
