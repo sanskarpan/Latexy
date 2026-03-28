@@ -263,23 +263,29 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     function handlePresetSelect(preset: LatexSearchPreset) {
       const editor = editorRef.current
       if (!editor) return
-      const findController = editor.getContribution('editor.contrib.findController') as any
-      if (findController) {
-        try {
-          // Ensure regex mode is ON before setting the pattern string.
-          // toggleRegex() has no parameter — it just flips the current state,
-          // so only call it when regex is currently off.
-          const state = findController.getState?.()
-          if (state && !state.isRegex) {
-            findController.toggleRegex()
-          }
-          findController.setSearchString(preset.pattern)
-        } catch {
-          // No-op — user can still manually enable regex in Monaco's find widget
+
+      // Prefer the public actions.findWithArgs action (registered in Monaco 0.34+,
+      // stable in 0.55). It accepts searchString + isRegex directly without
+      // touching any internal findController methods.
+      if (editor.getAction('actions.findWithArgs')) {
+        editor.trigger('keyboard', 'actions.findWithArgs', {
+          searchString: preset.pattern,
+          isRegex: true,
+          matchCase: false,
+          matchWholeWord: false,
+        })
+      } else {
+        // Last-resort fallback for older Monaco builds: internal findController API
+        const fc = editor.getContribution('editor.contrib.findController') as any
+        if (fc) {
+          try {
+            const state = fc.getState?.()
+            if (state && !state.isRegex) fc.toggleRegex()
+            fc.setSearchString(preset.pattern)
+          } catch {}
         }
+        editor.getAction('actions.find')?.run()
       }
-      // Open Monaco's native find widget
-      editor.getAction('actions.find')?.run()
       editor.focus()
     }
 
@@ -1167,7 +1173,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               />
             )}
             <span>{value.length.toLocaleString()} chars</span>
-            {onSave && <span className="text-zinc-800">⌘S save · ⌘↵ compile · ⌘⇧H presets</span>}
+            <span className="text-zinc-800">
+              {[onSave && '⌘S save', onCompile && '⌘↵ compile', '⌘⇧H presets'].filter(Boolean).join(' · ')}
+            </span>
           </div>
         </div>
       </div>
