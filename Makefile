@@ -51,8 +51,9 @@ help:
 	@echo ""
 	@echo "  ── Testing & Linting ────────────────────────────────────────"
 	@echo "    test             Run backend + frontend tests"
-	@echo "    test-backend     pytest backend/test/"
-	@echo "    test-frontend    npm test (frontend)"
+	@echo "    test-backend     pytest backend/test/ (local DB — requires make infra)"
+	@echo "    test-db-setup    Create + migrate latexy_test DB (run after new migrations)"
+	@echo "    test-frontend    pnpm test (frontend)"
 	@echo "    lint             ruff + eslint"
 	@echo "    lint-backend     ruff check app/ test/"
 	@echo "    lint-frontend    eslint frontend/src"
@@ -139,8 +140,27 @@ dev: frontend
 # ── Testing ────────────────────────────────────────────────────────────────
 test: test-backend test-frontend
 
+LOCAL_TEST_DB      := latexy_test
+LOCAL_TEST_DB_URL  := postgresql+asyncpg://latexy:latexy_password@localhost:5434/$(LOCAL_TEST_DB)
+LOCAL_TEST_SYNC_URL := postgresql://latexy:latexy_password@localhost:5434/$(LOCAL_TEST_DB)
+
+# Create (idempotent) and migrate the local test database.
+# Requires the latexy-postgres Docker container to be running (make infra).
+# Run this once after pulling new migrations; test-backend skips it for speed.
+test-db-setup:
+	@docker inspect latexy-postgres --format='{{.State.Status}}' 2>/dev/null | grep -q running \
+	  || (echo "ERROR: latexy-postgres container is not running. Run: make infra"; exit 1)
+	@docker exec latexy-postgres psql -U latexy -tc \
+	  "SELECT 1 FROM pg_database WHERE datname='$(LOCAL_TEST_DB)'" \
+	  | grep -q 1 \
+	  || docker exec latexy-postgres psql -U latexy -c "CREATE DATABASE $(LOCAL_TEST_DB);"
+	@cd $(BACKEND_DIR) && DATABASE_URL=$(LOCAL_TEST_SYNC_URL) SKIP_ENV_VALIDATION=true \
+	  .venv/bin/alembic upgrade head
+
 test-backend:
-	cd $(BACKEND_DIR) && pytest test/ -v --tb=short
+	@docker inspect latexy-postgres --format='{{.State.Status}}' 2>/dev/null | grep -q running \
+	  || (echo "ERROR: latexy-postgres container is not running. Run: make infra"; exit 1)
+	cd $(BACKEND_DIR) && TEST_DATABASE_URL=$(LOCAL_TEST_DB_URL) .venv/bin/pytest test/
 
 test-frontend:
 	cd $(FRONTEND_DIR) && pnpm run test:unit
@@ -149,8 +169,7 @@ test-frontend:
 lint: lint-backend lint-frontend
 
 lint-backend:
-	cd $(BACKEND_DIR) && venv/bin/ruff check app/ test/ \
-	  || python -m ruff check app/ test/
+	cd $(BACKEND_DIR) && .venv/bin/ruff check app/ test/
 
 lint-frontend:
 	cd $(FRONTEND_DIR) && npm run lint
