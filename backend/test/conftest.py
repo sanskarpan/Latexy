@@ -58,7 +58,7 @@ os.environ.setdefault("DATABASE_URL", _raw_db_url)
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 os.environ.setdefault("CELERY_BROKER_URL", "redis://localhost:6379/15")
 os.environ.setdefault("CELERY_RESULT_BACKEND", "redis://localhost:6379/15")
-os.environ.setdefault("OPENAI_API_KEY", "sk-test")
+os.environ["OPENAI_API_KEY"] = ""  # always disable live LLM in tests — use mocks instead
 # DEBUG=true in tests to get verbose error messages in responses.
 # Production validation is tested explicitly in test_health.py via DEBUG=false assertions.
 os.environ.setdefault("DEBUG", "true")
@@ -179,7 +179,7 @@ async def test_engine():
     await engine.dispose()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 async def db_session_factory(test_engine):
     """Expose the async session factory for tests that need to inject it."""
     return async_sessionmaker(test_engine, expire_on_commit=False)
