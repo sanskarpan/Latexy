@@ -66,6 +66,8 @@ import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
 import { useSpellCheck, addWordToDict } from '@/hooks/useSpellCheck'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
+import KeyboardShortcutsPanel from '@/components/KeyboardShortcutsPanel'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
 
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols'
@@ -781,6 +783,12 @@ export default function ResumeEditPage() {
   const [shareToken, setShareToken] = useState<string | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
 
+  // Keyboard shortcuts panel (Feature 61)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+
+  // Push notifications (Feature 65)
+  const { requestPermission, notify } = usePushNotifications()
+
   const searchParams = useSearchParams()
   const activePdfJobId = useRef<string | null>(null)
   const editorRef = useRef<LaTeXEditorRef>(null)
@@ -935,6 +943,38 @@ export default function ResumeEditPage() {
   // Cleanup blob URL on unmount
   useEffect(() => {
     return () => { if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current) }
+  }, [])
+
+  // Push notification on compile/AI job complete (Feature 65)
+  useEffect(() => {
+    if (compileStream.status === 'completed') {
+      notify('Compilation complete', 'Your resume PDF is ready')
+    }
+  }, [compileStream.status, notify])
+
+  useEffect(() => {
+    if (aiStream.status === 'completed') {
+      notify('Optimization complete', 'Your AI-optimized resume is ready to review')
+    }
+  }, [aiStream.status, notify])
+
+  // Request notification permission after first compile attempt
+  useEffect(() => {
+    if (compileStream.status === 'processing' || aiStream.status === 'processing') {
+      requestPermission()
+    }
+  }, [compileStream.status, aiStream.status, requestPermission])
+
+  // Cmd+? keyboard shortcut for shortcuts panel (Feature 61)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === '?') {
+        e.preventDefault()
+        setShortcutsOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
   }, [])
 
   // ── Resize handle ──────────────────────────────────────────────────────
@@ -2055,6 +2095,9 @@ export default function ResumeEditPage() {
           onShareTokenChange={(token, url) => { setShareToken(token); setShareUrl(url) }}
         />
       )}
+
+      {/* Keyboard shortcuts panel (Feature 61) */}
+      <KeyboardShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
       {/* ── STATUS BAR ── */}
       <footer className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#0a0a0a] px-3">
