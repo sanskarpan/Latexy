@@ -2,26 +2,27 @@
 
 import React, { useState, useEffect } from 'react';
 
-interface Model {
-  id: string;
+interface ProviderInfo {
   name: string;
-  context_length: number;
-  features: string[];
-}
-
-interface Provider {
-  id: string;
-  name: string;
-  models: Model[];
-  max_context_length: number;
-  supported_features: string[];
+  display_name: string;
+  capabilities: {
+    max_context_length: number;
+    supports_streaming: boolean;
+    supports_function_calling: boolean;
+    supports_vision: boolean;
+    cost_per_1k_input_tokens: number;
+    cost_per_1k_output_tokens: number;
+  };
+  available_models: string[];
+  key_format: {
+    prefix: string;
+    length: string;
+    example: string;
+    description: string;
+  };
 }
 
 interface ProviderSelectorProps {
-  selectedProvider?: string;
-  selectedModel?: string;
-  onProviderChange: (provider: string) => void;
-  onModelChange: (model: string) => void;
   userApiKeys?: Array<{
     id: string;
     provider: string;
@@ -31,16 +32,11 @@ interface ProviderSelectorProps {
 }
 
 const ProviderSelector: React.FC<ProviderSelectorProps> = ({
-  selectedProvider,
-  selectedModel,
-  onProviderChange,
-  onModelChange,
-  userApiKeys = []
+  userApiKeys = [],
 }) => {
-  const [providers, setProviders] = useState<Record<string, Provider>>({});
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showProviderDropdown, setShowProviderDropdown] = useState(false);
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProviders();
@@ -51,22 +47,8 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
       const response = await fetch('/api/byok/providers');
       if (response.ok) {
         const data = await response.json();
-
-        const providerData: Record<string, Provider> = {};
-        for (const [providerName] of Object.entries(data.providers || {})) {
-          const capResponse = await fetch(`/api/byok/capabilities/${providerName}`);
-          if (capResponse.ok) {
-            const capabilities = await capResponse.json();
-            providerData[providerName] = {
-              id: providerName,
-              name: capabilities.provider || providerName,
-              models: capabilities.models || [],
-              max_context_length: capabilities.max_context_length || 0,
-              supported_features: capabilities.supported_features || []
-            };
-          }
-        }
-        setProviders(providerData);
+        const list = Array.isArray(data.providers) ? data.providers : [];
+        setProviders(list);
       }
     } catch (error) {
       console.error('Failed to fetch providers:', error);
@@ -75,179 +57,157 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
     }
   };
 
-  const hasUserKey = (providerId: string) => {
-    return userApiKeys.some(key => key.provider === providerId && key.is_active);
-  };
+  const hasUserKey = (providerName: string) =>
+    userApiKeys.some((k) => k.provider === providerName && k.is_active);
 
-  const getProviderStatus = (providerId: string) => {
-    if (hasUserKey(providerId)) {
-      return { label: 'Your Key', color: 'text-green-600' };
-    }
-    return { label: 'Default', color: 'text-blue-600' };
+  const formatCtx = (n: number) => {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+    return String(n);
   };
-
-  const formatContextLength = (length: number) => {
-    if (length >= 1000000) return `${(length / 1000000).toFixed(1)}M`;
-    if (length >= 1000) return `${(length / 1000).toFixed(0)}K`;
-    return length.toString();
-  };
-
-  const selectedProviderData = selectedProvider ? providers[selectedProvider] : null;
-  const availableModels = selectedProviderData?.models || [];
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <div className="animate-pulse">
-          <div className="h-4 bg-gray-200 rounded w-24 mb-2"></div>
-          <div className="h-10 bg-gray-200 rounded"></div>
-        </div>
-        <div className="animate-pulse">
-          <div className="h-4 bg-gray-200 rounded w-16 mb-2"></div>
-          <div className="h-10 bg-gray-200 rounded"></div>
-        </div>
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="animate-pulse rounded-xl border border-white/5 bg-white/[0.02] p-5">
+            <div className="h-4 w-28 rounded bg-white/10" />
+            <div className="mt-3 h-3 w-48 rounded bg-white/5" />
+          </div>
+        ))}
       </div>
     );
   }
 
+  if (providers.length === 0) {
+    return (
+      <p className="text-sm text-zinc-500">No providers available.</p>
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">LLM Provider</label>
-        <div className="relative">
+    <div className="space-y-3">
+      {providers.map((provider) => {
+        const hasKey = hasUserKey(provider.name);
+        const isExpanded = expandedProvider === provider.name;
+        const cap = provider.capabilities;
+
+        return (
           <button
-            onClick={() => setShowProviderDropdown(!showProviderDropdown)}
-            className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50"
+            key={provider.name}
+            type="button"
+            onClick={() => setExpandedProvider(isExpanded ? null : provider.name)}
+            className={`w-full text-left rounded-xl border p-5 transition ${
+              isExpanded
+                ? 'border-orange-300/25 bg-orange-300/[0.04]'
+                : 'border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.04]'
+            }`}
           >
-            <div className="flex items-center space-x-2">
-              {selectedProviderData ? (
-                <>
-                  <span className="font-medium">{selectedProviderData.name}</span>
-                  <span className={`text-xs px-2 py-1 rounded-full bg-gray-100 ${getProviderStatus(selectedProvider!).color}`}>
-                    {getProviderStatus(selectedProvider!).label}
+            {/* Header row */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                  {provider.display_name}
+                </h3>
+                {hasKey ? (
+                  <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300 ring-1 ring-emerald-400/20">
+                    Your Key
                   </span>
-                </>
-              ) : (
-                <span className="text-gray-500">Select a provider</span>
-              )}
-            </div>
-            <span className="text-gray-400">v</span>
-          </button>
-
-          {showProviderDropdown && (
-            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg">
-              <div className="py-1">
-                {Object.values(providers).map((provider) => {
-                  const status = getProviderStatus(provider.id);
-                  return (
-                    <button
-                      key={provider.id}
-                      onClick={() => {
-                        onProviderChange(provider.id);
-                        setShowProviderDropdown(false);
-                        setShowModelDropdown(false);
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center justify-between"
-                    >
-                      <div>
-                        <div className="font-medium">{provider.name}</div>
-                        <div className="text-xs text-gray-500">
-                          {provider.models.length} models • {formatContextLength(provider.max_context_length)} tokens max
-                        </div>
-                      </div>
-                      <span className={`text-xs px-2 py-1 rounded-full bg-gray-100 ${status.color}`}>{status.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {selectedProvider && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Model</label>
-          <div className="relative">
-            <button
-              onClick={() => setShowModelDropdown(!showModelDropdown)}
-              className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50"
-            >
-              <div className="flex items-center space-x-2">
-                {selectedModel ? (
-                  <>
-                    <span className="font-medium">{availableModels.find(m => m.id === selectedModel)?.name || selectedModel}</span>
-                    <span className="text-xs text-gray-500">
-                      {formatContextLength(availableModels.find(m => m.id === selectedModel)?.context_length || 0)} tokens
-                    </span>
-                  </>
                 ) : (
-                  <span className="text-gray-500">Select a model</span>
+                  <span className="rounded-md bg-sky-500/10 px-2 py-0.5 text-[10px] font-bold text-sky-300 ring-1 ring-sky-400/20">
+                    Default
+                  </span>
                 )}
               </div>
-              <span className="text-gray-400">v</span>
-            </button>
+              <div className="flex items-center gap-3 text-xs text-zinc-500">
+                <span>{provider.available_models.length} models</span>
+                <span>{formatCtx(cap.max_context_length)} ctx</span>
+                <span className={`transition ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
+              </div>
+            </div>
 
-            {showModelDropdown && (
-              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                <div className="py-1">
-                  {availableModels.map((model) => (
-                    <button
-                      key={model.id}
-                      onClick={() => {
-                        onModelChange(model.id);
-                        setShowModelDropdown(false);
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-gray-50"
-                    >
-                      <div className="font-medium">{model.name}</div>
-                      <div className="text-xs text-gray-500">
-                        {formatContextLength(model.context_length)} tokens
-                        {model.features.length > 0 ? ` • ${model.features.join(', ')}` : ''}
-                      </div>
-                    </button>
-                  ))}
+            {/* Feature badges */}
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {cap.supports_streaming && (
+                <span className="rounded-md bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-300 ring-1 ring-violet-400/20">
+                  Streaming
+                </span>
+              )}
+              {cap.supports_function_calling && (
+                <span className="rounded-md bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-300 ring-1 ring-blue-400/20">
+                  Function Calling
+                </span>
+              )}
+              {cap.supports_vision && (
+                <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300 ring-1 ring-amber-400/20">
+                  Vision
+                </span>
+              )}
+            </div>
+
+            {/* Expanded details */}
+            {isExpanded && (
+              <div className="mt-4 space-y-4 border-t border-white/5 pt-4" onClick={(e) => e.stopPropagation()}>
+                {/* Pricing */}
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-lg border border-white/5 bg-black/25 p-3">
+                    <p className="text-zinc-500">Input cost</p>
+                    <p className="mt-0.5 font-semibold text-zinc-200">
+                      ${cap.cost_per_1k_input_tokens.toFixed(4)}<span className="text-zinc-500 font-normal"> /1K tokens</span>
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-white/5 bg-black/25 p-3">
+                    <p className="text-zinc-500">Output cost</p>
+                    <p className="mt-0.5 font-semibold text-zinc-200">
+                      ${cap.cost_per_1k_output_tokens.toFixed(4)}<span className="text-zinc-500 font-normal"> /1K tokens</span>
+                    </p>
+                  </div>
                 </div>
+
+                {/* Models list */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                    Available Models
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {provider.available_models.slice(0, 10).map((model) => (
+                      <span
+                        key={model}
+                        className="rounded-md border border-white/5 bg-black/25 px-2 py-1 text-[11px] font-mono text-zinc-300"
+                      >
+                        {model}
+                      </span>
+                    ))}
+                    {provider.available_models.length > 10 && (
+                      <span className="rounded-md px-2 py-1 text-[11px] text-zinc-500">
+                        +{provider.available_models.length - 10} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Key format */}
+                <div className="rounded-lg border border-white/5 bg-black/25 p-3 text-xs">
+                  <p className="text-zinc-500">{provider.key_format.description}</p>
+                  <p className="mt-1 font-mono text-zinc-400">
+                    Example: <span className="text-zinc-300">{provider.key_format.example}</span>
+                  </p>
+                </div>
+
+                {/* CTA for users without a key */}
+                {!hasKey && (
+                  <div className="rounded-lg border border-sky-500/15 bg-sky-500/[0.06] p-3 text-xs">
+                    <p className="font-semibold text-sky-300">Using Default API Key</p>
+                    <p className="mt-0.5 text-sky-400/80">
+                      Add your own {provider.display_name} key above to skip usage limits.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {selectedProviderData && (
-        <div className="bg-gray-50 rounded-lg p-4">
-          <h4 className="font-medium text-gray-900 mb-2">Provider Information</h4>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-gray-500">Available Models:</span>
-              <span className="ml-2 font-medium">{selectedProviderData.models.length}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Max Context:</span>
-              <span className="ml-2 font-medium">{formatContextLength(selectedProviderData.max_context_length)} tokens</span>
-            </div>
-            <div className="col-span-2">
-              <span className="text-gray-500">Features:</span>
-              <div className="mt-1 flex flex-wrap gap-1">
-                {selectedProviderData.supported_features.map((feature) => (
-                  <span key={feature} className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
-                    {feature}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {selectedProvider && !hasUserKey(selectedProvider) && (
-            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="text-sm">
-                <p className="text-blue-800 font-medium">Using Default API Key</p>
-                <p className="text-blue-600">Add your own API key to avoid usage limits and get better performance.</p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+          </button>
+        );
+      })}
     </div>
   );
 };
