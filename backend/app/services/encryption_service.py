@@ -1,5 +1,15 @@
 """
 Encryption service for securing sensitive data like API keys.
+
+This is the authoritative encryption implementation. All encryption in the
+application should go through this service — api_key_service.APIKeyEncryption
+is a thin wrapper over this class.
+
+Key strategy:
+  - If API_KEY_ENCRYPTION_KEY is a valid Fernet key (44-char URL-safe base64):
+      use it directly (matches the format required for BYOK production keys).
+  - Otherwise (arbitrary password string or absent):
+      derive a Fernet key via PBKDF2HMAC — used in dev/test environments.
 """
 
 import base64
@@ -7,112 +17,101 @@ import logging
 import os
 from typing import Optional
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 logger = logging.getLogger(__name__)
 
+_PBKDF2_SALT = b'latexy_salt_16b!'  # 16 bytes — fixed salt for deterministic derivation
+
+
 class EncryptionService:
-    """Service for encrypting and decrypting sensitive data."""
+    """Authoritative service for encrypting and decrypting sensitive data."""
 
     def __init__(self, encryption_key: Optional[str] = None):
-        """Initialize encryption service with a key."""
-        if encryption_key:
-            self.key = encryption_key.encode()
+        raw_key = encryption_key or os.getenv('API_KEY_ENCRYPTION_KEY')
+        if raw_key:
+            key_bytes = raw_key.encode() if isinstance(raw_key, str) else raw_key
+            # Use directly if it is already a valid Fernet key; otherwise derive via PBKDF2.
+            try:
+                Fernet(key_bytes)  # raises if not a valid Fernet key
+                self._fernet = Fernet(key_bytes)
+            except Exception:
+                self._fernet = Fernet(self._derive_key(key_bytes))
         else:
-            # Use environment variable or generate a key
-            env_key = os.getenv('API_KEY_ENCRYPTION_KEY')
-            if env_key:
-                self.key = env_key.encode()
-            else:
-                # Generate a key for development (not recommended for production)
-                self.key = b'development_key_32_chars_long!!'
-                logger.warning("Using development encryption key. Set API_KEY_ENCRYPTION_KEY in production!")
+            logger.warning(
+                "API_KEY_ENCRYPTION_KEY is not set — using development fallback. "
+                "Set this variable in production!"
+            )
+            self._fernet = Fernet(self._derive_key(b'latexy_dev_key_fallback!'))
 
-        # Derive a Fernet key from the provided key
-        self.fernet_key = self._derive_key(self.key)
-        self.cipher = Fernet(self.fernet_key)
-
-    def _derive_key(self, password: bytes) -> bytes:
-        """Derive a Fernet key from a password."""
-        # Use a fixed salt for consistency (in production, use a proper salt management)
-        salt = b'latexy_salt_16b!'  # 16 bytes salt
+    @staticmethod
+    def _derive_key(password: bytes) -> bytes:
+        """Derive a 32-byte Fernet key from an arbitrary password via PBKDF2HMAC."""
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=salt,
-            iterations=100000,
+            salt=_PBKDF2_SALT,
+            iterations=100_000,
         )
-        key = base64.urlsafe_b64encode(kdf.derive(password))
-        return key
+        return base64.urlsafe_b64encode(kdf.derive(password))
 
     def encrypt(self, plaintext: str) -> str:
-        """Encrypt a plaintext string and return base64 encoded result."""
-        try:
-            encrypted_data = self.cipher.encrypt(plaintext.encode())
-            return base64.urlsafe_b64encode(encrypted_data).decode()
-        except Exception as e:
-            logger.error(f"Encryption failed: {e}")
-            raise
+        """Encrypt a string and return a base64-encoded ciphertext."""
+        token = self._fernet.encrypt(plaintext.encode())
+        return base64.b64encode(token).decode()
 
-    def decrypt(self, encrypted_data: str) -> str:
-        """Decrypt base64 encoded encrypted data and return plaintext."""
+    def decrypt(self, ciphertext: str) -> str:
+        """Decrypt a base64-encoded ciphertext and return the plaintext."""
         try:
-            encrypted_bytes = base64.urlsafe_b64decode(encrypted_data.encode())
-            decrypted_data = self.cipher.decrypt(encrypted_bytes)
-            return decrypted_data.decode()
-        except Exception as e:
+            token = base64.b64decode(ciphertext.encode())
+            return self._fernet.decrypt(token).decode()
+        except (InvalidToken, Exception) as e:
             logger.error(f"Decryption failed: {e}")
             raise
 
     def encrypt_api_key(self, api_key: str, provider: str) -> str:
-        """Encrypt an API key with provider context."""
-        # Add provider prefix for additional security
-        prefixed_key = f"{provider}:{api_key}"
-        return self.encrypt(prefixed_key)
+        """Encrypt an API key, embedding the provider as a prefix for verification."""
+        return self.encrypt(f"{provider}:{api_key}")
 
     def decrypt_api_key(self, encrypted_key: str, expected_provider: str) -> str:
-        """Decrypt an API key and verify provider context."""
+        """Decrypt a provider-scoped API key and verify the provider prefix."""
         decrypted = self.decrypt(encrypted_key)
-
-        # Verify provider prefix
-        if not decrypted.startswith(f"{expected_provider}:"):
+        prefix = f"{expected_provider}:"
+        if not decrypted.startswith(prefix):
             raise ValueError(f"API key provider mismatch. Expected {expected_provider}")
-
-        # Remove provider prefix
-        return decrypted[len(expected_provider) + 1:]
+        return decrypted[len(prefix):]
 
     def is_encrypted(self, data: str) -> bool:
-        """Check if data appears to be encrypted (base64 encoded)."""
+        """Heuristic: return True if data looks like output from encrypt()."""
         try:
-            # Try to decode as base64
-            base64.urlsafe_b64decode(data.encode())
-            # If successful and reasonable length, likely encrypted
+            base64.b64decode(data.encode(), validate=True)
             return len(data) > 20 and len(data) % 4 == 0
         except Exception:
             return False
 
     def generate_key(self) -> str:
-        """Generate a new encryption key."""
+        """Generate a new random Fernet key (suitable as API_KEY_ENCRYPTION_KEY)."""
         return Fernet.generate_key().decode()
 
-# Global encryption service instance
+
+# Module-level singleton
 encryption_service = EncryptionService()
 
-# Utility functions
+
+# Utility helpers (backward-compatible)
 def encrypt_data(plaintext: str) -> str:
-    """Utility function to encrypt data."""
     return encryption_service.encrypt(plaintext)
 
-def decrypt_data(encrypted_data: str) -> str:
-    """Utility function to decrypt data."""
-    return encryption_service.decrypt(encrypted_data)
+
+def decrypt_data(ciphertext: str) -> str:
+    return encryption_service.decrypt(ciphertext)
+
 
 def encrypt_api_key(api_key: str, provider: str) -> str:
-    """Utility function to encrypt API key with provider context."""
     return encryption_service.encrypt_api_key(api_key, provider)
 
+
 def decrypt_api_key(encrypted_key: str, provider: str) -> str:
-    """Utility function to decrypt API key with provider verification."""
     return encryption_service.decrypt_api_key(encrypted_key, provider)
