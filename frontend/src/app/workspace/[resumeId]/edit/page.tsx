@@ -34,8 +34,9 @@ import {
   ShieldCheck,
   Package,
   Braces,
+  Github,
 } from 'lucide-react'
-import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
+import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type LatexCompiler, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
 import ShareResumeModal from '@/components/ShareResumeModal'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
@@ -790,6 +791,12 @@ export default function ResumeEditPage() {
   // Push notifications (Feature 65)
   const { requestPermission, notify } = usePushNotifications()
 
+  // GitHub sync (Feature 37)
+  const [ghConnected, setGhConnected] = useState(false)
+  const [ghSyncEnabled, setGhSyncEnabled] = useState(false)
+  const [ghPushing, setGhPushing] = useState(false)
+  const [ghTogglingSync, setGhTogglingSync] = useState(false)
+
   const searchParams = useSearchParams()
   const activePdfJobId = useRef<string | null>(null)
   const editorRef = useRef<LaTeXEditorRef>(null)
@@ -816,6 +823,11 @@ export default function ResumeEditPage() {
     attempt()
   }, [searchParams])
 
+  // Check GitHub user connection
+  useEffect(() => {
+    apiClient.getGitHubStatus().then(s => setGhConnected(s.connected)).catch(() => {})
+  }, [])
+
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent)
 
   const { state: compileStream } = useJobStream(compileJobId)
@@ -838,6 +850,9 @@ export default function ResumeEditPage() {
         // Load share token state
         setShareToken(data.share_token ?? null)
         setShareUrl(data.share_url ?? null)
+
+        // GitHub sync state
+        setGhSyncEnabled(data.github_sync_enabled ?? false)
 
         setParentResumeId(data.parent_resume_id ?? null)
         // Fetch parent title if this is a variant
@@ -1025,6 +1040,41 @@ export default function ResumeEditPage() {
   }, [latexContent])
 
   // ── Handlers ────────────────────────────────────────────────────────────
+  // ── GitHub sync handlers ──────────────────────────────────────────
+  const handleToggleGitHubSync = async () => {
+    setGhTogglingSync(true)
+    try {
+      if (ghSyncEnabled) {
+        await apiClient.disableGitHubSync(resumeId)
+        setGhSyncEnabled(false)
+        toast.success('GitHub sync disabled')
+      } else {
+        await apiClient.enableGitHubSync(resumeId)
+        setGhSyncEnabled(true)
+        toast.success('GitHub sync enabled')
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to toggle sync')
+    } finally {
+      setGhTogglingSync(false)
+    }
+  }
+
+  const handlePushToGitHub = async () => {
+    setGhPushing(true)
+    try {
+      // Save first to ensure latest content is pushed
+      const content = editorRef.current?.getValue() || latexContent
+      await apiClient.updateResume(resumeId, { title, latex_content: content })
+      const result = await apiClient.pushToGitHub(resumeId)
+      toast.success(result.message)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'GitHub push failed')
+    } finally {
+      setGhPushing(false)
+    }
+  }
+
   const handleSave = async () => {
     const content = editorRef.current?.getValue() || latexContent
     setIsSaving(true)
@@ -1498,6 +1548,36 @@ export default function ResumeEditPage() {
             <Share2 size={12} />
             Share
           </button>
+
+          {/* GitHub sync (Feature 37) — only show if user has connected GitHub */}
+          {ghConnected && (
+            <>
+              <button
+                onClick={handleToggleGitHubSync}
+                disabled={ghTogglingSync}
+                title={ghSyncEnabled ? 'Disable GitHub sync' : 'Enable GitHub sync'}
+                className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+                  ghSyncEnabled
+                    ? 'bg-zinc-800 text-zinc-200 ring-1 ring-white/[0.1]'
+                    : 'text-zinc-600 hover:text-zinc-300'
+                }`}
+              >
+                {ghTogglingSync ? <Loader2 size={11} className="animate-spin" /> : <Github size={11} />}
+                Sync
+              </button>
+              {ghSyncEnabled && (
+                <button
+                  onClick={handlePushToGitHub}
+                  disabled={ghPushing}
+                  title="Push to GitHub"
+                  className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
+                >
+                  {ghPushing ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+                  Push
+                </button>
+              )}
+            </>
+          )}
 
           <div className="mx-1 h-3.5 w-px bg-white/[0.08]" />
 
