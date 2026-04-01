@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import ResumeJobMatch
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # GAP-001 · ResumeJobMatch caching
 # ─────────────────────────────────────────────────────────────────────────────
