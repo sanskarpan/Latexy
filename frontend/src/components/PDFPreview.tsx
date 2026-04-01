@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
-import { FileText, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, MousePointer } from 'lucide-react'
+import { FileText, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, MousePointer, Moon, Sun } from 'lucide-react'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import { parseSynctex, synctexReverse, synctexForward, type SynctexData } from '@/lib/synctex-parser'
@@ -40,6 +40,18 @@ export default function PDFPreview({
   const [synctexReady, setSynctexReady] = useState(false)
   const [syncHint, setSyncHint] = useState(false)
   const [containerWidth, setContainerWidth] = useState(0)
+  const [darkPdf, setDarkPdf] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('latexy_pdf_dark') === '1'
+  })
+
+  const toggleDarkPdf = () => {
+    setDarkPdf((prev) => {
+      const next = !prev
+      localStorage.setItem('latexy_pdf_dark', next ? '1' : '0')
+      return next
+    })
+  }
 
   const synctexDataRef = useRef<SynctexData | null>(null)
   const pageDimsRef = useRef<Record<number, PageDimensions>>({})
@@ -249,20 +261,38 @@ export default function PDFPreview({
           </div>
         )}
 
-        {/* Download */}
-        {onDownload && (
+        {/* Dark preview + Download */}
+        <div className="flex items-center gap-0.5">
           <button
-            onClick={onDownload}
-            className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-zinc-600 transition hover:bg-white/10 hover:text-zinc-200"
+            onClick={toggleDarkPdf}
+            aria-label={darkPdf ? 'Light PDF preview' : 'Dark PDF preview'}
+            title={darkPdf ? 'Switch to light preview' : 'Switch to dark preview'}
+            className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] transition hover:bg-white/10 ${
+              darkPdf ? 'text-orange-300' : 'text-zinc-600 hover:text-zinc-200'
+            }`}
           >
-            <Download size={12} />
-            PDF
+            {darkPdf ? <Sun size={12} /> : <Moon size={12} />}
           </button>
-        )}
+          {onDownload && (
+            <button
+              onClick={onDownload}
+              className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-zinc-600 transition hover:bg-white/10 hover:text-zinc-200"
+            >
+              <Download size={12} />
+              PDF
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Pages */}
-      <div ref={containerRef} className="flex-1 overflow-auto" style={{ background: '#2a2a2a' }}>
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-auto"
+        style={{
+          background: darkPdf ? '#1e1e1e' : '#2a2a2a',
+        }}
+      >
         {renderError ? (
           <div className="flex h-full flex-col items-center justify-center gap-2">
             <FileText className="h-9 w-9 text-zinc-700" />
@@ -290,7 +320,10 @@ export default function PDFPreview({
                 key={pageNum}
                 ref={(el) => { pageRefs.current[pageNum] = el }}
                 className="shadow-[0_4px_24px_rgba(0,0,0,0.5)] select-text"
-                style={{ lineHeight: 0 }}
+                style={{
+                  lineHeight: 0,
+                  ...(darkPdf ? { filter: 'invert(1) hue-rotate(180deg)', background: '#fff' } : {}),
+                }}
                 onClick={(e) => handlePageClick(e, pageNum)}
               >
                 <Page
