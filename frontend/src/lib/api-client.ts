@@ -266,6 +266,21 @@ export interface ExplainErrorRequest {
   error_line?: number
 }
 
+export interface SpellCheckIssue {
+  line: number
+  column_start: number
+  column_end: number
+  severity: 'spelling' | 'grammar' | 'style'
+  message: string
+  replacements: string[]
+  rule_id: string
+}
+
+export interface SpellCheckResponse {
+  issues: SpellCheckIssue[]
+  cached: boolean
+}
+
 export interface ScrapeJobResponse {
   title: string | null
   company: string | null
@@ -1117,6 +1132,13 @@ class ApiClient {
     return this.request<ExplainErrorResponse>('/ai/explain-error', {
       method: 'POST',
       body: JSON.stringify(body),
+    })
+  }
+
+  async checkSpelling(latexContent: string, language = 'en-US'): Promise<SpellCheckResponse> {
+    return this.request<SpellCheckResponse>('/ai/spell-check', {
+      method: 'POST',
+      body: JSON.stringify({ latex_content: latexContent, language }),
     })
   }
 
