@@ -3,6 +3,7 @@ ATS Scoring API routes for Phase 9.
 """
 
 import asyncio
+import hashlib
 import json
 import time
 import uuid
@@ -18,7 +19,7 @@ from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client
 from ..database.connection import get_db
-from ..database.models import DeepAnalysisTrial, Resume
+from ..database.models import DeepAnalysisTrial, Resume, ResumeJobMatch
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from ..services.api_key_service import api_key_service
 from ..services.ats_quick_scorer import quick_score_latex
@@ -643,12 +644,11 @@ async def semantic_match_resumes(
     if not resumes:
         return SemanticMatchResponse(success=True, results=[], message="No resumes found")
 
-    # Embed JD once
-    try:
-        jd_emb = await embedding_service.embed_job_description(request.job_description)
-    except Exception as e:
-        logger.error(f"JD embedding failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to embed job description")
+    # Hash the JD for cache keying (SHA-256 hex, 64 chars)
+    jd_hash = hashlib.sha256(request.job_description.encode()).hexdigest()
+
+    # Embed JD once (needed only for resumes that miss a cached result)
+    jd_emb = None
 
     jd_text = request.job_description
     match_results: List[SemanticMatchResultItem] = []
@@ -678,13 +678,58 @@ async def semantic_match_resumes(
                     pass
             continue
 
+        # --- Cache lookup ---
+        cached_result = await db.execute(
+            select(ResumeJobMatch).where(
+                ResumeJobMatch.resume_id == str(resume.id),
+                ResumeJobMatch.jd_hash == jd_hash,
+            )
+        )
+        cached_row = cached_result.scalar_one_or_none()
+
+        if cached_row is not None:
+            match_results.append(SemanticMatchResultItem(
+                resume_id=str(resume.id),
+                resume_title=resume.title or "Untitled",
+                similarity_score=cached_row.similarity_score,
+                matched_keywords=cached_row.matched_keywords or [],
+                missing_keywords=cached_row.missing_keywords or [],
+                semantic_gaps=cached_row.semantic_gaps or {},
+            ))
+            continue
+
+        # --- Cache miss: embed JD on first need, then compute match ---
+        if jd_emb is None:
+            try:
+                jd_emb = await embedding_service.embed_job_description(request.job_description)
+            except Exception as e:
+                logger.error(f"JD embedding failed: {e}")
+                raise HTTPException(status_code=500, detail="Failed to embed job description")
+
         resume_text = ats_scoring_service._extract_text_from_latex(resume.latex_content)
         match = await embedding_service.semantic_keyword_match(
             resume_emb, jd_emb, jd_text, resume_text
         )
+
+        # --- Cache write ---
+        try:
+            db.add(ResumeJobMatch(
+                user_id=user_id,
+                resume_id=str(resume.id),
+                jd_hash=jd_hash,
+                similarity_score=match["similarity_score"],
+                matched_keywords=match["matched_keywords"],
+                missing_keywords=match["missing_keywords"],
+                semantic_gaps=match["semantic_gaps"],
+            ))
+            await db.commit()
+        except Exception as cache_err:
+            logger.warning(f"Cache write failed for resume {resume.id}: {cache_err}")
+            await db.rollback()
+
         match_results.append(SemanticMatchResultItem(
             resume_id=str(resume.id),
-            resume_title=resume.title,
+            resume_title=resume.title or "Untitled",
             similarity_score=match["similarity_score"],
             matched_keywords=match["matched_keywords"],
             missing_keywords=match["missing_keywords"],

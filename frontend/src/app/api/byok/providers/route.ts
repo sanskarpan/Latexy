@@ -16,23 +16,16 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    
-    // Transform the data to match frontend expectations
-    const transformedData = {
-      success: true,
-      total_count: Object.keys(data).length,
-      providers: data
-    };
-
-    return NextResponse.json(transformedData);
+    // Backend already returns { success, providers: [...], total_count } — pass through
+    return NextResponse.json(data);
   } catch (error) {
     console.error('Error fetching providers:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: 'Failed to fetch providers',
         total_count: 0,
-        providers: {}
+        providers: []
       },
       { status: 500 }
     );

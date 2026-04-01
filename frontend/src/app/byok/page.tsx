@@ -1,10 +1,18 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSession } from '@/lib/auth-client'
 import APIKeyManager from '@/components/byok/APIKeyManager'
+import ProviderSelector from '@/components/byok/ProviderSelector'
+
+interface APIKeyInfo {
+  id: string
+  provider: string
+  key_name: string
+  is_active: boolean
+}
 
 const points = [
   {
@@ -24,6 +32,7 @@ const points = [
 export default function BYOKPage() {
   const { data: session, isPending } = useSession()
   const router = useRouter()
+  const [userApiKeys, setUserApiKeys] = useState<APIKeyInfo[]>([])
 
   useEffect(() => {
     if (!isPending && !session) {
@@ -50,7 +59,17 @@ export default function BYOKPage() {
         </section>
 
         <section className="surface-panel edge-highlight p-5 sm:p-6">
-          <APIKeyManager />
+          <APIKeyManager onKeysChange={setUserApiKeys} />
+        </section>
+
+        <section className="surface-panel edge-highlight p-5 sm:p-6">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-white">Provider Capabilities</h2>
+            <p className="text-sm text-zinc-400">
+              Explore supported providers, models, and features. Click a provider to see details.
+            </p>
+          </div>
+          <ProviderSelector userApiKeys={userApiKeys} />
         </section>
       </div>
     </div>

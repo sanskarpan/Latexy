@@ -3,17 +3,16 @@ API Key Management Service for Phase 10 - BYOK System
 Handles secure storage, validation, and management of user API keys
 """
 
-import base64
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from cryptography.fernet import Fernet
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.models import UserAPIKey
+from .encryption_service import EncryptionService
 from .llm_provider_service import (
     AnthropicProvider,
     LLMProvider,
@@ -26,33 +25,30 @@ logger = get_logger(__name__)
 
 
 class APIKeyEncryption:
-    """Handles encryption and decryption of API keys"""
+    """
+    Thin wrapper around EncryptionService for BYOK key storage.
+
+    Maintains strict validation: raises ValueError if API_KEY_ENCRYPTION_KEY
+    is not set, since missing the key would make all stored BYOK keys unreadable.
+    """
 
     def __init__(self, encryption_key: Optional[str] = None):
-        if encryption_key:
-            self.fernet = Fernet(encryption_key.encode())
-        else:
-            key = settings.API_KEY_ENCRYPTION_KEY
-            if not key:
-                raise ValueError(
-                    "API_KEY_ENCRYPTION_KEY is not set. "
-                    "All stored BYOK keys would become unreadable after a restart. "
-                    "Set this environment variable to a valid Fernet key."
-                )
-            if isinstance(key, str):
-                key = key.encode()
-            self.fernet = Fernet(key)
+        key = encryption_key or settings.API_KEY_ENCRYPTION_KEY
+        if not key:
+            raise ValueError(
+                "API_KEY_ENCRYPTION_KEY is not set. "
+                "All stored BYOK keys would become unreadable after a restart. "
+                "Set this environment variable to a valid Fernet key."
+            )
+        self._svc = EncryptionService(key)
 
     def encrypt(self, api_key: str) -> str:
-        """Encrypt an API key"""
-        encrypted = self.fernet.encrypt(api_key.encode())
-        return base64.b64encode(encrypted).decode()
+        """Encrypt an API key."""
+        return self._svc.encrypt(api_key)
 
     def decrypt(self, encrypted_key: str) -> str:
-        """Decrypt an API key"""
-        encrypted_bytes = base64.b64decode(encrypted_key.encode())
-        decrypted = self.fernet.decrypt(encrypted_bytes)
-        return decrypted.decode()
+        """Decrypt an API key."""
+        return self._svc.decrypt(encrypted_key)
 
 
 class APIKeyService:

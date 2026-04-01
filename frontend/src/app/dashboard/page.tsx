@@ -14,6 +14,7 @@ import {
 import { useSession } from '@/lib/auth-client'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import { ActivityAreaChart, FeatureUsageBars, StatusDonutChart } from '@/components/analytics/MetricCharts'
+import { JobQueue } from '@/components/JobQueue'
 
 const ranges = [
   { label: '7D', days: 7 },
@@ -224,6 +225,10 @@ export default function DashboardPage() {
               <p className="text-xs text-zinc-500">Most used actions in your current range</p>
             </div>
             {loading ? <div className="h-[260px] animate-pulse rounded-xl bg-white/5" /> : <FeatureUsageBars data={featureSeries} />}
+          </article>
+
+          <article className="surface-panel edge-highlight p-5">
+            <JobQueue maxJobs={10} showFilters={false} showSearch={false} />
           </article>
         </section>
 

@@ -374,14 +374,14 @@ export default function OnboardingFlow({
 // Hook for managing onboarding state
 export function useOnboarding() {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
-  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false)
+  // Default to true (assume completed) until localStorage check resolves.
+  // Prevents a flash where the onboarding modal briefly opens before
+  // discovering that it was already completed in a prior session.
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(true)
 
   useEffect(() => {
-    // Check if user has completed onboarding
     const completed = localStorage.getItem('latexy_onboarding_completed')
-    if (completed) {
-      setHasCompletedOnboarding(true)
-    }
+    setHasCompletedOnboarding(!!completed)
   }, [])
 
   const startOnboarding = () => {
