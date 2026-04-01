@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = Field(default="", description="Google OAuth client secret")
     GITHUB_CLIENT_ID: str = Field(default="", description="GitHub OAuth client ID")
     GITHUB_CLIENT_SECRET: str = Field(default="", description="GitHub OAuth client secret")
+    GITHUB_OAUTH_REDIRECT_URI: str = Field(
+        default="http://localhost:8030/github/callback",
+        description="Redirect URI for GitHub OAuth (repo sync)",
+    )
 
     # Better-Auth Configuration
     BETTER_AUTH_SECRET: str = Field(default="", description="Better-Auth secret key")
