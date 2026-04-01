@@ -7,8 +7,9 @@ import Editor, { type OnMount } from '@monaco-editor/react'
 import type { LogLine } from '@/hooks/useJobStream'
 import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import ATSScoreBadge from '@/components/ATSScoreBadge'
-import type { ProofreadIssue } from '@/lib/api-client'
+import type { ProofreadIssue, SpellCheckIssue } from '@/lib/api-client'
 import type { LintIssue } from '@/lib/latex-linter'
+import { addWordToDict, getPersonalDict } from '@/hooks/useSpellCheck'
 import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
 import { LATEX_SEARCH_PRESETS, type LatexSearchPreset } from '@/data/latex-search-presets'
 
@@ -65,6 +66,14 @@ interface LaTeXEditorProps {
   proofreadIssues?: ProofreadIssue[]
   /** Linter issues to show as Monaco markers (squiggles) */
   lintIssues?: LintIssue[]
+  /** Spell/grammar check issues from LanguageTool */
+  spellCheckIssues?: SpellCheckIssue[]
+  /** Whether spell check is currently enabled (for status bar indicator) */
+  spellCheckEnabled?: boolean
+  /** Toggle spell check on/off */
+  onSpellCheckToggle?: () => void
+  /** Whether spell check is loading (for status bar pulse) */
+  spellCheckLoading?: boolean
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -243,7 +252,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -260,6 +269,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     onCursorInSummarySectionRef.current = onCursorInSummarySection
     const onWritingAssistantActionRef = useRef(onWritingAssistantAction)
     onWritingAssistantActionRef.current = onWritingAssistantAction
+    const spellCheckIssuesRef = useRef(spellCheckIssues)
+    spellCheckIssuesRef.current = spellCheckIssues
 
     const [searchPanelOpen, setSearchPanelOpen] = useState(false)
 
@@ -503,6 +514,47 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
       monaco.editor.setModelMarkers(model, 'latex-lint', markers)
     }, [lintIssues])
+
+    // Apply spell-check markers when spellCheckIssues change
+    useEffect(() => {
+      const monaco = monacoRef.current
+      const editor = editorRef.current
+      if (!monaco || !editor) return
+
+      const model = editor.getModel()
+      if (!model) return
+
+      const dict = getPersonalDict()
+
+      const markers = (spellCheckIssues ?? []).flatMap((issue) => {
+        // Extract the flagged word from the model to check personal dictionary
+        const word = model.getValueInRange({
+          startLineNumber: issue.line,
+          startColumn: issue.column_start,
+          endLineNumber: issue.line,
+          endColumn: issue.column_end,
+        }).toLowerCase()
+        if (dict.has(word)) return []
+
+        return [{
+          startLineNumber: issue.line,
+          endLineNumber: issue.line,
+          startColumn: issue.column_start,
+          endColumn: issue.column_end,
+          // spelling → Error (red), grammar → Info (blue), style → Warning (amber)
+          severity:
+            issue.severity === 'spelling'
+              ? monaco.MarkerSeverity.Error
+              : issue.severity === 'style'
+                ? monaco.MarkerSeverity.Warning
+                : monaco.MarkerSeverity.Info,
+          message: issue.message,
+          source: `spellcheck(${issue.rule_id})`,
+        }]
+      })
+
+      monaco.editor.setModelMarkers(model, 'spellcheck', markers)
+    }, [spellCheckIssues])
 
     // Auto-compile: debounce 2s after last keystroke
     useEffect(() => {
@@ -1062,6 +1114,109 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       })
       if (writingActionDisposable) disposablesRef.current.push(writingActionDisposable)
 
+      // ── Spell-check code actions (right-click replacements + Add to Dictionary) ──
+      // Register a command for "Add to dictionary" so it can be referenced by code actions
+      const addToDictCmdId = editor.addCommand(0, (_ctx: any, word: string) => {
+        addWordToDict(word)
+        // Force markers to refresh by clearing and re-setting with updated dictionary
+        const m = editor.getModel()
+        const mc = monacoRef.current
+        if (!m || !mc) return
+        const dict = getPersonalDict()
+        const refreshed = (spellCheckIssuesRef.current ?? []).flatMap((issue) => {
+          const w = m.getValueInRange({
+            startLineNumber: issue.line,
+            startColumn: issue.column_start,
+            endLineNumber: issue.line,
+            endColumn: issue.column_end,
+          }).toLowerCase()
+          if (dict.has(w)) return []
+          return [{
+            startLineNumber: issue.line,
+            endLineNumber: issue.line,
+            startColumn: issue.column_start,
+            endColumn: issue.column_end,
+            severity:
+              issue.severity === 'spelling'
+                ? mc.MarkerSeverity.Error
+                : issue.severity === 'style'
+                  ? mc.MarkerSeverity.Warning
+                  : mc.MarkerSeverity.Info,
+            message: issue.message,
+            source: `spellcheck(${issue.rule_id})`,
+          }]
+        })
+        mc.editor.setModelMarkers(m, 'spellcheck', refreshed)
+      })
+
+      // Only register if language is already registered (inside or outside the guard)
+      const spellCodeActionDisposable = monaco.languages.registerCodeActionProvider('latex', {
+        provideCodeActions(
+          model: import('monaco-editor').editor.ITextModel,
+          _range: import('monaco-editor').Range,
+          context: import('monaco-editor').languages.CodeActionContext,
+        ) {
+          const spellMarkers = context.markers.filter((m) =>
+            m.source?.startsWith('spellcheck(')
+          )
+          if (spellMarkers.length === 0) return { actions: [], dispose() {} }
+
+          const marker = spellMarkers[0]
+          const flaggedWord = model.getValueInRange({
+            startLineNumber: marker.startLineNumber,
+            startColumn: marker.startColumn,
+            endLineNumber: marker.endLineNumber,
+            endColumn: marker.endColumn,
+          })
+
+          const issue = spellCheckIssuesRef.current?.find(
+            (iss) =>
+              iss.line === marker.startLineNumber &&
+              iss.column_start === marker.startColumn
+          )
+
+          const actions: import('monaco-editor').languages.CodeAction[] = []
+
+          for (const rep of (issue?.replacements ?? []).slice(0, 5)) {
+            actions.push({
+              title: `Replace with "${rep}"`,
+              kind: 'quickfix',
+              edit: {
+                edits: [{
+                  resource: model.uri,
+                  versionId: model.getVersionId(),
+                  textEdit: {
+                    range: {
+                      startLineNumber: marker.startLineNumber,
+                      startColumn: marker.startColumn,
+                      endLineNumber: marker.endLineNumber,
+                      endColumn: marker.endColumn,
+                    },
+                    text: rep,
+                  },
+                }],
+              },
+              isPreferred: (issue?.replacements ?? []).indexOf(rep) === 0,
+            })
+          }
+
+          if (flaggedWord.trim()) {
+            actions.push({
+              title: `Add "${flaggedWord}" to dictionary`,
+              kind: 'quickfix',
+              command: {
+                id: addToDictCmdId!,
+                title: `Add "${flaggedWord}" to dictionary`,
+                arguments: [flaggedWord],
+              },
+            })
+          }
+
+          return { actions, dispose() {} }
+        },
+      })
+      disposablesRef.current.push(spellCodeActionDisposable)
+
     }
 
     return (
@@ -1196,6 +1351,22 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 ~{estimatedPageCount} {estimatedPageCount === 1 ? 'page' : 'pages'}
               </span>
             ) : null}
+            {onSpellCheckToggle && (
+              <button
+                onClick={onSpellCheckToggle}
+                title={spellCheckEnabled ? 'Spell check on — click to disable' : 'Spell check off — click to enable'}
+                className={`flex items-center gap-1 text-[10px] transition ${
+                  spellCheckEnabled
+                    ? 'text-blue-400 hover:text-blue-300'
+                    : 'text-zinc-700 hover:text-zinc-400'
+                }`}
+              >
+                ABC{spellCheckEnabled ? ' ✓' : ''}
+                {spellCheckLoading && (
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" />
+                )}
+              </button>
+            )}
             {(atsScore !== undefined || atsScoreLoading) && (
               <ATSScoreBadge
                 score={atsScore ?? null}
