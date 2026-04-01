@@ -33,6 +33,7 @@ import {
   Zap,
   ShieldCheck,
   Package,
+  Braces,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
@@ -58,6 +59,7 @@ import SummaryGeneratorWidget from '@/components/SummaryGeneratorWidget'
 import ProofreadPanel from '@/components/ProofreadPanel'
 import PackageManagerPanel from '@/components/PackageManagerPanel'
 import LinterPanel from '@/components/LinterPanel'
+import SymbolPalette from '@/components/SymbolPalette'
 import CompilerSelector from '@/components/CompilerSelector'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
@@ -66,7 +68,7 @@ import { useSpellCheck, addWordToDict } from '@/hooks/useSpellCheck'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
@@ -1706,6 +1708,7 @@ export default function ResumeEditPage() {
                 { id: 'proofread', label: 'Proof', icon: ShieldCheck },
                 { id: 'packages', label: 'Packages', icon: Package },
                 { id: 'linter', label: 'Linter', icon: AlertTriangle },
+                { id: 'symbols', label: 'Symbols', icon: Braces },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -1924,6 +1927,12 @@ export default function ResumeEditPage() {
                 }}
                 extractedPdfText={extractedPdfText}
                 pageCount={pageCount}
+              />
+            )}
+
+            {rightTab === 'symbols' && (
+              <SymbolPalette
+                onInsert={(cmd) => editorRef.current?.insertAtCursor(cmd)}
               />
             )}
           </div>
