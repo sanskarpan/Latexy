@@ -44,6 +44,10 @@ class ResumeResponse(ResumeBase):
     metadata: Optional[Dict[str, Any]] = Field(default=None, validation_alias="resume_settings")
     share_token: Optional[str] = None
     share_url: Optional[str] = None
+    # GitHub sync (Feature 37)
+    github_sync_enabled: bool = False
+    github_repo_name: Optional[str] = None
+    github_last_sync_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
