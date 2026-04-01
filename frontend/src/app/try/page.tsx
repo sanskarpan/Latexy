@@ -182,7 +182,7 @@ export default function TryPage() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [isProcessing, isSubmitting, session, trialStatus])
+  }, [isProcessing, isSubmitting, session, trialStatus, effectiveCanRun])
 
   const handleExplainError = useCallback(async (error: { line: number; message: string; surroundingLatex: string }) => {
     setExplainerLine(error.line)
@@ -260,7 +260,7 @@ export default function TryPage() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [latexContent, jobDescription, session, trialStatus, TRIM_INSTRUCTION])
+  }, [latexContent, jobDescription, session, trialStatus, TRIM_INSTRUCTION, effectiveCanRun])
 
   const statusTone = useMemo(() => {
     if (stream.status === 'completed') return 'text-emerald-300'
