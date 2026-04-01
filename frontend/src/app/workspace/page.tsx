@@ -15,6 +15,7 @@ import ShareResumeModal from '@/components/ShareResumeModal'
 import ProjectSearchModal from '@/components/ProjectSearchModal'
 import AddApplicationModal from '@/components/AddApplicationModal'
 import QuickTailorModal from '@/components/QuickTailorModal'
+import OnboardingFlow, { useOnboarding } from '@/components/onboarding/OnboardingFlow'
 
 export default function WorkspacePage() {
   const { data: session, isPending: sessionLoading } = useSession()
@@ -28,6 +29,15 @@ export default function WorkspacePage() {
   const [matchResults, setMatchResults] = useState<SemanticMatchResult[]>([])
   const [isMatchLoading, setIsMatchLoading] = useState(false)
   const [matchError, setMatchError] = useState<string | null>(null)
+
+  // Onboarding for new users
+  const {
+    isOnboardingOpen,
+    hasCompletedOnboarding,
+    startOnboarding,
+    completeOnboarding,
+    skipOnboarding,
+  } = useOnboarding()
 
   // Project search modal
   const [projectSearchOpen, setProjectSearchOpen] = useState(false)
@@ -74,6 +84,13 @@ export default function WorkspacePage() {
       router.push('/login')
     }
   }, [session, sessionLoading, router])
+
+  // Show onboarding for first-time users (localStorage flag not yet set)
+  useEffect(() => {
+    if (session && !hasCompletedOnboarding) {
+      startOnboarding()
+    }
+  }, [session, hasCompletedOnboarding, startOnboarding])
 
   useEffect(() => {
     if (!session) return
@@ -690,6 +707,13 @@ export default function WorkspacePage() {
           }}
         />
       )}
+
+      <OnboardingFlow
+        isOpen={isOnboardingOpen}
+        onComplete={completeOnboarding}
+        onSkip={skipOnboarding}
+        userType="new"
+      />
     </div>
   )
 }
