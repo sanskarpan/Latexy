@@ -18,7 +18,11 @@ const initialKey = {
   key_name: '',
 }
 
-const APIKeyManager: React.FC = () => {
+interface APIKeyManagerProps {
+  onKeysChange?: (keys: APIKey[]) => void
+}
+
+const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
   const [providers, setProviders] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(true)
@@ -37,7 +41,9 @@ const APIKeyManager: React.FC = () => {
       const response = await fetch('/api/byok/api-keys')
       if (!response.ok) throw new Error('Failed to fetch API keys')
       const data = await response.json()
-      setApiKeys(data.api_keys || [])
+      const keys = data.api_keys || []
+      setApiKeys(keys)
+      onKeysChange?.(keys)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to load keys')
     }
@@ -48,7 +54,14 @@ const APIKeyManager: React.FC = () => {
       const response = await fetch('/api/byok/providers')
       if (!response.ok) throw new Error('Failed to fetch providers')
       const data = await response.json()
-      setProviders(data.providers || {})
+      // Backend returns providers as an array of { name, available_models, ... }
+      // Transform to Record<providerName, modelList> for the dropdown
+      const providerList = Array.isArray(data.providers) ? data.providers : []
+      const providerMap: Record<string, string[]> = {}
+      for (const p of providerList) {
+        providerMap[p.name] = p.available_models || []
+      }
+      setProviders(providerMap)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to load providers')
     } finally {
