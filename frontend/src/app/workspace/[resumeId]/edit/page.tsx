@@ -62,6 +62,7 @@ import CompilerSelector from '@/components/CompilerSelector'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
+import { useSpellCheck, addWordToDict } from '@/hooks/useSpellCheck'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 
@@ -730,6 +731,16 @@ export default function ResumeEditPage() {
   // Linter
   const [linterEnabled, setLinterEnabled] = useState(true)
   const { issues: lintIssues, autoFixAll: runLintAutoFixAll } = useLatexLinter(latexContent, linterEnabled)
+
+  // Spell check (Feature 35)
+  const [spellCheckEnabled, setSpellCheckEnabled] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('latexy_spell_check') === 'true'
+  })
+  const { issues: spellCheckIssues, loading: spellCheckLoading } = useSpellCheck(
+    latexContent,
+    spellCheckEnabled,
+  )
 
   // Deep analysis (Layer 2)
   const [deepPanelOpen, setDeepPanelOpen] = useState(false)
@@ -1588,6 +1599,16 @@ export default function ResumeEditPage() {
               onCursorInSummarySection={handleCursorInSummarySection}
               proofreadIssues={proofreadIssues}
               lintIssues={lintIssues}
+              spellCheckIssues={spellCheckIssues}
+              spellCheckEnabled={spellCheckEnabled}
+              spellCheckLoading={spellCheckLoading}
+              onSpellCheckToggle={() => {
+                setSpellCheckEnabled((prev) => {
+                  const next = !prev
+                  localStorage.setItem('latexy_spell_check', String(next))
+                  return next
+                })
+              }}
             />
 
             {/* AI Summary Widget trigger — shown when cursor is in summary section */}

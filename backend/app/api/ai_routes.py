@@ -7,9 +7,10 @@ import json
 import time
 from typing import Dict, List, Literal, Optional
 
+import httpx
 import openai
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
@@ -18,6 +19,7 @@ from ..core.redis import cache_manager
 from ..database.connection import get_db
 from ..middleware.auth_middleware import get_current_user_optional
 from ..services.error_explainer_service import error_explainer_service
+from ..services.latex_text_extractor import extract_prose, offset_to_latex_position
 from ..services.proofreader_service import ProofreadResponse, proofread_latex
 
 logger = get_logger(__name__)
@@ -481,3 +483,138 @@ async def rewrite_text(
     except Exception as exc:
         logger.error(f"rewrite error: {exc}")
         return RewriteResponse(rewritten=request.selected_text, action=request.action, cached=False)
+
+
+# ── Spell Check (Feature 35) ─────────────────────────────────────────────────
+
+
+class SpellCheckRequest(BaseModel):
+    latex_content: str = Field(..., max_length=200_000)
+    language: str = Field(default="en-US", max_length=10)
+
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, v: str) -> str:
+        import re as _re
+        if not _re.match(r'^[a-z]{2,3}(-[A-Z]{2,3})?$', v):
+            raise ValueError("language must be like 'en-US' or 'de'")
+        return v
+
+
+class SpellCheckIssue(BaseModel):
+    line: int
+    column_start: int
+    column_end: int
+    severity: Literal["spelling", "grammar", "style"]
+    message: str
+    replacements: List[str] = Field(default_factory=list)
+    rule_id: str
+
+
+class SpellCheckResponse(BaseModel):
+    issues: List[SpellCheckIssue]
+    cached: bool
+
+
+def _lt_category_to_severity(category_id: str) -> Literal["spelling", "grammar", "style"]:
+    cat = category_id.upper()
+    if cat in ("TYPOS", "MISSPELLING"):
+        return "spelling"
+    if cat == "STYLE":
+        return "style"
+    return "grammar"
+
+
+@router.post("/spell-check", response_model=SpellCheckResponse)
+async def spell_check(
+    request: SpellCheckRequest,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
+    """Check spelling and grammar via LanguageTool. Auth optional."""
+    cache_key = "ai:spell:" + hashlib.sha256(
+        f"{request.latex_content}|{request.language}".encode()
+    ).hexdigest()[:24]
+
+    # Cache hit
+    try:
+        cached = await cache_manager.get(cache_key)
+        if cached and isinstance(cached, dict):
+            issues = [SpellCheckIssue(**i) for i in cached.get("issues", [])]
+            return SpellCheckResponse(issues=issues, cached=True)
+    except Exception:
+        pass
+
+    # Extract prose with position tracking
+    segments = extract_prose(request.latex_content)
+    if not segments:
+        return SpellCheckResponse(issues=[], cached=False)
+
+    # Build prose string (respect SPELL_CHECK_MAX_CHARS)
+    prose_parts: List[str] = []
+    total_chars = 0
+    for seg in segments:
+        if total_chars + len(seg.text) > settings.SPELL_CHECK_MAX_CHARS:
+            break
+        prose_parts.append(seg.text)
+        total_chars += len(seg.text) + 1  # +1 for space
+
+    prose_text = " ".join(prose_parts)
+    if not prose_text.strip():
+        return SpellCheckResponse(issues=[], cached=False)
+
+    # Determine LT URL (prefer local/self-hosted)
+    lt_url = settings.LANGUAGETOOL_LOCAL_URL or settings.LANGUAGETOOL_URL
+
+    # Call LanguageTool
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                lt_url,
+                data={"text": prose_text, "language": request.language, "enabledOnly": "false"},
+                timeout=8.0,
+            )
+        if resp.status_code != 200:
+            logger.warning(f"LanguageTool returned {resp.status_code}")
+            return SpellCheckResponse(issues=[], cached=False)
+        lt_data = resp.json()
+    except Exception as exc:
+        logger.warning(f"LanguageTool error: {exc}")
+        return SpellCheckResponse(issues=[], cached=False)
+
+    # Map LT matches → SpellCheckIssue with original LaTeX positions
+    issues: List[SpellCheckIssue] = []
+    for match in lt_data.get("matches", []):
+        lt_offset = match.get("offset", 0)
+        lt_length = match.get("length", 1)
+        start_line, start_col, end_line, end_col = offset_to_latex_position(
+            lt_offset, lt_length, segments
+        )
+
+        rule = match.get("rule", {})
+        category_id = rule.get("category", {}).get("id", "GRAMMAR")
+        severity = _lt_category_to_severity(category_id)
+
+        replacements = [r["value"] for r in match.get("replacements", [])[:5]]
+        rule_id = rule.get("id", "UNKNOWN")
+
+        issues.append(SpellCheckIssue(
+            line=start_line,
+            column_start=start_col,
+            column_end=end_col,
+            severity=severity,
+            message=match.get("message", ""),
+            replacements=replacements,
+            rule_id=rule_id,
+        ))
+
+    # Cache result
+    try:
+        await cache_manager.set(
+            cache_key,
+            {"issues": [i.model_dump() for i in issues]},
+            ttl=3600,
+        )
+    except Exception:
+        pass
+
+    return SpellCheckResponse(issues=issues, cached=False)

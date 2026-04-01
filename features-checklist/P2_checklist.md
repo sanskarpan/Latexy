@@ -42,7 +42,7 @@ isolate prose, maps errors back to original LaTeX line/col positions as Monaco d
 Red squiggle = spelling; blue squiggle = grammar. Personal dictionary in localStorage.
 
 ### 35A · Backend — Text Extractor Service
-- [ ] Create `backend/app/services/latex_text_extractor.py`:
+- [x] Create `backend/app/services/latex_text_extractor.py`:
   - Reuse / extend existing extraction logic in `document_export_service.py`
   - `extract_prose(latex_content: str) -> List[ProseSegment]`
     ```python
@@ -58,7 +58,7 @@ Red squiggle = spelling; blue squiggle = grammar. Personal dictionary in localSt
   - Return list of segments with original line/col offsets for error back-mapping
 
 ### 35B · Backend — LanguageTool Endpoint
-- [ ] Add `POST /ai/spell-check` to `backend/app/api/ai_routes.py`:
+- [x] Add `POST /ai/spell-check` to `backend/app/api/ai_routes.py`:
   ```python
   class SpellCheckRequest(BaseModel):
       latex_content: str = Field(..., max_length=200_000)
@@ -83,7 +83,7 @@ Red squiggle = spelling; blue squiggle = grammar. Personal dictionary in localSt
   - On LT timeout/error: return empty issues list (not 500)
 
 ### 35C · Config
-- [ ] Add to `backend/app/core/config.py`:
+- [x] Add to `backend/app/core/config.py`:
   ```python
   LANGUAGETOOL_URL: str = "https://api.languagetool.org/v2/check"
   LANGUAGETOOL_LOCAL_URL: Optional[str] = None   # self-hosted LT override
@@ -91,14 +91,14 @@ Red squiggle = spelling; blue squiggle = grammar. Personal dictionary in localSt
   ```
 
 ### 35D · Frontend — Spell Check Hook
-- [ ] Create `frontend/src/hooks/useSpellCheck.ts`:
+- [x] Create `frontend/src/hooks/useSpellCheck.ts`:
   - Props: `latexContent: string`, `enabled: boolean`, `debounceMs: number = 5000`
   - Debounces calls to `apiClient.spellCheck(latexContent)`
   - Returns `issues: SpellCheckIssue[]`
   - Filters out words present in `localStorage.getItem('latexy_dictionary')`
 
 ### 35E · Frontend — Monaco Integration
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add prop: `spellCheckIssues?: SpellCheckIssue[]`
   - In `useEffect` on `spellCheckIssues` change: call `monaco.editor.setModelMarkers()` with
     owner `"spellcheck"`:
@@ -109,13 +109,13 @@ Red squiggle = spelling; blue squiggle = grammar. Personal dictionary in localSt
   - "Add to Dictionary" action per marker → adds to localStorage word list
 
 ### 35F · Frontend — Toggle + Integration
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Add `spellCheckEnabled: boolean` state (default false, persisted to localStorage)
   - "ABC ✓" toggle button in editor status bar (green when on)
   - Wire `useSpellCheck` hook, pass `spellCheckIssues` to `LaTeXEditor`
 
 ### 35G · Tests
-- [ ] `backend/test/test_spell_check.py`:
+- [x] `backend/test/test_spell_check.py`:
   - `extract_prose()` strips `\textbf{word}` wrapper but preserves "word"
   - `extract_prose()` strips `$\alpha$` entirely
   - `extract_prose()` preserves text after `\item`
