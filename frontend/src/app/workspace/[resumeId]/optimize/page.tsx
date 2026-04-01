@@ -20,6 +20,7 @@ import DiffViewerModal from '@/components/DiffViewerModal'
 import CompareModal from '@/components/CompareModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
 
 const TRIM_INSTRUCTION =
   'Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names.'
@@ -75,6 +76,7 @@ export default function OptimizationSuitePage() {
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
+  const { requestPermission, notify } = usePushNotifications()
 
   useEffect(() => {
     const fetchResume = async () => {
@@ -166,6 +168,19 @@ export default function OptimizationSuitePage() {
       }
     }
   }, [])
+
+  // Push notification on optimization complete (Feature 65)
+  useEffect(() => {
+    if (stream.status === 'completed') {
+      notify('Optimization complete', 'Your AI-optimized resume is ready to review')
+    }
+  }, [stream.status, notify])
+
+  useEffect(() => {
+    if (stream.status === 'processing') {
+      requestPermission()
+    }
+  }, [stream.status, requestPermission])
 
   const runOptimization = async () => {
     const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
