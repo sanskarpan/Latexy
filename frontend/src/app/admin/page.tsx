@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/api-client'
+import { JobQueue } from '@/components/JobQueue'
 
 interface FlagDetail {
   key: string
@@ -119,6 +120,16 @@ export default function AdminPage() {
             </button>
           </div>
         ))}
+      </div>
+
+      <div className="mt-12">
+        <div className="mb-6">
+          <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-600">System</p>
+          <h2 className="mt-1 text-xl font-semibold text-white">Job Queue</h2>
+        </div>
+        <div className="rounded-xl border border-white/[0.07] bg-zinc-900/60 p-5">
+          <JobQueue maxJobs={50} showFilters showSearch />
+        </div>
       </div>
     </div>
   )
