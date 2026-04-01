@@ -117,6 +117,20 @@ class Settings(BaseSettings):
     EMAIL_FROM: str = Field(default="noreply@latexy.io", description="From address for outgoing emails")
     EMAIL_FROM_NAME: str = Field(default="Latexy", description="From name for outgoing emails")
 
+    # LanguageTool spell/grammar check (Feature 35)
+    LANGUAGETOOL_URL: str = Field(
+        default="https://api.languagetool.org/v2/check",
+        description="Public LanguageTool API endpoint",
+    )
+    LANGUAGETOOL_LOCAL_URL: str = Field(
+        default="",
+        description="If set, use self-hosted LT server instead of public API",
+    )
+    SPELL_CHECK_MAX_CHARS: int = Field(
+        default=20_000,
+        description="Max characters of extracted prose sent to LanguageTool per request",
+    )
+
     # Admin email — user with this email can access /admin/* endpoints
     ADMIN_EMAIL: str = Field(default="", description="Email of the admin user for /admin/* access")
 
