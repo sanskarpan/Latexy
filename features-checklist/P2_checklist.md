@@ -131,7 +131,7 @@ Red squiggle = spelling; blue squiggle = grammar. Personal dictionary in localSt
 `\command` at current cursor position. No backend changes needed.
 
 ### 36A · Symbol Data
-- [ ] Create `frontend/src/lib/latex-symbols.ts`:
+- [x] Create `frontend/src/lib/latex-symbols.ts`:
   ```typescript
   export interface LaTeXSymbol {
     unicode: string     // rendered display: "α"
@@ -162,7 +162,7 @@ Red squiggle = spelling; blue squiggle = grammar. Personal dictionary in localSt
   ```
 
 ### 36B · SymbolPalette Component
-- [ ] Create `frontend/src/components/SymbolPalette.tsx`:
+- [x] Create `frontend/src/components/SymbolPalette.tsx`:
   - Props: `onInsert: (command: string) => void`
   - Search input at top: filters by `name` and `command`
   - Category tabs: Greek · Operators · Arrows · Relations · Set Notation · Misc
@@ -171,12 +171,12 @@ Red squiggle = spelling; blue squiggle = grammar. Personal dictionary in localSt
   - Click → `onInsert(symbol.command)`
 
 ### 36C · Editor Integration
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Ensure `insertAtCursor(text: string)` is exposed on `LaTeXEditorRef`
     (uses `editor.executeEdits('symbol-palette', [{ range: selection || cursor, text }])`)
 
 ### 36D · Page Integration
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Add "Ω Symbols" tab to editor sidebar
   - Render `<SymbolPalette onInsert={(cmd) => editorRef.current?.insertAtCursor(cmd)} />`
 
