@@ -1111,7 +1111,9 @@ async def create_share_link(
             resume.resume_settings = current_meta
             logger.info(f"Submitted anonymous compile job {anon_job_id} for resume {resume_id}")
         except Exception as exc:
-            logger.warning(f"Could not submit anonymous compile job: {exc}")
+            logger.error(f"Could not submit anonymous compile job for resume {resume_id}: {exc}")
+            current_meta["share_anonymous_pending"] = True
+            resume.resume_settings = current_meta
 
     await db.commit()
     await db.refresh(resume)
