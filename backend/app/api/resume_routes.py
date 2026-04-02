@@ -1303,7 +1303,6 @@ async def invite_collaborator(
     """Invite a user by email to collaborate on a resume (owner only)."""
     await _verify_resume_ownership(db, resume_id, user_id)
 
-
     from ..database.models import User
 
     # Look up invitee by email
@@ -1441,7 +1440,7 @@ async def remove_collaborator(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required),
 ):
-    """Remove a collaborator (owner only, or self-remove)."""
+    """Remove a collaborator from a resume (owner only)."""
     await _verify_resume_ownership(db, resume_id, user_id)
 
     result = await db.execute(
