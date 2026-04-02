@@ -648,8 +648,8 @@ def _parse_month_year(text: str) -> tuple[str, str] | None:
     Handles: "January 2020", "Jan 2020", "01/2020", "2020-01".
     """
     text = text.strip()
-    # "January 2020" or "Jan 2020"
-    m = _re.match(r'^([A-Za-z]+)\s+(\d{4})$', text)
+    # "January 2020", "Jan 2020", or "Jan. 2020" (dotted abbreviation)
+    m = _re.match(r'^([A-Za-z]+)\.?\s+(\d{4})$', text)
     if m:
         month_key = m.group(1).lower()
         if month_key in _MONTH_NUM:
@@ -657,11 +657,17 @@ def _parse_month_year(text: str) -> tuple[str, str] | None:
     # "01/2020" or "1/2020"
     m = _re.match(r'^(\d{1,2})/(\d{4})$', text)
     if m:
-        return f"{int(m.group(1)):02d}", m.group(2)
+        month_i = int(m.group(1))
+        if not 1 <= month_i <= 12:
+            return None
+        return f"{month_i:02d}", m.group(2)
     # "2020-01"
     m = _re.match(r'^(\d{4})-(\d{2})$', text)
     if m:
-        return m.group(2), m.group(1)
+        month_i = int(m.group(2))
+        if not 1 <= month_i <= 12:
+            return None
+        return f"{month_i:02d}", m.group(1)
     return None
 
 
