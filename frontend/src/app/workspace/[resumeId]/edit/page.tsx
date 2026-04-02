@@ -36,6 +36,7 @@ import {
   Braces,
   Github,
   Settings2,
+  QrCode,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type LatexCompiler, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
@@ -62,6 +63,7 @@ import ProofreadPanel from '@/components/ProofreadPanel'
 import PackageManagerPanel from '@/components/PackageManagerPanel'
 import LinterPanel from '@/components/LinterPanel'
 import SymbolPalette from '@/components/SymbolPalette'
+import QrCodeInserter from '@/components/QrCodeInserter'
 import CompilerSelector from '@/components/CompilerSelector'
 import CompileSettingsModal from '@/components/CompileSettingsModal'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
@@ -687,6 +689,7 @@ export default function ResumeEditPage() {
   const userInitiatedJobRef = useRef(false)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [qrInserterOpen, setQrInserterOpen] = useState(false)
 
   // Layout
   const [rightTab, setRightTab] = useState<RightTab>('preview')
@@ -1516,6 +1519,15 @@ export default function ResumeEditPage() {
 
           <ExportDropdown resumeId={resumeId} variant="toolbar" />
 
+          <button
+            onClick={() => setQrInserterOpen(true)}
+            title="Insert QR code"
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+          >
+            <QrCode size={12} />
+            QR
+          </button>
+
           <Link
             href={`/workspace/${resumeId}/cover-letter`}
             className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-violet-300/80 transition hover:bg-violet-500/10 hover:text-violet-200"
@@ -2156,6 +2168,19 @@ export default function ResumeEditPage() {
         onRun={handleOpenDeepAnalysis}
         isRunning={isDeepRunning}
         hideUpgradeCtas={!flags.upgrade_ctas}
+        resumeId={resumeId}
+      />
+
+      {/* QR Code Inserter (Feature 62) */}
+      <QrCodeInserter
+        isOpen={qrInserterOpen}
+        onClose={() => setQrInserterOpen(false)}
+        onInsert={(snippet) => editorRef.current?.insertAtCursor(snippet)}
+        getLatex={() => editorRef.current?.getValue() ?? latexContent}
+        onLatexChange={(newLatex) => {
+          editorRef.current?.setValue(newLatex)
+          setLatexContent(newLatex)
+        }}
       />
 
       {/* Diff viewer modal */}
