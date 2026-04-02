@@ -356,6 +356,7 @@ export interface ShareLinkResponse {
   share_token: string
   share_url: string
   created_at: string
+  anonymous: boolean
 }
 
 export interface SharedResumeResponse {
@@ -363,6 +364,18 @@ export interface SharedResumeResponse {
   share_token: string
   pdf_url: string
   compiled_at: string | null
+  is_anonymous: boolean
+}
+
+export interface DateOccurrence {
+  line: number
+  original: string
+  standardized: string
+}
+
+export interface StandardizeDatesResponse {
+  occurrences: DateOccurrence[]
+  standardized_latex: string
 }
 
 export interface ExplainErrorResponse {
@@ -1260,10 +1273,14 @@ class ApiClient {
   //  Share links                                                       //
   // ---------------------------------------------------------------- //
 
-  async createShareLink(resumeId: string): Promise<ShareLinkResponse> {
+  async createShareLink(resumeId: string, anonymous = false): Promise<ShareLinkResponse> {
     return this.request<ShareLinkResponse>(
       `/resumes/${encodeURIComponent(resumeId)}/share`,
-      { method: 'POST' }
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ anonymous }),
+      }
     )
   }
 
@@ -1280,6 +1297,37 @@ class ApiClient {
 
   async getSharedResume(shareToken: string): Promise<SharedResumeResponse> {
     return this.request<SharedResumeResponse>(`/share/${encodeURIComponent(shareToken)}`)
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Bulk export (Feature 49)                                         //
+  // ---------------------------------------------------------------- //
+
+  async bulkExport(format: 'tex' | 'pdf' | 'docx'): Promise<Blob> {
+    const res = await fetch(
+      `${API_BASE}/resumes/export/bulk?format=${format}`,
+      { headers: this.headers() }
+    )
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+    }
+    return res.blob()
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Date standardizer (Feature 57)                                   //
+  // ---------------------------------------------------------------- //
+
+  async standardizeDates(
+    latex_content: string,
+    target_format: 'MMM YYYY' | 'MMMM YYYY' | 'YYYY-MM' | 'MM/YYYY'
+  ): Promise<StandardizeDatesResponse> {
+    return this.request<StandardizeDatesResponse>('/ai/standardize-dates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ latex_content, target_format }),
+    })
   }
 
   // ---------------------------------------------------------------- //
