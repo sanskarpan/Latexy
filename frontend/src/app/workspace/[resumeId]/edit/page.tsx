@@ -1075,6 +1075,21 @@ export default function ResumeEditPage() {
     }
   }
 
+  const handlePullFromGitHub = async () => {
+    if (!window.confirm('Replace local content with the latest version from GitHub? Unsaved changes will be overwritten.')) return
+    setGhPushing(true)
+    try {
+      const result = await apiClient.pullFromGitHub(resumeId)
+      editorRef.current?.setValue(result.latex_content)
+      setLatexContent(result.latex_content)
+      toast.success('Pulled latest content from GitHub')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'GitHub pull failed')
+    } finally {
+      setGhPushing(false)
+    }
+  }
+
   const handleSave = async () => {
     const content = editorRef.current?.getValue() || latexContent
     setIsSaving(true)
@@ -1566,15 +1581,26 @@ export default function ResumeEditPage() {
                 Sync
               </button>
               {ghSyncEnabled && (
-                <button
-                  onClick={handlePushToGitHub}
-                  disabled={ghPushing}
-                  title="Push to GitHub"
-                  className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
-                >
-                  {ghPushing ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
-                  Push
-                </button>
+                <>
+                  <button
+                    onClick={handlePushToGitHub}
+                    disabled={ghPushing}
+                    title="Push to GitHub"
+                    className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
+                  >
+                    {ghPushing ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+                    Push
+                  </button>
+                  <button
+                    onClick={handlePullFromGitHub}
+                    disabled={ghPushing}
+                    title="Pull from GitHub"
+                    className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
+                  >
+                    <Download size={11} />
+                    Pull
+                  </button>
+                </>
               )}
             </>
           )}
