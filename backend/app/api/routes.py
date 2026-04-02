@@ -681,6 +681,8 @@ class SharedResumeResponse(BaseModel):
     pdf_url: str
     compiled_at: Optional[str]
     is_anonymous: bool = False
+    # True while the redacted anonymous PDF is still being compiled
+    anonymous_processing: bool = False
 
 
 @router.get("/share/{share_token}", response_model=SharedResumeResponse)
@@ -710,6 +712,7 @@ async def get_shared_resume(
 
     meta: dict = resume.resume_settings or {}
     is_anonymous = bool(meta.get("share_anonymous", False))
+    anonymous_processing = False  # set True if anon PDF not ready yet
 
     # ── Anonymous mode: try to serve the pre-compiled redacted PDF ───────────
     if is_anonymous:
@@ -744,9 +747,9 @@ async def get_shared_resume(
                 compiled_at=None,
                 is_anonymous=True,
             )
-        # Anonymous compile still in progress — fall through to serve original
-        # with is_anonymous flag so frontend can show a note
-        logger.info(f"Anonymous PDF not ready yet for resume {resume.id}, serving original")
+        # Anonymous compile still in progress — fall through, set processing flag
+        logger.info(f"Anonymous PDF not ready yet for resume {resume.id}")
+        anonymous_processing = True
 
     # ── Normal mode (or anonymous not ready yet) ─────────────────────────────
 
@@ -804,5 +807,6 @@ async def get_shared_resume(
         pdf_url=pdf_url,
         compiled_at=compilation.created_at.isoformat() if compilation.created_at else None,
         is_anonymous=is_anonymous,
+        anonymous_processing=anonymous_processing,
     )
 
