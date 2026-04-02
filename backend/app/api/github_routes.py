@@ -1,5 +1,6 @@
 """GitHub OAuth + sync routes (Feature 37)."""
 
+import secrets
 import urllib.parse
 from datetime import datetime
 from typing import Optional
@@ -13,9 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.redis import cache_manager
 from ..database.connection import get_db
 from ..database.models import Resume, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..services.encryption_service import encryption_service
 from ..services.github_sync_service import github_sync_service
 
 logger = get_logger(__name__)
@@ -63,11 +66,15 @@ async def github_connect(
             detail="GitHub integration is not configured. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.",
         )
 
+    # Use a signed nonce instead of raw user_id to prevent CSRF
+    nonce = secrets.token_urlsafe(32)
+    await cache_manager.set(f"gh:oauth:{nonce}", user_id, ttl=600)  # 10 min TTL
+
     params = urllib.parse.urlencode({
         "client_id": settings.GITHUB_CLIENT_ID,
         "redirect_uri": settings.GITHUB_OAUTH_REDIRECT_URI,
         "scope": "repo",
-        "state": user_id,  # pass user_id through state
+        "state": nonce,
     })
     return RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
 
@@ -82,7 +89,11 @@ async def github_callback(
     if not state:
         raise HTTPException(status_code=400, detail="Missing state parameter")
 
-    user_id = state
+    # Validate the nonce — prevents CSRF account-binding attacks
+    user_id = await cache_manager.get(f"gh:oauth:{state}")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+    await cache_manager.delete(f"gh:oauth:{state}")
 
     # Exchange code for token
     async with httpx.AsyncClient(timeout=15) as client:
@@ -108,11 +119,14 @@ async def github_callback(
     gh_user = await github_sync_service.get_github_user(access_token)
     username = gh_user.get("login", "")
 
+    # Encrypt token before storing
+    encrypted_token = encryption_service.encrypt(access_token)
+
     # Store on user
     await db.execute(
         update(User)
         .where(User.id == user_id)
-        .values(github_access_token=access_token, github_username=username)
+        .values(github_access_token=encrypted_token, github_username=username)
     )
     await db.commit()
 
@@ -183,17 +197,21 @@ async def enable_github_sync(
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
+    # Decrypt token for API calls
+    token = encryption_service.decrypt(user.github_access_token)
+
     # Create the repo
     try:
-        await github_sync_service.ensure_repo(
-            user.github_access_token, user.github_username, body.repo_name
-        )
+        await github_sync_service.ensure_repo(token, user.github_username, body.repo_name)
     except httpx.HTTPStatusError as exc:
         logger.error(f"Failed to create GitHub repo: {exc}")
         raise HTTPException(
             status_code=502,
             detail=f"Failed to create GitHub repo: {exc.response.status_code}",
         )
+    except httpx.RequestError as exc:
+        logger.error(f"GitHub connection error: {exc}")
+        raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again")
 
     resume.github_sync_enabled = True
     resume.github_repo_name = body.repo_name
@@ -254,15 +272,17 @@ async def push_to_github(
     if not resume.github_sync_enabled or not resume.github_repo_name:
         raise HTTPException(status_code=400, detail="GitHub sync is not enabled for this resume")
 
-    # Sanitise title for file name
-    safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in resume.title).strip() or "resume"
-    file_path = f"{safe_title}.tex"
+    # Use stable resume.id as filename so renames don't break sync
+    file_path = f"{resume.id}.tex"
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     commit_message = f"Latexy: {resume.title} — {timestamp}"
 
+    # Decrypt token for API calls
+    token = encryption_service.decrypt(user.github_access_token)
+
     try:
         result = await github_sync_service.push_file(
-            token=user.github_access_token,
+            token=token,
             owner=user.github_username,
             repo=resume.github_repo_name,
             path=file_path,
@@ -276,6 +296,9 @@ async def push_to_github(
             status_code=502,
             detail=f"GitHub push failed: {exc.response.status_code}",
         )
+    except httpx.RequestError as exc:
+        logger.error(f"GitHub connection error during push: {exc}")
+        raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again")
 
     resume.github_last_sync_at = datetime.utcnow()
     await db.commit()
@@ -309,12 +332,15 @@ async def pull_from_github(
     if not resume.github_sync_enabled or not resume.github_repo_name:
         raise HTTPException(status_code=400, detail="GitHub sync is not enabled for this resume")
 
-    safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in resume.title).strip() or "resume"
-    file_path = f"{safe_title}.tex"
+    # Use stable resume.id as filename (matches push)
+    file_path = f"{resume.id}.tex"
+
+    # Decrypt token for API calls
+    token = encryption_service.decrypt(user.github_access_token)
 
     try:
         content = await github_sync_service.pull_file(
-            token=user.github_access_token,
+            token=token,
             owner=user.github_username,
             repo=resume.github_repo_name,
             path=file_path,
@@ -327,6 +353,9 @@ async def pull_from_github(
             status_code=502,
             detail=f"GitHub pull failed: {exc.response.status_code}",
         )
+    except httpx.RequestError as exc:
+        logger.error(f"GitHub connection error during pull: {exc}")
+        raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again")
 
     return GitHubPullResponse(success=True, latex_content=content)
 
