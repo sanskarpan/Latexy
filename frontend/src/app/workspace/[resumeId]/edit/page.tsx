@@ -35,8 +35,9 @@ import {
   Package,
   Braces,
   Github,
+  Settings2,
 } from 'lucide-react'
-import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type LatexCompiler, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
+import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type LatexCompiler, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
 import ShareResumeModal from '@/components/ShareResumeModal'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
@@ -62,6 +63,7 @@ import PackageManagerPanel from '@/components/PackageManagerPanel'
 import LinterPanel from '@/components/LinterPanel'
 import SymbolPalette from '@/components/SymbolPalette'
 import CompilerSelector from '@/components/CompilerSelector'
+import CompileSettingsModal from '@/components/CompileSettingsModal'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
@@ -779,6 +781,9 @@ export default function ResumeEditPage() {
 
   // Compiler preference (stored in resume metadata)
   const [compiler, setCompiler] = useState<LatexCompiler>('pdflatex')
+  // Compile settings modal (Feature 38)
+  const [compileSettingsOpen, setCompileSettingsOpen] = useState(false)
+  const [compileSettings, setCompileSettings] = useState<CompileSettings>({ compiler: 'pdflatex' })
 
   // Share link
   const [shareModalOpen, setShareModalOpen] = useState(false)
@@ -847,6 +852,15 @@ export default function ResumeEditPage() {
         if (savedCompiler && ['pdflatex', 'xelatex', 'lualatex'].includes(savedCompiler)) {
           setCompiler(savedCompiler)
         }
+        // Load all compile settings for the modal (Feature 38)
+        const meta = data.metadata as Record<string, unknown> | null | undefined
+        setCompileSettings({
+          compiler: savedCompiler ?? 'pdflatex',
+          texlive_version: (meta?.texlive_version as string | null | undefined) ?? null,
+          main_file: (meta?.main_file as string | undefined) ?? 'resume.tex',
+          latexmk_flags: ((meta?.latexmk_flags as string[] | undefined) ?? []) as CompileSettings['latexmk_flags'],
+          extra_packages: (meta?.extra_packages as string[] | undefined) ?? [],
+        })
         // Load share token state
         setShareToken(data.share_token ?? null)
         setShareUrl(data.share_url ?? null)
@@ -1610,9 +1624,20 @@ export default function ResumeEditPage() {
           <CompilerSelector
             resumeId={resumeId}
             current={compiler}
-            onChange={setCompiler}
+            onChange={(c) => {
+              setCompiler(c)
+              setCompileSettings((prev) => ({ ...prev, compiler: c }))
+            }}
             disabled={isAnyRunning}
           />
+
+          <button
+            onClick={() => setCompileSettingsOpen(true)}
+            title="Compile settings"
+            className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-300"
+          >
+            <Settings2 size={11} />
+          </button>
 
           <div className="mx-1 h-3.5 w-px bg-white/[0.08]" />
 
@@ -2210,6 +2235,20 @@ export default function ResumeEditPage() {
 
       {/* Keyboard shortcuts panel (Feature 61) */}
       <KeyboardShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      {/* Compile settings modal (Feature 38) */}
+      <CompileSettingsModal
+        open={compileSettingsOpen}
+        resumeId={resumeId}
+        initial={compileSettings}
+        onClose={() => setCompileSettingsOpen(false)}
+        onSaved={(saved) => {
+          setCompileSettings(saved)
+          if (saved.compiler && saved.compiler !== compiler) {
+            setCompiler(saved.compiler)
+          }
+        }}
+      />
 
       {/* ── STATUS BAR ── */}
       <footer className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#0a0a0a] px-3">

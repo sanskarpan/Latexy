@@ -26,6 +26,31 @@ logger = get_logger(__name__)
 
 PAGE_COUNT_RE = re.compile(r"Output written on .*?\((\d+) page", re.IGNORECASE)
 
+# Flags allowed to be appended from compile_settings (must match resume_routes whitelist)
+_ALLOWED_EXTRA_FLAGS = {
+    "--shell-escape",
+    "--file-line-error",
+}
+# Note: --synctex=1, --interaction=nonstopmode, --halt-on-error are already hardcoded
+
+_MAIN_FILE_RE = re.compile(r"^[a-zA-Z0-9_-]+\.tex$")
+
+
+def _inject_packages(latex_content: str, packages: list) -> str:
+    """Prepend \\usepackage{pkg} directives after \\documentclass line for any missing package."""
+    docclass_match = re.search(r"\\documentclass[^\n]*\n", latex_content)
+    if not docclass_match:
+        return latex_content  # Can't find safe insertion point
+    insert_pos = docclass_match.end()
+    lines_to_insert = [
+        f"\\usepackage{{{pkg}}}"
+        for pkg in packages
+        if f"\\usepackage{{{pkg}}}" not in latex_content
+    ]
+    if not lines_to_insert:
+        return latex_content
+    return latex_content[:insert_pos] + "\n".join(lines_to_insert) + "\n" + latex_content[insert_pos:]
+
 
 @celery_app.task(
     bind=True,
@@ -44,6 +69,7 @@ def compile_latex_task(
     resume_id: Optional[str] = None,
     compiler: Optional[str] = None,
     timeout_seconds: Optional[int] = None,
+    compile_settings: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
     Compile LaTeX content to PDF, streaming each pdflatex log line as
@@ -92,10 +118,29 @@ def compile_latex_task(
             })
             return {"success": False, "job_id": job_id, "error": error_msg}
 
+        # ── Apply compile settings ───────────────────────────────────
+        _cs = compile_settings or {}
+
+        # Inject extra packages if any
+        extra_packages = _cs.get("extra_packages") or []
+        if extra_packages and isinstance(extra_packages, list):
+            latex_content = _inject_packages(latex_content, extra_packages)
+
+        # Determine main .tex filename (validated regex, default resume.tex)
+        main_file = str(_cs.get("main_file") or "resume.tex")
+        if not _MAIN_FILE_RE.match(main_file):
+            main_file = "resume.tex"
+
+        # Extra flags — only from the safe subset (skip flags already hardcoded)
+        custom_flags = [
+            f for f in (_cs.get("latexmk_flags") or [])
+            if f in _ALLOWED_EXTRA_FLAGS
+        ]
+
         # ── Setup ────────────────────────────────────────────────────
         job_dir = Path(settings.TEMP_DIR) / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
-        tex_file = job_dir / "resume.tex"
+        tex_file = job_dir / main_file
         tex_file.write_text(latex_content, encoding="utf-8")
 
         publish_event(job_id, "job.progress", {
@@ -118,7 +163,8 @@ def compile_latex_task(
                 "-synctex=1",
                 "-output-directory", "/workspace",
                 "-jobname", "resume",
-                "resume.tex",
+                *custom_flags,
+                main_file,
             ]
             compile_cwd = None
         else:
@@ -127,7 +173,9 @@ def compile_latex_task(
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 "-synctex=1",
+                "-jobname", "resume",
                 "-output-directory", str(job_dir),
+                *custom_flags,
                 str(tex_file),
             ]
             compile_cwd = str(job_dir)
@@ -328,6 +376,7 @@ def submit_latex_compilation(
     resume_id: Optional[str] = None,
     compiler: Optional[str] = None,
     timeout_seconds: Optional[int] = None,
+    compile_settings: Optional[Dict] = None,
 ) -> str:
     """Enqueue compile_latex_task on the latex queue."""
     if priority is None:
@@ -346,6 +395,7 @@ def submit_latex_compilation(
             "resume_id": resume_id,
             "compiler": compiler,
             "timeout_seconds": timeout,
+            "compile_settings": compile_settings,
         },
         priority=priority,
         queue="latex",

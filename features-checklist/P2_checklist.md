@@ -257,7 +257,7 @@ checkpoint save commits LaTeX source to a linked private GitHub repo. Pull chang
 latexmk flags. All stored in resume `metadata` JSONB. Extends Feature 9's basic compiler selection.
 
 ### 38A · Backend — Settings Endpoint Extension
-- [ ] Extend `PATCH /resumes/{resume_id}/settings` (from Feature 9) to accept additional fields:
+- [x] Extend `PATCH /resumes/{resume_id}/settings` (from Feature 9) to accept additional fields:
   - `texlive_version: Optional[str]` — validate: must be `null` or 4-digit year `2022`–`2024`
   - `main_file: Optional[str]` — validate: matches `^[a-zA-Z0-9_-]+\.tex$`
   - `latexmk_flags: Optional[List[str]]` — whitelist approach:
@@ -271,13 +271,13 @@ latexmk flags. All stored in resume `metadata` JSONB. Extends Feature 9's basic 
   - `extra_packages: Optional[List[str]]` — each max 50 chars, alphanumeric + hyphens only
 
 ### 38B · Backend — Compile Task Extension
-- [ ] In `backend/app/workers/latex_worker.py`:
+- [x] In `backend/app/workers/latex_worker.py`:
   - Read `metadata.main_file` → use as `.tex` filename in compile directory
   - Read `metadata.extra_packages` → prepend `\usepackage{pkg}` lines if absent from source
   - Read `metadata.latexmk_flags` → append whitelisted flags to compile command
 
 ### 38C · Frontend — Compile Settings Modal
-- [ ] Create `frontend/src/components/CompileSettingsModal.tsx`:
+- [x] Create `frontend/src/components/CompileSettingsModal.tsx`:
   - **Compiler** (pdflatex/xelatex/lualatex) — reuses CompilerSelector
   - **TeX Live Version** dropdown (2022 / 2023 / 2024 / Latest)
   - **Main .tex file** text input (default: `main.tex`)
@@ -286,12 +286,12 @@ latexmk flags. All stored in resume `metadata` JSONB. Extends Feature 9's basic 
   - Save → `PATCH /resumes/{id}/settings` · "Reset to Defaults" button
 
 ### 38D · Integration
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - "⚙ Compile Settings" button in editor toolbar (gear icon)
   - Opens `CompileSettingsModal`
 
 ### 38E · Tests
-- [ ] `backend/test/test_compile_settings.py`:
+- [x] `backend/test/test_compile_settings.py`:
   - `latexmk_flags: ["--shell-escape; rm -rf /"]` → 422 (injection rejected)
   - `main_file: "../../etc/passwd"` → 422
   - `texlive_version: "2023"` → stored correctly in metadata
