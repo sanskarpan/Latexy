@@ -20,6 +20,7 @@ import DiffViewerModal from '@/components/DiffViewerModal'
 import CompareModal from '@/components/CompareModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
 
 const TRIM_INSTRUCTION =
   'Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names.'
@@ -34,6 +35,7 @@ export default function OptimizationSuitePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const [activeJobKind, setActiveJobKind] = useState<'compile' | 'optimize'>('compile')
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [baselineLatex, setBaselineLatex] = useState('')
   const [compareOriginalLatex, setCompareOriginalLatex] = useState<string | null>(null)
@@ -75,6 +77,7 @@ export default function OptimizationSuitePage() {
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
+  const { requestPermission, notify } = usePushNotifications()
 
   useEffect(() => {
     const fetchResume = async () => {
@@ -99,7 +102,7 @@ export default function OptimizationSuitePage() {
         if (data.latex_content && data.latex_content.length >= 100) {
           try {
             const r = await apiClient.compileLatex({ latex_content: data.latex_content, resume_id: resumeId, compiler: resolvedCompiler })
-            if (r.success && r.job_id) setActiveJobId(r.job_id)
+            if (r.success && r.job_id) { setActiveJobId(r.job_id); setActiveJobKind('compile') }
           } catch {
             // Silent
           }
@@ -167,6 +170,19 @@ export default function OptimizationSuitePage() {
     }
   }, [])
 
+  // Push notification on optimization complete (Feature 65) — only for optimize jobs
+  useEffect(() => {
+    if (activeJobKind === 'optimize' && stream.status === 'completed') {
+      notify('Optimization complete', 'Your AI-optimized resume is ready to review')
+    }
+  }, [activeJobKind, stream.status, notify])
+
+  useEffect(() => {
+    if (activeJobKind === 'optimize' && stream.status === 'processing') {
+      requestPermission()
+    }
+  }, [activeJobKind, stream.status, requestPermission])
+
   const runOptimization = async () => {
     const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
     setCompareOriginalLatex(currentContent)
@@ -186,6 +202,7 @@ export default function OptimizationSuitePage() {
       }
 
       setActiveJobId(response.job_id)
+      setActiveJobKind('optimize')
       toast.success('Optimization pipeline started')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Optimization failed')
@@ -207,6 +224,7 @@ export default function OptimizationSuitePage() {
       const response = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
       setActiveJobId(response.job_id)
+      setActiveJobKind('compile')
     } catch {
       // Silent fail
     } finally {
@@ -285,6 +303,7 @@ export default function OptimizationSuitePage() {
         throw new Error(response.message || 'Failed to start trim')
       }
       setActiveJobId(response.job_id)
+      setActiveJobKind('optimize')
       toast.success('Trimming to 1 page…')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Trim failed')

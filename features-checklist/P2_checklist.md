@@ -1473,7 +1473,7 @@ examples, related commands. "Command Reference" panel accessible from sidebar.
 **Goal:** Searchable Cmd+? popup listing all editor keyboard shortcuts grouped by category.
 
 ### 61A · Shortcuts Data
-- [ ] Create `frontend/src/lib/editor-shortcuts.ts`:
+- [x] Create `frontend/src/lib/editor-shortcuts.ts`:
   ```typescript
   export interface Shortcut {
     keys: string[]        // ["⌘", "↵"] or ["Ctrl", "Enter"] on Windows
@@ -1496,7 +1496,7 @@ examples, related commands. "Command Reference" panel accessible from sidebar.
   ```
 
 ### 61B · Shortcuts Panel
-- [ ] Create `frontend/src/components/KeyboardShortcutsPanel.tsx`:
+- [x] Create `frontend/src/components/KeyboardShortcutsPanel.tsx`:
   - Modal (overlay + backdrop) triggered by Cmd+? or "?" toolbar button
   - Search input: real-time filter on `description`
   - Grouped by category with sticky headers
@@ -1504,7 +1504,7 @@ examples, related commands. "Command Reference" panel accessible from sidebar.
   - Close on Escape or backdrop click
 
 ### 61C · Integration
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Register Cmd+? keybinding: `editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash, showShortcuts)`
   - Alternatively: in page-level `useEffect` with `keydown` listener
 
@@ -1617,7 +1617,7 @@ Each adjustment modifies specific preamble lines and optionally triggers auto-co
 compilation/optimization completes while tab is in background.
 
 ### 65A · Frontend — Push Notifications Hook
-- [ ] Create `frontend/src/hooks/usePushNotifications.ts`:
+- [x] Create `frontend/src/hooks/usePushNotifications.ts`:
   ```typescript
   export function usePushNotifications(enabled: boolean) {
     const requestPermission = async () => {
@@ -1644,14 +1644,14 @@ compilation/optimization completes while tab is in background.
   ```
 
 ### 65B · Integration
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Call `requestPermission()` after first compile attempt (once per `sessionStorage` flag)
   - On `job.completed` WebSocket event: `notify('Compilation complete', 'Your resume is ready')`
-- [ ] In `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`:
   - On optimization `job.completed`: `notify('Optimization complete', 'Your AI resume is ready to review')`
 
 ### 65C · Settings Toggle
-- [ ] In settings page: "Desktop Notifications" toggle
+- [x] In settings page: "Desktop Notifications" toggle
   - Persisted to localStorage key `latexy_notifications_enabled`
   - Passed to `usePushNotifications(enabled)` hook
 
@@ -2133,7 +2133,7 @@ Progress board shows real-time status. Download all as ZIP. Auto-adds to job tra
 stored PDF unmodified — display-only transformation.
 
 ### 76A · Frontend — Dark Mode Toggle
-- [ ] In PDF preview component (wherever PDF is rendered — iframe or canvas):
+- [x] In PDF preview component (wherever PDF is rendered — iframe or canvas):
   - Add `darkPdfMode: boolean` state
   - "🌙 Dark Preview" toggle button in PDF toolbar
   - When enabled: apply CSS to the PDF container element:
@@ -2145,7 +2145,7 @@ stored PDF unmodified — display-only transformation.
   - On mount: read preference and apply
 
 ### 76B · Integration
-- [ ] Apply to all pages that render PDFs:
+- [x] Apply to all pages that render PDFs:
   - `frontend/src/app/workspace/[resumeId]/edit/page.tsx`
   - `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`
   - `frontend/src/app/try/page.tsx`

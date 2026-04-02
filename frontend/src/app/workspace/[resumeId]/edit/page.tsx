@@ -66,6 +66,8 @@ import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
 import { useSpellCheck, addWordToDict } from '@/hooks/useSpellCheck'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
+import KeyboardShortcutsPanel from '@/components/KeyboardShortcutsPanel'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
 
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols'
@@ -679,6 +681,7 @@ export default function ResumeEditPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [compileJobId, setCompileJobId] = useState<string | null>(null)
   const [lastStartedJobKind, setLastStartedJobKind] = useState<'compile' | 'ai'>('compile')
+  const userInitiatedJobRef = useRef(false)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
 
@@ -780,6 +783,12 @@ export default function ResumeEditPage() {
   const [shareModalOpen, setShareModalOpen] = useState(false)
   const [shareToken, setShareToken] = useState<string | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
+
+  // Keyboard shortcuts panel (Feature 61)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+
+  // Push notifications (Feature 65)
+  const { requestPermission, notify } = usePushNotifications()
 
   const searchParams = useSearchParams()
   const activePdfJobId = useRef<string | null>(null)
@@ -937,6 +946,40 @@ export default function ResumeEditPage() {
     return () => { if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current) }
   }, [])
 
+  // Push notification on compile/AI job complete (Feature 65) — only for user-initiated jobs
+  useEffect(() => {
+    if (userInitiatedJobRef.current && compileStream.status === 'completed') {
+      notify('Compilation complete', 'Your resume PDF is ready')
+      userInitiatedJobRef.current = false
+    }
+  }, [compileStream.status, notify])
+
+  useEffect(() => {
+    if (userInitiatedJobRef.current && aiStream.status === 'completed') {
+      notify('Optimization complete', 'Your AI-optimized resume is ready to review')
+      userInitiatedJobRef.current = false
+    }
+  }, [aiStream.status, notify])
+
+  // Request notification permission after first user-initiated compile attempt
+  useEffect(() => {
+    if (userInitiatedJobRef.current && (compileStream.status === 'processing' || aiStream.status === 'processing')) {
+      requestPermission()
+    }
+  }, [compileStream.status, aiStream.status, requestPermission])
+
+  // Cmd+? keyboard shortcut for shortcuts panel (Feature 61)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === 'Slash') {
+        e.preventDefault()
+        setShortcutsOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   // ── Resize handle ──────────────────────────────────────────────────────
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -1003,6 +1046,7 @@ export default function ResumeEditPage() {
     try {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!r.success || !r.job_id) throw new Error(r.message)
+      userInitiatedJobRef.current = true
       setCompileJobId(r.job_id)
       setLastStartedJobKind('compile')
       setRightTab('logs')
@@ -1030,6 +1074,7 @@ export default function ResumeEditPage() {
         compiler,
       })
       if (!r.success || !r.job_id) throw new Error(r.message)
+      userInitiatedJobRef.current = true
       pushUndo('Before AI optimization')
       setAiJobId(r.job_id)
       setLastStartedJobKind('ai')
@@ -1323,6 +1368,7 @@ export default function ResumeEditPage() {
         resume_id: resumeId,
       })
       if (!r.success || !r.job_id) throw new Error(r.message)
+      userInitiatedJobRef.current = true
       pushUndo('Before AI trim (1 page)')
       setAiJobId(r.job_id)
       setLastStartedJobKind('ai')
@@ -2055,6 +2101,9 @@ export default function ResumeEditPage() {
           onShareTokenChange={(token, url) => { setShareToken(token); setShareUrl(url) }}
         />
       )}
+
+      {/* Keyboard shortcuts panel (Feature 61) */}
+      <KeyboardShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
       {/* ── STATUS BAR ── */}
       <footer className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#0a0a0a] px-3">

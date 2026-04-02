@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bell, Mail, Calendar, Save, Loader2, CheckCircle } from 'lucide-react'
+import { Bell, Mail, Calendar, Save, Loader2, CheckCircle, Monitor } from 'lucide-react'
 import { apiClient, type NotificationPrefs } from '@/lib/api-client'
+import { getNotificationPref, setNotificationPref } from '@/hooks/usePushNotifications'
 
 export default function SettingsPage() {
   const [prefs, setPrefs] = useState<NotificationPrefs>({ job_completed: true, weekly_digest: false })
@@ -10,6 +11,12 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [desktopNotifs, setDesktopNotifs] = useState(true)
+
+  // Load desktop notification preference from localStorage
+  useEffect(() => {
+    setDesktopNotifs(getNotificationPref())
+  }, [])
 
   useEffect(() => {
     apiClient.getNotificationPrefs()
@@ -155,6 +162,62 @@ export default function SettingsPage() {
               {saving ? 'Saving…' : saved ? 'Saved!' : 'Save preferences'}
             </button>
           </div>
+        </div>
+
+        {/* Desktop notifications card */}
+        <div className="rounded-xl border border-white/[0.07] bg-[#0d0d0d] p-6 space-y-6">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/15">
+              <Monitor size={14} className="text-orange-300" />
+            </div>
+            <h2 className="text-base font-semibold text-zinc-100">Desktop Notifications</h2>
+          </div>
+
+          <label className="flex items-start justify-between gap-4 cursor-pointer">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-500/10">
+                <Bell size={13} className="text-orange-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-zinc-200">Browser notifications</p>
+                <p className="mt-0.5 text-[11px] text-zinc-500">
+                  Get notified when compilation or optimization finishes while the tab is in the background
+                </p>
+              </div>
+            </div>
+            <button
+              role="switch"
+              aria-checked={desktopNotifs}
+              onClick={() => {
+                const next = !desktopNotifs
+                setDesktopNotifs(next)
+                setNotificationPref(next)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === ' ' || e.key === 'Enter') {
+                  e.preventDefault()
+                  const next = !desktopNotifs
+                  setDesktopNotifs(next)
+                  setNotificationPref(next)
+                }
+              }}
+              className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
+                desktopNotifs ? 'bg-orange-600' : 'bg-white/10'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                  desktopNotifs ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </label>
+
+          {typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'denied' && (
+            <p className="rounded-lg bg-yellow-500/10 px-3 py-2 text-[11px] text-yellow-400 ring-1 ring-yellow-500/20">
+              Notifications are blocked by your browser. Update your site permissions to enable them.
+            </p>
+          )}
         </div>
       </div>
     </div>
