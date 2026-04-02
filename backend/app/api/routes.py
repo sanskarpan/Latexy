@@ -117,6 +117,11 @@ from .scraper_routes import router as scraper_router
 
 router.include_router(scraper_router)
 
+# Include GitHub integration routes (Feature 37)
+from .github_routes import router as github_router
+
+router.include_router(github_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():

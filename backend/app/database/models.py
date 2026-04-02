@@ -30,6 +30,10 @@ class User(Base):
         nullable=True,
         default=lambda: {"job_completed": True, "weekly_digest": False},
     )
+    # GitHub integration (Feature 37)
+    github_access_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    github_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -107,6 +111,11 @@ class Resume(Base):
     parent_resume_id: Mapped[Optional[str]] = mapped_column(
         UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # GitHub sync (Feature 37)
+    github_sync_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    github_repo_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    github_last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

@@ -123,6 +123,10 @@ export interface ResumeResponse extends ResumeBase {
   metadata?: { compiler?: string; custom_flags?: string; [key: string]: unknown } | null
   share_token?: string | null
   share_url?: string | null
+  // GitHub sync (Feature 37)
+  github_sync_enabled?: boolean
+  github_repo_name?: string | null
+  github_last_sync_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -279,6 +283,29 @@ export interface SpellCheckIssue {
 export interface SpellCheckResponse {
   issues: SpellCheckIssue[]
   cached: boolean
+}
+
+// GitHub Integration (Feature 37)
+export interface GitHubStatusResponse {
+  connected: boolean
+  username: string | null
+}
+
+export interface GitHubResumeStatus {
+  github_sync_enabled: boolean
+  github_repo_name: string | null
+  github_last_sync_at: string | null
+}
+
+export interface GitHubSyncResponse {
+  success: boolean
+  message: string
+  commit_url: string | null
+}
+
+export interface GitHubPullResponse {
+  success: boolean
+  latex_content: string
 }
 
 export interface ScrapeJobResponse {
@@ -1348,6 +1375,47 @@ class ApiClient {
     return this.request<ScrapeJobResponse>('/scrape-job-description', {
       method: 'POST',
       body: JSON.stringify({ url }),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  GitHub Integration (Feature 37)                                  //
+  // ---------------------------------------------------------------- //
+
+  async getGitHubStatus(): Promise<GitHubStatusResponse> {
+    return this.request<GitHubStatusResponse>('/github/status')
+  }
+
+  async disconnectGitHub(): Promise<{ success: boolean; message: string }> {
+    return this.request('/github/disconnect', { method: 'DELETE' })
+  }
+
+  async getResumeGitHubStatus(resumeId: string): Promise<GitHubResumeStatus> {
+    return this.request<GitHubResumeStatus>(`/github/resumes/${encodeURIComponent(resumeId)}/status`)
+  }
+
+  async enableGitHubSync(resumeId: string, repoName = 'latexy-resumes'): Promise<GitHubResumeStatus> {
+    return this.request<GitHubResumeStatus>(`/github/resumes/${encodeURIComponent(resumeId)}/enable`, {
+      method: 'POST',
+      body: JSON.stringify({ repo_name: repoName }),
+    })
+  }
+
+  async disableGitHubSync(resumeId: string): Promise<GitHubResumeStatus> {
+    return this.request<GitHubResumeStatus>(`/github/resumes/${encodeURIComponent(resumeId)}/disable`, {
+      method: 'POST',
+    })
+  }
+
+  async pushToGitHub(resumeId: string): Promise<GitHubSyncResponse> {
+    return this.request<GitHubSyncResponse>(`/github/resumes/${encodeURIComponent(resumeId)}/push`, {
+      method: 'POST',
+    })
+  }
+
+  async pullFromGitHub(resumeId: string): Promise<GitHubPullResponse> {
+    return this.request<GitHubPullResponse>(`/github/resumes/${encodeURIComponent(resumeId)}/pull`, {
+      method: 'POST',
     })
   }
 }

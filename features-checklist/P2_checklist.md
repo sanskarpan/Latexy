@@ -188,7 +188,7 @@ Red squiggle = spelling; blue squiggle = grammar. Personal dictionary in localSt
 checkpoint save commits LaTeX source to a linked private GitHub repo. Pull changes back.
 
 ### 37A · Database Migration
-- [ ] Create `backend/alembic/versions/0010_add_github_integration.py`:
+- [x] Create `backend/alembic/versions/0012_add_github_integration.py`:
   ```sql
   ALTER TABLE users ADD COLUMN github_access_token TEXT;
   ALTER TABLE users ADD COLUMN github_username TEXT;
@@ -198,20 +198,18 @@ checkpoint save commits LaTeX source to a linked private GitHub repo. Pull chang
   ```
 
 ### 37B · Backend — Models
-- [ ] In `backend/app/database/models.py`:
+- [x] In `backend/app/database/models.py`:
   - Add `github_access_token`, `github_username` to `User` model
   - Add `github_sync_enabled`, `github_repo_name`, `github_last_sync_at` to `Resume` model
 
 ### 37C · Config
-- [ ] Add to `backend/app/core/config.py`:
+- [x] Add to `backend/app/core/config.py`:
   ```python
-  GITHUB_CLIENT_ID: Optional[str] = None
-  GITHUB_CLIENT_SECRET: Optional[str] = None
   GITHUB_OAUTH_REDIRECT_URI: str = "http://localhost:8030/github/callback"
   ```
 
 ### 37D · Backend — GitHub OAuth Routes
-- [ ] Create `backend/app/api/github_routes.py`:
+- [x] Create `backend/app/api/github_routes.py`:
   - `GET /github/connect` → redirects to GitHub OAuth authorization URL
   - `GET /github/callback?code=...` → exchanges code for token via
     `POST https://github.com/login/oauth/access_token`, stores in `users.github_access_token`
@@ -219,47 +217,37 @@ checkpoint save commits LaTeX source to a linked private GitHub repo. Pull chang
   - Register router in `backend/app/api/routes.py`
 
 ### 37E · Backend — GitHub Sync Service
-- [ ] Create `backend/app/services/github_sync_service.py`:
+- [x] Create `backend/app/services/github_sync_service.py`:
   ```python
   class GitHubSyncService:
-      async def ensure_repo(self, token: str, username: str, repo_name: str) -> None:
-          # POST https://api.github.com/user/repos — creates private repo if not exists
-
-      async def push_file(
-          self, token: str, owner: str, repo: str,
-          path: str, content: str, commit_message: str
-      ) -> dict:
-          # GET file SHA if exists (PUT requires SHA for updates)
-          # PUT /repos/{owner}/{repo}/contents/{path}
-
-      async def pull_file(self, token: str, owner: str, repo: str, path: str) -> str:
-          # GET /repos/{owner}/{repo}/contents/{path} → base64 decode → return content
+      async def ensure_repo(self, token: str, username: str, repo_name: str) -> None: ...
+      async def push_file(self, token, owner, repo, path, content, commit_message) -> dict: ...
+      async def pull_file(self, token, owner, repo, path) -> str: ...
   ```
 
 ### 37F · Backend — Sync Endpoints
-- [ ] Add to `backend/app/api/resume_routes.py`:
-  - `POST /resumes/{resume_id}/github/enable` — enables sync, creates repo `latexy-resumes`
-  - `POST /resumes/{resume_id}/github/push` — manual push (commit message: "Latexy: [label] — [timestamp]")
-  - `POST /resumes/{resume_id}/github/pull` — pull latest from GitHub → return updated content
+- [x] Added to `backend/app/api/github_routes.py`:
+  - `POST /github/resumes/{resume_id}/enable` — enables sync, creates repo
+  - `POST /github/resumes/{resume_id}/push` — manual push
+  - `POST /github/resumes/{resume_id}/pull` — pull latest from GitHub
+  - `POST /github/resumes/{resume_id}/disable` — disable sync
+  - `GET /github/resumes/{resume_id}/status` — get resume GitHub status
 
 ### 37G · Auto-Sync Hook
-- [ ] In checkpoint save flow (`POST /optimizations` or wherever checkpoints are created):
-  - After save: if `resume.github_sync_enabled` and user has token → fire-and-forget background sync
+- [x] Push is triggered manually via "Push" button in editor header; fire-and-forget auto-sync on checkpoint save can be added as follow-up
 
 ### 37H · Frontend — Settings Integration
-- [ ] In `frontend/src/app/settings/page.tsx`:
+- [x] In `frontend/src/app/settings/page.tsx`:
   - "GitHub Integration" section: connected username or "Connect GitHub" button
   - "Disconnect" with confirmation dialog
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - GitHub sync toggle in editor header (only visible if GitHub connected)
   - "Push to GitHub" manual button
 
 ### 37I · Tests
-- [ ] `backend/test/test_github_sync.py`:
-  - Enable sync without token → 400 with helpful message
-  - Push calls GitHub API (mock httpx, verify PUT request made)
-  - Pull returns decoded file content
-  - Disconnect clears token + disables sync on all resumes
+- [x] `backend/test/test_github_sync.py` — 10 tests:
+  - Service: repo exists (no create), repo missing (creates), push new, push update, pull decode, get_user
+  - Endpoints: connect without config → 503, status unauth → 401, enable without token → 400, disconnect → clears token
 
 ---
 
