@@ -403,14 +403,6 @@ class TestCollaboratorEndpoints:
                 result.scalar_one_or_none.return_value = None
             return result
 
-        async def mock_refresh(obj):
-            # Populate mock_collab fields
-            pass
-
-        mock_db = self._mock_db()
-        mock_db.execute = AsyncMock(side_effect=mock_execute)
-        mock_db.refresh = AsyncMock(side_effect=lambda obj: _populate_collab(obj, mock_collab))
-
         def _populate_collab(obj, src):
             obj.id = src.id
             obj.resume_id = src.resume_id
@@ -419,6 +411,10 @@ class TestCollaboratorEndpoints:
             obj.invited_by = src.invited_by
             obj.joined_at = src.joined_at
             obj.created_at = src.created_at
+
+        mock_db = self._mock_db()
+        mock_db.execute = AsyncMock(side_effect=mock_execute)
+        mock_db.refresh = AsyncMock(side_effect=lambda obj: _populate_collab(obj, mock_collab))
 
         app.dependency_overrides[get_db] = lambda: mock_db
         try:
