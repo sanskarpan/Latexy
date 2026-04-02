@@ -4,7 +4,10 @@ AI tool routes — error explanation and other AI-powered utilities.
 
 import hashlib
 import json
+import re as _re
 import time
+from calendar import month_abbr as _month_abbr
+from calendar import month_name as _month_name
 from typing import Dict, List, Literal, Optional
 
 import httpx
@@ -622,9 +625,6 @@ async def spell_check(
 
 # ── Date Standardizer (Feature 57) ──────────────────────────────────────────
 
-import re as _re
-from calendar import month_name as _month_name, month_abbr as _month_abbr
-
 # Full month names → 0-padded month numbers
 _MONTH_NUM: dict[str, str] = {
     name.lower(): f"{i:02d}" for i, name in enumerate(_month_name) if name
@@ -713,7 +713,6 @@ async def standardize_dates(request: StandardizeDatesRequest):
     Detect all date occurrences in LaTeX and normalize to the requested format.
     Pure regex — no LLM required. Auth optional.
     """
-    lines = request.latex_content.splitlines()
     occurrences: List[DateOccurrence] = []
 
     def _replace(m: _re.Match) -> str:
