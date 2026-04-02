@@ -365,6 +365,7 @@ export interface SharedResumeResponse {
   pdf_url: string
   compiled_at: string | null
   is_anonymous: boolean
+  anonymous_processing: boolean
 }
 
 export interface DateOccurrence {
