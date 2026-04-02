@@ -74,7 +74,11 @@
         "tailwind-merge": "^3.3.1",
         "tailwindcss-animate": "^1.0.7",
         "three": "^0.183.2",
-        "vaul": "^1.1.2"
+        "vaul": "^1.1.2",
+        "y-monaco": "^0.1.6",
+        "y-protocols": "^1.0.7",
+        "y-websocket": "^3.0.0",
+        "yjs": "^13.6.30"
     },
     "devDependencies": {
         "@playwright/test": "^1.58.2",
