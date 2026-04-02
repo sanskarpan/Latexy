@@ -1,10 +1,11 @@
+import re
 import secrets
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,9 +61,60 @@ class ResumeResponse(ResumeBase):
         return self
 
 
+ALLOWED_LATEXMK_FLAGS = [
+    "--shell-escape",
+    "--synctex=1",
+    "--file-line-error",
+    "--interaction=nonstopmode",
+    "--halt-on-error",
+]
+
+
 class ResumeSettingsUpdate(BaseModel):
     compiler: Optional[str] = None
-    custom_flags: Optional[str] = None
+    custom_flags: Optional[str] = None  # kept for backward compat
+    texlive_version: Optional[str] = None
+    main_file: Optional[str] = None
+    latexmk_flags: Optional[List[str]] = None
+    extra_packages: Optional[List[str]] = None
+
+    @field_validator("texlive_version")
+    @classmethod
+    def validate_texlive_version(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ("2022", "2023", "2024"):
+            raise ValueError("texlive_version must be one of: 2022, 2023, 2024")
+        return v
+
+    @field_validator("main_file")
+    @classmethod
+    def validate_main_file(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not re.match(r"^[a-zA-Z0-9_-]+\.tex$", v):
+            raise ValueError("main_file must match [a-zA-Z0-9_-]+.tex (no path separators)")
+        return v
+
+    @field_validator("latexmk_flags")
+    @classmethod
+    def validate_latexmk_flags(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is not None:
+            for flag in v:
+                if flag not in ALLOWED_LATEXMK_FLAGS:
+                    raise ValueError(
+                        f"Flag {flag!r} is not in the allowed list: {ALLOWED_LATEXMK_FLAGS}"
+                    )
+        return v
+
+    @field_validator("extra_packages")
+    @classmethod
+    def validate_extra_packages(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is not None:
+            for pkg in v:
+                if len(pkg) > 50:
+                    raise ValueError(f"Package name too long: {pkg!r} (max 50 chars)")
+                if not re.match(r"^[a-zA-Z0-9-]+$", pkg):
+                    raise ValueError(
+                        f"Invalid package name {pkg!r}: only alphanumeric and hyphens allowed"
+                    )
+        return v
 
 class ResumeStats(BaseModel):
     total_resumes: int
@@ -381,6 +433,14 @@ async def update_resume_settings(
         current_meta["compiler"] = body.compiler
     if body.custom_flags is not None:
         current_meta["custom_flags"] = body.custom_flags
+    if body.texlive_version is not None:
+        current_meta["texlive_version"] = body.texlive_version
+    if body.main_file is not None:
+        current_meta["main_file"] = body.main_file
+    if body.latexmk_flags is not None:
+        current_meta["latexmk_flags"] = body.latexmk_flags
+    if body.extra_packages is not None:
+        current_meta["extra_packages"] = body.extra_packages
 
     resume.resume_settings = current_meta
     resume.updated_at = datetime.now()
