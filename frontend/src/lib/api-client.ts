@@ -1548,10 +1548,14 @@ class ApiClient {
   }
 
   async removeCollaborator(resumeId: string, collabUserId: string): Promise<void> {
-    await fetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}/collaborators/${encodeURIComponent(collabUserId)}`, {
+    const res = await fetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}/collaborators/${encodeURIComponent(collabUserId)}`, {
       method: 'DELETE',
       headers: this.headers(),
     })
+    if (!res.ok) {
+      const body = await res.text()
+      throw new Error(`Failed to remove collaborator (${res.status}): ${body}`)
+    }
   }
 }
 
