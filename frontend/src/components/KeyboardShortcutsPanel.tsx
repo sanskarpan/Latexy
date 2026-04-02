@@ -61,6 +61,9 @@ export default function KeyboardShortcutsPanel({ isOpen, onClose }: KeyboardShor
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="keyboard-shortcuts-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={handleBackdropClick}
     >
@@ -71,10 +74,11 @@ export default function KeyboardShortcutsPanel({ isOpen, onClose }: KeyboardShor
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/15">
               <Keyboard size={14} className="text-orange-300" />
             </div>
-            <h2 className="text-sm font-semibold text-zinc-100">Keyboard Shortcuts</h2>
+            <h2 id="keyboard-shortcuts-title" className="text-sm font-semibold text-zinc-100">Keyboard Shortcuts</h2>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close keyboard shortcuts"
             className="rounded-lg p-1.5 text-zinc-600 transition hover:bg-white/[0.06] hover:text-zinc-300"
           >
             <X size={16} />
@@ -87,6 +91,7 @@ export default function KeyboardShortcutsPanel({ isOpen, onClose }: KeyboardShor
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600" size={13} />
             <input
               type="text"
+              aria-label="Search keyboard shortcuts"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search shortcuts..."
