@@ -1245,69 +1245,69 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       })
       disposablesRef.current.push(spellCodeActionDisposable)
 
-    }
+      // ── Y.js real-time collaboration (Feature 40) ────────────────────
+      if (collabEnabled && collabResumeId && collabUser) {
+        try {
+          const Y = await import('yjs')
+          const { WebsocketProvider } = await import('y-websocket')
+          const { MonacoBinding } = await import('y-monaco')
 
-    // ── Y.js real-time collaboration (Feature 40) ──────────────────────
-    if (collabEnabled && collabResumeId && collabUser) {
-      try {
-        const Y = await import('yjs')
-        const { WebsocketProvider } = await import('y-websocket')
-        const { MonacoBinding } = await import('y-monaco')
+          const ydoc = new Y.Doc()
+          const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030')
+          const wsBase = apiUrl.replace(/^https?:\/\//, (m) => (m.startsWith('https') ? 'wss://' : 'ws://'))
 
-        const ydoc = new Y.Doc()
-        const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030')
-        const wsBase = apiUrl.replace(/^https?:\/\//, (m) => (m.startsWith('https') ? 'wss://' : 'ws://'))
-
-        const provider = new WebsocketProvider(
-          `${wsBase}/ws/collab`,
-          collabResumeId,
-          ydoc,
-          {
-            params: {
-              token: collabUser.token,
-              name: collabUser.name,
-              color: collabUser.color,
+          const provider = new WebsocketProvider(
+            `${wsBase}/ws/collab`,
+            collabResumeId,
+            ydoc,
+            {
+              params: {
+                token: collabUser.token,
+                name: collabUser.name,
+                color: collabUser.color,
+              },
             },
-          },
-        )
+          )
 
-        const yText = ydoc.getText('content')
-        const model = editor.getModel()
-        if (model) {
-          const binding = new MonacoBinding(yText, model, new Set([editor]), provider.awareness)
-          bindingRef.current = binding
-        }
-
-        provider.awareness.setLocalStateField('user', {
-          name: collabUser.name,
-          color: collabUser.color,
-        })
-
-        // Broadcast presence changes to parent
-        provider.awareness.on('change', () => {
-          const states = provider.awareness.getStates()
-          const others = Array.from(states.entries())
-            .filter(([id]: [number, any]) => id !== provider.awareness.clientID)
-            .map(([, s]: [number, any]) => s?.user)
-            .filter(Boolean)
-          onPresenceChangeRef.current?.(others)
-        })
-
-        // Seed the Y.Doc with the current value once synced (if remote doc is empty)
-        const handleSync = (isSynced: boolean) => {
-          if (!isSynced) return
-          if (yText.length === 0 && value) {
-            ydoc.transact(() => yText.insert(0, value))
+          const yText = ydoc.getText('content')
+          const model = editor.getModel()
+          if (model) {
+            const binding = new MonacoBinding(yText, model, new Set([editor]), provider.awareness)
+            bindingRef.current = binding
           }
-          provider.off('sync', handleSync)
-        }
-        provider.on('sync', handleSync)
 
-        ydocRef.current = ydoc
-        providerRef.current = provider
-      } catch (err) {
-        console.warn('[LaTeXEditor] Y.js collab init failed:', err)
+          provider.awareness.setLocalStateField('user', {
+            name: collabUser.name,
+            color: collabUser.color,
+          })
+
+          // Broadcast presence changes to parent
+          provider.awareness.on('change', () => {
+            const states = provider.awareness.getStates()
+            const others = Array.from(states.entries())
+              .filter(([id]: [number, any]) => id !== provider.awareness.clientID)
+              .map(([, s]: [number, any]) => s?.user)
+              .filter(Boolean)
+            onPresenceChangeRef.current?.(others)
+          })
+
+          // Seed the Y.Doc with the current value once synced (if remote doc is empty)
+          const handleSync = (isSynced: boolean) => {
+            if (!isSynced) return
+            if (yText.length === 0 && value) {
+              ydoc.transact(() => yText.insert(0, value))
+            }
+            provider.off('sync', handleSync)
+          }
+          provider.on('sync', handleSync)
+
+          ydocRef.current = ydoc
+          providerRef.current = provider
+        } catch (err) {
+          console.warn('[LaTeXEditor] Y.js collab init failed:', err)
+        }
       }
+
     }
 
     return (
