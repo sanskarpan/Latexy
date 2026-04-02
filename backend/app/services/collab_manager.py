@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import uuid
 from typing import Dict, List, Optional, Tuple
 
 from fastapi.websockets import WebSocket
