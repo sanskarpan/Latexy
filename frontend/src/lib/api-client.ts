@@ -40,6 +40,27 @@ export interface CompileSettings {
   extra_packages?: string[]
 }
 
+// ── Collaboration (Feature 40) ─────────────────────────────────────────────
+
+export type CollabRole = 'editor' | 'commenter' | 'viewer'
+
+export interface CollaboratorInfo {
+  id: string
+  resume_id: string
+  user_id: string
+  user_name: string | null
+  user_email: string | null
+  role: CollabRole
+  invited_by: string | null
+  joined_at: string | null
+  created_at: string
+}
+
+export interface PresenceUser {
+  name: string
+  color: string
+}
+
 export interface JobSubmitRequest {
   job_type: JobType
   latex_content?: string
@@ -1501,6 +1522,35 @@ class ApiClient {
   async pullFromGitHub(resumeId: string): Promise<GitHubPullResponse> {
     return this.request<GitHubPullResponse>(`/github/resumes/${encodeURIComponent(resumeId)}/pull`, {
       method: 'POST',
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Collaboration (Feature 40)                                      //
+  // ---------------------------------------------------------------- //
+
+  async inviteCollaborator(resumeId: string, email: string, role = 'editor'): Promise<CollaboratorInfo> {
+    return this.request<CollaboratorInfo>(`/resumes/${encodeURIComponent(resumeId)}/collaborators`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    })
+  }
+
+  async listCollaborators(resumeId: string): Promise<CollaboratorInfo[]> {
+    return this.request<CollaboratorInfo[]>(`/resumes/${encodeURIComponent(resumeId)}/collaborators`)
+  }
+
+  async updateCollaboratorRole(resumeId: string, collabUserId: string, role: string): Promise<CollaboratorInfo> {
+    return this.request<CollaboratorInfo>(
+      `/resumes/${encodeURIComponent(resumeId)}/collaborators/${encodeURIComponent(collabUserId)}`,
+      { method: 'PATCH', body: JSON.stringify({ role }) },
+    )
+  }
+
+  async removeCollaborator(resumeId: string, collabUserId: string): Promise<void> {
+    await fetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}/collaborators/${encodeURIComponent(collabUserId)}`, {
+      method: 'DELETE',
+      headers: this.headers(),
     })
   }
 }
