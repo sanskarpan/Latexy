@@ -249,13 +249,17 @@ async def handle_collab_message(
 
 # ── Redis helpers ─────────────────────────────────────────────────────────────
 
+_MAX_UPDATES = 500  # cap per-room update list to prevent unbounded growth
+
 async def _persist_update(resume_id: str, update_bytes: bytes) -> None:
     """Append *update_bytes* (base64-encoded) to the Redis update list."""
     try:
         r = await get_redis_client()
+        key = f"collab:{resume_id}:updates"
         encoded = base64.b64encode(update_bytes).decode("ascii")
-        await r.rpush(f"collab:{resume_id}:updates", encoded)
-        await r.expire(f"collab:{resume_id}:updates", _COLLAB_TTL)
+        await r.rpush(key, encoded)
+        await r.ltrim(key, -_MAX_UPDATES, -1)
+        await r.expire(key, _COLLAB_TTL)
     except Exception as exc:
         logger.warning("Collab: Redis write failed for %s: %s", resume_id[:8], exc)
 
