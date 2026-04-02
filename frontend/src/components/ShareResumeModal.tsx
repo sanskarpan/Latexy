@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, Copy, Link, Loader2, Trash2, X } from 'lucide-react'
+import { Check, Copy, EyeOff, Link, Loader2, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type ShareLinkResponse } from '@/lib/api-client'
 
@@ -25,13 +25,14 @@ export default function ShareResumeModal({
 }: ShareResumeModalProps) {
   const [shareData, setShareData] = useState<ShareLinkResponse | null>(
     initialShareToken && initialShareUrl
-      ? { share_token: initialShareToken, share_url: initialShareUrl, created_at: '' }
+      ? { share_token: initialShareToken, share_url: initialShareUrl, created_at: '', anonymous: false }
       : null
   )
   const [isGenerating, setIsGenerating] = useState(false)
   const [isRevoking, setIsRevoking] = useState(false)
   const [copied, setCopied] = useState(false)
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false)
+  const [anonymous, setAnonymous] = useState(false)
 
   // Close on Escape
   useEffect(() => {
@@ -45,10 +46,10 @@ export default function ShareResumeModal({
   const handleGenerate = async () => {
     setIsGenerating(true)
     try {
-      const data = await apiClient.createShareLink(resumeId)
+      const data = await apiClient.createShareLink(resumeId, anonymous)
       setShareData(data)
       onShareTokenChange?.(data.share_token, data.share_url)
-      toast.success('Share link created')
+      toast.success(data.anonymous ? 'Anonymous share link created' : 'Share link created')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create share link')
     } finally {
@@ -128,6 +129,33 @@ export default function ShareResumeModal({
                   Viewers can read the PDF but cannot edit or access your LaTeX source.
                 </p>
               </div>
+
+              {/* Anonymous mode toggle */}
+              <div className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <EyeOff size={13} className="text-zinc-500" />
+                  <div>
+                    <p className="text-[12px] font-medium text-zinc-300">Anonymous Mode</p>
+                    <p className="text-[10px] text-zinc-600">Hides name, email, phone &amp; social profiles</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={anonymous}
+                  onClick={() => setAnonymous(a => !a)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                    anonymous ? 'bg-amber-500' : 'bg-zinc-700'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                      anonymous ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
               <button
                 onClick={handleGenerate}
                 disabled={isGenerating}
@@ -143,6 +171,12 @@ export default function ShareResumeModal({
           ) : (
             // Link exists
             <div className="space-y-4">
+              {shareData.anonymous && (
+                <div className="flex items-center gap-1.5 rounded-md border border-amber-400/20 bg-amber-500/10 px-3 py-1.5">
+                  <EyeOff size={11} className="text-amber-400" />
+                  <p className="text-[11px] text-amber-300">Anonymous mode — PII redacted in shared view</p>
+                </div>
+              )}
               {/* URL display */}
               <div>
                 <p className="mb-2 text-xs font-medium text-zinc-400">Shareable link</p>

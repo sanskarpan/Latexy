@@ -37,6 +37,7 @@ import {
   Github,
   Settings2,
   QrCode,
+  Calendar,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type LatexCompiler, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
@@ -64,6 +65,7 @@ import PackageManagerPanel from '@/components/PackageManagerPanel'
 import LinterPanel from '@/components/LinterPanel'
 import SymbolPalette from '@/components/SymbolPalette'
 import QrCodeInserter from '@/components/QrCodeInserter'
+import DateStandardizerPanel from '@/components/DateStandardizerPanel'
 import CompilerSelector from '@/components/CompilerSelector'
 import CompileSettingsModal from '@/components/CompileSettingsModal'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
@@ -690,6 +692,7 @@ export default function ResumeEditPage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
   const [qrInserterOpen, setQrInserterOpen] = useState(false)
+  const [dateStandardizerOpen, setDateStandardizerOpen] = useState(false)
 
   // Layout
   const [rightTab, setRightTab] = useState<RightTab>('preview')
@@ -1528,6 +1531,15 @@ export default function ResumeEditPage() {
             QR
           </button>
 
+          <button
+            onClick={() => setDateStandardizerOpen(true)}
+            title="Standardize date formats"
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+          >
+            <Calendar size={12} />
+            Dates
+          </button>
+
           <Link
             href={`/workspace/${resumeId}/cover-letter`}
             className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-violet-300/80 transition hover:bg-violet-500/10 hover:text-violet-200"
@@ -2178,6 +2190,17 @@ export default function ResumeEditPage() {
         onInsert={(snippet) => editorRef.current?.insertAtCursor(snippet)}
         getLatex={() => editorRef.current?.getValue() ?? latexContent}
         onLatexChange={(newLatex) => {
+          editorRef.current?.setValue(newLatex)
+          setLatexContent(newLatex)
+        }}
+      />
+
+      {/* Date Format Standardizer (Feature 57) */}
+      <DateStandardizerPanel
+        isOpen={dateStandardizerOpen}
+        onClose={() => setDateStandardizerOpen(false)}
+        getLatex={() => editorRef.current?.getValue() ?? latexContent}
+        onApply={(newLatex) => {
           editorRef.current?.setValue(newLatex)
           setLatexContent(newLatex)
         }}

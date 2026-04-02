@@ -4,7 +4,10 @@ AI tool routes — error explanation and other AI-powered utilities.
 
 import hashlib
 import json
+import re as _re
 import time
+from calendar import month_abbr as _month_abbr
+from calendar import month_name as _month_name
 from typing import Dict, List, Literal, Optional
 
 import httpx
@@ -618,3 +621,136 @@ async def spell_check(
         pass
 
     return SpellCheckResponse(issues=issues, cached=False)
+
+
+# ── Date Standardizer (Feature 57) ──────────────────────────────────────────
+
+# Full month names → 0-padded month numbers
+_MONTH_NUM: dict[str, str] = {
+    name.lower(): f"{i:02d}" for i, name in enumerate(_month_name) if name
+}
+_MONTH_NUM.update(
+    {abbr.lower(): f"{i:02d}" for i, abbr in enumerate(_month_abbr) if abbr}
+)
+
+# 0-padded month → canonical names
+_NUM_TO_ABBR: dict[str, str] = {
+    f"{i:02d}": abbr for i, abbr in enumerate(_month_abbr) if abbr
+}
+_NUM_TO_FULL: dict[str, str] = {
+    f"{i:02d}": name for i, name in enumerate(_month_name) if name
+}
+
+
+def _parse_month_year(text: str) -> tuple[str, str] | None:
+    """
+    Parse a date string and return (zero_padded_month, 4_digit_year) or None.
+    Handles: "January 2020", "Jan 2020", "01/2020", "2020-01".
+    """
+    text = text.strip()
+    # "January 2020", "Jan 2020", or "Jan. 2020" (dotted abbreviation)
+    m = _re.match(r'^([A-Za-z]+)\.?\s+(\d{4})$', text)
+    if m:
+        month_key = m.group(1).lower()
+        if month_key in _MONTH_NUM:
+            return _MONTH_NUM[month_key], m.group(2)
+    # "01/2020" or "1/2020"
+    m = _re.match(r'^(\d{1,2})/(\d{4})$', text)
+    if m:
+        month_i = int(m.group(1))
+        if not 1 <= month_i <= 12:
+            return None
+        return f"{month_i:02d}", m.group(2)
+    # "2020-01"
+    m = _re.match(r'^(\d{4})-(\d{2})$', text)
+    if m:
+        month_i = int(m.group(2))
+        if not 1 <= month_i <= 12:
+            return None
+        return f"{month_i:02d}", m.group(1)
+    return None
+
+
+def _format_month_year(month: str, year: str, target_format: str) -> str:
+    """Convert (month, year) to target_format string."""
+    if target_format == "MMM YYYY":
+        return f"{_NUM_TO_ABBR.get(month, month)} {year}"
+    if target_format == "MMMM YYYY":
+        return f"{_NUM_TO_FULL.get(month, month)} {year}"
+    if target_format == "YYYY-MM":
+        return f"{year}-{month}"
+    if target_format == "MM/YYYY":
+        return f"{month}/{year}"
+    return f"{month}/{year}"
+
+
+# Combined pattern: month-name YYYY | MM/YYYY | YYYY-MM
+_DATE_RE = _re.compile(
+    r'(?<!\d)'
+    r'((?:January|February|March|April|May|June|July|August|September|October|November|December'
+    r'|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)'
+    r'(?:\.)?'
+    r'\s+\d{4}'
+    r'|\d{1,2}/\d{4}'
+    r'|\d{4}-\d{2})',
+    _re.IGNORECASE,
+)
+
+
+class StandardizeDatesRequest(BaseModel):
+    latex_content: str = Field(..., max_length=200_000)
+    target_format: str = Field(..., pattern=r'^(MMM YYYY|MMMM YYYY|YYYY-MM|MM/YYYY)$')
+
+
+class DateOccurrence(BaseModel):
+    line: int
+    original: str
+    standardized: str
+
+
+class StandardizeDatesResponse(BaseModel):
+    occurrences: List[DateOccurrence]
+    standardized_latex: str
+
+
+@router.post("/standardize-dates", response_model=StandardizeDatesResponse)
+async def standardize_dates(request: StandardizeDatesRequest):
+    """
+    Detect all date occurrences in LaTeX and normalize to the requested format.
+    Pure regex — no LLM required. Auth optional.
+    """
+    occurrences: List[DateOccurrence] = []
+
+    def _replace(m: _re.Match) -> str:
+        original = m.group(0)
+        parsed = _parse_month_year(original)
+        if parsed is None:
+            return original
+        month, year = parsed
+        standardized = _format_month_year(month, year, request.target_format)
+        if standardized != original:
+            # Record occurrence with 1-based line number
+            char_pos = m.start()
+            line_num = request.latex_content.count('\n', 0, char_pos) + 1
+            occurrences.append(DateOccurrence(
+                line=line_num,
+                original=original,
+                standardized=standardized,
+            ))
+        return standardized
+
+    standardized_latex = _DATE_RE.sub(_replace, request.latex_content)
+
+    # Deduplicate occurrences keeping first seen per (line, original) pair
+    seen: set[tuple[int, str]] = set()
+    unique: List[DateOccurrence] = []
+    for occ in occurrences:
+        key = (occ.line, occ.original)
+        if key not in seen:
+            seen.add(key)
+            unique.append(occ)
+
+    return StandardizeDatesResponse(
+        occurrences=unique,
+        standardized_latex=standardized_latex,
+    )
