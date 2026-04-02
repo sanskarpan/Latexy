@@ -41,14 +41,14 @@ def upgrade() -> None:
             ),
             sa.Column(
                 "user_id",
-                sa.String,
+                postgresql.UUID(as_uuid=False),
                 sa.ForeignKey("users.id", ondelete="CASCADE"),
                 nullable=False,
             ),
             sa.Column("role", sa.String(20), nullable=False, server_default="editor"),
             sa.Column(
                 "invited_by",
-                sa.String,
+                postgresql.UUID(as_uuid=False),
                 sa.ForeignKey("users.id", ondelete="SET NULL"),
                 nullable=True,
             ),
