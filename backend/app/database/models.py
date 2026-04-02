@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import uuid4
 
-from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
@@ -366,6 +366,9 @@ class ResumeCollaborator(Base):
     """Per-resume collaborator access control (Feature 40)."""
 
     __tablename__ = "resume_collaborators"
+    __table_args__ = (
+        UniqueConstraint("resume_id", "user_id", name="uq_resume_collaborators_resume_user"),
+    )
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False),
