@@ -22,6 +22,24 @@ export type OptimizationLevel = 'conservative' | 'balanced' | 'aggressive'
 
 export type LatexCompiler = 'pdflatex' | 'xelatex' | 'lualatex'
 
+export const ALLOWED_LATEXMK_FLAGS = [
+  '--shell-escape',
+  '--synctex=1',
+  '--file-line-error',
+  '--interaction=nonstopmode',
+  '--halt-on-error',
+] as const
+
+export type LatexmkFlag = typeof ALLOWED_LATEXMK_FLAGS[number]
+
+export interface CompileSettings {
+  compiler?: LatexCompiler
+  texlive_version?: string | null
+  main_file?: string
+  latexmk_flags?: LatexmkFlag[]
+  extra_packages?: string[]
+}
+
 export interface JobSubmitRequest {
   job_type: JobType
   latex_content?: string
@@ -562,7 +580,7 @@ class ApiClient {
 
   async updateResumeSettings(
     resumeId: string,
-    settings: { compiler?: LatexCompiler; custom_flags?: string }
+    settings: CompileSettings & { custom_flags?: string }
   ): Promise<ResumeResponse> {
     return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/settings`, {
       method: 'PATCH',
