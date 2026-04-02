@@ -157,7 +157,7 @@ function SettingsContent() {
             <div className="space-y-3">
               <p className="text-[12px] text-zinc-500">
                 Connect your GitHub account to sync resume LaTeX source to a private repository.
-                Every checkpoint can auto-push, giving you full version history in Git.
+                Push from the editor manually to save a version in Git.
               </p>
               <button
                 onClick={handleConnectGitHub}
