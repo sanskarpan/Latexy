@@ -23,7 +23,6 @@ from app.services.collab_manager import (
     handle_collab_message,
 )
 
-
 # ── lib0 encoding helpers ────────────────────────────────────────────────────
 
 
@@ -309,6 +308,7 @@ class TestHandleCollabMessage:
 def authed_client():
     """TestClient with auth dependency overridden."""
     from fastapi.testclient import TestClient
+
     from app.main import app
     from app.middleware.auth_middleware import get_current_user_required
 
@@ -365,9 +365,10 @@ class TestCollaboratorEndpoints:
 
     def test_invite_creates_collaborator(self, authed_client) -> None:
         """Valid invite with mocked DB returns 201."""
+        from datetime import datetime
+
         from app.database.connection import get_db
         from app.main import app
-        from datetime import datetime
 
         owner = "test-owner-id"
         invitee_id = "invitee-id"
