@@ -681,6 +681,7 @@ export default function ResumeEditPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [compileJobId, setCompileJobId] = useState<string | null>(null)
   const [lastStartedJobKind, setLastStartedJobKind] = useState<'compile' | 'ai'>('compile')
+  const userInitiatedJobRef = useRef(false)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
 
@@ -945,22 +946,24 @@ export default function ResumeEditPage() {
     return () => { if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current) }
   }, [])
 
-  // Push notification on compile/AI job complete (Feature 65)
+  // Push notification on compile/AI job complete (Feature 65) — only for user-initiated jobs
   useEffect(() => {
-    if (compileStream.status === 'completed') {
+    if (userInitiatedJobRef.current && compileStream.status === 'completed') {
       notify('Compilation complete', 'Your resume PDF is ready')
+      userInitiatedJobRef.current = false
     }
   }, [compileStream.status, notify])
 
   useEffect(() => {
-    if (aiStream.status === 'completed') {
+    if (userInitiatedJobRef.current && aiStream.status === 'completed') {
       notify('Optimization complete', 'Your AI-optimized resume is ready to review')
+      userInitiatedJobRef.current = false
     }
   }, [aiStream.status, notify])
 
-  // Request notification permission after first compile attempt
+  // Request notification permission after first user-initiated compile attempt
   useEffect(() => {
-    if (compileStream.status === 'processing' || aiStream.status === 'processing') {
+    if (userInitiatedJobRef.current && (compileStream.status === 'processing' || aiStream.status === 'processing')) {
       requestPermission()
     }
   }, [compileStream.status, aiStream.status, requestPermission])
@@ -968,9 +971,9 @@ export default function ResumeEditPage() {
   // Cmd+? keyboard shortcut for shortcuts panel (Feature 61)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === '?') {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === 'Slash') {
         e.preventDefault()
-        setShortcutsOpen((prev) => !prev)
+        setShortcutsOpen(true)
       }
     }
     window.addEventListener('keydown', handler)
@@ -1043,6 +1046,7 @@ export default function ResumeEditPage() {
     try {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!r.success || !r.job_id) throw new Error(r.message)
+      userInitiatedJobRef.current = true
       setCompileJobId(r.job_id)
       setLastStartedJobKind('compile')
       setRightTab('logs')
@@ -1070,6 +1074,7 @@ export default function ResumeEditPage() {
         compiler,
       })
       if (!r.success || !r.job_id) throw new Error(r.message)
+      userInitiatedJobRef.current = true
       pushUndo('Before AI optimization')
       setAiJobId(r.job_id)
       setLastStartedJobKind('ai')
@@ -1363,6 +1368,7 @@ export default function ResumeEditPage() {
         resume_id: resumeId,
       })
       if (!r.success || !r.job_id) throw new Error(r.message)
+      userInitiatedJobRef.current = true
       pushUndo('Before AI trim (1 page)')
       setAiJobId(r.job_id)
       setLastStartedJobKind('ai')
