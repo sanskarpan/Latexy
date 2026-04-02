@@ -510,7 +510,14 @@ export default function WorkspacePage() {
                             )}
                           </td>
                         )}
-                        <td className="px-4 py-3 text-right text-sm text-zinc-400">{new Date(resume.updated_at).toLocaleDateString()}</td>
+                        <td className={`px-4 py-3 text-right text-sm ${
+                          resume.freshness_status === 'very_stale' ? 'text-rose-400' :
+                          resume.freshness_status === 'stale' ? 'text-amber-400' : 'text-zinc-400'
+                        }`} title={new Date(resume.updated_at).toLocaleString()}>
+                          {resume.days_since_updated != null && resume.days_since_updated > 0
+                            ? `${resume.days_since_updated}d ago`
+                            : 'Today'}
+                        </td>
                         <td className="px-4 py-3 text-right">
                           <div className="inline-flex gap-2 items-center">
                             <Link
@@ -565,7 +572,14 @@ export default function WorkspacePage() {
                               <span className="text-zinc-700">—</span>
                             </td>
                           )}
-                          <td className="px-4 py-3 text-right text-sm text-zinc-500">{new Date(variant.updated_at).toLocaleDateString()}</td>
+                          <td className={`px-4 py-3 text-right text-sm ${
+                            variant.freshness_status === 'very_stale' ? 'text-rose-400' :
+                            variant.freshness_status === 'stale' ? 'text-amber-400' : 'text-zinc-500'
+                          }`} title={new Date(variant.updated_at).toLocaleString()}>
+                            {variant.days_since_updated != null && variant.days_since_updated > 0
+                              ? `${variant.days_since_updated}d ago`
+                              : 'Today'}
+                          </td>
                           <td className="px-4 py-3 text-right">
                             <div className="inline-flex gap-2 items-center">
                               <Link
