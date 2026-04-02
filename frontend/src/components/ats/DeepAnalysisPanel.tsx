@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect } from 'react'
-import { Brain, X, AlertCircle, Zap } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Brain, X, AlertCircle, Zap, ChevronDown, TrendingUp } from 'lucide-react'
 import type { ATSDeepAnalysis, ATSDeepSection } from '@/lib/event-types'
 import ATSRadarChart from './ATSRadarChart'
+import ScoreHistoryChart from '@/components/ScoreHistoryChart'
 
 const MULTI_DIM_LABELS: { key: string; label: string; description: string }[] = [
   { key: 'grammar',               label: 'Grammar',          description: 'Tense consistency, punctuation & formatting' },
@@ -23,6 +24,7 @@ interface DeepAnalysisPanelProps {
   onRun: () => void
   isRunning: boolean
   hideUpgradeCtas?: boolean
+  resumeId?: string
 }
 
 function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
@@ -118,7 +120,10 @@ export default function DeepAnalysisPanel({
   onRun,
   isRunning,
   hideUpgradeCtas = false,
+  resumeId,
 }: DeepAnalysisPanelProps) {
+  const [historyOpen, setHistoryOpen] = useState(false)
+
   // ESC key to close
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -163,7 +168,7 @@ export default function DeepAnalysisPanel({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto pb-2">
           {/* Idle state */}
           {!isLoading && !analysis && !error && !isRunning && (
             <div className="space-y-5 p-5">
@@ -354,6 +359,31 @@ export default function DeepAnalysisPanel({
                   <Brain size={11} /> Re-analyse
                 </button>
               </div>
+            </div>
+          )}
+          {/* Score History — always visible when resumeId is provided */}
+          {resumeId && (
+            <div className="border-t border-white/[0.06] mx-4 mt-2">
+              <button
+                onClick={() => setHistoryOpen((v) => !v)}
+                className="flex w-full items-center justify-between py-3 text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <TrendingUp size={13} className="text-orange-300/70" />
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                    Score History
+                  </span>
+                </div>
+                <ChevronDown
+                  size={13}
+                  className={`text-zinc-600 transition-transform ${historyOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {historyOpen && (
+                <div className="pb-4">
+                  <ScoreHistoryChart resumeId={resumeId} />
+                </div>
+              )}
             </div>
           )}
         </div>

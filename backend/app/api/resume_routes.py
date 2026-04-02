@@ -1,11 +1,11 @@
 import re
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,6 +59,22 @@ class ResumeResponse(ResumeBase):
         if self.share_token and not self.share_url:
             self.share_url = f"{settings.FRONTEND_URL}/r/{self.share_token}"
         return self
+
+    # Freshness (Feature 48) — computed from updated_at, never read from ORM/mock
+    @computed_field
+    @property
+    def days_since_updated(self) -> int:
+        now = datetime.now(timezone.utc)
+        updated = self.updated_at
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        return (now - updated).days
+
+    @computed_field
+    @property
+    def freshness_status(self) -> str:
+        days = self.days_since_updated
+        return "fresh" if days < 30 else "stale" if days < 90 else "very_stale"
 
 
 ALLOWED_LATEXMK_FLAGS = [
@@ -120,6 +136,9 @@ class ResumeStats(BaseModel):
     total_resumes: int
     total_templates: int
     last_updated: Optional[datetime]
+    avg_ats_score: Optional[float] = None
+    best_ats_score: Optional[float] = None
+    optimized_count: int = 0
 
 
 # --- Search schemas ---
@@ -160,11 +179,34 @@ async def get_resume_stats(
     latest = await db.execute(
         select(func.max(Resume.updated_at)).where(Resume.user_id == user_id)
     )
+    ats_avg = await db.execute(
+        select(func.avg(Optimization.ats_score)).where(
+            Optimization.user_id == user_id,
+            Optimization.ats_score.is_not(None),
+        )
+    )
+    ats_max = await db.execute(
+        select(func.max(Optimization.ats_score)).where(
+            Optimization.user_id == user_id,
+            Optimization.ats_score.is_not(None),
+        )
+    )
+    opt_count = await db.execute(
+        select(func.count(func.distinct(Optimization.resume_id))).where(
+            Optimization.user_id == user_id,
+            Optimization.ats_score.is_not(None),
+        )
+    )
 
+    avg_val = ats_avg.scalar()
+    max_val = ats_max.scalar()
     return {
         "total_resumes": total.scalar() or 0,
         "total_templates": templates.scalar() or 0,
-        "last_updated": latest.scalar()
+        "last_updated": latest.scalar(),
+        "avg_ats_score": round(float(avg_val), 1) if avg_val is not None else None,
+        "best_ats_score": round(float(max_val), 1) if max_val is not None else None,
+        "optimized_count": opt_count.scalar() or 0,
     }
 
 @router.post("/", response_model=ResumeResponse, status_code=status.HTTP_201_CREATED)
@@ -371,7 +413,7 @@ async def update_resume(
     for key, value in update_data.items():
         setattr(resume, key, value)
 
-    resume.updated_at = datetime.now()
+    resume.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(resume)
 
@@ -443,7 +485,7 @@ async def update_resume_settings(
         current_meta["extra_packages"] = body.extra_packages
 
     resume.resume_settings = current_meta
-    resume.updated_at = datetime.now()
+    resume.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(resume)
 
@@ -661,6 +703,12 @@ class OptimizationHistoryEntry(BaseModel):
     tokens_used: Optional[int]
 
 
+class ScoreHistoryPoint(BaseModel):
+    timestamp: datetime
+    ats_score: float
+    label: Optional[str] = None
+
+
 class RestoreOptimizationResponse(BaseModel):
     success: bool
     latex_content: str
@@ -732,6 +780,37 @@ async def get_optimization_history(
         return []
 
 
+@router.get("/{resume_id}/score-history", response_model=List[ScoreHistoryPoint])
+async def get_score_history(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Return ATS score history for a resume, sorted oldest-first. Only entries with a score."""
+    try:
+        result = await db.execute(
+            select(Optimization)
+            .where(
+                Optimization.resume_id == resume_id,
+                Optimization.user_id == user_id,
+                Optimization.ats_score.is_not(None),
+            )
+            .order_by(Optimization.created_at.asc())
+        )
+        rows = result.scalars().all()
+    except Exception as exc:
+        logger.warning(f"DB error fetching score history for resume {resume_id}: {exc}")
+        return []
+    return [
+        {
+            "timestamp": r.created_at,
+            "ats_score": float(r.ats_score),
+            "label": r.checkpoint_label,
+        }
+        for r in rows
+    ]
+
+
 @router.post(
     "/{resume_id}/restore-optimization/{opt_id}",
     response_model=RestoreOptimizationResponse,
@@ -764,7 +843,7 @@ async def restore_optimization(
         raise HTTPException(status_code=404, detail="Optimization record not found")
 
     resume.latex_content = opt.optimized_latex
-    resume.updated_at = datetime.now()
+    resume.updated_at = datetime.now(timezone.utc)
     await db.commit()
     return {"success": True, "latex_content": opt.optimized_latex}
 
