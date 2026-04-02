@@ -379,14 +379,14 @@ class ResumeCollaborator(Base):
         index=True,
     )
     user_id: Mapped[str] = mapped_column(
-        String,
+        UUID(as_uuid=False),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
     # 'editor' | 'commenter' | 'viewer'
     role: Mapped[str] = mapped_column(String(20), nullable=False, server_default="editor")
     invited_by: Mapped[Optional[str]] = mapped_column(
-        String,
+        UUID(as_uuid=False),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
