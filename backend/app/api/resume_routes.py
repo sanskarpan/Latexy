@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,24 +51,30 @@ class ResumeResponse(ResumeBase):
     github_last_sync_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
-    # Freshness (Feature 48) — computed from updated_at, no DB column needed
-    days_since_updated: int = 0
-    freshness_status: str = "fresh"  # "fresh" | "stale" | "very_stale"
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     @model_validator(mode='after')
-    def _compute_derived_fields(self) -> 'ResumeResponse':
+    def _compute_share_url(self) -> 'ResumeResponse':
         if self.share_token and not self.share_url:
             self.share_url = f"{settings.FRONTEND_URL}/r/{self.share_token}"
+        return self
+
+    # Freshness (Feature 48) — computed from updated_at, never read from ORM/mock
+    @computed_field
+    @property
+    def days_since_updated(self) -> int:
         now = datetime.now(timezone.utc)
         updated = self.updated_at
         if updated.tzinfo is None:
             updated = updated.replace(tzinfo=timezone.utc)
-        days = (now - updated).days
-        self.days_since_updated = days
-        self.freshness_status = "fresh" if days < 30 else "stale" if days < 90 else "very_stale"
-        return self
+        return (now - updated).days
+
+    @computed_field
+    @property
+    def freshness_status(self) -> str:
+        days = self.days_since_updated
+        return "fresh" if days < 30 else "stale" if days < 90 else "very_stale"
 
 
 ALLOWED_LATEXMK_FLAGS = [
@@ -407,7 +413,7 @@ async def update_resume(
     for key, value in update_data.items():
         setattr(resume, key, value)
 
-    resume.updated_at = datetime.now()
+    resume.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(resume)
 
@@ -479,7 +485,7 @@ async def update_resume_settings(
         current_meta["extra_packages"] = body.extra_packages
 
     resume.resume_settings = current_meta
-    resume.updated_at = datetime.now()
+    resume.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(resume)
 
@@ -837,7 +843,7 @@ async def restore_optimization(
         raise HTTPException(status_code=404, detail="Optimization record not found")
 
     resume.latex_content = opt.optimized_latex
-    resume.updated_at = datetime.now()
+    resume.updated_at = datetime.now(timezone.utc)
     await db.commit()
     return {"success": True, "latex_content": opt.optimized_latex}
 
