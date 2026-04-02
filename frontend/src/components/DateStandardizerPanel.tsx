@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Calendar, Check, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type DateOccurrence } from '@/lib/api-client'
@@ -34,6 +34,14 @@ export default function DateStandardizerPanel({
   const [standardizedLatex, setStandardizedLatex] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(true)
+
+  // Reset results whenever the panel is opened so stale state is never applied
+  useEffect(() => {
+    if (!isOpen) return
+    setOccurrences(null)
+    setStandardizedLatex(null)
+    setPreviewOpen(true)
+  }, [isOpen])
 
   const handleDetect = useCallback(async () => {
     const latex = getLatex()
