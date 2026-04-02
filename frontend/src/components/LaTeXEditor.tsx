@@ -7,7 +7,7 @@ import Editor, { type OnMount } from '@monaco-editor/react'
 import type { LogLine } from '@/hooks/useJobStream'
 import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import ATSScoreBadge from '@/components/ATSScoreBadge'
-import type { ProofreadIssue, SpellCheckIssue } from '@/lib/api-client'
+import type { PresenceUser, ProofreadIssue, SpellCheckIssue } from '@/lib/api-client'
 import type { LintIssue } from '@/lib/latex-linter'
 import { addWordToDict, getPersonalDict } from '@/hooks/useSpellCheck'
 import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
@@ -74,6 +74,15 @@ interface LaTeXEditorProps {
   onSpellCheckToggle?: () => void
   /** Whether spell check is loading (for status bar pulse) */
   spellCheckLoading?: boolean
+  // ── Collaboration (Feature 40) ─────────────────────────────────────
+  /** Enable Y.js CRDT collaboration */
+  collabEnabled?: boolean
+  /** Resume ID used as the Y.js room name */
+  collabResumeId?: string
+  /** Current user info for cursor labelling */
+  collabUser?: { name: string; color: string; token: string }
+  /** Fires when the set of remote-presence users changes */
+  onPresenceChange?: (users: PresenceUser[]) => void
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -252,7 +261,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, onPresenceChange },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -271,6 +280,25 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     onWritingAssistantActionRef.current = onWritingAssistantAction
     const spellCheckIssuesRef = useRef(spellCheckIssues)
     spellCheckIssuesRef.current = spellCheckIssues
+    const onPresenceChangeRef = useRef(onPresenceChange)
+    onPresenceChangeRef.current = onPresenceChange
+
+    // Y.js collab refs — cleaned up on unmount
+    const ydocRef = useRef<any>(null)
+    const providerRef = useRef<any>(null)
+    const bindingRef = useRef<any>(null)
+
+    // Cleanup Y.js session on unmount
+    useEffect(() => {
+      return () => {
+        bindingRef.current?.destroy()
+        providerRef.current?.destroy()
+        ydocRef.current?.destroy()
+        bindingRef.current = null
+        providerRef.current = null
+        ydocRef.current = null
+      }
+    }, [])
 
     const [searchPanelOpen, setSearchPanelOpen] = useState(false)
 
@@ -586,7 +614,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       }
     }, [])
 
-    const handleEditorDidMount: OnMount = (editor, monaco) => {
+    const handleEditorDidMount: OnMount = async (editor, monaco) => {
       editorRef.current = editor
       monacoRef.current = monaco
 
@@ -1219,6 +1247,69 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
     }
 
+    // ── Y.js real-time collaboration (Feature 40) ──────────────────────
+    if (collabEnabled && collabResumeId && collabUser) {
+      try {
+        const Y = await import('yjs')
+        const { WebsocketProvider } = await import('y-websocket')
+        const { MonacoBinding } = await import('y-monaco')
+
+        const ydoc = new Y.Doc()
+        const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030')
+        const wsBase = apiUrl.replace(/^https?:\/\//, (m) => (m.startsWith('https') ? 'wss://' : 'ws://'))
+
+        const provider = new WebsocketProvider(
+          `${wsBase}/ws/collab`,
+          collabResumeId,
+          ydoc,
+          {
+            params: {
+              token: collabUser.token,
+              name: collabUser.name,
+              color: collabUser.color,
+            },
+          },
+        )
+
+        const yText = ydoc.getText('content')
+        const model = editor.getModel()
+        if (model) {
+          const binding = new MonacoBinding(yText, model, new Set([editor]), provider.awareness)
+          bindingRef.current = binding
+        }
+
+        provider.awareness.setLocalStateField('user', {
+          name: collabUser.name,
+          color: collabUser.color,
+        })
+
+        // Broadcast presence changes to parent
+        provider.awareness.on('change', () => {
+          const states = provider.awareness.getStates()
+          const others = Array.from(states.entries())
+            .filter(([id]: [number, any]) => id !== provider.awareness.clientID)
+            .map(([, s]: [number, any]) => s?.user)
+            .filter(Boolean)
+          onPresenceChangeRef.current?.(others)
+        })
+
+        // Seed the Y.Doc with the current value once synced (if remote doc is empty)
+        const handleSync = (isSynced: boolean) => {
+          if (!isSynced) return
+          if (yText.length === 0 && value) {
+            ydoc.transact(() => yText.insert(0, value))
+          }
+          provider.off('sync', handleSync)
+        }
+        provider.on('sync', handleSync)
+
+        ydocRef.current = ydoc
+        providerRef.current = provider
+      } catch (err) {
+        console.warn('[LaTeXEditor] Y.js collab init failed:', err)
+      }
+    }
+
     return (
       <div className="flex h-full flex-col">
         <style>{`
@@ -1241,6 +1332,30 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           .proofreader-vague {
             text-decoration: underline wavy #f87171;
             text-underline-offset: 2px;
+          }
+          /* Y.js remote cursor labels */
+          .yRemoteSelectionHead::after {
+            content: attr(data-user-name);
+            font-size: 10px;
+            font-family: sans-serif;
+            padding: 1px 4px;
+            border-radius: 3px;
+            position: absolute;
+            top: -1.4em;
+            left: 0;
+            white-space: nowrap;
+            background-color: var(--user-color, #7c3aed);
+            color: #fff;
+            pointer-events: none;
+            z-index: 10;
+          }
+          .yRemoteSelectionHead {
+            position: absolute;
+            border-left: 2px solid var(--user-color, #7c3aed);
+            height: 100%;
+          }
+          .yRemoteSelection {
+            background-color: var(--user-color-light, rgba(124,58,237,0.12));
           }
         `}</style>
         {!value ? (
@@ -1270,7 +1385,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             <Editor
               height="100%"
               defaultLanguage="latex"
-              value={value}
+              {...(collabEnabled ? { defaultValue: '' } : { value })}
               onChange={(v) => onChange(v || '')}
               onMount={handleEditorDidMount}
               options={{
