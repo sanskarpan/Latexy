@@ -132,9 +132,10 @@ class CollabRoom:
     def size(self) -> int:
         return len(self._clients)
 
-    def all_clients(self) -> List[Tuple[str, dict]]:
+    async def all_clients(self) -> List[Tuple[str, dict]]:
         """Snapshot of ``[(client_id, user_info), ...]``."""
-        return [(cid, info) for cid, (_, info) in self._clients.items()]
+        async with self._lock:
+            return [(cid, info) for cid, (_, info) in self._clients.items()]
 
     # ── Messaging ─────────────────────────────────────────────────────────
 

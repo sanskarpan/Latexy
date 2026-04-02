@@ -137,7 +137,7 @@ class TestCollabRoom:
         await room.broadcast(b"ping", exclude=None)
         # Dead client should be removed
         assert room.size == 1
-        assert room.all_clients()[0][0] == "live"
+        assert (await room.all_clients())[0][0] == "live"
 
 
 # ── CollabManager ────────────────────────────────────────────────────────────
