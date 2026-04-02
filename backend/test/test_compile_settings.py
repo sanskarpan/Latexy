@@ -1,11 +1,11 @@
 """Tests for Feature 38 — Compiler Settings per Resume."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.api.resume_routes import ALLOWED_LATEXMK_FLAGS, ResumeSettingsUpdate
 from app.workers.latex_worker import _inject_packages
-
 
 # ── ResumeSettingsUpdate validation ──────────────────────────────────────────
 
@@ -148,6 +148,7 @@ class TestInjectPackages:
 def authed_client():
     """Create a TestClient with auth dependency overridden."""
     from fastapi.testclient import TestClient
+
     from app.main import app
     from app.middleware.auth_middleware import get_current_user_required
 
