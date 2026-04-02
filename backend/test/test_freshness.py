@@ -1,8 +1,6 @@
 """Tests for Feature 48: ResumeResponse freshness fields."""
 from datetime import datetime, timedelta, timezone
 
-import pytest
-
 from app.api.resume_routes import ResumeResponse
 
 
