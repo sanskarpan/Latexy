@@ -198,8 +198,9 @@ async def submit_job(
             **safe_meta,
         }
 
-        # Resolve compiler: explicit request field > resume metadata > default
+        # Resolve compiler and compile settings: explicit request field > resume metadata > default
         compiler = settings.DEFAULT_LATEX_COMPILER
+        compile_settings: Optional[Dict] = None
         if request.compiler:
             if request.compiler not in settings.ALLOWED_LATEX_COMPILERS:
                 raise HTTPException(
@@ -207,8 +208,8 @@ async def submit_job(
                     detail=f"Unsupported compiler '{request.compiler}'. Allowed: {settings.ALLOWED_LATEX_COMPILERS}",
                 )
             compiler = request.compiler
-        elif safe_meta.get("resume_id") and user_id:
-            # Look up resume's stored compiler preference
+        if safe_meta.get("resume_id") and user_id:
+            # Look up resume's stored compiler preference and compile settings
             from sqlalchemy import select as sa_select
             try:
                 resume_result = await db.execute(
@@ -219,11 +220,18 @@ async def submit_job(
                 )
                 resume_meta = resume_result.scalar_one_or_none()
                 if isinstance(resume_meta, dict):
-                    stored_compiler = resume_meta.get("compiler", "")
-                    if stored_compiler in settings.ALLOWED_LATEX_COMPILERS:
-                        compiler = stored_compiler
+                    if not request.compiler:
+                        stored_compiler = resume_meta.get("compiler", "")
+                        if stored_compiler in settings.ALLOWED_LATEX_COMPILERS:
+                            compiler = stored_compiler
+                    # Collect compile settings for the worker
+                    compile_settings = {
+                        k: resume_meta[k]
+                        for k in ("main_file", "extra_packages", "latexmk_flags", "texlive_version")
+                        if k in resume_meta and resume_meta[k] is not None
+                    } or None
             except Exception as exc:
-                logger.debug(f"Could not fetch resume compiler preference: {exc}")
+                logger.debug(f"Could not fetch resume compile settings: {exc}")
 
         if request.job_type == "latex_compilation":
             if not request.latex_content:
@@ -240,6 +248,7 @@ async def submit_job(
                 device_fingerprint=request.device_fingerprint,
                 metadata=extra_meta,
                 compiler=compiler,
+                compile_settings=compile_settings,
             )
 
         elif request.job_type == "llm_optimization":
