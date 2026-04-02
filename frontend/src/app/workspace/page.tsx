@@ -197,6 +197,11 @@ export default function WorkspacePage() {
     return Math.max(resume.variant_count ?? 0, variantMap[resume.id]?.length ?? 0)
   }, [variantMap])
 
+  const veryStaleResumes = useMemo(
+    () => resumes.filter((r) => r.freshness_status === 'very_stale'),
+    [resumes]
+  )
+
   if (sessionLoading) {
     return (
       <div className="flex h-[70vh] items-center justify-center">
@@ -334,11 +339,6 @@ export default function WorkspacePage() {
         <ExportDropdown resumeId={resume.id} variant="card" />
       </div>
     </article>
-  )
-
-  const veryStaleResumes = useMemo(
-    () => resumes.filter((r) => r.freshness_status === 'very_stale'),
-    [resumes]
   )
 
   return (
