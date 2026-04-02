@@ -1,6 +1,6 @@
 import re
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -51,13 +51,23 @@ class ResumeResponse(ResumeBase):
     github_last_sync_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    # Freshness (Feature 48) — computed from updated_at, no DB column needed
+    days_since_updated: int = 0
+    freshness_status: str = "fresh"  # "fresh" | "stale" | "very_stale"
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     @model_validator(mode='after')
-    def _compute_share_url(self) -> 'ResumeResponse':
+    def _compute_derived_fields(self) -> 'ResumeResponse':
         if self.share_token and not self.share_url:
             self.share_url = f"{settings.FRONTEND_URL}/r/{self.share_token}"
+        now = datetime.now(timezone.utc)
+        updated = self.updated_at
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        days = (now - updated).days
+        self.days_since_updated = days
+        self.freshness_status = "fresh" if days < 30 else "stale" if days < 90 else "very_stale"
         return self
 
 
@@ -120,6 +130,9 @@ class ResumeStats(BaseModel):
     total_resumes: int
     total_templates: int
     last_updated: Optional[datetime]
+    avg_ats_score: Optional[float] = None
+    best_ats_score: Optional[float] = None
+    optimized_count: int = 0
 
 
 # --- Search schemas ---
@@ -160,11 +173,34 @@ async def get_resume_stats(
     latest = await db.execute(
         select(func.max(Resume.updated_at)).where(Resume.user_id == user_id)
     )
+    ats_avg = await db.execute(
+        select(func.avg(Optimization.ats_score)).where(
+            Optimization.user_id == user_id,
+            Optimization.ats_score.is_not(None),
+        )
+    )
+    ats_max = await db.execute(
+        select(func.max(Optimization.ats_score)).where(
+            Optimization.user_id == user_id,
+            Optimization.ats_score.is_not(None),
+        )
+    )
+    opt_count = await db.execute(
+        select(func.count(func.distinct(Optimization.resume_id))).where(
+            Optimization.user_id == user_id,
+            Optimization.ats_score.is_not(None),
+        )
+    )
 
+    avg_val = ats_avg.scalar()
+    max_val = ats_max.scalar()
     return {
         "total_resumes": total.scalar() or 0,
         "total_templates": templates.scalar() or 0,
-        "last_updated": latest.scalar()
+        "last_updated": latest.scalar(),
+        "avg_ats_score": round(float(avg_val), 1) if avg_val is not None else None,
+        "best_ats_score": round(float(max_val), 1) if max_val is not None else None,
+        "optimized_count": opt_count.scalar() or 0,
     }
 
 @router.post("/", response_model=ResumeResponse, status_code=status.HTTP_201_CREATED)
@@ -661,6 +697,12 @@ class OptimizationHistoryEntry(BaseModel):
     tokens_used: Optional[int]
 
 
+class ScoreHistoryPoint(BaseModel):
+    timestamp: datetime
+    ats_score: float
+    label: Optional[str] = None
+
+
 class RestoreOptimizationResponse(BaseModel):
     success: bool
     latex_content: str
@@ -730,6 +772,37 @@ async def get_optimization_history(
     except Exception as exc:
         logger.warning(f"Error serializing optimization history for resume {resume_id}: {exc}")
         return []
+
+
+@router.get("/{resume_id}/score-history", response_model=List[ScoreHistoryPoint])
+async def get_score_history(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Return ATS score history for a resume, sorted oldest-first. Only entries with a score."""
+    try:
+        result = await db.execute(
+            select(Optimization)
+            .where(
+                Optimization.resume_id == resume_id,
+                Optimization.user_id == user_id,
+                Optimization.ats_score.is_not(None),
+            )
+            .order_by(Optimization.created_at.asc())
+        )
+        rows = result.scalars().all()
+    except Exception as exc:
+        logger.warning(f"DB error fetching score history for resume {resume_id}: {exc}")
+        return []
+    return [
+        {
+            "timestamp": r.created_at,
+            "ats_score": float(r.ats_score),
+            "label": r.checkpoint_label,
+        }
+        for r in rows
+    ]
 
 
 @router.post(
