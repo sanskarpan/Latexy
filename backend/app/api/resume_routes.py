@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..database.models import Optimization, Resume, UsageAnalytics
+from ..database.models import Optimization, Resume, ResumeCollaborator, UsageAnalytics
 from ..middleware.auth_middleware import get_current_user_required
 
 logger = get_logger(__name__)
@@ -1245,3 +1245,214 @@ async def bulk_export(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="latexy-resumes-{today}.zip"'},
     )
+
+
+# ── Feature 40 — Collaborator management ─────────────────────────────────────
+
+_VALID_ROLES = {"editor", "commenter", "viewer"}
+
+
+class CollaboratorInviteRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+    role: str = Field(default="editor")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        if v not in _VALID_ROLES:
+            raise ValueError(f"role must be one of {sorted(_VALID_ROLES)}")
+        return v
+
+
+class CollaboratorRoleUpdate(BaseModel):
+    role: str
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: str) -> str:
+        if v not in _VALID_ROLES:
+            raise ValueError(f"role must be one of {sorted(_VALID_ROLES)}")
+        return v
+
+
+class CollaboratorResponse(BaseModel):
+    id: str
+    resume_id: str
+    user_id: str
+    user_name: Optional[str]
+    user_email: Optional[str]
+    role: str
+    invited_by: Optional[str]
+    joined_at: Optional[datetime]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.post(
+    "/{resume_id}/collaborators",
+    response_model=CollaboratorResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def invite_collaborator(
+    resume_id: str,
+    body: CollaboratorInviteRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Invite a user by email to collaborate on a resume (owner only)."""
+    await _verify_resume_ownership(db, resume_id, user_id)
+
+    from ..database.models import User
+
+    # Look up invitee by email
+    result = await db.execute(
+        select(User).where(User.email == body.email.lower().strip())
+    )
+    invitee = result.scalar_one_or_none()
+    if invitee is None:
+        raise HTTPException(status_code=404, detail="User with that email not found")
+
+    if invitee.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot invite yourself")
+
+    # Check for existing row
+    existing_result = await db.execute(
+        select(ResumeCollaborator).where(
+            ResumeCollaborator.resume_id == resume_id,
+            ResumeCollaborator.user_id == invitee.id,
+        )
+    )
+    if existing_result.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="User is already a collaborator")
+
+    collab = ResumeCollaborator(
+        resume_id=resume_id,
+        user_id=invitee.id,
+        role=body.role,
+        invited_by=user_id,
+    )
+    db.add(collab)
+    await db.commit()
+    await db.refresh(collab)
+
+    return CollaboratorResponse(
+        id=collab.id,
+        resume_id=collab.resume_id,
+        user_id=collab.user_id,
+        user_name=invitee.name,
+        user_email=invitee.email,
+        role=collab.role,
+        invited_by=collab.invited_by,
+        joined_at=collab.joined_at,
+        created_at=collab.created_at,
+    )
+
+
+@router.get("/{resume_id}/collaborators", response_model=List[CollaboratorResponse])
+async def list_collaborators(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """List all collaborators for a resume (owner only)."""
+    await _verify_resume_ownership(db, resume_id, user_id)
+
+    from ..database.models import User
+
+    result = await db.execute(
+        select(ResumeCollaborator, User)
+        .join(User, User.id == ResumeCollaborator.user_id)
+        .where(ResumeCollaborator.resume_id == resume_id)
+        .order_by(ResumeCollaborator.created_at)
+    )
+    rows = result.all()
+
+    return [
+        CollaboratorResponse(
+            id=collab.id,
+            resume_id=collab.resume_id,
+            user_id=collab.user_id,
+            user_name=user.name,
+            user_email=user.email,
+            role=collab.role,
+            invited_by=collab.invited_by,
+            joined_at=collab.joined_at,
+            created_at=collab.created_at,
+        )
+        for collab, user in rows
+    ]
+
+
+@router.patch(
+    "/{resume_id}/collaborators/{collab_user_id}",
+    response_model=CollaboratorResponse,
+)
+async def update_collaborator_role(
+    resume_id: str,
+    collab_user_id: str,
+    body: CollaboratorRoleUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Change a collaborator's role (owner only)."""
+    await _verify_resume_ownership(db, resume_id, user_id)
+
+    from ..database.models import User
+
+    result = await db.execute(
+        select(ResumeCollaborator).where(
+            ResumeCollaborator.resume_id == resume_id,
+            ResumeCollaborator.user_id == collab_user_id,
+        )
+    )
+    collab = result.scalar_one_or_none()
+    if collab is None:
+        raise HTTPException(status_code=404, detail="Collaborator not found")
+
+    collab.role = body.role
+    await db.commit()
+    await db.refresh(collab)
+
+    user_result = await db.execute(select(User).where(User.id == collab_user_id))
+    user = user_result.scalar_one_or_none()
+
+    return CollaboratorResponse(
+        id=collab.id,
+        resume_id=collab.resume_id,
+        user_id=collab.user_id,
+        user_name=user.name if user else None,
+        user_email=user.email if user else None,
+        role=collab.role,
+        invited_by=collab.invited_by,
+        joined_at=collab.joined_at,
+        created_at=collab.created_at,
+    )
+
+
+@router.delete(
+    "/{resume_id}/collaborators/{collab_user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_collaborator(
+    resume_id: str,
+    collab_user_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Remove a collaborator from a resume (owner only)."""
+    await _verify_resume_ownership(db, resume_id, user_id)
+
+    result = await db.execute(
+        select(ResumeCollaborator).where(
+            ResumeCollaborator.resume_id == resume_id,
+            ResumeCollaborator.user_id == collab_user_id,
+        )
+    )
+    collab = result.scalar_one_or_none()
+    if collab is None:
+        raise HTTPException(status_code=404, detail="Collaborator not found")
+
+    await db.delete(collab)
+    await db.commit()
+    return None

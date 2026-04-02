@@ -38,8 +38,10 @@ import {
   Settings2,
   QrCode,
   Calendar,
+  Users,
 } from 'lucide-react'
-import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type LatexCompiler, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
+import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
+import { useSession } from '@/lib/auth-client'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
 import ShareResumeModal from '@/components/ShareResumeModal'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
@@ -68,6 +70,7 @@ import QrCodeInserter from '@/components/QrCodeInserter'
 import DateStandardizerPanel from '@/components/DateStandardizerPanel'
 import CompilerSelector from '@/components/CompilerSelector'
 import CompileSettingsModal from '@/components/CompileSettingsModal'
+import CollaboratorPanel from '@/components/CollaboratorPanel'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
@@ -679,6 +682,7 @@ export default function ResumeEditPage() {
   const router = useRouter()
   const resumeId = params.resumeId as string
   const flags = useFeatureFlags()
+  const { data: sessionData } = useSession()
 
   // Core state
   const [title, setTitle] = useState('')
@@ -808,6 +812,11 @@ export default function ResumeEditPage() {
   const [ghPushing, setGhPushing] = useState(false)
   const [ghTogglingSync, setGhTogglingSync] = useState(false)
 
+  // Collaboration (Feature 40)
+  const [collabOpen, setCollabOpen] = useState(false)
+  const [collabIsOwner, setCollabIsOwner] = useState(true)
+  const [presenceUsers, setPresenceUsers] = useState<import('@/lib/api-client').PresenceUser[]>([])
+
   const searchParams = useSearchParams()
   const activePdfJobId = useRef<string | null>(null)
   const editorRef = useRef<LaTeXEditorRef>(null)
@@ -873,6 +882,9 @@ export default function ResumeEditPage() {
 
         // GitHub sync state
         setGhSyncEnabled(data.github_sync_enabled ?? false)
+
+        // Collaboration ownership (Feature 40)
+        setCollabIsOwner(data.user_id === sessionData?.user?.id)
 
         setParentResumeId(data.parent_resume_id ?? null)
         // Fetch parent title if this is a variant
@@ -1663,6 +1675,20 @@ export default function ResumeEditPage() {
             <Settings2 size={11} />
           </button>
 
+          {/* Collaborators button (Feature 40) */}
+          <button
+            onClick={() => setCollabOpen(true)}
+            title="Collaborators"
+            className="relative flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-300"
+          >
+            <Users size={11} />
+            {presenceUsers.length > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-violet-500 text-[8px] font-bold text-white">
+                {presenceUsers.length}
+              </span>
+            )}
+          </button>
+
           <div className="mx-1 h-3.5 w-px bg-white/[0.08]" />
 
           <button
@@ -1812,6 +1838,14 @@ export default function ResumeEditPage() {
                   return next
                 })
               }}
+              collabEnabled={!!(sessionData?.session?.token)}
+              collabResumeId={resumeId}
+              collabUser={sessionData?.session?.token ? {
+                name: sessionData.user?.name || sessionData.user?.email || 'Anonymous',
+                color: `hsl(${Math.abs(sessionData.user?.id?.charCodeAt(0) ?? 0) % 360}, 70%, 60%)`,
+                token: sessionData.session.token,
+              } : undefined}
+              onPresenceChange={setPresenceUsers}
             />
 
             {/* AI Summary Widget trigger — shown when cursor is in summary section */}
@@ -2296,6 +2330,15 @@ export default function ResumeEditPage() {
             setCompiler(saved.compiler)
           }
         }}
+      />
+
+      {/* Collaborator Panel (Feature 40) */}
+      <CollaboratorPanel
+        open={collabOpen}
+        resumeId={resumeId}
+        isOwner={collabIsOwner}
+        presenceUsers={presenceUsers}
+        onClose={() => setCollabOpen(false)}
       />
 
       {/* ── STATUS BAR ── */}

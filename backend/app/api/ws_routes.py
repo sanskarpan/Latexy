@@ -30,6 +30,7 @@ from fastapi.websockets import WebSocket, WebSocketDisconnect
 from ..core.event_bus import event_bus
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client
+from ..services.collab_manager import collab_manager, handle_collab_message
 
 logger = get_logger(__name__)
 
@@ -178,6 +179,114 @@ async def _heartbeat(websocket: WebSocket) -> None:
         pass
     except Exception:
         pass
+
+
+@ws_router.websocket("/ws/collab/{resume_id}")
+async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
+    """
+    Y.js CRDT collaboration WebSocket for a specific resume.
+
+    Auth:       ?token=<better-auth-session-token>
+    Permission: resume owner OR a row in resume_collaborators for this user.
+
+    Binary protocol: lib0-encoded Y.js messages (MSG_SYNC / MSG_AWARENESS).
+    See collab_manager.py for the full protocol description.
+    """
+    from sqlalchemy import select as sa_select
+
+    from ..database.connection import get_async_db_session
+    from ..database.models import Resume, ResumeCollaborator
+    from ..middleware.auth_middleware import (
+        _validate_better_auth_session,
+        auth_middleware,
+    )
+
+    token: Optional[str] = websocket.query_params.get("token")
+    # Sanitise display fields
+    user_name = (websocket.query_params.get("name") or "Anonymous")[:60]
+    user_color = (websocket.query_params.get("color") or "#7c3aed")[:20]
+
+    # ── Auth ──────────────────────────────────────────────────────────────
+    user_id: Optional[str] = None
+    if token:
+        async with get_async_db_session() as db:
+            user_id = await _validate_better_auth_session(token, db)
+        if not user_id:
+            user_id = auth_middleware.user_id(token)
+
+    if not user_id:
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+
+    # ── Permission ────────────────────────────────────────────────────────
+    is_owner = False
+    async with get_async_db_session() as db:
+        result = await db.execute(sa_select(Resume).where(Resume.id == resume_id))
+        resume = result.scalar_one_or_none()
+
+        if resume is None:
+            await websocket.close(code=4004, reason="Resume not found")
+            return
+
+        is_owner = resume.user_id == user_id
+
+        if not is_owner:
+            collab_result = await db.execute(
+                sa_select(ResumeCollaborator).where(
+                    ResumeCollaborator.resume_id == resume_id,
+                    ResumeCollaborator.user_id == user_id,
+                )
+            )
+            collab = collab_result.scalar_one_or_none()
+            if collab is None:
+                await websocket.close(code=4003, reason="Forbidden")
+                return
+
+    # ── Accept and join room ──────────────────────────────────────────────
+    await websocket.accept()
+    client_id = str(uuid.uuid4())
+    user_info = {
+        "client_id": client_id,
+        "user_id": user_id,
+        "name": user_name,
+        "color": user_color,
+        "is_owner": is_owner,
+    }
+
+    room = await collab_manager.get_or_create(resume_id)
+    await room.add(client_id, websocket, user_info)
+    logger.info(
+        "Collab: %s joined %s (room=%d)",
+        user_name,
+        resume_id[:8],
+        room.size,
+    )
+
+    try:
+        while True:
+            try:
+                data = await websocket.receive_bytes()
+            except WebSocketDisconnect:
+                break
+            except Exception as exc:
+                logger.debug("Collab: receive error %s: %s", client_id[:8], exc)
+                break
+
+            await handle_collab_message(resume_id, client_id, data, room)
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.error("Collab: handler error: %s", exc)
+    finally:
+        await room.remove(client_id)
+        await collab_manager.maybe_cleanup(resume_id)
+        logger.info(
+            "Collab: %s left %s (room=%d)",
+            user_name,
+            resume_id[:8],
+            room.size,
+        )
 
 
 async def _request_cancellation(job_id: str) -> None:

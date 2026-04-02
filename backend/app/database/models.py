@@ -4,10 +4,10 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import uuid4
 
-from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 
 from .connection import Base
 
@@ -131,6 +131,13 @@ class Resume(Base):
     optimizations: Mapped[List["Optimization"]] = relationship("Optimization", back_populates="resume", cascade="all, delete-orphan")
     cover_letters: Mapped[List["CoverLetter"]] = relationship("CoverLetter", back_populates="resume", cascade="all, delete-orphan")
     interview_preps: Mapped[List["InterviewPrep"]] = relationship("InterviewPrep", back_populates="resume", cascade="all, delete-orphan")
+    # Collaboration (Feature 40)
+    collaborators: Mapped[List["ResumeCollaborator"]] = relationship(
+        "ResumeCollaborator",
+        foreign_keys="[ResumeCollaborator.resume_id]",
+        back_populates="resume",
+        cascade="all, delete-orphan",
+    )
 
 class Compilation(Base):
     """Compilation history for tracking LaTeX compilations."""
@@ -353,6 +360,58 @@ class ResumeTemplate(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ResumeCollaborator(Base):
+    """Per-resume collaborator access control (Feature 40)."""
+
+    __tablename__ = "resume_collaborators"
+    __table_args__ = (
+        UniqueConstraint("resume_id", "user_id", name="uq_resume_collaborators_resume_user"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    resume_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("resumes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # 'editor' | 'commenter' | 'viewer'
+    role: Mapped[str] = mapped_column(String(20), nullable=False, server_default="editor")
+    invited_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    joined_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    # Relationships
+    resume: Mapped["Resume"] = relationship(
+        "Resume",
+        foreign_keys=[resume_id],
+        back_populates="collaborators",
+    )
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+    inviter: Mapped[Optional["User"]] = relationship("User", foreign_keys=[invited_by])
 
 
 # Create indexes for performance

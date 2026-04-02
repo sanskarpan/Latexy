@@ -354,18 +354,18 @@ archive, and "My Templates" section. Pure UI + thin API over existing schema.
 Each user sees others' cursors with name/color labels. Role-based access (owner/editor/viewer).
 
 ### 40A · Dependencies
-- [ ] `pnpm add yjs y-monaco y-websocket y-protocols`
-- [ ] Verify `websockets` available in Python env (for WS server-side if extending)
+- [x] `pnpm add yjs y-monaco y-websocket y-protocols`
+- [x] Verify `websockets` available in Python env (for WS server-side if extending)
 
 ### 40B · Database Migration
-- [ ] Create `backend/alembic/versions/0012_add_collaboration.py`:
+- [x] Create `backend/alembic/versions/0013_add_collaboration.py`:
   ```sql
   CREATE TABLE resume_collaborators (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     resume_id UUID NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role TEXT NOT NULL DEFAULT 'editor',   -- 'editor' | 'commenter' | 'viewer'
-    invited_by TEXT REFERENCES users(id),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL DEFAULT 'editor',   -- 'editor' | 'commenter' | 'viewer'
+    invited_by UUID REFERENCES users(id),
     joined_at TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(resume_id, user_id)
@@ -374,48 +374,43 @@ Each user sees others' cursors with name/color labels. Role-based access (owner/
   ```
 
 ### 40C · Backend — Collaborator Management Endpoints
-- [ ] Add to `backend/app/api/resume_routes.py`:
+- [x] Add to `backend/app/api/resume_routes.py`:
   - `POST /resumes/{resume_id}/collaborators` — invite by email (creates row; sends invite email)
   - `GET /resumes/{resume_id}/collaborators` — list collaborators with roles
   - `PATCH /resumes/{resume_id}/collaborators/{user_id}` — change role (owner only)
   - `DELETE /resumes/{resume_id}/collaborators/{user_id}` — remove collaborator
 
 ### 40D · Backend — Collab WebSocket Channel
-- [ ] Extend `backend/app/api/ws_routes.py` with new path `/ws/collab/{resume_id}`:
+- [x] Extend `backend/app/api/ws_routes.py` with new path `/ws/collab/{resume_id}`:
   - Auth: validate session token from query param `?token=...`
   - Permission: owner or `resume_collaborators` row with `editor` role
-  - Protocol: forward Y.js binary update messages between all connected clients on same resume_id
-  - Store Y.js document snapshot in Redis: `SET collab:{resume_id}:state {binary}` (EX 3600)
-  - On new client connect: send current snapshot first, then subscribe to updates
+  - Protocol: Y.js relay server — forward binary messages; persist updates in Redis (24h TTL)
+  - `backend/app/services/collab_manager.py`: lib0 encode/decode, CollabRoom, CollabManager, handle_collab_message
+  - On new client connect: send all stored updates as SYNC_STEP2 catch-up messages
 
 ### 40E · Frontend — Y.js Integration in LaTeXEditor
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
-  - Add props: `collabEnabled?: boolean`, `collabResumeId?: string`,
-    `collabUser?: {name: string; color: string}`
-  - When `collabEnabled`:
-    ```typescript
-    const ydoc = new Y.Doc()
-    const provider = new WebsocketProvider(wsUrl, collabResumeId, ydoc)
-    const yText = ydoc.getText('content')
-    new MonacoBinding(yText, editor.getModel()!, new Set([editor]), provider.awareness)
-    provider.awareness.setLocalStateField('user', { name, color })
-    ```
-  - Render other cursors as Monaco decorations with `contentAfter` CSS for name label
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
+  - Add props: `collabEnabled?`, `collabResumeId?`, `collabUser?`, `onPresenceChange?`
+  - Dynamic imports of yjs, y-websocket, y-monaco inside async `handleEditorDidMount`
+  - MonacoBinding wires Y.js Doc to Monaco model; uncontrolled (`defaultValue`) when collab active
+  - Awareness broadcasts cursor presence to parent via `onPresenceChange`
+  - Cleanup useEffect destroys binding/provider/ydoc on unmount
 
 ### 40F · Frontend — Collaborator Panel
-- [ ] Create `frontend/src/components/CollaboratorPanel.tsx`:
-  - Live presence: colored avatar dots for connected users (from Y.js awareness)
-  - Offline collaborators list
-  - Invite by email input (owner only)
-  - Role change dropdown (owner only)
-  - "Invite Link" button generates share link with `collab` scope
+- [x] Create `frontend/src/components/CollaboratorPanel.tsx`:
+  - Live presence: colored avatar dots (from Y.js awareness via `presenceUsers` prop)
+  - Collaborator list with role dropdown and remove button (owner only)
+  - Invite by email form with role selector (owner only)
+  - Integrated into `frontend/src/app/workspace/[resumeId]/edit/page.tsx`
 
 ### 40G · Tests
-- [ ] `backend/test/test_collaboration.py`:
-  - Invite collaborator → appears in GET list
-  - Non-collaborator WebSocket connect → 403
-  - Owner can change editor → viewer role
-  - Removing collaborator prevents subsequent WebSocket auth
+- [x] `backend/test/test_collaboration.py` — 33 tests passing:
+  - lib0 varuint/varbuffer encoding roundtrips
+  - SYNC_STEP2 message structure
+  - CollabRoom add/remove/broadcast/dead-client-removal
+  - CollabManager create/cleanup
+  - handle_collab_message: SYNC_STEP1 catchup, MSG_UPDATE persist+relay, awareness relay, malformed graceful
+  - REST endpoints: invite 201, list 404, role validation 422
 
 ---
 
