@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2 } from 'lucide-react'
+import { GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -32,6 +32,8 @@ export default function WorkspacePage() {
 
   const [atsStats, setAtsStats] = useState<ResumeStats | null>(null)
   const [staleBannerDismissed, setStaleBannerDismissed] = useState(false)
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
 
   // Onboarding for new users
   const {
@@ -125,6 +127,26 @@ export default function WorkspacePage() {
     () => resumes.filter((resume) => resume.title.toLowerCase().includes(searchQuery.toLowerCase())),
     [resumes, searchQuery]
   )
+
+  const handleBulkExport = async (format: 'tex' | 'pdf' | 'docx') => {
+    setExportLoading(true)
+    setExportMenuOpen(false)
+    try {
+      const blob = await apiClient.bulkExport(format)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const date = new Date().toISOString().slice(0, 10)
+      a.download = `latexy-resumes-${date}.zip`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Download started')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed')
+    } finally {
+      setExportLoading(false)
+    }
+  }
 
   // Group resumes into masters (no parent) and variants
   const { masterResumes, variantMap } = useMemo(() => {
@@ -388,6 +410,41 @@ export default function WorkspacePage() {
           >
             Match to Job
           </button>
+
+          {/* Export All dropdown (Feature 49) */}
+          <div className="relative">
+            <button
+              onClick={() => setExportMenuOpen(o => !o)}
+              disabled={exportLoading}
+              className="btn-ghost flex items-center gap-1.5 px-3 py-2 text-xs"
+            >
+              {exportLoading ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Download size={12} />
+              )}
+              <span className="hidden sm:inline">Export All</span>
+              <ChevronDown size={11} />
+            </button>
+            {exportMenuOpen && (
+              <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-white/[0.08] bg-[#111] py-1 shadow-xl">
+                {([
+                  { format: 'tex', label: 'LaTeX Source (.zip)' },
+                  { format: 'pdf', label: 'PDF Files (.zip)' },
+                  { format: 'docx', label: 'Word Docs (.zip)' },
+                ] as const).map(({ format, label }) => (
+                  <button
+                    key={format}
+                    onClick={() => handleBulkExport(format)}
+                    className="w-full px-3 py-2 text-left text-[12px] text-zinc-400 transition hover:bg-white/[0.05] hover:text-zinc-200"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <Link href="/workspace/new" className="btn-accent px-4 py-2 text-xs">
             New Resume
           </Link>
