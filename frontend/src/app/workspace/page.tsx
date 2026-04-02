@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap } from 'lucide-react'
+import { GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type SemanticMatchResult } from '@/lib/api-client'
+import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import SemanticMatchModal from '@/components/ats/SemanticMatchModal'
@@ -29,6 +29,9 @@ export default function WorkspacePage() {
   const [matchResults, setMatchResults] = useState<SemanticMatchResult[]>([])
   const [isMatchLoading, setIsMatchLoading] = useState(false)
   const [matchError, setMatchError] = useState<string | null>(null)
+
+  const [atsStats, setAtsStats] = useState<ResumeStats | null>(null)
+  const [staleBannerDismissed, setStaleBannerDismissed] = useState(false)
 
   // Onboarding for new users
   const {
@@ -98,9 +101,14 @@ export default function WorkspacePage() {
     const fetchData = async () => {
       setIsLoading(true)
       try {
-        const [resumesData, jobsData] = await Promise.all([apiClient.listResumes(), apiClient.listJobs()])
+        const [resumesData, jobsData, statsData] = await Promise.all([
+          apiClient.listResumes(),
+          apiClient.listJobs(),
+          apiClient.getResumeStats().catch(() => null),
+        ])
         setResumes(Array.isArray(resumesData) ? resumesData : [])
         setJobs([...(jobsData.jobs || [])].sort((a, b) => b.last_updated - a.last_updated))
+        if (statsData) setAtsStats(statsData)
       } catch (error) {
         if (process.env.NODE_ENV === 'development') {
           console.error('Failed to fetch workspace data', error)
@@ -246,7 +254,20 @@ export default function WorkspacePage() {
       {isVariant && parentTitle && (
         <p className="mt-0.5 text-[10px] text-zinc-500">Variant of: {parentTitle}</p>
       )}
-      <p className="mt-2 text-xs text-zinc-500">Updated {new Date(resume.updated_at).toLocaleDateString()}</p>
+      <p
+        className={`mt-2 text-xs ${
+          resume.freshness_status === 'very_stale'
+            ? 'text-rose-400'
+            : resume.freshness_status === 'stale'
+            ? 'text-amber-400'
+            : 'text-zinc-500'
+        }`}
+        title={new Date(resume.updated_at).toLocaleString()}
+      >
+        {resume.days_since_updated != null && resume.days_since_updated > 0
+          ? `Updated ${resume.days_since_updated}d ago`
+          : `Updated today`}
+      </p>
 
       <div className="mt-6 grid grid-cols-3 gap-2 text-xs">
         <Link
@@ -315,8 +336,34 @@ export default function WorkspacePage() {
     </article>
   )
 
+  const veryStaleResumes = useMemo(
+    () => resumes.filter((r) => r.freshness_status === 'very_stale'),
+    [resumes]
+  )
+
   return (
     <div className="content-shell space-y-6">
+      {/* Stale resume banner (Feature 48) */}
+      {!staleBannerDismissed && veryStaleResumes.length > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-400/20 bg-amber-500/[0.07] px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle size={14} className="shrink-0 text-amber-400" />
+            <p className="text-[13px] text-amber-200">
+              <strong>{veryStaleResumes.length}</strong>{' '}
+              {veryStaleResumes.length === 1 ? "resume hasn't" : "resumes haven't"} been updated in 90+ days.
+              Update {veryStaleResumes.length === 1 ? 'it' : 'them'} to stay competitive.
+            </p>
+          </div>
+          <button
+            onClick={() => setStaleBannerDismissed(true)}
+            className="shrink-0 rounded-md p-1 text-amber-500 transition hover:bg-amber-500/10 hover:text-amber-300"
+            aria-label="Dismiss"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="overline">Workspace</p>
@@ -575,6 +622,35 @@ export default function WorkspacePage() {
               </Link>
             )}
           </section>
+
+          {atsStats && atsStats.optimized_count > 0 && (
+            <section className="surface-panel edge-highlight p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <BarChart2 size={13} className="text-orange-300/70" />
+                <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300">ATS Scores</h3>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <p className="text-lg font-bold tabular-nums text-orange-300">
+                    {atsStats.avg_ats_score != null ? Math.round(atsStats.avg_ats_score) : '—'}
+                  </p>
+                  <p className="text-[10px] text-zinc-600 mt-0.5">Avg</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold tabular-nums text-emerald-400">
+                    {atsStats.best_ats_score != null ? Math.round(atsStats.best_ats_score) : '—'}
+                  </p>
+                  <p className="text-[10px] text-zinc-600 mt-0.5">Best</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold tabular-nums text-zinc-200">
+                    {atsStats.optimized_count}
+                  </p>
+                  <p className="text-[10px] text-zinc-600 mt-0.5">Optimized</p>
+                </div>
+              </div>
+            </section>
+          )}
 
           <section className="surface-panel edge-highlight p-5">
             <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300">Workflow Tip</h3>
