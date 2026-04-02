@@ -192,13 +192,14 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
     Binary protocol: lib0-encoded Y.js messages (MSG_SYNC / MSG_AWARENESS).
     See collab_manager.py for the full protocol description.
     """
+    from sqlalchemy import select as sa_select
+
     from ..database.connection import get_async_db_session
     from ..database.models import Resume, ResumeCollaborator
     from ..middleware.auth_middleware import (
         _validate_better_auth_session,
         auth_middleware,
     )
-    from sqlalchemy import select as sa_select
 
     token: Optional[str] = websocket.query_params.get("token")
     # Sanitise display fields
