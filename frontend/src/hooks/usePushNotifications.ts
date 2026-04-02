@@ -1,14 +1,10 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback } from 'react'
 
 const LS_KEY = 'latexy_notifications_enabled'
 const PERMISSION_ASKED_KEY = 'latexy_notification_asked'
 
 export function usePushNotifications(enabled?: boolean) {
-  const enabledRef = useRef(enabled ?? getStoredPref())
-
-  useEffect(() => {
-    enabledRef.current = enabled ?? getStoredPref()
-  }, [enabled])
+  const explicitEnabled = enabled
 
   const requestPermission = useCallback(async () => {
     if (typeof window === 'undefined') return
@@ -22,7 +18,8 @@ export function usePushNotifications(enabled?: boolean) {
 
   const notify = useCallback((title: string, body: string, onClick?: () => void) => {
     if (typeof window === 'undefined') return
-    if (!enabledRef.current) return
+    const isEnabled = explicitEnabled !== undefined ? explicitEnabled : getStoredPref()
+    if (!isEnabled) return
     if (!('Notification' in window)) return
     if (Notification.permission !== 'granted') return
     // Skip if tab is focused — user can already see the result
@@ -39,7 +36,7 @@ export function usePushNotifications(enabled?: boolean) {
         onClick()
       }
     }
-  }, [])
+  }, [explicitEnabled])
 
   return { requestPermission, notify }
 }
