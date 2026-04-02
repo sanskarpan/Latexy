@@ -680,6 +680,7 @@ class SharedResumeResponse(BaseModel):
     share_token: str
     pdf_url: str
     compiled_at: Optional[str]
+    is_anonymous: bool = False
 
 
 @router.get("/share/{share_token}", response_model=SharedResumeResponse)
@@ -690,6 +691,7 @@ async def get_shared_resume(
     """
     Public endpoint — no auth required.
     Returns metadata + a presigned PDF URL for a shared resume.
+    If the share was created with anonymous=True, serves the redacted PDF.
     """
     from pathlib import Path
 
@@ -705,6 +707,48 @@ async def get_shared_resume(
             status_code=404,
             detail="Share link not found or has been revoked",
         )
+
+    meta: dict = resume.resume_settings or {}
+    is_anonymous = bool(meta.get("share_anonymous", False))
+
+    # ── Anonymous mode: try to serve the pre-compiled redacted PDF ───────────
+    if is_anonymous:
+        anon_job_id: Optional[str] = meta.get("share_anonymous_job_id")
+        pdf_url: Optional[str] = None
+
+        # 1) Check MinIO for a previously stored anon PDF
+        anon_minio_key = f"shares/{resume.id}/anon.pdf"
+        try:
+            from ..services.storage_service import generate_presigned_url
+            pdf_url = generate_presigned_url(anon_minio_key, ttl=3600)
+        except Exception:
+            pdf_url = None
+
+        # 2) If not in MinIO yet, try temp dir from the anon compile job
+        if not pdf_url and anon_job_id:
+            temp_pdf = Path(settings.TEMP_DIR) / anon_job_id / "resume.pdf"
+            if temp_pdf.exists():
+                try:
+                    from ..services.storage_service import generate_presigned_url, upload_bytes
+                    upload_bytes(anon_minio_key, temp_pdf.read_bytes(), "application/pdf")
+                    pdf_url = generate_presigned_url(anon_minio_key, ttl=3600)
+                    logger.info(f"Uploaded anonymous PDF for resume {resume.id}")
+                except Exception as exc:
+                    logger.warning(f"Could not upload anonymous PDF: {exc}")
+
+        if pdf_url:
+            return SharedResumeResponse(
+                resume_title=resume.title,
+                share_token=share_token,
+                pdf_url=pdf_url,
+                compiled_at=None,
+                is_anonymous=True,
+            )
+        # Anonymous compile still in progress — fall through to serve original
+        # with is_anonymous flag so frontend can show a note
+        logger.info(f"Anonymous PDF not ready yet for resume {resume.id}, serving original")
+
+    # ── Normal mode (or anonymous not ready yet) ─────────────────────────────
 
     # Find latest completed compilation for this resume
     comp_result = await db.execute(
@@ -724,7 +768,7 @@ async def get_shared_resume(
             detail="No compiled PDF available yet. Please compile your resume first.",
         )
 
-    pdf_url: Optional[str] = None
+    pdf_url = None
 
     # Try MinIO first (persistent storage)
     if compilation.pdf_path:
@@ -759,5 +803,6 @@ async def get_shared_resume(
         share_token=share_token,
         pdf_url=pdf_url,
         compiled_at=compilation.created_at.isoformat() if compilation.created_at else None,
+        is_anonymous=is_anonymous,
     )
 
