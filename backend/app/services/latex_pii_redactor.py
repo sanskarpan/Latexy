@@ -15,8 +15,10 @@ REDACT_PATTERNS = [
     (r'linkedin\.com/in/[A-Za-z0-9_%-]+', 'linkedin.com/in/████'),
     # GitHub profile URLs
     (r'github\.com/[A-Za-z0-9_-]+', 'github.com/████'),
-    # Conservative phone: 7+ digit groups with common separators
-    (r'\+?[\d][\d\s\-().]{6,14}[\d]', '███-████-████'),
+    # International phone: +CC NNN NNN NNNN (e.g. +1 555-123-4567, +44 20 1234 5678)
+    (r'\+\d{1,3}[\s\-.]?\(?\d{1,4}\)?[\s\-.]?\d{3,4}[\s\-.]?\d{3,4}', '███-████-████'),
+    # US/CA with parenthesised area code: (NNN) NNN-NNNN
+    (r'\(\d{3}\)[\s\-.]?\d{3}[\s\-.]?\d{4}', '███-████-████'),
 ]
 
 WATERMARK_PREAMBLE = r"""
@@ -30,7 +32,7 @@ WATERMARK_PREAMBLE = r"""
 def redact(latex_content: str) -> str:
     """
     Return a copy of *latex_content* with PII replaced by block characters.
-    Injects a draftwatermark after \\begin{document}.
+    Injects a draftwatermark preamble before \\begin{document}.
     The input string is never mutated.
     """
     result = latex_content
