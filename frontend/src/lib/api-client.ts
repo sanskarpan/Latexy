@@ -147,6 +147,9 @@ export interface ResumeResponse extends ResumeBase {
   github_last_sync_at?: string | null
   created_at: string
   updated_at: string
+  // Freshness (Feature 48) — computed server-side from updated_at
+  days_since_updated?: number
+  freshness_status?: 'fresh' | 'stale' | 'very_stale'
 }
 
 export interface DiffWithParentResponse {
@@ -169,6 +172,15 @@ export interface ResumeStats {
   total_resumes: number
   total_templates: number
   last_updated: string | null
+  avg_ats_score: number | null
+  best_ats_score: number | null
+  optimized_count: number
+}
+
+export interface ScoreHistoryPoint {
+  timestamp: string
+  ats_score: number
+  label: string | null
 }
 
 export interface PaginatedResumesResponse {
@@ -719,6 +731,12 @@ class ApiClient {
   async getOptimizationHistory(resumeId: string): Promise<OptimizationHistoryEntry[]> {
     return this.request<OptimizationHistoryEntry[]>(
       `/resumes/${encodeURIComponent(resumeId)}/optimization-history`
+    )
+  }
+
+  async getScoreHistory(resumeId: string): Promise<ScoreHistoryPoint[]> {
+    return this.request<ScoreHistoryPoint[]>(
+      `/resumes/${encodeURIComponent(resumeId)}/score-history`
     )
   }
 
