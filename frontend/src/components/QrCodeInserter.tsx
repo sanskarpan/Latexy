@@ -89,16 +89,17 @@ export default function QrCodeInserter({
   const handleInsert = useCallback(() => {
     if (!isValidUrl(url)) return
 
-    // Ensure \usepackage{qrcode} is in the preamble
+    // Insert at cursor FIRST (preserves cursor position before any setValue resets it)
+    const heightParam = SIZE_CM[size]
+    onInsert(`\\qrcode[height=${heightParam}]{\\detokenize{${url}}}`)
+
+    // THEN update the preamble (setValue resets cursor, but insert already happened)
     const currentLatex = getLatex()
     const withPackage = addPackageToPreamble(currentLatex, 'qrcode')
     if (withPackage !== currentLatex) {
       onLatexChange(withPackage)
     }
 
-    // Insert the QR command at cursor
-    const heightParam = SIZE_CM[size]
-    onInsert(`\\qrcode[height=${heightParam}]{${url}}`)
     onClose()
   }, [url, size, getLatex, onLatexChange, onInsert, onClose])
 
@@ -192,7 +193,7 @@ export default function QrCodeInserter({
           {valid && (
             <div className="rounded-lg border border-white/[0.06] bg-black/20 px-3 py-2">
               <p className="font-mono text-[11px] text-zinc-500">
-                {`\\qrcode[height=${SIZE_CM[size]}]{${url.length > 40 ? url.slice(0, 40) + '…' : url}}`}
+                {`\\qrcode[height=${SIZE_CM[size]}]{\\detokenize{${url.length > 35 ? url.slice(0, 35) + '…' : url}}}`}
               </p>
             </div>
           )}
