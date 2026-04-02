@@ -1,10 +1,13 @@
+import io
 import re
 import secrets
+import zipfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1029,20 +1032,34 @@ async def delete_checkpoint(
 
 # ── Share links ───────────────────────────────────────────────────────────
 
+class ShareLinkRequest(BaseModel):
+    anonymous: bool = False
+
+
 class ShareLinkResponse(BaseModel):
     share_token: str
     share_url: str
     created_at: datetime
+    anonymous: bool = False
 
 
 @router.post("/{resume_id}/share", response_model=ShareLinkResponse)
 async def create_share_link(
     resume_id: str,
+    body: ShareLinkRequest = None,
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required),
 ):
     """Generate (or return existing) share token for a resume."""
+    anonymous = body.anonymous if body else False
     resume = await _verify_resume_ownership(db, resume_id, user_id)
+
+    # Update anonymous flag in metadata regardless of whether token exists
+    current_meta: dict = dict(resume.resume_settings or {})
+    current_anonymous = current_meta.get("share_anonymous", False)
+    if anonymous != current_anonymous:
+        current_meta["share_anonymous"] = anonymous
+        resume.resume_settings = current_meta
 
     if not resume.share_token:
         from pathlib import Path
@@ -1074,14 +1091,36 @@ async def create_share_link(
                     logger.warning(f"Could not upload PDF to MinIO for share link: {exc}")
 
         resume.share_token = secrets.token_urlsafe(24)
-        resume.share_token_created_at = datetime.utcnow()
-        await db.commit()
-        await db.refresh(resume)
+        resume.share_token_created_at = datetime.now(timezone.utc)
+
+    # If anonymous mode is newly enabled, submit a compile job for redacted LaTeX
+    if anonymous and not current_meta.get("share_anonymous_job_id"):
+        try:
+            from ..services.latex_pii_redactor import redact
+            from ..workers.latex_worker import submit_latex_compilation
+            anon_job_id = str(uuid4())
+            redacted_latex = redact(resume.latex_content)
+            submit_latex_compilation(
+                latex_content=redacted_latex,
+                job_id=anon_job_id,
+                user_id=user_id,
+                resume_id=resume_id,
+                metadata={"anonymous_share": True, "resume_id": resume_id},
+            )
+            current_meta["share_anonymous_job_id"] = anon_job_id
+            resume.resume_settings = current_meta
+            logger.info(f"Submitted anonymous compile job {anon_job_id} for resume {resume_id}")
+        except Exception as exc:
+            logger.warning(f"Could not submit anonymous compile job: {exc}")
+
+    await db.commit()
+    await db.refresh(resume)
 
     return ShareLinkResponse(
         share_token=resume.share_token,
         share_url=f"{settings.FRONTEND_URL}/r/{resume.share_token}",
         created_at=resume.share_token_created_at,
+        anonymous=anonymous,
     )
 
 
@@ -1097,3 +1136,110 @@ async def revoke_share_link(
     resume.share_token_created_at = None
     await db.commit()
     return None
+
+
+# ── Bulk / Batch Export (Feature 49) ─────────────────────────────────────────
+
+def _sanitize_filename(title: str) -> str:
+    """Convert a resume title to a safe filename (no path traversal)."""
+    safe = re.sub(r'[^\w\s-]', '', title).strip()
+    safe = re.sub(r'[\s-]+', '_', safe)
+    return safe or "resume"
+
+
+@router.get("/export/bulk")
+async def bulk_export(
+    format: str = Query("tex", pattern="^(tex|pdf|docx)$"),
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """
+    Download all non-archived resumes as a ZIP archive.
+    format=tex  → one .tex file per resume
+    format=pdf  → one .pdf per resume (skips resumes with no compiled PDF)
+    format=docx → one .docx per resume (rule-based LaTeX→DOCX conversion)
+    """
+    from pathlib import Path
+
+    result = await db.execute(
+        select(Resume)
+        .where(Resume.user_id == user_id)
+        .order_by(Resume.updated_at.desc())
+    )
+    resumes = result.scalars().all()
+
+    if not resumes:
+        # Return empty ZIP rather than 404
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED):
+            pass
+        buf.seek(0)
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="latexy-resumes-{today}.zip"'},
+        )
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        seen_names: dict[str, int] = {}
+
+        for resume in resumes:
+            base = _sanitize_filename(resume.title)
+            # Deduplicate filenames
+            if base in seen_names:
+                seen_names[base] += 1
+                filename_base = f"{base}_{seen_names[base]}"
+            else:
+                seen_names[base] = 0
+                filename_base = base
+
+            if format == "tex":
+                zf.writestr(f"{filename_base}.tex", resume.latex_content or "")
+
+            elif format == "pdf":
+                from ..database.models import Compilation
+                comp_result = await db.execute(
+                    select(Compilation)
+                    .where(
+                        Compilation.resume_id == resume.id,
+                        Compilation.status == "completed",
+                    )
+                    .order_by(Compilation.created_at.desc())
+                    .limit(1)
+                )
+                compilation = comp_result.scalar_one_or_none()
+                if not compilation:
+                    continue  # skip — no compiled PDF
+
+                pdf_bytes: Optional[bytes] = None
+                if compilation.pdf_path:
+                    try:
+                        from ..services.storage_service import download_bytes
+                        pdf_bytes = download_bytes(compilation.pdf_path)
+                    except Exception as exc:
+                        logger.warning(f"Could not fetch PDF from MinIO for {resume.id}: {exc}")
+                if pdf_bytes is None:
+                    temp_pdf = Path(settings.TEMP_DIR) / compilation.job_id / "resume.pdf"
+                    if temp_pdf.exists():
+                        pdf_bytes = temp_pdf.read_bytes()
+                if pdf_bytes:
+                    zf.writestr(f"{filename_base}.pdf", pdf_bytes)
+
+            elif format == "docx":
+                try:
+                    from ..services.document_export_service import DocumentExportService
+                    svc = DocumentExportService()
+                    docx_bytes = svc.to_docx(resume.latex_content or "")
+                    zf.writestr(f"{filename_base}.docx", docx_bytes)
+                except Exception as exc:
+                    logger.warning(f"DOCX export failed for {resume.id}: {exc}")
+
+    buf.seek(0)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="latexy-resumes-{today}.zip"'},
+    )
