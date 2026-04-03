@@ -8,6 +8,7 @@ import type { LogLine } from '@/hooks/useJobStream'
 import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import ATSScoreBadge from '@/components/ATSScoreBadge'
 import type { PresenceUser, ProofreadIssue, SpellCheckIssue } from '@/lib/api-client'
+import { observeChanges, type TrackedChange, type TrackChangesHandle } from '@/lib/yjs-track-changes'
 import type { LintIssue } from '@/lib/latex-linter'
 import { addWordToDict, getPersonalDict } from '@/hooks/useSpellCheck'
 import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
@@ -23,6 +24,11 @@ export interface LaTeXEditorRef {
   insertAtCursor: (text: string) => void
   /** Returns pixel position of the cursor relative to the editor container, or null if unavailable */
   getCaretPosition: () => { top: number; left: number } | null
+  // ── Track changes (Feature 41) ─────────────────────────────────────
+  acceptTrackedChange: (id: string) => void
+  rejectTrackedChange: (id: string) => void
+  acceptAllTrackedChanges: () => void
+  rejectAllTrackedChanges: () => void
 }
 
 interface LaTeXEditorProps {
@@ -83,6 +89,11 @@ interface LaTeXEditorProps {
   collabUser?: { name: string; color: string; token: string }
   /** Fires when the set of remote-presence users changes */
   onPresenceChange?: (users: PresenceUser[]) => void
+  // ── Track changes (Feature 41) ─────────────────────────────────────
+  /** Current tracked changes — applied as Monaco decorations */
+  trackedChanges?: TrackedChange[]
+  /** Fires whenever remote changes are recorded or resolved */
+  onTrackedChangesUpdate?: (changes: TrackedChange[]) => void
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -261,7 +272,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, onPresenceChange },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, onPresenceChange, trackedChanges, onTrackedChangesUpdate },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -288,15 +299,23 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     const providerRef = useRef<any>(null)
     const bindingRef = useRef<any>(null)
 
+    // Track changes (Feature 41)
+    const trackChangesRef = useRef<TrackChangesHandle | null>(null)
+    const trackedChangesDecsRef = useRef<any>(null)
+    const onTrackedChangesUpdateRef = useRef(onTrackedChangesUpdate)
+    onTrackedChangesUpdateRef.current = onTrackedChangesUpdate
+
     // Cleanup Y.js session on unmount
     useEffect(() => {
       return () => {
         bindingRef.current?.destroy()
         providerRef.current?.destroy()
         ydocRef.current?.destroy()
+        trackChangesRef.current?.cleanup()
         bindingRef.current = null
         providerRef.current = null
         ydocRef.current = null
+        trackChangesRef.current = null
       }
     }, [])
 
@@ -417,6 +436,19 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         const pixel = editor.getScrolledVisiblePosition(position)
         if (!pixel) return null
         return { top: pixel.top, left: pixel.left }
+      },
+      // ── Track changes (Feature 41) ──────────────────────────────────
+      acceptTrackedChange(id: string) {
+        trackChangesRef.current?.acceptChange(id)
+      },
+      rejectTrackedChange(id: string) {
+        trackChangesRef.current?.rejectChange(id)
+      },
+      acceptAllTrackedChanges() {
+        trackChangesRef.current?.acceptAll()
+      },
+      rejectAllTrackedChanges() {
+        trackChangesRef.current?.rejectAll()
       },
     }))
 
@@ -583,6 +615,65 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
       monaco.editor.setModelMarkers(model, 'spellcheck', markers)
     }, [spellCheckIssues])
+
+    // Apply track-change decorations when tracked changes update (Feature 41)
+    useEffect(() => {
+      const editor = editorRef.current
+      const monaco = monacoRef.current
+      if (!editor || !monaco) return
+
+      if (trackedChangesDecsRef.current) {
+        trackedChangesDecsRef.current.clear()
+        trackedChangesDecsRef.current = null
+      }
+
+      if (!trackedChanges || trackedChanges.length === 0) return
+
+      const decorations = trackedChanges.map((change) => {
+        if (change.type === 'insertion') {
+          return {
+            range: new monaco.Range(
+              change.range.startLineNumber,
+              change.range.startColumn,
+              change.range.endLineNumber,
+              change.range.endColumn,
+            ),
+            options: {
+              inlineClassName: 'tracked-insertion',
+              hoverMessage: {
+                value: `**${change.userName}** inserted at ${new Date(change.timestamp).toLocaleTimeString()}`,
+              },
+              overviewRuler: {
+                color: 'rgba(74,222,128,0.6)',
+                position: monaco.editor.OverviewRulerLane.Right,
+              },
+            },
+          }
+        } else {
+          // Deletion — show a glyph marker at the position
+          return {
+            range: new monaco.Range(
+              change.range.startLineNumber,
+              change.range.startColumn,
+              change.range.startLineNumber,
+              change.range.startColumn,
+            ),
+            options: {
+              glyphMarginClassName: 'tracked-deletion-glyph',
+              glyphMarginHoverMessage: {
+                value: `**${change.userName}** deleted: \`${change.text.slice(0, 60)}${change.text.length > 60 ? '…' : ''}\``,
+              },
+              overviewRuler: {
+                color: 'rgba(248,113,113,0.6)',
+                position: monaco.editor.OverviewRulerLane.Right,
+              },
+            },
+          }
+        }
+      })
+
+      trackedChangesDecsRef.current = editor.createDecorationsCollection(decorations)
+    }, [trackedChanges])
 
     // Auto-compile: debounce 2s after last keystroke
     useEffect(() => {
@@ -1303,6 +1394,11 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
           ydocRef.current = ydoc
           providerRef.current = provider
+
+          // ── Track Changes (Feature 41) ──────────────────────────────
+          trackChangesRef.current = observeChanges(yText, provider, (changes) => {
+            onTrackedChangesUpdateRef.current?.(changes)
+          })
         } catch (err) {
           console.warn('[LaTeXEditor] Y.js collab init failed:', err)
         }
@@ -1332,6 +1428,20 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           .proofreader-vague {
             text-decoration: underline wavy #f87171;
             text-underline-offset: 2px;
+          }
+          /* Track changes — Feature 41 */
+          .tracked-insertion {
+            background-color: rgba(74,222,128,0.15) !important;
+            border-bottom: 2px solid rgba(74,222,128,0.6) !important;
+            border-radius: 2px;
+          }
+          .tracked-deletion-glyph {
+            width: 8px !important;
+            height: 8px !important;
+            border-radius: 50%;
+            background-color: rgba(248,113,113,0.8) !important;
+            margin-top: 5px;
+            margin-left: 2px;
           }
           /* Y.js remote cursor labels */
           .yRemoteSelectionHead::after {
