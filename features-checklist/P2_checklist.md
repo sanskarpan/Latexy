@@ -420,45 +420,43 @@ Each user sees others' cursors with name/color labels. Role-based access (owner/
 deletion). Owner accepts/rejects per change or in batch.
 
 ### 41A · Prerequisite
-- [ ] Feature 40 must be fully implemented
+- [x] Feature 40 must be fully implemented
 
 ### 41B · Frontend — Change Tracking via Yjs
-- [ ] Create `frontend/src/lib/yjs-track-changes.ts`:
-  ```typescript
-  export interface TrackedChange {
-    id: string
-    userId: string
-    userName: string
-    type: 'insertion' | 'deletion'
-    range: monaco.IRange
-    text: string
-    timestamp: number
-  }
-
-  // Use Y.js doc.on('update', ...) to capture changes by origin (user ID)
-  // Store in local Map<string, TrackedChange[]> keyed by change ID
-  export function observeChanges(yDoc: Y.Doc, onChange: (changes: TrackedChange[]) => void): () => void
-  ```
+- [x] Create `frontend/src/lib/yjs-track-changes.ts`:
+  - `TrackedChange` interface with id, clientId, userId, userName, userColor, type, text, offset, length, range, timestamp, resolved
+  - `TrackChangesHandle` interface (getChanges, acceptChange, rejectChange, acceptAll, rejectAll, cleanup)
+  - `observeChanges(yText, provider, onUpdate)` — attaches Y.Text observer, attributes insertions via `event.changes.added[].id.client`, falls back to awareness for deletions
+  - Snapshots prevText before each update to capture deleted text
+  - rejectChange: for insertions searches text near stored offset and calls `yText.delete()`; for deletions calls `yText.insert()`
+  - rejectAll: processes in correct order (insertions descending, deletions ascending) wrapped in `yText.doc.transact()`
 
 ### 41C · Monaco Decorations
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
-  - Add prop: `trackedChanges?: TrackedChange[]`
-  - Insertions: `backgroundColor: 'rgba(74,222,128,0.15)'`, `border: '1px solid rgba(74,222,128,0.4)'`
-  - Deletions: `textDecoration: 'line-through'`, `color: 'rgba(248,113,113,0.8)'`
-  - Hover tooltip: `[UserName] at [relative time] — Accept | Reject`
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
+  - Added props: `trackedChanges?: TrackedChange[]`, `onTrackedChangesUpdate?: (changes: TrackedChange[]) => void`
+  - Added ref methods: `acceptTrackedChange`, `rejectTrackedChange`, `acceptAllTrackedChanges`, `rejectAllTrackedChanges`
+  - Insertions: green background + bottom border (`rgba(74,222,128,0.15)`, `2px solid rgba(74,222,128,0.6)`) + overview ruler dot
+  - Deletions: red glyph margin dot + overview ruler dot (text is gone — shown in panel with full content)
+  - Hover tooltips: `**UserName** inserted/deleted at HH:MM:SS` on decorations
+  - `observeChanges` wired in Y.js init block; cleanup on unmount
 
 ### 41D · Changes Panel
-- [ ] Create `frontend/src/components/ChangesPanel.tsx`:
-  - Lists tracked changes grouped by user
-  - Each item: user avatar + name, change preview snippet, "Accept" / "Reject" buttons
-  - "Accept All" / "Reject All" batch buttons at top
-  - Accept → apply permanently to Y.js doc; Reject → revert in Y.js doc
-  - Count badge on panel tab for unresolved changes
+- [x] Create `frontend/src/components/ChangesPanel.tsx`:
+  - Changes grouped by user with colored avatar
+  - Each row: user badge, +added/−deleted label, coloured preview snippet (green/red), line badge, relative time
+  - Per-row Accept ✓ / Reject ✗ buttons (visible on hover)
+  - "Accept all" (emerald) / "Reject all" (red) batch buttons in header
+  - Summary count (+N/−N) in header
+  - Empty state with icon when no pending changes
 
 ### 41E · Integration
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
-  - "Changes (N)" tab in sidebar (badge count of pending changes)
-  - Wire `trackedChanges` to `LaTeXEditor` and `ChangesPanel`
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+  - `trackedChanges` state (TrackedChange[])
+  - "Changes" tab added to right-panel tab bar (GitMerge icon)
+  - Emerald badge shows pending change count when > 0
+  - ChangesPanel rendered for `rightTab === 'changes'`
+  - LaTeXEditor wired with `trackedChanges` + `onTrackedChangesUpdate={setTrackedChanges}`
+  - Accept/reject callbacks delegate to `editorRef.current.acceptTrackedChange(id)` etc.
 
 ---
 
