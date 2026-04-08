@@ -35,6 +35,25 @@ _ALLOWED_EXTRA_FLAGS = {
 
 _MAIN_FILE_RE = re.compile(r"^[a-zA-Z0-9_-]+\.tex$")
 
+# Watermark validation
+_WATERMARK_RE = re.compile(r"^[A-Za-z0-9 \-\.]+$")
+_WATERMARK_MAX_LEN = 30
+
+
+def _inject_watermark(latex_content: str, watermark_text: str) -> str:
+    """Inject draftwatermark directives immediately before \\begin{document}."""
+    marker = r"\begin{document}"
+    pos = latex_content.find(marker)
+    if pos == -1:
+        return latex_content  # Validation should have caught this; leave unchanged
+    watermark_block = (
+        "\\usepackage{draftwatermark}\n"
+        f"\\SetWatermarkText{{{watermark_text}}}\n"
+        "\\SetWatermarkScale{1.2}\n"
+        "\\SetWatermarkColor[gray]{0.94}\n"
+    )
+    return latex_content[:pos] + watermark_block + latex_content[pos:]
+
 
 def _inject_packages(latex_content: str, packages: list) -> str:
     """Prepend \\usepackage{pkg} directives after \\documentclass line for any missing package."""
@@ -70,6 +89,7 @@ def compile_latex_task(
     compiler: Optional[str] = None,
     timeout_seconds: Optional[int] = None,
     compile_settings: Optional[Dict] = None,
+    watermark: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Compile LaTeX content to PDF, streaming each pdflatex log line as
@@ -125,6 +145,19 @@ def compile_latex_task(
         extra_packages = _cs.get("extra_packages") or []
         if extra_packages and isinstance(extra_packages, list):
             latex_content = _inject_packages(latex_content, extra_packages)
+
+        # Inject watermark if requested
+        if watermark:
+            if not _WATERMARK_RE.match(watermark) or len(watermark) > _WATERMARK_MAX_LEN:
+                error_msg = "Invalid watermark text"
+                publish_event(job_id, "job.failed", {
+                    "stage": "latex_compilation",
+                    "error_code": "invalid_watermark",
+                    "error_message": error_msg,
+                    "retryable": False,
+                })
+                return {"success": False, "job_id": job_id, "error": error_msg}
+            latex_content = _inject_watermark(latex_content, watermark)
 
         # Determine main .tex filename (validated regex, default resume.tex)
         main_file = str(_cs.get("main_file") or "resume.tex")
@@ -308,9 +341,9 @@ def compile_latex_task(
                 f"LaTeX task {task_id} succeeded for job {job_id} ({pdf_size} bytes)"
             )
 
-            # Auto-save checkpoint if resume_id is known
+            # Auto-save checkpoint if resume_id is known (skip for watermarked compiles)
             _resume_id = resume_id or (metadata or {}).get("resume_id")
-            if _resume_id and user_id:
+            if _resume_id and user_id and not watermark:
                 try:
                     from .auto_save_worker import record_auto_save_checkpoint
                     record_auto_save_checkpoint.apply_async(
@@ -377,6 +410,7 @@ def submit_latex_compilation(
     compiler: Optional[str] = None,
     timeout_seconds: Optional[int] = None,
     compile_settings: Optional[Dict] = None,
+    watermark: Optional[str] = None,
 ) -> str:
     """Enqueue compile_latex_task on the latex queue."""
     if priority is None:
@@ -396,6 +430,7 @@ def submit_latex_compilation(
             "compiler": compiler,
             "timeout_seconds": timeout,
             "compile_settings": compile_settings,
+            "watermark": watermark,
         },
         priority=priority,
         queue="latex",
