@@ -480,6 +480,43 @@ export default function WorkspacePage() {
           Generate References Page
         </button>
       </div>
+
+      {/* Pin / Archive / Tag actions */}
+      {!isVariant && (
+        <div className="mt-2 flex gap-1.5 border-t border-white/[0.05] pt-2">
+          <button
+            onClick={() => handlePin(resume.id, !!resume.pinned)}
+            title={resume.pinned ? 'Unpin' : 'Pin to top'}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-zinc-500 transition hover:bg-amber-500/10 hover:text-amber-300"
+          >
+            {resume.pinned ? <PinOff size={10} /> : <Pin size={10} />}
+            {resume.pinned ? 'Unpin' : 'Pin'}
+          </button>
+          <button
+            onClick={() => {
+              setTagEditResumeId(resume.id)
+              setTagEditValue(resume.tags?.join(', ') ?? '')
+            }}
+            title="Edit tags"
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-zinc-500 transition hover:bg-violet-500/10 hover:text-violet-300"
+          >
+            <Tag size={10} />
+            Tags
+          </button>
+          <button
+            onClick={() => {
+              if (confirm(`Archive "${resume.title}"? It will be hidden from the workspace.`)) {
+                handleArchive(resume.id)
+              }
+            }}
+            title="Archive resume"
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-400"
+          >
+            <Archive size={10} />
+            Archive
+          </button>
+        </div>
+      )}
     </article>
   )
 
