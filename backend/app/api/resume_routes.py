@@ -1176,8 +1176,9 @@ async def get_resume_analytics(
 ):
     """Return view analytics for a resume. Owner-only."""
     from datetime import timedelta
-    from sqlalchemy import cast, func as sqlfunc, text as sqtext
-    from sqlalchemy.dialects.postgresql import TIMESTAMP
+
+    from sqlalchemy import func as sqlfunc
+    from sqlalchemy import text as sqtext
 
     from ..database.models import ResumeView
 
