@@ -836,6 +836,57 @@ export default function WorkspacePage() {
         </section>
 
         <aside className="space-y-4">
+          {/* Tag Filter + Archive (Feature 39) */}
+          <section className="surface-panel edge-highlight p-5">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300 flex items-center gap-2">
+              <Tag size={12} />
+              Organize
+            </h2>
+            {allTags.length > 0 ? (
+              <div className="mt-3 space-y-1">
+                <p className="text-[10px] uppercase tracking-wide text-zinc-600 mb-2">Filter by tag</p>
+                <button
+                  onClick={() => setActiveTagFilter(null)}
+                  className={`w-full rounded-md px-3 py-1.5 text-left text-xs transition ${
+                    !activeTagFilter ? 'bg-white/[0.06] text-zinc-200' : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300'
+                  }`}
+                >
+                  All resumes
+                </button>
+                {allTags.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => setActiveTagFilter(activeTagFilter === tag ? null : tag)}
+                    className={`flex w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-left text-xs transition ${
+                      activeTagFilter === tag
+                        ? 'bg-violet-500/20 text-violet-200'
+                        : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300'
+                    }`}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-violet-400/60" />
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-zinc-600">Add tags to resumes to filter here.</p>
+            )}
+            <div className="mt-4 border-t border-white/[0.05] pt-3">
+              <button
+                onClick={() => {
+                  setShowArchived(v => {
+                    if (!v) loadArchivedResumes()
+                    return !v
+                  })
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-400"
+              >
+                <Archive size={11} />
+                {showArchived ? 'Hide Archived' : 'View Archived'}
+              </button>
+            </div>
+          </section>
+
           <section className="surface-panel edge-highlight p-5">
             <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300">Recent Activity</h2>
             {jobs.length === 0 ? (
