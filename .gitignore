@@ -256,3 +256,4 @@ FE-inspiration/
 
 # Playwright test results
 frontend/test-results/
+.dev-pids
