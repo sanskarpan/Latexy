@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Bell, Mail, Calendar, Save, Loader2, CheckCircle, Monitor, Github, Unlink, ExternalLink } from 'lucide-react'
-import { apiClient, type NotificationPrefs, type GitHubStatusResponse } from '@/lib/api-client'
+import { Bell, BookOpen, Mail, Calendar, Save, Loader2, CheckCircle, Monitor, Github, Unlink, ExternalLink } from 'lucide-react'
+import { apiClient, type NotificationPrefs, type GitHubStatusResponse, type ZoteroStatusResponse, type MendeleyStatusResponse } from '@/lib/api-client'
 import { getNotificationPref, setNotificationPref } from '@/hooks/usePushNotifications'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030'
@@ -31,6 +31,20 @@ function SettingsContent() {
   const [ghError, setGhError] = useState<string | null>(null)
   const [ghSuccess, setGhSuccess] = useState<string | null>(null)
 
+  // Zotero (Feature 42)
+  const [zotStatus, setZotStatus] = useState<ZoteroStatusResponse>({ connected: false, username: null, user_id: null })
+  const [zotLoading, setZotLoading] = useState(true)
+  const [zotDisconnecting, setZotDisconnecting] = useState(false)
+  const [zotError, setZotError] = useState<string | null>(null)
+  const [zotSuccess, setZotSuccess] = useState<string | null>(null)
+
+  // Mendeley (Feature 42)
+  const [menStatus, setMenStatus] = useState<MendeleyStatusResponse>({ connected: false, name: null })
+  const [menLoading, setMenLoading] = useState(true)
+  const [menDisconnecting, setMenDisconnecting] = useState(false)
+  const [menError, setMenError] = useState<string | null>(null)
+  const [menSuccess, setMenSuccess] = useState<string | null>(null)
+
   useEffect(() => {
     apiClient.getNotificationPrefs()
       .then(setPrefs)
@@ -41,6 +55,16 @@ function SettingsContent() {
       .then(setGhStatus)
       .catch(() => {/* ignore — user not logged in or GitHub not configured */})
       .finally(() => setGhLoading(false))
+
+    apiClient.getZoteroStatus()
+      .then(setZotStatus)
+      .catch(() => {})
+      .finally(() => setZotLoading(false))
+
+    apiClient.getMendeleyStatus()
+      .then(setMenStatus)
+      .catch(() => {})
+      .finally(() => setMenLoading(false))
   }, [])
 
   // Show success message after OAuth redirect
@@ -49,6 +73,16 @@ function SettingsContent() {
       setGhSuccess('GitHub account connected successfully!')
       apiClient.getGitHubStatus().then(setGhStatus).catch(() => {})
       setTimeout(() => setGhSuccess(null), 5000)
+    }
+    if (searchParams.get('zotero') === 'connected') {
+      setZotSuccess('Zotero connected successfully!')
+      apiClient.getZoteroStatus().then(setZotStatus).catch(() => {})
+      setTimeout(() => setZotSuccess(null), 5000)
+    }
+    if (searchParams.get('mendeley') === 'connected') {
+      setMenSuccess('Mendeley connected successfully!')
+      apiClient.getMendeleyStatus().then(setMenStatus).catch(() => {})
+      setTimeout(() => setMenSuccess(null), 5000)
     }
   }, [searchParams])
 
@@ -86,6 +120,42 @@ function SettingsContent() {
     // Redirect to backend OAuth flow — need auth token in header, but this is a redirect.
     // We'll open in same window; the backend will redirect back to /settings?github=connected
     window.location.href = `${API_BASE}/github/connect`
+  }
+
+  function handleConnectZotero() {
+    window.location.href = `${API_BASE}/zotero/connect`
+  }
+
+  async function handleDisconnectZotero() {
+    if (!confirm('Disconnect Zotero? You will need to reconnect to import references.')) return
+    setZotDisconnecting(true)
+    setZotError(null)
+    try {
+      await apiClient.disconnectZotero()
+      setZotStatus({ connected: false, username: null, user_id: null })
+    } catch (e: unknown) {
+      setZotError(e instanceof Error ? e.message : 'Failed to disconnect')
+    } finally {
+      setZotDisconnecting(false)
+    }
+  }
+
+  function handleConnectMendeley() {
+    window.location.href = `${API_BASE}/mendeley/connect`
+  }
+
+  async function handleDisconnectMendeley() {
+    if (!confirm('Disconnect Mendeley? You will need to reconnect to import references.')) return
+    setMenDisconnecting(true)
+    setMenError(null)
+    try {
+      await apiClient.disconnectMendeley()
+      setMenStatus({ connected: false, name: null })
+    } catch (e: unknown) {
+      setMenError(e instanceof Error ? e.message : 'Failed to disconnect')
+    } finally {
+      setMenDisconnecting(false)
+    }
   }
 
   return (
@@ -172,6 +242,142 @@ function SettingsContent() {
           {ghError && (
             <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-400 ring-1 ring-rose-500/20">
               {ghError}
+            </p>
+          )}
+        </div>
+
+        {/* Zotero Integration card (Feature 42) */}
+        <div className="rounded-xl border border-white/[0.07] bg-[#0d0d0d] p-6 space-y-6">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#CC2936]/15">
+              <BookOpen size={14} className="text-red-300" />
+            </div>
+            <h2 className="text-base font-semibold text-zinc-100">Zotero Integration</h2>
+          </div>
+
+          {zotSuccess && (
+            <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-400 ring-1 ring-emerald-500/20">
+              {zotSuccess}
+            </p>
+          )}
+
+          {zotLoading ? (
+            <div className="flex items-center gap-2 text-zinc-500 text-sm">
+              <Loader2 size={14} className="animate-spin" />
+              Checking Zotero status…
+            </div>
+          ) : zotStatus.connected ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
+                    <CheckCircle size={14} className="text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-zinc-200">
+                      Connected as <span className="text-emerald-300">@{zotStatus.username}</span>
+                    </p>
+                    <p className="text-[11px] text-zinc-500">
+                      Import your library from the References panel in the editor.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleDisconnectZotero}
+                disabled={zotDisconnecting}
+                className="flex items-center gap-1.5 rounded-lg border border-rose-500/20 px-3 py-1.5 text-[11px] font-medium text-rose-400 transition hover:bg-rose-500/10 disabled:opacity-40"
+              >
+                {zotDisconnecting ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
+                {zotDisconnecting ? 'Disconnecting…' : 'Disconnect Zotero'}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-[12px] text-zinc-500">
+                Connect your Zotero account to import your reference library as BibTeX directly into any resume.
+              </p>
+              <button
+                onClick={handleConnectZotero}
+                className="flex items-center gap-2 rounded-lg bg-[#CC2936]/15 px-4 py-2 text-sm font-semibold text-red-200 ring-1 ring-red-500/20 transition hover:bg-[#CC2936]/25"
+              >
+                <ExternalLink size={14} />
+                Connect Zotero
+              </button>
+            </div>
+          )}
+
+          {zotError && (
+            <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-400 ring-1 ring-rose-500/20">
+              {zotError}
+            </p>
+          )}
+        </div>
+
+        {/* Mendeley Integration card (Feature 42) */}
+        <div className="rounded-xl border border-white/[0.07] bg-[#0d0d0d] p-6 space-y-6">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/10">
+              <BookOpen size={14} className="text-rose-300" />
+            </div>
+            <h2 className="text-base font-semibold text-zinc-100">Mendeley Integration</h2>
+          </div>
+
+          {menSuccess && (
+            <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-400 ring-1 ring-emerald-500/20">
+              {menSuccess}
+            </p>
+          )}
+
+          {menLoading ? (
+            <div className="flex items-center gap-2 text-zinc-500 text-sm">
+              <Loader2 size={14} className="animate-spin" />
+              Checking Mendeley status…
+            </div>
+          ) : menStatus.connected ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
+                    <CheckCircle size={14} className="text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-zinc-200">
+                      Connected as <span className="text-emerald-300">{menStatus.name ?? 'Mendeley User'}</span>
+                    </p>
+                    <p className="text-[11px] text-zinc-500">
+                      Import your library from the References panel in the editor.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleDisconnectMendeley}
+                disabled={menDisconnecting}
+                className="flex items-center gap-1.5 rounded-lg border border-rose-500/20 px-3 py-1.5 text-[11px] font-medium text-rose-400 transition hover:bg-rose-500/10 disabled:opacity-40"
+              >
+                {menDisconnecting ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
+                {menDisconnecting ? 'Disconnecting…' : 'Disconnect Mendeley'}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-[12px] text-zinc-500">
+                Connect your Mendeley account to import your research library as BibTeX directly into any resume.
+              </p>
+              <button
+                onClick={handleConnectMendeley}
+                className="flex items-center gap-2 rounded-lg bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 ring-1 ring-rose-500/20 transition hover:bg-rose-500/20"
+              >
+                <ExternalLink size={14} />
+                Connect Mendeley
+              </button>
+            </div>
+          )}
+
+          {menError && (
+            <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-400 ring-1 ring-rose-500/20">
+              {menError}
             </p>
           )}
         </div>
