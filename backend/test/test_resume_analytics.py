@@ -48,6 +48,7 @@ async def _create_resume_and_share(
 async def _seed_compilation(db_session: AsyncSession, resume_id: str, user_id: str) -> None:
     """Insert a minimal completed compilation row so the share endpoint can resolve a PDF."""
     import uuid as _local_uuid
+
     from app.database.models import Compilation
     job_id = f"test_job_{_local_uuid.uuid4().hex[:12]}"
     comp = Compilation(
