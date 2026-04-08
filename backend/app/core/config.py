@@ -240,6 +240,16 @@ class Settings(BaseSettings):
         }
     })
 
+    # Zotero integration (Feature 42)
+    ZOTERO_CLIENT_KEY: str = Field(default="", description="Zotero OAuth 1.0a client key")
+    ZOTERO_CLIENT_SECRET: str = Field(default="", description="Zotero OAuth 1.0a client secret")
+    ZOTERO_REDIRECT_URI: str = Field(default="http://localhost:8030/zotero/callback", description="Zotero OAuth callback URI")
+
+    # Mendeley integration (Feature 42)
+    MENDELEY_CLIENT_ID: str = Field(default="", description="Mendeley OAuth 2.0 client ID")
+    MENDELEY_CLIENT_SECRET: str = Field(default="", description="Mendeley OAuth 2.0 client secret")
+    MENDELEY_REDIRECT_URI: str = Field(default="http://localhost:8030/mendeley/callback", description="Mendeley OAuth callback URI")
+
     def model_post_init(self, __context) -> None:
         """Validate required settings at startup."""
         if os.environ.get("SKIP_ENV_VALIDATION") == "true":
