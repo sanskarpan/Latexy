@@ -760,8 +760,6 @@ async def standardize_dates(request: StandardizeDatesRequest):
 
 import datetime as _dt
 
-_CURRENT_YEAR = _dt.date.today().year
-
 _PRESTIGIOUS_KEYWORDS = {
     "harvard", "mit", "stanford", "yale", "princeton", "columbia",
     "university of chicago", "upenn", "penn", "dartmouth", "cornell",
@@ -833,6 +831,7 @@ async def age_analysis(request: AgeAnalysisRequest) -> AgeAnalysisResponse:
     Detect year-range entries in LaTeX resume and flag those older than 10 years.
     Prestigious institutions are exempt. Pure regex — no LLM required.
     """
+    current_year = _dt.date.today().year
     lines = request.latex_content.splitlines()
     entries: List[AgeEntry] = []
     seen: set[tuple[int, int]] = set()
@@ -840,7 +839,7 @@ async def age_analysis(request: AgeAnalysisRequest) -> AgeAnalysisResponse:
     for line_idx, line_text in enumerate(lines):
         for m in _YEAR_RANGE_RE.finditer(line_text):
             start_year = int(m.group(1))
-            if not (1950 <= start_year <= _CURRENT_YEAR):
+            if not (1950 <= start_year <= current_year):
                 continue
 
             end_group_year = m.group(3)
@@ -848,7 +847,7 @@ async def age_analysis(request: AgeAnalysisRequest) -> AgeAnalysisResponse:
             if end_group_year:
                 end_year: Optional[int] = int(end_group_year)
             elif end_group_present:
-                end_year = None
+                end_year = None  # Present / ongoing
             else:
                 end_year = None
 
@@ -857,7 +856,10 @@ async def age_analysis(request: AgeAnalysisRequest) -> AgeAnalysisResponse:
                 continue
             seen.add(key)
 
-            years_ago = _CURRENT_YEAR - start_year
+            years_ago = current_year - start_year
+            # Use the most-recent year for the staleness check so that a
+            # still-active role (end_year=None → ongoing) is never flagged old.
+            recency_year = end_year if end_year is not None else current_year
             entity = ""
             for ctx_offset in range(3):
                 ctx_idx = line_idx - ctx_offset
@@ -870,7 +872,7 @@ async def age_analysis(request: AgeAnalysisRequest) -> AgeAnalysisResponse:
                 entity = "Experience entry"
 
             prestigious = _check_prestigious(entity)
-            is_old = years_ago > 10 and not prestigious
+            is_old = (current_year - recency_year) > 10 and not prestigious
 
             if is_old:
                 recommendation = (
@@ -917,7 +919,7 @@ _LINKEDIN_RE = _re.compile(
     _re.IGNORECASE,
 )
 _GITHUB_RE = _re.compile(
-    r'(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9_-]+)(?:/[^\s\\]*)?',
+    r'(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9_-]+)(/[^\s\\}]*)?',
     _re.IGNORECASE,
 )
 _EMAIL_CONTACT_RE = _re.compile(
@@ -981,7 +983,8 @@ async def format_contacts(request: ContactFormatRequest) -> ContactFormatRespons
         if 'linkedin' in m.group(0).lower():
             continue
         username = m.group(1)
-        normalized = f"github.com/{username}"
+        suffix = (m.group(2) or "").rstrip("/")
+        normalized = f"github.com/{username}{suffix}"
         if m.group(0) != normalized:
             reps.append((m.start(), m.end(), m.group(0), normalized, "github"))
 
