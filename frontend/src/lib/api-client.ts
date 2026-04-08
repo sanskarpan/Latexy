@@ -1604,6 +1604,48 @@ class ApiClient {
   }
 
   // ---------------------------------------------------------------- //
+  //  Zotero Integration (Feature 42)                                 //
+  // ---------------------------------------------------------------- //
+
+  async getZoteroStatus(): Promise<ZoteroStatusResponse> {
+    return this.request<ZoteroStatusResponse>('/zotero/status')
+  }
+
+  async disconnectZotero(): Promise<{ success: boolean; message: string }> {
+    return this.request('/zotero/disconnect', { method: 'DELETE' })
+  }
+
+  async getZoteroCollections(): Promise<ZoteroCollectionsResponse> {
+    return this.request<ZoteroCollectionsResponse>('/zotero/collections')
+  }
+
+  async importFromZotero(resumeId: string, collectionKey?: string): Promise<ZoteroImportResponse> {
+    return this.request<ZoteroImportResponse>('/zotero/import', {
+      method: 'POST',
+      body: JSON.stringify({ resume_id: resumeId, collection_key: collectionKey ?? null }),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Mendeley Integration (Feature 42)                               //
+  // ---------------------------------------------------------------- //
+
+  async getMendeleyStatus(): Promise<MendeleyStatusResponse> {
+    return this.request<MendeleyStatusResponse>('/mendeley/status')
+  }
+
+  async disconnectMendeley(): Promise<{ success: boolean; message: string }> {
+    return this.request('/mendeley/disconnect', { method: 'DELETE' })
+  }
+
+  async importFromMendeley(resumeId: string, groupId?: string): Promise<MendeleyImportResponse> {
+    return this.request<MendeleyImportResponse>('/mendeley/import', {
+      method: 'POST',
+      body: JSON.stringify({ resume_id: resumeId, group_id: groupId ?? null }),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
   //  Collaboration (Feature 40)                                      //
   // ---------------------------------------------------------------- //
 
@@ -1971,6 +2013,44 @@ export interface ResumeAnalytics {
   views_by_referrer: ReferrerCount[]
   first_viewed_at: string | null
   last_viewed_at: string | null
+}
+
+// ------------------------------------------------------------------ //
+//  Zotero / Mendeley types (Feature 42)                              //
+// ------------------------------------------------------------------ //
+
+export interface ZoteroStatusResponse {
+  connected: boolean
+  username: string | null
+  user_id: string | null
+}
+
+export interface MendeleyStatusResponse {
+  connected: boolean
+  name: string | null
+}
+
+export interface ZoteroCollection {
+  key: string
+  name: string
+}
+
+export interface ZoteroCollectionsResponse {
+  collections: ZoteroCollection[]
+}
+
+export interface ZoteroImportResponse {
+  success: boolean
+  entries_count: number
+  bibtex: string
+  message: string
+}
+
+export interface MendeleyImportResponse {
+  success: boolean
+  entries_count: number
+  bibtex: string
+  message: string
 }
 
 
