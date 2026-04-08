@@ -122,6 +122,16 @@ from .github_routes import router as github_router
 
 router.include_router(github_router)
 
+# Include Zotero integration routes (Feature 42)
+from .zotero_routes import router as zotero_router
+
+router.include_router(zotero_router)
+
+# Include Mendeley integration routes (Feature 42)
+from .mendeley_routes import router as mendeley_router
+
+router.include_router(mendeley_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
