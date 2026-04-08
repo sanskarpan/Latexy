@@ -52,16 +52,15 @@ def upgrade() -> None:
             # hash(ip+ua) for debounce — NOT stored raw
             sa.Column("session_id", sa.Text(), nullable=True),
         )
-        op.create_index(
-            "idx_resume_views_resume_id",
-            "resume_views",
-            ["resume_id"],
-        )
-        op.create_index(
-            "idx_resume_views_viewed_at",
-            "resume_views",
-            ["viewed_at"],
-        )
+
+    # Always reconcile indexes — create if missing regardless of table creation above
+    existing_indexes = {i["name"] for i in inspector.get_indexes("resume_views")} if "resume_views" in tables or True else set()
+    # Re-inspect after potential table creation
+    existing_indexes = {i["name"] for i in sa.inspect(conn).get_indexes("resume_views")}
+    if "idx_resume_views_resume_id" not in existing_indexes:
+        op.create_index("idx_resume_views_resume_id", "resume_views", ["resume_id"])
+    if "idx_resume_views_viewed_at" not in existing_indexes:
+        op.create_index("idx_resume_views_viewed_at", "resume_views", ["viewed_at"])
 
 
 def downgrade() -> None:
@@ -70,8 +69,8 @@ def downgrade() -> None:
     tables = inspector.get_table_names()
 
     if "resume_views" in tables:
-        indexes = [i["name"] for i in inspector.get_indexes("resume_views")]
+        existing_indexes = {i["name"] for i in inspector.get_indexes("resume_views")}
         for idx in ("idx_resume_views_resume_id", "idx_resume_views_viewed_at"):
-            if idx in indexes:
+            if idx in existing_indexes:
                 op.drop_index(idx, table_name="resume_views")
         op.drop_table("resume_views")
