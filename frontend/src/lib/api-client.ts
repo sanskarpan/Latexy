@@ -400,6 +400,50 @@ export interface StandardizeDatesResponse {
   standardized_latex: string
 }
 
+// Feature 55 — Age Analysis
+export interface AgeEntry {
+  line: number
+  company_or_institution: string
+  start_year: number
+  end_year: number | null
+  years_ago: number
+  is_old: boolean
+  is_prestigious: boolean
+  recommendation: string
+}
+
+export interface AgeAnalysisResponse {
+  entries: AgeEntry[]
+  has_old_entries: boolean
+}
+
+// Feature 64 — Contact Formatter
+export interface ContactChange {
+  line: number
+  original: string
+  normalized: string
+  type: 'phone' | 'linkedin' | 'github' | 'email'
+}
+
+export interface ContactFormatResponse {
+  changes: ContactChange[]
+  formatted_latex: string
+}
+
+// Feature 70 — Reference Page Generator
+export interface ReferenceContact {
+  name: string
+  title: string
+  company: string
+  email?: string
+  phone?: string
+  relationship: string
+}
+
+export interface GenerateReferencesResponse {
+  latex_content: string
+}
+
 export interface ExplainErrorResponse {
   success: boolean
   explanation: string
@@ -1556,6 +1600,48 @@ class ApiClient {
       const body = await res.text()
       throw new Error(`Failed to remove collaborator (${res.status}): ${body}`)
     }
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Age Analysis (Feature 55)                                        //
+  // ---------------------------------------------------------------- //
+
+  async ageAnalysis(latex_content: string): Promise<AgeAnalysisResponse> {
+    return this.request<AgeAnalysisResponse>('/ai/age-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ latex_content }),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Contact Info Formatter (Feature 64)                              //
+  // ---------------------------------------------------------------- //
+
+  async formatContacts(latex_content: string): Promise<ContactFormatResponse> {
+    return this.request<ContactFormatResponse>('/ai/format-contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ latex_content }),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Reference Page Generator (Feature 70)                            //
+  // ---------------------------------------------------------------- //
+
+  async generateReferences(
+    resumeId: string,
+    references: ReferenceContact[]
+  ): Promise<GenerateReferencesResponse> {
+    return this.request<GenerateReferencesResponse>(
+      `/resumes/${encodeURIComponent(resumeId)}/generate-references`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ references }),
+      }
+    )
   }
 }
 
