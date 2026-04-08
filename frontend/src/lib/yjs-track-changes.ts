@@ -68,9 +68,16 @@ export function observeChanges(
   let prevText: string = yText.toString()
 
   const observer = (event: any, transaction: any) => {
-    // Only track remote changes
+    // Capture snapshot at the very start of each callback so it always reflects
+    // the state BEFORE this event regardless of call ordering.
+    const snapshot = prevText
+
+    // Only track remote changes.
+    // y-websocket passes the WebsocketProvider instance as transactionOrigin when
+    // applying remote updates: readSyncMessage(decoder, encoder, doc, provider).
+    // Local edits from MonacoBinding use origin=binding or null, so this check
+    // correctly distinguishes remote from local.
     if (transaction.origin === provider) {
-      const snapshot = prevText
       const currentText = yText.toString()
       let offset = 0
 
@@ -116,27 +123,16 @@ export function observeChanges(
           const length = op.delete
           const text = snapshot.slice(offset, offset + length)
 
-          // For deletions, try to find the deleter from awareness (any remote client)
-          let clientId = 0
-          const awareness = provider.awareness?.getStates?.() as Map<number, any> | undefined
-          if (awareness) {
-            for (const [cid] of awareness) {
-              if (cid !== provider.awareness.clientID) {
-                clientId = cid
-                break
-              }
-            }
-          }
-          const state = awareness?.get(clientId)
-          const user = state?.user ?? {}
-
+          // Y.js CRDT does not record who deleted text — only who originally
+          // created each character. Attribution for deletions is therefore
+          // best-effort and shown as "A collaborator" to avoid misleading UI.
           const id = `del-${Date.now()}-${Math.random().toString(36).slice(2)}`
           changes.set(id, {
             id,
-            clientId,
-            userId: user.id ?? String(clientId),
-            userName: user.name ?? `User ${clientId}`,
-            userColor: user.color ?? '#888',
+            clientId: 0,
+            userId: 'unknown',
+            userName: 'A collaborator',
+            userColor: '#6b7280',
             type: 'deletion',
             text,
             offset,
@@ -174,12 +170,19 @@ export function observeChanges(
 
       const current = yText.toString()
       if (c.type === 'insertion') {
-        // Delete the inserted text — find it near expected offset
+        // 1. Try narrow window near the tracked offset first.
         const from = Math.max(0, c.offset)
-        const to = Math.min(current.length, from + c.length)
-        const found = current.slice(from, to + c.text.length).indexOf(c.text)
-        if (found !== -1) {
-          yText.delete(from + found, c.text.length)
+        const narrow = current.slice(from, from + c.length + c.text.length + 20)
+        const narrowFound = narrow.indexOf(c.text)
+        if (narrowFound !== -1) {
+          yText.delete(from + narrowFound, c.text.length)
+        } else {
+          // 2. Full-document fallback (handles heavy concurrent edits).
+          const globalIdx = current.indexOf(c.text)
+          if (globalIdx !== -1) {
+            yText.delete(globalIdx, c.text.length)
+          }
+          // If still not found the text was already removed; silently succeed.
         }
       } else {
         // Re-insert the deleted text
@@ -216,8 +219,14 @@ export function observeChanges(
         for (const c of insertions) {
           const current = yText.toString()
           const from = Math.max(0, c.offset)
-          const found = current.slice(from, from + c.text.length + 10).indexOf(c.text)
-          if (found !== -1) yText.delete(from + found, c.text.length)
+          const narrow = current.slice(from, from + c.text.length + 20)
+          const narrowIdx = narrow.indexOf(c.text)
+          if (narrowIdx !== -1) {
+            yText.delete(from + narrowIdx, c.text.length)
+          } else {
+            const globalIdx = current.indexOf(c.text)
+            if (globalIdx !== -1) yText.delete(globalIdx, c.text.length)
+          }
         }
         for (const c of deletions) {
           const current = yText.toString()
