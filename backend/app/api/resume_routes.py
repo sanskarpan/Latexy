@@ -1143,6 +1143,137 @@ async def revoke_share_link(
     return None
 
 
+# ── Resume View Analytics (Feature 43) ───────────────────────────────────────
+
+class DayCount(BaseModel):
+    date: str    # "YYYY-MM-DD"
+    count: int
+
+class CountryCount(BaseModel):
+    country_code: Optional[str]
+    count: int
+
+class ReferrerCount(BaseModel):
+    referrer: Optional[str]
+    count: int
+
+class ResumeAnalytics(BaseModel):
+    total_views: int
+    views_last_7_days: int
+    views_last_30_days: int
+    views_by_day: List[DayCount]        # last 30 days, one entry per day
+    views_by_country: List[CountryCount]
+    views_by_referrer: List[ReferrerCount]
+    first_viewed_at: Optional[str]
+    last_viewed_at: Optional[str]
+
+
+@router.get("/{resume_id}/analytics", response_model=ResumeAnalytics)
+async def get_resume_analytics(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Return view analytics for a resume. Owner-only."""
+    from datetime import timedelta
+    from sqlalchemy import cast, func as sqlfunc, text as sqtext
+    from sqlalchemy.dialects.postgresql import TIMESTAMP
+
+    from ..database.models import ResumeView
+
+    # Verify ownership
+    await _verify_resume_ownership(db, resume_id, user_id)
+
+    now = datetime.now(timezone.utc)
+    day_30_ago = now - timedelta(days=30)
+    day_7_ago = now - timedelta(days=7)
+
+    # Total views
+    total_q = await db.execute(
+        select(sqlfunc.count()).select_from(ResumeView).where(ResumeView.resume_id == resume_id)
+    )
+    total_views: int = total_q.scalar_one() or 0
+
+    # Views last 7 days
+    last7_q = await db.execute(
+        select(sqlfunc.count()).select_from(ResumeView).where(
+            ResumeView.resume_id == resume_id,
+            ResumeView.viewed_at >= day_7_ago,
+        )
+    )
+    views_last_7_days: int = last7_q.scalar_one() or 0
+
+    # Views last 30 days
+    last30_q = await db.execute(
+        select(sqlfunc.count()).select_from(ResumeView).where(
+            ResumeView.resume_id == resume_id,
+            ResumeView.viewed_at >= day_30_ago,
+        )
+    )
+    views_last_30_days: int = last30_q.scalar_one() or 0
+
+    # Views by day (last 30 days) — truncate to date
+    day_rows = await db.execute(
+        select(
+            sqlfunc.date_trunc("day", ResumeView.viewed_at).label("day"),
+            sqlfunc.count().label("cnt"),
+        )
+        .where(ResumeView.resume_id == resume_id, ResumeView.viewed_at >= day_30_ago)
+        .group_by(sqtext("1"))
+        .order_by(sqtext("1"))
+    )
+    views_by_day = [
+        DayCount(date=row.day.strftime("%Y-%m-%d"), count=row.cnt)
+        for row in day_rows.all()
+    ]
+
+    # Views by country (top 10)
+    country_rows = await db.execute(
+        select(ResumeView.country_code, sqlfunc.count().label("cnt"))
+        .where(ResumeView.resume_id == resume_id)
+        .group_by(ResumeView.country_code)
+        .order_by(sqtext("cnt DESC"))
+        .limit(10)
+    )
+    views_by_country = [
+        CountryCount(country_code=row.country_code, count=row.cnt)
+        for row in country_rows.all()
+    ]
+
+    # Views by referrer (top 10, strip protocol + www)
+    referrer_rows = await db.execute(
+        select(ResumeView.referrer, sqlfunc.count().label("cnt"))
+        .where(ResumeView.resume_id == resume_id)
+        .group_by(ResumeView.referrer)
+        .order_by(sqtext("cnt DESC"))
+        .limit(10)
+    )
+    views_by_referrer = [
+        ReferrerCount(referrer=row.referrer, count=row.cnt)
+        for row in referrer_rows.all()
+    ]
+
+    # First / last viewed
+    bounds_q = await db.execute(
+        select(sqlfunc.min(ResumeView.viewed_at), sqlfunc.max(ResumeView.viewed_at))
+        .where(ResumeView.resume_id == resume_id)
+    )
+    bounds = bounds_q.one()
+    first_viewed_at = bounds[0].isoformat() if bounds[0] else None
+    last_viewed_at = bounds[1].isoformat() if bounds[1] else None
+
+    return ResumeAnalytics(
+        total_views=total_views,
+        views_last_7_days=views_last_7_days,
+        views_last_30_days=views_last_30_days,
+        views_by_day=views_by_day,
+        views_by_country=views_by_country,
+        views_by_referrer=views_by_referrer,
+        first_viewed_at=first_viewed_at,
+        last_viewed_at=last_viewed_at,
+    )
+
+
 # ── Bulk / Batch Export (Feature 49) ─────────────────────────────────────────
 
 def _sanitize_filename(title: str) -> str:
