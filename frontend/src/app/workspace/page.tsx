@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { BookUser, GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2 } from 'lucide-react'
+import { BookUser, GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -79,6 +79,14 @@ export default function WorkspacePage() {
   // References modal state (Feature 70)
   const [referencesModalResume, setReferencesModalResume] = useState<ResumeResponse | null>(null)
 
+  // Feature 39 — Tags, Pin, Archive
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
+  const [archivedResumes, setArchivedResumes] = useState<ResumeResponse[]>([])
+  const [archivedLoading, setArchivedLoading] = useState(false)
+  const [tagEditResumeId, setTagEditResumeId] = useState<string | null>(null)
+  const [tagEditValue, setTagEditValue] = useState('')
+
   // Variant state
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
   const [forkModalResumeId, setForkModalResumeId] = useState<string | null>(null)
@@ -127,9 +135,22 @@ export default function WorkspacePage() {
     fetchData()
   }, [session])
 
-  const filteredResumes = useMemo(
-    () => resumes.filter((resume) => resume.title.toLowerCase().includes(searchQuery.toLowerCase())),
-    [resumes, searchQuery]
+  const filteredResumes = useMemo(() => {
+    let result = resumes.filter((r) => r.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    if (activeTagFilter) result = result.filter((r) => r.tags?.includes(activeTagFilter))
+    // Pinned resumes first
+    return [...result].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
+  }, [resumes, searchQuery, activeTagFilter])
+
+  const allTags = useMemo(() => {
+    const set = new Set<string>()
+    resumes.forEach(r => r.tags?.forEach(t => set.add(t)))
+    return Array.from(set).sort()
+  }, [resumes])
+
+  const templateResumes = useMemo(
+    () => resumes.filter(r => r.is_template),
+    [resumes]
   )
 
   const handleBulkExport = async (format: 'tex' | 'pdf' | 'docx') => {
@@ -218,6 +239,68 @@ export default function WorkspacePage() {
     setForkTitle(`${resumeTitle} — Variant`)
   }, [])
 
+  // Feature 39 handlers
+  const handlePin = useCallback(async (resumeId: string, isPinned: boolean) => {
+    try {
+      const updated = isPinned
+        ? await apiClient.unpinResume(resumeId)
+        : await apiClient.pinResume(resumeId)
+      setResumes(prev => prev.map(r => r.id === resumeId ? { ...r, ...updated } : r))
+    } catch {
+      toast.error('Failed to update pin')
+    }
+  }, [])
+
+  const handleArchive = useCallback(async (resumeId: string) => {
+    try {
+      await apiClient.archiveResume(resumeId)
+      setResumes(prev => prev.filter(r => r.id !== resumeId))
+      toast.success('Resume archived')
+    } catch {
+      toast.error('Failed to archive resume')
+    }
+  }, [])
+
+  const handleUnarchive = useCallback(async (resumeId: string) => {
+    try {
+      const updated = await apiClient.unarchiveResume(resumeId)
+      setArchivedResumes(prev => prev.filter(r => r.id !== resumeId))
+      setResumes(prev => [updated, ...prev])
+      toast.success('Resume restored')
+    } catch {
+      toast.error('Failed to unarchive resume')
+    }
+  }, [])
+
+  const handleSaveTags = useCallback(async () => {
+    if (!tagEditResumeId) return
+    const tags = tagEditValue
+      .split(',')
+      .map(t => t.trim())
+      .filter(Boolean)
+      .slice(0, 10)
+    try {
+      const updated = await apiClient.updateResumeTags(tagEditResumeId, tags)
+      setResumes(prev => prev.map(r => r.id === tagEditResumeId ? { ...r, ...updated } : r))
+      setTagEditResumeId(null)
+      toast.success('Tags updated')
+    } catch {
+      toast.error('Failed to update tags')
+    }
+  }, [tagEditResumeId, tagEditValue])
+
+  const loadArchivedResumes = useCallback(async () => {
+    setArchivedLoading(true)
+    try {
+      const data = await apiClient.listResumes(1, 50, true)
+      setArchivedResumes(Array.isArray(data) ? data : [])
+    } catch {
+      toast.error('Failed to load archived resumes')
+    } finally {
+      setArchivedLoading(false)
+    }
+  }, [])
+
   // Variant count for a resume (from API + local grouping)
   const getVariantCount = useCallback((resume: ResumeResponse) => {
     return Math.max(resume.variant_count ?? 0, variantMap[resume.id]?.length ?? 0)
@@ -258,6 +341,11 @@ export default function WorkspacePage() {
           <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
             {isVariant ? 'Variant' : 'Resume'}
           </p>
+          {resume.pinned && (
+            <span className="flex items-center gap-0.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-300">
+              <Pin size={8} />Pinned
+            </span>
+          )}
           {!isVariant && getVariantCount(resume) > 0 && (
             <button
               onClick={() => toggleExpand(resume.id)}
@@ -299,6 +387,25 @@ export default function WorkspacePage() {
           ? `Updated ${resume.days_since_updated}d ago`
           : `Updated today`}
       </p>
+
+      {/* Tag chips */}
+      {resume.tags && resume.tags.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {resume.tags.map(tag => (
+            <button
+              key={tag}
+              onClick={() => setActiveTagFilter(activeTagFilter === tag ? null : tag)}
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition ${
+                activeTagFilter === tag
+                  ? 'bg-violet-500/30 text-violet-200 ring-1 ring-violet-400/40'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
+              }`}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="mt-6 grid grid-cols-3 gap-2 text-xs">
         <Link
@@ -373,6 +480,43 @@ export default function WorkspacePage() {
           Generate References Page
         </button>
       </div>
+
+      {/* Pin / Archive / Tag actions */}
+      {!isVariant && (
+        <div className="mt-2 flex gap-1.5 border-t border-white/[0.05] pt-2">
+          <button
+            onClick={() => handlePin(resume.id, !!resume.pinned)}
+            title={resume.pinned ? 'Unpin' : 'Pin to top'}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-zinc-500 transition hover:bg-amber-500/10 hover:text-amber-300"
+          >
+            {resume.pinned ? <PinOff size={10} /> : <Pin size={10} />}
+            {resume.pinned ? 'Unpin' : 'Pin'}
+          </button>
+          <button
+            onClick={() => {
+              setTagEditResumeId(resume.id)
+              setTagEditValue(resume.tags?.join(', ') ?? '')
+            }}
+            title="Edit tags"
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-zinc-500 transition hover:bg-violet-500/10 hover:text-violet-300"
+          >
+            <Tag size={10} />
+            Tags
+          </button>
+          <button
+            onClick={() => {
+              if (confirm(`Archive "${resume.title}"? It will be hidden from the workspace.`)) {
+                handleArchive(resume.id)
+              }
+            }}
+            title="Archive resume"
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-400"
+          >
+            <Archive size={10} />
+            Archive
+          </button>
+        </div>
+      )}
     </article>
   )
 
@@ -689,9 +833,134 @@ export default function WorkspacePage() {
               </table>
             </div>
           )}
+
+          {/* Archived resumes section (Feature 39) */}
+          {showArchived && (
+            <div className="mt-6">
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                <Archive size={12} />
+                Archived
+              </h2>
+              {archivedLoading ? (
+                <div className="flex items-center justify-center py-8"><LoadingSpinner /></div>
+              ) : archivedResumes.length === 0 ? (
+                <p className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-sm text-zinc-600">
+                  No archived resumes.
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {archivedResumes.map(r => (
+                    <div key={r.id} className="surface-card edge-highlight flex items-center justify-between gap-3 p-4 opacity-60">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-zinc-300">{r.title}</p>
+                        <p className="text-[11px] text-zinc-600">Archived</p>
+                      </div>
+                      <button
+                        onClick={() => handleUnarchive(r.id)}
+                        title="Restore"
+                        className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-medium text-zinc-500 ring-1 ring-white/10 transition hover:bg-emerald-500/10 hover:text-emerald-400"
+                      >
+                        <ArchiveRestore size={11} />
+                        Restore
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* My Templates section (Feature 39E) */}
+          {templateResumes.length > 0 && !activeTagFilter && (
+            <div className="mt-6">
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                <LayoutTemplate size={12} />
+                My Templates
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {templateResumes.map(r => (
+                  <article key={r.id} className="surface-card edge-highlight flex flex-col gap-2 p-4">
+                    <div className="flex items-center gap-2">
+                      <LayoutTemplate size={11} className="text-zinc-600" />
+                      <p className="truncate text-sm font-medium text-zinc-300">{r.title}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <a href={`/workspace/${r.id}/edit`} className="flex-1 rounded-md border border-white/10 bg-white/[0.03] px-3 py-1.5 text-center text-[11px] font-semibold text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200">
+                        Edit
+                      </a>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const updated = await apiClient.updateResume(r.id, { is_template: false })
+                            setResumes(prev => prev.map(x => x.id === r.id ? { ...x, ...updated } : x))
+                            toast.success('Removed from templates')
+                          } catch { toast.error('Failed') }
+                        }}
+                        className="rounded-md border border-white/10 px-2 py-1.5 text-[11px] text-zinc-600 transition hover:text-rose-400"
+                        title="Remove from templates"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         <aside className="space-y-4">
+          {/* Tag Filter + Archive (Feature 39) */}
+          <section className="surface-panel edge-highlight p-5">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300 flex items-center gap-2">
+              <Tag size={12} />
+              Organize
+            </h2>
+            {allTags.length > 0 ? (
+              <div className="mt-3 space-y-1">
+                <p className="text-[10px] uppercase tracking-wide text-zinc-600 mb-2">Filter by tag</p>
+                <button
+                  onClick={() => setActiveTagFilter(null)}
+                  className={`w-full rounded-md px-3 py-1.5 text-left text-xs transition ${
+                    !activeTagFilter ? 'bg-white/[0.06] text-zinc-200' : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300'
+                  }`}
+                >
+                  All resumes
+                </button>
+                {allTags.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => setActiveTagFilter(activeTagFilter === tag ? null : tag)}
+                    className={`flex w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-left text-xs transition ${
+                      activeTagFilter === tag
+                        ? 'bg-violet-500/20 text-violet-200'
+                        : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300'
+                    }`}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-violet-400/60" />
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-zinc-600">Add tags to resumes to filter here.</p>
+            )}
+            <div className="mt-4 border-t border-white/[0.05] pt-3">
+              <button
+                onClick={() => {
+                  setShowArchived(v => {
+                    if (!v) loadArchivedResumes()
+                    return !v
+                  })
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-400"
+              >
+                <Archive size={11} />
+                {showArchived ? 'Hide Archived' : 'View Archived'}
+              </button>
+            </div>
+          </section>
+
           <section className="surface-panel edge-highlight p-5">
             <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300">Recent Activity</h2>
             {jobs.length === 0 ? (
@@ -890,6 +1159,41 @@ export default function WorkspacePage() {
         onSkip={skipOnboarding}
         userType="new"
       />
+
+      {/* Tag Edit modal (Feature 39) */}
+      {tagEditResumeId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setTagEditResumeId(null)}>
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-base font-semibold text-white">
+                <Tag size={14} className="text-violet-400" />
+                Edit Tags
+              </h3>
+              <button onClick={() => setTagEditResumeId(null)} className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-zinc-500">Enter tags separated by commas (max 10, each ≤30 chars)</p>
+            <input
+              type="text"
+              value={tagEditValue}
+              onChange={e => setTagEditValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveTags(); if (e.key === 'Escape') setTagEditResumeId(null) }}
+              placeholder="e.g. frontend, senior, remote"
+              autoFocus
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-violet-400/40 mb-4"
+            />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setTagEditResumeId(null)} className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 transition hover:text-zinc-200">
+                Cancel
+              </button>
+              <button onClick={handleSaveTags} className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-violet-500">
+                Save Tags
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

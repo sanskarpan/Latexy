@@ -12,6 +12,7 @@ import type { LintIssue } from '@/lib/latex-linter'
 import { addWordToDict, getPersonalDict } from '@/hooks/useSpellCheck'
 import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
 import { LATEX_SEARCH_PRESETS, type LatexSearchPreset } from '@/data/latex-search-presets'
+import { observeChanges, type TrackedChange, type TrackChangesHandle } from '@/lib/yjs-track-changes'
 
 export interface LaTeXEditorRef {
   setValue: (value: string) => void
@@ -23,6 +24,10 @@ export interface LaTeXEditorRef {
   insertAtCursor: (text: string) => void
   /** Returns pixel position of the cursor relative to the editor container, or null if unavailable */
   getCaretPosition: () => { top: number; left: number } | null
+  acceptTrackedChange: (id: string) => void
+  rejectTrackedChange: (id: string) => void
+  acceptAllTrackedChanges: () => void
+  rejectAllTrackedChanges: () => void
 }
 
 interface LaTeXEditorProps {
@@ -83,6 +88,11 @@ interface LaTeXEditorProps {
   collabUser?: { name: string; color: string; token: string }
   /** Fires when the set of remote-presence users changes */
   onPresenceChange?: (users: PresenceUser[]) => void
+  // ── Track Changes (Feature 41) ──────────────────────────────────────
+  /** Current tracked changes to render as decorations */
+  trackedChanges?: TrackedChange[]
+  /** Called when tracked changes are updated */
+  onTrackedChangesUpdate?: (changes: TrackedChange[]) => void
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -261,7 +271,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, onPresenceChange },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, onPresenceChange, trackedChanges, onTrackedChangesUpdate },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -282,15 +292,22 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     spellCheckIssuesRef.current = spellCheckIssues
     const onPresenceChangeRef = useRef(onPresenceChange)
     onPresenceChangeRef.current = onPresenceChange
+    const onTrackedChangesUpdateRef = useRef(onTrackedChangesUpdate)
+    onTrackedChangesUpdateRef.current = onTrackedChangesUpdate
 
     // Y.js collab refs — cleaned up on unmount
     const ydocRef = useRef<any>(null)
     const providerRef = useRef<any>(null)
     const bindingRef = useRef<any>(null)
+    // Track changes refs (Feature 41)
+    const trackChangesRef = useRef<TrackChangesHandle | null>(null)
+    const trackedChangesDecsRef = useRef<any>(null)
 
     // Cleanup Y.js session on unmount
     useEffect(() => {
       return () => {
+        trackChangesRef.current?.cleanup()
+        trackChangesRef.current = null
         bindingRef.current?.destroy()
         providerRef.current?.destroy()
         ydocRef.current?.destroy()
@@ -418,6 +435,10 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         if (!pixel) return null
         return { top: pixel.top, left: pixel.left }
       },
+      acceptTrackedChange: (id: string) => { trackChangesRef.current?.acceptChange(id) },
+      rejectTrackedChange: (id: string) => { trackChangesRef.current?.rejectChange(id) },
+      acceptAllTrackedChanges: () => { trackChangesRef.current?.acceptAll() },
+      rejectAllTrackedChanges: () => { trackChangesRef.current?.rejectAll() },
     }))
 
     // Apply log markers whenever logLines change
@@ -583,6 +604,37 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
       monaco.editor.setModelMarkers(model, 'spellcheck', markers)
     }, [spellCheckIssues])
+
+    // Tracked changes decorations (Feature 41)
+    useEffect(() => {
+      const editor = editorRef.current
+      if (!editor) return
+      if (!trackedChangesDecsRef.current) {
+        trackedChangesDecsRef.current = editor.createDecorationsCollection([])
+      }
+      if (!trackedChanges || trackedChanges.length === 0) {
+        trackedChangesDecsRef.current.set([])
+        return
+      }
+      const decorations = trackedChanges.map((c) => ({
+        range: {
+          startLineNumber: c.range.startLineNumber,
+          startColumn: c.range.startColumn,
+          endLineNumber: c.range.endLineNumber,
+          endColumn: c.range.endColumn,
+        },
+        options: c.type === 'insertion'
+          ? {
+              className: 'tracked-insertion',
+              hoverMessage: { value: `**${c.userName}** inserted — *Accept or Reject in Changes panel*` },
+            }
+          : {
+              glyphMarginClassName: 'tracked-deletion-glyph',
+              hoverMessage: { value: `**${c.userName}** deleted "${c.text.slice(0, 40)}" — *Accept or Reject in Changes panel*` },
+            },
+      }))
+      trackedChangesDecsRef.current.set(decorations)
+    }, [trackedChanges])
 
     // Auto-compile: debounce 2s after last keystroke
     useEffect(() => {
@@ -1303,6 +1355,11 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
           ydocRef.current = ydoc
           providerRef.current = provider
+
+          // Track changes (Feature 41)
+          trackChangesRef.current = observeChanges(yText, provider, (updatedChanges) => {
+            onTrackedChangesUpdateRef.current?.(updatedChanges)
+          })
         } catch (err) {
           console.warn('[LaTeXEditor] Y.js collab init failed:', err)
         }
@@ -1356,6 +1413,18 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           }
           .yRemoteSelection {
             background-color: var(--user-color-light, rgba(124,58,237,0.12));
+          }
+          /* Tracked changes (Feature 41) */
+          .tracked-insertion {
+            background-color: rgba(74,222,128,0.15);
+            border-bottom: 2px solid rgba(74,222,128,0.6);
+          }
+          .tracked-deletion-glyph {
+            width: 8px !important;
+            height: 8px !important;
+            border-radius: 50%;
+            background-color: rgba(248,113,113,0.8);
+            margin-top: 6px;
           }
         `}</style>
         {!value ? (

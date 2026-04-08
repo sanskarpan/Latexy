@@ -76,6 +76,9 @@ import WatermarkDownloadPopover from '@/components/WatermarkDownloadPopover'
 import CompilerSelector from '@/components/CompilerSelector'
 import CompileSettingsModal from '@/components/CompileSettingsModal'
 import CollaboratorPanel from '@/components/CollaboratorPanel'
+import ChangesPanel from '@/components/ChangesPanel'
+import type { TrackedChange } from '@/lib/yjs-track-changes'
+import { GitMerge } from 'lucide-react'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
@@ -85,7 +88,7 @@ import KeyboardShortcutsPanel from '@/components/KeyboardShortcutsPanel'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
@@ -823,6 +826,9 @@ export default function ResumeEditPage() {
   const [collabOpen, setCollabOpen] = useState(false)
   const [collabIsOwner, setCollabIsOwner] = useState(true)
   const [presenceUsers, setPresenceUsers] = useState<import('@/lib/api-client').PresenceUser[]>([])
+
+  // Track Changes (Feature 41)
+  const [trackedChanges, setTrackedChanges] = useState<TrackedChange[]>([])
 
   const searchParams = useSearchParams()
   const activePdfJobId = useRef<string | null>(null)
@@ -1871,6 +1877,8 @@ export default function ResumeEditPage() {
                 token: sessionData.session.token,
               } : undefined}
               onPresenceChange={setPresenceUsers}
+              trackedChanges={trackedChanges}
+              onTrackedChangesUpdate={setTrackedChanges}
             />
 
             {/* AI Summary Widget trigger — shown when cursor is in summary section */}
@@ -1969,6 +1977,7 @@ export default function ResumeEditPage() {
                 { id: 'packages', label: 'Packages', icon: Package },
                 { id: 'linter', label: 'Linter', icon: AlertTriangle },
                 { id: 'symbols', label: 'Symbols', icon: Braces },
+                { id: 'changes', label: 'Changes', icon: GitMerge },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -1992,6 +2001,11 @@ export default function ResumeEditPage() {
                 {id === 'linter' && lintIssues.length > 0 && (
                   <span className="ml-0.5 rounded bg-amber-500/20 px-1 py-0.5 font-mono text-[8px] text-amber-300">
                     {lintIssues.length}
+                  </span>
+                )}
+                {id === 'changes' && trackedChanges.length > 0 && (
+                  <span className="ml-0.5 rounded bg-emerald-500/20 px-1 py-0.5 font-mono text-[8px] text-emerald-300">
+                    {trackedChanges.length}
                   </span>
                 )}
               </button>
@@ -2199,6 +2213,16 @@ export default function ResumeEditPage() {
             {rightTab === 'symbols' && (
               <SymbolPalette
                 onInsert={(cmd) => editorRef.current?.insertAtCursor(cmd)}
+              />
+            )}
+
+            {rightTab === 'changes' && (
+              <ChangesPanel
+                changes={trackedChanges}
+                onAccept={(id) => editorRef.current?.acceptTrackedChange(id)}
+                onReject={(id) => editorRef.current?.rejectTrackedChange(id)}
+                onAcceptAll={() => editorRef.current?.acceptAllTrackedChanges()}
+                onRejectAll={() => editorRef.current?.rejectAllTrackedChanges()}
               />
             )}
           </div>

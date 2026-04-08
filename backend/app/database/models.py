@@ -115,6 +115,8 @@ class Resume(Base):
     github_sync_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     github_repo_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     github_last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Archive (Feature 39)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

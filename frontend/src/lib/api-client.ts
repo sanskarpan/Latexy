@@ -159,7 +159,7 @@ export interface ResumeResponse extends ResumeBase {
   user_id: string
   parent_resume_id?: string | null
   variant_count?: number
-  metadata?: { compiler?: string; custom_flags?: string; [key: string]: unknown } | null
+  metadata?: { compiler?: string; custom_flags?: string; pinned?: boolean; [key: string]: unknown } | null
   share_token?: string | null
   share_url?: string | null
   // GitHub sync (Feature 37)
@@ -168,6 +168,9 @@ export interface ResumeResponse extends ResumeBase {
   github_last_sync_at?: string | null
   created_at: string
   updated_at: string
+  // Archive / Pin / Tags (Feature 39)
+  archived_at?: string | null
+  pinned?: boolean
   // Freshness (Feature 48) — computed server-side from updated_at
   days_since_updated?: number
   freshness_status?: 'fresh' | 'stale' | 'very_stale'
@@ -628,9 +631,9 @@ class ApiClient {
   //  Resumes (Workspace)                                             //
   // ---------------------------------------------------------------- //
 
-  async listResumes(page: number = 1, limit: number = 20): Promise<ResumeResponse[]> {
+  async listResumes(page: number = 1, limit: number = 20, archived = false): Promise<ResumeResponse[]> {
     const data = await this.request<PaginatedResumesResponse>(
-      `/resumes/?page=${page}&limit=${limit}`
+      `/resumes/?page=${page}&limit=${limit}${archived ? '&archived=true' : ''}`
     )
     return data.resumes ?? []
   }
@@ -639,6 +642,37 @@ class ApiClient {
     return this.request<PaginatedResumesResponse>(
       `/resumes/?page=${page}&limit=${limit}`
     )
+  }
+
+  async updateResumeTags(resumeId: string, tags: string[]): Promise<ResumeResponse> {
+    return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/tags`, {
+      method: 'PATCH',
+      body: JSON.stringify({ tags }),
+    })
+  }
+
+  async pinResume(resumeId: string): Promise<ResumeResponse> {
+    return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/pin`, {
+      method: 'PATCH',
+    })
+  }
+
+  async unpinResume(resumeId: string): Promise<ResumeResponse> {
+    return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/unpin`, {
+      method: 'PATCH',
+    })
+  }
+
+  async archiveResume(resumeId: string): Promise<ResumeResponse> {
+    return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/archive`, {
+      method: 'PATCH',
+    })
+  }
+
+  async unarchiveResume(resumeId: string): Promise<ResumeResponse> {
+    return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/unarchive`, {
+      method: 'PATCH',
+    })
   }
 
   async getResume(resumeId: string): Promise<ResumeResponse> {

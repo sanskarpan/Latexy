@@ -57,6 +57,8 @@ class ResumeResponse(ResumeBase):
     github_last_sync_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    archived_at: Optional[datetime] = None
+    pinned: bool = False
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -64,6 +66,12 @@ class ResumeResponse(ResumeBase):
     def _compute_share_url(self) -> 'ResumeResponse':
         if self.share_token and not self.share_url:
             self.share_url = f"{settings.FRONTEND_URL}/r/{self.share_token}"
+        return self
+
+    @model_validator(mode='after')
+    def _extract_pinned(self) -> 'ResumeResponse':
+        if self.metadata and self.metadata.get('pinned'):
+            self.pinned = True
         return self
 
     # Freshness (Feature 48) — computed from updated_at, never read from ORM/mock
@@ -262,6 +270,7 @@ async def list_resumes(
     page: int = 1,
     limit: int = 20,
     parent_id: Optional[str] = Query(None),
+    archived: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required)
 ):
@@ -273,6 +282,11 @@ async def list_resumes(
     filters = [Resume.user_id == user_id]
     if parent_id is not None:
         filters.append(Resume.parent_resume_id == parent_id)
+    # Filter by archive status
+    if archived:
+        filters.append(Resume.archived_at.is_not(None))
+    else:
+        filters.append(Resume.archived_at.is_(None))
 
     count_result = await db.execute(
         select(func.count(Resume.id)).where(*filters)
@@ -498,6 +512,98 @@ async def update_resume_settings(
     resp = ResumeResponse.model_validate(resume)
     resp.variant_count = 0
     return resp
+
+
+# --- Tag / Pin / Archive endpoints (Feature 39) ---
+
+class TagsUpdate(BaseModel):
+    # max_length=10 on List in Pydantic v2 constrains item count (≤10 tags)
+    tags: List[str] = Field(..., max_length=10)
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, v: List[str]) -> List[str]:
+        for tag in v:
+            if len(tag) > 30:
+                raise ValueError(f"Tag '{tag}' exceeds 30 characters")
+            if not tag.strip():
+                raise ValueError("Tags cannot be empty")
+        return [t.strip() for t in v]
+
+
+@router.patch("/{resume_id}/tags", response_model=ResumeResponse)
+async def update_resume_tags(
+    resume_id: str,
+    body: TagsUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Set tags on a resume (replaces existing tags)."""
+    resume = await _verify_resume_ownership(db, resume_id, user_id)
+    resume.tags = body.tags
+    await db.commit()
+    await db.refresh(resume)
+    return ResumeResponse.model_validate(resume)
+
+
+@router.patch("/{resume_id}/pin", response_model=ResumeResponse)
+async def pin_resume(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Pin a resume to the top of the workspace."""
+    resume = await _verify_resume_ownership(db, resume_id, user_id)
+    settings_dict = dict(resume.resume_settings or {})
+    settings_dict["pinned"] = True
+    resume.resume_settings = settings_dict
+    await db.commit()
+    await db.refresh(resume)
+    return ResumeResponse.model_validate(resume)
+
+
+@router.patch("/{resume_id}/unpin", response_model=ResumeResponse)
+async def unpin_resume(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Unpin a resume."""
+    resume = await _verify_resume_ownership(db, resume_id, user_id)
+    settings_dict = dict(resume.resume_settings or {})
+    settings_dict.pop("pinned", None)
+    resume.resume_settings = settings_dict
+    await db.commit()
+    await db.refresh(resume)
+    return ResumeResponse.model_validate(resume)
+
+
+@router.patch("/{resume_id}/archive", response_model=ResumeResponse)
+async def archive_resume(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Archive a resume (hides from default workspace listing)."""
+    resume = await _verify_resume_ownership(db, resume_id, user_id)
+    resume.archived_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(resume)
+    return ResumeResponse.model_validate(resume)
+
+
+@router.patch("/{resume_id}/unarchive", response_model=ResumeResponse)
+async def unarchive_resume(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Unarchive a resume."""
+    resume = await _verify_resume_ownership(db, resume_id, user_id)
+    resume.archived_at = None
+    await db.commit()
+    await db.refresh(resume)
+    return ResumeResponse.model_validate(resume)
 
 
 # ── Variant / Fork system ─────────────────────────────────────────────────
