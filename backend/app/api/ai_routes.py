@@ -754,3 +754,269 @@ async def standardize_dates(request: StandardizeDatesRequest):
         occurrences=unique,
         standardized_latex=standardized_latex,
     )
+
+
+# ── Resume Age Analysis (Feature 55) ────────────────────────────────────────
+
+import datetime as _dt
+
+_PRESTIGIOUS_KEYWORDS = {
+    "harvard", "mit", "stanford", "yale", "princeton", "columbia",
+    "university of chicago", "upenn", "penn", "dartmouth", "cornell",
+    "brown", "duke", "northwestern", "vanderbilt", "johns hopkins",
+    "caltech", "rice", "notre dame", "emory", "georgetown",
+    "carnegie mellon", "carnegie-mellon", "uc berkeley", "berkeley",
+    "university of michigan", "virginia", "usc", "nyu",
+    "tufts", "purdue", "georgia tech", "georgia institute",
+    "ucla", "uchicago", "oxford", "cambridge", "lse",
+    "london school of economics", "imperial college", "eth zurich",
+    "hec paris", "insead", "iit", "indian institute of technology",
+    "google", "apple", "microsoft", "amazon", "meta", "facebook",
+    "netflix", "alphabet", "openai", "deepmind", "anthropic",
+    "goldman sachs", "goldman", "mckinsey", "bain",
+    "boston consulting", "bcg", "blackstone", "jp morgan", "jpmorgan",
+    "morgan stanley", "jane street", "two sigma", "citadel", "bridgewater",
+}
+
+
+def _check_prestigious(name: str) -> bool:
+    low = name.lower()
+    return any(kw in low for kw in _PRESTIGIOUS_KEYWORDS)
+
+
+# Year range: "2015 – 2020", "2015 - Present", "2015–2020", solo year
+_YEAR_RANGE_RE = _re.compile(
+    r'\b((19|20)\d{2})\s*(?:[–—\-]+\s*(?:((?:19|20)\d{2})|([Pp]resent|[Cc]urrent|[Nn]ow|[Tt]oday)))?'
+)
+
+_ENTITY_RE = _re.compile(r'\\(?:textbf|textit|textsc|textmd)\{([^}]{2,80})\}')
+_PLAIN_CAP_RE = _re.compile(r'\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,5})\b')
+
+
+def _extract_entity(text: str) -> str:
+    m = _ENTITY_RE.search(text)
+    if m:
+        val = m.group(1).strip()
+        if len(val) > 2 and not val.startswith('\\'):
+            return val
+    m = _PLAIN_CAP_RE.search(text)
+    if m:
+        return m.group(1).strip()
+    return ""
+
+
+class AgeEntry(BaseModel):
+    line: int
+    company_or_institution: str
+    start_year: int
+    end_year: Optional[int]  # None = "Present"
+    years_ago: int
+    is_old: bool
+    is_prestigious: bool
+    recommendation: str
+
+
+class AgeAnalysisResponse(BaseModel):
+    entries: List[AgeEntry]
+    has_old_entries: bool
+
+
+class AgeAnalysisRequest(BaseModel):
+    latex_content: str = Field(..., max_length=200_000)
+
+
+@router.post("/age-analysis", response_model=AgeAnalysisResponse)
+async def age_analysis(request: AgeAnalysisRequest) -> AgeAnalysisResponse:
+    """
+    Detect year-range entries in LaTeX resume and flag those older than 10 years.
+    Prestigious institutions are exempt. Pure regex — no LLM required.
+    """
+    current_year = _dt.date.today().year
+    lines = request.latex_content.splitlines()
+    entries: List[AgeEntry] = []
+    seen: set[tuple[int, int]] = set()
+
+    for line_idx, line_text in enumerate(lines):
+        for m in _YEAR_RANGE_RE.finditer(line_text):
+            start_year = int(m.group(1))
+            if not (1950 <= start_year <= current_year):
+                continue
+
+            end_group_year = m.group(3)
+            end_group_present = m.group(4)
+            if end_group_year:
+                end_year: Optional[int] = int(end_group_year)
+            elif end_group_present:
+                end_year = None  # Present / ongoing
+            else:
+                end_year = None
+
+            key = (line_idx, start_year)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            years_ago = current_year - start_year
+            # Use the most-recent year for the staleness check so that a
+            # still-active role (end_year=None → ongoing) is never flagged old.
+            recency_year = end_year if end_year is not None else current_year
+            entity = ""
+            for ctx_offset in range(3):
+                ctx_idx = line_idx - ctx_offset
+                if ctx_idx < 0:
+                    break
+                entity = _extract_entity(lines[ctx_idx])
+                if entity:
+                    break
+            if not entity:
+                entity = "Experience entry"
+
+            prestigious = _check_prestigious(entity)
+            is_old = (current_year - recency_year) > 10 and not prestigious
+
+            if is_old:
+                recommendation = (
+                    "Consider condensing this entry to 1-2 bullet points "
+                    "or removing if not directly relevant to your target role."
+                )
+            elif years_ago > 10 and prestigious:
+                recommendation = (
+                    "Prestigious institution — keeping this entry is recommended "
+                    "even though it is older than 10 years."
+                )
+            else:
+                recommendation = "This entry is recent — no action needed."
+
+            entries.append(AgeEntry(
+                line=line_idx + 1,
+                company_or_institution=entity,
+                start_year=start_year,
+                end_year=end_year,
+                years_ago=years_ago,
+                is_old=is_old,
+                is_prestigious=prestigious,
+                recommendation=recommendation,
+            ))
+
+    entries.sort(key=lambda e: e.start_year, reverse=True)
+    return AgeAnalysisResponse(
+        entries=entries,
+        has_old_entries=any(e.is_old for e in entries),
+    )
+
+
+# ── Contact Info Formatter (Feature 64) ─────────────────────────────────────
+
+try:
+    import phonenumbers as _phonenumbers
+    from phonenumbers import PhoneNumberFormat as _PhoneNumberFormat
+    _PHONENUMBERS_AVAILABLE = True
+except ImportError:
+    _PHONENUMBERS_AVAILABLE = False
+
+_LINKEDIN_RE = _re.compile(
+    r'(?:https?://)?(?:www\.)?linkedin\.com/in/([A-Za-z0-9_%-]+)/?',
+    _re.IGNORECASE,
+)
+_GITHUB_RE = _re.compile(
+    r'(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9_-]+)(/[^\s\\}]*)?',
+    _re.IGNORECASE,
+)
+_EMAIL_CONTACT_RE = _re.compile(
+    r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b',
+)
+_PHONE_DETECT_RE = _re.compile(
+    r'\+?\d[\d\s\-().]{7,17}\d'
+)
+
+
+def _normalize_phone(raw: str) -> Optional[str]:
+    if not _PHONENUMBERS_AVAILABLE:
+        return None
+    for region in (None, "US"):
+        try:
+            parsed = _phonenumbers.parse(raw, region)
+            if _phonenumbers.is_valid_number(parsed):
+                return _phonenumbers.format_number(parsed, _PhoneNumberFormat.INTERNATIONAL)
+        except Exception:
+            pass
+    return None
+
+
+class ContactFormatRequest(BaseModel):
+    latex_content: str = Field(..., max_length=200_000)
+
+
+class ContactChange(BaseModel):
+    line: int
+    original: str
+    normalized: str
+    type: str  # "phone" | "linkedin" | "github" | "email"
+
+
+class ContactFormatResponse(BaseModel):
+    changes: List[ContactChange]
+    formatted_latex: str
+
+
+@router.post("/format-contacts", response_model=ContactFormatResponse)
+async def format_contacts(request: ContactFormatRequest) -> ContactFormatResponse:
+    """
+    Detect and normalize phone numbers, LinkedIn/GitHub URLs, and emails in LaTeX.
+    Pure regex + phonenumbers library. No LLM required.
+    """
+    content = request.latex_content
+
+    def _line_num(pos: int) -> int:
+        return content.count('\n', 0, pos) + 1
+
+    # Collect replacements as (start, end, original, normalized, type)
+    reps: list[tuple[int, int, str, str, str]] = []
+
+    for m in _LINKEDIN_RE.finditer(content):
+        username = m.group(1).rstrip('/')
+        normalized = f"linkedin.com/in/{username}"
+        if m.group(0) != normalized:
+            reps.append((m.start(), m.end(), m.group(0), normalized, "linkedin"))
+
+    for m in _GITHUB_RE.finditer(content):
+        if 'linkedin' in m.group(0).lower():
+            continue
+        username = m.group(1)
+        suffix = (m.group(2) or "").rstrip("/")
+        normalized = f"github.com/{username}{suffix}"
+        if m.group(0) != normalized:
+            reps.append((m.start(), m.end(), m.group(0), normalized, "github"))
+
+    for m in _EMAIL_CONTACT_RE.finditer(content):
+        normalized = m.group(0).lower()
+        if normalized != m.group(0):
+            reps.append((m.start(), m.end(), m.group(0), normalized, "email"))
+
+    for m in _PHONE_DETECT_RE.finditer(content):
+        raw = m.group(0).strip()
+        normalized = _normalize_phone(raw)
+        if normalized and normalized != raw:
+            reps.append((m.start(), m.end(), raw, normalized, "phone"))
+
+    # Deduplicate, preferring earlier match
+    seen_starts: set[int] = set()
+    unique_reps: list[tuple[int, int, str, str, str]] = []
+    for rep in sorted(reps, key=lambda r: r[0]):
+        if rep[0] not in seen_starts:
+            seen_starts.add(rep[0])
+            unique_reps.append(rep)
+
+    # Apply in reverse order so positions remain valid
+    result = content
+    changes: List[ContactChange] = []
+    for start, end, original, normalized, ctype in reversed(unique_reps):
+        result = result[:start] + normalized + result[end:]
+        changes.insert(0, ContactChange(
+            line=_line_num(start),
+            original=original,
+            normalized=normalized,
+            type=ctype,
+        ))
+
+    return ContactFormatResponse(changes=changes, formatted_latex=result)

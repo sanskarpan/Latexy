@@ -1,4 +1,5 @@
 import io
+import os as _os
 import re
 import secrets
 import zipfile
@@ -8,6 +9,8 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
+from jinja2 import Environment as _JinjaEnv
+from jinja2 import FileSystemLoader as _JinjaFSL
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1456,3 +1459,155 @@ async def remove_collaborator(
     await db.delete(collab)
     await db.commit()
     return None
+
+
+# ── Reference Page Generator (Feature 70) ───────────────────────────────────
+
+
+
+def _get_jinja_env() -> _JinjaEnv:
+    """Return a Jinja2 env with LaTeX-friendly delimiters (<< >>, <% %>)."""
+    templates_dir = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "templates")
+    return _JinjaEnv(
+        loader=_JinjaFSL(templates_dir),
+        variable_start_string="<<",
+        variable_end_string=">>",
+        block_start_string="<%",
+        block_end_string="%>",
+        comment_start_string="<#",
+        comment_end_string="#>",
+        keep_trailing_newline=True,
+        autoescape=False,
+    )
+
+
+def _extract_documentclass(latex: str) -> str:
+    m = re.search(r'\\documentclass(?:\[[^\]]*\])?\{[^}]+\}', latex)
+    return m.group(0) if m else r'\documentclass{article}'
+
+
+# Packages already injected by references_page.tex.j2 — skip to avoid option clashes.
+_TEMPLATE_PACKAGES: set[str] = {"geometry", "hyperref", "parskip"}
+
+
+def _extract_extra_preamble(latex: str) -> str:
+    """Extract style macros from preamble to style-match the reference page."""
+    lines_list = latex.splitlines()
+    preamble_lines: list[str] = []
+    in_preamble = False
+    for line in lines_list:
+        stripped = line.strip()
+        if re.match(r'\\documentclass', stripped):
+            in_preamble = True
+            continue
+        if stripped == r'\begin{document}':
+            break
+        if in_preamble and (
+            stripped.startswith(r'\usepackage')
+            or stripped.startswith(r'\definecolor')
+            or stripped.startswith(r'\colorlet')
+            or stripped.startswith(r'\setmainfont')
+            or stripped.startswith(r'\newcommand')
+            or stripped.startswith(r'\renewcommand')
+        ):
+            if 'draftwatermark' in stripped:
+                continue
+            # Skip packages the template already provides to avoid option clashes
+            pkg_m = re.match(r'\\usepackage(?:\[[^\]]*\])?\{([^}]+)\}', stripped)
+            if pkg_m:
+                pkgs = {p.strip() for p in pkg_m.group(1).split(',')}
+                if pkgs & _TEMPLATE_PACKAGES:
+                    continue
+            preamble_lines.append(line)
+    return '\n'.join(preamble_lines)
+
+
+def _escape_latex(text: str) -> str:
+    """Escape LaTeX special characters to prevent compilation errors/injection."""
+    if not text:
+        return text
+    # Backslash must be replaced first
+    replacements = [
+        ('\\', r'\textbackslash{}'),
+        ('&', r'\&'),
+        ('%', r'\%'),
+        ('$', r'\$'),
+        ('#', r'\#'),
+        ('_', r'\_'),
+        ('{', r'\{'),
+        ('}', r'\}'),
+        ('~', r'\textasciitilde{}'),
+        ('^', r'\textasciicircum{}'),
+    ]
+    for char, escaped in replacements:
+        text = text.replace(char, escaped)
+    return text
+
+
+class ReferenceContact(BaseModel):
+    name: str = Field(..., max_length=100)
+    title: str = Field(..., max_length=200)
+    company: str = Field(..., max_length=200)
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    relationship: str = Field(..., max_length=100)
+
+
+class GenerateReferencesRequest(BaseModel):
+    references: List[ReferenceContact] = Field(..., min_length=1, max_length=5)
+
+
+class GenerateReferencesResponse(BaseModel):
+    latex_content: str
+
+
+@router.post("/{resume_id}/generate-references", response_model=GenerateReferencesResponse)
+async def generate_references(
+    resume_id: str,
+    request: GenerateReferencesRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+) -> GenerateReferencesResponse:
+    """
+    Generate a matching-style LaTeX reference page from up to 5 contact entries.
+    Extracts \\documentclass and preamble macros from the source resume.
+    """
+    result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    source_latex: str = resume.latex_content or ""
+    documentclass = _extract_documentclass(source_latex)
+    extra_preamble = _extract_extra_preamble(source_latex)
+
+    try:
+        env = _get_jinja_env()
+        template = env.get_template("references_page.tex.j2")
+        # Escape all user-supplied fields before rendering to prevent LaTeX
+        # compilation errors or injection via special characters (%, &, _, etc.).
+        safe_refs = [
+            {
+                "name": _escape_latex(ref.name),
+                "title": _escape_latex(ref.title),
+                "company": _escape_latex(ref.company),
+                "relationship": _escape_latex(ref.relationship),
+                # Email used raw in mailto: URL; display copy is escaped
+                "email": ref.email or "",
+                "email_display": _escape_latex(ref.email or ""),
+                "phone": _escape_latex(ref.phone or "") if ref.phone else "",
+            }
+            for ref in request.references
+        ]
+        latex_content = template.render(
+            documentclass=documentclass,
+            extra_preamble=extra_preamble,
+            references=safe_refs,
+        )
+    except Exception as exc:
+        logger.error(f"Reference page render error: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to render reference page template")
+
+    return GenerateReferencesResponse(latex_content=latex_content)

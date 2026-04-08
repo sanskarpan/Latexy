@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2 } from 'lucide-react'
+import { BookUser, GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -16,6 +16,7 @@ import ProjectSearchModal from '@/components/ProjectSearchModal'
 import AddApplicationModal from '@/components/AddApplicationModal'
 import QuickTailorModal from '@/components/QuickTailorModal'
 import OnboardingFlow, { useOnboarding } from '@/components/onboarding/OnboardingFlow'
+import GenerateReferencesModal from '@/components/GenerateReferencesModal'
 
 export default function WorkspacePage() {
   const { data: session, isPending: sessionLoading } = useSession()
@@ -74,6 +75,9 @@ export default function WorkspacePage() {
 
   // Quick Tailor modal state
   const [quickTailorResume, setQuickTailorResume] = useState<ResumeResponse | null>(null)
+
+  // References modal state (Feature 70)
+  const [referencesModalResume, setReferencesModalResume] = useState<ResumeResponse | null>(null)
 
   // Variant state
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
@@ -360,6 +364,15 @@ export default function WorkspacePage() {
       <div className="mt-2">
         <ExportDropdown resumeId={resume.id} variant="card" />
       </div>
+      <div className="mt-2">
+        <button
+          onClick={() => setReferencesModalResume(resume)}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] py-2 text-xs font-semibold text-zinc-500 transition hover:bg-white/[0.06] hover:text-violet-300"
+        >
+          <BookUser size={11} />
+          Generate References Page
+        </button>
+      </div>
     </article>
   )
 
@@ -609,6 +622,13 @@ export default function WorkspacePage() {
                               <GitFork size={11} />
                               Fork
                             </button>
+                            <button
+                              onClick={() => setReferencesModalResume(resume)}
+                              className="flex items-center gap-1 rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs font-semibold text-zinc-400 transition hover:border-violet-400/30 hover:text-violet-300"
+                            >
+                              <BookUser size={11} />
+                              Refs
+                            </button>
                             <ExportDropdown resumeId={resume.id} variant="toolbar" />
                           </div>
                         </td>
@@ -852,6 +872,15 @@ export default function WorkspacePage() {
               if (Array.isArray(data)) setResumes(data)
             }).catch(() => {})
           }}
+        />
+      )}
+
+      {referencesModalResume && (
+        <GenerateReferencesModal
+          isOpen={true}
+          onClose={() => setReferencesModalResume(null)}
+          resumeId={referencesModalResume.id}
+          resumeTitle={referencesModalResume.title}
         />
       )}
 
