@@ -72,6 +72,7 @@ import QrCodeInserter from '@/components/QrCodeInserter'
 import DateStandardizerPanel from '@/components/DateStandardizerPanel'
 import AgeAnalysisPanel from '@/components/AgeAnalysisPanel'
 import ContactFormatterPanel from '@/components/ContactFormatterPanel'
+import WatermarkDownloadPopover from '@/components/WatermarkDownloadPopover'
 import CompilerSelector from '@/components/CompilerSelector'
 import CompileSettingsModal from '@/components/CompileSettingsModal'
 import CollaboratorPanel from '@/components/CollaboratorPanel'
@@ -1999,13 +2000,19 @@ export default function ResumeEditPage() {
             <div className="flex-1" />
 
             {pdfUrl && (
-              <button
-                onClick={handleDownload}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-600 transition hover:text-zinc-300"
-              >
-                <Download size={11} />
-                PDF
-              </button>
+              <>
+                <button
+                  onClick={handleDownload}
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-600 transition hover:text-zinc-300"
+                >
+                  <Download size={11} />
+                  PDF
+                </button>
+                <WatermarkDownloadPopover
+                  getLatex={() => editorRef.current?.getValue() ?? ''}
+                  filename={title}
+                />
+              </>
             )}
           </div>
 
