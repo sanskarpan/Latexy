@@ -2278,6 +2278,7 @@ export default function ResumeEditPage() {
         onClose={() => setContactFormatterOpen(false)}
         getLatex={() => editorRef.current?.getValue() ?? latexContent}
         onApply={(newLatex) => {
+          pushUndo('Before contact normalization')
           editorRef.current?.setValue(newLatex)
           setLatexContent(newLatex)
         }}
