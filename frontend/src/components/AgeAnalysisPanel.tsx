@@ -20,7 +20,10 @@ export default function AgeAnalysisPanel({
 }: AgeAnalysisPanelProps) {
   const [entries, setEntries] = useState<AgeEntry[] | null>(null)
   const [loading, setLoading] = useState(false)
-  const [dismissed, setDismissed] = useState<Set<number>>(new Set())
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+
+  const entryKey = (e: AgeEntry) =>
+    `${e.line}:${e.start_year}:${e.end_year ?? 'present'}:${e.company_or_institution}`
   const [previewOpen, setPreviewOpen] = useState(true)
 
   // Reset on open
@@ -55,13 +58,13 @@ export default function AgeAnalysisPanel({
     }
   }, [getLatex])
 
-  const handleDismiss = (line: number) => {
-    setDismissed((prev) => new Set([...prev, line]))
+  const handleDismiss = (key: string) => {
+    setDismissed((prev) => new Set([...prev, key]))
   }
 
   if (!isOpen) return null
 
-  const visibleEntries = entries?.filter((e) => !dismissed.has(e.line)) ?? []
+  const visibleEntries = entries?.filter((e) => !dismissed.has(entryKey(e))) ?? []
   const oldCount = visibleEntries.filter((e) => e.is_old).length
 
   return (
@@ -135,7 +138,7 @@ export default function AgeAnalysisPanel({
                     <div className="max-h-72 divide-y divide-white/[0.04] overflow-y-auto">
                       {visibleEntries.map((entry) => (
                         <div
-                          key={`${entry.line}-${entry.start_year}`}
+                          key={entryKey(entry)}
                           className={`px-3 py-2.5 ${entry.is_old ? 'bg-amber-500/[0.04]' : ''}`}
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -161,7 +164,7 @@ export default function AgeAnalysisPanel({
                                 </button>
                               )}
                               <button
-                                onClick={() => handleDismiss(entry.line)}
+                                onClick={() => handleDismiss(entryKey(entry))}
                                 className="rounded px-1.5 py-0.5 text-[10px] text-zinc-600 transition hover:bg-white/[0.06] hover:text-zinc-400"
                               >
                                 Dismiss
