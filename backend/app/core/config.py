@@ -135,6 +135,11 @@ class Settings(BaseSettings):
         description="Max characters of extracted prose sent to LanguageTool per request",
     )
 
+    # GeoIP provider URL for country detection (Feature 43)
+    # Example: "http://ip-api.com/json/{ip}?fields=countryCode"
+    # Leave empty to skip country detection.
+    GEOIP_PROVIDER_URL: str = Field(default="", description="GeoIP URL template with {ip} placeholder")
+
     # Admin email — user with this email can access /admin/* endpoints
     ADMIN_EMAIL: str = Field(default="", description="Email of the admin user for /admin/* access")
 
