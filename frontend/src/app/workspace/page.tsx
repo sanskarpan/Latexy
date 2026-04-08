@@ -1159,6 +1159,41 @@ export default function WorkspacePage() {
         onSkip={skipOnboarding}
         userType="new"
       />
+
+      {/* Tag Edit modal (Feature 39) */}
+      {tagEditResumeId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setTagEditResumeId(null)}>
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-base font-semibold text-white">
+                <Tag size={14} className="text-violet-400" />
+                Edit Tags
+              </h3>
+              <button onClick={() => setTagEditResumeId(null)} className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-zinc-500">Enter tags separated by commas (max 10, each ≤30 chars)</p>
+            <input
+              type="text"
+              value={tagEditValue}
+              onChange={e => setTagEditValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveTags(); if (e.key === 'Escape') setTagEditResumeId(null) }}
+              placeholder="e.g. frontend, senior, remote"
+              autoFocus
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-violet-400/40 mb-4"
+            />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setTagEditResumeId(null)} className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 transition hover:text-zinc-200">
+                Cancel
+              </button>
+              <button onClick={handleSaveTags} className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-violet-500">
+                Save Tags
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
