@@ -784,7 +784,10 @@ async def get_shared_resume(
     anonymous_processing = False  # set True if anon PDF not ready yet
 
     # ── Record view (Feature 43) ──────────────────────────────────────────────
-    await _record_resume_view(request, db, resume.id, share_token)
+    try:
+        await _record_resume_view(request, db, resume.id, share_token)
+    except Exception as exc:
+        logger.warning(f"View recording failed: {exc}")
 
     # ── Anonymous mode: try to serve the pre-compiled redacted PDF ───────────
     if is_anonymous:
