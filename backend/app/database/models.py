@@ -138,6 +138,10 @@ class Resume(Base):
         back_populates="resume",
         cascade="all, delete-orphan",
     )
+    # View analytics (Feature 43)
+    views: Mapped[List["ResumeView"]] = relationship(
+        "ResumeView", back_populates="resume", cascade="all, delete-orphan"
+    )
 
 class Compilation(Base):
     """Compilation history for tracking LaTeX compilations."""
@@ -412,6 +416,28 @@ class ResumeCollaborator(Base):
     )
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
     inviter: Mapped[Optional["User"]] = relationship("User", foreign_keys=[invited_by])
+
+
+class ResumeView(Base):
+    """Tracks views of shared resume links (Feature 43)."""
+    __tablename__ = "resume_views"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    resume_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    share_token: Mapped[str] = mapped_column(Text, nullable=False)
+    viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    country_code: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    referrer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # sha256(ip + ua)[:16] — never stores raw IP
+    session_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Relationships
+    resume: Mapped["Resume"] = relationship("Resume", back_populates="views")
 
 
 # Create indexes for performance
