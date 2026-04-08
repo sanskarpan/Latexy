@@ -196,10 +196,14 @@ function ZoteroSection({
 
   const handleDisconnect = async () => {
     if (!confirm('Disconnect Zotero?')) return
-    await apiClient.disconnectZotero()
-    setStatus({ connected: false, username: null, user_id: null })
-    setCollections([])
-    setSuccess(null)
+    try {
+      await apiClient.disconnectZotero()
+      setStatus({ connected: false, username: null, user_id: null })
+      setCollections([])
+      setSuccess(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to disconnect')
+    }
   }
 
   const loadCollections = async () => {
@@ -372,9 +376,13 @@ function MendeleySection({
 
   const handleDisconnect = async () => {
     if (!confirm('Disconnect Mendeley?')) return
-    await apiClient.disconnectMendeley()
-    setStatus({ connected: false, name: null })
-    setSuccess(null)
+    try {
+      await apiClient.disconnectMendeley()
+      setStatus({ connected: false, name: null })
+      setSuccess(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to disconnect')
+    }
   }
 
   const handleImport = async () => {
@@ -504,25 +512,27 @@ function LibrarySection({
 
   return (
     <div className="border-t border-white/[0.05]">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-white/50 transition hover:text-white/80"
-      >
-        <span className="flex items-center gap-2">
+      <div className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-white/50">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex flex-1 items-center gap-2 transition hover:text-white/80 text-left"
+        >
           <BookOpen className="h-3.5 w-3.5" />
           Imported Library ({entries.length})
-        </span>
-        <div className="flex items-center gap-2">
+        </button>
+        <div className="flex items-center gap-1">
           <button
-            onClick={e => { e.stopPropagation(); onClear() }}
+            onClick={() => onClear()}
             className="rounded p-0.5 text-white/20 transition hover:text-rose-400"
             title="Clear imported library"
           >
             <X className="h-3 w-3" />
           </button>
-          {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          <button onClick={() => setExpanded(!expanded)} className="rounded p-0.5 transition hover:text-white/80">
+            {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </button>
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div className="max-h-64 overflow-y-auto px-3 pb-3 space-y-1.5">
@@ -574,6 +584,17 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [importedBibTeX, setImportedBibTeX] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Hydrate saved BibTeX from resume metadata on mount
+  useEffect(() => {
+    if (!resumeId) return
+    apiClient.getResume(resumeId)
+      .then(resume => {
+        const bibtex = resume.metadata?.bibtex
+        if (typeof bibtex === 'string' && bibtex) setImportedBibTeX(bibtex)
+      })
+      .catch(() => {})
+  }, [resumeId])
 
   const lines = input.split('\n').filter(l => l.trim())
 
@@ -708,7 +729,10 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
             bibtex={importedBibTeX}
             onInsertBibTeX={onInsertBibTeX}
             onInsertCiteKey={onInsertCiteKey}
-            onClear={() => setImportedBibTeX('')}
+            onClear={() => {
+              setImportedBibTeX('')
+              if (resumeId) apiClient.clearResumeBibTeX(resumeId).catch(() => {})
+            }}
           />
         )}
       </div>

@@ -55,10 +55,10 @@ async def mendeley_connect(
     user_id: str = Depends(get_current_user_required),
 ):
     """Redirect to Mendeley OAuth 2.0 authorization."""
-    if not settings.MENDELEY_CLIENT_ID or not settings.MENDELEY_CLIENT_SECRET:
+    if not settings.MENDELEY_CLIENT_ID or not settings.MENDELEY_CLIENT_SECRET or not settings.MENDELEY_REDIRECT_URI:
         raise HTTPException(
             status_code=503,
-            detail="Mendeley integration is not configured. Set MENDELEY_CLIENT_ID and MENDELEY_CLIENT_SECRET.",
+            detail="Mendeley integration is not configured. Set MENDELEY_CLIENT_ID, MENDELEY_CLIENT_SECRET, and MENDELEY_REDIRECT_URI.",
         )
 
     state = secrets.token_urlsafe(32)
@@ -192,7 +192,10 @@ async def _get_mendeley_token(user: User, db: AsyncSession) -> str:
     if not encrypted:
         raise HTTPException(status_code=401, detail="Mendeley not connected")
 
-    token = encryption_service.decrypt(encrypted)
+    try:
+        token = encryption_service.decrypt(encrypted)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Mendeley token is corrupted. Please reconnect in Settings.")
 
     # Try a lightweight call to see if token is valid
     async with httpx.AsyncClient(timeout=10) as client:
@@ -209,7 +212,10 @@ async def _get_mendeley_token(user: User, db: AsyncSession) -> str:
                 status_code=401,
                 detail="Mendeley token expired. Please reconnect in Settings.",
             )
-        refresh_token = encryption_service.decrypt(encrypted_refresh)
+        try:
+            refresh_token = encryption_service.decrypt(encrypted_refresh)
+        except Exception:
+            raise HTTPException(status_code=401, detail="Mendeley token is corrupted. Please reconnect in Settings.")
         async with httpx.AsyncClient(timeout=15) as client:
             try:
                 resp = await client.post(
@@ -227,6 +233,9 @@ async def _get_mendeley_token(user: User, db: AsyncSession) -> str:
                     status_code=401,
                     detail="Mendeley token expired and refresh failed. Please reconnect in Settings.",
                 )
+            except httpx.RequestError as exc:
+                logger.error(f"Mendeley connection error during token refresh: {exc}")
+                raise HTTPException(status_code=502, detail="Mendeley is unavailable, please try again")
 
         data = resp.json()
         new_token = data.get("access_token", "")

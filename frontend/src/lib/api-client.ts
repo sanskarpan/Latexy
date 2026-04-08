@@ -1645,6 +1645,10 @@ class ApiClient {
     })
   }
 
+  async clearResumeBibTeX(resumeId: string): Promise<{ success: boolean }> {
+    return this.request(`/zotero/bibtex/${encodeURIComponent(resumeId)}`, { method: 'DELETE' })
+  }
+
   // ---------------------------------------------------------------- //
   //  Collaboration (Feature 40)                                      //
   // ---------------------------------------------------------------- //

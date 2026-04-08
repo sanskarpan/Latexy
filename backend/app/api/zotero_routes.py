@@ -123,10 +123,10 @@ async def zotero_connect(
     user_id: str = Depends(get_current_user_required),
 ):
     """Step 1: Get request token and redirect to Zotero authorization."""
-    if not settings.ZOTERO_CLIENT_KEY or not settings.ZOTERO_CLIENT_SECRET:
+    if not settings.ZOTERO_CLIENT_KEY or not settings.ZOTERO_CLIENT_SECRET or not settings.ZOTERO_REDIRECT_URI:
         raise HTTPException(
             status_code=503,
-            detail="Zotero integration is not configured. Set ZOTERO_CLIENT_KEY and ZOTERO_CLIENT_SECRET.",
+            detail="Zotero integration is not configured. Set ZOTERO_CLIENT_KEY, ZOTERO_CLIENT_SECRET, and ZOTERO_REDIRECT_URI.",
         )
 
     # Build OAuth header for request-token call (callback in extra_params for signature)
@@ -222,6 +222,9 @@ async def zotero_callback(
             raise HTTPException(
                 status_code=502, detail="Failed to exchange Zotero access token"
             )
+        except httpx.RequestError as exc:
+            logger.error(f"Zotero connection error during token exchange: {exc}")
+            raise HTTPException(status_code=502, detail="Zotero is unavailable, please try again")
 
     params = dict(urllib.parse.parse_qsl(resp.text))
     access_token = params.get("oauth_token", "")
@@ -300,29 +303,41 @@ async def zotero_collections(
     if not encrypted:
         raise HTTPException(status_code=401, detail="Zotero not connected")
 
-    token = encryption_service.decrypt(encrypted)
+    try:
+        token = encryption_service.decrypt(encrypted)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Zotero token is corrupted. Please reconnect in Settings.")
     zotero_user_id = meta.get("zotero_user_id", "")
 
-    url = f"{_ZOTERO_API_BASE}/users/{zotero_user_id}/collections?limit=100"
+    # Paginate collections — Zotero caps each page at 100
+    collections: list[dict] = []
+    start = 0
+    limit = 100
     async with httpx.AsyncClient(timeout=15) as client:
-        try:
-            resp = await client.get(url, headers={"Zotero-API-Key": token})
-            if resp.status_code == 403:
-                raise HTTPException(status_code=401, detail="Zotero token is invalid or expired. Please reconnect.")
-            resp.raise_for_status()
-        except HTTPException:
-            raise
-        except httpx.HTTPStatusError as exc:
-            raise HTTPException(status_code=502, detail=f"Zotero API error: {exc.response.status_code}")
-        except httpx.RequestError:
-            raise HTTPException(status_code=502, detail="Zotero is unavailable")
+        while True:
+            url = f"{_ZOTERO_API_BASE}/users/{zotero_user_id}/collections?limit={limit}&start={start}"
+            try:
+                resp = await client.get(url, headers={"Zotero-API-Key": token})
+                if resp.status_code == 403:
+                    raise HTTPException(status_code=401, detail="Zotero token is invalid or expired. Please reconnect.")
+                resp.raise_for_status()
+            except HTTPException:
+                raise
+            except httpx.HTTPStatusError as exc:
+                raise HTTPException(status_code=502, detail=f"Zotero API error: {exc.response.status_code}")
+            except httpx.RequestError:
+                raise HTTPException(status_code=502, detail="Zotero is unavailable")
 
-    data = resp.json()
-    collections = [
-        {"key": c["key"], "name": c["data"]["name"]}
-        for c in data
-        if isinstance(c, dict) and "key" in c
-    ]
+            page = resp.json()
+            collections.extend(
+                {"key": c["key"], "name": c["data"]["name"]}
+                for c in page
+                if isinstance(c, dict) and "key" in c
+            )
+            total = int(resp.headers.get("Total-Results", len(page)))
+            start += limit
+            if start >= total:
+                break
     return ZoteroCollectionsResponse(collections=collections)
 
 
@@ -341,7 +356,10 @@ async def zotero_import(
     if not encrypted:
         raise HTTPException(status_code=401, detail="Zotero not connected. Go to Settings → Zotero to connect.")
 
-    token = encryption_service.decrypt(encrypted)
+    try:
+        token = encryption_service.decrypt(encrypted)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Zotero token is corrupted. Please reconnect in Settings.")
     zotero_user_id = meta.get("zotero_user_id", "")
 
     # Verify resume ownership
@@ -352,39 +370,50 @@ async def zotero_import(
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
-    # Build Zotero API URL
-    if body.collection_key:
-        url = f"{_ZOTERO_API_BASE}/users/{zotero_user_id}/collections/{body.collection_key}/items?format=bibtex&limit=100"
-    else:
-        url = f"{_ZOTERO_API_BASE}/users/{zotero_user_id}/items?format=bibtex&limit=100"
+    # Paginate items — Zotero BibTeX endpoint accepts start+limit
+    base_path = (
+        f"/users/{zotero_user_id}/collections/{body.collection_key}/items"
+        if body.collection_key
+        else f"/users/{zotero_user_id}/items"
+    )
+    bibtex_pages: list[str] = []
+    start = 0
+    limit = 100
 
     async with httpx.AsyncClient(timeout=30) as client:
-        try:
-            resp = await client.get(url, headers={"Zotero-API-Key": token})
-            if resp.status_code == 403:
+        while True:
+            url = f"{_ZOTERO_API_BASE}{base_path}?format=bibtex&limit={limit}&start={start}"
+            try:
+                resp = await client.get(url, headers={"Zotero-API-Key": token})
+                if resp.status_code == 403:
+                    raise HTTPException(
+                        status_code=401,
+                        detail="Zotero token is invalid or expired. Please reconnect in Settings.",
+                    )
+                if resp.status_code == 404:
+                    raise HTTPException(status_code=404, detail="Zotero collection not found.")
+                resp.raise_for_status()
+            except HTTPException:
+                raise
+            except httpx.HTTPStatusError as exc:
+                logger.error(f"Zotero API error during import: {exc.response.status_code} {exc.response.text[:200]}")
                 raise HTTPException(
-                    status_code=401,
-                    detail="Zotero token is invalid or expired. Please reconnect in Settings.",
+                    status_code=502,
+                    detail=f"Zotero API returned error {exc.response.status_code}",
                 )
-            if resp.status_code == 404:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Zotero collection not found.",
-                )
-            resp.raise_for_status()
-        except HTTPException:
-            raise
-        except httpx.HTTPStatusError as exc:
-            logger.error(f"Zotero API error during import: {exc.response.status_code} {exc.response.text[:200]}")
-            raise HTTPException(
-                status_code=502,
-                detail=f"Zotero API returned error {exc.response.status_code}",
-            )
-        except httpx.RequestError as exc:
-            logger.error(f"Zotero connection error: {exc}")
-            raise HTTPException(status_code=502, detail="Zotero is unavailable, please try again")
+            except httpx.RequestError as exc:
+                logger.error(f"Zotero connection error: {exc}")
+                raise HTTPException(status_code=502, detail="Zotero is unavailable, please try again")
 
-    bibtex = resp.text.strip()
+            page_text = resp.text.strip()
+            if page_text:
+                bibtex_pages.append(page_text)
+            total = int(resp.headers.get("Total-Results", len(bibtex_pages) * limit))
+            start += limit
+            if start >= total:
+                break
+
+    bibtex = "\n\n".join(bibtex_pages)
     # Count entries by counting @-type lines
     entry_count = bibtex.count("\n@") + (1 if bibtex.startswith("@") else 0)
 
@@ -400,3 +429,24 @@ async def zotero_import(
         bibtex=bibtex,
         message=f"Imported {entry_count} BibTeX entries from Zotero",
     )
+
+
+@router.delete("/bibtex/{resume_id}")
+async def clear_bibtex(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Remove stored BibTeX from a resume's metadata."""
+    resume_result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
+    )
+    resume = resume_result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    rm = dict(resume.resume_settings or {})
+    rm.pop("bibtex", None)
+    resume.resume_settings = rm
+    await db.commit()
+    return {"success": True}

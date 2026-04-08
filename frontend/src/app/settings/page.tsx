@@ -78,11 +78,19 @@ function SettingsContent() {
       setZotSuccess('Zotero connected successfully!')
       apiClient.getZoteroStatus().then(setZotStatus).catch(() => {})
       setTimeout(() => setZotSuccess(null), 5000)
+      if (window.opener) {
+        window.opener.postMessage({ type: 'zotero:connected' }, '*')
+        window.close()
+      }
     }
     if (searchParams.get('mendeley') === 'connected') {
       setMenSuccess('Mendeley connected successfully!')
       apiClient.getMendeleyStatus().then(setMenStatus).catch(() => {})
       setTimeout(() => setMenSuccess(null), 5000)
+      if (window.opener) {
+        window.opener.postMessage({ type: 'mendeley:connected' }, '*')
+        window.close()
+      }
     }
   }, [searchParams])
 
