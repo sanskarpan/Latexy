@@ -364,6 +364,15 @@ export default function WorkspacePage() {
       <div className="mt-2">
         <ExportDropdown resumeId={resume.id} variant="card" />
       </div>
+      <div className="mt-2">
+        <button
+          onClick={() => setReferencesModalResume(resume)}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] py-2 text-xs font-semibold text-zinc-500 transition hover:bg-white/[0.06] hover:text-violet-300"
+        >
+          <BookUser size={11} />
+          Generate References Page
+        </button>
+      </div>
     </article>
   )
 
@@ -856,6 +865,15 @@ export default function WorkspacePage() {
               if (Array.isArray(data)) setResumes(data)
             }).catch(() => {})
           }}
+        />
+      )}
+
+      {referencesModalResume && (
+        <GenerateReferencesModal
+          isOpen={true}
+          onClose={() => setReferencesModalResume(null)}
+          resumeId={referencesModalResume.id}
+          resumeTitle={referencesModalResume.title}
         />
       )}
 
