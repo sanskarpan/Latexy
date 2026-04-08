@@ -763,7 +763,6 @@ async def get_shared_resume(
     If the share was created with anonymous=True, serves the redacted PDF.
     Records a view in resume_views with Redis-based 5-min debounce (Feature 43).
     """
-    import hashlib
     from pathlib import Path
 
     from sqlalchemy import select as sa_select
