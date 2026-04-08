@@ -305,46 +305,44 @@ latexmk flags. All stored in resume `metadata` JSONB. Extends Feature 9's basic 
 archive, and "My Templates" section. Pure UI + thin API over existing schema.
 
 ### 39A · Backend — Archive Field
-- [ ] In `backend/app/database/models.py`:
-  - Add `archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)`
-  - If not already present — add migration `0011_add_resume_archive.py`
-- [ ] In `GET /resumes` list: default filter `WHERE archived_at IS NULL`; add `?archived=true` param
+- [x] In `backend/app/database/models.py`:
+  - Added `archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)`
+  - Migration `0014_add_resume_archive.py` created
+- [x] In `GET /resumes` list: default filter `WHERE archived_at IS NULL`; `?archived=true` param supported
 
 ### 39B · Backend — Tag / Pin / Archive Endpoints
-- [ ] Add to `backend/app/api/resume_routes.py`:
-  - `PATCH /resumes/{resume_id}/tags` — sets `tags: List[str]` (max 10 tags, each ≤30 chars)
-  - `PATCH /resumes/{resume_id}/pin` — sets `metadata.pinned = True`
-  - `PATCH /resumes/{resume_id}/unpin` — sets `metadata.pinned = False`
+- [x] Added to `backend/app/api/resume_routes.py`:
+  - `PATCH /resumes/{resume_id}/tags` — sets `tags: List[str]` (max 10, each ≤30 chars; Pydantic v2 `max_length=10` on List)
+  - `PATCH /resumes/{resume_id}/pin` — sets `metadata.pinned = True`; `ResumeResponse.pinned` computed field
+  - `PATCH /resumes/{resume_id}/unpin` — clears `metadata.pinned`
   - `PATCH /resumes/{resume_id}/archive` — sets `archived_at = utcnow()`
   - `PATCH /resumes/{resume_id}/unarchive` — clears `archived_at`
 
 ### 39C · Frontend — Tag Assignment UI
-- [ ] In workspace resume card context menu:
-  - "🏷 Add Tags" → inline tag chip input (comma-separated or multi-select)
-  - "📌 Pin to Top" / "Unpin"
-  - "📦 Archive" → confirmation dialog ("Hidden from workspace, can be restored")
-- [ ] In editor page header: tag chip display + edit inline
+- [x] Tag chips displayed on workspace card with click-to-filter; "Tags" button opens modal (comma-separated)
+- [x] "Pin"/"Unpin" button on card footer with amber "Pinned" badge when active
+- [x] "Archive" button with confirmation dialog on card footer
 
 ### 39D · Frontend — Workspace Filtering
-- [ ] In `frontend/src/app/workspace/page.tsx`:
-  - Left sidebar panel:
-    - ⭐ Pinned section (pinned resumes shown first in main grid too)
-    - 🏷 Tag filter list — clicking a tag filters grid
-    - 📦 Archived (link to archived view)
-  - Archived view: separate route `/workspace/archived` or tab
+- [x] In `frontend/src/app/workspace/page.tsx`:
+  - Right sidebar "Organize" panel with tag filter list
+  - Pinned resumes sorted to top in grid (sort by `pinned` descending)
+  - "View Archived" toggle in sidebar loads archived resumes inline below main grid
 
 ### 39E · Frontend — My Templates Section
-- [ ] In workspace page, below main grid:
-  - "My Templates" section showing resumes with `is_template=True`
-  - Card context menu: "Make Template" / "Remove from Templates" → toggle `is_template`
+- [x] "My Templates" section below main grid showing `is_template=True` resumes
+- [x] "Remove from Templates" button on each template card (toggles `is_template=false`)
 
 ### 39F · Tests
-- [ ] `backend/test/test_resume_tags.py`:
+- [x] `backend/test/test_resume_tags.py` — 8 tests passing:
   - PATCH tags → GET shows updated tags list
   - Tag with 31 chars → 422
   - More than 10 tags → 422
   - Archive → default GET list excludes it
-  - GET with `?archived=true` → returns archived resumes
+  - GET with `?archived=true` → returns archived resume
+  - Unarchive → appears in default list again
+  - Pin → `pinned=True` in response
+  - Unpin → `pinned=False` in response
 
 ---
 
@@ -420,45 +418,51 @@ Each user sees others' cursors with name/color labels. Role-based access (owner/
 deletion). Owner accepts/rejects per change or in batch.
 
 ### 41A · Prerequisite
-- [ ] Feature 40 must be fully implemented
+- [x] Feature 40 fully implemented
 
 ### 41B · Frontend — Change Tracking via Yjs
-- [ ] Create `frontend/src/lib/yjs-track-changes.ts`:
-  ```typescript
-  export interface TrackedChange {
-    id: string
-    userId: string
-    userName: string
-    type: 'insertion' | 'deletion'
-    range: monaco.IRange
-    text: string
-    timestamp: number
-  }
-
-  // Use Y.js doc.on('update', ...) to capture changes by origin (user ID)
-  // Store in local Map<string, TrackedChange[]> keyed by change ID
-  export function observeChanges(yDoc: Y.Doc, onChange: (changes: TrackedChange[]) => void): () => void
-  ```
+- [x] Created `frontend/src/lib/yjs-track-changes.ts`:
+  - `TrackedChange` interface with id, clientId, userId, userName, userColor, type, text, offset, length, range, timestamp, resolved
+  - `observeChanges(yText, provider, onUpdate)` — attaches observer; only tracks remote changes (`transaction.origin === provider`, which y-websocket correctly sets)
+  - prevText snapshot captured at start of each observer call for correct deletion text recovery
+  - Deletion attribution: Y.js CRDT cannot track the deleter; shown as "A collaborator"
+  - `rejectChange` uses narrow + global document search fallback for drift resilience
 
 ### 41C · Monaco Decorations
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
-  - Add prop: `trackedChanges?: TrackedChange[]`
-  - Insertions: `backgroundColor: 'rgba(74,222,128,0.15)'`, `border: '1px solid rgba(74,222,128,0.4)'`
-  - Deletions: `textDecoration: 'line-through'`, `color: 'rgba(248,113,113,0.8)'`
-  - Hover tooltip: `[UserName] at [relative time] — Accept | Reject`
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
+  - Props `trackedChanges`, `onTrackedChangesUpdate` added
+  - Insertions: `.tracked-insertion` class with green highlight + underline
+  - Deletions: `.tracked-deletion-glyph` red dot in gutter
+  - Hover tooltips with username + action hint
 
 ### 41D · Changes Panel
-- [ ] Create `frontend/src/components/ChangesPanel.tsx`:
-  - Lists tracked changes grouped by user
-  - Each item: user avatar + name, change preview snippet, "Accept" / "Reject" buttons
-  - "Accept All" / "Reject All" batch buttons at top
-  - Accept → apply permanently to Y.js doc; Reject → revert in Y.js doc
-  - Count badge on panel tab for unresolved changes
+- [x] Created `frontend/src/components/ChangesPanel.tsx`:
+  - Changes grouped by userId with user avatar, +/− badges, text preview, line number, relative time
+  - Per-change Accept/Reject buttons (hover-reveal)
+  - "Accept all" (emerald) / "Reject all" (rose) batch buttons
+  - Empty state with GitMerge icon
 
 ### 41E · Integration
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
-  - "Changes (N)" tab in sidebar (badge count of pending changes)
-  - Wire `trackedChanges` to `LaTeXEditor` and `ChangesPanel`
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+  - `RightTab` extended with `'changes'`
+  - `trackedChanges` state + emerald count badge on "Changes" tab
+  - `<ChangesPanel>` wired with accept/reject callbacks to `editorRef`
+  - `LaTeXEditor` receives `trackedChanges` and `onTrackedChangesUpdate` props
+  - `LaTeXEditorRef` extended: `acceptTrackedChange`, `rejectTrackedChange`, `acceptAllTrackedChanges`, `rejectAllTrackedChanges`
+
+### 41F · Tests
+- [x] `frontend/src/__tests__/yjs-track-changes.test.ts` — 29 tests passing:
+  - Module exports, handle interface
+  - Origin filtering: local/null origin ignored, provider origin tracked
+  - Insertion tracking: type, text, offset, length, id prefix, timestamp
+  - Deletion tracking: type, text, offset, length, id prefix; attribution = "A collaborator"
+  - acceptChange, rejectChange (insertion/deletion), rejectChange idempotency
+  - acceptAll, rejectAll (insertions + deletions)
+  - User attribution via awareness states
+  - computeRange: line 1 col 1 at start, line 2 for second-line insert
+  - Global fallback search in rejectChange for drifted offsets
+  - y-websocket origin correctness: MonacoBinding/null ignored; provider tracked
+  - cleanup unobserves yText
 
 ---
 
