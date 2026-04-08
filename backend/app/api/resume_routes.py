@@ -1486,6 +1486,10 @@ def _extract_documentclass(latex: str) -> str:
     return m.group(0) if m else r'\documentclass{article}'
 
 
+# Packages already injected by references_page.tex.j2 — skip to avoid option clashes.
+_TEMPLATE_PACKAGES: set[str] = {"geometry", "hyperref", "parskip"}
+
+
 def _extract_extra_preamble(latex: str) -> str:
     """Extract style macros from preamble to style-match the reference page."""
     lines_list = latex.splitlines()
@@ -1506,9 +1510,38 @@ def _extract_extra_preamble(latex: str) -> str:
             or stripped.startswith(r'\newcommand')
             or stripped.startswith(r'\renewcommand')
         ):
-            if 'draftwatermark' not in stripped:
-                preamble_lines.append(line)
+            if 'draftwatermark' in stripped:
+                continue
+            # Skip packages the template already provides to avoid option clashes
+            pkg_m = re.match(r'\\usepackage(?:\[[^\]]*\])?\{([^}]+)\}', stripped)
+            if pkg_m:
+                pkgs = {p.strip() for p in pkg_m.group(1).split(',')}
+                if pkgs & _TEMPLATE_PACKAGES:
+                    continue
+            preamble_lines.append(line)
     return '\n'.join(preamble_lines)
+
+
+def _escape_latex(text: str) -> str:
+    """Escape LaTeX special characters to prevent compilation errors/injection."""
+    if not text:
+        return text
+    # Backslash must be replaced first
+    replacements = [
+        ('\\', r'\textbackslash{}'),
+        ('&', r'\&'),
+        ('%', r'\%'),
+        ('$', r'\$'),
+        ('#', r'\#'),
+        ('_', r'\_'),
+        ('{', r'\{'),
+        ('}', r'\}'),
+        ('~', r'\textasciitilde{}'),
+        ('^', r'\textasciicircum{}'),
+    ]
+    for char, escaped in replacements:
+        text = text.replace(char, escaped)
+    return text
 
 
 class ReferenceContact(BaseModel):
@@ -1553,10 +1586,25 @@ async def generate_references(
     try:
         env = _get_jinja_env()
         template = env.get_template("references_page.tex.j2")
+        # Escape all user-supplied fields before rendering to prevent LaTeX
+        # compilation errors or injection via special characters (%, &, _, etc.).
+        safe_refs = [
+            {
+                "name": _escape_latex(ref.name),
+                "title": _escape_latex(ref.title),
+                "company": _escape_latex(ref.company),
+                "relationship": _escape_latex(ref.relationship),
+                # Email used raw in mailto: URL; display copy is escaped
+                "email": ref.email or "",
+                "email_display": _escape_latex(ref.email or ""),
+                "phone": _escape_latex(ref.phone or "") if ref.phone else "",
+            }
+            for ref in request.references
+        ]
         latex_content = template.render(
             documentclass=documentclass,
             extra_preamble=extra_preamble,
-            references=[ref.model_dump() for ref in request.references],
+            references=safe_refs,
         )
     except Exception as exc:
         logger.error(f"Reference page render error: {exc}")
