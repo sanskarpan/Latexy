@@ -622,6 +622,13 @@ export default function WorkspacePage() {
                               <GitFork size={11} />
                               Fork
                             </button>
+                            <button
+                              onClick={() => setReferencesModalResume(resume)}
+                              className="flex items-center gap-1 rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs font-semibold text-zinc-400 transition hover:border-violet-400/30 hover:text-violet-300"
+                            >
+                              <BookUser size={11} />
+                              Refs
+                            </button>
                             <ExportDropdown resumeId={resume.id} variant="toolbar" />
                           </div>
                         </td>
