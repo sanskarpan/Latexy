@@ -517,13 +517,12 @@ async def update_resume_settings(
 # --- Tag / Pin / Archive endpoints (Feature 39) ---
 
 class TagsUpdate(BaseModel):
+    # max_length=10 on List in Pydantic v2 constrains item count (≤10 tags)
     tags: List[str] = Field(..., max_length=10)
 
     @field_validator("tags")
     @classmethod
     def validate_tags(cls, v: List[str]) -> List[str]:
-        if len(v) > 10:
-            raise ValueError("Maximum 10 tags allowed")
         for tag in v:
             if len(tag) > 30:
                 raise ValueError(f"Tag '{tag}' exceeds 30 characters")
