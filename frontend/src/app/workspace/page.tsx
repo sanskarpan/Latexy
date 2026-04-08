@@ -833,6 +833,80 @@ export default function WorkspacePage() {
               </table>
             </div>
           )}
+
+          {/* Archived resumes section (Feature 39) */}
+          {showArchived && (
+            <div className="mt-6">
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                <Archive size={12} />
+                Archived
+              </h2>
+              {archivedLoading ? (
+                <div className="flex items-center justify-center py-8"><LoadingSpinner /></div>
+              ) : archivedResumes.length === 0 ? (
+                <p className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-sm text-zinc-600">
+                  No archived resumes.
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {archivedResumes.map(r => (
+                    <div key={r.id} className="surface-card edge-highlight flex items-center justify-between gap-3 p-4 opacity-60">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-zinc-300">{r.title}</p>
+                        <p className="text-[11px] text-zinc-600">Archived</p>
+                      </div>
+                      <button
+                        onClick={() => handleUnarchive(r.id)}
+                        title="Restore"
+                        className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-medium text-zinc-500 ring-1 ring-white/10 transition hover:bg-emerald-500/10 hover:text-emerald-400"
+                      >
+                        <ArchiveRestore size={11} />
+                        Restore
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* My Templates section (Feature 39E) */}
+          {templateResumes.length > 0 && !activeTagFilter && (
+            <div className="mt-6">
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                <LayoutTemplate size={12} />
+                My Templates
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {templateResumes.map(r => (
+                  <article key={r.id} className="surface-card edge-highlight flex flex-col gap-2 p-4">
+                    <div className="flex items-center gap-2">
+                      <LayoutTemplate size={11} className="text-zinc-600" />
+                      <p className="truncate text-sm font-medium text-zinc-300">{r.title}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <a href={`/workspace/${r.id}/edit`} className="flex-1 rounded-md border border-white/10 bg-white/[0.03] px-3 py-1.5 text-center text-[11px] font-semibold text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200">
+                        Edit
+                      </a>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const updated = await apiClient.updateResume(r.id, { is_template: false })
+                            setResumes(prev => prev.map(x => x.id === r.id ? { ...x, ...updated } : x))
+                            toast.success('Removed from templates')
+                          } catch { toast.error('Failed') }
+                        }}
+                        className="rounded-md border border-white/10 px-2 py-1.5 text-[11px] text-zinc-600 transition hover:text-rose-400"
+                        title="Remove from templates"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         <aside className="space-y-4">
