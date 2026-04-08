@@ -453,6 +453,76 @@ describe('computeRange correctness', () => {
   })
 })
 
+// ── Deletion attribution ───────────────────────────────────────────────────
+
+describe('deletion attribution', () => {
+  test('deletion shows "A collaborator" (Y.js cannot track the deleter)', () => {
+    const yText = makeYText('hello world')
+    const provider = makeProvider()
+    let lastChanges: TrackedChange[] = []
+    const handle = observeChanges(yText, provider, (c) => { lastChanges = c })
+
+    yText.delete(5, 6)
+    yText._fireRemote([{ retain: 5 }, { delete: 6 }], provider)
+
+    expect(lastChanges[0].userName).toBe('A collaborator')
+    expect(lastChanges[0].userId).toBe('unknown')
+    handle.cleanup()
+  })
+})
+
+// ── rejectChange global fallback ───────────────────────────────────────────
+
+describe('rejectChange global fallback', () => {
+  test('reverts insertion even when text has drifted from original offset', () => {
+    const yText = makeYText('abc')
+    const provider = makeProvider()
+    let lastChanges: TrackedChange[] = []
+    const handle = observeChanges(yText, provider, (c) => { lastChanges = c })
+
+    // Remote inserts " world" at offset 0
+    yText.insert(0, 'xyz')
+    yText._fireRemote([{ insert: 'xyz' }], provider)
+
+    // Now simulate heavy local edits that shift the document
+    yText.insert(0, 'AAAA') // prefix shifts content to offset 4
+
+    const id = lastChanges[0].id
+    handle.rejectChange(id)
+
+    // "xyz" should be removed regardless of offset drift
+    expect(yText.toString()).not.toContain('xyz')
+    handle.cleanup()
+  })
+})
+
+// ── y-websocket origin correctness ─────────────────────────────────────────
+
+describe('y-websocket origin correctness', () => {
+  test('only tracks changes when origin is exactly the provider instance', () => {
+    const yText = makeYText()
+    const provider = makeProvider()
+    let lastChanges: TrackedChange[] = []
+    const handle = observeChanges(yText, provider, (c) => { lastChanges = c })
+
+    // Simulate a different object (e.g. MonacoBinding) as origin — must NOT track
+    const monacoBinding = { type: 'MonacoBinding' }
+    yText._fireRemote([{ insert: 'local' }], monacoBinding)
+    expect(lastChanges.filter((c) => !c.resolved)).toHaveLength(0)
+
+    // Simulate null origin (initial seed) — must NOT track
+    yText._fireRemote([{ insert: 'seed' }], null)
+    expect(lastChanges.filter((c) => !c.resolved)).toHaveLength(0)
+
+    // Simulate the actual provider as origin (remote y-websocket update) — MUST track
+    yText.insert(0, 'remote')
+    yText._fireRemote([{ insert: 'remote' }], provider)
+    expect(lastChanges.filter((c) => !c.resolved)).toHaveLength(1)
+
+    handle.cleanup()
+  })
+})
+
 // ── cleanup ────────────────────────────────────────────────────────────────
 
 describe('cleanup', () => {
