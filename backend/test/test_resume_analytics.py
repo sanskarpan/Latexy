@@ -8,7 +8,6 @@ from httpx import AsyncClient
 from sqlalchemy import text as _text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
 # ─── Fixtures / helpers ───────────────────────────────────────────────────────
 
 SIMPLE_LATEX = r"""
