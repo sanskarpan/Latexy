@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { BookUser, GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2 } from 'lucide-react'
+import { BookUser, GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -79,6 +79,14 @@ export default function WorkspacePage() {
   // References modal state (Feature 70)
   const [referencesModalResume, setReferencesModalResume] = useState<ResumeResponse | null>(null)
 
+  // Feature 39 — Tags, Pin, Archive
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
+  const [archivedResumes, setArchivedResumes] = useState<ResumeResponse[]>([])
+  const [archivedLoading, setArchivedLoading] = useState(false)
+  const [tagEditResumeId, setTagEditResumeId] = useState<string | null>(null)
+  const [tagEditValue, setTagEditValue] = useState('')
+
   // Variant state
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
   const [forkModalResumeId, setForkModalResumeId] = useState<string | null>(null)
@@ -127,9 +135,22 @@ export default function WorkspacePage() {
     fetchData()
   }, [session])
 
-  const filteredResumes = useMemo(
-    () => resumes.filter((resume) => resume.title.toLowerCase().includes(searchQuery.toLowerCase())),
-    [resumes, searchQuery]
+  const filteredResumes = useMemo(() => {
+    let result = resumes.filter((r) => r.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    if (activeTagFilter) result = result.filter((r) => r.tags?.includes(activeTagFilter))
+    // Pinned resumes first
+    return [...result].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
+  }, [resumes, searchQuery, activeTagFilter])
+
+  const allTags = useMemo(() => {
+    const set = new Set<string>()
+    resumes.forEach(r => r.tags?.forEach(t => set.add(t)))
+    return Array.from(set).sort()
+  }, [resumes])
+
+  const templateResumes = useMemo(
+    () => resumes.filter(r => r.is_template),
+    [resumes]
   )
 
   const handleBulkExport = async (format: 'tex' | 'pdf' | 'docx') => {
@@ -218,6 +239,68 @@ export default function WorkspacePage() {
     setForkTitle(`${resumeTitle} — Variant`)
   }, [])
 
+  // Feature 39 handlers
+  const handlePin = useCallback(async (resumeId: string, isPinned: boolean) => {
+    try {
+      const updated = isPinned
+        ? await apiClient.unpinResume(resumeId)
+        : await apiClient.pinResume(resumeId)
+      setResumes(prev => prev.map(r => r.id === resumeId ? { ...r, ...updated } : r))
+    } catch {
+      toast.error('Failed to update pin')
+    }
+  }, [])
+
+  const handleArchive = useCallback(async (resumeId: string) => {
+    try {
+      await apiClient.archiveResume(resumeId)
+      setResumes(prev => prev.filter(r => r.id !== resumeId))
+      toast.success('Resume archived')
+    } catch {
+      toast.error('Failed to archive resume')
+    }
+  }, [])
+
+  const handleUnarchive = useCallback(async (resumeId: string) => {
+    try {
+      const updated = await apiClient.unarchiveResume(resumeId)
+      setArchivedResumes(prev => prev.filter(r => r.id !== resumeId))
+      setResumes(prev => [updated, ...prev])
+      toast.success('Resume restored')
+    } catch {
+      toast.error('Failed to unarchive resume')
+    }
+  }, [])
+
+  const handleSaveTags = useCallback(async () => {
+    if (!tagEditResumeId) return
+    const tags = tagEditValue
+      .split(',')
+      .map(t => t.trim())
+      .filter(Boolean)
+      .slice(0, 10)
+    try {
+      const updated = await apiClient.updateResumeTags(tagEditResumeId, tags)
+      setResumes(prev => prev.map(r => r.id === tagEditResumeId ? { ...r, ...updated } : r))
+      setTagEditResumeId(null)
+      toast.success('Tags updated')
+    } catch {
+      toast.error('Failed to update tags')
+    }
+  }, [tagEditResumeId, tagEditValue])
+
+  const loadArchivedResumes = useCallback(async () => {
+    setArchivedLoading(true)
+    try {
+      const data = await apiClient.listResumes(1, 50, true)
+      setArchivedResumes(Array.isArray(data) ? data : [])
+    } catch {
+      toast.error('Failed to load archived resumes')
+    } finally {
+      setArchivedLoading(false)
+    }
+  }, [])
+
   // Variant count for a resume (from API + local grouping)
   const getVariantCount = useCallback((resume: ResumeResponse) => {
     return Math.max(resume.variant_count ?? 0, variantMap[resume.id]?.length ?? 0)
@@ -258,6 +341,11 @@ export default function WorkspacePage() {
           <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
             {isVariant ? 'Variant' : 'Resume'}
           </p>
+          {resume.pinned && (
+            <span className="flex items-center gap-0.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-300">
+              <Pin size={8} />Pinned
+            </span>
+          )}
           {!isVariant && getVariantCount(resume) > 0 && (
             <button
               onClick={() => toggleExpand(resume.id)}
@@ -299,6 +387,25 @@ export default function WorkspacePage() {
           ? `Updated ${resume.days_since_updated}d ago`
           : `Updated today`}
       </p>
+
+      {/* Tag chips */}
+      {resume.tags && resume.tags.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {resume.tags.map(tag => (
+            <button
+              key={tag}
+              onClick={() => setActiveTagFilter(activeTagFilter === tag ? null : tag)}
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition ${
+                activeTagFilter === tag
+                  ? 'bg-violet-500/30 text-violet-200 ring-1 ring-violet-400/40'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
+              }`}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="mt-6 grid grid-cols-3 gap-2 text-xs">
         <Link
