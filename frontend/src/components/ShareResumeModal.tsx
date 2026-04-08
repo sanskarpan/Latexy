@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, Copy, EyeOff, Link, Loader2, Trash2, X } from 'lucide-react'
+import { Check, Copy, EyeOff, Link, Loader2, BarChart2, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiClient, type ShareLinkResponse } from '@/lib/api-client'
+import { apiClient, type ShareLinkResponse, type ResumeAnalytics } from '@/lib/api-client'
 
 interface ShareResumeModalProps {
   resumeId: string
@@ -14,6 +14,155 @@ interface ShareResumeModalProps {
   onClose: () => void
   onShareTokenChange?: (token: string | null, url: string | null) => void
 }
+
+type Tab = 'share' | 'analytics'
+
+// ── Tiny SVG sparkline ──────────────────────────────────────────────────────
+
+function Sparkline({ data }: { data: { date: string; count: number }[] }) {
+  const W = 220
+  const H = 36
+  if (data.length === 0) {
+    return <div className="h-9 flex items-center justify-center text-[10px] text-zinc-600">No data yet</div>
+  }
+  const max = Math.max(...data.map((d) => d.count), 1)
+  const pts = data.map((d, i) => {
+    const x = (i / Math.max(data.length - 1, 1)) * W
+    const y = H - (d.count / max) * (H - 4) - 2
+    return `${x},${y}`
+  })
+  const polyline = pts.join(' ')
+  // fill area
+  const fill = `${pts[0].split(',')[0]},${H} ${polyline} ${pts[pts.length - 1].split(',')[0]},${H}`
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-9" preserveAspectRatio="none">
+      <polygon points={fill} fill="rgba(56,189,248,0.12)" />
+      <polyline points={polyline} fill="none" stroke="rgb(56,189,248)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+// ── Country flag emoji ───────────────────────────────────────────────────────
+
+function countryFlag(code: string | null) {
+  if (!code || code.length !== 2) return '🌐'
+  return String.fromCodePoint(
+    ...code.toUpperCase().split('').map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)
+  )
+}
+
+// ── Referrer display ─────────────────────────────────────────────────────────
+
+function displayReferrer(raw: string | null) {
+  if (!raw) return 'Direct'
+  try {
+    const url = new URL(raw.startsWith('http') ? raw : `https://${raw}`)
+    return url.hostname.replace(/^www\./, '')
+  } catch {
+    return raw.slice(0, 40)
+  }
+}
+
+// ── Analytics panel ──────────────────────────────────────────────────────────
+
+function AnalyticsPanel({ resumeId }: { resumeId: string }) {
+  const [analytics, setAnalytics] = useState<ResumeAnalytics | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    apiClient
+      .getResumeAnalytics(resumeId)
+      .then((data) => { if (!cancelled) { setAnalytics(data); setLoading(false) } })
+      .catch((err) => { if (!cancelled) { setError(err.message || 'Failed to load analytics'); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [resumeId])
+
+  if (loading) {
+    return (
+      <div className="flex h-48 items-center justify-center">
+        <Loader2 size={16} className="animate-spin text-zinc-600" />
+      </div>
+    )
+  }
+  if (error) {
+    return <p className="py-4 text-center text-[11px] text-rose-400">{error}</p>
+  }
+  if (!analytics) return null
+
+  const lastViewed = analytics.last_viewed_at
+    ? new Date(analytics.last_viewed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null
+
+  return (
+    <div className="space-y-4">
+      {/* KPI row */}
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: 'Total', value: analytics.total_views },
+          { label: 'Last 7d', value: analytics.views_last_7_days },
+          { label: 'Last 30d', value: analytics.views_last_30_days },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-2 py-2 text-center">
+            <p className="text-base font-semibold text-sky-300">{value}</p>
+            <p className="text-[9px] uppercase tracking-wider text-zinc-600">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Sparkline */}
+      <div>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Last 30 days</p>
+        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2">
+          <Sparkline data={analytics.views_by_day} />
+        </div>
+      </div>
+
+      {/* Countries */}
+      {analytics.views_by_country.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Top countries</p>
+          <div className="space-y-1">
+            {analytics.views_by_country.slice(0, 5).map((c, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-sm leading-none">{countryFlag(c.country_code)}</span>
+                <span className="flex-1 text-[11px] text-zinc-400">{c.country_code ?? 'Unknown'}</span>
+                <span className="text-[11px] font-semibold text-zinc-300">{c.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Referrers */}
+      {analytics.views_by_referrer.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Top referrers</p>
+          <div className="space-y-1">
+            {analytics.views_by_referrer.slice(0, 5).map((r, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="flex-1 truncate text-[11px] text-zinc-400">{displayReferrer(r.referrer)}</span>
+                <span className="text-[11px] font-semibold text-zinc-300">{r.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {analytics.total_views === 0 && (
+        <p className="text-center text-[11px] text-zinc-600">No views recorded yet. Share your link to start tracking.</p>
+      )}
+
+      {lastViewed && (
+        <p className="text-[10px] text-zinc-600">Last viewed {lastViewed}</p>
+      )}
+    </div>
+  )
+}
+
+// ── Main modal ───────────────────────────────────────────────────────────────
 
 export default function ShareResumeModal({
   resumeId,
@@ -33,6 +182,7 @@ export default function ShareResumeModal({
   const [copied, setCopied] = useState(false)
   const [showRevokeConfirm, setShowRevokeConfirm] = useState(false)
   const [anonymous, setAnonymous] = useState(false)
+  const [tab, setTab] = useState<Tab>('share')
 
   // Close on Escape
   useEffect(() => {
@@ -74,6 +224,7 @@ export default function ShareResumeModal({
       await apiClient.revokeShareLink(resumeId)
       setShareData(null)
       setShowRevokeConfirm(false)
+      setTab('share')
       onShareTokenChange?.(null, null)
       toast.success('Share link revoked')
     } catch (err) {
@@ -90,6 +241,11 @@ export default function ShareResumeModal({
         year: 'numeric',
       })
     : null
+
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'share', label: 'Share', icon: <Link size={11} /> },
+    { id: 'analytics', label: 'Analytics', icon: <BarChart2 size={11} /> },
+  ]
 
   return (
     <div
@@ -116,10 +272,30 @@ export default function ShareResumeModal({
           </button>
         </div>
 
+        {/* Tab bar — only when link exists */}
+        {shareData && (
+          <div className="flex border-b border-white/[0.06] px-5">
+            {tabs.map(({ id, label, icon }) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-[11px] font-medium transition ${
+                  tab === id
+                    ? 'border-sky-400 text-sky-300'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                {icon}
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Body */}
         <div className="px-5 py-5">
           {!shareData ? (
-            // No link yet
+            // No link yet — always show the generate UI
             <div className="space-y-4">
               <p className="text-sm text-zinc-400">
                 Generate a public link so anyone can view the compiled PDF — no login needed.
@@ -168,8 +344,8 @@ export default function ShareResumeModal({
                 )}
               </button>
             </div>
-          ) : (
-            // Link exists
+          ) : tab === 'share' ? (
+            // Share tab
             <div className="space-y-4">
               {shareData.anonymous && (
                 <div className="flex items-center gap-1.5 rounded-md border border-amber-400/20 bg-amber-500/10 px-3 py-1.5">
@@ -258,6 +434,9 @@ export default function ShareResumeModal({
                 )}
               </div>
             </div>
+          ) : (
+            // Analytics tab
+            <AnalyticsPanel resumeId={resumeId} />
           )}
         </div>
       </div>
