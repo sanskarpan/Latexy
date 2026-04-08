@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select as _select
 from sqlalchemy import text as _text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +19,11 @@ Hello world.
 """
 
 
-async def _create_resume_and_share(client: AsyncClient, auth_headers: dict) -> dict:
+async def _create_resume_and_share(
+    client: AsyncClient,
+    auth_headers: dict,
+    anonymous: bool = False,
+) -> dict:
     """Create a resume and create a share link.
     Returns {"resume_id", "share_token", "share_url"}.
     """
@@ -32,12 +37,29 @@ async def _create_resume_and_share(client: AsyncClient, auth_headers: dict) -> d
 
     resp = await client.post(
         f"/resumes/{resume_id}/share",
-        json={"anonymous": False},
+        json={"anonymous": anonymous},
         headers=auth_headers,
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
     return {"resume_id": resume_id, "share_token": data["share_token"], "share_url": data["share_url"]}
+
+
+async def _seed_compilation(db_session: AsyncSession, resume_id: str, user_id: str) -> None:
+    """Insert a minimal completed compilation row so the share endpoint can resolve a PDF."""
+    import uuid as _local_uuid
+    from app.database.models import Compilation
+    job_id = f"test_job_{_local_uuid.uuid4().hex[:12]}"
+    comp = Compilation(
+        id=str(_local_uuid.uuid4()),
+        user_id=user_id,
+        resume_id=resume_id,
+        job_id=job_id,
+        status="completed",
+        pdf_path=f"shares/{resume_id}/resume.pdf",
+    )
+    db_session.add(comp)
+    await db_session.commit()
 
 
 # ─── Unit tests for session_id hashing ───────────────────────────────────────
@@ -83,19 +105,24 @@ class TestResumeViewRecording:
 
     @patch("app.api.routes._record_resume_view", new_callable=AsyncMock)
     async def test_share_page_calls_record_view(
-        self, mock_record, client: AsyncClient, auth_headers: dict
+        self, mock_record, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
     ):
-        """GET /share/{token} must call _record_resume_view once."""
+        """GET /share/{token} calls _record_resume_view once when a PDF is served."""
         info = await _create_resume_and_share(client, auth_headers)
         share_token = info["share_token"]
 
-        # Mock PDF retrieval at the storage service layer
-        with patch("app.services.storage_service.generate_presigned_url", return_value="https://example.com/pdf"):
-            await client.get(f"/share/{share_token}")
+        # Need a completed compilation so the normal share path resolves a PDF
+        user_id = (await db_session.execute(
+            _text("SELECT id FROM users WHERE email LIKE 'test_%@example.com' ORDER BY created_at DESC LIMIT 1")
+        )).scalar_one()
+        await _seed_compilation(db_session, info["resume_id"], user_id)
 
+        with patch("app.services.storage_service.generate_presigned_url", return_value="https://example.com/pdf"):
+            resp = await client.get(f"/share/{share_token}")
+
+        assert resp.status_code == 200
         mock_record.assert_called_once()
         call_args = mock_record.call_args
-        # args[2] = resume_id, args[3] = share_token
         assert call_args.args[2] == info["resume_id"]
         assert call_args.args[3] == share_token
 
@@ -106,11 +133,15 @@ class TestResumeViewRecording:
 
     @patch("app.api.routes._record_resume_view", new_callable=AsyncMock)
     async def test_record_view_error_does_not_break_share_page(
-        self, mock_record, client: AsyncClient, auth_headers: dict
+        self, mock_record, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
     ):
-        """If _record_resume_view raises, share page still returns 200 or 404 (not 500)."""
+        """If _record_resume_view raises on success path, page still returns 200 (not 500)."""
         mock_record.side_effect = Exception("Redis down")
         info = await _create_resume_and_share(client, auth_headers)
+        user_id = (await db_session.execute(
+            _text("SELECT id FROM users WHERE email LIKE 'test_%@example.com' ORDER BY created_at DESC LIMIT 1")
+        )).scalar_one()
+        await _seed_compilation(db_session, info["resume_id"], user_id)
         with patch("app.services.storage_service.generate_presigned_url", return_value="https://ex.com/pdf"):
             resp = await client.get(f"/share/{info['share_token']}")
         assert resp.status_code in (200, 404)  # never 500
@@ -298,19 +329,26 @@ class TestResumeAnalyticsEndpoint:
 
 @pytest.mark.asyncio
 class TestRedisDebounce:
-    """Test the Redis-based 5-minute debounce logic."""
+    """Test the atomic Redis SET-NX 5-minute debounce logic."""
 
-    @patch("app.core.redis.redis_cache_client")
     @patch("app.services.storage_service.generate_presigned_url", return_value="https://ex.com/pdf")
     async def test_same_session_skipped_when_redis_key_exists(
-        self, mock_url, mock_redis, client: AsyncClient, auth_headers: dict
+        self, mock_url, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
     ):
-        """When Redis says the session key exists, setex is NOT called (no DB insert)."""
-        mock_redis.exists = AsyncMock(return_value=1)
-        mock_redis.setex = AsyncMock()
+        """When SET NX fails (key exists), no DB row is inserted."""
+        from app.database.models import ResumeView
+
+        mock_redis = AsyncMock()
+        # SET NX returns None/falsy when key already exists
+        mock_redis.set = AsyncMock(return_value=None)
 
         info = await _create_resume_and_share(client, auth_headers)
-        # Patch core.redis so _record_resume_view sees the mocked client
+        resume_id = info["resume_id"]
+        user_id = (await db_session.execute(
+            _text("SELECT id FROM users WHERE email LIKE 'test_%@example.com' ORDER BY created_at DESC LIMIT 1")
+        )).scalar_one()
+        await _seed_compilation(db_session, resume_id, user_id)
+
         import app.core.redis as _redis_mod
         original = _redis_mod.redis_cache_client
         _redis_mod.redis_cache_client = mock_redis
@@ -319,19 +357,36 @@ class TestRedisDebounce:
         finally:
             _redis_mod.redis_cache_client = original
 
-        # If debounced, we skip the DB insert and never call setex
-        mock_redis.setex.assert_not_called()
+        # Redis SET should have been called with nx=True
+        mock_redis.set.assert_called_once()
+        call_kwargs = mock_redis.set.call_args.kwargs
+        assert call_kwargs.get("nx") is True
+        assert call_kwargs.get("ex") == 300
+
+        # No DB row inserted (debounced)
+        rows_q = await db_session.execute(
+            _select(ResumeView).where(ResumeView.resume_id == resume_id)
+        )
+        assert len(rows_q.all()) == 0
 
     @patch("app.services.storage_service.generate_presigned_url", return_value="https://ex.com/pdf")
-    async def test_new_session_sets_redis_key_with_ttl_300(
-        self, mock_url, client: AsyncClient, auth_headers: dict
+    async def test_new_session_claims_slot_and_inserts_row(
+        self, mock_url, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
     ):
-        """When Redis key does not exist, setex is called with TTL=300."""
+        """When SET NX succeeds (new session), a DB row IS inserted."""
+        from app.database.models import ResumeView
+
         mock_redis = AsyncMock()
-        mock_redis.exists = AsyncMock(return_value=0)
-        mock_redis.setex = AsyncMock()
+        # SET NX returns True when key was set (new slot claimed)
+        mock_redis.set = AsyncMock(return_value=True)
 
         info = await _create_resume_and_share(client, auth_headers)
+        resume_id = info["resume_id"]
+        user_id = (await db_session.execute(
+            _text("SELECT id FROM users WHERE email LIKE 'test_%@example.com' ORDER BY created_at DESC LIMIT 1")
+        )).scalar_one()
+        await _seed_compilation(db_session, resume_id, user_id)
+
         import app.core.redis as _redis_mod
         original = _redis_mod.redis_cache_client
         _redis_mod.redis_cache_client = mock_redis
@@ -340,6 +395,15 @@ class TestRedisDebounce:
         finally:
             _redis_mod.redis_cache_client = original
 
-        mock_redis.setex.assert_called_once()
-        # setex(key, 300, "1")
-        assert mock_redis.setex.call_args.args[1] == 300
+        # SET NX was called with ex=300, nx=True (atomic debounce slot claim)
+        mock_redis.set.assert_called_once()
+        call_kwargs = mock_redis.set.call_args.kwargs
+        assert call_kwargs.get("nx") is True
+        assert call_kwargs.get("ex") == 300
+
+        # A view row WAS inserted
+        rows_q = await db_session.execute(
+            _select(ResumeView).where(ResumeView.resume_id == resume_id)
+        )
+        rows = rows_q.all()
+        assert len(rows) == 1
