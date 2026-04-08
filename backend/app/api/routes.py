@@ -676,33 +676,47 @@ async def razorpay_webhook(
 # ── Public share link endpoint ────────────────────────────────────────────────
 
 
+def _normalize_referrer(raw: str) -> Optional[str]:
+    """Return scheme+host only (strips path/query) — or None if empty/unparseable."""
+    if not raw:
+        return None
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(raw if raw.startswith("http") else f"https://{raw}")
+        if parsed.hostname:
+            return f"{parsed.scheme}://{parsed.hostname}"
+    except Exception:
+        pass
+    return raw[:200] if raw else None
+
+
 async def _record_resume_view(
     request: Request,
     db: AsyncSession,
     resume_id: str,
     share_token: str,
 ) -> None:
-    """Insert a resume_views row with Redis-based 5-minute debounce (Feature 43)."""
+    """Insert a resume_views row with atomic Redis SET-NX 5-minute debounce (Feature 43)."""
     import hashlib
 
+    from ..core.redis import redis_cache_client
     from ..database.models import ResumeView
 
     try:
         ip = request.client.host if request.client else "unknown"
         ua = request.headers.get("user-agent", "")
-        referrer = request.headers.get("referer", "") or request.headers.get("referrer", "")
+        raw_referrer = request.headers.get("referer", "") or request.headers.get("referrer", "")
+        referrer = _normalize_referrer(raw_referrer)
 
         # session_id = sha256(ip+ua)[:16] — never persists raw IP
-        raw = f"{ip}{ua}"
-        session_id = hashlib.sha256(raw.encode()).hexdigest()[:16]
+        session_id = hashlib.sha256(f"{ip}{ua}".encode()).hexdigest()[:16]
 
-        # Redis debounce: skip if same session viewed within 5 minutes
-        from ..core.redis import redis_cache_client
+        # Atomic Redis debounce: SET NX (only one caller wins the slot per session/5 min)
         redis_key = f"rateview:{share_token}:{session_id}"
         if redis_cache_client:
-            exists = await redis_cache_client.exists(redis_key)
-            if exists:
-                return  # already counted recently
+            claimed = await redis_cache_client.set(redis_key, "1", ex=300, nx=True)
+            if not claimed:
+                return  # already counted recently (another request beat us)
 
         # Country detection via configurable GeoIP provider
         country_code: Optional[str] = None
@@ -725,15 +739,11 @@ async def _record_resume_view(
             share_token=share_token,
             country_code=country_code,
             user_agent=ua[:500] if ua else None,
-            referrer=referrer[:500] if referrer else None,
+            referrer=referrer,
             session_id=session_id,
         )
         db.add(view)
         await db.commit()
-
-        # Set debounce key in Redis (TTL = 300s = 5 min)
-        if redis_cache_client:
-            await redis_cache_client.setex(redis_key, 300, "1")
 
     except Exception as exc:
         # Never let analytics failure break the share page
@@ -782,12 +792,6 @@ async def get_shared_resume(
     is_anonymous = bool(meta.get("share_anonymous", False))
     anonymous_processing = False  # set True if anon PDF not ready yet
 
-    # ── Record view (Feature 43) ──────────────────────────────────────────────
-    try:
-        await _record_resume_view(request, db, resume.id, share_token)
-    except Exception as exc:
-        logger.warning(f"View recording failed: {exc}")
-
     # ── Anonymous mode: try to serve the pre-compiled redacted PDF ───────────
     if is_anonymous:
         anon_job_id: Optional[str] = meta.get("share_anonymous_job_id")
@@ -814,6 +818,11 @@ async def get_shared_resume(
                     logger.warning(f"Could not upload anonymous PDF: {exc}")
 
         if pdf_url:
+            # Record view only when a real PDF is being served (Feature 43)
+            try:
+                await _record_resume_view(request, db, resume.id, share_token)
+            except Exception as exc:
+                logger.warning(f"View recording failed: {exc}")
             return SharedResumeResponse(
                 resume_title=resume.title,
                 share_token=share_token,
@@ -874,6 +883,12 @@ async def get_shared_resume(
             status_code=404,
             detail="PDF no longer available. Please recompile your resume and regenerate the share link.",
         )
+
+    # Record view only when a real PDF is being served (Feature 43)
+    try:
+        await _record_resume_view(request, db, resume.id, share_token)
+    except Exception as exc:
+        logger.warning(f"View recording failed: {exc}")
 
     return SharedResumeResponse(
         resume_title=resume.title,
