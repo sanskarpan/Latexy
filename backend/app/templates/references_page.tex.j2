@@ -1,0 +1,28 @@
+<< documentclass >>
+
+% ── Packages ──────────────────────────────────────────────────────────────
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{parskip}
+<< extra_preamble >>
+
+\begin{document}
+
+{\Large \textbf{References}}
+\vspace{0.5em}
+\hrule
+\vspace{1em}
+
+<% for ref in references %>
+\textbf{<< ref.name >>}\\
+\textit{<< ref.title >>, << ref.company >>}\\
+\textit{<< ref.relationship >>}\\
+<% if ref.email %>\href{mailto:<< ref.email >>}{<< ref.email >>}\\
+<% endif %>
+<% if ref.phone %>Phone: << ref.phone >>\\
+<% endif %>
+\vspace{0.8em}
+
+<% endfor %>
+
+\end{document}
