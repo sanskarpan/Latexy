@@ -111,6 +111,8 @@ class Resume(Base):
     parent_resume_id: Mapped[Optional[str]] = mapped_column(
         UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Soft-delete / archive (Feature from PR #185)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # GitHub sync (Feature 37)
     github_sync_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     github_repo_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
