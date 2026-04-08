@@ -675,6 +675,72 @@ async def razorpay_webhook(
 
 # ── Public share link endpoint ────────────────────────────────────────────────
 
+
+async def _record_resume_view(
+    request: Request,
+    db: AsyncSession,
+    resume_id: str,
+    share_token: str,
+) -> None:
+    """Insert a resume_views row with Redis-based 5-minute debounce (Feature 43)."""
+    import hashlib
+
+    from ..database.models import ResumeView
+
+    try:
+        ip = request.client.host if request.client else "unknown"
+        ua = request.headers.get("user-agent", "")
+        referrer = request.headers.get("referer", "") or request.headers.get("referrer", "")
+
+        # session_id = sha256(ip+ua)[:16] — never persists raw IP
+        raw = f"{ip}{ua}"
+        session_id = hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+        # Redis debounce: skip if same session viewed within 5 minutes
+        from ..core.redis import redis_cache_client
+        redis_key = f"rateview:{share_token}:{session_id}"
+        if redis_cache_client:
+            exists = await redis_cache_client.exists(redis_key)
+            if exists:
+                return  # already counted recently
+
+        # Country detection via configurable GeoIP provider
+        country_code: Optional[str] = None
+        if settings.GEOIP_PROVIDER_URL and ip and ip != "unknown":
+            try:
+                import httpx
+                url = settings.GEOIP_PROVIDER_URL.replace("{ip}", ip)
+                async with httpx.AsyncClient(timeout=2.0) as client:
+                    resp = await client.get(url)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        country_code = data.get("countryCode") or data.get("country_code")
+                        if country_code:
+                            country_code = country_code[:2].upper()
+            except Exception:
+                pass  # GeoIP is best-effort
+
+        view = ResumeView(
+            resume_id=resume_id,
+            share_token=share_token,
+            country_code=country_code,
+            user_agent=ua[:500] if ua else None,
+            referrer=referrer[:500] if referrer else None,
+            session_id=session_id,
+        )
+        db.add(view)
+        await db.commit()
+
+        # Set debounce key in Redis (TTL = 300s = 5 min)
+        if redis_cache_client:
+            await redis_cache_client.setex(redis_key, 300, "1")
+
+    except Exception as exc:
+        # Never let analytics failure break the share page
+        logger.warning(f"Failed to record resume view: {exc}")
+        await db.rollback()
+
+
 class SharedResumeResponse(BaseModel):
     resume_title: str
     share_token: str
@@ -688,13 +754,16 @@ class SharedResumeResponse(BaseModel):
 @router.get("/share/{share_token}", response_model=SharedResumeResponse)
 async def get_shared_resume(
     share_token: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Public endpoint — no auth required.
     Returns metadata + a presigned PDF URL for a shared resume.
     If the share was created with anonymous=True, serves the redacted PDF.
+    Records a view in resume_views with Redis-based 5-min debounce (Feature 43).
     """
+    import hashlib
     from pathlib import Path
 
     from sqlalchemy import select as sa_select
@@ -713,6 +782,9 @@ async def get_shared_resume(
     meta: dict = resume.resume_settings or {}
     is_anonymous = bool(meta.get("share_anonymous", False))
     anonymous_processing = False  # set True if anon PDF not ready yet
+
+    # ── Record view (Feature 43) ──────────────────────────────────────────────
+    await _record_resume_view(request, db, resume.id, share_token)
 
     # ── Anonymous mode: try to serve the pre-compiled redacted PDF ───────────
     if is_anonymous:
