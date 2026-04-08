@@ -13,6 +13,7 @@ Key changes from previous version:
 """
 
 import json
+import re
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -43,6 +44,18 @@ _JOB_TTL = 86400  # 24 hours
 # ------------------------------------------------------------------ #
 #  Pydantic models                                                     #
 # ------------------------------------------------------------------ #
+
+_WATERMARK_RE = re.compile(r"^[A-Za-z0-9 \-\.]+$")
+_WATERMARK_MAX_LEN = 30
+
+
+class WatermarkCompileRequest(BaseModel):
+    latex_content: str
+    watermark: str
+    user_plan: str = "free"
+    device_fingerprint: Optional[str] = None
+    compiler: Optional[str] = None
+
 
 class JobSubmissionRequest(BaseModel):
     job_type: str  # "latex_compilation" | "llm_optimization" | "combined" | "ats_scoring"
@@ -343,6 +356,79 @@ async def submit_job(
         raise
     except Exception as exc:
         logger.error(f"Error submitting job: {exc}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ------------------------------------------------------------------ #
+#  Watermarked compile                                                 #
+# ------------------------------------------------------------------ #
+
+@router.post("/compile-watermarked", response_model=JobSubmissionResponse)
+async def compile_watermarked(
+    request: WatermarkCompileRequest,
+    http_request: Request,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
+    """
+    Compile LaTeX with a watermark overlay.
+
+    The resulting PDF is a one-off temporary file — it is NOT stored as
+    the canonical PDF for the resume and does NOT trigger an auto-save
+    checkpoint.  Download via GET /download/{job_id} once the job
+    completes.
+    """
+    # Validate watermark text
+    watermark = request.watermark.strip()
+    if not watermark or not _WATERMARK_RE.match(watermark) or len(watermark) > _WATERMARK_MAX_LEN:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Watermark must be 1–{_WATERMARK_MAX_LEN} characters "
+                "containing only letters, digits, spaces, hyphens, and dots."
+            ),
+        )
+
+    if not request.latex_content or not request.latex_content.strip():
+        raise HTTPException(status_code=422, detail="latex_content is required")
+
+    compiler = settings.DEFAULT_LATEX_COMPILER
+    if request.compiler:
+        if request.compiler not in settings.ALLOWED_LATEX_COMPILERS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported compiler '{request.compiler}'. Allowed: {settings.ALLOWED_LATEX_COMPILERS}",
+            )
+        compiler = request.compiler
+
+    try:
+        job_id = str(uuid.uuid4())
+        ip_address = http_request.client.host if http_request.client else None
+        estimated_time = 30 if request.user_plan in ("pro", "byok") else 45
+
+        await _write_initial_redis_state(job_id, "latex_compilation", user_id, estimated_time)
+
+        submit_latex_compilation(
+            latex_content=request.latex_content,
+            job_id=job_id,
+            user_id=user_id,
+            user_plan=request.user_plan,
+            device_fingerprint=request.device_fingerprint,
+            metadata={"ip_address": ip_address, "submitted_via": "watermark"},
+            compiler=compiler,
+            watermark=watermark,
+        )
+
+        return JobSubmissionResponse(
+            success=True,
+            job_id=job_id,
+            message=f"Watermarked compile queued ({watermark!r})",
+            estimated_time=estimated_time,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error submitting watermarked compile: {exc}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
