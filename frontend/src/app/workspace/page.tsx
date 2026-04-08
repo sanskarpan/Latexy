@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2 } from 'lucide-react'
+import { BookUser, GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -16,6 +16,7 @@ import ProjectSearchModal from '@/components/ProjectSearchModal'
 import AddApplicationModal from '@/components/AddApplicationModal'
 import QuickTailorModal from '@/components/QuickTailorModal'
 import OnboardingFlow, { useOnboarding } from '@/components/onboarding/OnboardingFlow'
+import GenerateReferencesModal from '@/components/GenerateReferencesModal'
 
 export default function WorkspacePage() {
   const { data: session, isPending: sessionLoading } = useSession()
@@ -74,6 +75,9 @@ export default function WorkspacePage() {
 
   // Quick Tailor modal state
   const [quickTailorResume, setQuickTailorResume] = useState<ResumeResponse | null>(null)
+
+  // References modal state (Feature 70)
+  const [referencesModalResume, setReferencesModalResume] = useState<ResumeResponse | null>(null)
 
   // Variant state
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
