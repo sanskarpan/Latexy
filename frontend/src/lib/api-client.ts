@@ -1643,6 +1643,43 @@ class ApiClient {
       }
     )
   }
+
+  // ---------------------------------------------------------------- //
+  //  Watermark compile (Feature 71)                                   //
+  // ---------------------------------------------------------------- //
+
+  async compileWatermarked(body: {
+    latex_content: string
+    watermark: string
+    user_plan?: string
+    device_fingerprint?: string
+    compiler?: LatexCompiler
+  }): Promise<JobSubmitResponse> {
+    return this.request<JobSubmitResponse>('/jobs/compile-watermarked', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async pollJobUntilComplete(
+    jobId: string,
+    maxWaitMs = 120_000,
+    intervalMs = 2_000,
+  ): Promise<{ success: boolean }> {
+    const deadline = Date.now() + maxWaitMs
+    while (Date.now() < deadline) {
+      const state = await this.request<{
+        status: string
+        stage: string
+        percent: number
+        last_updated: number
+      }>(`/jobs/${encodeURIComponent(jobId)}/state`)
+      if (state.status === 'completed') return { success: true }
+      if (state.status === 'failed' || state.status === 'cancelled') return { success: false }
+      await new Promise((r) => setTimeout(r, intervalMs))
+    }
+    throw new Error('Watermarked compile timed out')
+  }
 }
 
 // Singleton
