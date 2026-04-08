@@ -1680,6 +1680,10 @@ class ApiClient {
     }
     throw new Error('Watermarked compile timed out')
   }
+
+  async getResumeAnalytics(resumeId: string): Promise<ResumeAnalytics> {
+    return this.request<ResumeAnalytics>(`/resumes/${encodeURIComponent(resumeId)}/analytics`)
+  }
 }
 
 // Singleton
@@ -1909,6 +1913,30 @@ export interface GenerateInterviewPrepApiResponse {
   job_id: string
   prep_id: string
   message: string
+}
+
+// Feature 43 — Resume View Analytics
+export interface DayCount {
+  date: string   // "YYYY-MM-DD"
+  count: number
+}
+export interface CountryCount {
+  country_code: string | null
+  count: number
+}
+export interface ReferrerCount {
+  referrer: string | null
+  count: number
+}
+export interface ResumeAnalytics {
+  total_views: number
+  views_last_7_days: number
+  views_last_30_days: number
+  views_by_day: DayCount[]
+  views_by_country: CountryCount[]
+  views_by_referrer: ReferrerCount[]
+  first_viewed_at: string | null
+  last_viewed_at: string | null
 }
 
 
