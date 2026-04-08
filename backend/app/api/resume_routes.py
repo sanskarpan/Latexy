@@ -1213,7 +1213,7 @@ async def get_resume_analytics(
     )
     views_last_30_days: int = last30_q.scalar_one() or 0
 
-    # Views by day (last 30 days) — truncate to date
+    # Views by day (last 30 days) — fill every date in the window with 0 if no views
     day_rows = await db.execute(
         select(
             sqlfunc.date_trunc("day", ResumeView.viewed_at).label("day"),
@@ -1223,9 +1223,17 @@ async def get_resume_analytics(
         .group_by(sqtext("1"))
         .order_by(sqtext("1"))
     )
+    # Build lookup: date string → count
+    day_count_map = {
+        row.day.strftime("%Y-%m-%d"): row.cnt for row in day_rows.all()
+    }
+    # Generate every date in the 30-day window (inclusive)
     views_by_day = [
-        DayCount(date=row.day.strftime("%Y-%m-%d"), count=row.cnt)
-        for row in day_rows.all()
+        DayCount(
+            date=(day_30_ago + timedelta(days=i)).strftime("%Y-%m-%d"),
+            count=day_count_map.get((day_30_ago + timedelta(days=i)).strftime("%Y-%m-%d"), 0),
+        )
+        for i in range(31)
     ]
 
     # Views by country (top 10)
