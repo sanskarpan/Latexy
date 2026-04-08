@@ -39,6 +39,8 @@ import {
   QrCode,
   Calendar,
   Users,
+  Clock,
+  Phone,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -68,6 +70,8 @@ import LinterPanel from '@/components/LinterPanel'
 import SymbolPalette from '@/components/SymbolPalette'
 import QrCodeInserter from '@/components/QrCodeInserter'
 import DateStandardizerPanel from '@/components/DateStandardizerPanel'
+import AgeAnalysisPanel from '@/components/AgeAnalysisPanel'
+import ContactFormatterPanel from '@/components/ContactFormatterPanel'
 import CompilerSelector from '@/components/CompilerSelector'
 import CompileSettingsModal from '@/components/CompileSettingsModal'
 import CollaboratorPanel from '@/components/CollaboratorPanel'
@@ -697,6 +701,8 @@ export default function ResumeEditPage() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [qrInserterOpen, setQrInserterOpen] = useState(false)
   const [dateStandardizerOpen, setDateStandardizerOpen] = useState(false)
+  const [ageAnalysisOpen, setAgeAnalysisOpen] = useState(false)
+  const [contactFormatterOpen, setContactFormatterOpen] = useState(false)
 
   // Layout
   const [rightTab, setRightTab] = useState<RightTab>('preview')
@@ -1552,6 +1558,24 @@ export default function ResumeEditPage() {
             Dates
           </button>
 
+          <button
+            onClick={() => setAgeAnalysisOpen(true)}
+            title="Analyze experience age"
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+          >
+            <Clock size={12} />
+            Age
+          </button>
+
+          <button
+            onClick={() => setContactFormatterOpen(true)}
+            title="Normalize contact info"
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+          >
+            <Phone size={12} />
+            Contacts
+          </button>
+
           <Link
             href={`/workspace/${resumeId}/cover-letter`}
             className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-violet-300/80 transition hover:bg-violet-500/10 hover:text-violet-200"
@@ -2233,6 +2257,25 @@ export default function ResumeEditPage() {
       <DateStandardizerPanel
         isOpen={dateStandardizerOpen}
         onClose={() => setDateStandardizerOpen(false)}
+        getLatex={() => editorRef.current?.getValue() ?? latexContent}
+        onApply={(newLatex) => {
+          editorRef.current?.setValue(newLatex)
+          setLatexContent(newLatex)
+        }}
+      />
+
+      {/* Age Analysis Panel (Feature 55) */}
+      <AgeAnalysisPanel
+        isOpen={ageAnalysisOpen}
+        onClose={() => setAgeAnalysisOpen(false)}
+        getLatex={() => editorRef.current?.getValue() ?? latexContent}
+        onJumpToLine={(line) => editorRef.current?.revealLine?.(line)}
+      />
+
+      {/* Contact Formatter Panel (Feature 64) */}
+      <ContactFormatterPanel
+        isOpen={contactFormatterOpen}
+        onClose={() => setContactFormatterOpen(false)}
         getLatex={() => editorRef.current?.getValue() ?? latexContent}
         onApply={(newLatex) => {
           editorRef.current?.setValue(newLatex)
