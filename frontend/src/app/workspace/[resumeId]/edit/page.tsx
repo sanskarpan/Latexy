@@ -2269,7 +2269,7 @@ export default function ResumeEditPage() {
         isOpen={ageAnalysisOpen}
         onClose={() => setAgeAnalysisOpen(false)}
         getLatex={() => editorRef.current?.getValue() ?? latexContent}
-        onJumpToLine={(line) => editorRef.current?.revealLine?.(line)}
+        onJumpToLine={(line) => editorRef.current?.highlightLine(line)}
       />
 
       {/* Contact Formatter Panel (Feature 64) */}
