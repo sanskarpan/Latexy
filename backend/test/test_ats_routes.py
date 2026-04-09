@@ -463,19 +463,22 @@ class TestATSSupportedIndustries:
         assert data["count"] == len(data["industries"])
 
     async def test_known_industries_present(self, client: AsyncClient):
-        """technology, finance, healthcare, marketing must all be supported."""
+        """tech_saas, finance_banking, healthcare must all be in the profile list."""
         resp = await client.get("/ats/supported-industries")
         assert resp.status_code == 200
         industries = resp.json()["industries"]
-        for expected in ("technology", "finance", "healthcare", "marketing"):
-            assert expected in industries, f"Missing industry: {expected}"
+        keys = [i["key"] if isinstance(i, dict) else i for i in industries]
+        for expected in ("tech_saas", "finance_banking", "healthcare"):
+            assert expected in keys, f"Missing industry key: {expected}"
 
-    async def test_industries_are_strings(self, client: AsyncClient):
-        """All industry names must be strings."""
+    async def test_industries_have_key_and_label(self, client: AsyncClient):
+        """All industry entries must have key and label fields."""
         resp = await client.get("/ats/supported-industries")
         assert resp.status_code == 200
         for ind in resp.json()["industries"]:
-            assert isinstance(ind, str)
+            assert isinstance(ind, dict)
+            assert "key" in ind
+            assert "label" in ind
 
     async def test_no_auth_required(self, client: AsyncClient):
         """Supported industries endpoint is public."""
