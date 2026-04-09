@@ -619,6 +619,7 @@ def deep_analyze_ats_task(
     job_id: Optional[str] = None,
     job_description: Optional[str] = None,
     api_key: Optional[str] = None,
+    industry_override: Optional[str] = None,
     metadata: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
@@ -631,7 +632,9 @@ def deep_analyze_ats_task(
     logger.info(f"Deep ATS analysis starting for job {job_id}")
 
     try:
-        success = asyncio.run(_async_deep_analyze(self, latex_content, job_id, job_description, api_key))
+        success = asyncio.run(
+            _async_deep_analyze(self, latex_content, job_id, job_description, api_key, industry_override)
+        )
         return {"success": bool(success), "job_id": job_id}
     except SoftTimeLimitExceeded:
         logger.error(f"Deep ATS analysis exceeded soft time limit for job {job_id}")
