@@ -671,6 +671,13 @@ def _parse_month_year(text: str) -> tuple[str, str] | None:
         if not 1 <= month_i <= 12:
             return None
         return f"{month_i:02d}", m.group(1)
+    # "2020/01" (year-first slash)
+    m = _re.match(r'^(\d{4})/(\d{2})$', text)
+    if m:
+        month_i = int(m.group(2))
+        if not 1 <= month_i <= 12:
+            return None
+        return f"{month_i:02d}", m.group(1)
     return None
 
 
@@ -687,15 +694,16 @@ def _format_month_year(month: str, year: str, target_format: str) -> str:
     return f"{month}/{year}"
 
 
-# Combined pattern: month-name YYYY | MM/YYYY | YYYY-MM
+# Combined pattern: month-name YYYY | MM/YYYY | YYYY-MM | YYYY/MM
 _DATE_RE = _re.compile(
     r'(?<!\d)'
     r'((?:January|February|March|April|May|June|July|August|September|October|November|December'
-    r'|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)'
+    r'|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)'
     r'(?:\.)?'
     r'\s+\d{4}'
     r'|\d{1,2}/\d{4}'
-    r'|\d{4}-\d{2})',
+    r'|\d{4}-\d{2}'
+    r'|\d{4}/\d{2})',
     _re.IGNORECASE,
 )
 

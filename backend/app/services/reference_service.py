@@ -12,6 +12,11 @@ import xml.etree.ElementTree as ET
 from typing import Optional
 from urllib.parse import quote
 
+# ORCID identifier: XXXX-XXXX-XXXX-XXXX (last char may be X checksum digit)
+_ORCID_RE = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dXx]$")
+# ORCID in URL
+_ORCID_URL_RE = re.compile(r"orcid\.org/(\d{4}-\d{4}-\d{4}-\d{3}[\dXx])", re.I)
+
 import httpx
 
 from ..core.logging import get_logger
@@ -298,6 +303,129 @@ class ReferenceService:
         """Extract cite key from '@type{key,' pattern."""
         m = re.match(r"@\w+\{([^,\s]+)", bibtex.strip())
         return m.group(1) if m else None
+
+    # ── ORCID fetcher ─────────────────────────────────────────────────────────
+
+    def normalize_orcid(self, raw: str) -> Optional[str]:
+        """Extract a bare ORCID ID from a URL or bare string, or return None."""
+        raw = raw.strip()
+        m = _ORCID_URL_RE.search(raw)
+        if m:
+            return m.group(1).upper().replace("x", "X")
+        if _ORCID_RE.match(raw):
+            return raw.upper().replace("x", "X")
+        return None
+
+    async def fetch_orcid_works(
+        self, orcid_id: str, max_results: int = 20
+    ) -> list[dict]:
+        """
+        Fetch publication summaries from ORCID public API.
+        Returns a list of dicts with: title, year, journal, doi, url, work_type.
+        Sorted by year descending. Cached in Redis for 24h.
+        """
+        if not _ORCID_RE.match(orcid_id):
+            raise ValueError(f"Invalid ORCID identifier: {orcid_id}")
+
+        cache_key = f"orcid:works:{orcid_id}"
+        try:
+            cached = await cache_manager.get(cache_key)
+        except Exception as exc:
+            logger.warning("ORCID cache read failed: %s", exc)
+            cached = None
+        if isinstance(cached, list):
+            return cached[:max_results]
+
+        url = f"https://pub.orcid.org/v3.0/{orcid_id}/works"
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "Latexy/1.0 (mailto:support@latexy.io; https://latexy.io)",
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=headers, timeout=15.0)
+
+            if response.status_code == 404:
+                raise ValueError(f"ORCID profile not found: {orcid_id}")
+            if response.status_code != 200:
+                raise ValueError(f"ORCID API error: HTTP {response.status_code}")
+
+            data = response.json()
+            works = self._parse_orcid_response(data)
+
+            try:
+                await cache_manager.set(cache_key, works, ttl=86400)
+            except Exception as exc:
+                logger.warning("ORCID cache write failed: %s", exc)
+
+            return works[:max_results]
+
+        except httpx.TimeoutException:
+            raise ValueError(f"Timeout fetching ORCID profile: {orcid_id}")
+        except httpx.RequestError as exc:
+            raise ValueError(f"Network error fetching ORCID {orcid_id}: {exc}")
+
+    def _parse_orcid_response(self, data: dict) -> list[dict]:
+        """Parse ORCID /works JSON response into a normalized list of works."""
+        groups = data.get("group", [])
+        works: list[dict] = []
+
+        for group in groups:
+            summaries = group.get("work-summary", [])
+            if not summaries:
+                continue
+            summary = summaries[0]  # prefer first (highest source priority)
+
+            # Title
+            title_obj = summary.get("title", {}) or {}
+            title = (title_obj.get("title") or {}).get("value", "")
+
+            # Year
+            year: Optional[int] = None
+            pub_date = summary.get("publication-date") or {}
+            year_obj = pub_date.get("year") or {}
+            if year_obj.get("value"):
+                try:
+                    year = int(year_obj["value"])
+                except (ValueError, TypeError):
+                    pass
+
+            # Journal / venue
+            jt = summary.get("journal-title") or {}
+            journal = jt.get("value", "") if isinstance(jt, dict) else ""
+
+            # Work type (normalize to lowercase no-separator)
+            raw_type = summary.get("type", "misc") or "misc"
+            work_type = raw_type.lower().replace("-", "").replace("_", "")
+
+            # DOI (first one found)
+            doi: Optional[str] = None
+            ext_ids = (summary.get("external-ids") or {}).get("external-id", []) or []
+            for ext in ext_ids:
+                if ext.get("external-id-type") == "doi":
+                    val = (ext.get("external-id-value") or "").strip()
+                    if val:
+                        doi = val
+                        break
+
+            # URL
+            url_obj = summary.get("url") or {}
+            url_val = url_obj.get("value", "") if isinstance(url_obj, dict) else ""
+
+            works.append(
+                {
+                    "title": title,
+                    "year": year,
+                    "journal": journal,
+                    "doi": doi,
+                    "url": url_val,
+                    "work_type": work_type,
+                }
+            )
+
+        # Sort: year desc, then title asc
+        works.sort(key=lambda w: (-(w["year"] or 0), w["title"] or ""))
+        return works
 
 
 reference_service = ReferenceService()

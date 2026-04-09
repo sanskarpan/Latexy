@@ -557,7 +557,7 @@ export interface BibTeXEntry {
   title: string | null
   authors: string | null
   year: number | null
-  source_type: 'doi' | 'arxiv' | 'unknown' | null
+  source_type: 'doi' | 'arxiv' | 'orcid' | 'unknown' | null
   cached: boolean
   error: string | null
 }
@@ -1387,6 +1387,13 @@ class ApiClient {
     return this.request<FetchReferencesResponse>('/references/fetch', {
       method: 'POST',
       body: JSON.stringify({ identifiers }),
+    })
+  }
+
+  async fetchOrcidPublications(orcidId: string, maxResults = 20): Promise<FetchReferencesResponse> {
+    return this.request<FetchReferencesResponse>('/references/fetch-orcid', {
+      method: 'POST',
+      body: JSON.stringify({ orcid_id: orcidId, max_results: maxResults }),
     })
   }
 
