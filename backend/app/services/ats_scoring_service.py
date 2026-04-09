@@ -318,9 +318,11 @@ class ATSScoringService:
 
             # ── Industry calibration ──────────────────────────────────────
             # Auto-detect from JD when no explicit industry key provided
+            from .industry_ats_profiles import INDUSTRY_PROFILES as _PROFILES
             industry_key: str = "generic"
-            if job_description:
-                industry_key = detect_industry(job_description)
+            if industry and industry in _PROFILES:
+                # Direct profile key passed (e.g. "tech_saas") — use as-is
+                industry_key = industry
             elif industry:
                 # Legacy: map old string tags to profile keys
                 _legacy_map = {
@@ -330,6 +332,8 @@ class ATSScoringService:
                     "consulting": "consulting",
                 }
                 industry_key = _legacy_map.get(industry.lower(), "generic")
+            elif job_description:
+                industry_key = detect_industry(job_description)
 
             profile = get_profile(industry_key)
             industry_label: Optional[str] = profile["label"] if industry_key != "generic" else None
