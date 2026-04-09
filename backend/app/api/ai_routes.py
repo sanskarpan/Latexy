@@ -9,20 +9,19 @@ import time
 from calendar import month_abbr as _month_abbr
 from calendar import month_name as _month_name
 from typing import Dict, List, Literal, Optional
+from uuid import uuid4
 
 import httpx
 import openai
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.redis import cache_manager
 from ..database.connection import get_db
-from sqlalchemy import select
-from uuid import uuid4
-
 from ..database.models import Resume
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from ..services.error_explainer_service import error_explainer_service
