@@ -2188,7 +2188,8 @@ export default function ResumeEditPage() {
             {rightTab === 'packages' && (
               <PackageManagerPanel
                 currentLatex={latexContent}
-                onAddPackage={(newLatex) => {
+                onAddPackage={(newLatex, packageName) => {
+                  pushUndo(`Before adding package: ${packageName}`)
                   editorRef.current?.setValue(newLatex)
                   setLatexContent(newLatex)
                 }}
