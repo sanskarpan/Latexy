@@ -484,6 +484,7 @@ class DeepAnalyzeRequest(BaseModel):
     latex_content: str = Field(..., min_length=1)
     job_description: Optional[str] = None
     device_fingerprint: Optional[str] = None  # required if unauthenticated
+    industry_override: Optional[str] = None   # explicit profile key, e.g. "tech_saas"
 
 
 class DeepAnalyzeResponse(BaseModel):
@@ -647,6 +648,7 @@ async def deep_analyze_resume(
             "job_id": job_id,
             "job_description": request.job_description,
             "api_key": api_key,
+            "industry_override": request.industry_override,
             "metadata": {"user_id": user_id},
         },
         queue="ats",
