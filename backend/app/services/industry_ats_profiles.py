@@ -8,6 +8,7 @@ Each profile contains:
   detect_keywords — list of JD indicator words used for auto-detection
 """
 
+import re
 from typing import Dict
 
 INDUSTRY_PROFILES: Dict[str, dict] = {
@@ -168,13 +169,19 @@ def detect_industry(job_description: str) -> str:
     for name, profile in INDUSTRY_PROFILES.items():
         if name == "generic":
             continue
-        scores[name] = sum(1 for kw in profile["detect_keywords"] if kw in jd_lower)
+        scores[name] = sum(
+            1 for kw in profile["detect_keywords"]
+            if re.search(rf"\b{re.escape(kw)}\b", jd_lower)
+        )
 
     if not scores:
         return "generic"
 
-    best = max(scores, key=lambda k: scores[k])
-    return best if scores[best] >= 2 else "generic"
+    best_score = max(scores.values())
+    if best_score < 2:
+        return "generic"
+    winners = [name for name, s in scores.items() if s == best_score]
+    return winners[0] if len(winners) == 1 else "generic"
 
 
 def get_profile(key: str) -> dict:
