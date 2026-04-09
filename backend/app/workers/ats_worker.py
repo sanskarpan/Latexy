@@ -40,7 +40,7 @@ def score_resume_ats_task(
     job_id: Optional[str] = None,
     job_description: Optional[str] = None,
     industry: Optional[str] = None,
-    industry_profile_key: str = "generic",
+    industry_profile_key: Optional[str] = None,  # None = auto-detect; explicit key = override
     user_id: Optional[str] = None,
     user_plan: str = "free",
     device_fingerprint: Optional[str] = None,
@@ -84,10 +84,13 @@ def score_resume_ats_task(
             "message": "Analyzing resume content",
         })
 
-        # Resolve industry profile (use passed key, or detect from JD if generic)
-        effective_profile_key = industry_profile_key
-        if effective_profile_key == "generic" and job_description:
+        # Resolve industry profile: explicit key is used as-is; None triggers auto-detection
+        if industry_profile_key is not None:
+            effective_profile_key = industry_profile_key
+        elif job_description:
             effective_profile_key = detect_industry(job_description)
+        else:
+            effective_profile_key = "generic"
 
         # score_resume is async but pure-Python — safe to call once with asyncio.run()
         start_time = time.time()
@@ -314,7 +317,7 @@ def submit_ats_scoring(
     job_id: str,
     job_description: Optional[str] = None,
     industry: Optional[str] = None,
-    industry_profile_key: str = "generic",
+    industry_profile_key: Optional[str] = None,
     user_id: Optional[str] = None,
     user_plan: str = "free",
     device_fingerprint: Optional[str] = None,
