@@ -2303,6 +2303,7 @@ export default function ResumeEditPage() {
         onClose={() => setDateStandardizerOpen(false)}
         getLatex={() => editorRef.current?.getValue() ?? latexContent}
         onApply={(newLatex) => {
+          pushUndo('Before date standardization')
           editorRef.current?.setValue(newLatex)
           setLatexContent(newLatex)
         }}
