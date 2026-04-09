@@ -153,6 +153,11 @@ class TestFetchOrcidEndpoint:
         )
         assert resp.status_code == 422
 
+    # Each test uses a unique ORCID ID to avoid Redis cache cross-contamination.
+    # CI runs with a real Redis instance, so tests that share an ORCID ID would
+    # collide: the first test caches its response and subsequent tests hit the
+    # cached value instead of the mocked HTTP response.
+
     async def test_orcid_url_accepted(self, client: AsyncClient):
         """ORCID URL format must be accepted (normalized to bare ID)."""
         from app.api.reference_routes import BibTeXEntry as BibTeXEntryModel
@@ -179,7 +184,8 @@ class TestFetchOrcidEndpoint:
             with patch("app.api.reference_routes._fetch_one", new=AsyncMock(return_value=crossref_entry)):
                 resp = await client.post(
                     "/references/fetch-orcid",
-                    json={"orcid_id": "https://orcid.org/0000-0001-2345-6789"},
+                    # unique ID: 0000-0099-0001-0001
+                    json={"orcid_id": "https://orcid.org/0000-0099-0001-0001"},
                 )
 
         assert resp.status_code == 200
@@ -212,7 +218,7 @@ class TestFetchOrcidEndpoint:
             with patch("app.api.reference_routes._fetch_one", new=AsyncMock(return_value=fallback_entry)):
                 resp = await client.post(
                     "/references/fetch-orcid",
-                    json={"orcid_id": "0000-0001-2345-6789"},
+                    json={"orcid_id": "0000-0099-0002-0002"},  # unique
                 )
 
         assert resp.status_code == 200
@@ -244,7 +250,7 @@ class TestFetchOrcidEndpoint:
             with patch("app.api.reference_routes._fetch_one", new=AsyncMock(return_value=error_entry)):
                 resp = await client.post(
                     "/references/fetch-orcid",
-                    json={"orcid_id": "0000-0001-2345-6789"},
+                    json={"orcid_id": "0000-0099-0003-0003"},  # unique
                 )
 
         data = resp.json()
@@ -277,7 +283,7 @@ class TestFetchOrcidEndpoint:
 
             resp = await client.post(
                 "/references/fetch-orcid",
-                json={"orcid_id": "0000-0001-2345-6789"},
+                json={"orcid_id": "0000-0099-0004-0004"},  # unique
             )
 
         assert resp.status_code == 200
@@ -299,7 +305,7 @@ class TestFetchOrcidEndpoint:
 
             resp = await client.post(
                 "/references/fetch-orcid",
-                json={"orcid_id": "0000-0000-0000-0000"},
+                json={"orcid_id": "0000-0099-0005-0005"},  # unique
             )
 
         assert resp.status_code == 404
@@ -316,7 +322,7 @@ class TestFetchOrcidEndpoint:
 
             resp = await client.post(
                 "/references/fetch-orcid",
-                json={"orcid_id": "0000-0001-2345-6789"},
+                json={"orcid_id": "0000-0099-0006-0006"},  # unique
             )
 
         assert resp.status_code == 200
@@ -326,7 +332,6 @@ class TestFetchOrcidEndpoint:
 
     async def test_max_results_respected(self, client: AsyncClient):
         """max_results=1 must return at most 1 entry."""
-        # Profile with 2 works
         two_works = {
             "group": [
                 {"work-summary": [{"title": {"title": {"value": "Paper A"}},
@@ -347,7 +352,7 @@ class TestFetchOrcidEndpoint:
 
             resp = await client.post(
                 "/references/fetch-orcid",
-                json={"orcid_id": "0000-0001-2345-6789", "max_results": 1},
+                json={"orcid_id": "0000-0099-0007-0007", "max_results": 1},  # unique
             )
 
         assert resp.status_code == 200
