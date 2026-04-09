@@ -1006,6 +1006,13 @@ class ApiClient {
     return this.request('/ats/supported-industries')
   }
 
+  async getIndustryProfiles(): Promise<{
+    success: boolean
+    profiles: Array<{ key: string; label: string }>
+  }> {
+    return this.request('/ats/industry-profiles')
+  }
+
   async deepAnalyzeResume(body: {
     latex_content: string
     job_description?: string
