@@ -254,6 +254,7 @@ class TestFetchOrcidEndpoint:
                 )
 
         data = resp.json()
+        assert len(data["entries"]) > 0
         for entry in data["entries"]:
             assert "identifier" in entry
             assert "cite_key" in entry
@@ -357,6 +358,7 @@ class TestFetchOrcidEndpoint:
 
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
+        assert len(resp.json()["entries"]) <= 1
 
     async def test_max_results_above_50_rejected(self, client: AsyncClient):
         """max_results > 50 must be rejected with 422."""
