@@ -32,6 +32,8 @@ export interface ATSScoreResponse {
   processing_time?: number
   message?: string
   timestamp?: string
+  industry_key?: string
+  industry_label?: string
 }
 
 // ------------------------------------------------------------------ //
