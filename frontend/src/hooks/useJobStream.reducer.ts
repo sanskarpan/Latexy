@@ -30,6 +30,7 @@ export interface JobStreamState {
   logLines: LogLine[]
   atsScore: number | null
   atsDetails: ATSDetails | null
+  industryLabel: string | null
   deepAnalysis: ATSDeepAnalysis | null
   changesMade: Array<{ section: string; change_type: string; reason: string }>
   pdfJobId: string | null
@@ -56,6 +57,7 @@ export const initialState: JobStreamState = {
   logLines: [],
   atsScore: null,
   atsDetails: null,
+  industryLabel: null,
   deepAnalysis: null,
   changesMade: [],
   pdfJobId: null,
@@ -134,6 +136,7 @@ export function jobStreamReducer(state: JobStreamState, action: ReducerAction): 
         pdfJobId: event.pdf_job_id,
         atsScore: event.ats_score,
         atsDetails: event.ats_details as ATSDetails,
+        industryLabel: (event.ats_details as ATSDetails)?.industry_label ?? null,
         changesMade: event.changes_made,
         compilationTime: event.compilation_time,
         optimizationTime: event.optimization_time,
