@@ -307,9 +307,11 @@ class ATSScoringService:
         start_time = asyncio.get_event_loop().time()
 
         try:
-            # Resolve industry profile (calibration)
-            profile = INDUSTRY_PROFILES.get(industry_profile_key, INDUSTRY_PROFILES["generic"])
-            industry_label: Optional[str] = profile["label"] if industry_profile_key != "generic" else None
+            # Resolve industry profile (calibration); unknown keys fall back to generic
+            generic_profile = INDUSTRY_PROFILES["generic"]
+            profile = INDUSTRY_PROFILES.get(industry_profile_key, generic_profile)
+            is_generic = profile is generic_profile
+            industry_label: Optional[str] = None if is_generic else profile["label"]
 
             text_content = self._extract_text_from_latex(latex_content)
 
@@ -318,7 +320,7 @@ class ATSScoringService:
             structure_score = await self._score_structure(text_content, latex_content)
             content_score = await self._score_content(
                 text_content, job_description, industry,
-                industry_profile=profile if industry_profile_key != "generic" else None,
+                industry_profile=None if is_generic else profile,
             )
             keyword_score = await self._score_keywords(text_content, job_description, industry)
             readability_score = await self._score_readability(text_content)
@@ -639,18 +641,14 @@ class ATSScoringService:
         match_ratio: float = 0.0
 
         if industry_profile and industry_profile.get("keywords"):
-            # Weighted profile keyword scoring
+            # Weighted profile keyword scoring — single scan per keyword
             profile_keywords = industry_profile["keywords"]
             total_weight = sum(profile_keywords.values())
-            weighted_score = sum(
-                weight
-                for kw, weight in profile_keywords.items()
-                if re.search(rf'\b{re.escape(kw)}\b', text_content, re.IGNORECASE)
-            )
             keywords_found = [
                 kw for kw in profile_keywords
                 if re.search(rf'\b{re.escape(kw)}\b', text_content, re.IGNORECASE)
             ]
+            weighted_score = sum(profile_keywords[kw] for kw in keywords_found)
             keyword_ratio = weighted_score / max(total_weight, 1)
             profile_label = industry_profile.get("label", industry or "industry")
             if keyword_ratio > 0.25:
