@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { BookUser, GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate } from 'lucide-react'
+import { BookUser, GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate, Globe } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult } from '@/lib/api-client'
+import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult, type TranslateResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import SemanticMatchModal from '@/components/ats/SemanticMatchModal'
@@ -17,6 +17,34 @@ import AddApplicationModal from '@/components/AddApplicationModal'
 import QuickTailorModal from '@/components/QuickTailorModal'
 import OnboardingFlow, { useOnboarding } from '@/components/onboarding/OnboardingFlow'
 import GenerateReferencesModal from '@/components/GenerateReferencesModal'
+
+// ── Translation languages (Feature 44) ────────────────────────────────────
+const TRANSLATE_LANGUAGES = [
+  { code: 'fr', name: 'French' },
+  { code: 'de', name: 'German' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'it', name: 'Italian' },
+  { code: 'pt', name: 'Portuguese' },
+  { code: 'nl', name: 'Dutch' },
+  { code: 'ru', name: 'Russian' },
+  { code: 'zh', name: 'Chinese (Simplified)' },
+  { code: 'ja', name: 'Japanese' },
+  { code: 'ko', name: 'Korean' },
+  { code: 'ar', name: 'Arabic' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'pl', name: 'Polish' },
+  { code: 'sv', name: 'Swedish' },
+  { code: 'da', name: 'Danish' },
+  { code: 'fi', name: 'Finnish' },
+  { code: 'no', name: 'Norwegian' },
+  { code: 'tr', name: 'Turkish' },
+  { code: 'cs', name: 'Czech' },
+  { code: 'ro', name: 'Romanian' },
+  { code: 'hu', name: 'Hungarian' },
+  { code: 'uk', name: 'Ukrainian' },
+  { code: 'id', name: 'Indonesian' },
+  { code: 'vi', name: 'Vietnamese' },
+]
 
 export default function WorkspacePage() {
   const { data: session, isPending: sessionLoading } = useSession()
@@ -92,6 +120,9 @@ export default function WorkspacePage() {
   const [forkModalResumeId, setForkModalResumeId] = useState<string | null>(null)
   const [forkTitle, setForkTitle] = useState('')
   const [isForking, setIsForking] = useState(false)
+  const [translateModalResumeId, setTranslateModalResumeId] = useState<string | null>(null)
+  const [translateSelectedLang, setTranslateSelectedLang] = useState('fr')
+  const [isTranslating, setIsTranslating] = useState(false)
   const [diffData, setDiffData] = useState<DiffWithParentResponse | null>(null)
   const [showDiffModal, setShowDiffModal] = useState(false)
   const [diffVariantId, setDiffVariantId] = useState<string | null>(null)
@@ -238,6 +269,32 @@ export default function WorkspacePage() {
     setForkModalResumeId(resumeId)
     setForkTitle(`${resumeTitle} — Variant`)
   }, [])
+
+  const handleTranslate = useCallback(async (resumeId: string, langCode: string) => {
+    const lang = TRANSLATE_LANGUAGES.find(l => l.code === langCode)
+    if (!lang) return
+    setIsTranslating(true)
+    try {
+      const result: TranslateResumeResponse = await apiClient.translateResume({
+        resume_id: resumeId,
+        target_language: lang.name,
+        language_code: langCode,
+      })
+      setTranslateModalResumeId(null)
+      toast.success('Translation created', {
+        description: `Opening ${lang.name} variant…`,
+        action: {
+          label: 'Open',
+          onClick: () => router.push(`/workspace/${result.variant_resume_id}/edit`),
+        },
+      })
+      router.push(`/workspace/${result.variant_resume_id}/edit`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Translation failed')
+    } finally {
+      setIsTranslating(false)
+    }
+  }, [router])
 
   // Feature 39 handlers
   const handlePin = useCallback(async (resumeId: string, isPinned: boolean) => {
@@ -441,6 +498,14 @@ export default function WorkspacePage() {
         >
           <GitFork size={11} />
           Fork
+        </button>
+        <button
+          onClick={() => { setTranslateModalResumeId(resume.id); setTranslateSelectedLang('fr') }}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
+          title="Translate to another language"
+        >
+          <Globe size={11} />
+          Translate
         </button>
         <button
           onClick={() => setShareModalResumeId(resume.id)}
@@ -1054,6 +1119,49 @@ export default function WorkspacePage() {
                 className="btn-accent px-4 py-2 text-xs disabled:opacity-50"
               >
                 {isForking ? 'Creating...' : 'Create Variant'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Translate modal */}
+      {translateModalResumeId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setTranslateModalResumeId(null)}>
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Globe size={16} className="text-sky-400" />
+                <h3 className="text-base font-semibold text-white">Translate Resume</h3>
+              </div>
+              <button onClick={() => setTranslateModalResumeId(null)} className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs text-zinc-500 mb-4">Creates a new variant with prose translated by AI. LaTeX commands are preserved exactly.</p>
+            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Target Language</label>
+            <select
+              value={translateSelectedLang}
+              onChange={e => setTranslateSelectedLang(e.target.value)}
+              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-sky-400/40 mb-5"
+            >
+              {TRANSLATE_LANGUAGES.map(l => (
+                <option key={l.code} value={l.code}>{l.name}</option>
+              ))}
+            </select>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setTranslateModalResumeId(null)}
+                className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 transition hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleTranslate(translateModalResumeId, translateSelectedLang)}
+                disabled={isTranslating}
+                className="flex items-center gap-1.5 rounded-lg bg-sky-500/15 px-4 py-2 text-xs font-semibold text-sky-300 ring-1 ring-sky-400/30 transition hover:bg-sky-500/25 disabled:opacity-50"
+              >
+                {isTranslating ? <><Loader2 size={12} className="animate-spin" /> Translating…</> : <><Globe size={12} /> Translate</>}
               </button>
             </div>
           </div>
