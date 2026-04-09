@@ -88,8 +88,8 @@ class TestTranslateCacheKey:
         k2 = _translate_cache_key(_SAMPLE_LATEX, "German")
         assert k1 != k2
 
-    def test_only_first_1000_chars_used(self) -> None:
-        """Two inputs differing only after char 1000 should produce the same key."""
+    def test_full_content_hashed_no_collision(self) -> None:
+        """Two inputs with same 1000-char prefix but different suffixes produce different keys."""
         from app.api.ai_routes import _translate_cache_key
 
         base = "x" * 1000
@@ -97,7 +97,7 @@ class TestTranslateCacheKey:
         content_b = base + "BBB"
         k1 = _translate_cache_key(content_a, "French")
         k2 = _translate_cache_key(content_b, "French")
-        assert k1 == k2
+        assert k1 != k2
 
 
 # ---------------------------------------------------------------------------

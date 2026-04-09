@@ -1041,8 +1041,10 @@ class TranslateResponse(BaseModel):
 
 
 def _translate_cache_key(latex_content: str, target_language: str) -> str:
-    raw = f"{latex_content[:1000]}|{target_language.lower().strip()}"
-    return "ai:translate:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
+    # Hash entire content to avoid collision from shared preambles
+    content_hash = hashlib.sha256(latex_content.encode()).hexdigest()[:16]
+    lang_hash = hashlib.sha256(target_language.lower().strip().encode()).hexdigest()[:8]
+    return f"ai:translate:{content_hash}{lang_hash}"
 
 
 _TRANSLATE_SYSTEM_PROMPT = """\
@@ -1099,17 +1101,24 @@ async def translate_resume(
 
         system_prompt = _TRANSLATE_SYSTEM_PROMPT.format(target_language=request.target_language)
 
-        llm_client = openai.AsyncOpenAI(api_key=api_key)
-        response = await llm_client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": resume.latex_content},
-            ],
-            max_tokens=8000,
-            temperature=0.3,
-        )
-        translated_latex = (response.choices[0].message.content or "").strip()
+        try:
+            llm_client = openai.AsyncOpenAI(api_key=api_key)
+            response = await llm_client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": resume.latex_content},
+                ],
+                max_tokens=8000,
+                temperature=0.3,
+            )
+            translated_latex = (response.choices[0].message.content or "").strip()
+        except Exception as exc:
+            logger.error(f"translate LLM call failed: {exc}")
+            raise HTTPException(status_code=502, detail="Translation service error. Please try again.")
+
+        if not translated_latex:
+            raise HTTPException(status_code=502, detail="Translation returned empty result. Please try again.")
 
         # Cache as string TTL=3600
         try:
