@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..core.logging import get_logger
+from .industry_ats_profiles import INDUSTRY_PROFILES
 
 logger = get_logger(__name__)
 
@@ -26,6 +27,7 @@ class ATSScoreResult:
     processing_time: float
     timestamp: str
     multi_dim_scores: Optional[Dict[str, float]] = None
+    industry_label: Optional[str] = None
 
 
 @dataclass
@@ -298,18 +300,28 @@ class ATSScoringService:
         self,
         latex_content: str,
         job_description: Optional[str] = None,
-        industry: Optional[str] = None
+        industry: Optional[str] = None,
+        industry_profile_key: str = "generic",
     ) -> ATSScoreResult:
         """Score a resume for ATS compatibility."""
         start_time = asyncio.get_event_loop().time()
 
         try:
+            # Resolve industry profile (calibration); unknown keys fall back to generic
+            generic_profile = INDUSTRY_PROFILES["generic"]
+            profile = INDUSTRY_PROFILES.get(industry_profile_key, generic_profile)
+            is_generic = profile is generic_profile
+            industry_label: Optional[str] = None if is_generic else profile["label"]
+
             text_content = self._extract_text_from_latex(latex_content)
 
             formatting_score = await self._score_formatting(latex_content)
             # Pass raw latex_content so contact detection can find emails in \href
             structure_score = await self._score_structure(text_content, latex_content)
-            content_score = await self._score_content(text_content, job_description, industry)
+            content_score = await self._score_content(
+                text_content, job_description, industry,
+                industry_profile=None if is_generic else profile,
+            )
             keyword_score = await self._score_keywords(text_content, job_description, industry)
             readability_score = await self._score_readability(text_content)
 
@@ -334,13 +346,28 @@ class ATSScoringService:
                 "readability": readability_score["score"],
             }
 
-            weights = {
+            base_weights = {
                 "formatting": 0.25,
                 "structure": 0.20,
                 "content": 0.25,
                 "keywords": 0.20,
                 "readability": 0.10,
             }
+
+            # Apply profile section_weights as multipliers on base category weights
+            # Mapping: experience → content, skills → keywords, education → structure
+            section_to_category = {
+                "experience": "content",
+                "skills": "keywords",
+                "education": "structure",
+            }
+            effective_weights = dict(base_weights)
+            for section_key, cat_key in section_to_category.items():
+                multiplier = profile.get("section_weights", {}).get(section_key, 1.0)
+                effective_weights[cat_key] *= multiplier
+            # Re-normalise so they sum to 1
+            total_w = sum(effective_weights.values())
+            weights = {k: v / total_w for k, v in effective_weights.items()}
 
             overall_score = sum(
                 category_scores[cat] * weights[cat] for cat in category_scores
@@ -379,6 +406,7 @@ class ATSScoringService:
                 processing_time=processing_time,
                 timestamp=datetime.utcnow().isoformat(),
                 multi_dim_scores=multi_dim_scores,
+                industry_label=industry_label,
             )
 
             self.logger.info(f"ATS scoring completed: {overall_score:.1f}/100 in {processing_time:.2f}s")
@@ -565,6 +593,7 @@ class ATSScoringService:
         text_content: str,
         job_description: Optional[str] = None,
         industry: Optional[str] = None,
+        industry_profile: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Score the content quality and relevance."""
         score = 100.0
@@ -607,11 +636,29 @@ class ATSScoringService:
             warnings.append("Lacks quantifiable achievements")
             recommendations.append("Include specific numbers, percentages, and metrics")
 
-        # Industry keyword matching
+        # Industry keyword matching — use weighted profile if available, else legacy flat list
         keywords_found: List[str] = []
         match_ratio: float = 0.0
 
-        if industry and industry in self.industry_keywords:
+        if industry_profile and industry_profile.get("keywords"):
+            # Weighted profile keyword scoring — single scan per keyword
+            profile_keywords = industry_profile["keywords"]
+            total_weight = sum(profile_keywords.values())
+            keywords_found = [
+                kw for kw in profile_keywords
+                if re.search(rf'\b{re.escape(kw)}\b', text_content, re.IGNORECASE)
+            ]
+            weighted_score = sum(profile_keywords[kw] for kw in keywords_found)
+            keyword_ratio = weighted_score / max(total_weight, 1)
+            profile_label = industry_profile.get("label", industry or "industry")
+            if keyword_ratio > 0.25:
+                strengths.append(f"Strong {profile_label} keyword presence")
+            elif keyword_ratio > 0.12:
+                recommendations.append(f"Include more {profile_label} keywords")
+            else:
+                score -= 10
+                recommendations.append(f"Add relevant {profile_label} keywords")
+        elif industry and industry in self.industry_keywords:
             industry_keywords = self.industry_keywords[industry]
             keywords_found = [
                 kw for kw in industry_keywords

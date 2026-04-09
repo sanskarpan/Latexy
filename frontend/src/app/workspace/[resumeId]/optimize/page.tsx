@@ -66,6 +66,9 @@ export default function OptimizationSuitePage() {
   const [isScraping, setIsScraping] = useState(false)
   const [scrapedMeta, setScrapedMeta] = useState<ScrapeJobResponse | null>(null)
 
+  // Industry override for ATS calibration (Feature 46)
+  const [industryOverride, setIndustryOverride] = useState<string | null>(null)
+
   // Error explainer
   const [explainerOpen, setExplainerOpen] = useState(false)
   const [explainerLoading, setExplainerLoading] = useState(false)
@@ -696,6 +699,8 @@ export default function OptimizationSuitePage() {
                   recommendations={stream.atsDetails?.recommendations}
                   warnings={stream.atsDetails?.warnings}
                   strengths={stream.atsDetails?.strengths}
+                  industryLabel={industryOverride ? null : stream.industryLabel}
+                  onIndustryOverride={(key) => setIndustryOverride(key === 'generic' ? null : key)}
                 />
               </motion.section>
             )}

@@ -52,10 +52,11 @@ export interface JobProgressEvent extends BaseEvent {
 }
 
 export interface ATSDetails {
-  category_scores: Record<string, number>
-  recommendations: string[]
-  strengths: string[]
-  warnings: string[]
+  category_scores?: Record<string, number>
+  recommendations?: string[]
+  strengths?: string[]
+  warnings?: string[]
+  industry_label?: string | null
 }
 
 export interface ChangeEntry {
