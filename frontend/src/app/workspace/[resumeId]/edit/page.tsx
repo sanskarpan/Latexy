@@ -41,6 +41,7 @@ import {
   Users,
   Clock,
   Phone,
+  DollarSign,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -72,6 +73,7 @@ import QrCodeInserter from '@/components/QrCodeInserter'
 import DateStandardizerPanel from '@/components/DateStandardizerPanel'
 import AgeAnalysisPanel from '@/components/AgeAnalysisPanel'
 import ContactFormatterPanel from '@/components/ContactFormatterPanel'
+import SalaryEstimatorPanel from '@/components/SalaryEstimatorPanel'
 import WatermarkDownloadPopover from '@/components/WatermarkDownloadPopover'
 import CompilerSelector from '@/components/CompilerSelector'
 import CompileSettingsModal from '@/components/CompileSettingsModal'
@@ -707,6 +709,7 @@ export default function ResumeEditPage() {
   const [dateStandardizerOpen, setDateStandardizerOpen] = useState(false)
   const [ageAnalysisOpen, setAgeAnalysisOpen] = useState(false)
   const [contactFormatterOpen, setContactFormatterOpen] = useState(false)
+  const [salaryEstimatorOpen, setSalaryEstimatorOpen] = useState(false)
 
   // Layout
   const [rightTab, setRightTab] = useState<RightTab>('preview')
@@ -1583,6 +1586,15 @@ export default function ResumeEditPage() {
             Contacts
           </button>
 
+          <button
+            onClick={() => setSalaryEstimatorOpen(true)}
+            title="Estimate salary for this resume"
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+          >
+            <DollarSign size={12} />
+            Salary
+          </button>
+
           <Link
             href={`/workspace/${resumeId}/cover-letter`}
             className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-violet-300/80 transition hover:bg-violet-500/10 hover:text-violet-200"
@@ -2314,6 +2326,13 @@ export default function ResumeEditPage() {
           editorRef.current?.setValue(newLatex)
           setLatexContent(newLatex)
         }}
+      />
+
+      {/* Salary Estimator Panel (Feature 45) */}
+      <SalaryEstimatorPanel
+        isOpen={salaryEstimatorOpen}
+        onClose={() => setSalaryEstimatorOpen(false)}
+        getLatex={() => editorRef.current?.getValue() ?? latexContent}
       />
 
       {/* Diff viewer modal */}
