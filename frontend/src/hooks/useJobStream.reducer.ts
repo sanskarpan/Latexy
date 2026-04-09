@@ -166,6 +166,8 @@ export function jobStreamReducer(state: JobStreamState, action: ReducerAction): 
           tokens_used: event.tokens_used,
           analysis_time: event.analysis_time,
           multi_dim_scores: event.multi_dim_scores,
+          industry_key: event.industry_key,
+          industry_label: event.industry_label,
         },
       }
 

@@ -1256,7 +1256,7 @@ export default function ResumeEditPage() {
     } catch { toast.error('Download failed') }
   }
 
-  const handleOpenDeepAnalysis = useCallback(async () => {
+  const handleOpenDeepAnalysis = useCallback(async (industryOverride?: string) => {
     setDeepPanelOpen(true)
     if (deepAnalysisJobId) return // already have a job running/done
     const content = editorRef.current?.getValue() || latexContent
@@ -1267,6 +1267,7 @@ export default function ResumeEditPage() {
       const response = await apiClient.deepAnalyzeResume({
         latex_content: content,
         job_description: jobDescription.trim() || undefined,
+        industry_override: industryOverride,
       })
       if (response.success && response.job_id) {
         setDeepAnalysisJobId(response.job_id)

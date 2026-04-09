@@ -56,6 +56,7 @@ class ATSScoreResponse(BaseModel):
     processing_time: Optional[float] = None
     message: str
     timestamp: Optional[str] = None
+    industry_key: Optional[str] = None
     industry_label: Optional[str] = None
 
 
@@ -183,6 +184,7 @@ async def score_resume_ats(
                 processing_time=processing_time,
                 message=f"ATS scoring completed: {result.overall_score:.1f}/100",
                 timestamp=result.timestamp,
+                industry_key=result.industry_key,
                 industry_label=result.industry_label,
             )
 
@@ -411,7 +413,11 @@ async def get_industry_keywords(industry: str):
 async def get_supported_industries():
     """Get list of supported industries for ATS scoring."""
     try:
-        industries = list(ats_scoring_service.industry_keywords.keys())
+        from ..services.industry_ats_profiles import INDUSTRY_PROFILES
+        industries = [
+            {"key": key, "label": profile["label"]}
+            for key, profile in INDUSTRY_PROFILES.items()
+        ]
 
         return {
             "success": True,
@@ -478,6 +484,7 @@ class DeepAnalyzeRequest(BaseModel):
     latex_content: str = Field(..., min_length=1)
     job_description: Optional[str] = None
     device_fingerprint: Optional[str] = None  # required if unauthenticated
+    industry_override: Optional[str] = None   # explicit profile key, e.g. "tech_saas"
 
 
 class DeepAnalyzeResponse(BaseModel):
@@ -641,6 +648,7 @@ async def deep_analyze_resume(
             "job_id": job_id,
             "job_description": request.job_description,
             "api_key": api_key,
+            "industry_override": request.industry_override,
             "metadata": {"user_id": user_id},
         },
         queue="ats",

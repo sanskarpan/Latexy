@@ -151,6 +151,8 @@ export interface ATSDeepAnalysis {
   tokens_used: number
   analysis_time: number
   multi_dim_scores?: Record<string, number>
+  industry_key?: string
+  industry_label?: string
 }
 
 export interface ATSDeepCompleteEvent extends BaseEvent {
@@ -163,6 +165,8 @@ export interface ATSDeepCompleteEvent extends BaseEvent {
   tokens_used: number
   analysis_time: number
   multi_dim_scores?: Record<string, number>
+  industry_key?: string
+  industry_label?: string
 }
 
 // ------------------------------------------------------------------ //

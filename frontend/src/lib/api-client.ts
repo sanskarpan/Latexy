@@ -1035,6 +1035,7 @@ class ApiClient {
     latex_content: string
     job_description?: string
     device_fingerprint?: string
+    industry_override?: string
   }): Promise<{
     success: boolean
     job_id?: string

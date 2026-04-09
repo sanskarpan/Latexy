@@ -1,10 +1,18 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Brain, X, AlertCircle, Zap, ChevronDown, TrendingUp } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Brain, X, AlertCircle, Zap, ChevronDown, TrendingUp, Tag } from 'lucide-react'
 import type { ATSDeepAnalysis, ATSDeepSection } from '@/lib/event-types'
 import ATSRadarChart from './ATSRadarChart'
 import ScoreHistoryChart from '@/components/ScoreHistoryChart'
+
+const INDUSTRY_OPTIONS = [
+  { key: 'generic',         label: 'General (auto-detect)' },
+  { key: 'tech_saas',       label: 'Technology / SaaS' },
+  { key: 'finance_banking', label: 'Finance / Banking' },
+  { key: 'healthcare',      label: 'Healthcare / Clinical' },
+  { key: 'consulting',      label: 'Consulting / Strategy' },
+]
 
 const MULTI_DIM_LABELS: { key: string; label: string; description: string }[] = [
   { key: 'grammar',               label: 'Grammar',          description: 'Tense consistency, punctuation & formatting' },
@@ -21,7 +29,7 @@ interface DeepAnalysisPanelProps {
   analysis: ATSDeepAnalysis | null
   error: string | null
   usesRemaining: number | null
-  onRun: () => void
+  onRun: (industryOverride?: string) => void
   isRunning: boolean
   hideUpgradeCtas?: boolean
   resumeId?: string
@@ -123,6 +131,27 @@ export default function DeepAnalysisPanel({
   resumeId,
 }: DeepAnalysisPanelProps) {
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [industryOverride, setIndustryOverride] = useState<string>('generic')
+  const [industryDropdownOpen, setIndustryDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const onOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIndustryDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onOutside)
+    return () => document.removeEventListener('mousedown', onOutside)
+  }, [])
+
+  // Displayed industry label: from result or from override selection
+  const displayedIndustryLabel =
+    analysis?.industry_label ??
+    (industryOverride !== 'generic'
+      ? INDUSTRY_OPTIONS.find((o) => o.key === industryOverride)?.label
+      : null)
 
   // ESC key to close
   useEffect(() => {
@@ -152,11 +181,17 @@ export default function DeepAnalysisPanel({
       >
         {/* Header */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.07] px-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-500/20">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-violet-500/20">
               <Brain size={13} className="text-violet-300" />
             </div>
             <span className="text-sm font-semibold text-zinc-100">Deep AI Analysis</span>
+            {displayedIndustryLabel && (
+              <span className="flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-300 ring-1 ring-violet-400/20 shrink-0">
+                <Tag size={8} />
+                {displayedIndustryLabel}
+              </span>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -183,6 +218,39 @@ export default function DeepAnalysisPanel({
                 </p>
               </div>
 
+              {/* Industry override selector */}
+              <div ref={dropdownRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIndustryDropdownOpen((v) => !v)}
+                  className="flex w-full items-center justify-between rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-left text-[11px] text-zinc-400 transition hover:border-white/[0.12] hover:bg-white/[0.05]"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Tag size={11} className="text-violet-400/70" />
+                    <span>
+                      {INDUSTRY_OPTIONS.find((o) => o.key === industryOverride)?.label ?? 'General (auto-detect)'}
+                    </span>
+                  </span>
+                  <ChevronDown size={11} className={`text-zinc-600 transition-transform ${industryDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {industryDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-lg border border-white/[0.08] bg-[#111] py-1 shadow-xl">
+                    {INDUSTRY_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => { setIndustryOverride(opt.key); setIndustryDropdownOpen(false) }}
+                        className={`flex w-full items-center px-3 py-2 text-left text-[11px] transition hover:bg-white/[0.05] ${
+                          industryOverride === opt.key ? 'text-violet-300' : 'text-zinc-400'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {usesRemaining !== null && !hideUpgradeCtas && (
                 <div className="flex items-center gap-2 rounded-lg border border-amber-400/20 bg-amber-500/[0.06] px-3 py-2">
                   <span className="text-[11px] text-amber-300">
@@ -194,7 +262,7 @@ export default function DeepAnalysisPanel({
               )}
 
               <button
-                onClick={onRun}
+                onClick={() => onRun(industryOverride !== 'generic' ? industryOverride : undefined)}
                 disabled={!hideUpgradeCtas && usesRemaining === 0}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600/80 to-violet-500/60 py-3 text-sm font-semibold text-white ring-1 ring-violet-400/20 transition hover:from-violet-600 hover:to-violet-500/80 disabled:opacity-40"
               >
@@ -236,7 +304,7 @@ export default function DeepAnalysisPanel({
                 </div>
               </div>
               <button
-                onClick={onRun}
+                onClick={() => onRun(industryOverride !== 'generic' ? industryOverride : undefined)}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500/20 py-2.5 text-sm font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
               >
                 <Brain size={13} /> Try again
@@ -353,7 +421,7 @@ export default function DeepAnalysisPanel({
                   {analysis.tokens_used.toLocaleString()} tokens · {analysis.analysis_time.toFixed(1)}s
                 </span>
                 <button
-                  onClick={onRun}
+                  onClick={() => onRun(industryOverride !== 'generic' ? industryOverride : undefined)}
                   className="flex items-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-[11px] font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/25"
                 >
                   <Brain size={11} /> Re-analyse

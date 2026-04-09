@@ -451,6 +451,7 @@ async def _async_deep_analyze(
     job_id: str,
     job_description: Optional[str],
     api_key: Optional[str],
+    industry_override: Optional[str] = None,
 ) -> bool:
     """Async implementation of deep analysis task."""
     import time
@@ -546,14 +547,19 @@ async def _async_deep_analyze(
             "job_match": None,
         }
 
-    # Compute multi-dimensional scores (rule-based, fast)
+    # Compute multi-dimensional scores (rule-based, fast) + industry calibration
     multi_dim_scores: dict = {}
+    industry_key: Optional[str] = None
+    industry_label: Optional[str] = None
     try:
         scoring_result = await ats_scoring_service.score_resume(
             latex_content=latex_content,
             job_description=job_description,
+            industry=industry_override,  # override key used as legacy fallback; auto-detect if None
         )
         multi_dim_scores = scoring_result.multi_dim_scores or {}
+        industry_key = scoring_result.industry_key
+        industry_label = scoring_result.industry_label
     except Exception as _e:
         logger.warning(f"Multi-dim scoring failed for job {job_id}: {_e}")
 
@@ -567,6 +573,8 @@ async def _async_deep_analyze(
         "tokens_used": tokens_used,
         "analysis_time": analysis_time,
         "multi_dim_scores": multi_dim_scores,
+        "industry_key": industry_key,
+        "industry_label": industry_label,
     })
 
     publish_job_result(job_id, {
@@ -611,6 +619,7 @@ def deep_analyze_ats_task(
     job_id: Optional[str] = None,
     job_description: Optional[str] = None,
     api_key: Optional[str] = None,
+    industry_override: Optional[str] = None,
     metadata: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
@@ -623,7 +632,9 @@ def deep_analyze_ats_task(
     logger.info(f"Deep ATS analysis starting for job {job_id}")
 
     try:
-        success = asyncio.run(_async_deep_analyze(self, latex_content, job_id, job_description, api_key))
+        success = asyncio.run(
+            _async_deep_analyze(self, latex_content, job_id, job_description, api_key, industry_override)
+        )
         return {"success": bool(success), "job_id": job_id}
     except SoftTimeLimitExceeded:
         logger.error(f"Deep ATS analysis exceeded soft time limit for job {job_id}")
