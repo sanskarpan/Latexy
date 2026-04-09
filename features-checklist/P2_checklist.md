@@ -586,7 +586,7 @@ user-agent, referrer. Debounce repeat views. Show in share modal: total, sparkli
 as a new variant with `[LanguageCode]` suffix in title.
 
 ### 44A · Backend — Translation Endpoint
-- [ ] Add `POST /ai/translate` to `backend/app/api/ai_routes.py`:
+- [x] Add `POST /ai/translate` to `backend/app/api/ai_routes.py`:
   ```python
   class TranslateRequest(BaseModel):
       resume_id: str
@@ -612,14 +612,14 @@ as a new variant with `[LanguageCode]` suffix in title.
   - Cache by `hash(latex_content[:1000] + target_language)`, TTL=3600
 
 ### 44B · Frontend — Translation UI
-- [ ] In workspace resume card actions dropdown:
+- [x] In workspace resume card actions dropdown:
   - "🌐 Translate..." option → opens modal
   - Language selector: dropdown with 20+ common languages (French, German, Spanish, Japanese, etc.)
   - "Translate" button → shows progress
   - On success: toast "Translated resume created" with link to new variant
 
 ### 44C · Tests
-- [ ] `backend/test/test_translation.py`:
+- [x] `backend/test/test_translation.py`:
   - Translation (mocked LLM) preserves `\section{}` blocks intact
   - Creates variant resume with `_fr` (or equivalent) in title
   - Empty `target_language` → 422
