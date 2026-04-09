@@ -333,7 +333,7 @@ class ReferenceService:
         except Exception as exc:
             logger.warning("ORCID cache read failed: %s", exc)
             cached = None
-        if cached:
+        if isinstance(cached, list):
             return cached[:max_results]
 
         url = f"https://pub.orcid.org/v3.0/{orcid_id}/works"
