@@ -756,6 +756,144 @@ async def standardize_dates(request: StandardizeDatesRequest):
     )
 
 
+# ── Salary Estimator (Feature 45) ───────────────────────────────────────────
+
+
+class SalaryEstimateRequest(BaseModel):
+    resume_latex: str = Field(..., max_length=50_000)
+    target_role: str = Field(..., max_length=200)
+    location: str = Field(..., max_length=200)
+
+
+class SalaryEstimateResponse(BaseModel):
+    currency: str
+    low: int
+    median: int
+    high: int
+    percentile: int
+    key_skills: List[str]
+    disclaimer: str
+    cached: bool
+
+
+_SALARY_SYSTEM_PROMPT = """\
+You are a compensation research specialist with deep knowledge of market salary data.
+Based on the provided resume, estimate the expected salary range for the given role and location.
+Consider: years of experience, skills demonstrated, education, company types worked at, and current market rates.
+Percentile is where this candidate falls vs all candidates for the same role in that location (0-100).
+Infer the currency from the location (USD for US, GBP for UK, EUR for European cities, INR for India, etc.).
+Output ONLY valid JSON in this exact format:
+{{
+  "currency": "USD",
+  "low": 120000,
+  "median": 145000,
+  "high": 180000,
+  "percentile": 72,
+  "key_skills": ["Python", "Machine Learning", "AWS"],
+  "disclaimer": "Estimates are based on publicly available market data and may vary."
+}}
+No markdown, no explanation — only the JSON object."""
+
+
+def _salary_cache_key(resume_latex: str, target_role: str, location: str) -> str:
+    raw = f"{resume_latex[:500]}|{target_role.strip().lower()}|{location.strip().lower()}"
+    return "ai:salary:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+@router.post("/salary-estimate", response_model=SalaryEstimateResponse)
+async def salary_estimate(
+    request: SalaryEstimateRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
+    """Estimate salary range for the candidate based on their resume, role, and location. Auth optional."""
+    cache_key = _salary_cache_key(request.resume_latex, request.target_role, request.location)
+
+    # Check cache
+    try:
+        cached_val = await cache_manager.get(cache_key)
+        if cached_val and isinstance(cached_val, dict):
+            return SalaryEstimateResponse(**cached_val, cached=True)
+    except Exception:
+        pass
+
+    # Resolve API key
+    api_key: Optional[str] = None
+    if user_id:
+        try:
+            from ..services.api_key_service import api_key_service
+            api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+        except Exception:
+            pass
+    if not api_key and settings.OPENAI_API_KEY:
+        api_key = settings.OPENAI_API_KEY
+
+    if not api_key:
+        logger.warning("salary-estimate: no API key available")
+        return SalaryEstimateResponse(
+            currency="USD", low=0, median=0, high=0, percentile=0,
+            key_skills=[], disclaimer="No API key configured.", cached=False,
+        )
+
+    user_prompt = (
+        f"Target role: {request.target_role}\n"
+        f"Location: {request.location}\n\n"
+        f"Resume (LaTeX):\n{request.resume_latex[:8000]}"
+    )
+
+    try:
+        start = time.monotonic()
+        client = openai.AsyncOpenAI(api_key=api_key)
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _SALARY_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=500,
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+        elapsed = time.monotonic() - start
+        logger.info(f"salary-estimate LLM call: {elapsed:.2f}s")
+
+        raw = response.choices[0].message.content or "{}"
+        parsed = json.loads(raw)
+
+        result = SalaryEstimateResponse(
+            currency=str(parsed.get("currency", "USD")),
+            low=int(parsed.get("low", 0)),
+            median=int(parsed.get("median", 0)),
+            high=int(parsed.get("high", 0)),
+            percentile=max(0, min(100, int(parsed.get("percentile", 50)))),
+            key_skills=[str(s) for s in parsed.get("key_skills", [])],
+            disclaimer=str(parsed.get("disclaimer", "Market estimates may vary.")),
+            cached=False,
+        )
+
+        # Validate low <= median <= high
+        if not (result.low <= result.median <= result.high):
+            vals = sorted([result.low, result.median, result.high])
+            result = result.model_copy(update={"low": vals[0], "median": vals[1], "high": vals[2]})
+
+        # Cache for 24h
+        try:
+            cache_data = result.model_dump()
+            cache_data.pop("cached", None)
+            await cache_manager.set(cache_key, cache_data, ttl=86400)
+        except Exception:
+            pass
+
+        return result
+
+    except Exception as exc:
+        logger.error(f"salary-estimate error: {exc}")
+        return SalaryEstimateResponse(
+            currency="USD", low=0, median=0, high=0, percentile=0,
+            key_skills=[], disclaimer="Unable to estimate salary at this time.", cached=False,
+        )
+
+
 # ── Resume Age Analysis (Feature 55) ────────────────────────────────────────
 
 import datetime as _dt
