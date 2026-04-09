@@ -85,7 +85,14 @@ export default function SalaryEstimatorPanel({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="salary-estimator-title"
+      tabIndex={-1}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose()
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
@@ -97,7 +104,7 @@ export default function SalaryEstimatorPanel({
             <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500/15">
               <DollarSign size={13} className="text-emerald-300" />
             </div>
-            <span className="text-sm font-medium text-white/90">Salary Estimator</span>
+            <span id="salary-estimator-title" className="text-sm font-medium text-white/90">Salary Estimator</span>
           </div>
           <button
             onClick={onClose}
@@ -234,7 +241,7 @@ export default function SalaryEstimatorPanel({
           {/* Edge case: zero estimate */}
           {result && result.median === 0 && (
             <p className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3 text-center text-xs text-white/40">
-              Unable to generate an estimate. Please check your API key configuration.
+              {result.disclaimer || 'Unable to generate an estimate right now.'}
             </p>
           )}
         </div>
