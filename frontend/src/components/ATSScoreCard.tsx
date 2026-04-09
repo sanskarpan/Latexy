@@ -2,20 +2,30 @@
 
 import React from 'react'
 import { motion } from 'framer-motion'
-import { 
-  Target, 
-  TrendingUp, 
-  TrendingDown, 
-  AlertTriangle, 
-  CheckCircle, 
+import {
+  Target,
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
+  CheckCircle,
   Info,
   Lightbulb,
   Award,
-  BarChart3
+  BarChart3,
+  Building2
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+
+const INDUSTRY_PROFILES = [
+  { key: 'generic', label: 'General' },
+  { key: 'tech_saas', label: 'Technology / SaaS' },
+  { key: 'finance_banking', label: 'Finance / Banking' },
+  { key: 'healthcare', label: 'Healthcare / Clinical' },
+  { key: 'consulting', label: 'Consulting / Advisory' },
+  { key: 'marketing', label: 'Marketing / Growth' },
+]
 
 interface ATSScoreCardProps {
   score?: number
@@ -28,6 +38,10 @@ interface ATSScoreCardProps {
   onViewRecommendations?: () => void
   onViewAnalysis?: () => void
   className?: string
+  /** Industry label auto-detected from job description, e.g. "Technology / SaaS" */
+  industryLabel?: string | null
+  /** Called with a profile key when the user overrides the detected industry */
+  onIndustryOverride?: (profileKey: string) => void
 }
 
 const getScoreColor = (score: number) => {
@@ -75,6 +89,8 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
   onViewRecommendations,
   onViewAnalysis,
   className = '',
+  industryLabel,
+  onIndustryOverride,
 }) => {
   if (isLoading) {
     return (
@@ -142,10 +158,33 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
               <CardDescription>Resume compatibility analysis</CardDescription>
             </div>
           </div>
-          
-          <Badge variant="outline" className={`${scoreColor} ${scoreBgColor} ${scoreBorderColor}`}>
-            {scoreLabel}
-          </Badge>
+
+          <div className="flex flex-col items-end gap-1.5">
+            <Badge variant="outline" className={`${scoreColor} ${scoreBgColor} ${scoreBorderColor}`}>
+              {scoreLabel}
+            </Badge>
+            {industryLabel && (
+              <div className="flex items-center gap-1.5">
+                <Building2 className="w-3 h-3 text-violet-600" />
+                <span className="text-xs font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-0.5">
+                  Calibrated for: {industryLabel}
+                </span>
+              </div>
+            )}
+            {onIndustryOverride && (
+              <select
+                className="text-xs border border-gray-200 rounded px-1.5 py-0.5 text-gray-600 bg-white cursor-pointer"
+                defaultValue=""
+                onChange={(e) => e.target.value && onIndustryOverride(e.target.value)}
+                title="Override industry calibration"
+              >
+                <option value="" disabled>Change industry...</option>
+                {INDUSTRY_PROFILES.map((p) => (
+                  <option key={p.key} value={p.key}>{p.label}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
       </CardHeader>
 
