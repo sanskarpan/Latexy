@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {
   Target,
@@ -17,8 +17,9 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { apiClient } from '@/lib/api-client'
 
-const INDUSTRY_PROFILES = [
+const FALLBACK_PROFILES = [
   { key: 'generic', label: 'General' },
   { key: 'tech_saas', label: 'Technology / SaaS' },
   { key: 'finance_banking', label: 'Finance / Banking' },
@@ -92,6 +93,15 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
   industryLabel,
   onIndustryOverride,
 }) => {
+  const [industryProfiles, setIndustryProfiles] = useState(FALLBACK_PROFILES)
+
+  useEffect(() => {
+    if (!onIndustryOverride) return
+    apiClient.getIndustryProfiles()
+      .then((res) => { if (res.profiles?.length) setIndustryProfiles(res.profiles) })
+      .catch(() => { /* keep fallback */ })
+  }, [onIndustryOverride])
+
   if (isLoading) {
     return (
       <Card className={`${className}`}>
@@ -179,7 +189,7 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                 title="Override industry calibration"
               >
                 <option value="" disabled>Change industry...</option>
-                {INDUSTRY_PROFILES.map((p) => (
+                {industryProfiles.map((p) => (
                   <option key={p.key} value={p.key}>{p.label}</option>
                 ))}
               </select>
