@@ -152,6 +152,27 @@ class TestScoreResumeAtsTaskSuccess:
         res = score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": job_id}).result
         assert "detailed_analysis" in res
 
+    def test_industry_label_propagated_to_result(self, mock_publish, mock_result_store, mock_scoring):
+        """industry_label from scoring result must appear in the task result dict."""
+        job_id = str(uuid.uuid4())
+        res = score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": job_id}).result
+        assert "industry_label" in res
+        assert res["industry_label"] is None  # fake has industry_label=None
+        assert isinstance(res["industry_label"], (str, type(None)))
+
+    def test_industry_label_propagated_to_completed_event(self, mock_publish, mock_result_store, mock_scoring):
+        """industry_label must appear inside ats_details of the job.completed event."""
+        job_id = str(uuid.uuid4())
+        score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": job_id})
+        completed_calls = [
+            call for call in mock_publish.call_args_list
+            if call.args[1] == "job.completed"
+        ]
+        assert completed_calls, "job.completed event not published"
+        ats_details = completed_calls[0].args[2]["ats_details"]
+        assert "industry_label" in ats_details
+        assert ats_details["industry_label"] is None
+
     def test_publish_job_result_called_once(self, mock_publish, mock_result_store, mock_scoring):
         job_id = str(uuid.uuid4())
         score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": job_id})
