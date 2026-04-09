@@ -24,6 +24,7 @@ from ..middleware.auth_middleware import get_current_user_optional, get_current_
 from ..services.api_key_service import api_key_service
 from ..services.ats_quick_scorer import quick_score_latex
 from ..services.ats_scoring_service import ats_scoring_service
+from ..services.industry_ats_profiles import INDUSTRY_PROFILES, detect_industry
 from ..workers.ats_worker import deep_analyze_ats_task, submit_ats_scoring, submit_job_description_analysis
 
 logger = get_logger(__name__)
@@ -36,6 +37,7 @@ class ATSScoreRequest(BaseModel):
     latex_content: str = Field(..., description="LaTeX resume content")
     job_description: Optional[str] = Field(None, description="Job description for keyword matching")
     industry: Optional[str] = Field(None, description="Industry for specialized scoring")
+    industry_override: Optional[str] = Field(None, description="Override auto-detected industry profile key")
     user_plan: str = Field("free", description="User subscription plan")
     device_fingerprint: Optional[str] = Field(None, description="Device fingerprint for anonymous users")
     async_processing: bool = Field(True, description="Whether to process asynchronously")
@@ -54,6 +56,7 @@ class ATSScoreResponse(BaseModel):
     processing_time: Optional[float] = None
     message: str
     timestamp: Optional[str] = None
+    industry_label: Optional[str] = None
 
 
 class JobDescriptionAnalysisRequest(BaseModel):
@@ -117,6 +120,14 @@ async def score_resume_ats(
             "endpoint": "ats_score"
         })
 
+        # Detect/resolve industry profile for calibration
+        if request.industry_override and request.industry_override in INDUSTRY_PROFILES:
+            industry_profile_key = request.industry_override
+        elif request.job_description:
+            industry_profile_key = detect_industry(request.job_description)
+        else:
+            industry_profile_key = "generic"
+
         if request.async_processing:
             # Generate job_id here (submission helper requires it as positional arg)
             job_id = str(uuid.uuid4())
@@ -125,6 +136,7 @@ async def score_resume_ats(
                 job_id=job_id,
                 job_description=request.job_description,
                 industry=request.industry,
+                industry_profile_key=industry_profile_key,
                 user_id=user_id,
                 user_plan=request.user_plan,
                 device_fingerprint=request.device_fingerprint,
@@ -143,7 +155,8 @@ async def score_resume_ats(
             result = await ats_scoring_service.score_resume(
                 latex_content=request.latex_content,
                 job_description=request.job_description,
-                industry=request.industry
+                industry=request.industry,
+                industry_profile_key=industry_profile_key,
             )
 
             processing_time = asyncio.get_event_loop().time() - start_time
@@ -158,7 +171,8 @@ async def score_resume_ats(
                 detailed_analysis=result.detailed_analysis,
                 processing_time=processing_time,
                 message=f"ATS scoring completed: {result.overall_score:.1f}/100",
-                timestamp=result.timestamp
+                timestamp=result.timestamp,
+                industry_label=result.industry_label,
             )
 
     except HTTPException:
@@ -398,6 +412,16 @@ async def get_supported_industries():
     except Exception as e:
         logger.error(f"Error getting supported industries: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/industry-profiles")
+async def get_industry_profiles():
+    """Get all available industry calibration profiles."""
+    profiles = [
+        {"key": key, "label": profile["label"]}
+        for key, profile in INDUSTRY_PROFILES.items()
+    ]
+    return {"success": True, "profiles": profiles}
 
 
 # ── Quick Score (lightweight, no auth, no DB) ────────────────────────────
