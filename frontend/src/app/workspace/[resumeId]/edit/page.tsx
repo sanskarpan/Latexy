@@ -2104,6 +2104,7 @@ export default function ResumeEditPage() {
 
             {rightTab === 'references' && (
               <ReferencesPanel
+                resumeId={resumeId}
                 onInsertBibTeX={(bibtex) => editorRef.current?.insertAtCursor(bibtex)}
                 onInsertCiteKey={(key) => editorRef.current?.insertAtCursor(key)}
               />

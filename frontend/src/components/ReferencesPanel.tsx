@@ -1,10 +1,13 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
-import { BookOpen, Search, Copy, Check, ChevronDown, ChevronRight, Loader2, Plus, PlusCircle } from 'lucide-react'
-import { apiClient, type BibTeXEntry } from '@/lib/api-client'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { BookOpen, Check, ChevronDown, ChevronRight, Copy, ExternalLink, Loader2, Plus, PlusCircle, RefreshCw, Search, Unlink, X } from 'lucide-react'
+import { apiClient, type BibTeXEntry, type ZoteroCollection, type ZoteroStatusResponse, type MendeleyStatusResponse } from '@/lib/api-client'
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030'
 
 interface ReferencesPanelProps {
+  resumeId?: string
   onInsertBibTeX: (bibtex: string) => void
   onInsertCiteKey: (citeKey: string) => void
 }
@@ -146,13 +149,452 @@ function EntryCard({
   )
 }
 
-export default function ReferencesPanel({ onInsertBibTeX, onInsertCiteKey }: ReferencesPanelProps) {
+// ── Zotero import section ─────────────────────────────────────────────────
+
+function ZoteroSection({
+  resumeId,
+  onBibTeXImported,
+}: {
+  resumeId?: string
+  onBibTeXImported: (bibtex: string, count: number) => void
+}) {
+  const [status, setStatus] = useState<ZoteroStatusResponse | null>(null)
+  const [statusLoading, setStatusLoading] = useState(true)
+  const [collections, setCollections] = useState<ZoteroCollection[]>([])
+  const [selectedCollection, setSelectedCollection] = useState<string>('')
+  const [collectionsLoading, setCollectionsLoading] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    apiClient.getZoteroStatus()
+      .then(setStatus)
+      .catch(() => setStatus({ connected: false, username: null, user_id: null }))
+      .finally(() => setStatusLoading(false))
+  }, [])
+
+  // Listen for OAuth popup completing
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'zotero:connected') {
+        setStatusLoading(true)
+        apiClient.getZoteroStatus()
+          .then(s => { setStatus(s); setSuccess('Zotero connected!') })
+          .catch(() => null)
+          .finally(() => setStatusLoading(false))
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+
+  const handleConnect = () => {
+    window.open(`${API_BASE}/zotero/connect`, '_blank', 'width=600,height=700,popup=1')
+  }
+
+  const handleDisconnect = async () => {
+    if (!confirm('Disconnect Zotero?')) return
+    try {
+      await apiClient.disconnectZotero()
+      setStatus({ connected: false, username: null, user_id: null })
+      setCollections([])
+      setSuccess(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to disconnect')
+    }
+  }
+
+  const loadCollections = async () => {
+    setCollectionsLoading(true)
+    setError(null)
+    try {
+      const data = await apiClient.getZoteroCollections()
+      setCollections(data.collections)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load collections')
+    } finally {
+      setCollectionsLoading(false)
+    }
+  }
+
+  const handleImport = async () => {
+    if (!resumeId) {
+      setError('Open a resume first to import references into it.')
+      return
+    }
+    setImporting(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const result = await apiClient.importFromZotero(resumeId, selectedCollection || undefined)
+      onBibTeXImported(result.bibtex, result.entries_count)
+      setSuccess(`Imported ${result.entries_count} entries from Zotero`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Import failed')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  if (statusLoading) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-white/30">
+        <Loader2 className="h-3 w-3 animate-spin" /> Checking Zotero…
+      </div>
+    )
+  }
+
+  return (
+    <div className="border-t border-white/[0.05]">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-white/50 transition hover:text-white/80"
+      >
+        <span className="flex items-center gap-2">
+          <span className="flex h-4 w-4 items-center justify-center rounded bg-[#CC2936]/20 text-[8px] font-bold text-red-400">Z</span>
+          Zotero
+          {status?.connected && (
+            <span className="rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] text-emerald-400">connected</span>
+          )}
+        </span>
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      </button>
+
+      {expanded && (
+        <div className="space-y-2 px-3 pb-3">
+          {success && (
+            <p className="rounded-lg bg-emerald-500/10 px-2 py-1.5 text-[10px] text-emerald-400">{success}</p>
+          )}
+          {error && (
+            <p className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-[10px] text-rose-400">{error}</p>
+          )}
+
+          {!status?.connected ? (
+            <button
+              onClick={handleConnect}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#CC2936]/15 py-1.5 text-[11px] font-medium text-red-300 ring-1 ring-red-500/20 transition hover:bg-[#CC2936]/25"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Connect Zotero
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-white/50">@{status.username}</span>
+                <button
+                  onClick={handleDisconnect}
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-white/30 transition hover:text-rose-400"
+                >
+                  <Unlink className="h-3 w-3" />
+                  Disconnect
+                </button>
+              </div>
+
+              {/* Collection picker */}
+              <div className="flex items-center gap-1">
+                <select
+                  value={selectedCollection}
+                  onChange={e => setSelectedCollection(e.target.value)}
+                  className="flex-1 rounded-md bg-black/30 px-2 py-1 text-[11px] text-white/60 ring-1 ring-white/[0.08] outline-none"
+                >
+                  <option value="">All items</option>
+                  {collections.map(c => (
+                    <option key={c.key} value={c.key}>{c.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={loadCollections}
+                  disabled={collectionsLoading}
+                  className="rounded-md p-1 text-white/30 transition hover:text-white/60 disabled:opacity-40"
+                  title="Refresh collections"
+                >
+                  <RefreshCw className={`h-3 w-3 ${collectionsLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+
+              <button
+                onClick={handleImport}
+                disabled={importing || !resumeId}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#CC2936]/15 py-1.5 text-[11px] font-medium text-red-300 ring-1 ring-red-500/20 transition hover:bg-[#CC2936]/25 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlusCircle className="h-3 w-3" />}
+                {importing ? 'Importing…' : 'Import BibTeX'}
+              </button>
+              {!resumeId && (
+                <p className="text-center text-[10px] text-white/25">Open a resume to import</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Mendeley import section ───────────────────────────────────────────────
+
+function MendeleySection({
+  resumeId,
+  onBibTeXImported,
+}: {
+  resumeId?: string
+  onBibTeXImported: (bibtex: string, count: number) => void
+}) {
+  const [status, setStatus] = useState<MendeleyStatusResponse | null>(null)
+  const [statusLoading, setStatusLoading] = useState(true)
+  const [importing, setImporting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    apiClient.getMendeleyStatus()
+      .then(setStatus)
+      .catch(() => setStatus({ connected: false, name: null }))
+      .finally(() => setStatusLoading(false))
+  }, [])
+
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'mendeley:connected') {
+        setStatusLoading(true)
+        apiClient.getMendeleyStatus()
+          .then(s => { setStatus(s); setSuccess('Mendeley connected!') })
+          .catch(() => null)
+          .finally(() => setStatusLoading(false))
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+
+  const handleConnect = () => {
+    window.open(`${API_BASE}/mendeley/connect`, '_blank', 'width=600,height=700,popup=1')
+  }
+
+  const handleDisconnect = async () => {
+    if (!confirm('Disconnect Mendeley?')) return
+    try {
+      await apiClient.disconnectMendeley()
+      setStatus({ connected: false, name: null })
+      setSuccess(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to disconnect')
+    }
+  }
+
+  const handleImport = async () => {
+    if (!resumeId) {
+      setError('Open a resume first to import references into it.')
+      return
+    }
+    setImporting(true)
+    setError(null)
+    setSuccess(null)
+    try {
+      const result = await apiClient.importFromMendeley(resumeId)
+      onBibTeXImported(result.bibtex, result.entries_count)
+      setSuccess(`Imported ${result.entries_count} entries from Mendeley`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Import failed')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  if (statusLoading) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-white/30">
+        <Loader2 className="h-3 w-3 animate-spin" /> Checking Mendeley…
+      </div>
+    )
+  }
+
+  return (
+    <div className="border-t border-white/[0.05]">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-white/50 transition hover:text-white/80"
+      >
+        <span className="flex items-center gap-2">
+          <span className="flex h-4 w-4 items-center justify-center rounded bg-[#9D1F30]/20 text-[8px] font-bold text-rose-400">M</span>
+          Mendeley
+          {status?.connected && (
+            <span className="rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] text-emerald-400">connected</span>
+          )}
+        </span>
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      </button>
+
+      {expanded && (
+        <div className="space-y-2 px-3 pb-3">
+          {success && (
+            <p className="rounded-lg bg-emerald-500/10 px-2 py-1.5 text-[10px] text-emerald-400">{success}</p>
+          )}
+          {error && (
+            <p className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-[10px] text-rose-400">{error}</p>
+          )}
+
+          {!status?.connected ? (
+            <button
+              onClick={handleConnect}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-rose-500/10 py-1.5 text-[11px] font-medium text-rose-300 ring-1 ring-rose-500/20 transition hover:bg-rose-500/20"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Connect Mendeley
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-white/50">{status.name ?? 'Connected'}</span>
+                <button
+                  onClick={handleDisconnect}
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-white/30 transition hover:text-rose-400"
+                >
+                  <Unlink className="h-3 w-3" />
+                  Disconnect
+                </button>
+              </div>
+
+              <button
+                onClick={handleImport}
+                disabled={importing || !resumeId}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-rose-500/10 py-1.5 text-[11px] font-medium text-rose-300 ring-1 ring-rose-500/20 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlusCircle className="h-3 w-3" />}
+                {importing ? 'Importing…' : 'Import All BibTeX'}
+              </button>
+              {!resumeId && (
+                <p className="text-center text-[10px] text-white/25">Open a resume to import</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Imported library entries ──────────────────────────────────────────────
+
+function LibrarySection({
+  bibtex,
+  onInsertBibTeX,
+  onInsertCiteKey,
+  onClear,
+}: {
+  bibtex: string
+  onInsertBibTeX: (b: string) => void
+  onInsertCiteKey: (k: string) => void
+  onClear: () => void
+}) {
+  const [expanded, setExpanded] = useState(true)
+
+  // Parse bibtex into rough entries by splitting on @type{
+  const entries = bibtex
+    .split(/(?=@\w+\s*\{)/)
+    .map(e => e.trim())
+    .filter(Boolean)
+
+  if (!entries.length) return null
+
+  // Extract cite key and type from each entry
+  const parsed = entries.map(raw => {
+    const match = raw.match(/^@(\w+)\s*\{([^,\s]+)/)
+    return {
+      type: match?.[1] ?? 'misc',
+      key: match?.[2] ?? '?',
+      raw,
+    }
+  })
+
+  return (
+    <div className="border-t border-white/[0.05]">
+      <div className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-white/50">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex flex-1 items-center gap-2 transition hover:text-white/80 text-left"
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          Imported Library ({entries.length})
+        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onClear()}
+            className="rounded p-0.5 text-white/20 transition hover:text-rose-400"
+            title="Clear imported library"
+          >
+            <X className="h-3 w-3" />
+          </button>
+          <button onClick={() => setExpanded(!expanded)} className="rounded p-0.5 transition hover:text-white/80">
+            {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="max-h-64 overflow-y-auto px-3 pb-3 space-y-1.5">
+          {parsed.map((p, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5">
+              <div className="min-w-0 flex-1">
+                <span className="rounded bg-sky-500/10 px-1 py-0.5 text-[9px] text-sky-400 mr-1.5">@{p.type}</span>
+                <code className="text-[11px] text-amber-300/80">{p.key}</code>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  onClick={() => onInsertCiteKey(`\\cite{${p.key}}`)}
+                  className="rounded px-1.5 py-0.5 text-[9px] text-white/30 transition hover:bg-white/[0.06] hover:text-white/60"
+                  title="Insert \cite{key}"
+                >
+                  \cite
+                </button>
+                <button
+                  onClick={() => onInsertBibTeX('\n' + p.raw)}
+                  className="rounded px-1.5 py-0.5 text-[9px] text-emerald-400/60 transition hover:bg-emerald-500/10 hover:text-emerald-300"
+                  title="Insert full BibTeX entry"
+                >
+                  BibTeX
+                </button>
+              </div>
+            </div>
+          ))}
+
+          <button
+            onClick={() => onInsertBibTeX('\n' + bibtex)}
+            className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-500/10 py-1.5 text-[10px] font-medium text-emerald-300 ring-1 ring-emerald-400/20 transition hover:bg-emerald-500/20"
+          >
+            <PlusCircle className="h-3 w-3" />
+            Insert All ({entries.length}) entries
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main panel ────────────────────────────────────────────────────────────
+
+export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCiteKey }: ReferencesPanelProps) {
   const [input, setInput] = useState('')
   const [entries, setEntries] = useState<BibTeXEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [fetched, setFetched] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [importedBibTeX, setImportedBibTeX] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Hydrate saved BibTeX from resume metadata on mount
+  useEffect(() => {
+    if (!resumeId) return
+    apiClient.getResume(resumeId)
+      .then(resume => {
+        const bibtex = resume.metadata?.bibtex
+        if (typeof bibtex === 'string' && bibtex) setImportedBibTeX(bibtex)
+      })
+      .catch(() => {})
+  }, [resumeId])
 
   const lines = input.split('\n').filter(l => l.trim())
 
@@ -245,29 +687,57 @@ export default function ReferencesPanel({ onInsertBibTeX, onInsertCiteKey }: Ref
         </button>
       </div>
 
-      {/* Results */}
-      <div className="flex-1 overflow-y-auto p-3">
-        {fetchError ? (
-          <p className="text-center text-[11px] text-red-400">{fetchError}</p>
-        ) : fetched && entries.length === 0 ? (
-          <p className="text-center text-[11px] text-white/25">No results</p>
-        ) : null}
+      {/* Scrollable area: DOI/arXiv results + Zotero + Mendeley + Library */}
+      <div className="flex-1 overflow-y-auto">
+        {/* DOI/arXiv results */}
+        <div className="p-3">
+          {fetchError ? (
+            <p className="text-center text-[11px] text-red-400">{fetchError}</p>
+          ) : fetched && entries.length === 0 ? (
+            <p className="text-center text-[11px] text-white/25">No results</p>
+          ) : null}
 
-        {entries.length > 0 && (
-          <div className="space-y-2">
-            {entries.map((entry, i) => (
-              <EntryCard
-                key={i}
-                entry={entry}
-                onInsertBibTeX={bibtex => onInsertBibTeX('\n' + bibtex)}
-                onInsertCiteKey={onInsertCiteKey}
-              />
-            ))}
-          </div>
+          {entries.length > 0 && (
+            <div className="space-y-2">
+              {entries.map((entry, i) => (
+                <EntryCard
+                  key={i}
+                  entry={entry}
+                  onInsertBibTeX={bibtex => onInsertBibTeX('\n' + bibtex)}
+                  onInsertCiteKey={onInsertCiteKey}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Zotero import */}
+        <ZoteroSection
+          resumeId={resumeId}
+          onBibTeXImported={(bib, _count) => setImportedBibTeX(bib)}
+        />
+
+        {/* Mendeley import */}
+        <MendeleySection
+          resumeId={resumeId}
+          onBibTeXImported={(bib, _count) => setImportedBibTeX(bib)}
+        />
+
+        {/* Imported library */}
+        {importedBibTeX && (
+          <LibrarySection
+            bibtex={importedBibTeX}
+            onInsertBibTeX={onInsertBibTeX}
+            onInsertCiteKey={onInsertCiteKey}
+            onClear={() => {
+              setImportedBibTeX('')
+              if (resumeId) apiClient.clearResumeBibTeX(resumeId).catch(() => {})
+            }}
+          />
         )}
       </div>
 
-      {/* Footer: Insert All */}
+      {/* Footer: Insert All DOI/arXiv results */}
       {successCount > 1 && (
         <div className="shrink-0 border-t border-white/[0.05] p-3">
           <button

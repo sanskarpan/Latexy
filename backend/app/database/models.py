@@ -33,6 +33,8 @@ class User(Base):
     # GitHub integration (Feature 37)
     github_access_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     github_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Reference manager tokens (Feature 42) — encrypted, stored as JSONB
+    user_metadata: Mapped[Optional[Dict]] = mapped_column("user_metadata", JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
