@@ -557,7 +557,7 @@ export interface BibTeXEntry {
   title: string | null
   authors: string | null
   year: number | null
-  source_type: 'doi' | 'arxiv' | 'unknown' | null
+  source_type: 'doi' | 'arxiv' | 'orcid' | 'unknown' | null
   cached: boolean
   error: string | null
 }
