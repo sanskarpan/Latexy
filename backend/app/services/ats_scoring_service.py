@@ -27,6 +27,7 @@ class ATSScoreResult:
     processing_time: float
     timestamp: str
     multi_dim_scores: Optional[Dict[str, float]] = None
+    industry_key: Optional[str] = None
     industry_label: Optional[str] = None
 
 
@@ -315,6 +316,24 @@ class ATSScoringService:
 
             text_content = self._extract_text_from_latex(latex_content)
 
+            # ── Industry calibration ──────────────────────────────────────
+            # Auto-detect from JD when no explicit industry key provided
+            industry_key: str = "generic"
+            if job_description:
+                industry_key = detect_industry(job_description)
+            elif industry:
+                # Legacy: map old string tags to profile keys
+                _legacy_map = {
+                    "technology": "tech_saas",
+                    "finance": "finance_banking",
+                    "healthcare": "healthcare",
+                    "consulting": "consulting",
+                }
+                industry_key = _legacy_map.get(industry.lower(), "generic")
+
+            profile = get_profile(industry_key)
+            industry_label: Optional[str] = profile["label"] if industry_key != "generic" else None
+
             formatting_score = await self._score_formatting(latex_content)
             # Pass raw latex_content so contact detection can find emails in \href
             structure_score = await self._score_structure(text_content, latex_content)
@@ -346,6 +365,7 @@ class ATSScoringService:
                 "readability": readability_score["score"],
             }
 
+            # Base weights — adjusted by profile's section_weights multipliers
             base_weights = {
                 "formatting": 0.25,
                 "structure": 0.20,
@@ -353,6 +373,22 @@ class ATSScoringService:
                 "keywords": 0.20,
                 "readability": 0.10,
             }
+            section_weight_map = {
+                "experience": "content",   # experience → content category
+                "skills": "keywords",      # skills → keywords category
+                "education": "structure",  # education → structure category
+            }
+            profile_section_weights = profile.get("section_weights", {})
+            weights = dict(base_weights)
+            for prof_key, multiplier in profile_section_weights.items():
+                cat = section_weight_map.get(prof_key)
+                if cat and cat in weights:
+                    weights[cat] = weights[cat] * multiplier
+
+            # Re-normalise so weights still sum to 1.0
+            weight_sum = sum(weights.values())
+            if weight_sum > 0:
+                weights = {k: v / weight_sum for k, v in weights.items()}
 
             # Apply profile section_weights as multipliers on base category weights
             # Mapping: experience → content, skills → keywords, education → structure
@@ -392,6 +428,11 @@ class ATSScoringService:
                 "section_breakdown": await self._analyze_sections(text_content, latex_content),
                 "ats_compatibility": self._check_ats_compatibility(latex_content),
                 "improvement_priority": self._prioritize_improvements(category_scores),
+                "industry_calibration": {
+                    "industry_key": industry_key,
+                    "industry_label": industry_label,
+                    "profile_applied": industry_key != "generic",
+                },
             }
 
             processing_time = asyncio.get_event_loop().time() - start_time
@@ -406,10 +447,14 @@ class ATSScoringService:
                 processing_time=processing_time,
                 timestamp=datetime.utcnow().isoformat(),
                 multi_dim_scores=multi_dim_scores,
+                industry_key=industry_profile_key,
                 industry_label=industry_label,
             )
 
-            self.logger.info(f"ATS scoring completed: {overall_score:.1f}/100 in {processing_time:.2f}s")
+            self.logger.info(
+                f"ATS scoring completed: {overall_score:.1f}/100 "
+                f"(industry={industry_key}) in {processing_time:.2f}s"
+            )
             return result
 
         except Exception as e:
@@ -713,8 +758,9 @@ class ATSScoringService:
         text_content: str,
         job_description: Optional[str] = None,
         industry: Optional[str] = None,
+        industry_key: str = "generic",
     ) -> Dict[str, Any]:
-        """Score keyword optimisation and density."""
+        """Score keyword optimisation and density, with industry-profile weighting."""
         score = 100.0
         recommendations: List[str] = []
         warnings: List[str] = []
@@ -748,6 +794,35 @@ class ATSScoringService:
             recommendations.append("Reduce repetition of overused keywords")
         else:
             strengths.append("Natural keyword distribution")
+
+        # ── Industry-profile keyword bonus ───────────────────────────────
+        profile = get_profile(industry_key)
+        profile_keywords: Dict[str, float] = profile.get("keywords", {})
+        calibrated_hit_score: float = 0.0
+        calibrated_total_weight: float = 0.0
+        calibrated_hits: List[str] = []
+
+        if profile_keywords:
+            for kw, weight in profile_keywords.items():
+                calibrated_total_weight += weight
+                if re.search(rf'\b{re.escape(kw)}\b', text_content, re.IGNORECASE):
+                    calibrated_hit_score += weight
+                    calibrated_hits.append(kw)
+
+            hit_ratio = calibrated_hit_score / calibrated_total_weight if calibrated_total_weight else 0
+            if hit_ratio >= 0.4:
+                strengths.append(f"Strong {profile['label']} keyword presence")
+                score = min(100.0, score + 5)
+            elif hit_ratio >= 0.2:
+                recommendations.append(
+                    f"Include more {profile['label']}-specific keywords to improve calibration"
+                )
+            else:
+                score -= 8
+                recommendations.append(
+                    f"Resume lacks key {profile['label']} terminology (e.g. "
+                    + ", ".join(list(profile_keywords.keys())[:4]) + ")"
+                )
 
         # Tech keywords (expanded corpus)
         tech_found = [
@@ -784,6 +859,8 @@ class ATSScoringService:
                 "tech_keywords_found": tech_found,
                 "soft_skills_found": soft_skills_found,
                 "keyword_density": len(set(words)) / word_count if word_count > 0 else 0,
+                "calibrated_industry": industry_key,
+                "calibrated_hits": calibrated_hits,
             },
         }
 
