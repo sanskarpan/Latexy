@@ -304,7 +304,7 @@ export default function DeepAnalysisPanel({
                 </div>
               </div>
               <button
-                onClick={onRun}
+                onClick={() => onRun(industryOverride !== 'generic' ? industryOverride : undefined)}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500/20 py-2.5 text-sm font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
               >
                 <Brain size={13} /> Try again
