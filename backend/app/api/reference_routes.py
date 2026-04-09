@@ -199,9 +199,9 @@ def _bibtex_from_orcid_work(work: dict, idx: int) -> tuple[str, str]:
     journal = work.get("journal") or ""
     url = work.get("url") or ""
 
-    # Cite key: first word of title + year
+    # Cite key: first word of title + year + idx suffix to avoid collisions
     first_word = re.sub(r"[^a-zA-Z]", "", title.split()[0]).lower() if title else "work"
-    cite_key = f"{first_word}{year or 'nd'}"
+    cite_key = f"{first_word}{year or 'nd'}_{idx + 1}"
 
     lines = [f"@{bib_type}{{{cite_key},"]
     lines.append(f"  title = {{{{{title}}}}},")
@@ -249,7 +249,9 @@ async def fetch_orcid_publications(
         works = await reference_service.fetch_orcid_works(normalized, request.max_results)
     except ValueError as exc:
         from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail=str(exc))
+        msg = str(exc)
+        status = 404 if "not found" in msg.lower() else 503
+        raise HTTPException(status_code=status, detail=msg)
 
     if not works:
         return FetchReferencesResponse(entries=[], total=0, successful=0, processing_time=0.0)
