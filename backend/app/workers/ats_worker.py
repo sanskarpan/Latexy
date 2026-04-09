@@ -20,6 +20,7 @@ from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..services.ats_scoring_service import ats_scoring_service
+from ..services.industry_ats_profiles import detect_industry
 from ..workers.event_publisher import publish_event, publish_job_result
 
 logger = get_logger(__name__)
@@ -39,6 +40,7 @@ def score_resume_ats_task(
     job_id: Optional[str] = None,
     job_description: Optional[str] = None,
     industry: Optional[str] = None,
+    industry_profile_key: str = "generic",
     user_id: Optional[str] = None,
     user_plan: str = "free",
     device_fingerprint: Optional[str] = None,
@@ -82,6 +84,11 @@ def score_resume_ats_task(
             "message": "Analyzing resume content",
         })
 
+        # Resolve industry profile (use passed key, or detect from JD if generic)
+        effective_profile_key = industry_profile_key
+        if effective_profile_key == "generic" and job_description:
+            effective_profile_key = detect_industry(job_description)
+
         # score_resume is async but pure-Python — safe to call once with asyncio.run()
         start_time = time.time()
         scoring_result = asyncio.run(
@@ -89,6 +96,7 @@ def score_resume_ats_task(
                 latex_content=latex_content,
                 job_description=job_description,
                 industry=industry,
+                industry_profile_key=effective_profile_key,
             )
         )
         scoring_time = time.time() - start_time
@@ -116,13 +124,17 @@ def score_resume_ats_task(
             "user_id": user_id,
             "device_fingerprint": device_fingerprint,
             "industry": industry,
+            "industry_label": scoring_result.industry_label,
         }
 
         publish_job_result(job_id, result)
         publish_event(job_id, "job.completed", {
             "pdf_job_id": job_id,
             "ats_score": scoring_result.overall_score,
-            "ats_details": ats_details,
+            "ats_details": {
+                **ats_details,
+                "industry_label": scoring_result.industry_label,
+            },
             "changes_made": [],
             "compilation_time": 0.0,
             "optimization_time": 0.0,
@@ -302,6 +314,7 @@ def submit_ats_scoring(
     job_id: str,
     job_description: Optional[str] = None,
     industry: Optional[str] = None,
+    industry_profile_key: str = "generic",
     user_id: Optional[str] = None,
     user_plan: str = "free",
     device_fingerprint: Optional[str] = None,
@@ -318,6 +331,7 @@ def submit_ats_scoring(
             "job_id": job_id,
             "job_description": job_description,
             "industry": industry,
+            "industry_profile_key": industry_profile_key,
             "user_id": user_id,
             "user_plan": user_plan,
             "device_fingerprint": device_fingerprint,
