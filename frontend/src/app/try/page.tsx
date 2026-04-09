@@ -271,7 +271,7 @@ export default function TryPage() {
 
   const categoryScores = stream.atsDetails?.category_scores as Record<string, number> | undefined
 
-  const handleRunDeepAnalysis = async () => {
+  const handleRunDeepAnalysis = async (industryOverride?: string) => {
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) { toast.error('Add LaTeX content first'); return }
     setIsDeepAnalysisRunning(true)
@@ -281,6 +281,7 @@ export default function TryPage() {
         latex_content: currentContent,
         job_description: jobDescription || undefined,
         device_fingerprint: trialStatus.fingerprint,
+        industry_override: industryOverride,
       })
       if (response.success && response.job_id) {
         setDeepAnalysisJobId(response.job_id)
