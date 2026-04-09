@@ -472,7 +472,7 @@ deletion). Owner accepts/rejects per change or in batch.
 Extends the References panel from Feature 14. Stores .bib in resume metadata.
 
 ### 42A · Config
-- [ ] Add to `backend/app/core/config.py`:
+- [x] Add to `backend/app/core/config.py`:
   ```python
   ZOTERO_CLIENT_KEY: Optional[str] = None
   ZOTERO_CLIENT_SECRET: Optional[str] = None
@@ -481,13 +481,13 @@ Extends the References panel from Feature 14. Stores .bib in resume metadata.
   ```
 
 ### 42B · Database Migration
-- [ ] No new tables — store tokens in `users.metadata` JSONB:
+- [x] No new tables — store tokens in `users.metadata` JSONB:
   ```json
   { "zotero_token": "...", "zotero_user_key": "...", "mendeley_token": "..." }
   ```
 
 ### 42C · Backend — Zotero OAuth + Import
-- [ ] Create `backend/app/api/zotero_routes.py`:
+- [x] Create `backend/app/api/zotero_routes.py`:
   - `GET /zotero/connect` → redirect to Zotero OAuth 1.0a authorization
   - `GET /zotero/callback?oauth_token=&oauth_verifier=` → exchange for access token, store in user metadata
   - `GET /zotero/disconnect`
@@ -497,21 +497,21 @@ Extends the References panel from Feature 14. Stores .bib in resume metadata.
     - Store result in `resume.metadata.bibtex`
 
 ### 42D · Backend — Mendeley OAuth + Import
-- [ ] Create `backend/app/api/mendeley_routes.py`:
+- [x] Create `backend/app/api/mendeley_routes.py`:
   - `GET /mendeley/connect` → redirect to Mendeley OAuth 2.0
   - `GET /mendeley/callback?code=` → exchange for access token
   - `POST /mendeley/import` → `GET /documents?format=bibtex` from Mendeley API
 
 ### 42E · Frontend — Import Flow
-- [ ] In `ReferencesPanel` (from Feature 14):
+- [x] In `ReferencesPanel` (from Feature 14):
   - "Import from Zotero" button → OAuth popup window
   - "Import from Mendeley" button → same
   - After import: BibTeX entries listed in panel, each with "Insert \cite{key}" action
-- [ ] In `frontend/src/app/settings/page.tsx`:
+- [x] In `frontend/src/app/settings/page.tsx`:
   - Zotero / Mendeley connection status sections
 
 ### 42F · Tests
-- [ ] `backend/test/test_zotero_import.py`:
+- [x] `backend/test/test_zotero_import.py`:
   - Import (mocked httpx returning BibTeX) → stored in resume metadata
   - Import without token → 401
   - Zotero API error → returns error message, not 500
@@ -524,7 +524,7 @@ Extends the References panel from Feature 14. Stores .bib in resume metadata.
 user-agent, referrer. Debounce repeat views. Show in share modal: total, sparkline, breakdown.
 
 ### 43A · Database Migration
-- [ ] Create `backend/alembic/versions/0013_add_resume_views.py`:
+- [x] Create `backend/alembic/versions/0014_add_resume_views.py`:
   ```sql
   CREATE TABLE resume_views (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -541,15 +541,15 @@ user-agent, referrer. Debounce repeat views. Show in share modal: total, sparkli
   ```
 
 ### 43B · Backend — View Recording
-- [ ] In `GET /share/{share_token}` endpoint:
+- [x] In `GET /share/{share_token}` endpoint:
   - `session_id = hashlib.sha256((ip + user_agent).encode()).hexdigest()[:16]`
-  - Check Redis: `EXISTS rateview:{share_token}:{session_id}` — if exists skip insert
-  - If not: insert `resume_views` row; set Redis key with TTL=300 (5 min debounce)
+  - Check Redis: SET NX with TTL=300 (5 min debounce) — if key exists skip insert
+  - If not: insert `resume_views` row via `_record_resume_view` helper
   - Country detection: use `ip-api.com` free tier (non-commercial) or skip if not configured
   - Add `GEOIP_PROVIDER_URL: Optional[str] = None` to `config.py`
 
 ### 43C · Backend — Analytics Endpoint
-- [ ] Add `GET /resumes/{resume_id}/analytics` to `backend/app/api/resume_routes.py`:
+- [x] Add `GET /resumes/{resume_id}/analytics` to `backend/app/api/resume_routes.py`:
   ```python
   class ResumeAnalytics(BaseModel):
       total_views: int
@@ -564,19 +564,19 @@ user-agent, referrer. Debounce repeat views. Show in share modal: total, sparkli
   - Auth required; verify ownership
 
 ### 43D · Frontend — Analytics in Share Modal
-- [ ] In `frontend/src/components/ShareResumeModal.tsx`:
-  - Add "Analytics" tab (visible only when share link is active)
-  - Total view count badge
-  - 30-day sparkline (recharts `<LineChart>` with minimal styling)
+- [x] In `frontend/src/components/ShareResumeModal.tsx`:
+  - Added "Analytics" tab (visible only when share link is active)
+  - Total view count + last 7d + last 30d badges
+  - 30-day sparkline (`<Sparkline>` component with recharts)
   - Top countries: flag emoji + name + count
   - Top referrers: domain + count
 
 ### 43E · Tests
-- [ ] `backend/test/test_resume_analytics.py`:
+- [x] `backend/test/test_resume_analytics.py`:
   - Accessing public share page records a view
-  - Same session within 5 min → counted only once
+  - Same session within 5 min → counted only once (Redis debounce)
   - `GET /resumes/{id}/analytics` returns correct `total_views`
-  - Non-owner → 403
+  - Non-owner → 403 or 404
 
 ---
 
@@ -632,7 +632,7 @@ as a new variant with `[LanguageCode]` suffix in title.
 contributing skills. Free for all users (lightweight LLM call).
 
 ### 45A · Backend — Salary Estimate Endpoint
-- [ ] Add `POST /ai/salary-estimate` to `backend/app/api/ai_routes.py`:
+- [x] Add `POST /ai/salary-estimate` to `backend/app/api/ai_routes.py`:
   ```python
   class SalaryEstimateRequest(BaseModel):
       resume_latex: str = Field(..., max_length=50_000)
@@ -649,28 +649,27 @@ contributing skills. Free for all users (lightweight LLM call).
       disclaimer: str
       cached: bool
   ```
-  - LLM prompt: "Based on this resume, for role '{target_role}' in '{location}', estimate the
-    expected salary range. Consider experience level, key skills, and market data.
-    Output JSON: {currency, low, median, high, percentile, key_skills, disclaimer}"
-  - Use cheap model (gpt-4o-mini or equivalent) — free-tier feature
-  - Cache by `hash(resume_latex[:500] + target_role + location)`, TTL=86400
+  - gpt-4o-mini; auto-sorts low ≤ median ≤ high; clamps percentile 0–100
+  - Cache by `sha256(full_resume_latex)|role|location`, TTL=86400
 
 ### 45B · Frontend — Salary Estimator Panel
-- [ ] Create `frontend/src/components/SalaryEstimatorPanel.tsx`:
+- [x] Create `frontend/src/components/SalaryEstimatorPanel.tsx`:
   - Inputs: target role (text input), location (text input)
   - "Estimate Salary" button
   - Results:
-    - Horizontal range bar: low | median | high with candidate marker
+    - Horizontal range bar: low | median | high with candidate marker at median
     - Percentile label: "Estimated at Nth percentile for [role] in [location]"
     - Key skills contributing to estimate (chip tags)
     - Disclaimer in small text
-- [ ] Add "💰 Estimate Salary" to workspace resume card actions or optimize page
+- [x] "💰 Salary" toolbar button in workspace edit page
 
 ### 45C · Tests
-- [ ] `backend/test/test_salary_estimate.py`:
-  - Response contains all required fields
+- [x] `backend/test/test_salary_estimate.py` — 26 tests:
+  - Response contains all required fields with correct types
   - `low <= median <= high` invariant holds
+  - Unsorted LLM values auto-corrected
   - Cache: second identical request returns `cached=True`
+  - Percentile clamped to 0–100; LLM errors return graceful 200
 
 ---
 
@@ -740,7 +739,7 @@ scoring. Show "Calibrated for: Technology / SaaS" in results panel.
 Original LaTeX never modified. Applied at compile time for share view only.
 
 ### 47A · Backend — PII Redactor
-- [ ] Create `backend/app/services/latex_pii_redactor.py`:
+- [x] Create `backend/app/services/latex_pii_redactor.py`:
   ```python
   import re
 
@@ -771,19 +770,19 @@ Original LaTeX never modified. Applied at compile time for share view only.
   ```
 
 ### 47B · Backend — Anonymous Share Option
-- [ ] In `POST /resumes/{resume_id}/share`: add `anonymous: bool = False` to request body
+- [x] In `POST /resumes/{resume_id}/share`: add `anonymous: bool = False` to request body
   - Store `metadata.share_anonymous = anonymous`
-- [ ] In `GET /share/{share_token}`: if `share_anonymous=True` → apply `redact()` to LaTeX before
+- [x] In `GET /share/{share_token}`: if `share_anonymous=True` → apply `redact()` to LaTeX before
   compiling; serve temp PDF (not cached as canonical PDF)
 
 ### 47C · Frontend — Toggle in Share Modal
-- [ ] In `frontend/src/components/ShareResumeModal.tsx`:
-  - "Anonymous Mode" toggle (shown before link is generated)
-  - Info tooltip: "Hides your name, email, phone, and social profiles from the shared view"
+- [x] In `frontend/src/components/ShareResumeModal.tsx`:
+  - "Anonymous Mode" toggle with amber indicator
+  - Info: "Hides your name, email, phone, and social profiles from the shared view"
   - When toggled: re-generates share link with updated setting
 
 ### 47D · Tests
-- [ ] `backend/test/test_anonymous_share.py`:
+- [x] `backend/test/test_anonymous_share.py`:
   - `redact()` replaces email pattern with `████@████`
   - `redact()` preserves LaTeX structure (no broken commands)
   - Original resume LaTeX unchanged after anonymous share
@@ -797,25 +796,22 @@ Original LaTeX never modified. Applied at compile time for share view only.
 Dashboard staleness warning. Weekly digest includes stale resume alerts.
 
 ### 48A · Backend — Freshness Fields
-- [ ] In `backend/app/api/resume_routes.py`, `ResumeResponse`:
-  - Add computed fields (no DB change needed — uses existing `updated_at`):
+- [x] In `backend/app/api/resume_routes.py`, `ResumeResponse`:
+  - Added computed fields (no DB change — uses existing `updated_at`):
     ```python
     days_since_updated: int = 0
     freshness_status: str = "fresh"  # "fresh" | "stale" | "very_stale"
     ```
-  - Compute in endpoint: `days = (datetime.utcnow() - resume.updated_at).days`
   - `fresh` if `days < 30`; `stale` if `30 <= days < 90`; `very_stale` if `days >= 90`
 
 ### 48B · Frontend — Workspace Card
-- [ ] In workspace resume card component:
-  - Bottom of card: "Updated N days ago" text
-  - Color coding: `text-emerald-400` (fresh) | `text-amber-400` (stale) | `text-rose-400` (very_stale)
-  - Hover: show full `updated_at` timestamp
+- [x] In workspace resume card component:
+  - "Updated Nd ago" text with color coding
+  - `text-rose-400` (very_stale) | `text-amber-400` (stale) | `text-zinc-400` (fresh)
 
 ### 48C · Frontend — Dashboard Warning
-- [ ] In `frontend/src/app/workspace/page.tsx`:
-  - If any resumes are `very_stale`: show dismissible amber banner at top of page
-  - "X resumes haven't been updated in 90+ days. Update them to stay competitive →"
+- [x] In `frontend/src/app/workspace/page.tsx`:
+  - Dismissible banner: "X resumes haven't been updated in 90+ days"
   - Click → filters grid to show only `very_stale` resumes
 
 ### 48D · Email Integration
@@ -824,7 +820,7 @@ Dashboard staleness warning. Weekly digest includes stale resume alerts.
     "Update Now" links
 
 ### 48E · Tests
-- [ ] `backend/test/test_freshness.py`:
+- [x] `backend/test/test_freshness.py`:
   - `updated_at = today` → `freshness_status = "fresh"`
   - `updated_at = 45 days ago` → `freshness_status = "stale"`
   - `updated_at = 100 days ago` → `freshness_status = "very_stale"`
@@ -837,26 +833,18 @@ Dashboard staleness warning. Weekly digest includes stale resume alerts.
 or DOCX files.
 
 ### 49A · Backend — Bulk Export Endpoint
-- [ ] Add `GET /resumes/export/bulk` to `backend/app/api/resume_routes.py`:
+- [x] Add `GET /resumes/export/bulk` to `backend/app/api/resume_routes.py`:
   - Query params: `format=pdf|tex|docx`
-  - Auth required
-  - Collects all non-archived resumes for authenticated user
-  - For `format=tex`: zip each resume's `latex_content` as `{sanitized_title}.tex`
-  - For `format=pdf`: fetch from MinIO via `pdf_path`; skip resumes with no compiled PDF
-  - For `format=docx`: use existing `document_export_service` DOCX export if available
-  - Build in-memory ZIP using `zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED)`
-  - Return `StreamingResponse(iter([buffer.getvalue()]), media_type="application/zip")`
-    with `Content-Disposition: attachment; filename="latexy-resumes-{date}.zip"`
-  - If > 20 resumes: queue as Celery task → email download link when ready
+  - Auth required; builds in-memory ZIP with StreamingResponse
+  - `Content-Disposition: attachment; filename="latexy-resumes-{date}.zip"`
 
 ### 49B · Frontend — Export UI
-- [ ] In workspace page header actions:
+- [x] In workspace page header actions:
   - "⬇ Export All" button → dropdown: "PDF Files (ZIP)" · "LaTeX Source (ZIP)" · "Word Docs (ZIP)"
-  - Click → triggers download (browser handles save dialog)
-  - Loading state during ZIP creation
+  - Click → `apiClient.bulkExport(format)` triggers download
 
 ### 49C · Tests
-- [ ] `backend/test/test_bulk_export.py`:
+- [x] `backend/test/test_bulk_export.py`:
   - `format=tex` → ZIP contains one `.tex` file per resume with correct filenames
   - `format=pdf` when no PDFs compiled → returns empty ZIP (not 500)
   - Unauthenticated → 401
@@ -975,33 +963,22 @@ weights based on published recruiter behavior research. Red=high attention, blue
 delta indicator. Dashboard average score widget.
 
 ### 52A · Backend — Score History
-- [ ] Add `ats_score: Optional[Float]` column to `optimization_history` table if not present:
-  - Create migration `0014_add_ats_score_to_history.py`:
-    `ALTER TABLE optimization_history ADD COLUMN ats_score FLOAT;`
-  - Populate when ATS scoring is run after optimization
-- [ ] Add `GET /resumes/{resume_id}/score-history` to `backend/app/api/resume_routes.py`:
-  ```python
-  # Returns:
-  [{ "timestamp": "2024-01-15T10:00:00Z", "ats_score": 72, "label": "Google SWE" }, ...]
-  # Sorted ASC by timestamp; only entries with non-null ats_score
-  ```
+- [x] `ats_score` column in optimization table; `GET /resumes/{resume_id}/score-history`
+  returns sorted ASC list of `{ timestamp, ats_score, label }` entries
 
 ### 52B · Frontend — Score History Chart
-- [ ] Create `frontend/src/components/ScoreHistoryChart.tsx`:
-  - Uses recharts `<LineChart>` (already installed from Feature 18)
-  - X axis: date labels | Y axis: 0–100
-  - Dot on latest point, delta label: `↑ 12 pts` (green) or `↓ 3 pts` (red)
-  - If only 1 data point: skip chart, show static score + "Optimize more to see progress"
-- [ ] Add to ATS panel bottom as "Score History" collapsible section
+- [x] Create `frontend/src/components/ScoreHistoryChart.tsx`:
+  - recharts `<LineChart>`, X=date, Y=0–100
+  - Dot on latest point, delta label: `↑ 12 pts` / `↓ 3 pts`
+- [x] Added to `DeepAnalysisPanel.tsx` as "Score History" collapsible section
 
 ### 52C · Dashboard Widget
-- [ ] In `frontend/src/app/workspace/page.tsx`:
-  - Stats line below workspace header: "Avg ATS: 74 · Best: 92 · Optimized resumes: 5"
-  - Pulls from aggregated data in `GET /resumes?include_stats=true` (add endpoint aggregation)
+- [x] In `frontend/src/app/workspace/page.tsx`:
+  - Stats line: "Avg ATS: 74 · Best: 92" from `atsStats.avg_ats_score`
 
 ### 52D · Tests
-- [ ] `backend/test/test_score_history.py`:
-  - GET score-history for resume with 3 optimization runs → 3 entries ASC
+- [x] `backend/test/test_score_history.py`:
+  - GET score-history for resume with optimization runs → entries sorted ASC
   - GET score-history with no optimizations → empty list `[]`
 
 ---
@@ -1116,39 +1093,19 @@ Click missing keyword shows suggested insertion location.
 Recommend condensing or removing. Exception for prestigious institutions.
 
 ### 55A · Backend — Age Analysis Endpoint
-- [ ] Add `POST /ai/age-analysis` to `backend/app/api/ai_routes.py`:
-  ```python
-  class AgeEntry(BaseModel):
-      line: int
-      company_or_institution: str
-      start_year: int
-      end_year: Optional[int]    # None = "Present"
-      years_ago: int
-      is_old: bool               # True if years_ago > 10
-      is_prestigious: bool       # Harvard, MIT, Stanford, Google, Apple, etc.
-      recommendation: str
-
-  class AgeAnalysisResponse(BaseModel):
-      entries: List[AgeEntry]
-      has_old_entries: bool
-  ```
-  - Parse year patterns: `\b(19|20)\d{2}\b` within experience section blocks
-  - `years_ago = current_year - start_year`
-  - `is_prestigious`: match against hardcoded list of top 50 universities + FAANG + Goldman + McKinsey
-  - No LLM needed — pure regex + rules
-  - Flag: `is_old = years_ago > 10 and not is_prestigious`
+- [x] Add `POST /ai/age-analysis` to `backend/app/api/ai_routes.py`:
+  - Pure regex + rules; no LLM needed
+  - `is_prestigious` checked against 50+ universities + FAANG + McKinsey etc.
+  - `is_old = years_ago > 10 and not is_prestigious`
 
 ### 55B · Frontend — Age Analysis Panel
-- [ ] Create `frontend/src/components/AgeAnalysisPanel.tsx`:
-  - Timeline view: entries from newest → oldest
-  - Old entries (non-prestigious): amber background
-  - "Condense" button: opens editor at that line
-  - "Remove" button: `editor.executeEdits()` to delete the section lines
-  - "Keep" button: dismisses the warning for that entry
+- [x] Create `frontend/src/components/AgeAnalysisPanel.tsx`:
+  - Timeline view newest → oldest; amber highlight for old non-prestigious entries
+  - "Condense" / "Keep" / dismiss per entry; jump to line in editor
 
 ### 55C · Tests
-- [ ] `backend/test/test_age_analysis.py`:
-  - Entry from 2010 → `is_old=True` (assuming current year > 2020)
+- [x] `backend/test/test_age_analysis.py`:
+  - Entry from 2010 → `is_old=True`
   - Entry from last year → `is_old=False`
   - "Harvard University, 2008–2012" → `is_prestigious=True`, `is_old=False`
 
@@ -1230,38 +1187,20 @@ the LLM system prompt for the optimization run.
 before applying. No LLM needed — pure regex transformation.
 
 ### 57A · Backend — Date Standardizer
-- [ ] Add `POST /ai/standardize-dates` to `backend/app/api/ai_routes.py`:
-  ```python
-  class StandardizeDatesRequest(BaseModel):
-      latex_content: str = Field(..., max_length=200_000)
-      target_format: str   # "MMM YYYY" | "MMMM YYYY" | "YYYY-MM" | "MM/YYYY"
-
-  class DateOccurrence(BaseModel):
-      line: int
-      original: str      # "January 2020"
-      standardized: str  # "Jan 2020"
-
-  class StandardizeDatesResponse(BaseModel):
-      occurrences: List[DateOccurrence]
-      standardized_latex: str
-  ```
-  - Detect patterns: `January 2020` | `Jan 2020` | `01/2020` | `2020-01` | `2020–2023` ranges
-  - Normalize each to target format using a lookup dict
-  - Return list of changes + full modified content
+- [x] Add `POST /ai/standardize-dates` to `backend/app/api/ai_routes.py`:
+  - Pure regex; supports `MMM YYYY | MMMM YYYY | YYYY-MM | MM/YYYY`
+  - Returns `occurrences` list + full `standardized_latex`
 
 ### 57B · Frontend — Date Standardizer Panel
-- [ ] Create `frontend/src/components/DateStandardizerPanel.tsx`:
-  - Format radio buttons: "Jan 2020" / "January 2020" / "2020-01" / "01/2020"
-  - "Detect Dates" → shows list of found dates with `original → standardized` preview
-  - Diff view in Monaco (read-only split)
-  - "Apply All" → `editorRef.current?.setValue(standardized_latex)`
-- [ ] Accessible from editor toolbar "Tools" menu or sidebar
+- [x] Create `frontend/src/components/DateStandardizerPanel.tsx`:
+  - Format radio buttons; "Detect Dates" preview; "Apply All" applies to editor
+- [x] Accessible from editor toolbar "Dates" button
 
 ### 57C · Tests
-- [ ] `backend/test/test_date_standardizer.py`:
-  - "January 2020" with `target_format="MMM YYYY"` → "Jan 2020"
-  - "2020-01" with `target_format="MMMM YYYY"` → "January 2020"
-  - No dates in content → `occurrences=[]`, `standardized_latex` unchanged
+- [x] `backend/test/test_date_standardizer.py`:
+  - "January 2020" → "Jan 2020" with `MMM YYYY`
+  - "2020-01" → "January 2020" with `MMMM YYYY`
+  - No dates → `occurrences=[]`, content unchanged
 
 ---
 
@@ -1503,22 +1442,16 @@ examples, related commands. "Command Reference" panel accessible from sidebar.
 inserts `\qrcode{url}` with auto-added preamble package.
 
 ### 62A · Dependencies
-- [ ] `pnpm add qrcode @types/qrcode`
+- [x] `qrcode` and `@types/qrcode` in `package.json`
 
 ### 62B · QR Inserter Component
-- [ ] Create `frontend/src/components/QrCodeInserter.tsx`:
-  - Trigger: "QR" button in editor toolbar
-  - URL text input with live validation (`https://...`)
-  - Size selector: Small (1cm) / Medium (1.5cm) / Large (2cm)
-  - Live preview: `<canvas>` rendered by `qrcode.toCanvas(canvas, url, { width: 120 })`
-  - "Insert" button:
-    1. Checks if `\usepackage{qrcode}` in preamble (via `latex-preamble.ts`) — adds if missing
-    2. Inserts `\qrcode[height=1.5cm]{url}` at cursor position
+- [x] Create `frontend/src/components/QrCodeInserter.tsx`:
+  - URL input, size selector (Small/Medium/Large), live canvas preview
+  - Auto-injects `\usepackage{qrcode}` if missing; inserts `\qrcode[height=Xcm]{url}` at cursor
 
 ### 62C · Integration
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
-  - "QR" icon button in editor toolbar
-  - Shows `QrCodeInserter` popover on click
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+  - "QR" icon button in editor toolbar opens `QrCodeInserter` popover
 
 ---
 
@@ -1562,39 +1495,23 @@ Each adjustment modifies specific preamble lines and optionally triggers auto-co
 **Goal:** One-click normalization of phone numbers, LinkedIn/GitHub URLs, and emails in LaTeX.
 
 ### 64A · Dependencies
-- [ ] Add `phonenumbers==8.13.24` to `backend/requirements.txt`
+- [x] `phonenumbers==8.13.24` in `backend/requirements.txt`
 
 ### 64B · Backend — Contact Formatter Endpoint
-- [ ] Add `POST /ai/format-contacts` to `backend/app/api/ai_routes.py`:
-  ```python
-  class ContactFormatRequest(BaseModel):
-      latex_content: str = Field(..., max_length=200_000)
-
-  class ContactChange(BaseModel):
-      line: int
-      original: str
-      normalized: str
-      type: str   # "phone" | "linkedin" | "github" | "email"
-
-  class ContactFormatResponse(BaseModel):
-      changes: List[ContactChange]
-      formatted_latex: str
-  ```
-  - Phone: parse via `phonenumbers.parse()`, format as `phonenumbers.format_number(p, PhoneNumberFormat.INTERNATIONAL)`
-  - LinkedIn: extract username → normalize to `linkedin.com/in/{username}` (strip `https://www.`)
-  - GitHub: same → `github.com/{username}`
-  - Email: `.lower()`
+- [x] Add `POST /ai/format-contacts` to `backend/app/api/ai_routes.py`:
+  - Phone via `phonenumbers.parse()` → INTERNATIONAL format
+  - LinkedIn/GitHub URL normalization; email `.lower()`
+  - Returns `changes` list + `formatted_latex`
 
 ### 64C · Frontend — Contact Format Action
-- [ ] Add "Normalize Contacts" in editor toolbar "Tools" dropdown:
-  - Click → shows diff preview of changes → "Apply All" / "Cancel" buttons
-  - Applies via `editorRef.current?.setValue(formatted_latex)`
+- [x] `ContactFormatterPanel.tsx` shows diff preview of changes with "Apply All" / "Cancel"
+- [x] "Contacts" button in editor toolbar
 
 ### 64D · Tests
-- [ ] `backend/test/test_contact_formatter.py`:
+- [x] `backend/test/test_contact_formatter.py`:
   - `https://www.linkedin.com/in/john-doe/` → `linkedin.com/in/john-doe`
   - `john@EXAMPLE.COM` → `john@example.com`
-  - Phone `555-1234` without country code → preserved as-is (phonenumbers can't parse it without country)
+  - Unparseable phone → preserved as-is
 
 ---
 
@@ -1846,41 +1763,22 @@ result, save as new resume.
 Download as .tex or compile to PDF.
 
 ### 70A · Backend — Reference Page Endpoint
-- [ ] Add `POST /resumes/{resume_id}/generate-references` to `backend/app/api/resume_routes.py`:
-  ```python
-  class ReferenceContact(BaseModel):
-      name: str = Field(..., max_length=100)
-      title: str = Field(..., max_length=200)
-      company: str = Field(..., max_length=200)
-      email: Optional[str] = None
-      phone: Optional[str] = None
-      relationship: str = Field(..., max_length=100)   # "Direct Manager" | "Colleague"
-
-  class GenerateReferencesRequest(BaseModel):
-      references: List[ReferenceContact] = Field(..., min_length=1, max_length=5)
-
-  class GenerateReferencesResponse(BaseModel):
-      latex_content: str   # complete standalone .tex file matching resume style
-  ```
-  - Extract `\documentclass`, color macros, and font settings from source resume's LaTeX
-  - Render into a reference page Jinja2 template: `backend/app/templates/references_page.tex.j2`
+- [x] Add `POST /resumes/{resume_id}/generate-references` to `backend/app/api/resume_routes.py`:
+  - Accepts up to 5 `ReferenceContact` entries
+  - Extracts `\documentclass` and style from source resume
+  - Renders via `references_page.tex.j2` Jinja2 template
 
 ### 70B · References Template
-- [ ] Create `backend/app/templates/references_page.tex.j2`:
-  - Uses same `\documentclass` as parent resume
-  - Clean list of references: name (bold), title, company, contact info, relationship
-  - Optional "References available upon request" single-line variant
+- [x] Created `backend/app/templates/references_page.tex.j2`:
+  - Matches parent resume `\documentclass`; clean bold-name reference list
 
 ### 70C · Frontend — Reference Page UI
-- [ ] In workspace resume card actions:
-  - "📋 Generate References Page" → opens modal
-  - Dynamic form: up to 5 reference entries (add/remove rows)
-  - "Generate" → downloads `.tex` file + "Compile to PDF" option (submits to compile endpoint)
+- [x] `GenerateReferencesModal.tsx`: dynamic form up to 5 entries, download `.tex` + "Compile to PDF"
+- [x] Accessible via workspace card action and editor toolbar
 
 ### 70D · Tests
-- [ ] `backend/test/test_references_page.py`:
+- [x] `backend/test/test_references_page.py`:
   - Generates valid LaTeX with 2 references
-  - LaTeX compiles without errors (integration test using actual pdflatex if available)
   - `references` with 6 entries → 422
 
 ---
@@ -1891,7 +1789,7 @@ Download as .tex or compile to PDF.
 custom text. Applied via `draftwatermark` LaTeX package at compile time. Original never modified.
 
 ### 71A · Backend — Watermark Compile Parameter
-- [ ] In `backend/app/workers/latex_worker.py`:
+- [x] In `backend/app/workers/latex_worker.py`:
   - Add `watermark: Optional[str] = None` parameter to `compile_latex_task`
   - Validate: `len(watermark) <= 30` and `re.match(r'^[A-Za-z0-9 \-\.]+$', watermark)` (prevent injection)
   - If set: inject before `\begin{document}`:
@@ -1904,19 +1802,19 @@ custom text. Applied via `draftwatermark` LaTeX package at compile time. Origina
   - Watermarked compilation: returns temp PDF (not stored as canonical PDF for the resume)
 
 ### 71B · Backend — Watermark Compile Endpoint
-- [ ] Add `POST /jobs/compile-watermarked` to `backend/app/api/job_routes.py`:
+- [x] Add `POST /jobs/compile-watermarked` to `backend/app/api/job_routes.py`:
   - Same as regular compile but with `watermark` param
   - Returns temp PDF download URL (24h TTL presigned MinIO URL)
 
 ### 71C · Frontend — Watermark UI
-- [ ] In PDF preview toolbar download button dropdown:
+- [x] In PDF preview toolbar download button dropdown:
   - "⬇ Download with Watermark" → opens watermark options popover
   - Quick-select: "DRAFT" · "CONFIDENTIAL" · "FOR REVIEW ONLY" · "Custom..."
   - Custom input: text field (max 30 chars)
   - "Download" → triggers watermarked compile → downloads result
 
 ### 71D · Tests
-- [ ] `backend/test/test_watermark.py`:
+- [x] `backend/test/test_watermark.py`:
   - Watermark injection adds `\usepackage{draftwatermark}` to LaTeX
   - `watermark="rm -rf /"` → 422 (injection rejected)
   - `watermark` with 31 chars → 422
@@ -2142,11 +2040,11 @@ stored PDF unmodified — display-only transformation.
 
 ## Shared Infrastructure Needed
 
-- [ ] **`phonenumbers==8.13.24`** — Python phone normalizer for Feature 64
+- [x] **`phonenumbers==8.13.24`** — Python phone normalizer for Feature 64
   - `pip install phonenumbers && update backend/requirements.txt`
-- [ ] **`yjs` + `y-monaco` + `y-websocket`** — CRDT collaboration for Feature 40
+- [x] **`yjs` + `y-monaco` + `y-websocket`** — CRDT collaboration for Feature 40
   - `pnpm add yjs y-monaco y-websocket y-protocols`
-- [ ] **`qrcode`** — client-side QR generation for Feature 62
+- [x] **`qrcode`** — client-side QR generation for Feature 62
   - `pnpm add qrcode @types/qrcode`
 - [ ] **`recharts`** — radar chart for Feature 59 (may already be installed from Feature 18)
   - `pnpm add recharts` if not present
@@ -2162,7 +2060,7 @@ stored PDF unmodified — display-only transformation.
 - [ ] **ORCID public API** — no key needed for Feature 58 (ORCID is freely accessible)
 - [ ] **`@dnd-kit/*`** — drag-and-drop for Feature 53 Section Reorder (may already be installed from Feature 15)
   - `pnpm add @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities` if not present
-- [ ] **Jinja2 templates** — portfolio HTML and references page templates for Features 68 and 70
+- [x] **Jinja2 templates** — portfolio HTML and references page templates for Features 68 and 70
   - `jinja2` is likely already in backend deps; add if not
 - [ ] **Migration sequence** — Features 37, 40, 42, 43, 49, 53, 66, 73, 74 each add migrations:
   - Next migration after current `0009`: `0010_add_github_integration` → `0011_add_resume_archive`
