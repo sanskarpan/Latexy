@@ -116,9 +116,8 @@ B.Sc. Computer Science
             industry_profile_key="tech_saas",
         )
 
-        # Tech profile should produce a higher or equal content score
-        # because it rewards the tech keywords found
-        assert result_tech.overall_score >= result_generic.overall_score - 5  # allow ±5 tolerance
+        # Tech profile should score a tech-heavy resume at least as well as generic
+        assert result_tech.overall_score >= result_generic.overall_score
         assert result_tech.industry_label == "Technology / SaaS"
         assert result_generic.industry_label is None
 
@@ -130,6 +129,18 @@ B.Sc. Computer Science
         result = await ats_scoring_service.score_resume(
             latex_content=latex,
             industry_profile_key="generic",
+        )
+        assert result.industry_label is None
+
+    @pytest.mark.asyncio
+    async def test_unknown_profile_key_falls_back_to_generic(self) -> None:
+        """Unknown profile keys should fall back to generic with industry_label=None."""
+        from app.services.ats_scoring_service import ats_scoring_service
+
+        latex = r"\documentclass{article}\begin{document}Hello\end{document}"
+        result = await ats_scoring_service.score_resume(
+            latex_content=latex,
+            industry_profile_key="does_not_exist",
         )
         assert result.industry_label is None
 
@@ -260,6 +271,22 @@ class TestIndustryATSEndpoint:
         assert "tech_saas" in keys
         assert "finance_banking" in keys
         assert "generic" in keys
+
+    async def test_unknown_industry_override_returns_400(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
+        """Unknown industry_override key should return 400."""
+        resp = await client.post(
+            "/ats/score",
+            json={
+                "latex_content": _SAMPLE_LATEX,
+                "industry_override": "does_not_exist",
+                "async_processing": False,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "industry_override" in resp.json()["detail"]
 
     async def test_finance_jd_detects_finance_industry(
         self, client: AsyncClient, auth_headers: dict
