@@ -5,6 +5,7 @@ Provides keyword weight multipliers and section scoring weights per industry,
 plus a keyword-frequency detector to auto-detect industry from a job description.
 """
 
+import re
 from typing import Dict
 
 INDUSTRY_PROFILES: Dict[str, dict] = {
@@ -147,7 +148,10 @@ def detect_industry(job_description: str) -> str:
         return "generic"
     jd_lower = job_description.lower()
     scores: Dict[str, int] = {
-        name: sum(1 for kw in profile["detect_keywords"] if kw in jd_lower)
+        name: sum(
+            1 for kw in profile["detect_keywords"]
+            if re.search(r'\b' + re.escape(kw) + r'\b', jd_lower)
+        )
         for name, profile in INDUSTRY_PROFILES.items()
         if name != "generic"
     }
