@@ -447,6 +447,24 @@ export interface GenerateReferencesResponse {
   latex_content: string
 }
 
+// Feature 45 — Salary Estimator
+export interface SalaryEstimateRequest {
+  resume_latex: string
+  target_role: string
+  location: string
+}
+
+export interface SalaryEstimateResponse {
+  currency: string
+  low: number
+  median: number
+  high: number
+  percentile: number
+  key_skills: string[]
+  disclaimer: string
+  cached: boolean
+}
+
 export interface ExplainErrorResponse {
   success: boolean
   explanation: string
@@ -1774,6 +1792,18 @@ class ApiClient {
 
   async getResumeAnalytics(resumeId: string): Promise<ResumeAnalytics> {
     return this.request<ResumeAnalytics>(`/resumes/${encodeURIComponent(resumeId)}/analytics`)
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Salary Estimator (Feature 45)                                    //
+  // ---------------------------------------------------------------- //
+
+  async estimateSalary(params: SalaryEstimateRequest): Promise<SalaryEstimateResponse> {
+    return this.request<SalaryEstimateResponse>('/ai/salary-estimate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    })
   }
 }
 
