@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..core.logging import get_logger
-from .industry_ats_profiles import INDUSTRY_PROFILES
+from .industry_ats_profiles import INDUSTRY_PROFILES, detect_industry, get_profile
 
 logger = get_logger(__name__)
 
@@ -308,23 +308,14 @@ class ATSScoringService:
         start_time = asyncio.get_event_loop().time()
 
         try:
-            # Resolve industry profile (calibration); unknown keys fall back to generic
-            generic_profile = INDUSTRY_PROFILES["generic"]
-            profile = INDUSTRY_PROFILES.get(industry_profile_key, generic_profile)
-            is_generic = profile is generic_profile
-            industry_label: Optional[str] = None if is_generic else profile["label"]
-
             text_content = self._extract_text_from_latex(latex_content)
 
             # ── Industry calibration ──────────────────────────────────────
-            # Auto-detect from JD when no explicit industry key provided
-            from .industry_ats_profiles import INDUSTRY_PROFILES as _PROFILES
+            # Resolve industry key: explicit > auto-detect from JD > generic
             industry_key: str = "generic"
-            if industry and industry in _PROFILES:
-                # Direct profile key passed (e.g. "tech_saas") — use as-is
+            if industry and industry in INDUSTRY_PROFILES:
                 industry_key = industry
             elif industry:
-                # Legacy: map old string tags to profile keys
                 _legacy_map = {
                     "technology": "tech_saas",
                     "finance": "finance_banking",
@@ -336,7 +327,8 @@ class ATSScoringService:
                 industry_key = detect_industry(job_description)
 
             profile = get_profile(industry_key)
-            industry_label: Optional[str] = profile["label"] if industry_key != "generic" else None
+            is_generic = industry_key == "generic"
+            industry_label: Optional[str] = profile["label"] if not is_generic else None
 
             formatting_score = await self._score_formatting(latex_content)
             # Pass raw latex_content so contact detection can find emails in \href
@@ -451,7 +443,7 @@ class ATSScoringService:
                 processing_time=processing_time,
                 timestamp=datetime.utcnow().isoformat(),
                 multi_dim_scores=multi_dim_scores,
-                industry_key=industry_profile_key,
+                industry_key=industry_key,
                 industry_label=industry_label,
             )
 
