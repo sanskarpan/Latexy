@@ -1,306 +1,321 @@
-"""
-Tests for Feature 46: Industry-Specific ATS Calibration.
-
-Covers:
-  - detect_industry unit tests (tech, finance, generic fallback)
-  - Profile keyword weight application (tech profile boosts tech keywords)
-  - industry_label present in sync ATS score response
-  - industry_override endpoint parameter
-"""
-
-from __future__ import annotations
+"""Tests for Feature 46: Industry-Specific ATS Calibration."""
 
 import pytest
-from httpx import AsyncClient
 
-# ---------------------------------------------------------------------------
-# Industry detection unit tests (no server needed)
-# ---------------------------------------------------------------------------
-
+# ─── Unit tests: detect_industry ──────────────────────────────────────────────
 
 class TestDetectIndustry:
-    def test_tech_saas_detected(self) -> None:
+    """Unit tests for the detect_industry() function."""
+
+    def test_tech_saas_detected_from_engineering_jd(self):
         from app.services.industry_ats_profiles import detect_industry
-
-        jd = "We are a SaaS company looking for a software engineer with Kubernetes and Docker experience."
-        assert detect_industry(jd) == "tech_saas"
-
-    def test_finance_banking_detected(self) -> None:
-        from app.services.industry_ats_profiles import detect_industry
-
-        jd = "Looking for a Bloomberg-certified analyst with CFA, equity research, and trading experience."
-        assert detect_industry(jd) == "finance_banking"
-
-    def test_healthcare_detected(self) -> None:
-        from app.services.industry_ats_profiles import detect_industry
-
-        jd = "Join our hospital network. HIPAA compliance, EHR systems, and patient care are essential."
-        assert detect_industry(jd) == "healthcare"
-
-    def test_consulting_detected(self) -> None:
-        from app.services.industry_ats_profiles import detect_industry
-
-        jd = "Join our Deloitte engagement team. Work with client stakeholders and deliver frameworks."
-        assert detect_industry(jd) == "consulting"
-
-    def test_below_threshold_returns_generic(self) -> None:
-        """A JD with only one matching keyword should return 'generic'."""
-        from app.services.industry_ats_profiles import detect_industry
-
-        jd = "General manager role with only one keyword: kubernetes"
+        jd = (
+            "We are looking for a senior software engineer to join our SaaS startup. "
+            "You will build microservices, work with Kubernetes, and own our API platform. "
+            "Experience with cloud infrastructure and agile teams required."
+        )
         result = detect_industry(jd)
-        # kubernetes alone is only 1 match → generic
+        assert result == "tech_saas"
+
+    def test_finance_banking_detected(self):
+        from app.services.industry_ats_profiles import detect_industry
+        jd = (
+            "Quantitative analyst role at an investment bank. "
+            "Must have CFA designation and Bloomberg terminal experience. "
+            "Work with equity portfolio management and risk management frameworks."
+        )
+        result = detect_industry(jd)
+        assert result == "finance_banking"
+
+    def test_healthcare_detected(self):
+        from app.services.industry_ats_profiles import detect_industry
+        jd = (
+            "Registered Nurse (RN) needed in our hospital. "
+            "HIPAA compliance required. Experience with EHR systems (Epic). "
+            "Will work directly with patients in a clinical setting."
+        )
+        result = detect_industry(jd)
+        assert result == "healthcare"
+
+    def test_consulting_detected(self):
+        from app.services.industry_ats_profiles import detect_industry
+        jd = (
+            "Management consultant needed for client engagement. "
+            "Deloitte-style stakeholder management and deliverable creation. "
+            "Experience with strategy and transformation projects required."
+        )
+        result = detect_industry(jd)
+        assert result == "consulting"
+
+    def test_generic_returned_for_ambiguous_jd(self):
+        from app.services.industry_ats_profiles import detect_industry
+        jd = "We are looking for a motivated team player with good communication skills."
+        result = detect_industry(jd)
         assert result == "generic"
 
-    def test_empty_jd_returns_generic(self) -> None:
+    def test_generic_returned_for_empty_string(self):
         from app.services.industry_ats_profiles import detect_industry
-
         assert detect_industry("") == "generic"
-        assert detect_industry("   ") == "generic"
 
-    def test_all_profiles_have_required_keys(self) -> None:
+    def test_single_keyword_not_enough(self):
+        """One matching keyword is not enough — need >= 2."""
+        from app.services.industry_ats_profiles import detect_industry
+        jd = "Looking for someone who knows kubernetes."  # only 1 tech keyword
+        result = detect_industry(jd)
+        assert result == "generic"
+
+    def test_case_insensitive_detection(self):
+        from app.services.industry_ats_profiles import detect_industry
+        jd = "KUBERNETES MICROSERVICE API CLOUD STARTUP ENGINEER BACKEND"
+        result = detect_industry(jd)
+        assert result == "tech_saas"
+
+    def test_finance_vs_tech_disambiguation(self):
+        """A finance-heavy JD should not be classified as tech even if it mentions API."""
+        from app.services.industry_ats_profiles import detect_industry
+        jd = (
+            "Investment banking analyst at a trading firm. "
+            "Bloomberg certification, CFA preferred. Portfolio risk management. "
+            "Some API work via Bloomberg Terminal."
+        )
+        result = detect_industry(jd)
+        assert result == "finance_banking"
+
+
+# ─── Unit tests: get_profile ──────────────────────────────────────────────────
+
+class TestGetProfile:
+    def test_known_profile_returned(self):
+        from app.services.industry_ats_profiles import INDUSTRY_PROFILES, get_profile
+        p = get_profile("tech_saas")
+        assert p["label"] == INDUSTRY_PROFILES["tech_saas"]["label"]
+        assert "kubernetes" in p["keywords"]
+
+    def test_unknown_key_falls_back_to_generic(self):
+        from app.services.industry_ats_profiles import INDUSTRY_PROFILES, get_profile
+        p = get_profile("nonexistent_industry")
+        assert p["label"] == INDUSTRY_PROFILES["generic"]["label"]
+
+    def test_generic_has_empty_keywords(self):
+        from app.services.industry_ats_profiles import get_profile
+        p = get_profile("generic")
+        assert p["keywords"] == {}
+
+    def test_all_profiles_have_required_keys(self):
         from app.services.industry_ats_profiles import INDUSTRY_PROFILES
-
-        required = {"label", "keywords", "section_weights", "detect_keywords"}
-        for name, profile in INDUSTRY_PROFILES.items():
-            assert required.issubset(profile.keys()), f"Profile '{name}' missing keys"
-
-    def test_generic_profile_has_empty_keywords(self) -> None:
-        from app.services.industry_ats_profiles import INDUSTRY_PROFILES
-
-        generic = INDUSTRY_PROFILES["generic"]
-        assert generic["keywords"] == {}
-        assert generic["section_weights"] == {}
-        assert generic["label"] == "General"
+        for key, profile in INDUSTRY_PROFILES.items():
+            assert "label" in profile, f"{key} missing label"
+            assert "keywords" in profile, f"{key} missing keywords"
+            assert "section_weights" in profile, f"{key} missing section_weights"
+            assert "detect_keywords" in profile, f"{key} missing detect_keywords"
 
 
-# ---------------------------------------------------------------------------
-# Service-level: profile keyword weights boost relevant keywords
-# ---------------------------------------------------------------------------
+# ─── Integration tests: ATS scoring with industry calibration ─────────────────
 
-
-class TestProfileWeightApplication:
-    """Tech profile should weight tech keywords higher than the generic profile."""
-
-    @pytest.mark.asyncio
-    async def test_tech_profile_boosts_tech_keywords(self) -> None:
-        """A resume full of Kubernetes/Docker terminology should score higher
-        on content with tech_saas profile than with generic."""
-        from app.services.ats_scoring_service import ats_scoring_service
-
-        latex = r"""
+TECH_RESUME = r"""
 \documentclass{article}
 \begin{document}
+\section{Contact}
+John Doe · john@example.com · +1-555-0100
+
+\section{Summary}
+Senior software engineer with 5 years building microservices on Kubernetes and AWS.
+Strong background in CI/CD pipelines, Docker, and Python.
+
 \section{Experience}
-\textbf{DevOps Engineer} at CloudCorp\\
+\textbf{Senior Engineer} · Acme SaaS Inc · 2020--Present
 \begin{itemize}
-\item Deployed microservices on Kubernetes with Docker, CI/CD via Jenkins
-\item Built REST APIs with Python and FastAPI, deployed to AWS
-\item Managed Terraform infrastructure and Docker containers
-\item Contributed to cloud-native SaaS platform with microservices architecture
+  \item Architected distributed microservices platform on Kubernetes, reducing latency by 40\%
+  \item Built CI/CD pipelines using GitHub Actions and Terraform; deployed to AWS GCP
+  \item Developed REST APIs with FastAPI; improved throughput by 30\%
+  \item Automated infrastructure with Docker and Ansible; saved 20 hours/week
 \end{itemize}
+
 \section{Skills}
-Python, Kubernetes, Docker, AWS, Terraform, CI/CD, API, DevOps, Agile
+Python, TypeScript, Kubernetes, Docker, AWS, GCP, Terraform, CI/CD, Agile
+
 \section{Education}
-B.Sc. Computer Science
-\end{document}
-"""
-        result_generic = await ats_scoring_service.score_resume(
-            latex_content=latex,
-            job_description=None,
-            industry_profile_key="generic",
-        )
-        result_tech = await ats_scoring_service.score_resume(
-            latex_content=latex,
-            job_description=None,
-            industry_profile_key="tech_saas",
-        )
-
-        # Tech profile should score a tech-heavy resume at least as well as generic
-        assert result_tech.overall_score >= result_generic.overall_score
-        assert result_tech.industry_label == "Technology / SaaS"
-        assert result_generic.industry_label is None
-
-    @pytest.mark.asyncio
-    async def test_industry_label_is_none_for_generic(self) -> None:
-        from app.services.ats_scoring_service import ats_scoring_service
-
-        latex = r"\documentclass{article}\begin{document}Hello\end{document}"
-        result = await ats_scoring_service.score_resume(
-            latex_content=latex,
-            industry_profile_key="generic",
-        )
-        assert result.industry_label is None
-
-    @pytest.mark.asyncio
-    async def test_unknown_profile_key_falls_back_to_generic(self) -> None:
-        """Unknown profile keys should fall back to generic with industry_label=None."""
-        from app.services.ats_scoring_service import ats_scoring_service
-
-        latex = r"\documentclass{article}\begin{document}Hello\end{document}"
-        result = await ats_scoring_service.score_resume(
-            latex_content=latex,
-            industry_profile_key="does_not_exist",
-        )
-        assert result.industry_label is None
-
-    @pytest.mark.asyncio
-    async def test_finance_profile_sets_correct_label(self) -> None:
-        from app.services.ats_scoring_service import ats_scoring_service
-
-        latex = r"\documentclass{article}\begin{document}Finance resume\end{document}"
-        result = await ats_scoring_service.score_resume(
-            latex_content=latex,
-            industry_profile_key="finance_banking",
-        )
-        assert result.industry_label == "Finance / Banking"
-
-
-# ---------------------------------------------------------------------------
-# Endpoint tests
-# ---------------------------------------------------------------------------
-
-
-_SAMPLE_LATEX = r"""
-\documentclass{article}
-\begin{document}
-\section{Experience}
-\textbf{Software Engineer} at TechCorp\\
-\begin{itemize}
-\item Built scalable microservices using Kubernetes and Docker
-\item Developed Python APIs with FastAPI deployed on AWS
-\end{itemize}
-\section{Skills}
-Python, Kubernetes, Docker, AWS, CI/CD, Agile
-\section{Education}
-B.Sc. Computer Science, MIT, 2020
+B.S. Computer Science · MIT · 2019
 \end{document}
 """
 
-_FINANCE_JD = (
-    "We are hiring a Bloomberg certified analyst with CFA credentials. "
-    "Experience in equity research, trading strategies, and portfolio management required."
+FINANCE_RESUME = r"""
+\documentclass{article}
+\begin{document}
+\section{Contact}
+Jane Smith · jane@example.com · +1-555-0200
+
+\section{Summary}
+CFA charterholder with 7 years at bulge-bracket investment banks.
+Expertise in Bloomberg, equity research, and portfolio risk management.
+
+\section{Experience}
+\textbf{Associate} · Goldman Sachs · 2018--Present
+\begin{itemize}
+  \item Built DCF and LBO valuation models, generating \$2B in advisory fees
+  \item Managed equity portfolio with Bloomberg Terminal; reduced risk by 25\%
+  \item Led due diligence on 12 M\&A transactions; negotiated key financial terms
+  \item Maintained CFA compliance; produced 40+ equity research reports
+\end{itemize}
+
+\section{Skills}
+Bloomberg, Excel/VBA, CFA, Financial Modeling, Derivatives, Portfolio Management
+
+\section{Education}
+MBA Finance · Wharton School · 2018
+CFA Charterholder · 2020
+\end{document}
+"""
+
+TECH_JD = (
+    "We need a senior software engineer comfortable with Kubernetes, microservices, "
+    "CI/CD pipelines, and cloud platforms (AWS/GCP). Python expertise required. "
+    "Experience with Docker, Terraform, and API design is a plus."
 )
 
-_TECH_JD = (
-    "We are a SaaS startup looking for a software engineer with Kubernetes, "
-    "microservices architecture, Docker, and CI/CD pipeline experience."
+FINANCE_JD = (
+    "Investment bank seeks quantitative analyst with Bloomberg, CFA designation, "
+    "equity research experience, portfolio management, and risk management skills. "
+    "Trading desk background preferred."
 )
 
 
 @pytest.mark.asyncio
-class TestIndustryATSEndpoint:
-    async def test_industry_label_present_in_sync_response(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
-        """Sync scoring with a tech JD should return industry_label in response."""
+class TestATSScoringWithCalibration:
+    """Integration tests: verify industry calibration affects scoring."""
+
+    async def test_tech_resume_with_tech_jd_detects_tech_saas(self):
+        from app.services.ats_scoring_service import ats_scoring_service
+        result = await ats_scoring_service.score_resume(
+            latex_content=TECH_RESUME,
+            job_description=TECH_JD,
+        )
+        assert result.industry_key == "tech_saas"
+        assert result.industry_label == "Technology / SaaS"
+
+    async def test_finance_resume_with_finance_jd_detects_finance_banking(self):
+        from app.services.ats_scoring_service import ats_scoring_service
+        result = await ats_scoring_service.score_resume(
+            latex_content=FINANCE_RESUME,
+            job_description=FINANCE_JD,
+        )
+        assert result.industry_key == "finance_banking"
+        assert result.industry_label == "Finance / Banking"
+
+    async def test_no_jd_gives_generic_industry(self):
+        from app.services.ats_scoring_service import ats_scoring_service
+        result = await ats_scoring_service.score_resume(
+            latex_content=TECH_RESUME,
+        )
+        assert result.industry_key == "generic"
+        assert result.industry_label is None
+
+    async def test_tech_profile_boosts_keywords_score_vs_generic(self):
+        """Tech resume + tech JD should score >= tech resume + no JD on keyword dimension."""
+        from app.services.ats_scoring_service import ats_scoring_service
+        calibrated = await ats_scoring_service.score_resume(
+            latex_content=TECH_RESUME,
+            job_description=TECH_JD,
+        )
+        uncalibrated = await ats_scoring_service.score_resume(
+            latex_content=TECH_RESUME,
+        )
+        # Calibrated (tech_saas profile) should have equal or higher keywords score
+        # because profile boosts present keywords like kubernetes, microservices
+        assert calibrated.category_scores.get("keywords", 0) >= uncalibrated.category_scores.get("keywords", 0)
+
+    async def test_industry_calibration_in_detailed_analysis(self):
+        """detailed_analysis must include industry_calibration block."""
+        from app.services.ats_scoring_service import ats_scoring_service
+        result = await ats_scoring_service.score_resume(
+            latex_content=TECH_RESUME,
+            job_description=TECH_JD,
+        )
+        assert "industry_calibration" in result.detailed_analysis
+        cal = result.detailed_analysis["industry_calibration"]
+        assert cal["industry_key"] == "tech_saas"
+        assert cal["profile_applied"] is True
+
+    async def test_explicit_profile_key_overrides_auto_detect(self):
+        """Passing industry='finance_banking' explicitly forces finance profile."""
+        from app.services.ats_scoring_service import ats_scoring_service
+        result = await ats_scoring_service.score_resume(
+            latex_content=TECH_RESUME,
+            job_description=TECH_JD,    # would auto-detect as tech_saas
+            industry="finance_banking",  # explicit override
+        )
+        assert result.industry_key == "finance_banking"
+        assert result.industry_label == "Finance / Banking"
+
+    async def test_legacy_industry_name_maps_correctly(self):
+        """Legacy 'technology' string should map to tech_saas profile."""
+        from app.services.ats_scoring_service import ats_scoring_service
+        result = await ats_scoring_service.score_resume(
+            latex_content=TECH_RESUME,
+            industry="technology",
+        )
+        assert result.industry_key == "tech_saas"
+
+    async def test_score_result_has_industry_fields(self):
+        """ATSScoreResult always has industry_key and industry_label (even if generic)."""
+        from app.services.ats_scoring_service import ats_scoring_service
+        result = await ats_scoring_service.score_resume(
+            latex_content=TECH_RESUME,
+        )
+        assert hasattr(result, "industry_key")
+        assert hasattr(result, "industry_label")
+
+
+# ─── API endpoint tests ───────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+class TestATSScoreEndpointWithIndustry:
+    """Test the /ats/score endpoint returns industry_label."""
+
+    async def test_sync_score_returns_industry_label(
+        self, client, auth_headers
+    ):
         resp = await client.post(
             "/ats/score",
             json={
-                "latex_content": _SAMPLE_LATEX,
-                "job_description": _TECH_JD,
+                "latex_content": TECH_RESUME,
+                "job_description": TECH_JD,
                 "async_processing": False,
             },
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["success"] is True
+        assert "industry_label" in data
+        assert "industry_key" in data
+        assert data["industry_key"] == "tech_saas"
         assert data["industry_label"] == "Technology / SaaS"
 
-    async def test_generic_jd_returns_no_industry_label(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
-        """A job description with no strong industry signal returns null industry_label."""
+    async def test_sync_score_no_jd_returns_generic(
+        self, client, auth_headers
+    ):
         resp = await client.post(
             "/ats/score",
             json={
-                "latex_content": _SAMPLE_LATEX,
-                "job_description": "We are hiring a motivated professional.",
+                "latex_content": TECH_RESUME,
                 "async_processing": False,
             },
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.text
         data = resp.json()
+        assert data["industry_key"] == "generic"
         assert data["industry_label"] is None
 
-    async def test_industry_override_respected(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
-        """industry_override should override auto-detection."""
-        resp = await client.post(
-            "/ats/score",
-            json={
-                "latex_content": _SAMPLE_LATEX,
-                "job_description": _TECH_JD,  # would auto-detect tech_saas
-                "industry_override": "finance_banking",  # explicitly override
-                "async_processing": False,
-            },
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200, resp.text
-        data = resp.json()
-        assert data["industry_label"] == "Finance / Banking"
-
-    async def test_no_jd_no_industry_label(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
-        """Without job_description, no industry detection, so industry_label is None."""
-        resp = await client.post(
-            "/ats/score",
-            json={
-                "latex_content": _SAMPLE_LATEX,
-                "async_processing": False,
-            },
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200, resp.text
-        data = resp.json()
-        assert data["industry_label"] is None
-
-    async def test_industry_profiles_endpoint(
-        self, client: AsyncClient
-    ) -> None:
-        """GET /ats/industry-profiles should return all profiles including generic."""
-        resp = await client.get("/ats/industry-profiles")
-        assert resp.status_code == 200, resp.text
+    async def test_supported_industries_returns_profile_list(
+        self, client
+    ):
+        resp = await client.get("/ats/supported-industries")
+        assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
-        keys = [p["key"] for p in data["profiles"]]
-        assert "tech_saas" in keys
-        assert "finance_banking" in keys
-        assert "generic" in keys
-
-    async def test_unknown_industry_override_returns_400(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
-        """Unknown industry_override key should return 400."""
-        resp = await client.post(
-            "/ats/score",
-            json={
-                "latex_content": _SAMPLE_LATEX,
-                "industry_override": "does_not_exist",
-                "async_processing": False,
-            },
-            headers=auth_headers,
-        )
-        assert resp.status_code == 400
-        assert "industry_override" in resp.json()["detail"]
-
-    async def test_finance_jd_detects_finance_industry(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
-        """Bloomberg + CFA + equity + trading JD should detect finance_banking."""
-        resp = await client.post(
-            "/ats/score",
-            json={
-                "latex_content": _SAMPLE_LATEX,
-                "job_description": _FINANCE_JD,
-                "async_processing": False,
-            },
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200, resp.text
-        data = resp.json()
-        assert data["industry_label"] == "Finance / Banking"
+        labels = [i["label"] for i in data["industries"]]
+        assert "Technology / SaaS" in labels
+        assert "Finance / Banking" in labels
+        assert "Healthcare / Clinical" in labels
+        assert "General" in labels
