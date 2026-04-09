@@ -120,13 +120,24 @@ async def score_resume_ats(
             "endpoint": "ats_score"
         })
 
-        # Detect/resolve industry profile for calibration
-        if request.industry_override and request.industry_override in INDUSTRY_PROFILES:
-            industry_profile_key = request.industry_override
+        # Validate and resolve industry override (reject unknown keys)
+        if request.industry_override is not None:
+            if request.industry_override not in INDUSTRY_PROFILES:
+                valid_keys = list(INDUSTRY_PROFILES.keys())
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unknown industry_override '{request.industry_override}'. Valid keys: {valid_keys}",
+                )
+            # Explicit override: use it directly, skip auto-detection
+            resolved_profile_key = request.industry_override
+            async_profile_key: Optional[str] = request.industry_override
         elif request.job_description:
-            industry_profile_key = detect_industry(request.job_description)
+            # Auto-detect for sync path; worker will auto-detect for async path
+            resolved_profile_key = detect_industry(request.job_description)
+            async_profile_key = None  # worker detects from JD
         else:
-            industry_profile_key = "generic"
+            resolved_profile_key = "generic"
+            async_profile_key = None
 
         if request.async_processing:
             # Generate job_id here (submission helper requires it as positional arg)
@@ -136,7 +147,7 @@ async def score_resume_ats(
                 job_id=job_id,
                 job_description=request.job_description,
                 industry=request.industry,
-                industry_profile_key=industry_profile_key,
+                industry_profile_key=async_profile_key,
                 user_id=user_id,
                 user_plan=request.user_plan,
                 device_fingerprint=request.device_fingerprint,
@@ -156,7 +167,7 @@ async def score_resume_ats(
                 latex_content=request.latex_content,
                 job_description=request.job_description,
                 industry=request.industry,
-                industry_profile_key=industry_profile_key,
+                industry_profile_key=resolved_profile_key,
             )
 
             processing_time = asyncio.get_event_loop().time() - start_time
