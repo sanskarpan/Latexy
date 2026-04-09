@@ -796,7 +796,8 @@ No markdown, no explanation — only the JSON object."""
 
 
 def _salary_cache_key(resume_latex: str, target_role: str, location: str) -> str:
-    raw = f"{resume_latex[:500]}|{target_role.strip().lower()}|{location.strip().lower()}"
+    resume_digest = hashlib.sha256(resume_latex.encode()).hexdigest()
+    raw = f"{resume_digest}|{target_role.strip().lower()}|{location.strip().lower()}"
     return "ai:salary:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
@@ -860,13 +861,20 @@ async def salary_estimate(
         raw = response.choices[0].message.content or "{}"
         parsed = json.loads(raw)
 
+        raw_skills = parsed.get("key_skills", [])
+        key_skills = (
+            [str(s).strip() for s in raw_skills if str(s).strip()]
+            if isinstance(raw_skills, list)
+            else []
+        )
+
         result = SalaryEstimateResponse(
             currency=str(parsed.get("currency", "USD")),
             low=int(parsed.get("low", 0)),
             median=int(parsed.get("median", 0)),
             high=int(parsed.get("high", 0)),
             percentile=max(0, min(100, int(parsed.get("percentile", 50)))),
-            key_skills=[str(s) for s in parsed.get("key_skills", [])],
+            key_skills=key_skills,
             disclaimer=str(parsed.get("disclaimer", "Market estimates may vary.")),
             cached=False,
         )
