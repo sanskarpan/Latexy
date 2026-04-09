@@ -1389,6 +1389,13 @@ class ApiClient {
     })
   }
 
+  async fetchOrcidPublications(orcidId: string, maxResults = 20): Promise<FetchReferencesResponse> {
+    return this.request<FetchReferencesResponse>('/references/fetch-orcid', {
+      method: 'POST',
+      body: JSON.stringify({ orcid_id: orcidId, max_results: maxResults }),
+    })
+  }
+
   async searchResumes(query: string, limit = 20): Promise<SearchResponse> {
     const params = new URLSearchParams({ q: query, limit: String(limit) })
     return this.request<SearchResponse>(`/resumes/search?${params.toString()}`)
