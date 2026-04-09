@@ -451,6 +451,7 @@ async def _async_deep_analyze(
     job_id: str,
     job_description: Optional[str],
     api_key: Optional[str],
+    industry_override: Optional[str] = None,
 ) -> bool:
     """Async implementation of deep analysis task."""
     import time
@@ -554,6 +555,7 @@ async def _async_deep_analyze(
         scoring_result = await ats_scoring_service.score_resume(
             latex_content=latex_content,
             job_description=job_description,
+            industry=industry_override,  # override key used as legacy fallback; auto-detect if None
         )
         multi_dim_scores = scoring_result.multi_dim_scores or {}
         industry_key = scoring_result.industry_key
