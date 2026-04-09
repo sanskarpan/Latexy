@@ -696,6 +696,7 @@ export default function OptimizationSuitePage() {
                   recommendations={stream.atsDetails?.recommendations}
                   warnings={stream.atsDetails?.warnings}
                   strengths={stream.atsDetails?.strengths}
+                  industryLabel={stream.industryLabel}
                 />
               </motion.section>
             )}
