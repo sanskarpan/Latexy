@@ -56,6 +56,7 @@ class ATSScoreResponse(BaseModel):
     processing_time: Optional[float] = None
     message: str
     timestamp: Optional[str] = None
+    industry_key: Optional[str] = None
     industry_label: Optional[str] = None
 
 
@@ -183,6 +184,7 @@ async def score_resume_ats(
                 processing_time=processing_time,
                 message=f"ATS scoring completed: {result.overall_score:.1f}/100",
                 timestamp=result.timestamp,
+                industry_key=result.industry_key,
                 industry_label=result.industry_label,
             )
 
@@ -411,7 +413,11 @@ async def get_industry_keywords(industry: str):
 async def get_supported_industries():
     """Get list of supported industries for ATS scoring."""
     try:
-        industries = list(ats_scoring_service.industry_keywords.keys())
+        from ..services.industry_ats_profiles import INDUSTRY_PROFILES
+        industries = [
+            {"key": key, "label": profile["label"]}
+            for key, profile in INDUSTRY_PROFILES.items()
+        ]
 
         return {
             "success": True,
