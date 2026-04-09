@@ -1668,6 +1668,17 @@ class ApiClient {
   }
 
   // ---------------------------------------------------------------- //
+  //  Translation (Feature 44)                                        //
+  // ---------------------------------------------------------------- //
+
+  async translateResume(body: TranslateResumeRequest): Promise<TranslateResumeResponse> {
+    return this.request<TranslateResumeResponse>('/ai/translate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
   //  Collaboration (Feature 40)                                      //
   // ---------------------------------------------------------------- //
 
@@ -2087,4 +2098,19 @@ export interface MendeleyImportResponse {
   message: string
 }
 
+// ------------------------------------------------------------------ //
+//  Translation (Feature 44)                                          //
+// ------------------------------------------------------------------ //
+
+export interface TranslateResumeRequest {
+  resume_id: string
+  target_language: string   // e.g. "French"
+  language_code: string     // e.g. "fr"
+}
+
+export interface TranslateResumeResponse {
+  success: boolean
+  variant_resume_id: string
+  cached: boolean
+}
 

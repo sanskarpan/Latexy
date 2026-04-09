@@ -9,18 +9,21 @@ import time
 from calendar import month_abbr as _month_abbr
 from calendar import month_name as _month_name
 from typing import Dict, List, Literal, Optional
+from uuid import uuid4
 
 import httpx
 import openai
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.redis import cache_manager
 from ..database.connection import get_db
-from ..middleware.auth_middleware import get_current_user_optional
+from ..database.models import Resume
+from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from ..services.error_explainer_service import error_explainer_service
 from ..services.latex_text_extractor import extract_prose, offset_to_latex_position
 from ..services.proofreader_service import ProofreadResponse, proofread_latex
@@ -1166,3 +1169,126 @@ async def format_contacts(request: ContactFormatRequest) -> ContactFormatRespons
         ))
 
     return ContactFormatResponse(changes=changes, formatted_latex=result)
+
+
+# ── Multilingual Resume Translation (Feature 44) ─────────────────────────────
+
+
+class TranslateRequest(BaseModel):
+    resume_id: str
+    target_language: str = Field(..., min_length=1, max_length=50)   # e.g. "French"
+    language_code: str = Field(..., min_length=1, max_length=10)     # e.g. "fr"
+
+
+class TranslateResponse(BaseModel):
+    success: bool
+    variant_resume_id: str
+    cached: bool
+
+
+def _translate_cache_key(latex_content: str, target_language: str) -> str:
+    # Hash entire content to avoid collision from shared preambles
+    content_hash = hashlib.sha256(latex_content.encode()).hexdigest()[:16]
+    lang_hash = hashlib.sha256(target_language.lower().strip().encode()).hexdigest()[:8]
+    return f"ai:translate:{content_hash}{lang_hash}"
+
+
+_TRANSLATE_SYSTEM_PROMPT = """\
+Translate this LaTeX resume to {target_language}.
+STRICT RULES:
+1. Translate ONLY prose text content.
+2. Never modify LaTeX commands, environments, or special characters.
+3. Never modify: \\section{{}}, \\textbf{{}}, \\begin{{...}}, \\end{{...}}, dates, numbers, proper nouns, URLs.
+4. Translate: bullet text after \\item, section header labels, prose descriptions.
+5. Return ONLY the translated LaTeX source — no explanation or markdown fences.\
+"""
+
+
+@router.post("/translate", response_model=TranslateResponse)
+async def translate_resume(
+    request: TranslateRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Translate a resume to a target language, creating a variant fork. Auth required."""
+    # Fetch resume with ownership check
+    result = await db.execute(
+        select(Resume).where(Resume.id == request.resume_id, Resume.user_id == user_id)
+    )
+    resume = result.scalar_one_or_none()
+    if resume is None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    # Cache check
+    cache_key = _translate_cache_key(resume.latex_content, request.target_language)
+    was_cached = False
+    translated_latex: Optional[str] = None
+
+    try:
+        cached_value = await cache_manager.get(cache_key)
+        if cached_value and isinstance(cached_value, str):
+            translated_latex = cached_value
+            was_cached = True
+    except Exception:
+        pass
+
+    if translated_latex is None:
+        # Resolve API key: BYOK first, then system default
+        api_key: Optional[str] = None
+        try:
+            from ..services.api_key_service import api_key_service
+            api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+        except Exception:
+            pass
+        if not api_key and settings.OPENAI_API_KEY:
+            api_key = settings.OPENAI_API_KEY
+        if not api_key:
+            raise HTTPException(status_code=503, detail="No OpenAI API key configured")
+
+        system_prompt = _TRANSLATE_SYSTEM_PROMPT.format(target_language=request.target_language)
+
+        try:
+            llm_client = openai.AsyncOpenAI(api_key=api_key)
+            response = await llm_client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": resume.latex_content},
+                ],
+                max_tokens=8000,
+                temperature=0.3,
+            )
+            translated_latex = (response.choices[0].message.content or "").strip()
+        except Exception as exc:
+            logger.error(f"translate LLM call failed: {exc}")
+            raise HTTPException(status_code=502, detail="Translation service error. Please try again.")
+
+        if not translated_latex:
+            raise HTTPException(status_code=502, detail="Translation returned empty result. Please try again.")
+
+        # Cache as string TTL=3600
+        try:
+            await cache_manager.set(cache_key, translated_latex, ttl=3600)
+        except Exception:
+            pass
+        was_cached = False
+
+    # Create variant fork
+    variant = Resume(
+        id=str(uuid4()),
+        user_id=user_id,
+        title=f"{resume.title} — [{request.language_code.upper()}]",
+        latex_content=translated_latex,
+        is_template=False,
+        tags=list(resume.tags) if resume.tags else None,
+        parent_resume_id=resume.id,
+    )
+    db.add(variant)
+    await db.commit()
+    await db.refresh(variant)
+
+    return TranslateResponse(
+        success=True,
+        variant_resume_id=str(variant.id),
+        cached=was_cached,
+    )
