@@ -337,7 +337,7 @@ class ATSScoringService:
                 text_content, job_description, industry,
                 industry_profile=None if is_generic else profile,
             )
-            keyword_score = await self._score_keywords(text_content, job_description, industry)
+            keyword_score = await self._score_keywords(text_content, job_description, industry, industry_key)
             readability_score = await self._score_readability(text_content)
 
             # Multi-dimensional scores (rule-based, fast)
@@ -820,18 +820,21 @@ class ATSScoringService:
                     + ", ".join(list(profile_keywords.keys())[:4]) + ")"
                 )
 
-        # Tech keywords (expanded corpus)
-        tech_found = [
-            kw for kw in self.TECH_KEYWORDS
-            if re.search(rf'\b{kw}\b', text_content, re.IGNORECASE)
-        ]
-        if len(tech_found) >= 8:
-            strengths.append("Rich technical keyword presence")
-        elif len(tech_found) >= 4:
-            recommendations.append("Consider adding more relevant technical keywords")
-        else:
-            score -= 10
-            recommendations.append("Include relevant technical skills and keywords")
+        # Tech keywords (expanded corpus) — only applied to tech/generic profiles
+        _TECH_PROFILES = {"generic", "tech_saas"}
+        tech_found: List[str] = []
+        if industry_key in _TECH_PROFILES:
+            tech_found = [
+                kw for kw in self.TECH_KEYWORDS
+                if re.search(rf'\b{kw}\b', text_content, re.IGNORECASE)
+            ]
+            if len(tech_found) >= 8:
+                strengths.append("Rich technical keyword presence")
+            elif len(tech_found) >= 4:
+                recommendations.append("Consider adding more relevant technical keywords")
+            else:
+                score -= 10
+                recommendations.append("Include relevant technical skills and keywords")
 
         # Soft skills (expanded corpus)
         soft_skills_found = [
