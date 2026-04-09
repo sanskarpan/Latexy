@@ -71,6 +71,7 @@ def mock_scoring():
     fake.strengths = ["Clear formatting", "Relevant experience"]
     fake.warnings = ["Missing summary section"]
     fake.detailed_analysis = {"word_count": 200, "sections_found": 3}
+    fake.industry_label = None  # Feature 46: must be str | None, not a MagicMock
 
     with patch(
         "app.workers.ats_worker.ats_scoring_service.score_resume",
