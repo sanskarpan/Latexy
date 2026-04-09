@@ -107,14 +107,19 @@ class TestTranslateCacheKey:
 
 @pytest.mark.asyncio
 class TestTranslateValidation:
-    async def test_missing_target_language_returns_422(self, client: AsyncClient) -> None:
+    async def test_missing_target_language_returns_422(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
         resp = await client.post(
             "/ai/translate",
             json={"resume_id": "some-id", "language_code": "fr"},
+            headers=auth_headers,
         )
         assert resp.status_code == 422
 
-    async def test_target_language_too_long_returns_422(self, client: AsyncClient) -> None:
+    async def test_target_language_too_long_returns_422(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
         resp = await client.post(
             "/ai/translate",
             json={
@@ -122,10 +127,13 @@ class TestTranslateValidation:
                 "target_language": "F" * 51,
                 "language_code": "fr",
             },
+            headers=auth_headers,
         )
         assert resp.status_code == 422
 
-    async def test_language_code_too_long_returns_422(self, client: AsyncClient) -> None:
+    async def test_language_code_too_long_returns_422(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
         resp = await client.post(
             "/ai/translate",
             json={
@@ -133,13 +141,17 @@ class TestTranslateValidation:
                 "target_language": "French",
                 "language_code": "f" * 11,
             },
+            headers=auth_headers,
         )
         assert resp.status_code == 422
 
-    async def test_missing_resume_id_returns_422(self, client: AsyncClient) -> None:
+    async def test_missing_resume_id_returns_422(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
         resp = await client.post(
             "/ai/translate",
             json={"target_language": "French", "language_code": "fr"},
+            headers=auth_headers,
         )
         assert resp.status_code == 422
 
@@ -304,7 +316,7 @@ class TestTranslateEndpoint:
         with patch(_SETTINGS_PATCH) as mock_settings, patch(
             "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
         ), patch(
-            "app.api.ai_routes.api_key_service.get_user_provider",
+            "app.services.api_key_service.api_key_service.get_user_provider",
             new_callable=AsyncMock,
             return_value=None,
         ):
