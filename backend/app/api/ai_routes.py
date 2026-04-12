@@ -649,7 +649,7 @@ class ConfidenceScoreResponse(BaseModel):
 async def get_confidence_score(request: ConfidenceScoreRequest):
     """Holistic resume quality score across 5 dimensions. Rule-based, no LLM required."""
     cache_key = "ai:confidence:" + hashlib.sha256(
-        request.latex_content[:2000].encode()
+        request.latex_content.encode()
     ).hexdigest()[:16]
 
     try:
