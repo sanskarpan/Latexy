@@ -67,6 +67,8 @@ interface LaTeXEditorProps {
     endLine: number
     endColumn: number
   }) => void
+  /** Called when user right-clicks a LaTeX command and selects Show Documentation */
+  onShowDocs?: (command: string) => void
   /** Proofreader issues to render as inline decorations */
   proofreadIssues?: ProofreadIssue[]
   /** Linter issues to show as Monaco markers (squiggles) */
@@ -271,7 +273,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, onPresenceChange, trackedChanges, onTrackedChangesUpdate },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, onShowDocs, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, onPresenceChange, trackedChanges, onTrackedChangesUpdate },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -288,6 +290,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     onCursorInSummarySectionRef.current = onCursorInSummarySection
     const onWritingAssistantActionRef = useRef(onWritingAssistantAction)
     onWritingAssistantActionRef.current = onWritingAssistantAction
+    const onShowDocsRef = useRef(onShowDocs)
+    onShowDocsRef.current = onShowDocs
     const spellCheckIssuesRef = useRef(spellCheckIssues)
     spellCheckIssuesRef.current = spellCheckIssues
     const onPresenceChangeRef = useRef(onPresenceChange)
@@ -1193,6 +1197,30 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         },
       })
       if (writingActionDisposable) disposablesRef.current.push(writingActionDisposable)
+
+      // ── Show Documentation context menu action ────────────────────
+      const docsActionDisposable = editor.addAction({
+        id: 'latexy.showDocs',
+        label: '📖 Show Documentation',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 2.0,
+        run: (ed) => {
+          const position = ed.getPosition()
+          if (!position) return
+          const model = ed.getModel()
+          if (!model) return
+          const lineContent = model.getLineContent(position.lineNumber)
+          // Get word at cursor position including the backslash
+          const wordRange = model.getWordAtPosition(position)
+          if (!wordRange) return
+          // Check if there's a backslash right before the word
+          const charBefore = lineContent[wordRange.startColumn - 2]
+          if (charBefore !== '\\') return
+          const cmd = '\\' + wordRange.word
+          onShowDocsRef.current?.(cmd)
+        },
+      })
+      if (docsActionDisposable) disposablesRef.current.push(docsActionDisposable)
 
       // ── Spell-check code actions (right-click replacements + Add to Dictionary) ──
       // Register a command for "Add to dictionary" so it can be referenced by code actions
