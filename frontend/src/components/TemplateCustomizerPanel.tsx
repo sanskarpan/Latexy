@@ -66,6 +66,8 @@ export default function TemplateCustomizerPanel({
     latexRef.current = currentLatex
   }, [currentLatex])
 
+  const compileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Capture latex at mount time for "Reset to Defaults"
   const [originalLatex] = useState(currentLatex)
 
@@ -93,18 +95,32 @@ export default function TemplateCustomizerPanel({
 
   // ── Shared apply helper ────────────────────────────────────────────────────
 
-  function applyLatex(newLatex: string) {
+  function applyLatex(newLatex: string, opts?: { debounce?: boolean }) {
     latexRef.current = newLatex
     onPreambleChange(newLatex)
-    if (autoCompile) onTriggerCompile?.()
+    if (autoCompile) {
+      if (opts?.debounce) {
+        if (compileTimerRef.current) clearTimeout(compileTimerRef.current)
+        compileTimerRef.current = setTimeout(() => onTriggerCompile?.(), 600)
+      } else {
+        onTriggerCompile?.()
+      }
+    }
   }
+
+  // Clear debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (compileTimerRef.current) clearTimeout(compileTimerRef.current)
+    }
+  }, [])
 
   // ── Change handlers ────────────────────────────────────────────────────────
 
   function handleMargin(value: number) {
     setMarginIn(value)
     const newLatex = setGeometryMargin(latexRef.current, value)
-    applyLatex(newLatex)
+    applyLatex(newLatex, { debounce: true })
   }
 
   function handleFontSize(size: 10 | 11 | 12) {
@@ -197,7 +213,7 @@ export default function TemplateCustomizerPanel({
 
         {/* ── Section Spacing ──────────────────────────────────────────── */}
         <div className="space-y-2">
-          <SectionLabel label="Section Spacing" />
+          <SectionLabel label="Paragraph Spacing" />
           <div className="flex gap-1">
             {(['compact', 'normal', 'spacious'] as const).map((mode) => (
               <button
