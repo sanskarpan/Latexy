@@ -12,6 +12,8 @@ const AXES = [
   { key: 'section_order' as const,   label: 'Order' },
 ]
 
+const clamp = (v: number) => Math.min(100, Math.max(0, v))
+
 function RadarChart({ score }: { score: ConfidenceScoreResponse }) {
   const SIZE = 150
   const CENTER = SIZE / 2
@@ -30,7 +32,7 @@ function RadarChart({ score }: { score: ConfidenceScoreResponse }) {
     toPoints(AXES.map((_, i) => getXY(i, RADIUS * frac)))
 
   const dataPolygon = toPoints(
-    AXES.map(({ key }, i) => getXY(i, (score[key] / 100) * RADIUS))
+    AXES.map(({ key }, i) => getXY(i, (clamp(score[key]) / 100) * RADIUS))
   )
 
   return (
@@ -67,7 +69,7 @@ function RadarChart({ score }: { score: ConfidenceScoreResponse }) {
       />
       {/* Data dots */}
       {AXES.map(({ key }, i) => {
-        const [x, y] = getXY(i, (score[key] / 100) * RADIUS)
+        const [x, y] = getXY(i, (clamp(score[key]) / 100) * RADIUS)
         return <circle key={i} cx={x} cy={y} r="2.5" fill="rgba(251,146,60,0.95)" />
       })}
       {/* Labels */}
@@ -192,7 +194,7 @@ export default function ConfidenceScorePanel({
             {/* Dimension bars */}
             <div className="mt-4 space-y-2">
               {AXES.map(({ key, label }) => {
-                const val = score[key]
+                const val = clamp(score[key])
                 return (
                   <div key={key} className="flex items-center gap-2 text-[11px]">
                     <span className="w-16 shrink-0 text-zinc-500">{label}</span>
