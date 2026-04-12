@@ -381,20 +381,19 @@ export default function PDFPreview({
                 key={pageNum}
                 ref={(el) => { pageRefs.current[pageNum] = el }}
                 className="shadow-[0_4px_24px_rgba(0,0,0,0.5)] select-text"
-                style={{
-                  lineHeight: 0,
-                  position: 'relative',
-                  ...(darkPdf ? { filter: 'invert(1) hue-rotate(180deg)', background: '#fff' } : {}),
-                }}
+                style={{ lineHeight: 0, position: 'relative' }}
                 onClick={(e) => handlePageClick(e, pageNum)}
               >
-                <Page
-                  pageNumber={pageNum}
-                  width={pageWidth}
-                  renderTextLayer
-                  renderAnnotationLayer
-                  onRenderSuccess={(page) => storePagDims(pageNum, page)}
-                />
+                {/* Dark filter wraps Page only so HeatmapCanvas colours are unaffected */}
+                <div style={darkPdf ? { filter: 'invert(1) hue-rotate(180deg)', background: '#fff' } : undefined}>
+                  <Page
+                    pageNumber={pageNum}
+                    width={pageWidth}
+                    renderTextLayer
+                    renderAnnotationLayer
+                    onRenderSuccess={(page) => storePagDims(pageNum, page)}
+                  />
+                </div>
                 {showHeatmap && (
                   <HeatmapCanvas
                     pageIndex={pageNum - 1}
