@@ -1149,6 +1149,12 @@ export const LATEX_DOCS_MAP: Map<string, LaTeXDoc> = new Map(
   LATEX_DOCS.map(doc => [doc.command, doc])
 )
 
+// Filter each doc's seealso to only include commands that exist in the map.
+// This prevents LaTeXDocPanel from landing on "Not found" for dangling refs.
+for (const doc of LATEX_DOCS) {
+  doc.seealso = doc.seealso.filter(cmd => LATEX_DOCS_MAP.has(cmd))
+}
+
 export const LATEX_DOCS_BY_CATEGORY = LATEX_DOCS.reduce((acc, doc) => {
   if (!acc[doc.category]) acc[doc.category] = []
   acc[doc.category].push(doc)
