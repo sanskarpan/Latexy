@@ -1210,10 +1210,30 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           const model = ed.getModel()
           if (!model) return
           const lineContent = model.getLineContent(position.lineNumber)
-          // Get word at cursor position including the backslash
+          const col0 = position.column - 1  // 0-based column
+
+          // Case 1: cursor is on an env name inside \begin{...} or \end{...}
+          // More precise: check if cursor is inside braces of \begin{} or \end{}
+          const envPattern = /\\(?:begin|end)\{(\w+\*?)\}/g
+          let envMatch: RegExpExecArray | null
+          let resolvedEnvCmd: string | null = null
+          while ((envMatch = envPattern.exec(lineContent)) !== null) {
+            const start = envMatch.index + envMatch[0].indexOf('{') + 1
+            const end = start + envMatch[1].length
+            if (col0 >= start && col0 <= end) {
+              resolvedEnvCmd = `\\begin{${envMatch[1]}}`
+              break
+            }
+          }
+
+          if (resolvedEnvCmd) {
+            onShowDocsRef.current?.(resolvedEnvCmd)
+            return
+          }
+
+          // Case 2: cursor is on a regular \command
           const wordRange = model.getWordAtPosition(position)
           if (!wordRange) return
-          // Check if there's a backslash right before the word
           const charBefore = lineContent[wordRange.startColumn - 2]
           if (charBefore !== '\\') return
           const cmd = '\\' + wordRange.word
