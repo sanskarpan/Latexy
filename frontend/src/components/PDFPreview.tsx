@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, type MutableRefObject } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import { FileText, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, MousePointer, Moon, Sun } from 'lucide-react'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import { parseSynctex, synctexReverse, synctexForward, type SynctexData } from '@/lib/synctex-parser'
+import { computePageHeatmap, heatmapColor } from '@/lib/heatmap-generator'
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`
 
@@ -26,6 +27,56 @@ interface PageDimensions {
   naturalHeight: number
 }
 
+// ── Heatmap canvas overlay ────────────────────────────────────────────────────
+
+function HeatmapCanvas({
+  pageIndex,
+  pageWidth,
+  pageDimsRef,
+}: {
+  pageIndex: number
+  pageWidth: number
+  pageDimsRef: MutableRefObject<Record<number, PageDimensions>>
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const pageNum = pageIndex + 1
+    const dims = pageDimsRef.current[pageNum]
+    const aspectRatio = dims ? dims.naturalHeight / dims.naturalWidth : 11 / 8.5
+    const height = Math.floor(pageWidth * aspectRatio)
+
+    canvas.width = pageWidth
+    canvas.height = height
+    ctx.clearRect(0, 0, pageWidth, height)
+
+    const regions = computePageHeatmap(pageIndex)
+    for (const region of regions) {
+      const y = (region.yPercent / 100) * height
+      const h = (region.heightPercent / 100) * height
+      ctx.fillStyle = heatmapColor(region.intensity)
+      ctx.fillRect(0, y, pageWidth, h)
+      // Region label
+      const fontSize = Math.max(9, Math.floor(pageWidth * 0.022))
+      ctx.font = `${fontSize}px system-ui, sans-serif`
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'
+      ctx.fillText(region.label, 8, y + h / 2 + fontSize * 0.35)
+    }
+  }, [pageIndex, pageWidth, pageDimsRef])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 5 }}
+    />
+  )
+}
+
 export default function PDFPreview({
   pdfUrl,
   isLoading,
@@ -44,6 +95,7 @@ export default function PDFPreview({
     if (typeof window === 'undefined') return false
     return localStorage.getItem('latexy_pdf_dark') === '1'
   })
+  const [showHeatmap, setShowHeatmap] = useState(false)
 
   const toggleDarkPdf = () => {
     setDarkPdf((prev) => {
@@ -261,8 +313,17 @@ export default function PDFPreview({
           </div>
         )}
 
-        {/* Dark preview + Download */}
+        {/* Heatmap + Dark preview + Download */}
         <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => setShowHeatmap((p) => !p)}
+            title="Shows predicted areas recruiters focus on (based on eye-tracking research)"
+            className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] transition hover:bg-white/10 ${
+              showHeatmap ? 'text-orange-300' : 'text-zinc-600 hover:text-zinc-200'
+            }`}
+          >
+            🔥 Heatmap
+          </button>
           <button
             onClick={toggleDarkPdf}
             aria-label={darkPdf ? 'Light PDF preview' : 'Dark PDF preview'}
@@ -322,6 +383,7 @@ export default function PDFPreview({
                 className="shadow-[0_4px_24px_rgba(0,0,0,0.5)] select-text"
                 style={{
                   lineHeight: 0,
+                  position: 'relative',
                   ...(darkPdf ? { filter: 'invert(1) hue-rotate(180deg)', background: '#fff' } : {}),
                 }}
                 onClick={(e) => handlePageClick(e, pageNum)}
@@ -333,6 +395,13 @@ export default function PDFPreview({
                   renderAnnotationLayer
                   onRenderSuccess={(page) => storePagDims(pageNum, page)}
                 />
+                {showHeatmap && (
+                  <HeatmapCanvas
+                    pageIndex={pageNum - 1}
+                    pageWidth={pageWidth}
+                    pageDimsRef={pageDimsRef}
+                  />
+                )}
               </div>
             ))}
           </Document>
