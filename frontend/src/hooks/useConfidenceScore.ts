@@ -10,6 +10,7 @@ export function useConfidenceScore(latexContent: string) {
   const [result, setResult] = useState<ConfidenceScoreResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestIdRef = useRef(0)
 
   // Debounced auto-score on content change
   useEffect(() => {
@@ -18,14 +19,15 @@ export function useConfidenceScore(latexContent: string) {
     if (timerRef.current) clearTimeout(timerRef.current)
 
     timerRef.current = setTimeout(async () => {
+      const id = ++requestIdRef.current
       setLoading(true)
       try {
         const res = await apiClient.confidenceScore(latexContent)
-        setResult(res)
+        if (id === requestIdRef.current) setResult(res)
       } catch {
         // silent — score is optional enhancement
       } finally {
-        setLoading(false)
+        if (id === requestIdRef.current) setLoading(false)
       }
     }, DEBOUNCE_MS)
 
@@ -39,14 +41,15 @@ export function useConfidenceScore(latexContent: string) {
     if (!latexContent || latexContent.length < MIN_CONTENT_LEN) return
     if (timerRef.current) clearTimeout(timerRef.current)
 
+    const id = ++requestIdRef.current
     setLoading(true)
     try {
       const res = await apiClient.confidenceScore(latexContent)
-      setResult(res)
+      if (id === requestIdRef.current) setResult(res)
     } catch {
       // silent
     } finally {
-      setLoading(false)
+      if (id === requestIdRef.current) setLoading(false)
     }
   }, [latexContent])
 
