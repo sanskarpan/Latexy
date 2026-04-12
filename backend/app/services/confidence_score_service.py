@@ -42,9 +42,11 @@ class ConfidenceScore:
 
 _SECTION_RE = re.compile(r'\\section\*?\{([^}]+)\}', re.I)
 
-# Four pillars of a complete resume
-_COMPLETENESS_PATTERNS = [
-    re.compile(r'contact|personal|info|phone|email', re.I),
+# Contact detection: section headings + raw header content (contact info rarely appears in \section{})
+_CONTACT_RE = re.compile(r'contact|personal|info|phone|email', re.I)
+
+# Experience/Education/Skills: checked against section headings only to avoid prose false-positives
+_SECTION_COMPLETENESS_PATTERNS = [
     re.compile(r'experience|work|employment|career|position', re.I),
     re.compile(r'education|degree|academic|university|college|school', re.I),
     re.compile(r'skills?|technologies|languages|tools|competenc', re.I),
@@ -65,6 +67,14 @@ _DATE_FORMAT_FAMILIES = [
 class ConfidenceScoreService:
     def score(self, latex_content: str) -> ConfidenceScore:
         """Compute all five dimension scores and return a ConfidenceScore."""
+        if not latex_content.strip():
+            return ConfidenceScore(
+                writing_quality=0,
+                completeness=0,
+                quantification=0,
+                formatting=0,
+                section_order=0,
+            )
         section_names = _SECTION_RE.findall(latex_content)
         return ConfidenceScore(
             writing_quality=self._score_writing(latex_content),
@@ -82,10 +92,12 @@ class ConfidenceScoreService:
         return proofread_latex(latex_content).overall_score
 
     def _score_completeness(self, latex_content: str, section_names: List[str]) -> int:
-        # Check section names + first 2000 chars of content (for header-embedded contact)
-        search_text = " ".join(section_names) + " " + latex_content[:2000]
-        found = sum(1 for pat in _COMPLETENESS_PATTERNS if pat.search(search_text))
-        return round(found / len(_COMPLETENESS_PATTERNS) * 100)
+        sections_text = " ".join(section_names)
+        # Contact: allow header-embedded contact (not always in a \section{})
+        contact_found = bool(_CONTACT_RE.search(sections_text + " " + latex_content[:2000]))
+        # Experience/Education/Skills: headings only — prose mentions cause false positives
+        sections_found = sum(1 for pat in _SECTION_COMPLETENESS_PATTERNS if pat.search(sections_text))
+        return round((int(contact_found) + sections_found) / 4 * 100)
 
     def _score_quantification(self, latex_content: str) -> int:
         item_lines = [ln for ln in latex_content.splitlines() if r'\item' in ln]
