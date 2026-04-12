@@ -506,12 +506,13 @@ const SECTION_SPACING_VALUES: Record<SectionSpacingMode, string> = {
   spacious: '6pt',
 }
 
+// Pre-compiled static regex — avoids ReDoS risk from RegExp constructed from variable
+const SECTION_SPACING_VALUE_RE = /% latexy:section-spacing\s*\n?\s*\\setlength\{[^}]+\}\{([^}]+)\}/
+const SECTION_SPACING_BLOCK_RE = /% latexy:section-spacing\s*\n?\s*\\(?:setlength|vspace)\{[^}]+\}(?:\{[^}]*\})?\n?/g
+
 export function extractSectionSpacingFromPreamble(latex: string): SectionSpacingMode {
   if (latex.includes(SECTION_SPACING_MARKER)) {
-    // \setlength{\parskip}{VALUE} — capture the second braced arg (the value)
-    const m = latex.match(
-      new RegExp(`${SECTION_SPACING_MARKER}\\s*\\n?\\s*\\\\setlength\\{[^}]+\\}\\{([^}]+)\\}`)
-    )
+    const m = latex.match(SECTION_SPACING_VALUE_RE)
     if (m) {
       const val = m[1].trim()
       if (val === '-4pt') return 'compact'
@@ -526,27 +527,31 @@ export function setSectionVspacing(latex: string, mode: SectionSpacingMode): str
   const value = SECTION_SPACING_VALUES[mode]
   const newBlock = `${SECTION_SPACING_MARKER}\n\\setlength{\\parskip}{${value}}`
 
-  // Replace existing managed block
-  const markerRe = new RegExp(
-    `${SECTION_SPACING_MARKER}\\s*\\n?\\s*\\\\(?:setlength|vspace)\\{[^}]+\\}(?:\\{[^}]*\\})?\\n?`,
-    'g'
-  )
   if (latex.includes(SECTION_SPACING_MARKER)) {
-    return latex.replace(markerRe, newBlock + '\n')
+    SECTION_SPACING_BLOCK_RE.lastIndex = 0
+    return latex.replace(SECTION_SPACING_BLOCK_RE, newBlock + '\n')
   }
 
   // No existing block — insert before \begin{document}
   return latex.replace(/(\\begin\{document\})/, `${newBlock}\n$1`)
 }
 
-/** Returns the raw margin value in inches from \geometry{margin=Xin}, bypassing bucketing.
- *  Use this instead of extractMarginsFromPreamble when you need numeric precision (e.g. slider). */
+/** Returns the raw margin value in inches from \geometry{margin=X<unit>}, bypassing bucketing.
+ *  Handles in, cm, mm, pt units. Use this instead of extractMarginsFromPreamble when you need
+ *  numeric precision (e.g. slider). */
 export function extractRawMarginFromPreamble(latex: string): number {
   const [preamble] = splitAtDocument(latex)
-  const m = preamble.match(/\\geometry\{margin=([^,}]+)[,}]/)
+  const m = preamble.match(/\\geometry\{margin=([0-9]*\.?[0-9]+)\s*(in|cm|mm|pt)[,}]/)
   if (m) {
-    const val = parseFloat(m[1].trim())
-    if (!isNaN(val)) return val
+    const value = parseFloat(m[1])
+    if (!isNaN(value)) {
+      switch (m[2]) {
+        case 'in': return value
+        case 'cm': return value / 2.54
+        case 'mm': return value / 25.4
+        case 'pt': return value / 72.27
+      }
+    }
   }
   return 0.75
 }
