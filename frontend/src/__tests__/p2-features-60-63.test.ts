@@ -11,7 +11,7 @@
  *   63B — round-trip fidelity and idempotency
  */
 
-import { describe, test, expect, beforeEach, vi } from 'vitest'
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Feature 60 · LaTeX Documentation Lookup Panel — Data
@@ -554,6 +554,8 @@ describe('Feature 63 · TemplateCustomizerPanel auto-compile localStorage key', 
       removeItem: (key: string) => { delete store[key] },
     })
   })
+
+  afterEach(() => vi.unstubAllGlobals())
 
   test('default: auto-compile is off (key absent)', () => {
     expect(localStorage.getItem(AUTO_COMPILE_KEY)).toBeNull()
