@@ -1572,20 +1572,35 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                   Quality
                 </span>
               ) : confidenceScore != null ? (
-                <button
-                  type="button"
-                  onClick={onConfidenceBadgeClick}
-                  title="Resume quality score — click to view details"
-                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer hover:brightness-110 ${
-                    confidenceScore >= 80
-                      ? 'text-emerald-400 bg-emerald-500/10'
-                      : confidenceScore >= 60
-                        ? 'text-amber-400 bg-amber-500/10'
-                        : 'text-rose-400 bg-rose-500/10'
-                  }`}
-                >
-                  Q {confidenceScore}
-                </button>
+                onConfidenceBadgeClick ? (
+                  <button
+                    type="button"
+                    onClick={onConfidenceBadgeClick}
+                    title="Resume quality score — click to view details"
+                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer hover:brightness-110 ${
+                      confidenceScore >= 80
+                        ? 'text-emerald-400 bg-emerald-500/10'
+                        : confidenceScore >= 60
+                          ? 'text-amber-400 bg-amber-500/10'
+                          : 'text-rose-400 bg-rose-500/10'
+                    }`}
+                  >
+                    Q {confidenceScore}
+                  </button>
+                ) : (
+                  <span
+                    title="Resume quality score"
+                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
+                      confidenceScore >= 80
+                        ? 'text-emerald-400 bg-emerald-500/10'
+                        : confidenceScore >= 60
+                          ? 'text-amber-400 bg-amber-500/10'
+                          : 'text-rose-400 bg-rose-500/10'
+                    }`}
+                  >
+                    Q {confidenceScore}
+                  </span>
+                )
               ) : null
             )}
             <span>{value.length.toLocaleString()} chars</span>
