@@ -95,6 +95,13 @@ interface LaTeXEditorProps {
   trackedChanges?: TrackedChange[]
   /** Called when tracked changes are updated */
   onTrackedChangesUpdate?: (changes: TrackedChange[]) => void
+  // ── Quality Score (Feature 59) ──────────────────────────────────────
+  /** Resume quality/confidence score (0-100, null = not scored yet) */
+  confidenceScore?: number | null
+  /** Whether quality score is loading */
+  confidenceScoreLoading?: boolean
+  /** Callback when user clicks the quality score badge */
+  onConfidenceBadgeClick?: () => void
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -273,7 +280,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, onShowDocs, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, onPresenceChange, trackedChanges, onTrackedChangesUpdate },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, onPresenceChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -1605,6 +1612,44 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 loading={atsScoreLoading ?? false}
                 onClick={onATSBadgeClick}
               />
+            )}
+            {(confidenceScore !== undefined || confidenceScoreLoading) && (
+              confidenceScoreLoading ? (
+                <span className="flex items-center gap-1 text-[10px] text-zinc-500">
+                  <span className="h-1.5 w-1.5 animate-spin rounded-full border border-zinc-500 border-t-transparent" />
+                  Quality
+                </span>
+              ) : confidenceScore != null ? (
+                onConfidenceBadgeClick ? (
+                  <button
+                    type="button"
+                    onClick={onConfidenceBadgeClick}
+                    title="Resume quality score — click to view details"
+                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer hover:brightness-110 ${
+                      confidenceScore >= 80
+                        ? 'text-emerald-400 bg-emerald-500/10'
+                        : confidenceScore >= 60
+                          ? 'text-amber-400 bg-amber-500/10'
+                          : 'text-rose-400 bg-rose-500/10'
+                    }`}
+                  >
+                    Q {confidenceScore}
+                  </button>
+                ) : (
+                  <span
+                    title="Resume quality score"
+                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
+                      confidenceScore >= 80
+                        ? 'text-emerald-400 bg-emerald-500/10'
+                        : confidenceScore >= 60
+                          ? 'text-amber-400 bg-amber-500/10'
+                          : 'text-rose-400 bg-rose-500/10'
+                    }`}
+                  >
+                    Q {confidenceScore}
+                  </span>
+                )
+              ) : null
             )}
             <span>{value.length.toLocaleString()} chars</span>
             <span className="text-zinc-800">

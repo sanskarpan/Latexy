@@ -550,6 +550,18 @@ export interface QuickTailorResponse {
   job_id: string
 }
 
+export interface ConfidenceScoreResponse {
+  overall: number
+  writing_quality: number
+  completeness: number
+  quantification: number
+  formatting: number
+  section_order: number
+  grade: 'A' | 'B' | 'C' | 'D' | 'F'
+  improvements: string[]
+  cached: boolean
+}
+
 export interface BibTeXEntry {
   identifier: string
   bibtex: string | null
@@ -1360,6 +1372,13 @@ class ApiClient {
 
   async proofreadResume(latexContent: string): Promise<ProofreadResponse> {
     return this.request<ProofreadResponse>('/ai/proofread', {
+      method: 'POST',
+      body: JSON.stringify({ latex_content: latexContent }),
+    })
+  }
+
+  async confidenceScore(latexContent: string): Promise<ConfidenceScoreResponse> {
+    return this.request<ConfidenceScoreResponse>('/ai/confidence-score', {
       method: 'POST',
       body: JSON.stringify({ latex_content: latexContent }),
     })

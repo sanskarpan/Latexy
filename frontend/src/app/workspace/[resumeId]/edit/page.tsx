@@ -86,6 +86,8 @@ import type { TrackedChange } from '@/lib/yjs-track-changes'
 import { GitMerge } from 'lucide-react'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
+import { useConfidenceScore } from '@/hooks/useConfidenceScore'
+import ConfidenceScorePanel from '@/components/ConfidenceScorePanel'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
 import { useSpellCheck, addWordToDict } from '@/hooks/useSpellCheck'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
@@ -869,6 +871,9 @@ export default function ResumeEditPage() {
   }, [])
 
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent)
+
+  const { result: confidenceResult, loading: confidenceLoading, refetch: refetchConfidence } = useConfidenceScore(latexContent)
+  const [confidencePanelOpen, setConfidencePanelOpen] = useState(false)
 
   const { state: compileStream } = useJobStream(compileJobId)
   const { state: aiStream } = useJobStream(aiJobId)
@@ -1870,6 +1875,9 @@ export default function ResumeEditPage() {
               atsScore={quickATSScore}
               atsScoreLoading={quickATSLoading}
               onATSBadgeClick={() => setDeepPanelOpen(true)}
+              confidenceScore={confidenceResult?.overall ?? null}
+              confidenceScoreLoading={confidenceLoading}
+              onConfidenceBadgeClick={() => setConfidencePanelOpen(true)}
               onExplainError={handleExplainError}
               onWritingAssistantAction={handleWritingAssistantAction}
               pageCount={pageCount}
@@ -2307,6 +2315,14 @@ export default function ResumeEditPage() {
         isRunning={isDeepRunning}
         hideUpgradeCtas={!flags.upgrade_ctas}
         resumeId={resumeId}
+      />
+
+      <ConfidenceScorePanel
+        isOpen={confidencePanelOpen}
+        onClose={() => setConfidencePanelOpen(false)}
+        score={confidenceResult}
+        loading={confidenceLoading}
+        onRefresh={refetchConfidence}
       />
 
       {/* QR Code Inserter (Feature 62) */}

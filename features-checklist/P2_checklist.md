@@ -917,7 +917,7 @@ representation as that system would parse your resume. Highlights problem areas.
 weights based on published recruiter behavior research. Red=high attention, blue=low.
 
 ### 51A · Frontend — Heatmap Computation
-- [ ] Create `frontend/src/lib/heatmap-generator.ts`:
+- [x] Create `frontend/src/lib/heatmap-generator.ts`:
   ```typescript
   export interface HeatmapRegion {
     yPercent: number      // top edge of region as % of page height
@@ -939,7 +939,7 @@ weights based on published recruiter behavior research. Red=high attention, blue
   ```
 
 ### 51B · PDF Preview Overlay
-- [ ] In PDF preview component (wherever PDF is rendered):
+- [x] In PDF preview component (wherever PDF is rendered):
   - Add `showHeatmap: boolean` prop
   - When enabled: render `<canvas>` absolutely over each PDF page
   - Draw each region with `ctx.fillStyle = heatmapColor(intensity)`:
@@ -948,12 +948,12 @@ weights based on published recruiter behavior research. Red=high attention, blue
     - 0.0 → `rgba(59,130,246,0.15)` (blue)
 
 ### 51C · Toggle Button
-- [ ] In PDF preview toolbar:
+- [x] In PDF preview toolbar:
   - "🔥 Heatmap" toggle button
   - Tooltip: "Shows predicted areas recruiters focus on (based on eye-tracking research)"
 
 ### 51D · Tests
-- [ ] Frontend unit test: `computePageHeatmap(0)` returns region at `yPercent=0` with `intensity >= 0.9`
+- [x] Frontend unit test: `computePageHeatmap(0)` returns region at `yPercent=0` with `intensity >= 0.9`
 
 ---
 
@@ -1274,7 +1274,7 @@ LaTeX bibliography entries. Filter by year/type. Insert complete publications se
 writing quality, completeness, quantification, formatting, section order. Radar chart display.
 
 ### 59A · Backend — Confidence Score Service
-- [ ] Create `backend/app/services/confidence_score_service.py`:
+- [x] Create `backend/app/services/confidence_score_service.py`:
   ```python
   @dataclass
   class ConfidenceScore:
@@ -1306,7 +1306,7 @@ writing quality, completeness, quantification, formatting, section order. Radar 
   ```
 
 ### 59B · Backend — Confidence Score Endpoint
-- [ ] Add `POST /ai/confidence-score` to `backend/app/api/ai_routes.py`:
+- [x] Add `POST /ai/confidence-score` to `backend/app/api/ai_routes.py`:
   ```python
   class ConfidenceScoreResponse(BaseModel):
       overall: int
@@ -1322,15 +1322,15 @@ writing quality, completeness, quantification, formatting, section order. Radar 
   - No LLM needed — pure rule-based scoring
 
 ### 59C · Frontend — Confidence Score Display
-- [ ] Create `frontend/src/components/ConfidenceScorePanel.tsx`:
+- [x] Create `frontend/src/components/ConfidenceScorePanel.tsx`:
   - Large circular score badge with grade letter
-  - Radar chart (recharts `<RadarChart>`) — 5 axes: Writing · Complete · Numbers · Formatting · Order
+  - Radar chart (SVG, no extra dep) — 5 axes: Writing · Complete · Numbers · Formatting · Order
   - Top 3 improvements listed with icons and actionable text
   - "Refresh" button to re-run scoring
-- [ ] Add "Quality Score" badge in editor status bar (alongside ATS score from P0)
+- [x] Add "Quality Score" badge in editor status bar (alongside ATS score from P0)
 
 ### 59D · Tests
-- [ ] `backend/test/test_confidence_score.py`:
+- [x] `backend/test/test_confidence_score.py`:
   - Resume with all 4 expected sections → `completeness >= 80`
   - Resume with "responsible for" × 3 → `writing_quality < 70`
   - Resume with no numbers in any `\item` → `quantification < 20`
@@ -2047,8 +2047,7 @@ stored PDF unmodified — display-only transformation.
   - `pnpm add yjs y-monaco y-websocket y-protocols`
 - [x] **`qrcode`** — client-side QR generation for Feature 62
   - `pnpm add qrcode @types/qrcode`
-- [ ] **`recharts`** — radar chart for Feature 59 (may already be installed from Feature 18)
-  - `pnpm add recharts` if not present
+- [x] **`recharts`** — radar chart for Feature 59: used inline SVG instead (no extra dependency needed)
 - [ ] **LanguageTool** — `LANGUAGETOOL_URL` in config for Feature 35
   - Free public API: `https://api.languagetool.org/v2/check` (no key needed for basic use)
   - Self-hosted option: Docker image `erikvl87/languagetool`

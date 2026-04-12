@@ -626,6 +626,64 @@ async def spell_check(
     return SpellCheckResponse(issues=issues, cached=False)
 
 
+# ── Confidence Score (Feature 59) ────────────────────────────────────────────
+
+
+class ConfidenceScoreRequest(BaseModel):
+    latex_content: str = Field(..., max_length=200_000)
+
+
+class ConfidenceScoreResponse(BaseModel):
+    overall: int
+    writing_quality: int
+    completeness: int
+    quantification: int
+    formatting: int
+    section_order: int
+    grade: str
+    improvements: List[str]
+    cached: bool
+
+
+@router.post("/confidence-score", response_model=ConfidenceScoreResponse)
+async def get_confidence_score(request: ConfidenceScoreRequest):
+    """Holistic resume quality score across 5 dimensions. Rule-based, no LLM required."""
+    cache_key = "ai:confidence:" + hashlib.sha256(
+        request.latex_content.encode()
+    ).hexdigest()[:16]
+
+    try:
+        cached = await cache_manager.get(cache_key)
+        if cached and isinstance(cached, dict):
+            return ConfidenceScoreResponse(**cached, cached=True)
+    except Exception:
+        pass
+
+    from ..services.confidence_score_service import confidence_score_service
+
+    cs = confidence_score_service.score(request.latex_content)
+    result = ConfidenceScoreResponse(
+        overall=cs.overall,
+        writing_quality=cs.writing_quality,
+        completeness=cs.completeness,
+        quantification=cs.quantification,
+        formatting=cs.formatting,
+        section_order=cs.section_order,
+        grade=confidence_score_service.grade(cs.overall),
+        improvements=confidence_score_service.get_improvements(cs, request.latex_content),
+        cached=False,
+    )
+
+    try:
+        data = result.model_dump()
+        data.pop("cached", None)
+        await cache_manager.set(cache_key, data, ttl=1800)
+    except Exception:
+        pass
+
+    return result
+
+
 # ── Date Standardizer (Feature 57) ──────────────────────────────────────────
 
 # Full month names → 0-padded month numbers
