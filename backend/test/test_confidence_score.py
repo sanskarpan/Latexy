@@ -92,7 +92,7 @@ class TestConfidenceScoreService:
     def test_empty_resume_all_dimensions_zero(self):
         cs = self._service().score(_EMPTY_RESUME)
         assert cs.writing_quality == 0
-        assert cs.quantification == 50  # neutral — no items
+        assert cs.quantification == 0  # blank input short-circuits before neutral check
         assert cs.completeness == 0
 
     def test_overall_weighted_correctly(self):
