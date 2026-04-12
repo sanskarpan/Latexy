@@ -477,6 +477,132 @@ function MendeleySection({
   )
 }
 
+// ── ORCID import section ──────────────────────────────────────────────────
+
+/** Strip https://orcid.org/ prefix and return bare ORCID ID, or the input unchanged. */
+function normalizeOrcidInput(raw: string): string {
+  const m = raw.match(/orcid\.org\/(\d{4}-\d{4}-\d{4}-[\dXx]{4})/i)
+  return m ? m[1] : raw.trim()
+}
+
+function isValidOrcid(id: string): boolean {
+  return /^\d{4}-\d{4}-\d{4}-\d{3}[\dXx]$/i.test(id)
+}
+
+function OrcidSection({
+  onInsertBibTeX,
+  onInsertCiteKey,
+}: {
+  onInsertBibTeX: (bibtex: string) => void
+  onInsertCiteKey: (key: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [entries, setEntries] = useState<BibTeXEntry[]>([])
+  const [fetched, setFetched] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const orcidId = normalizeOrcidInput(input)
+  const valid = isValidOrcid(orcidId)
+
+  const handleFetch = async () => {
+    if (!valid || loading) return
+    setLoading(true)
+    setFetched(false)
+    setError(null)
+    setEntries([])
+    try {
+      const resp = await apiClient.fetchOrcidPublications(orcidId)
+      setEntries(resp.entries)
+      setFetched(true)
+      if (resp.entries.length === 0) setError('No publications found on this ORCID profile.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to fetch ORCID publications')
+      setFetched(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleInsertAll = () => {
+    const allBibtex = entries.filter(e => e.bibtex).map(e => e.bibtex!).join('\n\n')
+    if (allBibtex) onInsertBibTeX('\n' + allBibtex)
+  }
+
+  return (
+    <div className="border-t border-white/[0.05]">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-white/50 transition hover:text-white/80"
+      >
+        <span className="flex items-center gap-2">
+          <span className="flex h-4 w-4 items-center justify-center rounded bg-[#A6CE39]/15 text-[7px] font-black text-[#A6CE39]">iD</span>
+          ORCID
+        </span>
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      </button>
+
+      {expanded && (
+        <div className="space-y-2 px-3 pb-3">
+          <p className="text-[10px] leading-snug text-white/25">
+            Fetch publications from a public ORCID profile
+          </p>
+
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              value={input}
+              onChange={e => { setInput(e.target.value); setFetched(false); setEntries([]) }}
+              onKeyDown={e => e.key === 'Enter' && handleFetch()}
+              placeholder="0000-0001-2345-6789"
+              className="flex-1 rounded-lg bg-black/30 px-2.5 py-1.5 font-mono text-[11px] text-white/70 placeholder:text-white/20 ring-1 ring-white/[0.08] outline-none focus:ring-white/[0.15] transition"
+            />
+            <button
+              onClick={handleFetch}
+              disabled={!valid || loading}
+              className="flex items-center gap-1 rounded-lg bg-[#A6CE39]/15 px-2.5 py-1.5 text-[11px] font-medium text-[#A6CE39] ring-1 ring-[#A6CE39]/20 transition hover:bg-[#A6CE39]/25 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+            </button>
+          </div>
+
+          {input && !valid && (
+            <p className="text-[10px] text-amber-400/70">Format: 0000-0001-2345-6789</p>
+          )}
+
+          {error && <p className="text-[10px] text-rose-400">{error}</p>}
+
+          {entries.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] text-white/30">{entries.length} publication{entries.length !== 1 ? 's' : ''} found</p>
+              <div className="max-h-64 space-y-2 overflow-y-auto">
+                {entries.map((entry, i) => (
+                  <EntryCard
+                    key={i}
+                    entry={entry}
+                    onInsertBibTeX={bib => onInsertBibTeX('\n' + bib)}
+                    onInsertCiteKey={onInsertCiteKey}
+                  />
+                ))}
+              </div>
+              {entries.length > 1 && (
+                <button
+                  onClick={handleInsertAll}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-500/10 py-1.5 text-[10px] font-medium text-emerald-300 ring-1 ring-emerald-400/20 transition hover:bg-emerald-500/20"
+                >
+                  <PlusCircle className="h-3 w-3" />
+                  Insert All ({entries.filter(e => e.bibtex).length}) BibTeX entries
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Imported library entries ──────────────────────────────────────────────
 
 function LibrarySection({
@@ -721,6 +847,12 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
         <MendeleySection
           resumeId={resumeId}
           onBibTeXImported={(bib, _count) => setImportedBibTeX(bib)}
+        />
+
+        {/* ORCID publications */}
+        <OrcidSection
+          onInsertBibTeX={onInsertBibTeX}
+          onInsertCiteKey={onInsertCiteKey}
         />
 
         {/* Imported library */}

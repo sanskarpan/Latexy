@@ -1344,7 +1344,7 @@ writing quality, completeness, quantification, formatting, section order. Radar 
 examples, related commands. "Command Reference" panel accessible from sidebar.
 
 ### 60A · Documentation Data
-- [ ] Create `frontend/src/lib/latex-docs.ts`:
+- [x] Create `frontend/src/lib/latex-docs.ts`:
   ```typescript
   export interface LaTeXDoc {
     command: string        // "\\textbf"
@@ -1374,21 +1374,21 @@ examples, related commands. "Command Reference" panel accessible from sidebar.
   - Expand on existing hover provider data already in `LaTeXEditor.tsx` completion provider
 
 ### 60B · Documentation Panel Component
-- [ ] Create `frontend/src/components/LaTeXDocPanel.tsx`:
+- [x] Create `frontend/src/components/LaTeXDocPanel.tsx`:
   - Props: `command?: string` (from right-click), `mode: 'command'|'reference'`
   - Layout: command header → description → parameters table → examples (Monaco read-only) → see also chips
   - Reference mode: search input + scrollable command list grouped by category
   - Clicking "see also" chip navigates to that command's doc
 
 ### 60C · Monaco Context Menu Integration
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - In `handleEditorDidMount`: add context menu action `latexy.showDocs`:
     - Only shows when cursor is on a word starting with `\`
     - Fires `onShowDocs?.(commandUnderCursor)`
   - Add prop: `onShowDocs?: (command: string) => void`
 
 ### 60D · Page Integration
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - "📖 Docs" tab in editor sidebar → `<LaTeXDocPanel mode="reference" />`
   - `docCommand` state → set from `onShowDocs` → passed to panel
 
@@ -1461,7 +1461,7 @@ inserts `\qrcode{url}` with auto-added preamble package.
 Each adjustment modifies specific preamble lines and optionally triggers auto-compile preview.
 
 ### 63A · Preamble Helpers
-- [ ] Extend `frontend/src/lib/latex-preamble.ts` (from Feature 30):
+- [x] Extend `frontend/src/lib/latex-preamble.ts` (from Feature 30):
   ```typescript
   export function setGeometryMargin(latex: string, marginIn: number): string {
     // Replace or insert \geometry{margin=Xin} in preamble
@@ -1473,19 +1473,20 @@ Each adjustment modifies specific preamble lines and optionally triggers auto-co
     // Compact: \vspace{-4pt}, Normal: \vspace{2pt}, Spacious: \vspace{6pt}
   }
   ```
+  - Also added `extractSectionSpacingFromPreamble`, `extractRawMarginFromPreamble`
 
 ### 63B · Template Customizer Component
-- [ ] Create `frontend/src/components/TemplateCustomizerPanel.tsx`:
-  - **Margins** slider: 0.5in → 1.25in (step 0.25) → calls `setGeometryMargin()`
+- [x] Create `frontend/src/components/TemplateCustomizerPanel.tsx`:
+  - **Margins** slider: 0.5in → 1.25in (step 0.05) → calls `setGeometryMargin()`
   - **Font Size** radio: 10pt / 11pt / 12pt → calls `setDocumentClassFontSize()`
   - **Section Spacing** radio: Compact / Normal / Spacious → calls `setSectionVspacing()`
-  - **Auto-compile on change** toggle
-  - **Reset to Defaults** button (restores original resume LaTeX from last save)
-  - Each change: `editorRef.current?.setValue(modified_latex)` → optionally triggers compile
+  - **Auto-compile on change** toggle (persisted to localStorage)
+  - **Reset to Defaults** button (restores original resume LaTeX from mount time)
+  - Each change: calls `onPreambleChange(modified_latex)` → optionally triggers compile
 
 ### 63C · Integration
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
-  - "🎨 Design" tab in editor sidebar
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+  - "Layout" tab (SlidersHorizontal icon) in editor sidebar
   - Renders `TemplateCustomizerPanel`
 
 ---

@@ -177,6 +177,150 @@ async def fetch_references(
     )
 
 
+# ── ORCID helpers ─────────────────────────────────────────────────────────────
+
+_ORCID_BIB_TYPE: dict[str, str] = {
+    "journalarticle": "article",
+    "conferencepaper": "inproceedings",
+    "bookchapter": "incollection",
+    "book": "book",
+    "dissertation": "phdthesis",
+    "report": "techreport",
+    "preprint": "misc",
+    "workingpaper": "unpublished",
+}
+
+
+def _bibtex_from_orcid_work(work: dict, idx: int) -> tuple[str, str]:
+    """Build minimal BibTeX from ORCID work metadata. Returns (bibtex, cite_key)."""
+    bib_type = _ORCID_BIB_TYPE.get(work.get("work_type", "misc"), "misc")
+    title = work.get("title") or "Untitled"
+    year = work.get("year")
+    journal = work.get("journal") or ""
+    url = work.get("url") or ""
+
+    # Cite key: first word of title + year + idx suffix to avoid collisions
+    first_word = re.sub(r"[^a-zA-Z]", "", title.split()[0]).lower() if title else "work"
+    cite_key = f"{first_word}{year or 'nd'}_{idx + 1}"
+
+    lines = [f"@{bib_type}{{{cite_key},"]
+    lines.append(f"  title = {{{{{title}}}}},")
+    if year:
+        lines.append(f"  year = {{{year}}},")
+    if journal:
+        field = "journal" if bib_type == "article" else "booktitle"
+        lines.append(f"  {field} = {{{{{journal}}}}},")
+    if url:
+        lines.append(f"  url = {{{url}}},")
+    lines.append("  note = {Via ORCID},")
+    lines.append("}")
+    return "\n".join(lines), cite_key
+
+
+# ── ORCID endpoint ─────────────────────────────────────────────────────────────
+
+
+class FetchOrcidRequest(BaseModel):
+    orcid_id: str = Field(..., description="Bare ORCID ID (XXXX-XXXX-XXXX-XXXX) or ORCID URL")
+    max_results: int = Field(default=20, ge=1, le=50)
+
+
+@router.post("/fetch-orcid", response_model=FetchReferencesResponse)
+async def fetch_orcid_publications(
+    request: FetchOrcidRequest,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
+    """
+    Fetch publications from a public ORCID profile.
+    Works with DOIs are enriched via Crossref; others get minimal BibTeX from ORCID metadata.
+    """
+    start = time.monotonic()
+
+    # Normalize ORCID ID (accept URLs too)
+    normalized = reference_service.normalize_orcid(request.orcid_id)
+    if normalized is None:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid ORCID identifier. Expected format: 0000-0001-2345-6789 or https://orcid.org/...",
+        )
+
+    try:
+        works = await reference_service.fetch_orcid_works(normalized, request.max_results)
+    except ValueError as exc:
+        from fastapi import HTTPException
+        msg = str(exc)
+        status = 404 if "not found" in msg.lower() else 503
+        raise HTTPException(status_code=status, detail=msg)
+
+    if not works:
+        return FetchReferencesResponse(entries=[], total=0, successful=0, processing_time=0.0)
+
+    # Separate DOI-bearing works (fetch Crossref BibTeX, up to 10) from others
+    doi_indices = [i for i, w in enumerate(works) if w.get("doi")][:10]
+    entries: list[Optional[BibTeXEntry]] = [None] * len(works)
+
+    # Concurrent Crossref fetches for works with DOI
+    if doi_indices:
+        doi_tasks = [asyncio.create_task(_fetch_one(works[i]["doi"])) for i in doi_indices]
+        done, pending = await asyncio.wait(doi_tasks, timeout=25.0)
+        for t in pending:
+            t.cancel()
+
+        task_map = {t: doi_indices[j] for j, t in enumerate(doi_tasks)}
+        for t in done:
+            orig_i = task_map[t]
+            work = works[orig_i]
+            exc = t.exception()
+            fetched = None if exc else t.result()
+            if fetched and fetched.bibtex and not fetched.error:
+                fetched.source_type = "orcid"
+                entries[orig_i] = fetched
+            else:
+                # Crossref failed → fall back to ORCID-built BibTeX
+                bibtex, cite_key = _bibtex_from_orcid_work(work, orig_i)
+                entries[orig_i] = BibTeXEntry(
+                    identifier=work["doi"],
+                    bibtex=bibtex,
+                    cite_key=cite_key,
+                    title=work.get("title"),
+                    year=work.get("year"),
+                    source_type="orcid",
+                )
+        for t in pending:
+            orig_i = task_map[t]
+            work = works[orig_i]
+            bibtex, cite_key = _bibtex_from_orcid_work(work, orig_i)
+            entries[orig_i] = BibTeXEntry(
+                identifier=work.get("doi", f"orcid_{orig_i}"),
+                bibtex=bibtex, cite_key=cite_key,
+                title=work.get("title"), year=work.get("year"),
+                source_type="orcid",
+            )
+
+    # All remaining works (no DOI, or DOI beyond first 10)
+    for i, work in enumerate(works):
+        if entries[i] is not None:
+            continue
+        bibtex, cite_key = _bibtex_from_orcid_work(work, i)
+        entries[i] = BibTeXEntry(
+            identifier=work.get("doi") or f"orcid_{i}",
+            bibtex=bibtex, cite_key=cite_key,
+            title=work.get("title"), year=work.get("year"),
+            source_type="orcid",
+        )
+
+    valid = [e for e in entries if e is not None]
+    successful = sum(1 for e in valid if e.bibtex is not None)
+
+    return FetchReferencesResponse(
+        entries=valid,
+        total=len(valid),
+        successful=successful,
+        processing_time=round(time.monotonic() - start, 3),
+    )
+
+
 @router.post("/detect", response_model=DetectReferencesResponse)
 async def detect_references(request: DetectReferencesRequest):
     """Extract DOI and arXiv identifiers from raw pasted text."""

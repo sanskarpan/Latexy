@@ -42,6 +42,7 @@ import {
   Clock,
   Phone,
   DollarSign,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -79,6 +80,8 @@ import CompilerSelector from '@/components/CompilerSelector'
 import CompileSettingsModal from '@/components/CompileSettingsModal'
 import CollaboratorPanel from '@/components/CollaboratorPanel'
 import ChangesPanel from '@/components/ChangesPanel'
+import LaTeXDocPanel from '@/components/LaTeXDocPanel'
+import TemplateCustomizerPanel from '@/components/TemplateCustomizerPanel'
 import type { TrackedChange } from '@/lib/yjs-track-changes'
 import { GitMerge } from 'lucide-react'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
@@ -92,7 +95,7 @@ import KeyboardShortcutsPanel from '@/components/KeyboardShortcutsPanel'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
@@ -712,6 +715,7 @@ export default function ResumeEditPage() {
   const [ageAnalysisOpen, setAgeAnalysisOpen] = useState(false)
   const [contactFormatterOpen, setContactFormatterOpen] = useState(false)
   const [salaryEstimatorOpen, setSalaryEstimatorOpen] = useState(false)
+  const [docCommand, setDocCommand] = useState<string | undefined>(undefined)
 
   // Layout
   const [rightTab, setRightTab] = useState<RightTab>('preview')
@@ -1900,6 +1904,10 @@ export default function ResumeEditPage() {
               onPresenceChange={setPresenceUsers}
               trackedChanges={trackedChanges}
               onTrackedChangesUpdate={setTrackedChanges}
+              onShowDocs={(cmd) => {
+                setDocCommand(cmd)
+                setRightTab('docs')
+              }}
             />
 
             {/* AI Summary Widget trigger — shown when cursor is in summary section */}
@@ -1999,6 +2007,8 @@ export default function ResumeEditPage() {
                 { id: 'linter', label: 'Linter', icon: AlertTriangle },
                 { id: 'symbols', label: 'Symbols', icon: Braces },
                 { id: 'changes', label: 'Changes', icon: GitMerge },
+                { id: 'docs', label: 'Docs', icon: BookOpen },
+                { id: 'layout', label: 'Layout', icon: SlidersHorizontal },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -2197,7 +2207,8 @@ export default function ResumeEditPage() {
             {rightTab === 'packages' && (
               <PackageManagerPanel
                 currentLatex={latexContent}
-                onAddPackage={(newLatex) => {
+                onAddPackage={(newLatex, packageName) => {
+                  pushUndo(`Before adding package: ${packageName}`)
                   editorRef.current?.setValue(newLatex)
                   setLatexContent(newLatex)
                 }}
@@ -2245,6 +2256,18 @@ export default function ResumeEditPage() {
                 onReject={(id) => editorRef.current?.rejectTrackedChange(id)}
                 onAcceptAll={() => editorRef.current?.acceptAllTrackedChanges()}
                 onRejectAll={() => editorRef.current?.rejectAllTrackedChanges()}
+              />
+            )}
+
+            {rightTab === 'docs' && (
+              <LaTeXDocPanel command={docCommand} />
+            )}
+
+            {rightTab === 'layout' && (
+              <TemplateCustomizerPanel
+                currentLatex={latexContent}
+                onPreambleChange={handleDesignPreambleChange}
+                onTriggerCompile={autoCompile ? handleDesignTriggerCompile : undefined}
               />
             )}
           </div>
@@ -2320,6 +2343,7 @@ export default function ResumeEditPage() {
         onClose={() => setDateStandardizerOpen(false)}
         getLatex={() => editorRef.current?.getValue() ?? latexContent}
         onApply={(newLatex) => {
+          pushUndo('Before date standardization')
           editorRef.current?.setValue(newLatex)
           setLatexContent(newLatex)
         }}
