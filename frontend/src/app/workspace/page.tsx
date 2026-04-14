@@ -669,9 +669,11 @@ export default function WorkspacePage() {
 
           <Link
             href="/workspace/merge"
+            aria-label="Merge resumes"
+            title="Merge resumes"
             className="btn-ghost flex items-center gap-1.5 px-4 py-2 text-xs"
           >
-            <GitMerge size={12} />
+            <GitMerge size={12} aria-hidden="true" />
             <span className="hidden sm:inline">Merge</span>
           </Link>
 
