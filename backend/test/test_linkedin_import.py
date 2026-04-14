@@ -220,4 +220,4 @@ class TestConverterWorkerSourceHint:
                 source_hint="linkedin",
             )
 
-        mock_build.assert_called_once_with(STRUCTURE, "pdf", source_hint="linkedin")
+        mock_build.assert_called_once_with(STRUCTURE, "pdf", source_hint="linkedin", source_platform=None)
