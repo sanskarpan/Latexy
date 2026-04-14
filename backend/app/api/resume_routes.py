@@ -1857,3 +1857,157 @@ async def generate_references(
         raise HTTPException(status_code=500, detail="Failed to render reference page template")
 
     return GenerateReferencesResponse(latex_content=latex_content)
+
+
+# ── Multi-Resume Merge (Feature 69) ──────────────────────────────────────────
+
+
+class MergeRequest(BaseModel):
+    resume_ids: List[str] = Field(..., min_length=2, max_length=4)
+    section_choices: Dict[str, str] = Field(default_factory=dict)
+    # { "Experience": "resume_id_1", "Skills": "resume_id_2" }
+
+
+class MergeResponse(BaseModel):
+    merged_latex: str
+    new_resume_id: str
+
+
+def _extract_latex_preamble(latex: str) -> str:
+    """Return everything up to and including \\begin{document}."""
+    marker = "\\begin{document}"
+    idx = latex.find(marker)
+    if idx == -1:
+        return latex
+    return latex[: idx + len(marker)]
+
+
+_SECTION_RE = re.compile(r"\\section\*?\{([^}]+)\}")
+
+
+def _extract_latex_sections(latex: str) -> dict:
+    """
+    Parse LaTeX into {section_name: full_block_including_header}.
+    Returns an empty dict if no \\section commands are found.
+    """
+    body_m = re.search(
+        r"\\begin\{document\}(.*?)\\end\{document\}", latex, re.DOTALL
+    )
+    if not body_m:
+        return {}
+    body = body_m.group(1)
+
+    positions = list(_SECTION_RE.finditer(body))
+    if not positions:
+        return {}
+
+    result: dict = {}
+    for i, m in enumerate(positions):
+        name = m.group(1).strip()
+        start = m.start()
+        end = positions[i + 1].start() if i + 1 < len(positions) else len(body)
+        result[name] = body[start:end].strip()
+    return result
+
+
+def _extract_latex_presection(latex: str) -> str:
+    """Return the body content before the first \\section (name block, etc.)."""
+    body_m = re.search(
+        r"\\begin\{document\}(.*?)\\end\{document\}", latex, re.DOTALL
+    )
+    if not body_m:
+        return ""
+    body = body_m.group(1)
+    first = _SECTION_RE.search(body)
+    return body[: first.start()].strip() if first else body.strip()
+
+
+@router.post("/merge", response_model=MergeResponse, status_code=status.HTTP_201_CREATED)
+async def merge_resumes(
+    request: MergeRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+) -> MergeResponse:
+    """
+    Merge 2–4 resumes into a new resume.
+
+    - Preamble and pre-section block come from resume_ids[0].
+    - section_choices maps section names to the source resume ID.
+    - Sections absent from section_choices are taken from resume_ids[0].
+    - Saves result as a new resume titled "Merged Resume".
+    """
+    # Deduplicate while preserving order
+    seen: set = set()
+    ordered_ids: list = []
+    for rid in request.resume_ids:
+        if rid not in seen:
+            seen.add(rid)
+            ordered_ids.append(rid)
+
+    # Fetch all in one query
+    result = await db.execute(
+        select(Resume).where(Resume.id.in_(ordered_ids))
+    )
+    found: dict = {r.id: r for r in result.scalars().all()}
+
+    # Verify ownership — 403 if any resume is not owned by this user
+    for rid in ordered_ids:
+        resume = found.get(rid)
+        if resume is None or resume.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Resume {rid} not found or access denied",
+            )
+
+    primary = found[ordered_ids[0]]
+    preamble = _extract_latex_preamble(primary.latex_content or "")
+    presection = _extract_latex_presection(primary.latex_content or "")
+
+    # Extract sections from every source resume
+    all_sections: dict = {}  # resume_id → {name: block}
+    for rid in ordered_ids:
+        all_sections[rid] = _extract_latex_sections(found[rid].latex_content or "")
+
+    # Determine canonical section order (from resume_ids[0], then any extra from others)
+    primary_sections = all_sections[ordered_ids[0]]
+    extra_names = []
+    for rid in ordered_ids[1:]:
+        for name in all_sections[rid]:
+            if name not in primary_sections and name not in extra_names:
+                extra_names.append(name)
+    section_order = list(primary_sections.keys()) + extra_names
+
+    # Build merged body
+    body_parts: list = []
+    if presection:
+        body_parts.append(presection)
+
+    for name in section_order:
+        source_id = request.section_choices.get(name, ordered_ids[0])
+        # Fallback to primary if specified source doesn't have this section
+        block = all_sections.get(source_id, {}).get(name) or primary_sections.get(name)
+        if block:
+            body_parts.append(block)
+
+    merged_latex = (
+        preamble
+        + "\n\n"
+        + "\n\n".join(body_parts)
+        + "\n\n\\end{document}"
+    )
+
+    # Save as new resume
+    new_resume = Resume(
+        id=str(uuid4()),
+        user_id=user_id,
+        title="Merged Resume",
+        latex_content=merged_latex,
+        parent_resume_id=ordered_ids[0],
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db.add(new_resume)
+    await db.commit()
+    await db.refresh(new_resume)
+
+    return MergeResponse(merged_latex=merged_latex, new_resume_id=new_resume.id)
