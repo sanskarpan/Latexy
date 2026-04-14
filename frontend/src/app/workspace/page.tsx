@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { BookUser, GitFork, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate, Globe } from 'lucide-react'
+import { BookUser, GitFork, GitMerge, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate, Globe } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult, type TranslateResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -666,6 +666,16 @@ export default function WorkspacePage() {
               </div>
             )}
           </div>
+
+          <Link
+            href="/workspace/merge"
+            aria-label="Merge resumes"
+            title="Merge resumes"
+            className="btn-ghost flex items-center gap-1.5 px-4 py-2 text-xs"
+          >
+            <GitMerge size={12} aria-hidden="true" />
+            <span className="hidden sm:inline">Merge</span>
+          </Link>
 
           <Link href="/workspace/new" className="btn-accent px-4 py-2 text-xs">
             New Resume

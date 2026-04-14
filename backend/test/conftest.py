@@ -292,3 +292,19 @@ async def auth_headers(db_session: AsyncSession) -> dict:
     await db_session.commit()
     token = await _insert_session(db_session, user_id)
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+async def auth_headers2(db_session: AsyncSession) -> dict:
+    """Authorization headers for a second independent test user."""
+    user_id = str(uuid.uuid4())
+    await db_session.execute(
+        text(
+            "INSERT INTO users (id, email, name, email_verified, subscription_plan, subscription_status, trial_used) "
+            "VALUES (:id, :email, 'Test User 2', true, 'free', 'active', false) ON CONFLICT (id) DO NOTHING"
+        ),
+        {"id": user_id, "email": f"test_{user_id.replace('-', '')}@example.com"},
+    )
+    await db_session.commit()
+    token = await _insert_session(db_session, user_id)
+    return {"Authorization": f"Bearer {token}"}
