@@ -3,7 +3,6 @@
 import pytest
 from httpx import AsyncClient
 
-
 LATEX_A = r"""
 \documentclass[11pt]{article}
 \usepackage{geometry}
@@ -442,8 +441,8 @@ Plain text only, no section markers here.
 
 from app.api.resume_routes import (
     _extract_latex_preamble,
-    _extract_latex_sections,
     _extract_latex_presection,
+    _extract_latex_sections,
 )
 
 
