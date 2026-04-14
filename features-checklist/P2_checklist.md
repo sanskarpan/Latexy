@@ -1829,17 +1829,17 @@ custom text. Applied via `draftwatermark` LaTeX package at compile time. Origina
 parsing hints. Import wizard with step-by-step export instructions per platform.
 
 ### 72A · Backend — Platform-Aware Import
-- [ ] In `backend/app/services/document_converter_service.py`:
+- [x] In `backend/app/services/document_converter_service.py`:
   - Add `source_platform: Optional[str] = None` parameter to JSON Resume import
   - Platform-specific LLM prompt adjustments:
     - `kickresume`: remap nested skill categories, handle "Summary" vs "Objective" naming
     - `resumeio`: handle `position` vs `title` field naming inconsistencies
     - `novoresume`: handle `YYYY/MM` date format → ISO 8601
   - `source_platform` also used for analytics tracking
-- [ ] In `POST /formats/upload`: accept optional `?source_platform=kickresume|resumeio|novoresume` query param
+- [x] In `POST /formats/upload`: accept optional `?source_platform=kickresume|resumeio|novoresume` query param
 
 ### 72B · Frontend — Import Wizard
-- [ ] Create `frontend/src/components/ImportFromBuilderWizard.tsx`:
+- [x] Create `frontend/src/components/ImportFromBuilderWizard.tsx`:
   - **Step 1** — Platform selector: card grid (Kickresume, Resume.io, Novoresume, Generic JSON)
   - **Step 2** — Export instructions (platform-specific):
     - Kickresume: "Dashboard → Settings → Export → JSON Resume"
@@ -1848,10 +1848,10 @@ parsing hints. Import wizard with step-by-step export instructions per platform.
   - **Step 3** — File upload dropzone
   - **Step 4** — Preview parsed content before conversion: shows extracted name, experience count, skills
   - **Step 5** — "Convert to LaTeX" button → calls `/formats/upload?source_platform=...`
-- [ ] Add "Import from Resume Builder" in workspace new-resume flow
+- [x] Add "Import from Resume Builder" in workspace new-resume flow
 
 ### 72C · Tests
-- [ ] `backend/test/test_builder_import.py`:
+- [x] `backend/test/test_builder_import.py`:
   - Kickresume JSON with nested skills → LaTeX output contains skill entries
   - Unknown `source_platform` → falls back to generic JSON Resume parsing (no error)
   - Malformed JSON file → 422
@@ -1968,7 +1968,7 @@ panels. Share-for-review link gives commenter-only access.
 Progress board shows real-time status. Download all as ZIP. Auto-adds to job tracker.
 
 ### 75A · Backend — Batch Tailor Endpoint
-- [ ] Add `POST /optimize/batch` to `backend/app/api/job_routes.py`:
+- [x] Add `POST /jobs/batch` to `backend/app/api/job_routes.py`:
   ```python
   class BatchJobItem(BaseModel):
       company_name: str = Field(..., max_length=200)
@@ -1985,31 +1985,30 @@ Progress board shows real-time status. Download all as ZIP. Auto-adds to job tra
       job_ids: List[str]   # one per BatchJobItem
   ```
   - Auth required; verify ownership of `resume_id`
-  - For each item: fork resume → submit optimization job via `submit_latex_compilation()` with JD
-  - Store batch metadata in Redis: `SET batch:{batch_id} { job_ids, status }` TTL=86400
+  - For each item: fork resume → submit optimization job via `submit_optimize_and_compile()` with JD
+  - Store batch metadata in Redis: `latexy:batch:{batch_id}` TTL=86400
   - Return immediately; client polls individual job IDs or batch status
 
 ### 75B · Backend — Batch Status Endpoint
-- [ ] Add `GET /optimize/batch/{batch_id}` to `backend/app/api/job_routes.py`:
+- [x] Add `GET /jobs/batch/{batch_id}` to `backend/app/api/job_routes.py`:
   - Returns `{ batch_id, jobs: [{ job_id, company_name, status, variant_resume_id? }] }`
   - Aggregated status: `pending|running|partial|complete|failed`
 
 ### 75C · Frontend — Batch Tailor Page
-- [ ] Create `frontend/src/app/workspace/[resumeId]/batch-tailor/page.tsx`:
+- [x] Create `frontend/src/app/workspace/[resumeId]/batch-tailor/page.tsx`:
   - Input list (up to 10 rows): company name, role title, JD textarea, optional URL
   - "Add Row" / "Remove Row" buttons; auto-adds row if last row is filled
   - "Start Batch Tailor" button → dispatches POST
   - **Progress board**: card per job with real-time status badges (Pending → Running → Complete)
-  - Poll `GET /optimize/batch/{batch_id}` every 3 seconds while jobs are running
+  - Poll `GET /jobs/batch/{batch_id}` every 3 seconds while jobs are running
   - "Download All as ZIP" (enabled when all complete) → calls bulk export for variant IDs
-  - "View in Tracker" link (if Feature 15 implemented) → navigates to job tracker pre-filtered
 
 ### 75D · Tests
-- [ ] `backend/test/test_batch_tailor.py`:
+- [x] `backend/test/test_batch_tailor.py`:
   - Batch of 3 jobs → 3 separate variant resumes created (mock LLM)
   - `jobs` with 11 entries → 422
   - Non-owned `resume_id` → 403
-  - `GET /optimize/batch/{batch_id}` returns correct status per job
+  - `GET /jobs/batch/{batch_id}` returns correct status per job
 
 ---
 
