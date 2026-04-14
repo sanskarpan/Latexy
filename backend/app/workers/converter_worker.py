@@ -36,6 +36,7 @@ def convert_document_task(
     user_id: Optional[str] = None,
     user_api_key: Optional[str] = None,
     source_hint: Optional[str] = None,
+    source_platform: Optional[str] = None,
     metadata: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
@@ -78,7 +79,8 @@ def convert_document_task(
         })
 
         messages = document_converter_service.build_conversion_prompt(
-            extracted_data, source_format, source_hint=source_hint
+            extracted_data, source_format, source_hint=source_hint,
+            source_platform=source_platform,
         )
 
         publish_event(job_id, "job.progress", {
@@ -183,6 +185,7 @@ def submit_document_conversion(
     user_id: Optional[str] = None,
     user_api_key: Optional[str] = None,
     source_hint: Optional[str] = None,
+    source_platform: Optional[str] = None,
     priority: Optional[int] = None,
     metadata: Optional[Dict] = None,
 ) -> str:
@@ -198,6 +201,7 @@ def submit_document_conversion(
             "user_id": user_id,
             "user_api_key": user_api_key,
             "source_hint": source_hint,
+            "source_platform": source_platform,
             "metadata": metadata,
         },
         priority=priority,
