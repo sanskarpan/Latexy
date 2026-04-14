@@ -5,12 +5,13 @@ Format Detection and Multi-Format Support API Routes
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from ..core.logging import get_logger
 from ..middleware.auth_middleware import get_current_user_optional
 from ..parsers.parser_factory import parser_factory
+from ..services.document_converter_service import ALLOWED_SOURCE_PLATFORMS
 from ..services.format_detection import ResumeFormat, format_detection_service
 
 logger = get_logger(__name__)
@@ -236,10 +237,72 @@ class UploadForConversionResponse(BaseModel):
     latex_content: Optional[str] = None  # Only set when is_direct=True
 
 
+class ParsePreviewResponse(BaseModel):
+    """Lightweight parse-only response for wizard preview step."""
+    success: bool
+    format: str
+    filename: str
+    name: Optional[str] = None
+    email: Optional[str] = None
+    experience_count: int = 0
+    education_count: int = 0
+    skills: List[str] = []
+    has_summary: bool = False
+
+
+@router.post("/parse", response_model=ParsePreviewResponse)
+async def parse_for_preview(file: UploadFile = File(...)):
+    """
+    Parse a resume file and return basic structured preview data.
+    No LLM conversion — used by the import wizard to confirm content before converting.
+    """
+    try:
+        content = await file.read()
+        filename = file.filename or "upload"
+
+        detected_format = format_detection_service.detect_format(
+            filename=filename, mime_type=file.content_type, content=content
+        )
+        if detected_format == ResumeFormat.UNKNOWN:
+            raise HTTPException(status_code=415, detail=f"Unsupported file format: '{filename}'")
+
+        is_valid_size, size_error = format_detection_service.validate_file_size(len(content), detected_format)
+        if not is_valid_size:
+            raise HTTPException(status_code=413, detail=size_error)
+
+        parser = parser_factory.get_parser(detected_format)
+        if not parser:
+            raise HTTPException(status_code=415, detail=f"No parser for {detected_format.value}")
+
+        try:
+            parsed = await parser.parse(content, filename)
+        except ValueError as ve:
+            raise HTTPException(status_code=422, detail=str(ve))
+
+        contact = parsed.contact or {}
+        return ParsePreviewResponse(
+            success=True,
+            format=detected_format.value,
+            filename=filename,
+            name=getattr(contact, "name", None) or (contact.get("name") if isinstance(contact, dict) else None),
+            email=getattr(contact, "email", None) or (contact.get("email") if isinstance(contact, dict) else None),
+            experience_count=len(parsed.experience or []),
+            education_count=len(parsed.education or []),
+            skills=(parsed.skills or [])[:10],
+            has_summary=bool(parsed.summary),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error in parse_for_preview: {exc}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @router.post("/upload", response_model=UploadForConversionResponse)
 async def upload_for_conversion(
     file: UploadFile = File(...),
     source_hint: Optional[str] = Form(default=None),
+    source_platform: Optional[str] = Query(default=None),
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """
@@ -250,6 +313,11 @@ async def upload_for_conversion(
     - All other formats: queued as LLM conversion job, returns job_id
     """
     try:
+        # Validate source_platform early — unknown values are silently ignored (fall back to generic)
+        if source_platform and source_platform not in ALLOWED_SOURCE_PLATFORMS:
+            logger.warning(f"Unknown source_platform '{source_platform}'; ignoring")
+            source_platform = None
+
         content = await file.read()
         filename = file.filename or "upload"
 
@@ -311,6 +379,7 @@ async def upload_for_conversion(
             job_id=job_id,
             user_id=user_id,
             source_hint=source_hint,
+            source_platform=source_platform,
         )
 
         logger.info(f"Queued document conversion job {job_id} for {filename} ({detected_format.value})")
