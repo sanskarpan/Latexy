@@ -679,7 +679,7 @@ contributing skills. Free for all users (lightweight LLM call).
 scoring. Show "Calibrated for: Technology / SaaS" in results panel.
 
 ### 46A · Backend — Industry Profiles
-- [ ] Create `backend/app/services/industry_ats_profiles.py`:
+- [x] Create `backend/app/services/industry_ats_profiles.py`:
   ```python
   INDUSTRY_PROFILES: Dict[str, dict] = {
       "tech_saas": {
@@ -713,19 +713,19 @@ scoring. Show "Calibrated for: Technology / SaaS" in results panel.
   ```
 
 ### 46B · Backend — ATS Scoring Integration
-- [ ] In `backend/app/services/ats_scoring_service.py`:
+- [x] In `backend/app/services/ats_scoring_service.py`:
   - Accept `industry_profile: str = "generic"` parameter
   - Apply `profile["keywords"][kw]` weight multiplier per keyword when computing keyword score
   - Apply `profile["section_weights"]` to section-level scoring
-- [ ] In ATS scoring endpoint: call `detect_industry(job_description)` before scoring, include `industry_label` in response
+- [x] In ATS scoring endpoint: call `detect_industry(job_description)` before scoring, include `industry_label` in response
 
 ### 46C · Frontend — Display
-- [ ] In ATS results panel:
+- [x] In ATS results panel:
   - Show "Calibrated for: [industry_label]" pill badge in panel header
   - Optional industry override dropdown (user can correct auto-detection)
 
 ### 46D · Tests
-- [ ] `backend/test/test_industry_ats.py`:
+- [x] `backend/test/test_industry_ats.py`:
   - JD with "Kubernetes, microservices, CI/CD" → detects `tech_saas`
   - JD with "Bloomberg, CFA, equity" → detects `finance_banking`
   - Tech profile weights tech keywords higher than generic profile
@@ -1726,7 +1726,7 @@ Shows public resumes, professional summary, contact form.
 result, save as new resume.
 
 ### 69A · Backend — Section-Level Merge
-- [ ] Add `POST /resumes/merge` to `backend/app/api/resume_routes.py`:
+- [x] Add `POST /resumes/merge` to `backend/app/api/resume_routes.py`:
   ```python
   class MergeRequest(BaseModel):
       resume_ids: List[str] = Field(..., min_length=2, max_length=4)
@@ -1743,15 +1743,15 @@ result, save as new resume.
   - Save as new resume: `title = "Merged Resume"`, `parent_resume_id = resume_ids[0]`
 
 ### 69B · Frontend — Merge UI
-- [ ] Create `frontend/src/app/workspace/merge/page.tsx`:
+- [x] Create `frontend/src/app/workspace/merge/page.tsx`:
   - **Step 1**: Multi-select up to 4 resumes (checkbox grid with card previews)
   - **Step 2**: Section picker — for each detected section, dropdown to choose source resume
   - **Step 3**: Monaco diff editor (original `resume_ids[0]` left, merged result right)
   - **Step 4**: "Save as New Resume" button
-- [ ] Add "Merge Resumes" in workspace header actions
+- [x] Add "Merge Resumes" in workspace header actions
 
 ### 69C · Tests
-- [ ] `backend/test/test_resume_merge.py`:
+- [x] `backend/test/test_resume_merge.py`:
   - Merge 2 resumes with `section_choices` → correct sections from correct sources
   - `resume_ids` with non-owned resume → 403
   - `resume_ids` with only 1 entry → 422
