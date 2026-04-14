@@ -109,6 +109,7 @@ describe('Feature 69 · parseLatexSections', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 afterEach(() => {
+  apiClient.setAuthToken(null)
   vi.unstubAllGlobals()
 })
 
