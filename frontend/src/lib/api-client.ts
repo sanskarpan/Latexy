@@ -716,6 +716,22 @@ class ApiClient {
     })
   }
 
+  async mergeResumes(
+    resumeIds: string[],
+    sectionChoices: Record<string, string>
+  ): Promise<{ merged_latex: string; new_resume_id: string }> {
+    return this.request<{ merged_latex: string; new_resume_id: string }>(
+      '/resumes/merge',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          resume_ids: resumeIds,
+          section_choices: sectionChoices,
+        }),
+      }
+    )
+  }
+
   async updateResume(
     resumeId: string,
     resume: ResumeUpdate
