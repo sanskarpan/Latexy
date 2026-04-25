@@ -91,7 +91,7 @@ class JSONParser(AbstractParser):
                 company=job.get('name') or job.get('company') or '',
                 start_date=job.get('startDate'),
                 end_date=job.get('endDate'),
-                current=not job.get('endDate') or job.get('endDate', '').lower() == 'present',
+                current=not job.get('endDate') or str(job.get('endDate', '')).lower() == 'present',
                 description=job.get('highlights') or [],
             )
             for job in data.get('work', [])

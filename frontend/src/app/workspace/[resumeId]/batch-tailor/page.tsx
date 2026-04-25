@@ -15,6 +15,8 @@ import {
   type BatchJobStatus,
   type BatchStatusResponse,
 } from '@/lib/api-client'
+// Note: bulkExport exports all user resumes, not batch-specific ones.
+// Per-variant "View" links are used instead for individual access.
 
 // ------------------------------------------------------------------ //
 //  Types                                                               //
@@ -173,25 +175,6 @@ export default function BatchTailorPage() {
     ? batchStatus.jobs.every(j => j.status === 'completed')
     : false
 
-  const variantIds = batchStatus
-    ? batchStatus.jobs.map(j => j.variant_resume_id).filter(Boolean) as string[]
-    : []
-
-  async function downloadAll() {
-    if (variantIds.length === 0) return
-    try {
-      const blob = await apiClient.bulkExport('pdf')
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'batch-tailored-resumes.zip'
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch {
-      toast.error('Export failed')
-    }
-  }
-
   // ---------------------------------------------------------------- //
   //  Render                                                            //
   // ---------------------------------------------------------------- //
@@ -210,7 +193,7 @@ export default function BatchTailorPage() {
           <div>
             <h1 className="text-2xl font-bold text-zinc-100 flex items-center gap-2">
               <Zap className="w-6 h-6 text-violet-400" />
-              Bulk Tailor
+              Batch Tailor
             </h1>
             <p className="text-sm text-zinc-400 mt-0.5">
               Submit up to 10 job descriptions — get a tailored resume variant for each.
@@ -336,12 +319,7 @@ export default function BatchTailorPage() {
               </div>
               <div className="flex items-center gap-3">
                 {allComplete && (
-                  <button
-                    onClick={downloadAll}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
-                  >
-                    Download All as ZIP
-                  </button>
+                  <span className="text-xs text-emerald-400 font-medium">All complete — use View links below</span>
                 )}
                 <button
                   onClick={() => {

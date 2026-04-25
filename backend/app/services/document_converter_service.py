@@ -15,7 +15,7 @@ _PLATFORM_HINTS: dict[str, str] = {
     "kickresume": (
         "NOTE — This resume was exported from Kickresume. "
         "Kickresume stores skills in nested categories (e.g. {\"Programming\": [\"Python\", \"Go\"]}); "
-        "flatten them into a single \\\\section*{Skills} grouped list. "
+        "flatten them into a single \\section*{Skills} grouped list. "
         "'Summary' and 'Objective' fields may both appear — prefer 'Summary', discard 'Objective' if redundant."
     ),
     "resumeio": (

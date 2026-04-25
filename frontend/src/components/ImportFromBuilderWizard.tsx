@@ -189,9 +189,10 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
     if (!file) return
     resetConversion()
     const sourcePlatform = platform?.id !== 'generic' ? platform?.id : undefined
-    const latex = await startConversion(file, undefined, sourcePlatform)
-    if (latex) onComplete(latex)
-  }, [file, platform, startConversion, resetConversion, onComplete])
+    // onComplete is called by the useEffect above when status transitions to 'done'.
+    // We do NOT call it here to avoid double-invocation.
+    await startConversion(file, undefined, sourcePlatform)
+  }, [file, platform, startConversion, resetConversion])
 
   const converting = status === 'uploading' || status === 'converting'
 
@@ -368,7 +369,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
               {preview.skills.length > 0 && (
                 <div>
                   <p className="text-[10px] text-zinc-600">Skills</p>
-                  <p className="mt-0.5 text-xs text-zinc-400">{preview.skills.join(', ')}{preview.skills.length === 10 ? '…' : ''}</p>
+                  <p className="mt-0.5 text-xs text-zinc-400">{preview.skills.join(', ')}</p>
                 </div>
               )}
             </div>

@@ -26,7 +26,7 @@ from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client, redis_manager
 from ..database.connection import get_db
-from ..database.models import Compilation, Resume
+from ..database.models import Compilation, Resume, User
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from ..workers.ats_worker import submit_ats_scoring
 from ..workers.cleanup_worker import submit_expired_jobs_cleanup, submit_temp_files_cleanup
@@ -480,7 +480,7 @@ async def create_batch_tailor(
     """
     from sqlalchemy import select as sa_select
 
-    # Verify resume ownership
+    # Verify resume ownership and fetch caller's subscription plan in one pass
     result = await db.execute(
         sa_select(Resume).where(Resume.id == body.resume_id, Resume.user_id == user_id)
     )
@@ -488,17 +488,18 @@ async def create_batch_tailor(
     if parent is None:
         raise HTTPException(status_code=403, detail="Resume not found or access denied")
 
-    batch_id = str(uuid.uuid4())
-    job_entries: List[Dict] = []
-    job_ids: List[str] = []
+    user_result = await db.execute(sa_select(User.subscription_plan).where(User.id == user_id))
+    user_plan: str = user_result.scalar_one_or_none() or "free"
 
+    # Phase 1 — create all fork rows and commit before touching Celery/Redis.
+    # This ensures no orphaned DB rows if a later Celery/Redis call fails.
+    forks: List[tuple] = []  # (fork, item)
     try:
         for item in body.jobs:
-            fork_title = f"{parent.title} — {item.company_name}"
             fork = Resume(
                 id=str(uuid.uuid4()),
                 user_id=user_id,
-                title=fork_title,
+                title=f"{parent.title} — {item.company_name}",
                 latex_content=parent.latex_content,
                 is_template=False,
                 tags=list(parent.tags) if parent.tags else None,
@@ -506,41 +507,48 @@ async def create_batch_tailor(
                 resume_settings=dict(parent.resume_settings or {}),
             )
             db.add(fork)
-            await db.flush()  # get fork.id without full commit
-
-            job_id = str(uuid.uuid4())
-            await _write_initial_redis_state(job_id, "combined", user_id, 120)
-            submit_optimize_and_compile(
-                latex_content=fork.latex_content,
-                job_description=item.job_description,
-                job_id=job_id,
-                user_id=user_id,
-                optimization_level="aggressive",
-                custom_instructions=(
-                    f"Tailor this resume for the {item.role_title} role at {item.company_name}. "
-                    "Maximise keyword alignment with the job description. "
-                    "Keep all factual information accurate."
-                ),
-                resume_id=str(fork.id),
-            )
-
-            job_ids.append(job_id)
-            job_entries.append(
-                {
-                    "job_id": job_id,
-                    "company_name": item.company_name,
-                    "role_title": item.role_title,
-                    "variant_resume_id": str(fork.id),
-                    "job_url": item.job_url,
-                }
-            )
+            await db.flush()  # get fork.id before commit
+            forks.append((fork, item))
 
         await db.commit()
-
     except Exception as exc:
         await db.rollback()
-        logger.error(f"Batch tailor failed: {exc}")
+        logger.error(f"Batch tailor DB phase failed: {exc}")
         raise HTTPException(status_code=500, detail="Failed to create batch tailor jobs")
+
+    # Phase 2 — submit Celery jobs (outside DB transaction, forks already committed).
+    batch_id = str(uuid.uuid4())
+    job_entries: List[Dict] = []
+    job_ids: List[str] = []
+    estimated_time = 84 if user_plan in ("pro", "byok") else 120  # mirrors submit_job logic
+
+    for fork, item in forks:
+        job_id = str(uuid.uuid4())
+        await _write_initial_redis_state(job_id, "combined", user_id, estimated_time)
+        submit_optimize_and_compile(
+            latex_content=fork.latex_content,
+            job_description=item.job_description,
+            job_id=job_id,
+            user_id=user_id,
+            user_plan=user_plan,
+            optimization_level="aggressive",
+            custom_instructions=(
+                f"Tailor this resume for the {item.role_title} role at {item.company_name}. "
+                "Maximise keyword alignment with the job description. "
+                "Keep all factual information accurate."
+            ),
+            resume_id=str(fork.id),
+        )
+        job_ids.append(job_id)
+        job_entries.append(
+            {
+                "job_id": job_id,
+                "company_name": item.company_name,
+                "role_title": item.role_title,
+                "variant_resume_id": str(fork.id),
+                "job_url": item.job_url,
+            }
+        )
 
     # Persist batch metadata in Redis
     r = await get_redis_client()
@@ -589,17 +597,18 @@ async def get_batch_status(
             )
         )
 
-    # Aggregate batch status
+    # Aggregate batch status.
+    # Per-job values: queued | processing | running | completed | failed | cancelled
     all_statuses = {s.status for s in statuses}
+    terminal = {"completed", "failed", "cancelled"}
+    active = {"processing", "running"}
     if all_statuses <= {"completed"}:
-        agg = "complete"
-    elif all_statuses <= {"failed"}:
+        agg = "completed"
+    elif all_statuses <= {"failed", "cancelled"}:
         agg = "failed"
-    elif "completed" in all_statuses and all_statuses - {"completed", "failed"}:
-        agg = "running"
-    elif "completed" in all_statuses and "failed" in all_statuses and len(all_statuses) == 2:
+    elif all_statuses <= terminal and "completed" in all_statuses:
         agg = "partial"
-    elif any(s in all_statuses for s in ("running", "processing")):
+    elif all_statuses & active:
         agg = "running"
     else:
         agg = "pending"

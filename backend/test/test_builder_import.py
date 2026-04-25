@@ -11,7 +11,6 @@ Covers:
   72C: Malformed JSON → 422
 """
 
-import io
 import json
 
 import pytest

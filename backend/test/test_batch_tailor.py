@@ -10,8 +10,7 @@ Covers:
 
 from __future__ import annotations
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -119,7 +118,6 @@ class TestBatchTailorEndpoint:
         # Patch _write_initial_redis_state to actually write a real queued state
         # (the mock captures the call but we still need Redis state for the GET to read)
         from app.api.job_routes import _write_initial_redis_state
-        from app.core.redis import get_redis_client
 
         written_job_ids: list[str] = []
 
