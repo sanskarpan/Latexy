@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, Upload, LayoutTemplate, X, Linkedin } from 'lucide-react'
+import { Search, Upload, LayoutTemplate, X, Linkedin, PackageOpen } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { apiClient } from '@/lib/api-client'
 import type { TemplateResponse, TemplateCategoryCount } from '@/lib/api-client'
 import MultiFormatUpload from '@/components/MultiFormatUpload'
+import ImportFromBuilderWizard from '@/components/ImportFromBuilderWizard'
 import TemplateCard from '@/components/TemplateCard'
 import TemplatePreviewModal from '@/components/TemplatePreviewModal'
 
@@ -66,7 +67,7 @@ const CATEGORY_ORDER = [
 //  Page component                                                     //
 // ------------------------------------------------------------------ //
 
-type Mode = 'template' | 'import' | 'linkedin'
+type Mode = 'template' | 'import' | 'linkedin' | 'builder'
 
 export default function NewResumePage() {
   const router = useRouter()
@@ -171,14 +172,14 @@ export default function NewResumePage() {
       return
     }
 
-    if ((mode === 'import' || mode === 'linkedin') && !importedContent) {
+    if ((mode === 'import' || mode === 'linkedin' || mode === 'builder') && !importedContent) {
       toast.error('Please upload a file first')
       return
     }
 
     setIsCreating(true)
     try {
-      if (mode === 'import' || mode === 'linkedin') {
+      if (mode === 'import' || mode === 'linkedin' || mode === 'builder') {
         const created = await apiClient.createResume({
           title: trimmedTitle,
           latex_content: importedContent,
@@ -205,7 +206,7 @@ export default function NewResumePage() {
   const canCreate =
     !!title.trim() &&
     !isCreating &&
-    ((mode === 'import' || mode === 'linkedin') ? !!importedContent : true)
+    ((mode === 'import' || mode === 'linkedin' || mode === 'builder') ? !!importedContent : true)
 
   // ---------------------------------------------------------------- //
   //  Render                                                           //
@@ -242,7 +243,7 @@ export default function NewResumePage() {
         </section>
 
         {/* Mode toggle */}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <button
             onClick={() => { setMode('template'); setImportedContent('') }}
             className={`surface-panel edge-highlight flex items-start gap-3 p-5 text-left transition ${
@@ -285,6 +286,21 @@ export default function NewResumePage() {
             <div>
               <h2 className="text-sm font-semibold text-white">Import from LinkedIn</h2>
               <p className="mt-0.5 text-xs text-zinc-400">Export your LinkedIn profile as PDF and import it.</p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => { setMode('builder'); setImportedContent('') }}
+            className={`surface-panel edge-highlight flex items-start gap-3 p-5 text-left transition ${
+              mode === 'builder'
+                ? 'border-violet-400/35 bg-violet-400/[0.05]'
+                : 'hover:bg-white/[0.03]'
+            }`}
+          >
+            <PackageOpen className="mt-0.5 h-5 w-5 shrink-0 text-violet-400/80" />
+            <div>
+              <h2 className="text-sm font-semibold text-white">Import from Builder</h2>
+              <p className="mt-0.5 text-xs text-zinc-400">Kickresume, Resume.io, Novoresume, and more.</p>
             </div>
           </button>
         </div>
@@ -336,6 +352,19 @@ export default function NewResumePage() {
               <p className="text-xs uppercase tracking-[0.12em] text-emerald-300">
                 Profile parsed — {importedContent.length.toLocaleString()} characters ready
               </p>
+            )}
+          </section>
+        )}
+
+        {/* --- BUILDER MODE --- */}
+        {mode === 'builder' && (
+          <section className="surface-panel edge-highlight p-6">
+            {importedContent ? (
+              <p className="text-xs uppercase tracking-[0.12em] text-emerald-300">
+                Resume imported — {importedContent.length.toLocaleString()} characters ready
+              </p>
+            ) : (
+              <ImportFromBuilderWizard onComplete={setImportedContent} />
             )}
           </section>
         )}

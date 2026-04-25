@@ -8,6 +8,29 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+ALLOWED_SOURCE_PLATFORMS = {"kickresume", "resumeio", "novoresume"}
+
+# Per-platform supplemental instructions injected into the generic system prompt
+_PLATFORM_HINTS: dict[str, str] = {
+    "kickresume": (
+        "NOTE — This resume was exported from Kickresume. "
+        "Kickresume stores skills in nested categories (e.g. {\"Programming\": [\"Python\", \"Go\"]}); "
+        "flatten them into a single \\section*{Skills} grouped list. "
+        "'Summary' and 'Objective' fields may both appear — prefer 'Summary', discard 'Objective' if redundant."
+    ),
+    "resumeio": (
+        "NOTE — This resume was exported from Resume.io. "
+        "Resume.io uses 'position' instead of 'title' for job roles; "
+        "map 'position' → job title in Experience entries. "
+        "Dates may be stored as ISO strings (2022-01) — convert to 'Jan 2022' format."
+    ),
+    "novoresume": (
+        "NOTE — This resume was exported from Novoresume. "
+        "Novoresume stores dates as 'YYYY/MM' (e.g. 2021/03) — convert to 'Month YYYY' (e.g. Mar 2021). "
+        "Skill proficiency levels (1-5 stars) should be omitted from LaTeX output."
+    ),
+}
+
 LINKEDIN_SYSTEM_PROMPT = """You are parsing a LinkedIn profile PDF export. LinkedIn PDFs follow a strict structure:
 - Name and headline at top
 - "About" section (summary)
@@ -40,7 +63,11 @@ class DocumentConverterService:
     """Service for converting parsed resume data to LaTeX via LLM."""
 
     def build_conversion_prompt(
-        self, structure: dict, source_format: str, source_hint: Optional[str] = None
+        self,
+        structure: dict,
+        source_format: str,
+        source_hint: Optional[str] = None,
+        source_platform: Optional[str] = None,
     ) -> List[Dict]:
         """
         Build LLM messages for converting parsed resume structure to LaTeX.
@@ -82,6 +109,9 @@ class DocumentConverterService:
                 "8. Include \\href{mailto:email}{email} for email addresses\n"
                 "9. Return ONLY valid compilable LaTeX code — no markdown, no explanations, no code fences"
             )
+            # Append platform-specific hints when source is a known resume builder
+            if source_platform and source_platform in _PLATFORM_HINTS:
+                system += "\n\n" + _PLATFORM_HINTS[source_platform]
 
         user_parts = [
             f"Convert this {source_format.upper()} resume to professional LaTeX.\n",

@@ -5,7 +5,7 @@ import json
 import logging
 from typing import Optional
 
-from .base_parser import AbstractParser, ContactInfo, ParsedResume
+from .base_parser import AbstractParser, ContactInfo, Education, Experience, ParsedResume
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +84,37 @@ class JSONParser(AbstractParser):
             lines.append(f"{skill.get('name', '')}: {', '.join(skill.get('keywords', []))}")
 
         raw_text = '\n'.join(lines)
+        # Populate structured fields so callers can use counts/lists directly
+        experience = [
+            Experience(
+                title=job.get('position') or job.get('title') or '',
+                company=job.get('name') or job.get('company') or '',
+                start_date=job.get('startDate'),
+                end_date=job.get('endDate'),
+                current=not job.get('endDate') or str(job.get('endDate', '')).lower() == 'present',
+                description=job.get('highlights') or [],
+            )
+            for job in data.get('work', [])
+        ]
+        education = [
+            Education(
+                degree=f"{edu.get('studyType', '')} {edu.get('area', '')}".strip() or edu.get('degree', ''),
+                institution=edu.get('institution', ''),
+                graduation_date=edu.get('endDate'),
+            )
+            for edu in data.get('education', [])
+        ]
+        # Flatten nested skill categories into a simple list
+        skills: list[str] = []
+        for skill in data.get('skills', []):
+            skills.extend(skill.get('keywords', []))
+
         parsed = ParsedResume(
             contact=contact,
             summary=basics.get('summary'),
+            experience=experience,
+            education=education,
+            skills=skills,
             raw_text=raw_text,
             metadata={
                 "filename": filename,

@@ -19,15 +19,15 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client, redis_manager
 from ..database.connection import get_db
-from ..database.models import Compilation, Resume
-from ..middleware.auth_middleware import get_current_user_optional
+from ..database.models import Compilation, Resume, User
+from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from ..workers.ats_worker import submit_ats_scoring
 from ..workers.cleanup_worker import submit_expired_jobs_cleanup, submit_temp_files_cleanup
 from ..workers.latex_worker import submit_latex_compilation
@@ -38,7 +38,8 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
-_JOB_TTL = 86400  # 24 hours
+_JOB_TTL = 86400   # 24 hours
+_BATCH_TTL = 86400  # 24 hours
 
 
 # ------------------------------------------------------------------ #
@@ -96,6 +97,37 @@ class JobResultResponse(BaseModel):
 class JobListResponse(BaseModel):
     jobs: List[Dict]
     total_count: int
+
+
+class BatchJobItem(BaseModel):
+    company_name: str = Field(..., max_length=200)
+    role_title: str = Field(..., max_length=200)
+    job_description: str = Field(..., max_length=20_000)
+    job_url: Optional[str] = Field(None, max_length=500)
+
+
+class BatchTailorRequest(BaseModel):
+    resume_id: str
+    jobs: List[BatchJobItem] = Field(..., min_length=1, max_length=10)
+
+
+class BatchTailorResponse(BaseModel):
+    batch_id: str
+    job_ids: List[str]
+
+
+class BatchJobStatus(BaseModel):
+    job_id: str
+    company_name: str
+    role_title: str
+    status: str
+    variant_resume_id: Optional[str] = None
+
+
+class BatchStatusResponse(BaseModel):
+    batch_id: str
+    status: str
+    jobs: List[BatchJobStatus]
 
 
 # ------------------------------------------------------------------ #
@@ -430,6 +462,158 @@ async def compile_watermarked(
     except Exception as exc:
         logger.error(f"Error submitting watermarked compile: {exc}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ------------------------------------------------------------------ #
+#  Batch tailor (Feature 75)                                           #
+# ------------------------------------------------------------------ #
+
+@router.post("/batch", response_model=BatchTailorResponse, status_code=201)
+async def create_batch_tailor(
+    body: BatchTailorRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """
+    Fork a resume once per job description and submit a combined optimize+compile
+    job for each fork.  Returns immediately; clients poll /jobs/batch/{batch_id}.
+    """
+    from sqlalchemy import select as sa_select
+
+    # Verify resume ownership and fetch caller's subscription plan in one pass
+    result = await db.execute(
+        sa_select(Resume).where(Resume.id == body.resume_id, Resume.user_id == user_id)
+    )
+    parent = result.scalar_one_or_none()
+    if parent is None:
+        raise HTTPException(status_code=403, detail="Resume not found or access denied")
+
+    user_result = await db.execute(sa_select(User.subscription_plan).where(User.id == user_id))
+    user_plan: str = user_result.scalar_one_or_none() or "free"
+
+    # Phase 1 — create all fork rows and commit before touching Celery/Redis.
+    # This ensures no orphaned DB rows if a later Celery/Redis call fails.
+    forks: List[tuple] = []  # (fork, item)
+    try:
+        for item in body.jobs:
+            fork = Resume(
+                id=str(uuid.uuid4()),
+                user_id=user_id,
+                title=f"{parent.title} — {item.company_name}",
+                latex_content=parent.latex_content,
+                is_template=False,
+                tags=list(parent.tags) if parent.tags else None,
+                parent_resume_id=parent.id,
+                resume_settings=dict(parent.resume_settings or {}),
+            )
+            db.add(fork)
+            await db.flush()  # get fork.id before commit
+            forks.append((fork, item))
+
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        logger.error(f"Batch tailor DB phase failed: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to create batch tailor jobs")
+
+    # Phase 2 — submit Celery jobs (outside DB transaction, forks already committed).
+    batch_id = str(uuid.uuid4())
+    job_entries: List[Dict] = []
+    job_ids: List[str] = []
+    estimated_time = 84 if user_plan in ("pro", "byok") else 120  # mirrors submit_job logic
+
+    for fork, item in forks:
+        job_id = str(uuid.uuid4())
+        await _write_initial_redis_state(job_id, "combined", user_id, estimated_time)
+        submit_optimize_and_compile(
+            latex_content=fork.latex_content,
+            job_description=item.job_description,
+            job_id=job_id,
+            user_id=user_id,
+            user_plan=user_plan,
+            optimization_level="aggressive",
+            custom_instructions=(
+                f"Tailor this resume for the {item.role_title} role at {item.company_name}. "
+                "Maximise keyword alignment with the job description. "
+                "Keep all factual information accurate."
+            ),
+            resume_id=str(fork.id),
+        )
+        job_ids.append(job_id)
+        job_entries.append(
+            {
+                "job_id": job_id,
+                "company_name": item.company_name,
+                "role_title": item.role_title,
+                "variant_resume_id": str(fork.id),
+                "job_url": item.job_url,
+            }
+        )
+
+    # Persist batch metadata in Redis
+    r = await get_redis_client()
+    batch_meta = {
+        "batch_id": batch_id,
+        "user_id": user_id,
+        "created_at": time.time(),
+        "jobs": job_entries,
+    }
+    await r.setex(f"latexy:batch:{batch_id}", _BATCH_TTL, json.dumps(batch_meta))
+
+    return BatchTailorResponse(batch_id=batch_id, job_ids=job_ids)
+
+
+@router.get("/batch/{batch_id}", response_model=BatchStatusResponse)
+async def get_batch_status(
+    batch_id: str,
+    user_id: str = Depends(get_current_user_required),
+):
+    """Return per-job status for a batch and an aggregated batch-level status."""
+    r = await get_redis_client()
+    raw = await r.get(f"latexy:batch:{batch_id}")
+    if not raw:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    meta = json.loads(raw)
+    if meta.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    statuses: List[BatchJobStatus] = []
+    for entry in meta["jobs"]:
+        job_state_raw = await r.get(f"latexy:job:{entry['job_id']}:state")
+        if job_state_raw:
+            job_state = json.loads(job_state_raw)
+            job_status = job_state.get("status", "queued")
+        else:
+            job_status = "queued"
+
+        statuses.append(
+            BatchJobStatus(
+                job_id=entry["job_id"],
+                company_name=entry["company_name"],
+                role_title=entry["role_title"],
+                status=job_status,
+                variant_resume_id=entry.get("variant_resume_id"),
+            )
+        )
+
+    # Aggregate batch status.
+    # Per-job values: queued | processing | running | completed | failed | cancelled
+    all_statuses = {s.status for s in statuses}
+    terminal = {"completed", "failed", "cancelled"}
+    active = {"processing", "running"}
+    if all_statuses <= {"completed"}:
+        agg = "completed"
+    elif all_statuses <= {"failed", "cancelled"}:
+        agg = "failed"
+    elif all_statuses <= terminal and "completed" in all_statuses:
+        agg = "partial"
+    elif all_statuses & active:
+        agg = "running"
+    else:
+        agg = "pending"
+
+    return BatchStatusResponse(batch_id=batch_id, status=agg, jobs=statuses)
 
 
 # ------------------------------------------------------------------ #

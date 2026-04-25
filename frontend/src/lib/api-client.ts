@@ -281,6 +281,18 @@ export interface UploadForConversionResponse {
   latex_content?: string
 }
 
+export interface ParsePreviewResponse {
+  success: boolean
+  format: string
+  filename: string
+  name: string | null
+  email: string | null
+  experience_count: number
+  education_count: number
+  skills: string[]
+  has_summary: boolean
+}
+
 export interface SemanticMatchResult {
   resume_id: string
   resume_title: string
@@ -1115,11 +1127,17 @@ class ApiClient {
   }
 
   // Upload a file for conversion to LaTeX
-  async uploadForConversion(file: File, sourceHint?: string): Promise<UploadForConversionResponse> {
+  async uploadForConversion(
+    file: File,
+    sourceHint?: string,
+    sourcePlatform?: string,
+  ): Promise<UploadForConversionResponse> {
     const formData = new FormData()
     formData.append('file', file)
     if (sourceHint) formData.append('source_hint', sourceHint)
-    const response = await fetch(`${this.baseUrl}/formats/upload`, {
+    const url = new URL(`${this.baseUrl}/formats/upload`)
+    if (sourcePlatform) url.searchParams.set('source_platform', sourcePlatform)
+    const response = await fetch(url.toString(), {
       method: 'POST',
       headers: this.getAuthHeader(),
       body: formData,
@@ -1127,6 +1145,22 @@ class ApiClient {
     if (!response.ok) {
       const error = await response.text()
       throw new Error(error || `Upload failed: ${response.status}`)
+    }
+    return response.json()
+  }
+
+  // Parse a file and return basic preview data (no LLM conversion)
+  async parseForPreview(file: File): Promise<ParsePreviewResponse> {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await fetch(`${this.baseUrl}/formats/parse`, {
+      method: 'POST',
+      headers: this.getAuthHeader(),
+      body: formData,
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(error || `Parse failed: ${response.status}`)
     }
     return response.json()
   }
@@ -1855,6 +1889,21 @@ class ApiClient {
       body: JSON.stringify(params),
     })
   }
+
+  // ---------------------------------------------------------------- //
+  //  Batch Tailor (Feature 75)                                        //
+  // ---------------------------------------------------------------- //
+
+  async createBatchTailor(body: BatchTailorRequest): Promise<BatchTailorResponse> {
+    return this.request<BatchTailorResponse>('/jobs/batch', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async getBatchStatus(batchId: string): Promise<BatchStatusResponse> {
+    return this.request<BatchStatusResponse>(`/jobs/batch/${encodeURIComponent(batchId)}`)
+  }
 }
 
 // Singleton
@@ -2146,6 +2195,41 @@ export interface MendeleyImportResponse {
   entries_count: number
   bibtex: string
   message: string
+}
+
+// ------------------------------------------------------------------ //
+//  Batch Tailor (Feature 75)                                         //
+// ------------------------------------------------------------------ //
+
+export interface BatchJobItem {
+  company_name: string
+  role_title: string
+  job_description: string
+  job_url?: string
+}
+
+export interface BatchTailorRequest {
+  resume_id: string
+  jobs: BatchJobItem[]
+}
+
+export interface BatchTailorResponse {
+  batch_id: string
+  job_ids: string[]
+}
+
+export interface BatchJobStatus {
+  job_id: string
+  company_name: string
+  role_title: string
+  status: string
+  variant_resume_id?: string
+}
+
+export interface BatchStatusResponse {
+  batch_id: string
+  status: string
+  jobs: BatchJobStatus[]
 }
 
 // ------------------------------------------------------------------ //

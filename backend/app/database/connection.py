@@ -1,5 +1,6 @@
 """Database connection and session management."""
 
+import re
 from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -26,10 +27,13 @@ async def init_db():
         logger.error("DATABASE_URL not configured")
         raise ValueError("DATABASE_URL not configured")
 
-    # Convert PostgreSQL URL to asyncpg format
+    # Convert PostgreSQL URL to asyncpg-compatible format.
+    # asyncpg does not accept psycopg-style query params (sslmode, channel_binding).
     database_url = settings.DATABASE_URL
-    if database_url.startswith("postgresql://"):
-        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    database_url = re.sub(r"^postgres(ql)?(\+\w+)?://", "postgresql+asyncpg://", database_url)
+    database_url = database_url.replace("sslmode=require", "ssl=require")
+    database_url = re.sub(r"[?&]channel_binding=\w+", "", database_url)
+    database_url = database_url.rstrip("?&")
 
     # Create async engine
     engine = create_async_engine(
