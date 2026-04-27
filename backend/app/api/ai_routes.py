@@ -1370,6 +1370,7 @@ class ReorderSectionsRequest(BaseModel):
     resume_latex: str = Field(..., max_length=200_000)
     job_description: Optional[str] = Field(None, max_length=10_000)
     career_stage: Optional[str] = None   # "entry_level"|"mid"|"senior"|"executive"
+    forced_order: Optional[List[str]] = None  # When set, skip LLM and apply this order directly
 
 
 class ReorderSectionsResponse(BaseModel):
@@ -1399,8 +1400,13 @@ Rules:
 """
 
 
+_JD_PROMPT_LIMIT = 8000  # must match the slice used when building the LLM user_prompt
+
+
 def _reorder_cache_key(current_order: list[str], jd: str, career_stage: str) -> str:
-    data = json.dumps({"order": current_order, "jd": jd[:500], "stage": career_stage})
+    # Use the same JD slice that goes into the LLM prompt so long JDs produce
+    # distinct cache keys instead of colliding with truncated ones.
+    data = json.dumps({"order": current_order, "jd": jd[:_JD_PROMPT_LIMIT], "stage": career_stage})
     return f"ai:reorder:{hashlib.sha256(data.encode()).hexdigest()[:20]}"
 
 
@@ -1424,6 +1430,17 @@ async def reorder_sections_endpoint(
             suggested_order=[],
             rationale="No \\section{} blocks found in the supplied LaTeX.",
             reordered_latex=request.resume_latex,
+            cached=False,
+        )
+
+    # forced_order fast-path: skip LLM entirely and apply the user's explicit order.
+    if request.forced_order is not None:
+        reordered = _reorder_sections(request.resume_latex, request.forced_order)
+        return ReorderSectionsResponse(
+            current_order=current_order,
+            suggested_order=request.forced_order,
+            rationale="Section order applied as specified.",
+            reordered_latex=reordered,
             cached=False,
         )
 
@@ -1476,7 +1493,7 @@ async def reorder_sections_endpoint(
     if career_stage:
         user_prompt += f"Career stage: {career_stage}\n"
     if jd:
-        user_prompt += f"\nJob description:\n{jd[:8000]}"
+        user_prompt += f"\nJob description:\n{jd[:_JD_PROMPT_LIMIT]}"
 
     try:
         start = time.monotonic()
