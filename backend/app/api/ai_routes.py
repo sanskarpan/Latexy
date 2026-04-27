@@ -26,6 +26,7 @@ from ..database.models import Resume
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from ..services.error_explainer_service import error_explainer_service
 from ..services.latex_text_extractor import extract_prose, offset_to_latex_position
+from ..services.optimization_personas import PERSONAS
 from ..services.proofreader_service import ProofreadResponse, proofread_latex
 
 logger = get_logger(__name__)
@@ -1555,3 +1556,21 @@ async def reorder_sections_endpoint(
         reordered_latex=reordered,
         cached=False,
     )
+
+
+# ── Personas ─────────────────────────────────────────────────────────────────
+
+
+class PersonaItem(BaseModel):
+    key: str
+    label: str
+    description: str
+
+
+@router.get("/personas", response_model=List[PersonaItem])
+async def list_personas() -> List[PersonaItem]:
+    """Return available optimization persona presets (Feature 56)."""
+    return [
+        PersonaItem(key=key, label=cfg["label"], description=cfg["description"])
+        for key, cfg in PERSONAS.items()
+    ]
