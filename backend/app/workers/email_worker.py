@@ -136,6 +136,7 @@ async def _async_send_weekly_digest(user_id: str) -> None:
     engine = create_async_engine(normalize_database_url(raw_url), echo=False)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     since = datetime.now(timezone.utc) - timedelta(days=7)
+    stale_cutoff = datetime.now(timezone.utc) - timedelta(days=90)
 
     try:
         async with session_factory() as session:
@@ -168,8 +169,28 @@ async def _async_send_weekly_digest(user_id: str) -> None:
             compilation_count: int = row[0] or 0
             avg_ats: Optional[float] = float(row[1]) if row[1] else None
 
+            # Stale resumes: not updated in 90+ days, not archived
+            stale_result = await session.execute(
+                select(Resume.id, Resume.title, Resume.updated_at).where(
+                    Resume.user_id == user_id,
+                    Resume.updated_at < stale_cutoff,
+                    Resume.archived_at.is_(None),
+                )
+            )
+            now = datetime.now(timezone.utc)
+            stale_resumes = [
+                {
+                    "id": str(row.id),
+                    "title": row.title or "Untitled",
+                    "days_since_updated": (now - row.updated_at.replace(tzinfo=timezone.utc)).days,
+                }
+                for row in stale_result.all()
+            ]
+
         user_name = user.name or user.email.split("@")[0]
-        html, text = render_weekly_digest_email(user_name, resume_count, compilation_count, avg_ats)
+        html, text = render_weekly_digest_email(
+            user_name, resume_count, compilation_count, avg_ats, stale_resumes or None
+        )
         await email_service.send_email(
             to=user.email,
             subject="Your weekly Latexy summary",
