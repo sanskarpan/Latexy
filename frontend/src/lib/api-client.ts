@@ -2267,7 +2267,8 @@ export interface TranslateResumeResponse {
 export interface ReorderSectionsRequest {
   resume_latex: string
   job_description?: string
-  career_stage?: string  // "entry_level" | "mid" | "senior" | "executive"
+  career_stage?: string        // "entry_level" | "mid" | "senior" | "executive"
+  forced_order?: string[]      // When set, backend skips LLM and applies this order directly
 }
 
 export interface ReorderSectionsResponse {
