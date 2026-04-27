@@ -1143,6 +1143,25 @@ class ApiClient {
     })
   }
 
+  async keywordDensity(body: {
+    resume_latex: string
+    job_description: string
+  }): Promise<{
+    keywords: Array<{
+      keyword: string
+      status: 'present' | 'partial' | 'missing'
+      count: number
+      required: boolean
+      suggested_location: string | null
+    }>
+    coverage_score: number
+  }> {
+    return this.request('/ats/keyword-density', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
   // ---------------------------------------------------------------- //
   //  Multi-format file I/O                                           //
   // ---------------------------------------------------------------- //
