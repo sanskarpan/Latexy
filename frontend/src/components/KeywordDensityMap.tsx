@@ -18,7 +18,7 @@ type DensityResult = {
 }
 
 interface KeywordDensityMapProps {
-  latexContent: string
+  getLatexContent: () => string
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -33,7 +33,7 @@ const STATUS_ICONS: Record<string, string> = {
   missing: '✗',
 }
 
-export default function KeywordDensityMap({ latexContent }: KeywordDensityMapProps) {
+export default function KeywordDensityMap({ getLatexContent }: KeywordDensityMapProps) {
   const [jobDescription, setJobDescription] = useState('')
   const [result, setResult] = useState<DensityResult | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -41,6 +41,7 @@ export default function KeywordDensityMap({ latexContent }: KeywordDensityMapPro
   const [tooltip, setTooltip] = useState<{ keyword: string; location: string } | null>(null)
 
   const runAnalysis = async () => {
+    const latexContent = getLatexContent()
     if (!jobDescription.trim() || !latexContent.trim()) return
     setIsLoading(true)
     setError(null)
@@ -78,7 +79,7 @@ export default function KeywordDensityMap({ latexContent }: KeywordDensityMapPro
 
       <button
         onClick={runAnalysis}
-        disabled={isLoading || !jobDescription.trim() || !latexContent.trim()}
+        disabled={isLoading || !jobDescription.trim()}
         className="flex items-center gap-2 rounded-lg bg-orange-500/20 px-4 py-2.5 text-sm font-semibold text-orange-200 ring-1 ring-orange-400/20 transition hover:bg-orange-500/30 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
