@@ -12,10 +12,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-import pytest
-
 from app.services.email_service import render_weekly_digest_email
-
 
 # ── Unit: render_weekly_digest_email ─────────────────────────────────────────
 
