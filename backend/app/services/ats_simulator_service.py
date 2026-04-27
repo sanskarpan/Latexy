@@ -176,11 +176,11 @@ def _apply_poor_tier_distortions(plain_text: str, detected_issues: List[str]) ->
 
     if "tables" in detected_issues:
         # Remove short lines that look like table separator artifacts
-        lines = [l for l in lines if len(l.strip()) > 3]
+        lines = [ln for ln in lines if len(ln.strip()) > 3]
 
     if "pdf_formatting" in detected_issues:
         # Collapse excessive whitespace
-        lines = [re.sub(r"  +", " ", l) for l in lines]
+        lines = [re.sub(r"  +", " ", ln) for ln in lines]
 
     return "\n".join(lines)
 
