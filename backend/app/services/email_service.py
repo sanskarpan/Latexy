@@ -11,7 +11,9 @@ import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from html import escape
 from typing import Optional
+from urllib.parse import quote
 
 from ..core.config import settings
 from ..core.logging import get_logger
@@ -182,9 +184,9 @@ def render_weekly_digest_email(
     if stale_resumes:
         rows = "\n".join(
             f'      <li style="margin-bottom:8px">'
-            f'<strong>{r["title"]}</strong> '
+            f'<strong>{escape(r["title"])}</strong> '
             f'<span style="color:#71717a">({r["days_since_updated"]} days without update)</span> — '
-            f'<a href="{settings.FRONTEND_URL}/workspace/{r["id"]}/edit" '
+            f'<a href="{settings.FRONTEND_URL}/workspace/{quote(str(r["id"]), safe="")}/edit" '
             f'style="color:#fb923c;text-decoration:none">Update now →</a>'
             f"</li>"
             for r in stale_resumes
