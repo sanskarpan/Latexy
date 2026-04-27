@@ -161,10 +161,54 @@ def render_weekly_digest_email(
     resume_count: int,
     compilation_count: int,
     avg_ats_score: Optional[float],
+    stale_resumes: Optional[list] = None,
 ) -> tuple[str, str]:
-    """Returns (html_body, text_body) for a weekly digest email."""
+    """Returns (html_body, text_body) for a weekly digest email.
+
+    Args:
+        user_name: Display name for the recipient.
+        resume_count: New resumes created this week.
+        compilation_count: Compilations run this week.
+        avg_ats_score: Average ATS score for the week, or None.
+        stale_resumes: List of dicts with ``id``, ``title``, ``days_since_updated``
+                       for resumes not updated in 90+ days (very_stale).
+    """
     score_line = f"<li>Average ATS score: <strong>{avg_ats_score:.0f}/100</strong></li>" if avg_ats_score else ""
     score_text = f"Average ATS score: {avg_ats_score:.0f}/100\n" if avg_ats_score else ""
+
+    # ── Stale resumes section ─────────────────────────────────────────────────
+    stale_html = ""
+    stale_text = ""
+    if stale_resumes:
+        rows = "\n".join(
+            f'      <li style="margin-bottom:8px">'
+            f'<strong>{r["title"]}</strong> '
+            f'<span style="color:#71717a">({r["days_since_updated"]} days without update)</span> — '
+            f'<a href="{settings.FRONTEND_URL}/workspace/{r["id"]}/edit" '
+            f'style="color:#fb923c;text-decoration:none">Update now →</a>'
+            f"</li>"
+            for r in stale_resumes
+        )
+        stale_html = f"""
+    <div style="margin-top:24px;border:1px solid #3f3f46;border-radius:8px;padding:16px;background:#1c1c1f">
+      <h3 style="color:#fb923c;margin-top:0;font-size:14px">⚠ Resumes that need your attention</h3>
+      <p style="font-size:13px;color:#a1a1aa;margin-top:0">
+        These resumes haven't been updated in 90+ days. Recruiters notice freshness!
+      </p>
+      <ul style="line-height:1.8;font-size:13px;padding-left:16px">
+{rows}
+      </ul>
+    </div>"""
+
+        stale_lines = "\n".join(
+            f"  • {r['title']} ({r['days_since_updated']} days) — "
+            f"{settings.FRONTEND_URL}/workspace/{r['id']}/edit"
+            for r in stale_resumes
+        )
+        stale_text = (
+            "\n\n⚠ Resumes that need your attention (90+ days without update):\n"
+            + stale_lines
+        )
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -176,7 +220,7 @@ def render_weekly_digest_email(
       <li>Resumes: <strong>{resume_count}</strong></li>
       <li>Compilations: <strong>{compilation_count}</strong></li>
       {score_line}
-    </ul>
+    </ul>{stale_html}
     <p style="margin-top:24px">
       <a href="{settings.FRONTEND_URL}/workspace" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">
         Open Latexy
@@ -194,7 +238,8 @@ def render_weekly_digest_email(
         f"Hi {user_name}, here's what you achieved this week:\n"
         f"Resumes: {resume_count}\n"
         f"Compilations: {compilation_count}\n"
-        f"{score_text}\n"
+        f"{score_text}"
+        f"{stale_text}\n\n"
         f"Open Latexy: {settings.FRONTEND_URL}/workspace\n\n"
         f"Unsubscribe: {settings.FRONTEND_URL}/settings"
     )
