@@ -40,6 +40,7 @@ from ..core.config import get_compile_timeout, settings
 from ..core.logging import get_logger
 from ..services.ats_scoring_service import ats_scoring_service
 from ..services.llm_service import llm_service
+from ..services.optimization_personas import PERSONAS
 from ..workers.event_publisher import (
     is_cancelled,
     publish_event,
@@ -82,6 +83,7 @@ def optimize_and_compile_task(
     resume_id: Optional[str] = None,
     compiler: str = "pdflatex",
     timeout_seconds: Optional[int] = None,
+    persona: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Full pipeline: LLM optimize → pdflatex compile → ATS score.
@@ -131,6 +133,7 @@ def optimize_and_compile_task(
             target_sections=target_sections,
             custom_instructions=custom_instructions,
             model=model,
+            persona=persona,
         )
 
         if is_cancelled(job_id):
@@ -302,6 +305,7 @@ def _run_llm_stage(
     target_sections: Optional[List[str]] = None,
     custom_instructions: Optional[str] = None,
     model: Optional[str] = None,
+    persona: Optional[str] = None,
 ) -> tuple[str, List[Dict], int, float]:
     """
     Stream OpenAI tokens through a delimiter state machine.
@@ -336,17 +340,22 @@ def _run_llm_stage(
     token_count = 0
     tokens_total = 0
 
+    base_system = (
+        "You are an expert resume optimizer specializing in ATS-friendly "
+        "LaTeX resumes. You help job seekers optimize their resumes for "
+        "specific job descriptions while maintaining professional formatting."
+    )
+    persona_config = PERSONAS.get(persona or "")
+    system_content = (
+        f"{base_system} {persona_config['prompt_addon']}"
+        if persona_config
+        else base_system
+    )
+
     stream = client.chat.completions.create(
         model=model or settings.OPENAI_MODEL,
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert resume optimizer specializing in ATS-friendly "
-                    "LaTeX resumes. You help job seekers optimize their resumes for "
-                    "specific job descriptions while maintaining professional formatting."
-                ),
-            },
+            {"role": "system", "content": system_content},
             {"role": "user", "content": prompt},
         ],
         max_tokens=settings.OPENAI_MAX_TOKENS,
@@ -632,6 +641,7 @@ def submit_optimize_and_compile(
     resume_id: Optional[str] = None,
     compiler: str = "pdflatex",
     timeout_seconds: Optional[int] = None,
+    persona: Optional[str] = None,
 ) -> str:
     """Enqueue optimize_and_compile_task on the combined queue."""
     if priority is None:
@@ -657,6 +667,7 @@ def submit_optimize_and_compile(
             "resume_id": resume_id,
             "compiler": compiler,
             "timeout_seconds": compile_timeout,
+            "persona": persona,
         },
         priority=priority,
         queue="combined",
