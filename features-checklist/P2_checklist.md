@@ -815,7 +815,7 @@ Dashboard staleness warning. Weekly digest includes stale resume alerts.
   - Click → filters grid to show only `very_stale` resumes
 
 ### 48D · Email Integration
-- [ ] In `backend/app/workers/email_worker.py` weekly digest task (from Feature 19):
+- [x] In `backend/app/workers/email_worker.py` weekly digest task (from Feature 19):
   - Include section: "Resumes that need your attention" listing stale resume titles with
     "Update Now" links
 
@@ -857,7 +857,7 @@ or DOCX files.
 representation as that system would parse your resume. Highlights problem areas.
 
 ### 50A · Backend — ATS Simulator Service
-- [ ] Create `backend/app/services/ats_simulator_service.py`:
+- [x] Create `backend/app/services/ats_simulator_service.py`:
   ```python
   ATS_PROFILES = {
       "greenhouse":      { "label": "Greenhouse",      "tier": "good",    "issues": ["multi_column"] },
@@ -879,7 +879,7 @@ representation as that system would parse your resume. Highlights problem areas.
   ```
 
 ### 50B · Backend — Simulator Endpoint
-- [ ] Add `POST /ats/simulate` to `backend/app/api/ats_routes.py`:
+- [x] Add `POST /ats/simulate` to `backend/app/api/ats_routes.py`:
   ```python
   class AtsSimulateRequest(BaseModel):
       latex_content: str = Field(..., max_length=200_000)
@@ -896,15 +896,15 @@ representation as that system would parse your resume. Highlights problem areas.
   - Cache by `hash(latex_content + ats_name)`, TTL=1800
 
 ### 50C · Frontend — ATS Simulator Panel
-- [ ] Create `frontend/src/components/AtsSimulatorPanel.tsx`:
+- [x] Create `frontend/src/components/ats/AtsSimulatorPanel.tsx`:
   - ATS selector: card grid with system name + tier badge (Good/Medium/Poor)
-  - "Simulate" button → shows plain-text view in Monaco (read-only, language "plaintext")
+  - "Simulate" button → shows plain-text view (read-only)
   - Issues list below with severity icons
   - Recommendations accordion
-- [ ] Add as "ATS Simulator" tab in the ATS analysis page or optimize page
+- [x] Add as "ATS Simulator" tab in the optimize page
 
 ### 50D · Tests
-- [ ] `backend/test/test_ats_simulator.py`:
+- [x] `backend/test/test_ats_simulator.py`:
   - Taleo simulation of multi-column LaTeX → `issues` contains `multi_column` entry
   - Greenhouse simulation of clean single-column → `score >= 85`
   - Unknown ATS name → 422
@@ -1047,7 +1047,7 @@ restructures `\section{}` blocks. Diff preview before applying.
 Click missing keyword shows suggested insertion location.
 
 ### 54A · Backend — Keyword Density Endpoint
-- [ ] Add `POST /ats/keyword-density` to `backend/app/api/ats_routes.py`:
+- [x] Add `POST /ats/keyword-density` to `backend/app/api/ats_routes.py`:
   ```python
   class KeywordDensityRequest(BaseModel):
       resume_latex: str = Field(..., max_length=200_000)
@@ -1069,18 +1069,17 @@ Click missing keyword shows suggested insertion location.
   - `suggested_location()`: if keyword is tech skill → "Skills section"; else "Experience section"
 
 ### 54B · Frontend — Keyword Density Map
-- [ ] Create `frontend/src/components/KeywordDensityMap.tsx`:
+- [x] Create `frontend/src/components/KeywordDensityMap.tsx`:
   - Tag cloud: each keyword as a chip
     - `bg-emerald-500/20 text-emerald-300` + ✓ (present)
     - `bg-amber-500/20 text-amber-300` + ~ (partial)
     - `bg-rose-500/20 text-rose-300` + ✗ (missing)
-  - Chip size proportional to importance (required > preferred)
   - Click missing chip → tooltip "Suggested location: Skills section"
-  - Coverage score progress bar at top: "52% keyword coverage"
-- [ ] Add as "Keywords" tab in ATS panel
+  - Coverage score progress bar at top
+- [x] Added as "Keywords" tab alongside ATS Simulator in optimize page
 
 ### 54C · Tests
-- [ ] `backend/test/test_keyword_density.py`:
+- [x] `backend/test/test_keyword_density.py`:
   - "Python" in JD and resume → `status="present"`
   - "manage" in JD, "management" in resume → `status="partial"`
   - "Kubernetes" in JD, absent from resume → `status="missing"`
