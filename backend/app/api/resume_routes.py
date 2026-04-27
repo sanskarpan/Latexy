@@ -107,6 +107,7 @@ class ResumeSettingsUpdate(BaseModel):
     main_file: Optional[str] = None
     latexmk_flags: Optional[List[str]] = None
     extra_packages: Optional[List[str]] = None
+    last_persona: Optional[str] = None
 
     @field_validator("texlive_version")
     @classmethod
@@ -503,6 +504,8 @@ async def update_resume_settings(
         current_meta["latexmk_flags"] = body.latexmk_flags
     if body.extra_packages is not None:
         current_meta["extra_packages"] = body.extra_packages
+    if body.last_persona is not None:
+        current_meta["last_persona"] = body.last_persona
 
     resume.resume_settings = current_meta
     resume.updated_at = datetime.now(timezone.utc)
