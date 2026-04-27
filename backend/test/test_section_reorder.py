@@ -274,7 +274,12 @@ class TestReorderSectionsEndpoint:
         suggested_partial = ["Skills", "Education", "Experience"]  # Projects missing
         mock_resp = _make_llm_response(suggested_partial)
 
-        with patch("openai.AsyncOpenAI") as mock_openai:
+        with (
+            patch("openai.AsyncOpenAI") as mock_openai,
+            patch("app.api.ai_routes.settings") as mock_settings,
+        ):
+            mock_settings.OPENAI_API_KEY = "sk-test-key"
+            mock_settings.OPENAI_MODEL = "gpt-4o-mini"
             instance = MagicMock()
             instance.chat.completions.create = AsyncMock(return_value=mock_resp)
             mock_openai.return_value = instance
@@ -286,10 +291,12 @@ class TestReorderSectionsEndpoint:
 
         assert resp.status_code == 200
         data = resp.json()
-        # All 4 sections must be in the output
+        # All 4 sections must be in the output — endpoint normalises missing ones
         assert len(data["suggested_order"]) == 4
         _, out_sections = extract_sections(data["reordered_latex"])
         assert len(out_sections) == 4
+        # Projects was omitted by LLM but must appear at the end
+        assert data["suggested_order"][-1] == "Projects"
 
     async def test_cached_flag_false_on_first_call(self, client: AsyncClient):
         """First call (cache miss) should return cached=False."""
@@ -297,9 +304,12 @@ class TestReorderSectionsEndpoint:
 
         with (
             patch("openai.AsyncOpenAI") as mock_openai,
+            patch("app.api.ai_routes.settings") as mock_settings,
             patch("app.core.redis.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.core.redis.cache_manager.set", new_callable=AsyncMock),
         ):
+            mock_settings.OPENAI_API_KEY = "sk-test-key"
+            mock_settings.OPENAI_MODEL = "gpt-4o-mini"
             instance = MagicMock()
             instance.chat.completions.create = AsyncMock(return_value=mock_resp)
             mock_openai.return_value = instance
