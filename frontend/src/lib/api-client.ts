@@ -74,6 +74,7 @@ export interface JobSubmitRequest {
   model?: string
   metadata?: Record<string, unknown>
   compiler?: LatexCompiler
+  persona?: string
 }
 
 export interface OptimizationHistoryEntry {
@@ -763,7 +764,7 @@ class ApiClient {
 
   async updateResumeSettings(
     resumeId: string,
-    settings: CompileSettings & { custom_flags?: string }
+    settings: CompileSettings & { custom_flags?: string; last_persona?: string }
   ): Promise<ResumeResponse> {
     return this.request<ResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/settings`, {
       method: 'PATCH',
@@ -879,6 +880,7 @@ class ApiClient {
     model?: string
     resume_id?: string
     compiler?: LatexCompiler
+    persona?: string
   }): Promise<JobSubmitResponse> {
     return this.submitJob({
       job_type: 'combined',
@@ -892,7 +894,12 @@ class ApiClient {
       model: body.model,
       metadata: body.resume_id ? { resume_id: body.resume_id } : undefined,
       compiler: body.compiler,
+      persona: body.persona,
     })
+  }
+
+  async getPersonas(): Promise<Array<{ key: string; label: string; description: string }>> {
+    return this.request('/ai/personas')
   }
 
   // ---------------------------------------------------------------- //
