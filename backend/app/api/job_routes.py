@@ -28,6 +28,7 @@ from ..core.redis import get_redis_client, redis_manager
 from ..database.connection import get_db
 from ..database.models import Compilation, Resume, User
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
+from ..services.optimization_personas import VALID_PERSONA_KEYS
 from ..workers.ats_worker import submit_ats_scoring
 from ..workers.cleanup_worker import submit_expired_jobs_cleanup, submit_temp_files_cleanup
 from ..workers.latex_worker import submit_latex_compilation
@@ -71,6 +72,7 @@ class JobSubmissionRequest(BaseModel):
     metadata: Optional[Dict] = None
     model: Optional[str] = None
     compiler: Optional[str] = None  # "pdflatex" | "xelatex" | "lualatex"
+    persona: Optional[str] = None
 
 
 class JobSubmissionResponse(BaseModel):
@@ -320,6 +322,11 @@ async def submit_job(
                     status_code=400,
                     detail="latex_content is required for combined jobs",
                 )
+            if request.persona and request.persona not in VALID_PERSONA_KEYS:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid persona '{request.persona}'. Valid values: {sorted(VALID_PERSONA_KEYS)}",
+                )
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
             submit_optimize_and_compile(
                 latex_content=request.latex_content,
@@ -334,6 +341,7 @@ async def submit_job(
                 model=request.model,
                 metadata=extra_meta,
                 compiler=compiler,
+                persona=request.persona,
             )
 
         elif request.job_type == "ats_scoring":
