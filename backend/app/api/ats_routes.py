@@ -24,6 +24,7 @@ from ..middleware.auth_middleware import get_current_user_optional, get_current_
 from ..services.api_key_service import api_key_service
 from ..services.ats_quick_scorer import quick_score_latex
 from ..services.ats_scoring_service import ats_scoring_service
+from ..services.ats_simulator_service import ATS_PROFILES, ats_simulator_service
 from ..services.industry_ats_profiles import INDUSTRY_PROFILES, detect_industry
 from ..workers.ats_worker import deep_analyze_ats_task, submit_ats_scoring, submit_job_description_analysis
 
@@ -825,3 +826,245 @@ def _get_category_recommendations(category: str, score: float) -> List[str]:
     }
 
     return recommendations.get(category, ["Improve overall quality and relevance"])
+
+
+# ── Feature 50: ATS Simulator ─────────────────────────────────────────────────
+
+class AtsSimulateRequest(BaseModel):
+    latex_content: str = Field(..., max_length=200_000)
+    ats_name: str = Field(..., description="ATS system key (e.g. 'taleo', 'greenhouse')")
+
+
+class AtsIssueOut(BaseModel):
+    type: str
+    severity: str
+    description: str
+    line_range: str
+
+
+class AtsSimulateResponse(BaseModel):
+    ats_label: str
+    plain_text_view: str
+    issues: List[AtsIssueOut]
+    score: int
+    recommendations: List[str]
+    cached: bool = False
+
+
+def _ats_simulate_cache_key(latex_content: str, ats_name: str) -> str:
+    # Length-prefix each field to avoid separator collision on free-form input
+    payload = f"{len(latex_content)}:{latex_content}\x00{len(ats_name)}:{ats_name}"
+    digest = hashlib.sha256(payload.encode()).hexdigest()[:16]
+    return f"ats:simulate:{digest}"
+
+
+@router.get("/simulate/profiles")
+async def list_ats_profiles() -> dict:
+    """Return all available ATS system profiles (no auth required)."""
+    return {
+        "profiles": [
+            {"key": k, "label": v["label"], "tier": v["tier"]}
+            for k, v in ATS_PROFILES.items()
+        ]
+    }
+
+
+@router.post("/simulate", response_model=AtsSimulateResponse)
+async def simulate_ats(
+    request: AtsSimulateRequest,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+) -> AtsSimulateResponse:
+    """
+    Simulate how a target ATS system would parse the résumé.
+
+    Returns the plain-text view the ATS would see, detected compatibility
+    issues with severity ratings, a 0–100 score, and actionable recommendations.
+    Responses are cached by content+ATS hash for 30 minutes.
+    """
+    if request.ats_name not in ATS_PROFILES:
+        valid = sorted(ATS_PROFILES.keys())
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown ats_name '{request.ats_name}'. Valid values: {valid}",
+        )
+
+    # Redis cache (best-effort — fail open)
+    cache_key = _ats_simulate_cache_key(request.latex_content, request.ats_name)
+    try:
+        r = await get_redis_client()
+        cached_raw = await r.get(cache_key)
+        if cached_raw:
+            cached_data = json.loads(cached_raw)
+            cached_data["cached"] = True
+            return AtsSimulateResponse(**cached_data)
+    except Exception:
+        pass
+
+    try:
+        result = ats_simulator_service.simulate(request.latex_content, request.ats_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"ATS simulate error: {exc}")
+        raise HTTPException(status_code=500, detail="ATS simulation failed")
+
+    issues_out = [
+        AtsIssueOut(
+            type=issue.type,
+            severity=issue.severity,
+            description=issue.description,
+            line_range=issue.line_range,
+        )
+        for issue in result.issues
+    ]
+
+    response = AtsSimulateResponse(
+        ats_label=result.ats_label,
+        plain_text_view=result.plain_text_view,
+        issues=issues_out,
+        score=result.score,
+        recommendations=result.recommendations,
+        cached=False,
+    )
+
+    # Write to cache (best-effort)
+    try:
+        r = await get_redis_client()
+        cache_payload = response.model_dump()
+        cache_payload.pop("cached", None)
+        await r.setex(cache_key, 1800, json.dumps(cache_payload))
+    except Exception:
+        pass
+
+    return response
+
+
+# ── Feature 54 — Keyword Density Map ────────────────────────────────────────
+
+class KeywordDensityRequest(BaseModel):
+    resume_latex: str = Field(..., max_length=200_000)
+    job_description: str = Field(..., max_length=20_000)
+
+
+class KeywordEntry(BaseModel):
+    keyword: str
+    status: str           # "present" | "partial" | "missing"
+    count: int            # occurrences in plain text
+    required: bool        # required vs preferred
+    suggested_location: Optional[str]   # "Skills section" | "Experience section"
+
+
+class KeywordDensityResponse(BaseModel):
+    keywords: List[KeywordEntry]
+    coverage_score: int   # 0–100
+
+
+# Tech skill terms that belong in Skills section
+_TECH_TERMS = frozenset({
+    "python", "javascript", "typescript", "java", "golang", "rust", "kotlin",
+    "swift", "ruby", "php", "scala", "sql", "nosql", "postgresql", "mysql",
+    "mongodb", "redis", "elasticsearch", "aws", "gcp", "azure", "docker",
+    "kubernetes", "terraform", "react", "angular", "vue", "node", "django",
+    "flask", "fastapi", "spring", "rails", "graphql", "rest", "grpc",
+    "hadoop", "spark", "kafka", "airflow", "mlops", "pytorch", "tensorflow",
+    "git", "linux", "bash", "ci", "devops", "agile", "scrum",
+})
+
+
+def _suggested_location(keyword: str) -> str:
+    return "Skills section" if keyword.lower() in _TECH_TERMS else "Experience section"
+
+
+def _stem(word: str) -> str:
+    """Very lightweight suffix-stripping for partial matching."""
+    for suffix in ("tion", "ment", "ing", "ness", "ity", "ies", "ed", "er", "s"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            return word[: len(word) - len(suffix)]
+    return word
+
+
+def _keyword_density_cache_key(resume_latex: str, job_description: str) -> str:
+    # Length-prefix each field to avoid separator collision on free-form input
+    payload = f"{len(resume_latex)}:{resume_latex}\x00{len(job_description)}:{job_description}"
+    digest = hashlib.sha256(payload.encode()).hexdigest()[:16]
+    return f"ats:kd:{digest}"
+
+
+@router.post("/keyword-density", response_model=KeywordDensityResponse)
+async def keyword_density(
+    request: KeywordDensityRequest,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+) -> KeywordDensityResponse:
+    """
+    Compare JD keywords against the resume and return a density map.
+
+    Each entry reports whether the keyword is present (exact match),
+    partial (stemmed match), or missing, plus a suggested insertion
+    location and overall coverage score.
+    """
+    # Redis cache (best-effort)
+    cache_key = _keyword_density_cache_key(request.resume_latex, request.job_description)
+    try:
+        r = await get_redis_client()
+        raw = await r.get(cache_key)
+        if raw:
+            data = json.loads(raw)
+            return KeywordDensityResponse(**data)
+    except Exception:
+        pass
+
+    # Extract JD keywords using existing service method
+    jd_keywords = ats_scoring_service._extract_keywords_from_job_description(request.job_description)
+
+    # Build plain-text view of resume for matching
+    import re as _re
+
+    from ..services.latex_text_extractor import extract_prose
+    segments = extract_prose(request.resume_latex)
+    resume_text = " ".join(seg.text for seg in segments if seg.text.strip()).lower()
+    if not resume_text.strip():
+        resume_text = _re.sub(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])*(?:\{[^{}]*\})*", " ", request.resume_latex).lower()
+
+    resume_words = set(_re.findall(r"\b[a-z][a-z0-9+#.-]*\b", resume_text))
+    resume_stems = {_stem(w) for w in resume_words}
+
+    entries: List[KeywordEntry] = []
+    for kw in jd_keywords:
+        kw_lower = kw.lower()
+        # Word-boundary count to avoid "java" matching inside "javascript"
+        count = len(_re.findall(r"\b" + _re.escape(kw_lower) + r"\b", resume_text))
+        if count > 0:
+            status = "present"
+        elif _stem(kw_lower) in resume_stems:
+            status = "partial"
+            count = 0
+        else:
+            status = "missing"
+            count = 0
+
+        entries.append(
+            KeywordEntry(
+                keyword=kw,
+                status=status,
+                count=count,
+                required=True,   # all extracted keywords are treated as required
+                suggested_location=_suggested_location(kw) if status == "missing" else None,
+            )
+        )
+
+    # Coverage score: (present + 0.5*partial) / total * 100
+    present = sum(1 for e in entries if e.status == "present")
+    partial = sum(1 for e in entries if e.status == "partial")
+    total = len(entries) or 1
+    coverage_score = int(min(100, round((present + 0.5 * partial) / total * 100)))
+
+    response = KeywordDensityResponse(keywords=entries, coverage_score=coverage_score)
+
+    # Cache for 30 min
+    try:
+        r = await get_redis_client()
+        await r.setex(cache_key, 1800, json.dumps(response.model_dump()))
+    except Exception:
+        pass
+
+    return response

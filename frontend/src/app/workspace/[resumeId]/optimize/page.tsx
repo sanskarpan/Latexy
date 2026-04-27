@@ -21,6 +21,8 @@ import CompareModal from '@/components/CompareModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
+import AtsSimulatorPanel from '@/components/ats/AtsSimulatorPanel'
+import KeywordDensityMap from '@/components/KeywordDensityMap'
 
 const TRIM_INSTRUCTION =
   'Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names.'
@@ -68,6 +70,9 @@ export default function OptimizationSuitePage() {
 
   // Industry override for ATS calibration (Feature 46)
   const [industryOverride, setIndustryOverride] = useState<string | null>(null)
+
+  // ATS tools tab
+  const [activeToolTab, setActiveToolTab] = useState<'ATS Simulator' | 'Keywords'>('ATS Simulator')
 
   // Error explainer
   const [explainerOpen, setExplainerOpen] = useState(false)
@@ -647,6 +652,44 @@ export default function OptimizationSuitePage() {
               </div>
             </section>
           </div>
+
+          <section className="surface-panel edge-highlight overflow-hidden">
+            {/* Tab bar */}
+            <div className="flex border-b border-white/10">
+              {(['ATS Simulator', 'Keywords'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveToolTab(tab)}
+                  className={`px-5 py-3 text-xs font-semibold uppercase tracking-[0.14em] transition ${
+                    activeToolTab === tab
+                      ? 'border-b-2 border-orange-400 text-orange-300'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            <div className="p-6">
+              {activeToolTab === 'ATS Simulator' ? (
+                <>
+                  <p className="mb-5 text-sm text-zinc-400">
+                    See how major ATS platforms parse your resume. Select a system to view the
+                    plain-text representation it would extract and identify any compatibility issues.
+                  </p>
+                  <AtsSimulatorPanel getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} />
+                </>
+              ) : (
+                <>
+                  <p className="mb-5 text-sm text-zinc-400">
+                    Paste a job description to see which keywords your resume covers. Green = present,
+                    amber = partial match, red = missing. Click a missing keyword for insertion advice.
+                  </p>
+                  <KeywordDensityMap getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} />
+                </>
+              )}
+            </div>
+          </section>
 
           <AnimatePresence>
             {stream.status === 'completed' && stream.atsScore !== undefined && (
