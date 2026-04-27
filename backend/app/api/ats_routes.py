@@ -935,3 +935,131 @@ async def simulate_ats(
         pass
 
     return response
+
+
+# ── Feature 54 — Keyword Density Map ────────────────────────────────────────
+
+class KeywordDensityRequest(BaseModel):
+    resume_latex: str = Field(..., max_length=200_000)
+    job_description: str = Field(..., max_length=20_000)
+
+
+class KeywordEntry(BaseModel):
+    keyword: str
+    status: str           # "present" | "partial" | "missing"
+    count: int            # occurrences in plain text
+    required: bool        # required vs preferred
+    suggested_location: Optional[str]   # "Skills section" | "Experience section"
+
+
+class KeywordDensityResponse(BaseModel):
+    keywords: List[KeywordEntry]
+    coverage_score: int   # 0–100
+
+
+# Tech skill terms that belong in Skills section
+_TECH_TERMS = frozenset({
+    "python", "javascript", "typescript", "java", "golang", "rust", "kotlin",
+    "swift", "ruby", "php", "scala", "sql", "nosql", "postgresql", "mysql",
+    "mongodb", "redis", "elasticsearch", "aws", "gcp", "azure", "docker",
+    "kubernetes", "terraform", "react", "angular", "vue", "node", "django",
+    "flask", "fastapi", "spring", "rails", "graphql", "rest", "grpc",
+    "hadoop", "spark", "kafka", "airflow", "mlops", "pytorch", "tensorflow",
+    "git", "linux", "bash", "ci", "devops", "agile", "scrum",
+})
+
+
+def _suggested_location(keyword: str) -> str:
+    return "Skills section" if keyword.lower() in _TECH_TERMS else "Experience section"
+
+
+def _stem(word: str) -> str:
+    """Very lightweight suffix-stripping for partial matching."""
+    for suffix in ("tion", "ment", "ing", "tion", "ness", "ity", "ies", "ed", "er", "s"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            return word[: len(word) - len(suffix)]
+    return word
+
+
+def _keyword_density_cache_key(resume_latex: str, job_description: str) -> str:
+    digest = hashlib.sha256((resume_latex + "|" + job_description).encode()).hexdigest()[:16]
+    return f"ats:kd:{digest}"
+
+
+@router.post("/keyword-density", response_model=KeywordDensityResponse)
+async def keyword_density(
+    request: KeywordDensityRequest,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+) -> KeywordDensityResponse:
+    """
+    Compare JD keywords against the resume and return a density map.
+
+    Each entry reports whether the keyword is present (exact match),
+    partial (stemmed match), or missing, plus a suggested insertion
+    location and overall coverage score.
+    """
+    # Redis cache (best-effort)
+    cache_key = _keyword_density_cache_key(request.resume_latex, request.job_description)
+    try:
+        r = await get_redis_client()
+        raw = await r.get(cache_key)
+        if raw:
+            data = json.loads(raw)
+            return KeywordDensityResponse(**data)
+    except Exception:
+        pass
+
+    # Extract JD keywords using existing service method
+    jd_keywords = ats_scoring_service._extract_keywords_from_job_description(request.job_description)
+
+    # Build plain-text view of resume for matching
+    from ..services.latex_text_extractor import extract_prose
+    segments = extract_prose(request.resume_latex)
+    resume_text = " ".join(seg.text for seg in segments if seg.text.strip()).lower()
+    if not resume_text.strip():
+        import re as _re
+        resume_text = _re.sub(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])*(?:\{[^{}]*\})*", " ", request.resume_latex).lower()
+
+    resume_words = set(resume_text.split())
+    resume_stems = {_stem(w) for w in resume_words}
+
+    entries: List[KeywordEntry] = []
+    for kw in jd_keywords:
+        kw_lower = kw.lower()
+        # Count exact occurrences
+        count = resume_text.count(kw_lower)
+        if count > 0:
+            status = "present"
+        elif _stem(kw_lower) in resume_stems:
+            status = "partial"
+            count = 0
+        else:
+            status = "missing"
+            count = 0
+
+        entries.append(
+            KeywordEntry(
+                keyword=kw,
+                status=status,
+                count=count,
+                required=True,   # all extracted keywords are treated as required
+                suggested_location=_suggested_location(kw) if status == "missing" else None,
+            )
+        )
+
+    # Coverage score: (present + 0.5*partial) / total * 100
+    present = sum(1 for e in entries if e.status == "present")
+    partial = sum(1 for e in entries if e.status == "partial")
+    total = len(entries) or 1
+    coverage_score = int(min(100, round((present + 0.5 * partial) / total * 100)))
+
+    response = KeywordDensityResponse(keywords=entries, coverage_score=coverage_score)
+
+    # Cache for 30 min
+    try:
+        r = await get_redis_client()
+        await r.setex(cache_key, 1800, json.dumps(response.model_dump()))
+    except Exception:
+        pass
+
+    return response
