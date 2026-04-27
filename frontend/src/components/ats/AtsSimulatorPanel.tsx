@@ -23,7 +23,7 @@ type SimulationResult = {
 }
 
 interface AtsSimulatorPanelProps {
-  latexContent: string
+  getLatexContent: () => string
 }
 
 const TIER_COLORS: Record<string, string> = {
@@ -60,7 +60,7 @@ function ScoreRing({ score }: { score: number }) {
   )
 }
 
-export default function AtsSimulatorPanel({ latexContent }: AtsSimulatorPanelProps) {
+export default function AtsSimulatorPanel({ getLatexContent }: AtsSimulatorPanelProps) {
   const [profiles, setProfiles] = useState<AtsProfile[]>([])
   const [selectedAts, setSelectedAts] = useState<string | null>(null)
   const [result, setResult] = useState<SimulationResult | null>(null)
@@ -71,11 +71,12 @@ export default function AtsSimulatorPanel({ latexContent }: AtsSimulatorPanelPro
 
   useEffect(() => {
     apiClient.getAtsSimulatorProfiles()
-      .then(data => setProfiles(data.profiles))
-      .catch(() => {})
+      .then(data => { setProfiles(data.profiles); setError(null) })
+      .catch(() => setError('Failed to load ATS systems. Please refresh to try again.'))
   }, [])
 
   const runSimulation = async () => {
+    const latexContent = getLatexContent()
     if (!selectedAts || !latexContent.trim()) return
     setIsLoading(true)
     setError(null)
@@ -126,7 +127,7 @@ export default function AtsSimulatorPanel({ latexContent }: AtsSimulatorPanelPro
 
       <button
         onClick={runSimulation}
-        disabled={!selectedAts || isLoading || !latexContent.trim()}
+        disabled={!selectedAts || isLoading}
         className="flex items-center gap-2 rounded-lg bg-orange-500/20 px-4 py-2.5 text-sm font-semibold text-orange-200 ring-1 ring-orange-400/20 transition hover:bg-orange-500/30 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Monitor size={14} />}
