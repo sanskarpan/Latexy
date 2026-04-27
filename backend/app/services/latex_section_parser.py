@@ -109,23 +109,32 @@ def reorder_sections(latex_content: str, new_order: List[str]) -> str:
             break
     trailing = "\n".join(lines[end_doc_idx:])  # "\\end{document}..."
 
-    # Build a case-insensitive name → section lookup
-    name_map: dict[str, LatexSection] = {s.name.lower(): s for s in sections}
+    # Build a case-insensitive name → ordered list-of-indices map so that
+    # duplicate-titled sections are preserved (each occurrence is consumed once).
+    name_to_indices: dict[str, list[int]] = {}
+    for i, s in enumerate(sections):
+        key = s.name.lower()
+        name_to_indices.setdefault(key, []).append(i)
 
-    seen: set[str] = set()
+    # Cursor tracks how many times each name has been consumed from new_order.
+    name_cursors: dict[str, int] = {}
+    consumed: set[int] = set()
     ordered: list[LatexSection] = []
 
     for name in new_order:
         key = name.lower()
-        if key in name_map and key not in seen:
-            ordered.append(name_map[key])
-            seen.add(key)
+        indices = name_to_indices.get(key, [])
+        cursor = name_cursors.get(key, 0)
+        if cursor < len(indices):
+            idx = indices[cursor]
+            ordered.append(sections[idx])
+            consumed.add(idx)
+            name_cursors[key] = cursor + 1
 
-    # Append any sections not covered by new_order
-    for s in sections:
-        if s.name.lower() not in seen:
+    # Append remaining (unconsumed) sections in their original order
+    for i, s in enumerate(sections):
+        if i not in consumed:
             ordered.append(s)
-            seen.add(s.name.lower())
 
     # Reconstruct: preamble + blank line + sections separated by blank lines + trailing
     body = "\n\n".join(s.content.rstrip() for s in ordered)
