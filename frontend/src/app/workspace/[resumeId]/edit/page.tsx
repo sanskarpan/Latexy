@@ -75,6 +75,7 @@ import DateStandardizerPanel from '@/components/DateStandardizerPanel'
 import AgeAnalysisPanel from '@/components/AgeAnalysisPanel'
 import ContactFormatterPanel from '@/components/ContactFormatterPanel'
 import SalaryEstimatorPanel from '@/components/SalaryEstimatorPanel'
+import SectionReorderPanel from '@/components/SectionReorderPanel'
 import WatermarkDownloadPopover from '@/components/WatermarkDownloadPopover'
 import CompilerSelector from '@/components/CompilerSelector'
 import CompileSettingsModal from '@/components/CompileSettingsModal'
@@ -715,6 +716,7 @@ export default function ResumeEditPage() {
   const [ageAnalysisOpen, setAgeAnalysisOpen] = useState(false)
   const [contactFormatterOpen, setContactFormatterOpen] = useState(false)
   const [salaryEstimatorOpen, setSalaryEstimatorOpen] = useState(false)
+  const [sectionReorderOpen, setSectionReorderOpen] = useState(false)
   const [docCommand, setDocCommand] = useState<string | undefined>(undefined)
 
   // Layout
@@ -1605,6 +1607,15 @@ export default function ResumeEditPage() {
             Salary
           </button>
 
+          <button
+            onClick={() => setSectionReorderOpen(true)}
+            title="AI section reordering"
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+          >
+            <SlidersHorizontal size={12} />
+            Reorder
+          </button>
+
           <Link
             href={`/workspace/${resumeId}/cover-letter`}
             className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-violet-300/80 transition hover:bg-violet-500/10 hover:text-violet-200"
@@ -2374,6 +2385,18 @@ export default function ResumeEditPage() {
         isOpen={salaryEstimatorOpen}
         onClose={() => setSalaryEstimatorOpen(false)}
         getLatex={() => editorRef.current?.getValue() ?? latexContent}
+      />
+
+      {/* Section Reorder Panel (Feature 53) */}
+      <SectionReorderPanel
+        isOpen={sectionReorderOpen}
+        onClose={() => setSectionReorderOpen(false)}
+        getLatex={() => editorRef.current?.getValue() ?? latexContent}
+        onApply={(newLatex) => {
+          pushUndo('Before section reorder')
+          editorRef.current?.setValue(newLatex)
+          setLatexContent(newLatex)
+        }}
       />
 
       {/* Diff viewer modal */}

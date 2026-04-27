@@ -1358,3 +1358,200 @@ async def translate_resume(
         variant_resume_id=str(variant.id),
         cached=was_cached,
     )
+
+
+# ── AI Section Reordering (Feature 53) ──────────────────────────────────────
+
+from ..services.latex_section_parser import extract_sections as _extract_sections  # noqa: E402
+from ..services.latex_section_parser import reorder_sections as _reorder_sections  # noqa: E402
+
+
+class ReorderSectionsRequest(BaseModel):
+    resume_latex: str = Field(..., max_length=200_000)
+    job_description: Optional[str] = Field(None, max_length=10_000)
+    career_stage: Optional[str] = None   # "entry_level"|"mid"|"senior"|"executive"
+    forced_order: Optional[List[str]] = None  # When set, skip LLM and apply this order directly
+
+
+class ReorderSectionsResponse(BaseModel):
+    current_order: List[str]
+    suggested_order: List[str]
+    rationale: str
+    reordered_latex: str
+    cached: bool
+
+
+_REORDER_SYSTEM_PROMPT = """\
+You are an expert resume consultant. Given a list of resume section names (and optionally a \
+job description and career stage), suggest the optimal ordering of those sections.
+
+Rules:
+1. Return ONLY a JSON object with keys:
+   "suggested_order": array of ALL section names in the recommended order
+   "rationale": 2-3 sentence explanation of why this ordering is optimal
+2. Include every section from the input list — do not drop any.
+3. Use the exact section names as provided (spelling and capitalisation unchanged).
+4. Ordering heuristics:
+   - Entry-level / student: Education before Experience
+   - Mid / senior: Experience before Education
+   - Technical roles: Skills near the top (after Summary/Objective if present)
+   - Executive: Summary first, then Experience, then rest
+5. The rationale must be concise and job-specific when a JD is supplied.\
+"""
+
+
+_JD_PROMPT_LIMIT = 8000  # must match the slice used when building the LLM user_prompt
+
+
+def _reorder_cache_key(current_order: list[str], jd: str, career_stage: str) -> str:
+    # Use the same JD slice that goes into the LLM prompt so long JDs produce
+    # distinct cache keys instead of colliding with truncated ones.
+    data = json.dumps({"order": current_order, "jd": jd[:_JD_PROMPT_LIMIT], "stage": career_stage})
+    return f"ai:reorder:{hashlib.sha256(data.encode()).hexdigest()[:20]}"
+
+
+@router.post("/reorder-sections", response_model=ReorderSectionsResponse)
+async def reorder_sections_endpoint(
+    request: ReorderSectionsRequest,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+) -> ReorderSectionsResponse:
+    """
+    AI-powered resume section reordering.  Parses sections from the supplied
+    LaTeX, asks the LLM for the optimal order, and returns both the suggestion
+    and the fully reconstructed LaTeX.  No auth required (uses BYOK → system key).
+    """
+    _preamble, sections = _extract_sections(request.resume_latex)
+    current_order = [s.name for s in sections]
+
+    if not sections:
+        return ReorderSectionsResponse(
+            current_order=[],
+            suggested_order=[],
+            rationale="No \\section{} blocks found in the supplied LaTeX.",
+            reordered_latex=request.resume_latex,
+            cached=False,
+        )
+
+    # forced_order fast-path: skip LLM entirely and apply the user's explicit order.
+    if request.forced_order is not None:
+        reordered = _reorder_sections(request.resume_latex, request.forced_order)
+        return ReorderSectionsResponse(
+            current_order=current_order,
+            suggested_order=request.forced_order,
+            rationale="Section order applied as specified.",
+            reordered_latex=reordered,
+            cached=False,
+        )
+
+    career_stage = (request.career_stage or "").strip().lower()
+    jd = (request.job_description or "").strip()
+    cache_key = _reorder_cache_key(current_order, jd, career_stage)
+
+    # Cache lookup
+    cached_data: Optional[dict] = None
+    try:
+        cached_data = await cache_manager.get(cache_key)
+    except Exception:
+        pass
+
+    if cached_data and isinstance(cached_data, dict):
+        suggested_order = cached_data.get("suggested_order", current_order)
+        rationale = cached_data.get("rationale", "")
+        reordered = _reorder_sections(request.resume_latex, suggested_order)
+        return ReorderSectionsResponse(
+            current_order=current_order,
+            suggested_order=suggested_order,
+            rationale=rationale,
+            reordered_latex=reordered,
+            cached=True,
+        )
+
+    # Resolve API key (BYOK → system default)
+    api_key: Optional[str] = None
+    if user_id:
+        try:
+            from ..services.api_key_service import api_key_service  # noqa: PLC0415
+            api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+        except Exception:
+            pass
+    if not api_key and settings.OPENAI_API_KEY:
+        api_key = settings.OPENAI_API_KEY
+
+    if not api_key:
+        logger.warning("reorder-sections: no API key available")
+        return ReorderSectionsResponse(
+            current_order=current_order,
+            suggested_order=current_order,
+            rationale="No OpenAI API key configured — showing current section order.",
+            reordered_latex=request.resume_latex,
+            cached=False,
+        )
+
+    # Build LLM prompt
+    user_prompt = f"Section list (current order): {json.dumps(current_order)}\n"
+    if career_stage:
+        user_prompt += f"Career stage: {career_stage}\n"
+    if jd:
+        user_prompt += f"\nJob description:\n{jd[:_JD_PROMPT_LIMIT]}"
+
+    try:
+        start = time.monotonic()
+        llm_client = openai.AsyncOpenAI(api_key=api_key)
+        response = await llm_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _REORDER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=600,
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+        elapsed = time.monotonic() - start
+        logger.info(f"reorder-sections LLM call: {elapsed:.2f}s")
+        raw = response.choices[0].message.content or "{}"
+        parsed = json.loads(raw)
+    except Exception as exc:
+        logger.error(f"reorder-sections LLM error: {exc}")
+        return ReorderSectionsResponse(
+            current_order=current_order,
+            suggested_order=current_order,
+            rationale="AI suggestion unavailable — showing current section order.",
+            reordered_latex=request.resume_latex,
+            cached=False,
+        )
+
+    # Normalise the LLM's suggested_order against the real section names
+    name_map: dict[str, str] = {s.lower(): s for s in current_order}
+    raw_suggested: list = parsed.get("suggested_order", []) if isinstance(parsed.get("suggested_order"), list) else []
+    suggested_order: list[str] = []
+    seen_keys: set[str] = set()
+    for item in raw_suggested:
+        key = str(item).lower()
+        if key in name_map and key not in seen_keys:
+            suggested_order.append(name_map[key])
+            seen_keys.add(key)
+    # Append any sections the LLM omitted (preserves completeness)
+    for s in current_order:
+        if s.lower() not in seen_keys:
+            suggested_order.append(s)
+            seen_keys.add(s.lower())
+
+    rationale = str(parsed.get("rationale", "No rationale provided."))
+
+    # Cache for 1 h
+    try:
+        await cache_manager.set(cache_key, {"suggested_order": suggested_order, "rationale": rationale}, ttl=3600)
+    except Exception:
+        pass
+
+    reordered = _reorder_sections(request.resume_latex, suggested_order)
+
+    return ReorderSectionsResponse(
+        current_order=current_order,
+        suggested_order=suggested_order,
+        rationale=rationale,
+        reordered_latex=reordered,
+        cached=False,
+    )
