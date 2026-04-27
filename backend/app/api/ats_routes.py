@@ -852,7 +852,9 @@ class AtsSimulateResponse(BaseModel):
 
 
 def _ats_simulate_cache_key(latex_content: str, ats_name: str) -> str:
-    digest = hashlib.sha256((latex_content + "|" + ats_name).encode()).hexdigest()[:16]
+    # Length-prefix each field to avoid separator collision on free-form input
+    payload = f"{len(latex_content)}:{latex_content}\x00{len(ats_name)}:{ats_name}"
+    digest = hashlib.sha256(payload.encode()).hexdigest()[:16]
     return f"ats:simulate:{digest}"
 
 
@@ -975,14 +977,16 @@ def _suggested_location(keyword: str) -> str:
 
 def _stem(word: str) -> str:
     """Very lightweight suffix-stripping for partial matching."""
-    for suffix in ("tion", "ment", "ing", "tion", "ness", "ity", "ies", "ed", "er", "s"):
+    for suffix in ("tion", "ment", "ing", "ness", "ity", "ies", "ed", "er", "s"):
         if word.endswith(suffix) and len(word) - len(suffix) >= 4:
             return word[: len(word) - len(suffix)]
     return word
 
 
 def _keyword_density_cache_key(resume_latex: str, job_description: str) -> str:
-    digest = hashlib.sha256((resume_latex + "|" + job_description).encode()).hexdigest()[:16]
+    # Length-prefix each field to avoid separator collision on free-form input
+    payload = f"{len(resume_latex)}:{resume_latex}\x00{len(job_description)}:{job_description}"
+    digest = hashlib.sha256(payload.encode()).hexdigest()[:16]
     return f"ats:kd:{digest}"
 
 
@@ -1013,21 +1017,22 @@ async def keyword_density(
     jd_keywords = ats_scoring_service._extract_keywords_from_job_description(request.job_description)
 
     # Build plain-text view of resume for matching
+    import re as _re
+
     from ..services.latex_text_extractor import extract_prose
     segments = extract_prose(request.resume_latex)
     resume_text = " ".join(seg.text for seg in segments if seg.text.strip()).lower()
     if not resume_text.strip():
-        import re as _re
         resume_text = _re.sub(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])*(?:\{[^{}]*\})*", " ", request.resume_latex).lower()
 
-    resume_words = set(resume_text.split())
+    resume_words = set(_re.findall(r"\b[a-z][a-z0-9+#.-]*\b", resume_text))
     resume_stems = {_stem(w) for w in resume_words}
 
     entries: List[KeywordEntry] = []
     for kw in jd_keywords:
         kw_lower = kw.lower()
-        # Count exact occurrences
-        count = resume_text.count(kw_lower)
+        # Word-boundary count to avoid "java" matching inside "javascript"
+        count = len(_re.findall(r"\b" + _re.escape(kw_lower) + r"\b", resume_text))
         if count > 0:
             status = "present"
         elif _stem(kw_lower) in resume_stems:
