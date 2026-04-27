@@ -1904,6 +1904,18 @@ class ApiClient {
   async getBatchStatus(batchId: string): Promise<BatchStatusResponse> {
     return this.request<BatchStatusResponse>(`/jobs/batch/${encodeURIComponent(batchId)}`)
   }
+
+  // ---------------------------------------------------------------- //
+  //  Section Reorder (Feature 53)                                     //
+  // ---------------------------------------------------------------- //
+
+  async reorderSections(body: ReorderSectionsRequest): Promise<ReorderSectionsResponse> {
+    return this.request<ReorderSectionsResponse>('/ai/reorder-sections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
 }
 
 // Singleton
@@ -2245,6 +2257,24 @@ export interface TranslateResumeRequest {
 export interface TranslateResumeResponse {
   success: boolean
   variant_resume_id: string
+  cached: boolean
+}
+
+// ------------------------------------------------------------------ //
+//  Section Reorder (Feature 53)                                       //
+// ------------------------------------------------------------------ //
+
+export interface ReorderSectionsRequest {
+  resume_latex: string
+  job_description?: string
+  career_stage?: string  // "entry_level" | "mid" | "senior" | "executive"
+}
+
+export interface ReorderSectionsResponse {
+  current_order: string[]
+  suggested_order: string[]
+  rationale: string
+  reordered_latex: string
   cached: boolean
 }
 
