@@ -1115,6 +1115,34 @@ class ApiClient {
     })
   }
 
+  async getAtsSimulatorProfiles(): Promise<{
+    profiles: Array<{ key: string; label: string; tier: string }>
+  }> {
+    return this.request('/ats/simulate/profiles')
+  }
+
+  async simulateAts(body: {
+    latex_content: string
+    ats_name: string
+  }): Promise<{
+    ats_label: string
+    plain_text_view: string
+    issues: Array<{
+      type: string
+      severity: string
+      description: string
+      line_range: string
+    }>
+    score: number
+    recommendations: string[]
+    cached: boolean
+  }> {
+    return this.request('/ats/simulate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
   // ---------------------------------------------------------------- //
   //  Multi-format file I/O                                           //
   // ---------------------------------------------------------------- //
