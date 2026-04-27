@@ -173,7 +173,7 @@ async def _async_send_weekly_digest(user_id: str) -> None:
             stale_result = await session.execute(
                 select(Resume.id, Resume.title, Resume.updated_at).where(
                     Resume.user_id == user_id,
-                    Resume.updated_at < stale_cutoff,
+                    Resume.updated_at <= stale_cutoff,
                     Resume.archived_at.is_(None),
                 )
             )
