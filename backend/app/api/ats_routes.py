@@ -24,6 +24,7 @@ from ..middleware.auth_middleware import get_current_user_optional, get_current_
 from ..services.api_key_service import api_key_service
 from ..services.ats_quick_scorer import quick_score_latex
 from ..services.ats_scoring_service import ats_scoring_service
+from ..services.ats_simulator_service import ATS_PROFILES, ats_simulator_service
 from ..services.industry_ats_profiles import INDUSTRY_PROFILES, detect_industry
 from ..workers.ats_worker import deep_analyze_ats_task, submit_ats_scoring, submit_job_description_analysis
 
@@ -825,3 +826,112 @@ def _get_category_recommendations(category: str, score: float) -> List[str]:
     }
 
     return recommendations.get(category, ["Improve overall quality and relevance"])
+
+
+# ── Feature 50: ATS Simulator ─────────────────────────────────────────────────
+
+class AtsSimulateRequest(BaseModel):
+    latex_content: str = Field(..., max_length=200_000)
+    ats_name: str = Field(..., description="ATS system key (e.g. 'taleo', 'greenhouse')")
+
+
+class AtsIssueOut(BaseModel):
+    type: str
+    severity: str
+    description: str
+    line_range: str
+
+
+class AtsSimulateResponse(BaseModel):
+    ats_label: str
+    plain_text_view: str
+    issues: List[AtsIssueOut]
+    score: int
+    recommendations: List[str]
+    cached: bool = False
+
+
+def _ats_simulate_cache_key(latex_content: str, ats_name: str) -> str:
+    digest = hashlib.sha256((latex_content + "|" + ats_name).encode()).hexdigest()[:16]
+    return f"ats:simulate:{digest}"
+
+
+@router.get("/simulate/profiles")
+async def list_ats_profiles() -> dict:
+    """Return all available ATS system profiles (no auth required)."""
+    return {
+        "profiles": [
+            {"key": k, "label": v["label"], "tier": v["tier"]}
+            for k, v in ATS_PROFILES.items()
+        ]
+    }
+
+
+@router.post("/simulate", response_model=AtsSimulateResponse)
+async def simulate_ats(
+    request: AtsSimulateRequest,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+) -> AtsSimulateResponse:
+    """
+    Simulate how a target ATS system would parse the résumé.
+
+    Returns the plain-text view the ATS would see, detected compatibility
+    issues with severity ratings, a 0–100 score, and actionable recommendations.
+    Responses are cached by content+ATS hash for 30 minutes.
+    """
+    if request.ats_name not in ATS_PROFILES:
+        valid = sorted(ATS_PROFILES.keys())
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown ats_name '{request.ats_name}'. Valid values: {valid}",
+        )
+
+    # Redis cache (best-effort — fail open)
+    cache_key = _ats_simulate_cache_key(request.latex_content, request.ats_name)
+    try:
+        r = await get_redis_client()
+        cached_raw = await r.get(cache_key)
+        if cached_raw:
+            cached_data = json.loads(cached_raw)
+            cached_data["cached"] = True
+            return AtsSimulateResponse(**cached_data)
+    except Exception:
+        pass
+
+    try:
+        result = ats_simulator_service.simulate(request.latex_content, request.ats_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"ATS simulate error: {exc}")
+        raise HTTPException(status_code=500, detail="ATS simulation failed")
+
+    issues_out = [
+        AtsIssueOut(
+            type=issue.type,
+            severity=issue.severity,
+            description=issue.description,
+            line_range=issue.line_range,
+        )
+        for issue in result.issues
+    ]
+
+    response = AtsSimulateResponse(
+        ats_label=result.ats_label,
+        plain_text_view=result.plain_text_view,
+        issues=issues_out,
+        score=result.score,
+        recommendations=result.recommendations,
+        cached=False,
+    )
+
+    # Write to cache (best-effort)
+    try:
+        r = await get_redis_client()
+        cache_payload = response.model_dump()
+        cache_payload.pop("cached", None)
+        await r.setex(cache_key, 1800, json.dumps(cache_payload))
+    except Exception:
+        pass
+
+    return response
