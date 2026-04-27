@@ -177,68 +177,27 @@ export default function SectionReorderPanel({
     }
   }
 
-  function handleApply() {
-    if (!result) return
-    // Recompute latex with the user-adjusted order using the backend's
-    // pre-computed reordered_latex as base only if order matches; otherwise
-    // we need to call the backend again.  For UX simplicity: if the user
-    // dragged to a different order than the AI suggested, we regenerate
-    // on-the-fly client-side (which we can't do — LaTeX reconstruction is
-    // server-side).  Instead, we keep track: if userOrder equals the
-    // suggested_order we use reordered_latex directly; otherwise we call
-    // the endpoint once more with the user's explicit order.
-    //
-    // Actually the simplest approach: apply the user's order via the
-    // reordered_latex we already have.  Since the backend already gave us
-    // a correctly-reordered source, and the user can only drag among
-    // the same sections, we re-call the endpoint with resume_latex and
-    // the user-adjusted order embedded as job_description content so the
-    // LLM produces that exact order.  That's too complex.
-    //
-    // Best approach: if userOrder == suggested_order → use reordered_latex.
-    // If user dragged things around, apply the change directly.
-    // We'll call the server with the current order forced.
-    applyOrder()
-  }
-
-  async function applyOrder() {
+  async function handleApply() {
     if (!result) return
 
     const ordersMatch = JSON.stringify(userOrder) === JSON.stringify(result.suggested_order)
 
     if (ordersMatch) {
-      // AI order unchanged — use the pre-computed latex
+      // AI order unchanged — use the pre-computed latex directly (no extra round-trip)
       onApply(result.reordered_latex)
       toast.success('Section order applied')
       onClose()
       return
     }
 
-    // User adjusted the order — call backend again with forced order
+    // User dragged sections to a custom order — use forced_order to bypass the LLM
+    // and get the LaTeX reconstructed with the exact order the user chose.
     setLoading(true)
     try {
-      const latex = getLatex()
-      // We encode the desired order in the request; the backend LLM suggestion
-      // will be overridden by using the user's order directly.  Since the
-      // endpoint returns `reordered_latex`, we just need to get one from the
-      // server — the cleanest way is to pass the user order as suggested and
-      // trust `reorder_sections()`.  We can't pass a custom "forced_order" yet,
-      // so we use a trick: pass a system message as JD to strongly bias the LLM.
-      // Actually the backend always produces reordered_latex from its suggested_order.
-      // We need an alternative: apply the reordering client-side from the
-      // already-downloaded preamble + sections.
-      //
-      // Since we have result.reordered_latex from the original call, we know
-      // the sections.  We'll reorder them from the original latex.
-      //
-      // Simplest correct approach: call endpoint once more with a fresh request
-      // that clearly encodes the desired order in the job_description.
       const res = await apiClient.reorderSections({
-        resume_latex: latex,
-        job_description: `Apply this exact section order: ${userOrder.join(', ')}`,
-        career_stage: careerStage || undefined,
+        resume_latex: getLatex(),
+        forced_order: userOrder,
       })
-      // If the LLM didn't honour it exactly, fall back to the order from res
       onApply(res.reordered_latex)
       toast.success('Section order applied')
       onClose()
