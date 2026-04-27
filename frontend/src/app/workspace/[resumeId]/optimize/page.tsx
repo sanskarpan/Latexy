@@ -677,7 +677,7 @@ export default function OptimizationSuitePage() {
                     See how major ATS platforms parse your resume. Select a system to view the
                     plain-text representation it would extract and identify any compatibility issues.
                   </p>
-                  <AtsSimulatorPanel latexContent={editorRef.current?.getValue() || resume?.latex_content || ''} />
+                  <AtsSimulatorPanel getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} />
                 </>
               ) : (
                 <>
@@ -685,7 +685,7 @@ export default function OptimizationSuitePage() {
                     Paste a job description to see which keywords your resume covers. Green = present,
                     amber = partial match, red = missing. Click a missing keyword for insertion advice.
                   </p>
-                  <KeywordDensityMap latexContent={editorRef.current?.getValue() || resume?.latex_content || ''} />
+                  <KeywordDensityMap getLatexContent={() => editorRef.current?.getValue() || resume?.latex_content || ''} />
                 </>
               )}
             </div>
