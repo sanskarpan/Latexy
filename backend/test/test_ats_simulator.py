@@ -241,12 +241,14 @@ class TestAtsSimulatorService:
         result = self.svc.simulate(CLEAN_LATEX, "lever")
         assert result.score == 90
 
-    def test_taleo_clean_resume_score_is_50(self):
-        """Taleo is 'poor' and clean résumé has no issues for it → score = 50."""
+    def test_taleo_clean_resume_score_below_base(self):
+        """Taleo is 'poor' (base=50); CLEAN_LATEX has \\geometry which triggers
+        pdf_formatting (-8) → expected score = 42."""
         result = self.svc.simulate(CLEAN_LATEX, "taleo")
-        # Taleo issues are ["tables", "multi_column", "pdf_formatting"]
-        # Clean résumé has none of them
-        assert result.score == 50
+        # \geometry triggers pdf_formatting (severity medium, -8 penalty)
+        pdf_issue = [i for i in result.issues if i.type == "pdf_formatting"]
+        assert len(pdf_issue) == 1
+        assert result.score == 42
 
 
 # ── Integration: HTTP endpoint ────────────────────────────────────────────────
