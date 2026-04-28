@@ -27,6 +27,14 @@ import KeywordDensityMap from '@/components/KeywordDensityMap'
 const TRIM_INSTRUCTION =
   'Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names.'
 
+const PERSONA_OPTIONS = [
+  { key: 'startup', icon: '🚀', label: 'Startup / Scale-up', description: 'Lean, impact-driven language — metrics, growth, and ownership.' },
+  { key: 'enterprise', icon: '🏢', label: 'Enterprise / Corporate', description: 'Formal, structured — collaboration, process, and scale.' },
+  { key: 'academic', icon: '🎓', label: 'Academic / Research', description: 'Publications, grants, teaching, and scholarly contributions.' },
+  { key: 'career_change', icon: '🔄', label: 'Career Change / Pivot', description: 'Surfaces transferable skills and bridges to the new field.' },
+  { key: 'executive', icon: '💼', label: 'Executive / C-Suite', description: 'P&L, vision, and board-level leadership impact.' },
+] as const
+
 export default function OptimizationSuitePage() {
   const params = useParams()
   const router = useRouter()
@@ -68,6 +76,9 @@ export default function OptimizationSuitePage() {
   const [isScraping, setIsScraping] = useState(false)
   const [scrapedMeta, setScrapedMeta] = useState<ScrapeJobResponse | null>(null)
 
+  // Optimization persona (Feature 56)
+  const [persona, setPersona] = useState<string | null>(null)
+
   // Industry override for ATS calibration (Feature 46)
   const [industryOverride, setIndustryOverride] = useState<string | null>(null)
 
@@ -105,6 +116,10 @@ export default function OptimizationSuitePage() {
         const loadedCompiler = data.metadata?.compiler as LatexCompiler | undefined
         const resolvedCompiler: LatexCompiler = loadedCompiler && ['pdflatex', 'xelatex', 'lualatex'].includes(loadedCompiler) ? loadedCompiler : 'pdflatex'
         setCompiler(resolvedCompiler)
+
+        // Load last-used persona (Feature 56)
+        const savedPersona = data.metadata?.last_persona as string | undefined
+        if (savedPersona) setPersona(savedPersona)
 
         // Auto-compile on load so user sees PDF immediately
         if (data.latex_content && data.latex_content.length >= 100) {
@@ -203,6 +218,7 @@ export default function OptimizationSuitePage() {
         job_description: jobDescription,
         optimization_level: 'balanced',
         compiler,
+        persona: persona ?? undefined,
       })
 
       if (!response.success || !response.job_id) {
@@ -432,6 +448,42 @@ export default function OptimizationSuitePage() {
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
         <aside className="space-y-6">
+          {/* ── Persona selector (Feature 56) ── */}
+          <section className="surface-panel edge-highlight p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Optimization Style</h2>
+              <span className="text-[10px] text-zinc-600">optional</span>
+            </div>
+            <p className="mt-1 text-[11px] text-zinc-600">Choose a persona to bias the AI toward a specific context.</p>
+            <div className="mt-3 grid grid-cols-1 gap-1.5">
+              {PERSONA_OPTIONS.map((p) => {
+                const active = persona === p.key
+                return (
+                  <button
+                    key={p.key}
+                    onClick={() => {
+                      const next = active ? null : p.key
+                      setPersona(next)
+                      apiClient.updateResumeSettings(resumeId, { last_persona: next ?? '' }).catch(() => {})
+                    }}
+                    disabled={isProcessing}
+                    className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition disabled:opacity-50 ${
+                      active
+                        ? 'border-orange-400/40 bg-orange-400/10'
+                        : 'border-white/[0.06] bg-black/20 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <span className="mt-0.5 text-base leading-none">{p.icon}</span>
+                    <div className="min-w-0">
+                      <p className={`text-[11px] font-semibold ${active ? 'text-orange-200' : 'text-zinc-300'}`}>{p.label}</p>
+                      <p className="mt-0.5 text-[10px] leading-relaxed text-zinc-600">{p.description}</p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+
           <section className="surface-panel edge-highlight p-5">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Job Description</h2>
