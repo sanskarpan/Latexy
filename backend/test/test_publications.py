@@ -140,16 +140,17 @@ def _make_404() -> MagicMock:
 @contextmanager
 def _patch_orcid(mock_resp: MagicMock):
     """
-    Context manager that patches httpx.AsyncClient used by PublicationsService.
+    Context manager that patches httpx.AsyncClient used by PublicationsService
+    and forces a cache miss so Redis state cannot pollute test results in CI.
 
     Usage::
 
         with _patch_orcid(_make_200(MOCK_ORCID_RESPONSE)):
             resp = await client.post("/ai/generate-publications", json={...})
     """
-    with patch(
-        "app.services.publications_service.httpx.AsyncClient"
-    ) as mock_cls:
+    with patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None), \
+         patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock), \
+         patch("app.services.publications_service.httpx.AsyncClient") as mock_cls:
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_resp)
         mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -159,10 +160,10 @@ def _patch_orcid(mock_resp: MagicMock):
 
 @contextmanager
 def _patch_orcid_error(exc: Exception):
-    """Context manager that makes the ORCID GET raise exc."""
-    with patch(
-        "app.services.publications_service.httpx.AsyncClient"
-    ) as mock_cls:
+    """Context manager that makes the ORCID GET raise exc, with cache bypassed."""
+    with patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None), \
+         patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock), \
+         patch("app.services.publications_service.httpx.AsyncClient") as mock_cls:
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(side_effect=exc)
         mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
