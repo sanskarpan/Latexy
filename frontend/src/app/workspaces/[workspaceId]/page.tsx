@@ -43,13 +43,13 @@ export default function WorkspaceDetailPage() {
     Promise.all([
       apiClient.getWorkspace(workspaceId),
       apiClient.listWorkspaceResumes(workspaceId),
-      apiClient.getResumes(),
+      apiClient.listResumes(),
     ])
       .then(([detail, wrs, userResumes]) => {
         setWs(detail)
         setNameInput(detail.name)
         setResumes(wrs)
-        setMyResumes(userResumes.resumes ?? [])
+        setMyResumes(userResumes)
       })
       .catch(() => toast.error('Failed to load workspace'))
       .finally(() => setLoading(false))
