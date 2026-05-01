@@ -48,6 +48,12 @@ class User(Base):
     github_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     # Reference manager tokens (Feature 42) — encrypted, stored as JSONB
     user_metadata: Mapped[Optional[Dict]] = mapped_column("user_metadata", JSONB, nullable=True)
+    # Portfolio / public profile (Feature 67)
+    public_username: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True)
+    portfolio_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    portfolio_custom_domain: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True)
+    portfolio_theme: Mapped[str] = mapped_column(Text, default="minimal", server_default="minimal")
+    portfolio_tagline: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
