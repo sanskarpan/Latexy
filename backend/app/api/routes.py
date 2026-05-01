@@ -142,6 +142,11 @@ from .comment_routes import router as comment_router
 
 router.include_router(comment_router)
 
+# Include Portfolio routes (Feature 67)
+from .portfolio_routes import router as portfolio_router
+
+router.include_router(portfolio_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
