@@ -560,6 +560,37 @@ class RecruiterNote(Base):
     author: Mapped["User"] = relationship("User")
 
 
+class ResumeComment(Base):
+    """Inline comment on a resume, optionally scoped to a workspace (Feature 74)."""
+    __tablename__ = "resume_comments"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    resume_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    workspace_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    author_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    line_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    section_tag: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    resume: Mapped["Resume"] = relationship("Resume")
+    workspace: Mapped[Optional["Workspace"]] = relationship("Workspace")
+    author: Mapped["User"] = relationship("User")
+
+
 # Create indexes for performance
 Index('idx_users_email', User.email)
 Index('idx_device_trials_fingerprint', DeviceTrial.device_fingerprint)
