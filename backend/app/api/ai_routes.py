@@ -28,6 +28,7 @@ from ..services.error_explainer_service import error_explainer_service
 from ..services.latex_text_extractor import extract_prose, offset_to_latex_position
 from ..services.optimization_personas import PERSONAS
 from ..services.proofreader_service import ProofreadResponse, proofread_latex
+from ..services.publications_service import publications_service
 
 logger = get_logger(__name__)
 
@@ -1574,3 +1575,118 @@ async def list_personas() -> List[PersonaItem]:
         PersonaItem(key=key, label=cfg["label"], description=cfg["description"])
         for key, cfg in PERSONAS.items()
     ]
+
+
+# ── Publications (Feature 58) ─────────────────────────────────────────────────
+
+_ORCID_RE = _re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
+
+
+class PublicationsRequest(BaseModel):
+    source: str = Field(default="orcid", pattern="^orcid$")
+    identifier: str = Field(..., min_length=1, max_length=200)
+    year_from: Optional[int] = Field(None, ge=1900, le=2100)
+    year_to: Optional[int] = Field(None, ge=1900, le=2100)
+    pub_types: Optional[List[str]] = None
+
+    @field_validator("identifier")
+    @classmethod
+    def validate_orcid_format(cls, v: str) -> str:
+        if not _ORCID_RE.match(v.strip()):
+            raise ValueError(
+                "ORCID iD must match the format 0000-0000-0000-0000 "
+                "(16 digits in four groups, last digit may be X)"
+            )
+        return v.strip()
+
+
+class PublicationOut(BaseModel):
+    title: str
+    authors: List[str]
+    venue: str
+    year: Optional[int]
+    doi: Optional[str]
+    url: Optional[str]
+    pub_type: str
+
+
+class PublicationsResponse(BaseModel):
+    publications: List[PublicationOut]
+    latex_section: str
+    cached: bool
+
+
+def _pubs_cache_key(identifier: str, year_from: Optional[int], year_to: Optional[int], pub_types: Optional[List[str]]) -> str:
+    payload = f"{identifier}|{year_from}|{year_to}|{sorted(pub_types or [])}"
+    digest = hashlib.sha256(payload.encode()).hexdigest()[:16]
+    return f"ai:publications:{digest}"
+
+
+@router.post("/generate-publications", response_model=PublicationsResponse)
+async def generate_publications(
+    request: PublicationsRequest,
+    _user=Depends(get_current_user_optional),
+) -> PublicationsResponse:
+    """Fetch publications from ORCID and return as LaTeX bibliography block (Feature 58)."""
+    cache_key = _pubs_cache_key(
+        request.identifier, request.year_from, request.year_to, request.pub_types
+    )
+
+    # Try cache first (best-effort — fail open if Redis is not initialized)
+    try:
+        cached_data = await cache_manager.get(cache_key)
+        if cached_data:
+            return PublicationsResponse(
+                publications=cached_data["publications"],
+                latex_section=cached_data["latex_section"],
+                cached=True,
+            )
+    except Exception:
+        pass
+
+    try:
+        pubs = await publications_service.fetch_from_orcid(request.identifier)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(f"ORCID fetch failed for {request.identifier}: {exc}")
+        raise HTTPException(status_code=502, detail="Failed to reach ORCID API") from exc
+
+    # Apply filters
+    if request.year_from is not None:
+        pubs = [p for p in pubs if p.year is not None and p.year >= request.year_from]
+    if request.year_to is not None:
+        pubs = [p for p in pubs if p.year is not None and p.year <= request.year_to]
+    if request.pub_types:
+        pubs = [p for p in pubs if p.pub_type in request.pub_types]
+
+    latex_section = publications_service.format_as_latex(pubs)
+
+    pubs_out = [
+        PublicationOut(
+            title=p.title,
+            authors=p.authors,
+            venue=p.venue,
+            year=p.year,
+            doi=p.doi,
+            url=p.url,
+            pub_type=p.pub_type,
+        )
+        for p in pubs
+    ]
+
+    # Cache for 1 hour
+    try:
+        payload_data = {
+            "publications": [po.model_dump() for po in pubs_out],
+            "latex_section": latex_section,
+        }
+        await cache_manager.set(cache_key, payload_data, ttl=3600)
+    except Exception:
+        pass
+
+    return PublicationsResponse(
+        publications=pubs_out,
+        latex_section=latex_section,
+        cached=False,
+    )
