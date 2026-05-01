@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..database.models import Resume, User, Workspace, WorkspaceMember, WorkspaceResume
+from ..database.models import RecruiterNote, Resume, User, Workspace, WorkspaceMember, WorkspaceResume
 from ..middleware.auth_middleware import get_current_user_required
 
 logger = get_logger(__name__)
@@ -68,6 +68,26 @@ class ResumeInWorkspace(BaseModel):
     title: str
     shared_by: Optional[str] = None
     shared_at: str
+
+
+class RecruiterNoteCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=10000)
+
+
+class RecruiterNoteUpdate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=10000)
+
+
+class RecruiterNoteResponse(BaseModel):
+    id: str
+    workspace_id: str
+    resume_id: str
+    author_id: str
+    author_name: Optional[str] = None
+    author_email: Optional[str] = None
+    content: str
+    created_at: str
+    updated_at: str
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -459,3 +479,160 @@ async def list_workspace_resumes(
         )
         for wr, r in result.fetchall()
     ]
+
+
+# ── Recruiter Notes (Feature 73) ─────────────────────────────────────────────
+
+
+def _note_to_response(note: RecruiterNote, author: Optional[User] = None) -> RecruiterNoteResponse:
+    return RecruiterNoteResponse(
+        id=note.id,
+        workspace_id=note.workspace_id,
+        resume_id=note.resume_id,
+        author_id=note.author_id,
+        author_name=author.name if author else None,
+        author_email=author.email if author else None,
+        content=note.content,
+        created_at=note.created_at.isoformat(),
+        updated_at=note.updated_at.isoformat(),
+    )
+
+
+async def _require_resume_in_workspace(workspace_id: str, resume_id: str, db: AsyncSession) -> None:
+    result = await db.execute(
+        select(WorkspaceResume).where(
+            WorkspaceResume.workspace_id == workspace_id,
+            WorkspaceResume.resume_id == resume_id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Resume not found in workspace")
+
+
+@router.post(
+    "/{workspace_id}/resumes/{resume_id}/notes",
+    response_model=RecruiterNoteResponse,
+    status_code=201,
+)
+async def create_recruiter_note(
+    workspace_id: str,
+    resume_id: str,
+    body: RecruiterNoteCreate,
+    user_id: str = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a recruiter note on a workspace resume (owner only)."""
+    ws = await _get_workspace_or_404(workspace_id, db)
+    await _require_owner(ws, user_id)
+    await _require_resume_in_workspace(workspace_id, resume_id, db)
+
+    note = RecruiterNote(
+        workspace_id=workspace_id,
+        resume_id=resume_id,
+        author_id=user_id,
+        content=body.content,
+    )
+    db.add(note)
+    await db.commit()
+    await db.refresh(note)
+
+    u_result = await db.execute(select(User).where(User.id == user_id))
+    author = u_result.scalar_one_or_none()
+    return _note_to_response(note, author)
+
+
+@router.get(
+    "/{workspace_id}/resumes/{resume_id}/notes",
+    response_model=List[RecruiterNoteResponse],
+)
+async def list_recruiter_notes(
+    workspace_id: str,
+    resume_id: str,
+    user_id: str = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+):
+    """List recruiter notes for a resume in this workspace (any member)."""
+    ws = await _get_workspace_or_404(workspace_id, db)
+    await _require_member(ws, user_id, db)
+    await _require_resume_in_workspace(workspace_id, resume_id, db)
+
+    result = await db.execute(
+        select(RecruiterNote, User)
+        .join(User, RecruiterNote.author_id == User.id)
+        .where(
+            RecruiterNote.workspace_id == workspace_id,
+            RecruiterNote.resume_id == resume_id,
+        )
+        .order_by(RecruiterNote.created_at)
+    )
+    return [_note_to_response(n, u) for n, u in result.fetchall()]
+
+
+@router.patch(
+    "/{workspace_id}/resumes/{resume_id}/notes/{note_id}",
+    response_model=RecruiterNoteResponse,
+)
+async def update_recruiter_note(
+    workspace_id: str,
+    resume_id: str,
+    note_id: str,
+    body: RecruiterNoteUpdate,
+    user_id: str = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+):
+    """Edit a recruiter note (author only)."""
+    ws = await _get_workspace_or_404(workspace_id, db)
+    await _require_member(ws, user_id, db)
+
+    note_result = await db.execute(
+        select(RecruiterNote).where(
+            RecruiterNote.id == note_id,
+            RecruiterNote.workspace_id == workspace_id,
+            RecruiterNote.resume_id == resume_id,
+        )
+    )
+    note = note_result.scalar_one_or_none()
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    if note.author_id != user_id:
+        raise HTTPException(status_code=403, detail="You can only edit your own notes")
+
+    note.content = body.content
+    await db.commit()
+    await db.refresh(note)
+
+    u_result = await db.execute(select(User).where(User.id == user_id))
+    author = u_result.scalar_one_or_none()
+    return _note_to_response(note, author)
+
+
+@router.delete(
+    "/{workspace_id}/resumes/{resume_id}/notes/{note_id}",
+    status_code=204,
+)
+async def delete_recruiter_note(
+    workspace_id: str,
+    resume_id: str,
+    note_id: str,
+    user_id: str = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a recruiter note (author or workspace owner)."""
+    ws = await _get_workspace_or_404(workspace_id, db)
+    await _require_member(ws, user_id, db)
+
+    note_result = await db.execute(
+        select(RecruiterNote).where(
+            RecruiterNote.id == note_id,
+            RecruiterNote.workspace_id == workspace_id,
+            RecruiterNote.resume_id == resume_id,
+        )
+    )
+    note = note_result.scalar_one_or_none()
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    if note.author_id != user_id and ws.owner_id != user_id:
+        raise HTTPException(status_code=403, detail="You cannot delete this note")
+
+    await db.delete(note)
+    await db.commit()
