@@ -123,6 +123,8 @@ export default function WorkspacePage() {
   const [translateModalResumeId, setTranslateModalResumeId] = useState<string | null>(null)
   const [translateSelectedLang, setTranslateSelectedLang] = useState('fr')
   const [isTranslating, setIsTranslating] = useState(false)
+  const [isGeneratingPortfolio, setIsGeneratingPortfolio] = useState<string | null>(null)
+  const [portfolioUrls, setPortfolioUrls] = useState<Record<string, string>>({})
   const [diffData, setDiffData] = useState<DiffWithParentResponse | null>(null)
   const [showDiffModal, setShowDiffModal] = useState(false)
   const [diffVariantId, setDiffVariantId] = useState<string | null>(null)
@@ -295,6 +297,22 @@ export default function WorkspacePage() {
       setIsTranslating(false)
     }
   }, [router])
+
+  const handleGeneratePortfolio = useCallback(async (resumeId: string) => {
+    setIsGeneratingPortfolio(resumeId)
+    try {
+      const result = await apiClient.generatePortfolioSite(resumeId)
+      setPortfolioUrls(prev => ({ ...prev, [resumeId]: result.portfolio_url }))
+      toast.success('Portfolio site generated', {
+        description: 'Your portfolio page is ready.',
+        action: { label: 'View', onClick: () => window.open(result.portfolio_url, '_blank') },
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Portfolio generation failed')
+    } finally {
+      setIsGeneratingPortfolio(null)
+    }
+  }, [])
 
   // Feature 39 handlers
   const handlePin = useCallback(async (resumeId: string, isPinned: boolean) => {
@@ -506,6 +524,19 @@ export default function WorkspacePage() {
         >
           <Globe size={11} />
           Translate
+        </button>
+        <button
+          onClick={() => handleGeneratePortfolio(resume.id)}
+          disabled={isGeneratingPortfolio === resume.id}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.06] px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:opacity-50"
+          title="Generate portfolio site"
+        >
+          {isGeneratingPortfolio === resume.id
+            ? <><Loader2 size={11} className="animate-spin" /> Generating…</>
+            : portfolioUrls[resume.id]
+              ? <><Globe size={11} /> Portfolio</>
+              : <><Globe size={11} /> Portfolio</>
+          }
         </button>
         <button
           onClick={() => setShareModalResumeId(resume.id)}
