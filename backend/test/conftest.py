@@ -169,6 +169,8 @@ async def test_engine():
             await conn.execute(text("DELETE FROM interview_prep WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')"))
             # Clean up test templates (inserted by test_template_routes — all prefixed with test_tmpl_)
             await conn.execute(text("DELETE FROM resume_templates WHERE name LIKE 'test_tmpl_%'"))
+            # Clean up workspace data (CASCADE from user deletion handles this too, but be explicit)
+            await conn.execute(text("DELETE FROM workspaces WHERE owner_id IN (SELECT id FROM users WHERE email LIKE 'test_%@example.com')"))
             # Then delete parent rows
             await conn.execute(text("DELETE FROM session WHERE token LIKE 'test_sess_%'"))
             await conn.execute(text("DELETE FROM users WHERE email LIKE 'test_%@example.com'"))
