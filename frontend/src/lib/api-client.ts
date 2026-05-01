@@ -2155,6 +2155,33 @@ class ApiClient {
       { method: 'PATCH' }
     )
   }
+
+  // ── Portfolio (Features 67 & 68) ─────────────────────────────────────────
+
+  async getPortfolio(username: string): Promise<PortfolioResponse> {
+    return this.request<PortfolioResponse>(`/portfolio/${encodeURIComponent(username)}`)
+  }
+
+  async setupPortfolio(body: PortfolioSetupRequest): Promise<PortfolioSetupResponse> {
+    return this.request<PortfolioSetupResponse>('/portfolio/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+
+  async checkUsernameAvailability(username: string): Promise<UsernameAvailabilityResponse> {
+    return this.request<UsernameAvailabilityResponse>(
+      `/portfolio/check-username?username=${encodeURIComponent(username)}`
+    )
+  }
+
+  async generatePortfolioSite(resumeId: string): Promise<GeneratePortfolioResponse> {
+    return this.request<GeneratePortfolioResponse>(
+      `/resumes/${resumeId}/generate-portfolio`,
+      { method: 'POST' }
+    )
+  }
 }
 
 // Singleton
@@ -2614,5 +2641,48 @@ export interface CommentResponse {
   resolved: boolean
   created_at: string
   updated_at: string
+}
+
+// ------------------------------------------------------------------ //
+//  Portfolio (Features 67 & 68)                                       //
+// ------------------------------------------------------------------ //
+
+export interface PublicResumeOut {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PortfolioResponse {
+  username: string
+  name?: string
+  tagline?: string
+  theme: string
+  resumes: PublicResumeOut[]
+}
+
+export interface PortfolioSetupRequest {
+  public_username: string
+  portfolio_enabled?: boolean
+  theme?: string
+  tagline?: string
+}
+
+export interface PortfolioSetupResponse {
+  public_username: string
+  portfolio_enabled: boolean
+  theme: string
+  tagline?: string
+  portfolio_url: string
+}
+
+export interface UsernameAvailabilityResponse {
+  username: string
+  available: boolean
+}
+
+export interface GeneratePortfolioResponse {
+  portfolio_url: string
 }
 
