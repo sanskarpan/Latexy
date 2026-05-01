@@ -989,7 +989,7 @@ delta indicator. Dashboard average score widget.
 restructures `\section{}` blocks. Diff preview before applying.
 
 ### 53A · Backend — Section Parser
-- [ ] Create `backend/app/services/latex_section_parser.py`:
+- [x] Create `backend/app/services/latex_section_parser.py`:
   ```python
   @dataclass
   class LatexSection:
@@ -1008,7 +1008,7 @@ restructures `\section{}` blocks. Diff preview before applying.
   ```
 
 ### 53B · Backend — Section Reorder Endpoint
-- [ ] Add `POST /ai/reorder-sections` to `backend/app/api/ai_routes.py`:
+- [x] Add `POST /ai/reorder-sections` to `backend/app/api/ai_routes.py`:
   ```python
   class ReorderSectionsRequest(BaseModel):
       resume_latex: str = Field(..., max_length=200_000)
@@ -1026,7 +1026,7 @@ restructures `\section{}` blocks. Diff preview before applying.
   - Apply `reorder_sections()` to produce `reordered_latex`
 
 ### 53C · Frontend — Section Reorder Panel
-- [ ] Create `frontend/src/components/SectionReorderPanel.tsx`:
+- [x] Create `frontend/src/components/SectionReorderPanel.tsx`:
   - Career stage dropdown + optional JD textarea
   - "Suggest Order" button → API call
   - Drag-and-drop list (using `@dnd-kit/sortable` from Feature 15) showing current vs AI suggestion
@@ -1034,7 +1034,7 @@ restructures `\section{}` blocks. Diff preview before applying.
   - "Apply Reordering" → `editorRef.current?.setValue(reordered_latex)`
 
 ### 53D · Tests
-- [ ] `backend/test/test_section_reorder.py`:
+- [x] `backend/test/test_section_reorder.py`:
   - `extract_sections()` correctly identifies 4 sections in test resume
   - `reorder_sections()` preserves all content, only changes order
   - Endpoint `reordered_latex` has sections in `suggested_order` sequence
@@ -1116,7 +1116,7 @@ Recommend condensing or removing. Exception for prestigious institutions.
 the LLM system prompt for the optimization run.
 
 ### 56A · Backend — Persona Profiles
-- [ ] Create `backend/app/services/optimization_personas.py`:
+- [x] Create `backend/app/services/optimization_personas.py`:
   ```python
   PERSONAS: Dict[str, dict] = {
       "startup": {
@@ -1158,22 +1158,22 @@ the LLM system prompt for the optimization run.
   ```
 
 ### 56B · Backend — Optimization Integration
-- [ ] In `backend/app/workers/orchestrator.py` (or LLM optimization task):
+- [x] In `backend/app/workers/orchestrator.py` (or LLM optimization task):
   - Add `persona: Optional[str] = None` parameter
   - If set: validate `persona in PERSONAS.keys()`, then append `PERSONAS[persona]['prompt_addon']`
     to the system prompt
-- [ ] In `JobSubmissionRequest` in `backend/app/api/job_routes.py`: add `persona: Optional[str] = None`
+- [x] In `JobSubmissionRequest` in `backend/app/api/job_routes.py`: add `persona: Optional[str] = None`
 
 ### 56C · Frontend — Persona Selector
-- [ ] In `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`:
   - "Optimization Style" section above optimization level selector
   - Card grid: 5 persona cards with icon + label + description
   - Selected persona: `ring-2 ring-violet-500/50` border
   - Pass `persona` in optimization job request body
-- [ ] Persist selected persona in resume `metadata.last_persona` for next session
+- [x] Persist selected persona in resume `metadata.last_persona` for next session
 
 ### 56D · Tests
-- [ ] `backend/test/test_optimization_personas.py`:
+- [x] `backend/test/test_optimization_personas.py`:
   - Startup persona → system prompt contains "ownership" (mock LLM, verify prompt)
   - Invalid persona name → 422
   - `persona=null` → default behavior, no persona addon in prompt
@@ -1209,7 +1209,7 @@ before applying. No LLM needed — pure regex transformation.
 LaTeX bibliography entries. Filter by year/type. Insert complete publications section.
 
 ### 58A · Backend — Publications Service
-- [ ] Create `backend/app/services/publications_service.py`:
+- [x] Create `backend/app/services/publications_service.py`:
   ```python
   @dataclass
   class Publication:
@@ -1234,7 +1234,7 @@ LaTeX bibliography entries. Filter by year/type. Insert complete publications se
   ```
 
 ### 58B · Backend — Publications Endpoint
-- [ ] Add `POST /ai/generate-publications` to `backend/app/api/ai_routes.py`:
+- [x] Add `POST /ai/generate-publications` to `backend/app/api/ai_routes.py`:
   ```python
   class PublicationsRequest(BaseModel):
       source: str = "orcid"   # "orcid" only for MVP (Scholar requires paid SerpAPI)
@@ -1252,14 +1252,14 @@ LaTeX bibliography entries. Filter by year/type. Insert complete publications se
   - Cache by `hash(identifier + str(filters))`, TTL=3600
 
 ### 58C · Frontend — Publications Panel
-- [ ] Create `frontend/src/components/PublicationsPanel.tsx`:
+- [x] Create `frontend/src/components/PublicationsPanel.tsx`:
   - Source: ORCID ID input field
   - Filters: year range sliders, pub type checkboxes
   - "Fetch" button → shows loaded publications as checkable list
   - "Insert Publications Section" → inserts `latex_section` at cursor
 
 ### 58D · Tests
-- [ ] `backend/test/test_publications.py`:
+- [x] `backend/test/test_publications.py`:
   - Valid ORCID format passes validation
   - Invalid ORCID format → 422
   - ORCID fetch (mocked httpx) → returns publication list with correct fields
