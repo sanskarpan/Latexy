@@ -1170,6 +1170,17 @@ class ApiClient {
   }
 
   // ---------------------------------------------------------------- //
+  //  Publications (Feature 58)                                       //
+  // ---------------------------------------------------------------- //
+
+  async generatePublications(body: GeneratePublicationsRequest): Promise<GeneratePublicationsResponse> {
+    return this.request('/ai/generate-publications', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
   //  Multi-format file I/O                                           //
   // ---------------------------------------------------------------- //
 
@@ -2330,6 +2341,34 @@ export interface ReorderSectionsResponse {
   suggested_order: string[]
   rationale: string
   reordered_latex: string
+  cached: boolean
+}
+
+// ------------------------------------------------------------------ //
+//  Publications (Feature 58)                                          //
+// ------------------------------------------------------------------ //
+
+export interface GeneratePublicationsRequest {
+  source?: string          // "orcid" only for MVP
+  identifier: string       // ORCID ID: 0000-0000-0000-0000
+  year_from?: number | null
+  year_to?: number | null
+  pub_types?: string[]     // ["journal", "conference", "preprint", "book_chapter"]
+}
+
+export interface PublicationOut {
+  title: string
+  authors: string[]
+  venue: string
+  year: number | null
+  doi: string | null
+  url: string | null
+  pub_type: string
+}
+
+export interface GeneratePublicationsResponse {
+  publications: PublicationOut[]
+  latex_section: string
   cached: boolean
 }
 
