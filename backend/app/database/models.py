@@ -4,7 +4,20 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import uuid4
 
-from sqlalchemy import ARRAY, JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    ARRAY,
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    PrimaryKeyConstraint,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
@@ -444,6 +457,79 @@ class ResumeView(Base):
 
     # Relationships
     resume: Mapped["Resume"] = relationship("Resume", back_populates="views")
+
+
+class Workspace(Base):
+    """Team workspace for collaborative resume management (Feature 66)."""
+    __tablename__ = "workspaces"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    owner_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    plan_id: Mapped[str] = mapped_column(String(50), nullable=False, server_default="free")
+    max_members: Mapped[int] = mapped_column(Integer, nullable=False, server_default="5")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    owner: Mapped["User"] = relationship("User", foreign_keys=[owner_id])
+    members: Mapped[List["WorkspaceMember"]] = relationship(
+        "WorkspaceMember", back_populates="workspace", cascade="all, delete-orphan"
+    )
+    workspace_resumes: Mapped[List["WorkspaceResume"]] = relationship(
+        "WorkspaceResume", back_populates="workspace", cascade="all, delete-orphan"
+    )
+
+
+class WorkspaceMember(Base):
+    """Workspace membership with role (Feature 66)."""
+    __tablename__ = "workspace_members"
+    __table_args__ = (PrimaryKeyConstraint("workspace_id", "user_id"),)
+
+    workspace_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # 'owner' | 'editor' | 'viewer'
+    role: Mapped[str] = mapped_column(String(20), nullable=False, server_default="editor")
+    invited_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    invited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    joined_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="members")
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+
+
+class WorkspaceResume(Base):
+    """Resume shared into a workspace (Feature 66)."""
+    __tablename__ = "workspace_resumes"
+    __table_args__ = (PrimaryKeyConstraint("workspace_id", "resume_id"),)
+
+    workspace_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    resume_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False
+    )
+    shared_by: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    shared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="workspace_resumes")
+    resume: Mapped["Resume"] = relationship("Resume")
 
 
 # Create indexes for performance
