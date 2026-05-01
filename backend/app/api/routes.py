@@ -132,6 +132,11 @@ from .mendeley_routes import router as mendeley_router
 
 router.include_router(mendeley_router)
 
+# Include Team Workspace routes (Feature 66)
+from .workspace_routes import router as workspace_router
+
+router.include_router(workspace_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
