@@ -1603,7 +1603,7 @@ share resumes, role-based access. Per-workspace billing tied to workspace owner.
 Shows public resumes, professional summary, contact form.
 
 ### 67A · Database Migration
-- [ ] Create `backend/alembic/versions/0016_add_portfolio.py`:
+- [x] Create `backend/alembic/versions/0019_add_portfolio.py`:
   ```sql
   ALTER TABLE users ADD COLUMN public_username TEXT UNIQUE;
   ALTER TABLE users ADD COLUMN portfolio_enabled BOOLEAN DEFAULT FALSE;
@@ -1613,15 +1613,15 @@ Shows public resumes, professional summary, contact form.
   ```
 
 ### 67B · Backend — Portfolio Endpoints
-- [ ] Create `backend/app/api/portfolio_routes.py`:
+- [x] Create `backend/app/api/portfolio_routes.py`:
   - `GET /portfolio/{username}` — public, returns user profile + list of public resumes with PDFs
   - `POST /portfolio/setup` — auth required, sets `public_username`, `portfolio_enabled`, `theme`
   - `GET /portfolio/check-username?username=` — availability check
   - `POST /portfolio/verify-domain` — checks CNAME TXT record for domain verification
-- [ ] Register router in `backend/app/api/routes.py`
+- [x] Register router in `backend/app/api/routes.py`
 
 ### 67C · Frontend — Portfolio Page
-- [ ] Create `frontend/src/app/u/[username]/page.tsx`:
+- [x] Create `frontend/src/app/u/[username]/page.tsx`:
   - Fetches `GET /portfolio/{username}` — 404 if not found or disabled
   - Renders: user name + tagline, grid of public resume PDFs (thumbnails)
   - Contact form (submits to user's email via Resend SMTP)
@@ -1629,12 +1629,12 @@ Shows public resumes, professional summary, contact form.
   - "Powered by Latexy" footer (free tier; removable on Pro)
 
 ### 67D · Custom Domain
-- [ ] In Next.js middleware (`frontend/src/middleware.ts`):
+- [x] In Next.js middleware (`frontend/src/middleware.ts`):
   - If `Host` header matches a registered `portfolio_custom_domain` → rewrite to `/u/{username}`
   - Domain verification: check `GET /portfolio/verify-domain?domain=...` before activating
 
 ### 67E · Tests
-- [ ] `backend/test/test_portfolio.py`:
+- [x] `backend/test/test_portfolio.py`:
   - GET `/portfolio/{username}` with `portfolio_enabled=False` → 404
   - GET `/portfolio/{username}` with enabled portfolio → returns user data
   - Username with special chars (spaces, `@`) → 422 on setup
@@ -1647,7 +1647,7 @@ Shows public resumes, professional summary, contact form.
 `latexy.io/u/[username]`. Auto-updates on re-optimization.
 
 ### 68A · Backend — Portfolio Generator Service
-- [ ] Create `backend/app/services/portfolio_generator.py`:
+- [x] Create `backend/app/services/portfolio_generator.py`:
   ```python
   class PortfolioGenerator:
       async def generate(self, resume: Resume, user: User, theme: str = "minimal") -> str:
@@ -1659,7 +1659,7 @@ Shows public resumes, professional summary, contact form.
   ```
 
 ### 68B · Portfolio HTML Template
-- [ ] Create `backend/app/templates/portfolio/minimal.html.j2`:
+- [x] Create `backend/app/templates/portfolio/minimal.html.j2`:
   - Single-page HTML (no external framework dependencies for fast load)
   - Sections: sticky header (name + nav) · hero (summary) · experience timeline · skills grid ·
     education · projects · contact section
@@ -1668,13 +1668,13 @@ Shows public resumes, professional summary, contact form.
   - "Powered by Latexy" footer
 
 ### 68C · Backend — Generation Endpoint
-- [ ] Add `POST /resumes/{resume_id}/generate-portfolio` to `backend/app/api/resume_routes.py`:
+- [x] Add `POST /resumes/{resume_id}/generate-portfolio` to `backend/app/api/resume_routes.py`:
   - Calls `PortfolioGenerator.generate()`
   - Returns `{ portfolio_url: str }`
-- [ ] Hook: trigger regeneration when `portfolio_enabled=True` and resume is re-optimized
+- [x] Hook: trigger regeneration when `portfolio_enabled=True` and resume is re-optimized
 
 ### 68D · Frontend — Generate Portfolio Action
-- [ ] In workspace resume card actions:
+- [x] In workspace resume card actions:
   - "🌐 Generate Portfolio Site" → triggers generation
   - Shows URL with "View" link after completion
 
