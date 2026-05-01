@@ -2060,6 +2060,51 @@ class ApiClient {
   async listWorkspaceResumes(workspaceId: string): Promise<WorkspaceResumeItem[]> {
     return this.request<WorkspaceResumeItem[]>(`/workspaces/${workspaceId}/resumes`)
   }
+
+  // ── Recruiter Notes (Feature 73) ────────────────────────────────────────────
+
+  async createRecruiterNote(
+    workspaceId: string,
+    resumeId: string,
+    content: string
+  ): Promise<RecruiterNoteResponse> {
+    return this.request<RecruiterNoteResponse>(
+      `/workspaces/${workspaceId}/resumes/${resumeId}/notes`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) }
+    )
+  }
+
+  async listRecruiterNotes(
+    workspaceId: string,
+    resumeId: string
+  ): Promise<RecruiterNoteResponse[]> {
+    return this.request<RecruiterNoteResponse[]>(
+      `/workspaces/${workspaceId}/resumes/${resumeId}/notes`
+    )
+  }
+
+  async updateRecruiterNote(
+    workspaceId: string,
+    resumeId: string,
+    noteId: string,
+    content: string
+  ): Promise<RecruiterNoteResponse> {
+    return this.request<RecruiterNoteResponse>(
+      `/workspaces/${workspaceId}/resumes/${resumeId}/notes/${noteId}`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) }
+    )
+  }
+
+  async deleteRecruiterNote(
+    workspaceId: string,
+    resumeId: string,
+    noteId: string
+  ): Promise<void> {
+    await this.request<void>(
+      `/workspaces/${workspaceId}/resumes/${resumeId}/notes/${noteId}`,
+      { method: 'DELETE' }
+    )
+  }
 }
 
 // Singleton
@@ -2484,5 +2529,21 @@ export interface WorkspaceResumeItem {
   title: string
   shared_by?: string
   shared_at: string
+}
+
+// ------------------------------------------------------------------ //
+//  Recruiter Notes (Feature 73)                                       //
+// ------------------------------------------------------------------ //
+
+export interface RecruiterNoteResponse {
+  id: string
+  workspace_id: string
+  resume_id: string
+  author_id: string
+  author_name?: string
+  author_email?: string
+  content: string
+  created_at: string
+  updated_at: string
 }
 
