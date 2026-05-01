@@ -1168,7 +1168,7 @@ the LLM system prompt for the optimization run.
 - [x] In `frontend/src/app/workspace/[resumeId]/optimize/page.tsx`:
   - "Optimization Style" section above optimization level selector
   - Card grid: 5 persona cards with icon + label + description
-  - Selected persona: `ring-2 ring-violet-500/50` border
+  - Selected persona: `ring-2 ring-orange-500/50` border (orange used; violet in spec)
   - Pass `persona` in optimization job request body
 - [x] Persist selected persona in resume `metadata.last_persona` for next session
 
@@ -1567,72 +1567,33 @@ compilation/optimization completes while tab is in background.
 share resumes, role-based access. Per-workspace billing tied to workspace owner.
 
 ### 66A · Database Migration
-- [ ] Create `backend/alembic/versions/0015_add_workspaces.py`:
-  ```sql
-  CREATE TABLE workspaces (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    plan_id TEXT NOT NULL DEFAULT 'free',
-    max_members INT NOT NULL DEFAULT 5,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-  );
-
-  CREATE TABLE workspace_members (
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role TEXT NOT NULL DEFAULT 'editor',  -- 'owner' | 'editor' | 'viewer'
-    invited_by TEXT REFERENCES users(id),
-    invited_at TIMESTAMPTZ DEFAULT NOW(),
-    joined_at TIMESTAMPTZ,
-    PRIMARY KEY (workspace_id, user_id)
-  );
-
-  CREATE TABLE workspace_resumes (
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    resume_id UUID NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
-    shared_by TEXT REFERENCES users(id),
-    shared_at TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (workspace_id, resume_id)
-  );
-  ```
+- [x] Created `backend/alembic/versions/0016_add_workspaces.py` (down_revision='0015')
+  - Creates `workspaces`, `workspace_members`, `workspace_resumes` tables with FK + CASCADE
 
 ### 66B · Backend Models
-- [ ] Add `Workspace`, `WorkspaceMember`, `WorkspaceResume` SQLAlchemy models to `backend/app/database/models.py`
+- [x] Added `Workspace`, `WorkspaceMember`, `WorkspaceResume` SQLAlchemy models to `backend/app/database/models.py`
+  - Composite PKs via `PrimaryKeyConstraint("workspace_id", "user_id/resume_id")`
 
 ### 66C · Backend — Workspace Routes
-- [ ] Create `backend/app/api/workspace_routes.py`:
-  ```
-  POST   /workspaces                              — create workspace
-  GET    /workspaces                              — list user's workspaces
-  GET    /workspaces/{id}                         — details + member list
-  PATCH  /workspaces/{id}                         — update name
-  DELETE /workspaces/{id}                         — delete (owner only)
-  POST   /workspaces/{id}/members/invite          — invite by email → sends invite email
-  DELETE /workspaces/{id}/members/{user_id}       — remove member
-  PATCH  /workspaces/{id}/members/{user_id}/role  — change role (owner only)
-  POST   /workspaces/{id}/resumes/{resume_id}     — share resume into workspace
-  DELETE /workspaces/{id}/resumes/{resume_id}     — unshare resume
-  GET    /workspaces/{id}/resumes                 — list shared resumes
-  ```
-- [ ] Register router in `backend/app/api/routes.py`
+- [x] Created `backend/app/api/workspace_routes.py` with all 11 endpoints
+  - `VALID_ROLES = frozenset({"editor", "viewer"})` — owner cannot be invited
+  - Enforces `max_members` limit on invite; resolves email → existing user
+- [x] Registered router in `backend/app/api/routes.py`
 
 ### 66D · Frontend — Workspace Dashboard
-- [ ] Create `frontend/src/app/workspaces/page.tsx`:
-  - Grid of user's workspaces (name, member count badge, resume count)
-  - "Create Workspace" button
-- [ ] Create `frontend/src/app/workspaces/[workspaceId]/page.tsx`:
-  - Shared resume grid (reuses workspace card component)
-  - Members sidebar: avatar list, roles, invite form (owner only)
-  - "Add Resume" modal: select from personal resumes
+- [x] Created `frontend/src/app/workspaces/page.tsx` — workspace grid + create form
+- [x] Created `frontend/src/app/workspaces/[workspaceId]/page.tsx`
+  - Editable name (owner only), members panel with role dropdown, invite form
+  - Shared resumes panel with add/remove, links to editor
+- [x] Added 4 type interfaces + 11 API methods to `frontend/src/lib/api-client.ts`
 
 ### 66E · Tests
-- [ ] `backend/test/test_workspaces.py`:
+- [x] `backend/test/test_workspaces.py` — 22 tests, all passing
   - Create workspace → owner auto-added as member with role "owner"
-  - Non-member GET workspace resumes → 403
-  - Max members limit enforced (default 5 for free plan)
-  - Owner can remove members; member cannot remove other members
+  - Non-member GET workspace/resumes → 403
+  - Max members limit enforced via same-session UPDATE (no direct DB bypass)
+  - Owner can remove members; cannot remove owner (422)
+  - Resume sharing: owner-only, must own resume
 
 ---
 
@@ -2046,22 +2007,22 @@ stored PDF unmodified — display-only transformation.
 - [x] **`qrcode`** — client-side QR generation for Feature 62
   - `pnpm add qrcode @types/qrcode`
 - [x] **`recharts`** — radar chart for Feature 59: used inline SVG instead (no extra dependency needed)
-- [ ] **LanguageTool** — `LANGUAGETOOL_URL` in config for Feature 35
+- [x] **LanguageTool** — `LANGUAGETOOL_URL` + `LANGUAGETOOL_LOCAL_URL` added to `config.py` for Feature 35
   - Free public API: `https://api.languagetool.org/v2/check` (no key needed for basic use)
   - Self-hosted option: Docker image `erikvl87/languagetool`
-- [ ] **GitHub OAuth app** — `GITHUB_CLIENT_ID` + `GITHUB_CLIENT_SECRET` for Feature 37
-  - Create at `github.com/settings/applications/new`
-- [ ] **Zotero API credentials** — `ZOTERO_CLIENT_KEY` + `ZOTERO_CLIENT_SECRET` for Feature 42
-  - Register at `www.zotero.org/oauth/apps`
-- [ ] **Mendeley API credentials** — `MENDELEY_CLIENT_ID` + `MENDELEY_CLIENT_SECRET` for Feature 42
-  - Register at `dev.mendeley.com`
-- [ ] **ORCID public API** — no key needed for Feature 58 (ORCID is freely accessible)
-- [ ] **`@dnd-kit/*`** — drag-and-drop for Feature 53 Section Reorder (may already be installed from Feature 15)
-  - `pnpm add @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities` if not present
+- [x] **GitHub OAuth app** — `GITHUB_CLIENT_ID` + `GITHUB_CLIENT_SECRET` added to `config.py` for Feature 37
+  - Still need to create the app at `github.com/settings/applications/new` and set env vars
+- [x] **Zotero API credentials** — `ZOTERO_CLIENT_KEY` + `ZOTERO_CLIENT_SECRET` added to `config.py` for Feature 42
+  - Still need to register at `www.zotero.org/oauth/apps` and set env vars
+- [x] **Mendeley API credentials** — `MENDELEY_CLIENT_ID` + `MENDELEY_CLIENT_SECRET` added to `config.py` for Feature 42
+  - Still need to register at `dev.mendeley.com` and set env vars
+- [x] **ORCID public API** — no key needed; ORCID fetch implemented in `reference_routes.py` (Feature 58 still needs standalone `/ai/generate-publications` endpoint)
+- [x] **`@dnd-kit/*`** — `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` confirmed in `package.json`
 - [x] **Jinja2 templates** — portfolio HTML and references page templates for Features 68 and 70
   - `jinja2` is likely already in backend deps; add if not
-- [ ] **Migration sequence** — Features 37, 40, 42, 43, 49, 53, 66, 73, 74 each add migrations:
-  - Next migration after current `0009`: `0010_add_github_integration` → `0011_add_resume_archive`
-    → `0012_add_collaboration` → `0013_add_resume_views` → `0014_ats_score_to_history`
-    → `0015_add_workspaces` → `0016_add_portfolio` → `0017_add_recruiter_notes`
-    → `0018_add_resume_comments`
+- [~] **Migration sequence** — partial. Done through Feature 43 and then some extras:
+  - `0010_add_email_notifications`, `0010_add_job_applications`, `0011_add_interview_prep`,
+    `0012_add_github_integration`, `0013_add_collaboration`, `0014_add_resume_archive`,
+    `0014_add_resume_views`, `0015_add_user_metadata` — all exist
+  - Still needed: `0015_add_workspaces` (F66) → `0016_add_portfolio` (F67) →
+    `0017_add_recruiter_notes` (F73) → `0018_add_resume_comments` (F74)
