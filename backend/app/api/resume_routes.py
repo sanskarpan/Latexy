@@ -2014,3 +2014,37 @@ async def merge_resumes(
     await db.refresh(new_resume)
 
     return MergeResponse(merged_latex=merged_latex, new_resume_id=new_resume.id)
+
+
+# ── Portfolio generation (Feature 68) ─────────────────────────────────────────
+
+
+class GeneratePortfolioResponse(BaseModel):
+    portfolio_url: str
+
+
+@router.post("/{resume_id}/generate-portfolio", response_model=GeneratePortfolioResponse)
+async def generate_portfolio(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+) -> GeneratePortfolioResponse:
+    """Generate a static HTML portfolio page for a resume and store it in MinIO."""
+    from ..database.models import User
+    from ..services.portfolio_generator import portfolio_generator
+
+    result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
+    )
+    resume = result.scalar_one_or_none()
+    if resume is None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    theme = user.portfolio_theme or "minimal"
+    portfolio_url = await portfolio_generator.generate(resume, user, theme)
+    return GeneratePortfolioResponse(portfolio_url=portfolio_url)
