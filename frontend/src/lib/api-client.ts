@@ -1981,6 +1981,85 @@ class ApiClient {
       body: JSON.stringify(body),
     })
   }
+
+  // ── Team Workspaces (Feature 66) ──────────────────────────────────────────
+
+  async createWorkspace(name: string): Promise<WorkspaceResponse> {
+    return this.request<WorkspaceResponse>('/workspaces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+  }
+
+  async listWorkspaces(): Promise<WorkspaceResponse[]> {
+    return this.request<WorkspaceResponse[]>('/workspaces')
+  }
+
+  async getWorkspace(workspaceId: string): Promise<WorkspaceDetailResponse> {
+    return this.request<WorkspaceDetailResponse>(`/workspaces/${workspaceId}`)
+  }
+
+  async updateWorkspace(workspaceId: string, name: string): Promise<WorkspaceResponse> {
+    return this.request<WorkspaceResponse>(`/workspaces/${workspaceId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+  }
+
+  async deleteWorkspace(workspaceId: string): Promise<void> {
+    await this.request<void>(`/workspaces/${workspaceId}`, { method: 'DELETE' })
+  }
+
+  async inviteWorkspaceMember(
+    workspaceId: string,
+    email: string,
+    role: 'editor' | 'viewer' = 'editor'
+  ): Promise<WorkspaceMemberResponse> {
+    return this.request<WorkspaceMemberResponse>(`/workspaces/${workspaceId}/members/invite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, role }),
+    })
+  }
+
+  async removeWorkspaceMember(workspaceId: string, targetUserId: string): Promise<void> {
+    await this.request<void>(`/workspaces/${workspaceId}/members/${targetUserId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async updateWorkspaceMemberRole(
+    workspaceId: string,
+    targetUserId: string,
+    role: 'editor' | 'viewer'
+  ): Promise<WorkspaceMemberResponse> {
+    return this.request<WorkspaceMemberResponse>(
+      `/workspaces/${workspaceId}/members/${targetUserId}/role`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      }
+    )
+  }
+
+  async addResumeToWorkspace(workspaceId: string, resumeId: string): Promise<WorkspaceResumeItem> {
+    return this.request<WorkspaceResumeItem>(`/workspaces/${workspaceId}/resumes/${resumeId}`, {
+      method: 'POST',
+    })
+  }
+
+  async removeResumeFromWorkspace(workspaceId: string, resumeId: string): Promise<void> {
+    await this.request<void>(`/workspaces/${workspaceId}/resumes/${resumeId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async listWorkspaceResumes(workspaceId: string): Promise<WorkspaceResumeItem[]> {
+    return this.request<WorkspaceResumeItem[]>(`/workspaces/${workspaceId}/resumes`)
+  }
 }
 
 // Singleton
@@ -2370,5 +2449,40 @@ export interface GeneratePublicationsResponse {
   publications: PublicationOut[]
   latex_section: string
   cached: boolean
+}
+
+// ------------------------------------------------------------------ //
+//  Team Workspaces (Feature 66)                                       //
+// ------------------------------------------------------------------ //
+
+export interface WorkspaceResponse {
+  id: string
+  name: string
+  owner_id: string
+  plan_id: string
+  max_members: number
+  member_count: number
+  resume_count: number
+  created_at: string
+}
+
+export interface WorkspaceMemberResponse {
+  user_id: string
+  email?: string
+  name?: string
+  role: string
+  invited_at?: string
+  joined_at?: string
+}
+
+export interface WorkspaceDetailResponse extends WorkspaceResponse {
+  members: WorkspaceMemberResponse[]
+}
+
+export interface WorkspaceResumeItem {
+  id: string
+  title: string
+  shared_by?: string
+  shared_at: string
 }
 
