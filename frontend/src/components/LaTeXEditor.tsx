@@ -102,6 +102,11 @@ interface LaTeXEditorProps {
   confidenceScoreLoading?: boolean
   /** Callback when user clicks the quality score badge */
   onConfidenceBadgeClick?: () => void
+  // ── Collaboration Comments (Feature 74) ─────────────────────────────
+  /** Line numbers that have at least one comment — renders a glyph icon */
+  commentedLines?: number[]
+  /** Called when the user clicks a comment glyph in the editor margin */
+  onCommentIconClick?: (lineNumber: number) => void
 }
 
 // ── LaTeX command corpus ───────────────────────────────────────────────────
@@ -280,7 +285,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, onPresenceChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, onPresenceChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -313,6 +318,10 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     // Track changes refs (Feature 41)
     const trackChangesRef = useRef<TrackChangesHandle | null>(null)
     const trackedChangesDecsRef = useRef<any>(null)
+    // Comment gutter refs (Feature 74)
+    const commentDecsRef = useRef<any>(null)
+    const onCommentIconClickRef = useRef(onCommentIconClick)
+    onCommentIconClickRef.current = onCommentIconClick
 
     // Cleanup Y.js session on unmount
     useEffect(() => {
@@ -646,6 +655,46 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       }))
       trackedChangesDecsRef.current.set(decorations)
     }, [trackedChanges])
+
+    // Comment gutter decorations (Feature 74)
+    useEffect(() => {
+      const editor = editorRef.current
+      const monaco = monacoRef.current
+      if (!editor || !monaco) return
+
+      if (!commentDecsRef.current) {
+        commentDecsRef.current = editor.createDecorationsCollection([])
+      }
+      if (!commentedLines || commentedLines.length === 0) {
+        commentDecsRef.current.set([])
+        return
+      }
+      const decorations = commentedLines.map((line) => ({
+        range: new monaco.Range(line, 1, line, 1),
+        options: {
+          glyphMarginClassName: 'comment-gutter-icon',
+          glyphMarginHoverMessage: { value: 'Click to view comments on this line' },
+        },
+      }))
+      commentDecsRef.current.set(decorations)
+    }, [commentedLines])
+
+    // Comment glyph click handler (Feature 74) — registered once on mount
+    useEffect(() => {
+      const editor = editorRef.current
+      const monaco = monacoRef.current
+      if (!editor || !monaco) return
+      const disposable = editor.onMouseDown((e: any) => {
+        if (
+          e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN &&
+          onCommentIconClickRef.current
+        ) {
+          onCommentIconClickRef.current(e.target.position?.lineNumber ?? 0)
+        }
+      })
+      return () => disposable.dispose()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editorRef.current, monacoRef.current])
 
     // Auto-compile: debounce 2s after last keystroke
     useEffect(() => {
@@ -1480,6 +1529,20 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             border-radius: 50%;
             background-color: rgba(248,113,113,0.8);
             margin-top: 6px;
+          }
+          /* Comment gutter icon (Feature 74) */
+          .comment-gutter-icon {
+            width: 14px !important;
+            height: 14px !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b5cf6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-size: contain;
+            cursor: pointer;
+            opacity: 0.7;
+            margin-top: 3px;
+          }
+          .comment-gutter-icon:hover {
+            opacity: 1;
           }
         `}</style>
         {!value ? (
