@@ -2105,6 +2105,56 @@ class ApiClient {
       { method: 'DELETE' }
     )
   }
+
+  // ── Resume Comments (Feature 74) ────────────────────────────────────────────
+
+  async addComment(
+    resumeId: string,
+    content: string,
+    opts?: { workspaceId?: string; lineNumber?: number; sectionTag?: string }
+  ): Promise<CommentResponse> {
+    return this.request<CommentResponse>(`/resumes/${resumeId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content,
+        workspace_id: opts?.workspaceId ?? null,
+        line_number: opts?.lineNumber ?? null,
+        section_tag: opts?.sectionTag ?? null,
+      }),
+    })
+  }
+
+  async listComments(
+    resumeId: string,
+    workspaceId?: string
+  ): Promise<CommentResponse[]> {
+    const qs = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : ''
+    return this.request<CommentResponse[]>(`/resumes/${resumeId}/comments${qs}`)
+  }
+
+  async updateComment(
+    resumeId: string,
+    commentId: string,
+    content: string
+  ): Promise<CommentResponse> {
+    return this.request<CommentResponse>(`/resumes/${resumeId}/comments/${commentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    })
+  }
+
+  async deleteComment(resumeId: string, commentId: string): Promise<void> {
+    await this.request<void>(`/resumes/${resumeId}/comments/${commentId}`, { method: 'DELETE' })
+  }
+
+  async resolveComment(resumeId: string, commentId: string): Promise<CommentResponse> {
+    return this.request<CommentResponse>(
+      `/resumes/${resumeId}/comments/${commentId}/resolve`,
+      { method: 'PATCH' }
+    )
+  }
 }
 
 // Singleton
@@ -2543,6 +2593,25 @@ export interface RecruiterNoteResponse {
   author_name?: string
   author_email?: string
   content: string
+  created_at: string
+  updated_at: string
+}
+
+// ------------------------------------------------------------------ //
+//  Resume Comments (Feature 74)                                       //
+// ------------------------------------------------------------------ //
+
+export interface CommentResponse {
+  id: string
+  resume_id: string
+  workspace_id?: string
+  author_id: string
+  author_name?: string
+  author_email?: string
+  content: string
+  line_number?: number
+  section_tag?: string
+  resolved: boolean
   created_at: string
   updated_at: string
 }
