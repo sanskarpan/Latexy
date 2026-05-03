@@ -1824,10 +1824,10 @@ parsing hints. Import wizard with step-by-step export instructions per platform.
 Candidate list with ATS scores. Side-by-side comparison. Notes and ratings. Shortlist sharing.
 
 ### 73A · Prerequisite
-- [ ] Feature 66 (Team Workspace) must be fully implemented
+- [x] Feature 66 (Team Workspace) must be fully implemented
 
 ### 73B · Database Migration
-- [ ] Create `backend/alembic/versions/0017_add_recruiter_notes.py`:
+- [x] Create `backend/alembic/versions/0017_add_recruiter_notes.py`:
   ```sql
   CREATE TABLE recruiter_notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1842,7 +1842,7 @@ Candidate list with ATS scores. Side-by-side comparison. Notes and ratings. Shor
   ```
 
 ### 73C · Backend — Recruiter Routes
-- [ ] Add to `backend/app/api/workspace_routes.py`:
+- [x] Add to `backend/app/api/workspace_routes.py`:
   - `GET /workspaces/{id}/candidates` — list all shared resumes with ATS scores, latest note, rating
   - `POST /workspaces/{id}/candidates/{resume_id}/notes` — add note + rating
   - `PATCH /workspaces/{id}/candidates/{resume_id}/stage` — update candidate stage
@@ -1851,7 +1851,7 @@ Candidate list with ATS scores. Side-by-side comparison. Notes and ratings. Shor
     - Returns link that shows multiple PDFs behind password gate
 
 ### 73D · Frontend — Recruiter Dashboard
-- [ ] Create `frontend/src/app/workspaces/[id]/recruiter/page.tsx`:
+- [x] Create `frontend/src/app/workspaces/[id]/recruiter/page.tsx`:
   - Table: candidate name | role title | ATS score | stage badge | last updated | ⭐ rating
   - Sort by: ATS score, stage, last updated
   - "Compare" button: select 2 candidates → side-by-side Monaco diff of their LaTeX
@@ -1867,7 +1867,7 @@ Candidate list with ATS scores. Side-by-side comparison. Notes and ratings. Shor
 panels. Share-for-review link gives commenter-only access.
 
 ### 74A · Database Migration
-- [ ] Create `backend/alembic/versions/0018_add_resume_comments.py`:
+- [x] Create `backend/alembic/versions/0018_add_resume_comments.py`:
   ```sql
   CREATE TABLE resume_comments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1885,7 +1885,7 @@ panels. Share-for-review link gives commenter-only access.
   ```
 
 ### 74B · Backend — Comment Routes
-- [ ] Create `backend/app/api/comment_routes.py`:
+- [x] Create `backend/app/api/comment_routes.py`:
   ```
   GET    /resumes/{resume_id}/comments           — list all comments (auth: owner or collaborator)
   POST   /resumes/{resume_id}/comments           — create comment
@@ -1895,17 +1895,17 @@ panels. Share-for-review link gives commenter-only access.
   ```
   - Share-for-review: extend `POST /resumes/{id}/share` with `scope=comment` option
   - Token with `comment_only` scope allows `GET` and `POST` comments without full auth
-- [ ] Register router in `backend/app/api/routes.py`
+- [x] Register router in `backend/app/api/routes.py`
 
 ### 74C · Frontend — Comment Gutter Icons
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add prop: `comments?: ResumeComment[]`
   - Render `monaco.editor.addGlyphMarginWidget` for each commented line: speech bubble 💬 icon
   - Click icon → fires `onCommentClick?.(lineNumber)`
   - "Add Comment" Monaco context menu action (when text is selected)
 
 ### 74D · Frontend — Comments Panel
-- [ ] Create `frontend/src/components/CommentsPanel.tsx`:
+- [x] Create `frontend/src/components/CommentsPanel.tsx`:
   - Sorted list of comment threads by line number
   - Thread expansion with `<reply>` input
   - "Resolve" toggle per thread (gray out resolved threads)
@@ -1913,7 +1913,7 @@ panels. Share-for-review link gives commenter-only access.
   - Real-time updates: re-fetch every 30s or on WebSocket event
 
 ### 74E · Tests
-- [ ] `backend/test/test_comments.py`:
+- [x] `backend/test/test_comments.py`:
   - Create comment → GET returns it with correct `line_start`, `line_end`
   - Non-owner, non-collaborator cannot POST comment → 403
   - Comment-only share token allows `POST` comment but not `GET /resumes/{id}` → 403
