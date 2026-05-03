@@ -167,6 +167,10 @@ export interface ResumeResponse extends ResumeBase {
   github_sync_enabled?: boolean
   github_repo_name?: string | null
   github_last_sync_at?: string | null
+  // Dropbox sync (Feature 77)
+  dropbox_sync_enabled?: boolean
+  dropbox_folder_path?: string | null
+  dropbox_last_sync_at?: string | null
   created_at: string
   updated_at: string
   // Archive / Pin / Tags (Feature 39)
