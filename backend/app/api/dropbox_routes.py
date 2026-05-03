@@ -153,11 +153,9 @@ async def dropbox_callback(
     try:
         account = await dropbox_sync_service.get_account(access_token)
         account_id = account.get("account_id", "")
-        display_name = account.get("name", {}).get("display_name", "")
     except Exception as exc:
         logger.error(f"Failed to fetch Dropbox account info: {exc}")
         account_id = ""
-        display_name = ""
 
     # Encrypt tokens before storing
     encrypted_access = encryption_service.encrypt(access_token)

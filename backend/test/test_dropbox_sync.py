@@ -7,7 +7,6 @@ import pytest
 from app.core.config import settings
 from app.services.dropbox_sync_service import DropboxSyncService
 
-
 # ── DropboxSyncService unit tests ─────────────────────────────────────────────
 
 

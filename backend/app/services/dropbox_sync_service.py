@@ -1,7 +1,6 @@
 """Dropbox sync service — uploads and downloads LaTeX files via the Dropbox API (Feature 77)."""
 
 import json
-from typing import Optional
 
 import httpx
 
