@@ -250,6 +250,14 @@ class Settings(BaseSettings):
     MENDELEY_CLIENT_SECRET: str = Field(default="", description="Mendeley OAuth 2.0 client secret")
     MENDELEY_REDIRECT_URI: str = Field(default="", description="Mendeley OAuth callback URI (e.g. https://yourdomain.com/mendeley/callback)")
 
+    # Dropbox integration (Feature 77)
+    DROPBOX_APP_KEY: str = Field(default="", description="Dropbox OAuth 2.0 app key")
+    DROPBOX_APP_SECRET: str = Field(default="", description="Dropbox OAuth 2.0 app secret")
+    DROPBOX_REDIRECT_URI: str = Field(
+        default="http://localhost:8030/dropbox/callback",
+        description="Dropbox OAuth callback URI",
+    )
+
     def model_post_init(self, __context) -> None:
         """Validate required settings at startup."""
         if os.environ.get("SKIP_ENV_VALIDATION") == "true":

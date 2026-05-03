@@ -43,8 +43,9 @@ import {
   Phone,
   DollarSign,
   SlidersHorizontal,
+  Cloud,
 } from 'lucide-react'
-import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
+import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type DropboxResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
 import ShareResumeModal from '@/components/ShareResumeModal'
@@ -833,6 +834,12 @@ export default function ResumeEditPage() {
   const [ghPushing, setGhPushing] = useState(false)
   const [ghTogglingSync, setGhTogglingSync] = useState(false)
 
+  // Dropbox sync (Feature 77)
+  const [dbxConnected, setDbxConnected] = useState(false)
+  const [dbxSyncEnabled, setDbxSyncEnabled] = useState(false)
+  const [dbxSyncing, setDbxSyncing] = useState(false)
+  const [dbxTogglingSync, setDbxTogglingSync] = useState(false)
+
   // Collaboration (Feature 40)
   const [collabOpen, setCollabOpen] = useState(false)
   const [collabIsOwner, setCollabIsOwner] = useState(true)
@@ -872,6 +879,11 @@ export default function ResumeEditPage() {
     apiClient.getGitHubStatus().then(s => setGhConnected(s.connected)).catch(() => {})
   }, [])
 
+  // Check Dropbox user connection (Feature 77)
+  useEffect(() => {
+    apiClient.getDropboxStatus().then(s => setDbxConnected(s.connected)).catch(() => {})
+  }, [])
+
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent)
 
   const { result: confidenceResult, loading: confidenceLoading, refetch: refetchConfidence } = useConfidenceScore(latexContent)
@@ -909,6 +921,8 @@ export default function ResumeEditPage() {
 
         // GitHub sync state
         setGhSyncEnabled(data.github_sync_enabled ?? false)
+        // Dropbox sync state (Feature 77)
+        setDbxSyncEnabled(data.dropbox_sync_enabled ?? false)
 
         // Collaboration ownership (Feature 40)
         setCollabIsOwner(data.user_id === sessionData?.user?.id)
@@ -1146,6 +1160,55 @@ export default function ResumeEditPage() {
       toast.error(e instanceof Error ? e.message : 'GitHub pull failed')
     } finally {
       setGhPushing(false)
+    }
+  }
+
+  // ── Dropbox sync handlers (Feature 77) ───────────────────────────────────
+  const handleToggleDropboxSync = async () => {
+    setDbxTogglingSync(true)
+    try {
+      if (dbxSyncEnabled) {
+        await apiClient.disableDropboxSync(resumeId)
+        setDbxSyncEnabled(false)
+        toast.success('Dropbox sync disabled')
+      } else {
+        await apiClient.enableDropboxSync(resumeId)
+        setDbxSyncEnabled(true)
+        toast.success('Dropbox sync enabled — initial push complete')
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to toggle Dropbox sync')
+    } finally {
+      setDbxTogglingSync(false)
+    }
+  }
+
+  const handlePushToDropbox = async () => {
+    setDbxSyncing(true)
+    try {
+      const content = editorRef.current?.getValue() || latexContent
+      await apiClient.updateResume(resumeId, { title, latex_content: content })
+      const result = await apiClient.pushToDropbox(resumeId)
+      toast.success(result.message)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Dropbox push failed')
+    } finally {
+      setDbxSyncing(false)
+    }
+  }
+
+  const handlePullFromDropbox = async () => {
+    if (!window.confirm('Replace local content with the version from Dropbox? Unsaved changes will be overwritten.')) return
+    setDbxSyncing(true)
+    try {
+      const result = await apiClient.pullFromDropbox(resumeId)
+      editorRef.current?.setValue(result.latex_content)
+      setLatexContent(result.latex_content)
+      toast.success('Pulled latest content from Dropbox')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Dropbox pull failed')
+    } finally {
+      setDbxSyncing(false)
     }
   }
 
@@ -1709,6 +1772,47 @@ export default function ResumeEditPage() {
                     onClick={handlePullFromGitHub}
                     disabled={ghPushing}
                     title="Pull from GitHub"
+                    className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
+                  >
+                    <Download size={11} />
+                    Pull
+                  </button>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Dropbox sync (Feature 77) — only show if user has connected Dropbox */}
+          {dbxConnected && (
+            <>
+              <button
+                onClick={handleToggleDropboxSync}
+                disabled={dbxTogglingSync}
+                title={dbxSyncEnabled ? 'Disable Dropbox sync' : 'Enable Dropbox sync'}
+                className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+                  dbxSyncEnabled
+                    ? 'bg-zinc-800 text-zinc-200 ring-1 ring-white/[0.1]'
+                    : 'text-zinc-600 hover:text-zinc-300'
+                }`}
+              >
+                {dbxTogglingSync ? <Loader2 size={11} className="animate-spin" /> : <Cloud size={11} />}
+                Dropbox
+              </button>
+              {dbxSyncEnabled && (
+                <>
+                  <button
+                    onClick={handlePushToDropbox}
+                    disabled={dbxSyncing}
+                    title="Push to Dropbox"
+                    className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
+                  >
+                    {dbxSyncing ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+                    Push
+                  </button>
+                  <button
+                    onClick={handlePullFromDropbox}
+                    disabled={dbxSyncing}
+                    title="Pull from Dropbox"
                     className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
                   >
                     <Download size={11} />

@@ -142,6 +142,11 @@ from .comment_routes import router as comment_router
 
 router.include_router(comment_router)
 
+# Include Dropbox sync routes (Feature 77)
+from .dropbox_routes import router as dropbox_router
+
+router.include_router(dropbox_router)
+
 # Include Portfolio routes (Feature 67)
 from .portfolio_routes import router as portfolio_router
 

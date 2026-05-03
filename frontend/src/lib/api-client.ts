@@ -167,6 +167,10 @@ export interface ResumeResponse extends ResumeBase {
   github_sync_enabled?: boolean
   github_repo_name?: string | null
   github_last_sync_at?: string | null
+  // Dropbox sync (Feature 77)
+  dropbox_sync_enabled?: boolean
+  dropbox_folder_path?: string | null
+  dropbox_last_sync_at?: string | null
   created_at: string
   updated_at: string
   // Archive / Pin / Tags (Feature 39)
@@ -371,6 +375,30 @@ export interface GitHubSyncResponse {
 }
 
 export interface GitHubPullResponse {
+  success: boolean
+  latex_content: string
+}
+
+// Dropbox Integration (Feature 77)
+export interface DropboxStatusResponse {
+  connected: boolean
+  display_name: string | null
+  account_id: string | null
+}
+
+export interface DropboxResumeStatus {
+  dropbox_sync_enabled: boolean
+  dropbox_folder_path: string | null
+  dropbox_last_sync_at: string | null
+}
+
+export interface DropboxSyncResponse {
+  success: boolean
+  message: string
+  file_path: string | null
+}
+
+export interface DropboxPullResponse {
   success: boolean
   latex_content: string
 }
@@ -1766,6 +1794,46 @@ class ApiClient {
 
   async pullFromGitHub(resumeId: string): Promise<GitHubPullResponse> {
     return this.request<GitHubPullResponse>(`/github/resumes/${encodeURIComponent(resumeId)}/pull`, {
+      method: 'POST',
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Dropbox Integration (Feature 77)                               //
+  // ---------------------------------------------------------------- //
+
+  async getDropboxStatus(): Promise<DropboxStatusResponse> {
+    return this.request<DropboxStatusResponse>('/dropbox/status')
+  }
+
+  async disconnectDropbox(): Promise<{ success: boolean; message: string }> {
+    return this.request('/dropbox/disconnect', { method: 'DELETE' })
+  }
+
+  async getResumeDropboxStatus(resumeId: string): Promise<DropboxResumeStatus> {
+    return this.request<DropboxResumeStatus>(`/dropbox/resumes/${encodeURIComponent(resumeId)}/status`)
+  }
+
+  async enableDropboxSync(resumeId: string): Promise<DropboxResumeStatus> {
+    return this.request<DropboxResumeStatus>(`/dropbox/resumes/${encodeURIComponent(resumeId)}/enable`, {
+      method: 'POST',
+    })
+  }
+
+  async disableDropboxSync(resumeId: string): Promise<DropboxResumeStatus> {
+    return this.request<DropboxResumeStatus>(`/dropbox/resumes/${encodeURIComponent(resumeId)}/disable`, {
+      method: 'POST',
+    })
+  }
+
+  async pushToDropbox(resumeId: string): Promise<DropboxSyncResponse> {
+    return this.request<DropboxSyncResponse>(`/dropbox/resumes/${encodeURIComponent(resumeId)}/push`, {
+      method: 'POST',
+    })
+  }
+
+  async pullFromDropbox(resumeId: string): Promise<DropboxPullResponse> {
+    return this.request<DropboxPullResponse>(`/dropbox/resumes/${encodeURIComponent(resumeId)}/pull`, {
       method: 'POST',
     })
   }
