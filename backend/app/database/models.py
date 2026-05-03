@@ -46,6 +46,10 @@ class User(Base):
     # GitHub integration (Feature 37)
     github_access_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     github_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Dropbox integration (Feature 77)
+    dropbox_access_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    dropbox_refresh_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    dropbox_account_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     # Reference manager tokens (Feature 42) — encrypted, stored as JSONB
     user_metadata: Mapped[Optional[Dict]] = mapped_column("user_metadata", JSONB, nullable=True)
     # Portfolio / public profile (Feature 67)
@@ -138,6 +142,10 @@ class Resume(Base):
     github_sync_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     github_repo_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     github_last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Dropbox sync (Feature 77)
+    dropbox_sync_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    dropbox_folder_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    dropbox_last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # Archive (Feature 39)
     archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
