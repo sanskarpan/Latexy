@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Bell, BookOpen, Mail, Calendar, Save, Loader2, CheckCircle, Monitor, Github, Unlink, ExternalLink } from 'lucide-react'
-import { apiClient, type NotificationPrefs, type GitHubStatusResponse, type ZoteroStatusResponse, type MendeleyStatusResponse } from '@/lib/api-client'
+import { Bell, BookOpen, Mail, Calendar, Save, Loader2, CheckCircle, Monitor, Github, Unlink, ExternalLink, Cloud } from 'lucide-react'
+import { apiClient, type NotificationPrefs, type GitHubStatusResponse, type ZoteroStatusResponse, type MendeleyStatusResponse, type DropboxStatusResponse } from '@/lib/api-client'
 import { getNotificationPref, setNotificationPref } from '@/hooks/usePushNotifications'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030'
@@ -45,6 +45,13 @@ function SettingsContent() {
   const [menError, setMenError] = useState<string | null>(null)
   const [menSuccess, setMenSuccess] = useState<string | null>(null)
 
+  // Dropbox (Feature 77)
+  const [dbxStatus, setDbxStatus] = useState<DropboxStatusResponse>({ connected: false, display_name: null, account_id: null })
+  const [dbxLoading, setDbxLoading] = useState(true)
+  const [dbxDisconnecting, setDbxDisconnecting] = useState(false)
+  const [dbxError, setDbxError] = useState<string | null>(null)
+  const [dbxSuccess, setDbxSuccess] = useState<string | null>(null)
+
   useEffect(() => {
     apiClient.getNotificationPrefs()
       .then(setPrefs)
@@ -65,6 +72,11 @@ function SettingsContent() {
       .then(setMenStatus)
       .catch(() => {})
       .finally(() => setMenLoading(false))
+
+    apiClient.getDropboxStatus()
+      .then(setDbxStatus)
+      .catch(() => {})
+      .finally(() => setDbxLoading(false))
   }, [])
 
   // Show success message after OAuth redirect
@@ -91,6 +103,11 @@ function SettingsContent() {
         window.opener.postMessage({ type: 'mendeley:connected' }, '*')
         window.close()
       }
+    }
+    if (searchParams.get('dropbox') === 'connected') {
+      setDbxSuccess('Dropbox account connected successfully!')
+      apiClient.getDropboxStatus().then(setDbxStatus).catch(() => {})
+      setTimeout(() => setDbxSuccess(null), 5000)
     }
   }, [searchParams])
 
@@ -145,6 +162,24 @@ function SettingsContent() {
       setZotError(e instanceof Error ? e.message : 'Failed to disconnect')
     } finally {
       setZotDisconnecting(false)
+    }
+  }
+
+  function handleConnectDropbox() {
+    window.location.href = `${API_BASE}/dropbox/connect`
+  }
+
+  async function handleDisconnectDropbox() {
+    if (!confirm('Disconnect Dropbox? Sync will be disabled on all your resumes. Files already in Dropbox are not deleted.')) return
+    setDbxDisconnecting(true)
+    setDbxError(null)
+    try {
+      await apiClient.disconnectDropbox()
+      setDbxStatus({ connected: false, display_name: null, account_id: null })
+    } catch (e: unknown) {
+      setDbxError(e instanceof Error ? e.message : 'Failed to disconnect')
+    } finally {
+      setDbxDisconnecting(false)
     }
   }
 
@@ -386,6 +421,72 @@ function SettingsContent() {
           {menError && (
             <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-400 ring-1 ring-rose-500/20">
               {menError}
+            </p>
+          )}
+        </div>
+
+        {/* Dropbox Integration card (Feature 77) */}
+        <div className="rounded-xl border border-white/[0.07] bg-[#0d0d0d] p-6 space-y-6">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/15">
+              <Cloud size={14} className="text-blue-300" />
+            </div>
+            <h2 className="text-base font-semibold text-zinc-100">Dropbox Integration</h2>
+          </div>
+
+          {dbxSuccess && (
+            <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-400 ring-1 ring-emerald-500/20">
+              {dbxSuccess}
+            </p>
+          )}
+
+          {dbxLoading ? (
+            <div className="flex items-center gap-2 text-zinc-500 text-sm">
+              <Loader2 size={14} className="animate-spin" />
+              Checking Dropbox status…
+            </div>
+          ) : dbxStatus.connected ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
+                  <CheckCircle size={14} className="text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">Dropbox connected</p>
+                  <p className="text-[11px] text-zinc-500">
+                    Sync is enabled. Toggle per-resume sync from the editor toolbar.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleDisconnectDropbox}
+                disabled={dbxDisconnecting}
+                className="flex items-center gap-1.5 rounded-lg border border-rose-500/20 px-3 py-1.5 text-[11px] font-medium text-rose-400 transition hover:bg-rose-500/10 disabled:opacity-40"
+              >
+                {dbxDisconnecting ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
+                {dbxDisconnecting ? 'Disconnecting…' : 'Disconnect Dropbox'}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-[12px] text-zinc-500">
+                Connect your Dropbox account to sync resume LaTeX source to{' '}
+                <span className="font-mono text-zinc-400">/Latexy/</span> in your Dropbox.
+                Push and pull from the editor toolbar per resume.
+              </p>
+              <button
+                onClick={handleConnectDropbox}
+                className="flex items-center gap-2 rounded-lg bg-blue-500/15 px-4 py-2 text-sm font-semibold text-blue-200 ring-1 ring-blue-500/20 transition hover:bg-blue-500/25"
+              >
+                <Cloud size={14} />
+                Connect Dropbox
+              </button>
+            </div>
+          )}
+
+          {dbxError && (
+            <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-400 ring-1 ring-rose-500/20">
+              {dbxError}
             </p>
           )}
         </div>
