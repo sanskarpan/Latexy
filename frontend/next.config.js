@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const withPWA = require('@ducanh2912/next-pwa').default
+
 const nextConfig = {
   webpack: (config) => {
     // Handle canvas for react-pdf
@@ -18,4 +20,48 @@ const nextConfig = {
   },
 }
 
-module.exports = nextConfig
+module.exports = withPWA({
+  dest: 'public',
+  // Disable service worker in dev to avoid caching surprises during development
+  disable: process.env.NODE_ENV === 'development',
+  fallbacks: {
+    document: '/offline.html',
+  },
+  cacheOnFrontEndNav: true,
+  aggressiveFrontEndNavCaching: true,
+  reloadOnOnline: true,
+  workboxOptions: {
+    runtimeCaching: [
+      // App shell: static assets cached with StaleWhileRevalidate
+      {
+        urlPattern: /^\/(_next\/static|_next\/image)/,
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'latexy-app-shell',
+        },
+      },
+      // Resume API: NetworkFirst (try server, fall back to cache)
+      {
+        urlPattern: /\/resumes($|\?)/,
+        handler: 'NetworkFirst',
+        options: {
+          cacheName: 'latexy-api-resumes',
+          networkTimeoutSeconds: 5,
+          expiration: { maxAgeSeconds: 5 * 60 },
+        },
+      },
+      // PDF assets: CacheFirst — PDFs rarely change, serve from cache for 7 days
+      {
+        urlPattern: /\.pdf$/,
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'latexy-pdf-cache',
+          expiration: {
+            maxEntries: 30,
+            maxAgeSeconds: 7 * 24 * 60 * 60,
+          },
+        },
+      },
+    ],
+  },
+})(nextConfig)
