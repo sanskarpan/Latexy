@@ -94,6 +94,16 @@ celery_app.conf.update(
     },
     beat_schedule_filename="celerybeat-schedule",
 
+    # Priority queues — Redis requires these transport options to honour the
+    # `priority` kwarg passed to .apply_async().  Without this config the
+    # broker processes tasks FIFO regardless of the priority value.
+    broker_transport_options={
+        "priority_steps": list(range(10)),   # 0 (highest) … 9 (lowest)
+        "sep": ":",
+        "queue_order_strategy": "priority",
+    },
+    task_queue_max_priority=9,
+
     # Monitoring
     worker_send_task_events=True,
     task_send_sent_event=True,
