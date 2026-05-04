@@ -95,6 +95,10 @@ import { useSpellCheck, addWordToDict } from '@/hooks/useSpellCheck'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import KeyboardShortcutsPanel from '@/components/KeyboardShortcutsPanel'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
+import MobileEditor from '@/components/MobileEditor'
+import OfflineBanner, { useOnlineStatus } from '@/components/OfflineBanner'
+import { saveDraft, getPendingDrafts, deleteDraft, pendingDraftCount } from '@/lib/offline-drafts'
+import { enqueueCompile, getQueuedCompiles, dequeueCompile } from '@/lib/compile-queue'
 
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout'
@@ -843,6 +847,11 @@ export default function ResumeEditPage() {
   const [dbxSyncing, setDbxSyncing] = useState(false)
   const [dbxTogglingSync, setDbxTogglingSync] = useState(false)
 
+  // PWA / offline (Feature 79)
+  const isOnline = useOnlineStatus()
+  const [isMobile, setIsMobile] = useState(false)
+  const [offlinePendingCount, setOfflinePendingCount] = useState(0)
+
   // Collaboration (Feature 40)
   const [collabOpen, setCollabOpen] = useState(false)
   const [collabIsOwner, setCollabIsOwner] = useState(true)
@@ -855,6 +864,56 @@ export default function ResumeEditPage() {
   const activePdfJobId = useRef<string | null>(null)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
+
+  // PWA: detect mobile breakpoint (Feature 79E)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    setIsMobile(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  // PWA: flush offline drafts and compile queue when connection restores (Feature 79C/79D)
+  useEffect(() => {
+    if (!isOnline) {
+      // Recount pending items so the banner badge stays current
+      Promise.all([pendingDraftCount()]).then(([count]) => setOfflinePendingCount(count))
+      return
+    }
+    // Flush pending drafts
+    getPendingDrafts().then(async (drafts) => {
+      for (const draft of drafts) {
+        try {
+          await apiClient.updateResume(draft.resumeId, {
+            title: draft.title,
+            latex_content: draft.latexContent,
+          })
+          await deleteDraft(draft.resumeId)
+        } catch {
+          // Leave in pending state; will retry on next reconnect
+        }
+      }
+      setOfflinePendingCount(0)
+    })
+    // Flush queued compiles
+    getQueuedCompiles().then(async (queued) => {
+      for (const job of queued) {
+        try {
+          const r = await apiClient.compileLatex({
+            latex_content: job.latexContent,
+            resume_id: job.resumeId,
+          })
+          if (r.success) {
+            await dequeueCompile(job.id)
+            toast.success('Queued compilation submitted')
+          }
+        } catch {
+          // Leave in queue; will retry on next reconnect
+        }
+      }
+    })
+  }, [isOnline]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Navigate to line from ?line= search param (set by ProjectSearchModal)
   useEffect(() => {
@@ -1222,6 +1281,21 @@ export default function ResumeEditPage() {
 
   const handleSave = async () => {
     const content = editorRef.current?.getValue() || latexContent
+    // Offline: persist to IndexedDB instead of API (Feature 79C)
+    if (!navigator.onLine) {
+      await saveDraft({
+        resumeId,
+        title,
+        latexContent: content,
+        savedAt: new Date(),
+        syncStatus: 'pending',
+      })
+      setLatexContent(content)
+      const count = await pendingDraftCount()
+      setOfflinePendingCount(count)
+      toast.info('Saved locally — will sync when back online')
+      return
+    }
     setIsSaving(true)
     try {
       await apiClient.updateResume(resumeId, { title, latex_content: content })
@@ -1237,6 +1311,12 @@ export default function ResumeEditPage() {
   const runCompile = async () => {
     const content = editorRef.current?.getValue() || latexContent
     if (!content.trim()) { toast.error('Nothing to compile'); return }
+    // Offline: queue the compile for later (Feature 79D)
+    if (!navigator.onLine) {
+      await enqueueCompile(resumeId, content)
+      toast.info('Queued — will compile when back online')
+      return
+    }
     setIsSubmitting(true)
     try {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
@@ -1978,6 +2058,8 @@ export default function ResumeEditPage() {
               {title || 'Untitled'}.tex
             </div>
           </div>
+          {/* Offline status banner (Feature 79F) */}
+          <OfflineBanner pendingCount={offlinePendingCount} />
           {/* Page overflow warning banner */}
           {pageCount !== null && pageCount > 1 && (
             <div className="flex shrink-0 items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-4 py-1.5">
@@ -1994,6 +2076,16 @@ export default function ResumeEditPage() {
             </div>
           )}
           <div className="relative min-h-0 flex-1">
+            {/* Mobile: lightweight CodeMirror editor (Feature 79E) */}
+            {isMobile ? (
+              <MobileEditor
+                ref={editorRef}
+                value={latexContent}
+                onChange={setLatexContent}
+                onSave={handleSave}
+                onCompile={runCompile}
+              />
+            ) : (
             <LaTeXEditor
               ref={editorRef}
               value={latexContent}
@@ -2042,6 +2134,7 @@ export default function ResumeEditPage() {
                 setRightTab('docs')
               }}
             />
+            )} {/* end desktop LaTeXEditor */}
 
             {/* AI Summary Widget trigger — shown when cursor is in summary section */}
             {cursorInSummarySection && !summaryWidgetOpen && !bulletWidgetOpen && (

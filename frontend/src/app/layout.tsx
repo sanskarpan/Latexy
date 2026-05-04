@@ -12,6 +12,13 @@ export const metadata: Metadata = {
   title: 'Latexy | Precision Resume Intelligence',
   description: 'Compile, optimize, and score LaTeX resumes with enterprise-grade speed and ATS precision.',
   keywords: 'LaTeX, ATS, resume optimization, AI, job applications',
+  manifest: '/manifest.json',
+  themeColor: '#6d28d9',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Latexy',
+  },
 }
 
 export default function RootLayout({

@@ -227,7 +227,7 @@ Phase 2: React Native app. Monaco doesn't run on mobile — mobile uses a simpli
 CodeMirror-based editor. Offline compilations are queued and synced when connectivity returns.
 
 ### 79A · PWA Manifest & Config
-- [ ] Create `frontend/public/manifest.json`:
+- [x] Create `frontend/public/manifest.json`:
   ```json
   {
     "name": "Latexy",
@@ -244,24 +244,24 @@ CodeMirror-based editor. Offline compilations are queued and synced when connect
     ]
   }
   ```
-- [ ] Add `<link rel="manifest" href="/manifest.json" />` to `frontend/src/app/layout.tsx`
-- [ ] Generate and place app icons at `frontend/public/icons/` (192×192, 512×512, maskable)
+- [x] Add `<link rel="manifest" href="/manifest.json" />` to `frontend/src/app/layout.tsx`
+- [x] Generate and place app icons at `frontend/public/icons/` (192×192, 512×512, maskable)
 
 ### 79B · Service Worker (Workbox)
-- [ ] Install `next-pwa` or `@ducanh2912/next-pwa`
-- [ ] In `frontend/next.config.js`: wrap config with `withPWA`:
+- [x] Install `next-pwa` or `@ducanh2912/next-pwa`
+- [x] In `frontend/next.config.js`: wrap config with `withPWA`:
   ```js
   const withPWA = require('next-pwa')({ dest: 'public', register: true, skipWaiting: true })
   module.exports = withPWA({ /* existing config */ })
   ```
-- [ ] Cache strategy in `frontend/src/sw-config.ts`:
+- [x] Cache strategy in `frontend/src/sw-config.ts`:
   - **App shell** (HTML, CSS, JS): `StaleWhileRevalidate`
   - **API GET /resumes**: `NetworkFirst`, cache 5 min
   - **MinIO PDF assets**: `CacheFirst`, cache 7 days
   - **Offline fallback page**: `frontend/public/offline.html`
 
 ### 79C · Offline Draft Storage (IndexedDB)
-- [ ] Create `frontend/src/lib/offline-drafts.ts`:
+- [x] Create `frontend/src/lib/offline-drafts.ts`:
   ```typescript
   // Uses 'idb' library for typed IndexedDB access
   export interface OfflineDraft {
@@ -275,11 +275,11 @@ CodeMirror-based editor. Offline compilations are queued and synced when connect
   export async function getPendingDrafts(): Promise<OfflineDraft[]>
   export async function markSynced(resumeId: string): Promise<void>
   ```
-- [ ] In editor `useAutoSave` hook: if `navigator.onLine === false`, save to IndexedDB instead of API
-- [ ] On `window.onfocus` or `online` event: flush pending drafts → `PATCH /resumes/{id}` for each
+- [x] In editor `useAutoSave` hook: if `navigator.onLine === false`, save to IndexedDB instead of API
+- [x] On `window.onfocus` or `online` event: flush pending drafts → `PATCH /resumes/{id}` for each
 
 ### 79D · Background Sync (Compile Queue)
-- [ ] Create `frontend/src/lib/compile-queue.ts`:
+- [x] Create `frontend/src/lib/compile-queue.ts`:
   ```typescript
   export interface QueuedCompile {
     id: string       // uuid
@@ -290,35 +290,35 @@ CodeMirror-based editor. Offline compilations are queued and synced when connect
   export async function enqueueCompile(resumeId: string, content: string): Promise<string>
   export async function flushQueue(): Promise<void>  // called on reconnect
   ```
-- [ ] In editor compile handler: if offline, call `enqueueCompile()` and show "Queued — will compile
+- [x] In editor compile handler: if offline, call `enqueueCompile()` and show "Queued — will compile
   when online" toast instead of error
-- [ ] Register Background Sync event in service worker: `self.addEventListener('sync', ...)` to
+- [x] Register Background Sync event in service worker: `self.addEventListener('sync', ...)` to
   call `flushQueue()` when browser regains connectivity
 
 ### 79E · Mobile Editor (CodeMirror)
-- [ ] Create `frontend/src/components/MobileEditor.tsx`:
+- [x] Create `frontend/src/components/MobileEditor.tsx`:
   - Uses `@codemirror/view` + `@codemirror/lang-markdown` (lighter than Monaco, mobile-friendly)
   - LaTeX syntax highlighting via existing language configuration
   - Virtual keyboard-aware: adjust editor height when soft keyboard appears (`visualViewport` API)
   - Toolbar strip (above keyboard): Bold, Italic, `\item`, `\section`, compile button
   - No split-pane on mobile: full-screen editor with "Preview" tab to see PDF
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Detect mobile with `useMediaQuery('(max-width: 768px)')`
   - Render `<MobileEditor />` instead of `<LaTeXEditor />` on mobile
   - PDF preview tab: full-screen iframe of latest compiled PDF
 
 ### 79F · Offline UX Polish
-- [ ] `frontend/src/components/OfflineBanner.tsx`:
+- [x] `frontend/src/components/OfflineBanner.tsx`:
   - `useOnlineStatus()` hook (subscribes to `online`/`offline` events)
   - Banner: "You're offline — edits are saved locally and will sync when you reconnect"
   - Pending draft count badge in workspace header
-- [ ] `frontend/public/offline.html`: simple branded offline page with Latexy logo and message
+- [x] `frontend/public/offline.html`: simple branded offline page with Latexy logo and message
 
 ### 79G · PWA Install Prompt
-- [ ] Create `frontend/src/hooks/usePWAInstall.ts`:
+- [x] Create `frontend/src/hooks/usePWAInstall.ts`:
   - Captures `beforeinstallprompt` event
   - Returns `{ canInstall: boolean, prompt: () => void }`
-- [ ] In workspace header: "Add to Home Screen" button (hidden if not `canInstall`)
+- [x] In workspace header: "Add to Home Screen" button (hidden if not `canInstall`)
 
 ---
 
