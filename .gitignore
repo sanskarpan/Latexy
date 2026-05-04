@@ -257,3 +257,8 @@ FE-inspiration/
 # Playwright test results
 frontend/test-results/
 .dev-pids
+# next-pwa generated service worker build artifacts
+frontend/public/sw.js
+frontend/public/workbox-*.js
+frontend/public/swe-worker-*.js
+frontend/public/fallback-*.js
