@@ -2904,7 +2904,7 @@ Cache scraped JDs by URL hash. Uses `httpx` + `BeautifulSoup4` (already in requi
 wait behind free-tier users during peak load. Priority badge shown in editor for pro users.
 
 ### 34A · Backend — Priority Helper
-- [ ] In `backend/app/workers/latex_worker.py`, verify `get_task_priority()` exists:
+- [x] In `backend/app/workers/latex_worker.py`, verify `get_task_priority()` exists:
   ```python
   def get_task_priority(user_plan: str) -> int:
       return {
@@ -2919,7 +2919,7 @@ wait behind free-tier users during peak load. Priority badge shown in editor for
   - Note: Redis-backed Celery uses `priority` on `.apply_async()` via task routing or `acks_late`
 
 ### 34B · Backend — Pass Priority in All Workers
-- [ ] In `submit_latex_compilation()`: verify `priority=get_task_priority(user_plan)` is passed
+- [x] In `submit_latex_compilation()`: verify `priority=get_task_priority(user_plan)` is passed
   ```python
   compile_latex_task.apply_async(
       kwargs={...},
@@ -2927,13 +2927,13 @@ wait behind free-tier users during peak load. Priority badge shown in editor for
       priority=get_task_priority(user_plan),  # ensure this line exists
   )
   ```
-- [ ] In `submit_resume_optimization()` in `llm_worker.py`:
+- [x] In `submit_resume_optimization()` in `llm_worker.py`:
   - Same: pass `priority=get_task_priority(user_plan)` to `.apply_async()`
-- [ ] In `orchestrator.py` `submit_combined_job()`:
+- [x] In `orchestrator.py` `submit_combined_job()`:
   - Pass `priority` to both the orchestrate task and any sub-tasks it spawns
 
 ### 34C · Backend — Queue Configuration for Priority
-- [ ] In `backend/app/core/celery_app.py`:
+- [x] In `backend/app/core/celery_app.py`:
   - Ensure Redis broker is configured for priority queues:
     ```python
     app.conf.broker_transport_options = {
@@ -2946,7 +2946,7 @@ wait behind free-tier users during peak load. Priority badge shown in editor for
   - Without this, `priority` parameter has no effect on Redis broker
 
 ### 34D · Frontend — Priority Badge in Editor
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - If `user.subscription_plan` is `"pro"` or `"byok"`:
     ```tsx
     <span className="text-xs text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded px-2 py-0.5">
@@ -2955,10 +2955,10 @@ wait behind free-tier users during peak load. Priority badge shown in editor for
     ```
   - Show in editor toolbar next to compile button
   - Tooltip: "Your compilations are prioritized over free-tier users"
-- [ ] Also show "Priority Compilation" in editor status bar for pro users
+- [x] Also show "Priority Compilation" in editor status bar for pro users
 
 ### 34E · Tests
-- [ ] `backend/test/test_queue_priority.py`:
+- [x] `backend/test/test_queue_priority.py`:
   - `get_task_priority("free")` returns 5
   - `get_task_priority("pro")` returns 8
   - `get_task_priority("byok")` returns 8

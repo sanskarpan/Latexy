@@ -720,6 +720,9 @@ export default function ResumeEditPage() {
   const [sectionReorderOpen, setSectionReorderOpen] = useState(false)
   const [docCommand, setDocCommand] = useState<string | undefined>(undefined)
 
+  // Priority queue badge (Feature 34)
+  const [userPlan, setUserPlan] = useState<string>('free')
+
   // Layout
   const [rightTab, setRightTab] = useState<RightTab>('preview')
   const [rightWidth, setRightWidth] = useState<number | null>(null)
@@ -882,6 +885,11 @@ export default function ResumeEditPage() {
   // Check Dropbox user connection (Feature 77)
   useEffect(() => {
     apiClient.getDropboxStatus().then(s => setDbxConnected(s.connected)).catch(() => {})
+  }, [])
+
+  // Fetch user plan for priority queue badge (Feature 34)
+  useEffect(() => {
+    apiClient.getCurrentPlan().then(setUserPlan).catch(() => {})
   }, [])
 
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent)
@@ -1871,6 +1879,16 @@ export default function ResumeEditPage() {
             <Zap size={11} />
             Auto
           </button>
+
+          {(userPlan === 'pro' || userPlan === 'byok') && (
+            <span
+              title="Your compilations are processed with priority in the queue"
+              className="flex items-center gap-1 rounded-md bg-violet-500/15 px-2 py-1.5 text-[10px] font-semibold text-violet-300 ring-1 ring-violet-500/20"
+            >
+              <Zap size={9} className="fill-current" />
+              Priority
+            </span>
+          )}
 
           <button
             onClick={runCompile}

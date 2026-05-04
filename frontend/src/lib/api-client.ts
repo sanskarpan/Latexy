@@ -993,6 +993,16 @@ class ApiClient {
   //  Subscription / billing (used by billing/page.tsx)              //
   // ---------------------------------------------------------------- //
 
+  /** Returns the current user's plan ID (e.g. "free", "pro", "byok"). */
+  async getCurrentPlan(): Promise<string> {
+    try {
+      const data = await this.request<{ planId: string }>('/subscription/current')
+      return data.planId ?? 'free'
+    } catch {
+      return 'free'
+    }
+  }
+
   async getSubscriptionPlans(): Promise<{
     success: boolean
     data?: { plans: Record<string, unknown> }
