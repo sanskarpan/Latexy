@@ -4,8 +4,10 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Download } from 'lucide-react'
 import { signOut, useSession } from '@/lib/auth-client'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
+import { usePWAInstall } from '@/hooks/usePWAInstall'
 
 const guestNav = [
   { label: 'Platform', href: '/platform' },
@@ -31,6 +33,7 @@ export default function GlobalHeader() {
   const flags = useFeatureFlags()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const { canInstall, prompt: promptInstall } = usePWAInstall()
 
   if (fullscreenPatterns.some((pattern) => pattern.test(pathname))) {
     return null
@@ -70,6 +73,16 @@ export default function GlobalHeader() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
+          {canInstall && (
+            <button
+              onClick={promptInstall}
+              title="Add Latexy to Home Screen"
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-zinc-400 transition hover:border-white/20 hover:text-white"
+            >
+              <Download size={12} />
+              Install
+            </button>
+          )}
           {session ? (
             <div className="relative">
               <button
