@@ -2340,6 +2340,27 @@ class ApiClient {
   async upvoteSnippet(snippetId: string): Promise<void> {
     await this.request<void>(`/snippets/${snippetId}/upvote`, { method: 'POST' })
   }
+
+  // ── Keyboard Macros (Feature 83) ─────────────────────────────────────────────
+
+  async getMacros(): Promise<MacroResponse[]> {
+    return this.request<MacroResponse[]>('/macros')
+  }
+
+  async createMacro(body: MacroCreateRequest): Promise<MacroResponse> {
+    return this.request<MacroResponse>('/macros', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async updateMacro(macroId: string, body: MacroUpdateRequest): Promise<MacroResponse> {
+    return this.request<MacroResponse>(`/macros/${macroId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async deleteMacro(macroId: string): Promise<void> {
+    await this.request<void>(`/macros/${macroId}`, { method: 'DELETE' })
+  }
 }
 
 // Singleton
@@ -2369,6 +2390,32 @@ export interface SnippetCreate {
   content: string
   category: 'header' | 'experience' | 'skills' | 'education' | 'misc'
   tags?: string[]
+}
+
+// ── Keyboard Macro types (Feature 83) ────────────────────────────────────────
+
+export interface MacroResponse {
+  id: string
+  name: string
+  description?: string | null
+  shortcut?: string | null
+  actions: Record<string, unknown>[]
+  created_at: string
+  updated_at: string
+}
+
+export interface MacroCreateRequest {
+  name: string
+  description?: string
+  shortcut?: string
+  actions: Record<string, unknown>[]
+}
+
+export interface MacroUpdateRequest {
+  name?: string
+  description?: string
+  shortcut?: string
+  actions?: Record<string, unknown>[]
 }
 
 // ------------------------------------------------------------------ //
