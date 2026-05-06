@@ -166,6 +166,11 @@ from .snippet_routes import router as snippet_router
 router.include_router(snippet_router)
 router.include_router(snippet_admin_router)
 
+# Include Keyboard Macro routes (Feature 83)
+from .macro_routes import router as macro_router
+
+router.include_router(macro_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():

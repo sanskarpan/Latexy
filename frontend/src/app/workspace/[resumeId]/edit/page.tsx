@@ -47,6 +47,7 @@ import {
   Code2,
   LayoutTemplate,
   TrendingUp,
+  Keyboard,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type DropboxResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -107,9 +108,10 @@ import { parseResume } from '@/lib/wysiwyg/latex-parser'
 import { serializeResume } from '@/lib/wysiwyg/latex-serializer'
 import type { ResumeDoc } from '@/lib/wysiwyg/document-model'
 import SnippetMarketplace from '@/components/SnippetMarketplace'
+import MacroLibraryPanel from '@/components/MacroLibraryPanel'
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout' | 'snippets'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout' | 'snippets' | 'macros'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
@@ -2321,6 +2323,7 @@ export default function ResumeEditPage() {
                 { id: 'docs', label: 'Docs', icon: BookOpen },
                 { id: 'layout', label: 'Layout', icon: SlidersHorizontal },
                 { id: 'snippets', label: 'Snippets', icon: Package },
+                { id: 'macros', label: 'Macros', icon: Keyboard },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -2594,6 +2597,15 @@ export default function ResumeEditPage() {
                     setLatexContent((prev) => prev + '\n' + content)
                   }
                 }}
+              />
+            )}
+            {rightTab === 'macros' && (
+              <MacroLibraryPanel
+                editor={
+                  editorRef.current && 'getModel' in (editorRef.current as object)
+                    ? (editorRef.current as unknown as import('monaco-editor').editor.IStandaloneCodeEditor)
+                    : null
+                }
               />
             )}
           </div>
