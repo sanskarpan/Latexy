@@ -519,7 +519,7 @@ timeline experience formats, boxed summary sections. Users browse, preview, inst
 contribute snippets directly from the editor sidebar.
 
 ### 82A · Database Migration
-- [ ] Create `backend/alembic/versions/0022_add_snippets.py`:
+- [x] Create `backend/alembic/versions/0022_add_snippets.py`:
   ```sql
   CREATE TABLE snippets (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -555,11 +555,11 @@ contribute snippets directly from the editor sidebar.
   - `down_revision = '0021'`
 
 ### 82B · Backend — Models
-- [ ] In `backend/app/database/models.py`:
+- [x] In `backend/app/database/models.py`:
   - Add `Snippet`, `SnippetInstall`, `SnippetUpvote` models
 
 ### 82C · Backend — Snippet Routes
-- [ ] Create `backend/app/api/snippet_routes.py` with prefix `/snippets`:
+- [x] Create `backend/app/api/snippet_routes.py` with prefix `/snippets`:
   - Pydantic schemas:
     ```python
     class SnippetCreate(BaseModel):
@@ -593,10 +593,10 @@ contribute snippets directly from the editor sidebar.
   - `POST /snippets/{snippet_id}/install` — record install, increment `installs_count`
   - `DELETE /snippets/{snippet_id}/install` — uninstall
   - `POST /snippets/{snippet_id}/upvote` — toggle upvote (idempotent)
-- [ ] Register router in `backend/app/api/routes.py`
+- [x] Register router in `backend/app/api/routes.py`
 
 ### 82D · Backend — Official Snippet Seed
-- [ ] Create `backend/app/data/official_snippets.py`:
+- [x] Create `backend/app/data/official_snippets.py`:
   - At least 10 official snippets marked `is_official=True`:
     - Two-column skills table with `tabular`
     - Timeline experience section with `tikz` or `tcolorbox`
@@ -606,22 +606,22 @@ contribute snippets directly from the editor sidebar.
     - Multi-column interests / hobbies section
 
 ### 82E · Frontend — Marketplace Browser
-- [ ] Create `frontend/src/components/SnippetMarketplace.tsx`:
+- [x] Create `frontend/src/components/SnippetMarketplace.tsx`:
   - Props: `onInsert: (content: string) => void`
   - Category tab strip: All / Header / Experience / Skills / Education / Misc
   - Sort dropdown: Most Popular | Newest | Official First
   - Search input: filters `title`, `description`, `tags`
   - Snippet cards: title, description, install count, upvote count, official badge, "Preview" + "Install" buttons
-- [ ] Create `frontend/src/components/SnippetPreviewModal.tsx`:
+- [x] Create `frontend/src/components/SnippetPreviewModal.tsx`:
   - Shows syntax-highlighted source with Monaco (read-only)
   - "Insert at Cursor" button → calls `onInsert(snippet.content)`
   - Shows rendered output description (static text, not compiled)
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Add "Snippets" tab to editor sidebar
   - `onInsert` → `editorRef.current?.insertAtCursor(content)`
 
 ### 82F · Tests
-- [ ] Create `backend/test/test_snippets.py` — 8 tests:
+- [x] Create `backend/test/test_snippets.py` — 20 tests (exceeded spec):
   - `GET /snippets` returns paginated list with `installed_by_me` correctly set
   - `POST /snippets` with `\write18{rm -rf /}` in content → 422 security rejection
   - `POST /snippets` authenticated → `installs_count=0`, `is_official=False`
@@ -640,7 +640,7 @@ as a named macro bound to a keyboard shortcut. Useful for repetitive formatting 
 Monaco doesn't natively support macro recording — requires custom implementation.
 
 ### 83A · Database Migration (Cloud Sync)
-- [ ] Create `backend/alembic/versions/0023_add_user_macros.py`:
+- [x] Create `backend/alembic/versions/0023_add_user_macros.py`:
   ```sql
   CREATE TABLE user_macros (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -657,7 +657,7 @@ Monaco doesn't natively support macro recording — requires custom implementati
   - `down_revision = '0022'`
 
 ### 83B · Macro Action Types
-- [ ] Create `frontend/src/lib/macros/macro-types.ts`:
+- [x] Create `frontend/src/lib/macros/macro-types.ts`:
   ```typescript
   export type MacroAction =
     | { type: 'insert'; text: string }
@@ -677,7 +677,7 @@ Monaco doesn't natively support macro recording — requires custom implementati
   ```
 
 ### 83C · Macro Recorder Engine
-- [ ] Create `frontend/src/lib/macros/macro-recorder.ts`:
+- [x] Create `frontend/src/lib/macros/macro-recorder.ts`:
   ```typescript
   export class MacroRecorder {
     private recording = false
@@ -694,7 +694,7 @@ Monaco doesn't natively support macro recording — requires custom implementati
   ```
 
 ### 83D · Macro Player Engine
-- [ ] Create `frontend/src/lib/macros/macro-player.ts`:
+- [x] Create `frontend/src/lib/macros/macro-player.ts`:
   ```typescript
   export class MacroPlayer {
     async play(
@@ -710,28 +710,28 @@ Monaco doesn't natively support macro recording — requires custom implementati
   ```
 
 ### 83E · Backend — Macro Sync Endpoints
-- [ ] Create `backend/app/api/macro_routes.py` with prefix `/macros`:
+- [x] Create `backend/app/api/macro_routes.py` with prefix `/macros`:
   - `GET /macros` — list current user's macros
   - `POST /macros` — create macro (name, description, shortcut, actions JSONB)
   - `PATCH /macros/{macro_id}` — update name / description / shortcut
   - `DELETE /macros/{macro_id}` — delete
-- [ ] Register router in `backend/app/api/routes.py`
-- [ ] Add `getMacros`, `createMacro`, `updateMacro`, `deleteMacro` to `frontend/src/lib/api-client.ts`
+- [x] Register router in `backend/app/api/routes.py`
+- [x] Add `getMacros`, `createMacro`, `updateMacro`, `deleteMacro` to `frontend/src/lib/api-client.ts`
 
 ### 83F · Frontend — Macro Library Panel
-- [ ] Create `frontend/src/components/MacroLibraryPanel.tsx`:
+- [x] Create `frontend/src/components/MacroLibraryPanel.tsx`:
   - "Record New Macro" button: shows recorder controls (Start / Stop / Cancel)
     while recording, editor gutter shows pulsing red dot
   - Macro list: name, shortcut badge, action count, Play / Edit / Delete buttons
   - Edit: rename, change description, reassign shortcut (keyboard capture input)
   - Shortcut conflict detection: warn if chosen shortcut already used by Monaco or existing macro
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Add "Macros" tab to editor sidebar
   - On macro list load: register each macro's shortcut via `editor.addCommand(KeyCode, ...)`
   - On component unmount: dispose all registered macro commands
 
 ### 83G · Tests
-- [ ] Create `backend/test/test_macros.py` — 5 tests:
+- [x] Create `backend/test/test_macros.py` — 7 tests (exceeded spec):
   - Create macro with `actions` JSONB → stored and retrieved correctly
   - Shortcut field stored as-is (validation is frontend-side)
   - `DELETE /macros/{id}` by other user → 403
@@ -859,7 +859,7 @@ Requires a parallel tenant-aware routing layer and per-tenant billing.
   - `down_revision = '0023'`
 
 ### 85B · Backend — Models
-- [ ] In `backend/app/database/models.py`:
+- [x] In `backend/app/database/models.py`:
   - Add `Tenant`, `TenantMember` models
   - Add `default_tenant_id` to `User`
 
@@ -940,7 +940,7 @@ slide-based PDF viewer, and a document type system.
   - `down_revision = '0024'`
 
 ### 86B · Backend — Model Update
-- [ ] In `backend/app/database/models.py`:
+- [x] In `backend/app/database/models.py`:
   - Add `document_type: Mapped[str]` to `Resume` model (default `'resume'`)
 
 ### 86C · Backend — Slide Count Extraction
