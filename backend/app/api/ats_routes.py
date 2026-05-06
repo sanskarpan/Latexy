@@ -1068,3 +1068,74 @@ async def keyword_density(
         pass
 
     return response
+
+
+# ── GET /ats/benchmark ────────────────────────────────────────────────────────
+
+
+class BenchmarkResponse(BaseModel):
+    percentile: Optional[float]  # None when sufficient_data=False
+    sample_size: int
+    cohort_median: Optional[float]
+    cohort_p25: Optional[float]
+    cohort_p75: Optional[float]
+    industry: str
+    sufficient_data: bool
+    message: Optional[str] = None
+
+
+@router.get("/benchmark", response_model=BenchmarkResponse)
+async def get_ats_benchmark(
+    ats_score: float,
+    industry: str = "general",
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """
+    Return the percentile rank of an ATS score within the anonymized Latexy cohort.
+
+    - Results are Redis-cached per industry for 1 hour.
+    - Rate-limited to 10 calls per user per hour.
+    - Only aggregate statistics are returned — no individual resume data.
+    - Returns sufficient_data=False with percentile=null when cohort < 50 scores.
+    """
+    if ats_score < 0 or ats_score > 100:
+        raise HTTPException(status_code=422, detail="ats_score must be between 0 and 100")
+
+    # ── Rate limit: 10 calls per user per hour ─────────────────────────────
+    rate_key = f"ratelimit:benchmark:{user_id}"
+    try:
+        count = await cache_manager.get(rate_key)
+        if count is None:
+            await cache_manager.set(rate_key, 1, ttl=3600)
+        elif int(count) >= 10:
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded: 10 benchmark requests per hour",
+            )
+        else:
+            await cache_manager.set(rate_key, int(count) + 1, ttl=3600)
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # Redis unavailable — allow the request
+
+    # ── Compute percentile ─────────────────────────────────────────────────
+    from ..services.benchmarking_service import benchmarking_service
+
+    result = await benchmarking_service.compute_percentile(
+        ats_score=ats_score,
+        industry=industry,
+        db=db,
+    )
+
+    return BenchmarkResponse(
+        percentile=result.percentile,
+        sample_size=result.sample_size,
+        cohort_median=result.cohort_median,
+        cohort_p25=result.cohort_p25,
+        cohort_p75=result.cohort_p75,
+        industry=result.industry,
+        sufficient_data=result.sufficient_data,
+        message=result.message,
+    )
