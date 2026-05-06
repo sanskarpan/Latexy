@@ -4,6 +4,7 @@ import { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef }
 
 let _latexLanguageRegistered = false
 import Editor, { type OnMount } from '@monaco-editor/react'
+import type * as Monaco from 'monaco-editor'
 import type { LogLine } from '@/hooks/useJobStream'
 import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import ATSScoreBadge from '@/components/ATSScoreBadge'
@@ -28,6 +29,8 @@ export interface LaTeXEditorRef {
   rejectTrackedChange: (id: string) => void
   acceptAllTrackedChanges: () => void
   rejectAllTrackedChanges: () => void
+  /** Expose the raw Monaco editor instance for advanced consumers (e.g. MacroRecorder). */
+  getEditor: () => Monaco.editor.IStandaloneCodeEditor | null
 }
 
 interface LaTeXEditorProps {
@@ -459,6 +462,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       rejectTrackedChange: (id: string) => { trackChangesRef.current?.rejectChange(id) },
       acceptAllTrackedChanges: () => { trackChangesRef.current?.acceptAll() },
       rejectAllTrackedChanges: () => { trackChangesRef.current?.rejectAll() },
+      getEditor: () => (editorRef.current as Monaco.editor.IStandaloneCodeEditor | null),
     }))
 
     // Apply log markers whenever logLines change
