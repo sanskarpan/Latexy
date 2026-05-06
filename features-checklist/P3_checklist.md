@@ -446,7 +446,7 @@ Anonymous aggregation of ATS scores across all resumes in the same industry buck
 Only meaningful once sufficient volume exists (>1,000 scored resumes per industry).
 
 ### 81A · Backend — Anonymized Aggregation Service
-- [ ] Create `backend/app/services/benchmarking_service.py`:
+- [x] Create `backend/app/services/benchmarking_service.py`:
   ```python
   class BenchmarkingService:
       CACHE_TTL_SECONDS = 3600   # Recompute hourly
@@ -480,30 +480,30 @@ Only meaningful once sufficient volume exists (>1,000 scored resumes per industr
   ```
 
 ### 81B · Backend — Endpoint
-- [ ] Add `GET /ats/benchmark?ats_score=<float>&industry=<str>` to `backend/app/api/ai_routes.py`:
+- [x] Add `GET /ats/benchmark?ats_score=<float>&industry=<str>` to `backend/app/api/ats_routes.py`:
   - Returns `BenchmarkResult` from `BenchmarkingService.compute_percentile()`
   - If `sufficient_data=False`: return result with `percentile=null`, message:
     `"Not enough data yet for [industry] benchmarking"`
   - Rate-limit: 10 calls per user per hour (Redis token bucket)
 
 ### 81C · Frontend — Percentile Badge
-- [ ] In `frontend/src/components/ATSResultsPanel.tsx` (or equivalent ATS results component):
+- [x] In `frontend/src/components/ATSScoreCard.tsx` (equivalent ATS results component):
   - After ATS score is shown, add "Benchmark" row:
     - If `sufficient_data=true`: "Top **N%** of [Industry] resumes on Latexy"
       with a mini bar chart showing distribution: p25 | p50 | p75 markers and user's score dot
     - If `sufficient_data=false`: "Benchmarking available once more [Industry] users join"
   - Call `GET /ats/benchmark` lazily on ATS panel open (not on every compile)
-- [ ] In `frontend/src/lib/api-client.ts`:
-  - Add `getBenchmark(atsScore: number, industry: string): Promise<BenchmarkResult>`
+- [x] In `frontend/src/lib/api-client.ts`:
+  - Add `getBenchmark(atsScore: number, industry?: string): Promise<BenchmarkResult>`
 
 ### 81D · Privacy Considerations
-- [ ] In `backend/app/api/ai_routes.py` benchmark endpoint:
+- [x] In `backend/app/api/ats_routes.py` benchmark endpoint:
   - Never return individual resume data — only aggregated statistics
   - Minimum cohort size of 50 before returning any data (`sufficient_data=false` if below threshold)
   - No user_id or resume_id in response — only aggregate percentile and distribution stats
 
 ### 81E · Tests
-- [ ] Create `backend/test/test_benchmarking.py` — 5 tests:
+- [x] Create `backend/test/test_benchmarking.py` — 5 tests:
   - Score at p50 → percentile ≈ 50
   - Score above all others → percentile = 100
   - Sample size < 50 → `sufficient_data=False`, `percentile=None`
