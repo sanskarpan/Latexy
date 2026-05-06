@@ -18,7 +18,6 @@ import pytest
 
 from app.services.career_path_service import CareerPathService
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
