@@ -653,6 +653,53 @@ class CareerAnalysis(Base):
     target_role: Mapped[Optional["CareerRole"]] = relationship("CareerRole", foreign_keys=[target_role_id])
 
 
+# ── Snippet Marketplace (Feature 82) ─────────────────────────────────────────
+
+class Snippet(Base):
+    """Community-shared LaTeX snippets."""
+    __tablename__ = 'snippets'
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, server_default=text('gen_random_uuid()'))
+    author_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(Text, nullable=False)
+    tags: Mapped[List[str]] = mapped_column(ARRAY(Text), nullable=False, server_default='{}')
+    is_official: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default='false')
+    installs_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default='0')
+    upvotes_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default='0')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    author: Mapped[Optional['User']] = relationship('User', foreign_keys=[author_id], lazy='selectin')
+    installs: Mapped[List['SnippetInstall']] = relationship('SnippetInstall', back_populates='snippet', cascade='all, delete-orphan')
+    upvotes: Mapped[List['SnippetUpvote']] = relationship('SnippetUpvote', back_populates='snippet', cascade='all, delete-orphan')
+
+
+class SnippetInstall(Base):
+    """Tracks which users have installed which snippets."""
+    __tablename__ = 'snippet_installs'
+    __table_args__ = (PrimaryKeyConstraint('snippet_id', 'user_id'),)
+
+    snippet_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey('snippets.id', ondelete='CASCADE'), nullable=False)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    installed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    snippet: Mapped['Snippet'] = relationship('Snippet', back_populates='installs')
+
+
+class SnippetUpvote(Base):
+    """Tracks snippet upvotes (one per user per snippet)."""
+    __tablename__ = 'snippet_upvotes'
+    __table_args__ = (PrimaryKeyConstraint('snippet_id', 'user_id'),)
+
+    snippet_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey('snippets.id', ondelete='CASCADE'), nullable=False)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+
+    snippet: Mapped['Snippet'] = relationship('Snippet', back_populates='upvotes')
+
+
 # Create indexes for performance
 Index('idx_users_email', User.email)
 Index('idx_device_trials_fingerprint', DeviceTrial.device_fingerprint)

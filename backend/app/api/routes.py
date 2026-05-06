@@ -159,6 +159,13 @@ from .career_routes import router as career_router
 router.include_router(career_router)
 router.include_router(career_admin_router)
 
+# Include Snippet Marketplace routes (Feature 82)
+from .snippet_routes import admin_router as snippet_admin_router
+from .snippet_routes import router as snippet_router
+
+router.include_router(snippet_router)
+router.include_router(snippet_admin_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():

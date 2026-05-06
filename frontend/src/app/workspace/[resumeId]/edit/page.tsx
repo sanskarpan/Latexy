@@ -106,9 +106,10 @@ import WYSIWYGEditor from '@/components/WYSIWYGEditor'
 import { parseResume } from '@/lib/wysiwyg/latex-parser'
 import { serializeResume } from '@/lib/wysiwyg/latex-serializer'
 import type { ResumeDoc } from '@/lib/wysiwyg/document-model'
+import SnippetMarketplace from '@/components/SnippetMarketplace'
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout' | 'snippets'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
@@ -2319,6 +2320,7 @@ export default function ResumeEditPage() {
                 { id: 'changes', label: 'Changes', icon: GitMerge },
                 { id: 'docs', label: 'Docs', icon: BookOpen },
                 { id: 'layout', label: 'Layout', icon: SlidersHorizontal },
+                { id: 'snippets', label: 'Snippets', icon: Package },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -2578,6 +2580,20 @@ export default function ResumeEditPage() {
                 currentLatex={latexContent}
                 onPreambleChange={handleDesignPreambleChange}
                 onTriggerCompile={autoCompile ? handleDesignTriggerCompile : undefined}
+              />
+            )}
+
+            {rightTab === 'snippets' && (
+              <SnippetMarketplace
+                onInsert={(content) => {
+                  const editor = editorRef.current
+                  if (editor && 'insertText' in editor && typeof (editor as any).insertText === 'function') {
+                    (editor as any).insertText(content)
+                  } else {
+                    // Fallback: append at end of document
+                    setLatexContent((prev) => prev + '\n' + content)
+                  }
+                }}
               />
             )}
           </div>

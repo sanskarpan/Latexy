@@ -2301,10 +2301,75 @@ class ApiClient {
     if (industry) params.set('industry', industry)
     return this.request<BenchmarkResult>(`/ats/benchmark?${params}`)
   }
+
+  // ── Snippet Marketplace (Feature 82) ────────────────────────────────────────
+
+  async listSnippets(opts?: {
+    category?: string
+    q?: string
+    sort?: 'popular' | 'newest' | 'official'
+    offset?: number
+    limit?: number
+  }): Promise<SnippetResponse[]> {
+    const params = new URLSearchParams()
+    if (opts?.category) params.set('category', opts.category)
+    if (opts?.q) params.set('q', opts.q)
+    if (opts?.sort) params.set('sort', opts.sort)
+    if (opts?.offset != null) params.set('offset', String(opts.offset))
+    if (opts?.limit != null) params.set('limit', String(opts.limit))
+    const qs = params.toString()
+    return this.request<SnippetResponse[]>(`/snippets${qs ? `?${qs}` : ''}`)
+  }
+
+  async getSnippet(snippetId: string): Promise<SnippetResponse> {
+    return this.request<SnippetResponse>(`/snippets/${snippetId}`)
+  }
+
+  async createSnippet(body: SnippetCreate): Promise<SnippetResponse> {
+    return this.request<SnippetResponse>('/snippets', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  async installSnippet(snippetId: string): Promise<void> {
+    await this.request<void>(`/snippets/${snippetId}/install`, { method: 'POST' })
+  }
+
+  async uninstallSnippet(snippetId: string): Promise<void> {
+    await this.request<void>(`/snippets/${snippetId}/install`, { method: 'DELETE' })
+  }
+
+  async upvoteSnippet(snippetId: string): Promise<void> {
+    await this.request<void>(`/snippets/${snippetId}/upvote`, { method: 'POST' })
+  }
 }
 
 // Singleton
 export const apiClient = new ApiClient()
+
+// ── Snippet Marketplace types (Feature 82) ────────────────────────────────────
+
+export interface SnippetResponse {
+  id: string
+  title: string
+  description: string
+  content: string
+  category: string
+  tags: string[]
+  is_official: boolean
+  installs_count: number
+  upvotes_count: number
+  author_name: string | null
+  created_at: string
+  installed_by_me: boolean
+  upvoted_by_me: boolean
+}
+
+export interface SnippetCreate {
+  title: string
+  description: string
+  content: string
+  category: 'header' | 'experience' | 'skills' | 'education' | 'misc'
+  tags?: string[]
+}
 
 // ------------------------------------------------------------------ //
 //  Device fingerprint utility                                         //
