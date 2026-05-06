@@ -804,6 +804,7 @@ export default function OptimizationSuitePage() {
                   warnings={stream.atsDetails?.warnings}
                   strengths={stream.atsDetails?.strengths}
                   industryLabel={industryOverride ? null : stream.industryLabel}
+                  industryKey={industryOverride ?? (stream.atsDetails as any)?.industry_key ?? null}
                   onIndustryOverride={(key) => setIndustryOverride(key === 'generic' ? null : key)}
                 />
               </motion.section>
