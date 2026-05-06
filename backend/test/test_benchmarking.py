@@ -11,14 +11,12 @@ Covers:
 
 from __future__ import annotations
 
-import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 
-from app.services.benchmarking_service import BenchmarkResult, BenchmarkingService
-
+from app.services.benchmarking_service import BenchmarkingService, BenchmarkResult
 
 # ── Unit tests: _interpolate_percentile ──────────────────────────────────────
 
