@@ -700,6 +700,22 @@ class SnippetUpvote(Base):
     snippet: Mapped['Snippet'] = relationship('Snippet', back_populates='upvotes')
 
 
+class UserMacro(Base):
+    """Named keyboard macro with recorded action sequence."""
+    __tablename__ = 'user_macros'
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, server_default=text('gen_random_uuid()'))
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    shortcut: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    actions: Mapped[List] = mapped_column(JSONB, nullable=False, server_default='[]')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user: Mapped['User'] = relationship('User', foreign_keys=[user_id])
+
+
 # Create indexes for performance
 Index('idx_users_email', User.email)
 Index('idx_device_trials_fingerprint', DeviceTrial.device_fingerprint)
