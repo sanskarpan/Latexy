@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
-from ..core.redis import get_redis_client
+from ..core.redis import cache_manager, get_redis_client
 from ..database.connection import get_db
 from ..database.models import DeepAnalysisTrial, Resume, ResumeJobMatch
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
