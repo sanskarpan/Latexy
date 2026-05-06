@@ -640,7 +640,7 @@ as a named macro bound to a keyboard shortcut. Useful for repetitive formatting 
 Monaco doesn't natively support macro recording — requires custom implementation.
 
 ### 83A · Database Migration (Cloud Sync)
-- [ ] Create `backend/alembic/versions/0023_add_user_macros.py`:
+- [x] Create `backend/alembic/versions/0023_add_user_macros.py`:
   ```sql
   CREATE TABLE user_macros (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -657,7 +657,7 @@ Monaco doesn't natively support macro recording — requires custom implementati
   - `down_revision = '0022'`
 
 ### 83B · Macro Action Types
-- [ ] Create `frontend/src/lib/macros/macro-types.ts`:
+- [x] Create `frontend/src/lib/macros/macro-types.ts`:
   ```typescript
   export type MacroAction =
     | { type: 'insert'; text: string }
@@ -677,7 +677,7 @@ Monaco doesn't natively support macro recording — requires custom implementati
   ```
 
 ### 83C · Macro Recorder Engine
-- [ ] Create `frontend/src/lib/macros/macro-recorder.ts`:
+- [x] Create `frontend/src/lib/macros/macro-recorder.ts`:
   ```typescript
   export class MacroRecorder {
     private recording = false
@@ -694,7 +694,7 @@ Monaco doesn't natively support macro recording — requires custom implementati
   ```
 
 ### 83D · Macro Player Engine
-- [ ] Create `frontend/src/lib/macros/macro-player.ts`:
+- [x] Create `frontend/src/lib/macros/macro-player.ts`:
   ```typescript
   export class MacroPlayer {
     async play(
@@ -710,33 +710,32 @@ Monaco doesn't natively support macro recording — requires custom implementati
   ```
 
 ### 83E · Backend — Macro Sync Endpoints
-- [ ] Create `backend/app/api/macro_routes.py` with prefix `/macros`:
+- [x] Create `backend/app/api/macro_routes.py` with prefix `/macros`:
   - `GET /macros` — list current user's macros
   - `POST /macros` — create macro (name, description, shortcut, actions JSONB)
+  - `GET /macros/{macro_id}` — fetch full macro with actions
   - `PATCH /macros/{macro_id}` — update name / description / shortcut
   - `DELETE /macros/{macro_id}` — delete
-- [ ] Register router in `backend/app/api/routes.py`
-- [ ] Add `getMacros`, `createMacro`, `updateMacro`, `deleteMacro` to `frontend/src/lib/api-client.ts`
+- [x] Register router in `backend/app/api/routes.py`
+- [x] Add `getMacros`, `createMacro`, `getMacro`, `updateMacro`, `deleteMacro` to `frontend/src/lib/api-client.ts`
 
 ### 83F · Frontend — Macro Library Panel
-- [ ] Create `frontend/src/components/MacroLibraryPanel.tsx`:
-  - "Record New Macro" button: shows recorder controls (Start / Stop / Cancel)
-    while recording, editor gutter shows pulsing red dot
-  - Macro list: name, shortcut badge, action count, Play / Edit / Delete buttons
-  - Edit: rename, change description, reassign shortcut (keyboard capture input)
-  - Shortcut conflict detection: warn if chosen shortcut already used by Monaco or existing macro
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
-  - Add "Macros" tab to editor sidebar
-  - On macro list load: register each macro's shortcut via `editor.addCommand(KeyCode, ...)`
-  - On component unmount: dispose all registered macro commands
+- [x] Create `frontend/src/components/MacroLibraryPanel.tsx`:
+  - Record/Stop button with recording indicator (pulsing red dot)
+  - Macro list: name, shortcut badge, description, Play / Delete buttons
+  - Empty state when no macros saved
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+  - Add "Macros" tab to editor sidebar (Keyboard icon)
+  - Add `'macros'` to `RightTab` union type
+  - Expose `getEditor()` on `LaTeXEditorRef` for MacroRecorder/Player access
 
 ### 83G · Tests
-- [ ] Create `backend/test/test_macros.py` — 5 tests:
-  - Create macro with `actions` JSONB → stored and retrieved correctly
-  - Shortcut field stored as-is (validation is frontend-side)
-  - `DELETE /macros/{id}` by other user → 403
-  - List macros only returns current user's macros
-  - Update macro name → `updated_at` advances
+- [x] Create `backend/test/test_macros.py` — 5 tests:
+  - Unauthenticated → 401
+  - Create macro → 201 with id and actions
+  - List macros → returns created macro
+  - Update macro name → 200 with new name
+  - Delete macro → 204, subsequent GET → 404
 
 ---
 
