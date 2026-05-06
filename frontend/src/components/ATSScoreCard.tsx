@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import {
   Target,
@@ -12,12 +12,13 @@ import {
   Lightbulb,
   Award,
   BarChart3,
-  Building2
+  Building2,
+  Users,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, type BenchmarkResult } from '@/lib/api-client'
 
 const FALLBACK_PROFILES = [
   { key: 'generic', label: 'General' },
@@ -41,6 +42,8 @@ interface ATSScoreCardProps {
   className?: string
   /** Industry label auto-detected from job description, e.g. "Technology / SaaS" */
   industryLabel?: string | null
+  /** Industry key used for benchmarking (e.g. "tech_saas") */
+  industryKey?: string | null
   /** Called with a profile key when the user overrides the detected industry */
   onIndustryOverride?: (profileKey: string) => void
 }
@@ -91,9 +94,13 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
   onViewAnalysis,
   className = '',
   industryLabel,
+  industryKey,
   onIndustryOverride,
 }) => {
   const [industryProfiles, setIndustryProfiles] = useState(FALLBACK_PROFILES)
+  const [benchmark, setBenchmark] = useState<BenchmarkResult | null>(null)
+  const [benchmarkLoading, setBenchmarkLoading] = useState(false)
+  const [benchmarkFetched, setBenchmarkFetched] = useState(false)
 
   useEffect(() => {
     if (!onIndustryOverride) return
@@ -101,6 +108,17 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
       .then((res) => { if (res.profiles?.length) setIndustryProfiles(res.profiles) })
       .catch(() => { /* keep fallback */ })
   }, [onIndustryOverride])
+
+  // Lazy-load benchmark once we have a score (not on every compile)
+  useEffect(() => {
+    if (score === undefined || benchmarkFetched || benchmarkLoading) return
+    setBenchmarkLoading(true)
+    setBenchmarkFetched(true)
+    apiClient.getBenchmark(score, industryKey || undefined)
+      .then((res) => setBenchmark(res))
+      .catch(() => { /* benchmark unavailable — don't show */ })
+      .finally(() => setBenchmarkLoading(false))
+  }, [score, industryKey, benchmarkFetched, benchmarkLoading])
 
   if (isLoading) {
     return (
@@ -368,6 +386,83 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
             </Button>
           )}
         </div>
+
+        {/* Benchmark Row */}
+        {(benchmarkLoading || benchmark) && (
+          <div className="space-y-2 pt-2 border-t border-gray-100">
+            <h4 className="font-medium text-gray-900 flex items-center gap-2 text-sm">
+              <Users className="w-4 h-4 text-violet-600" />
+              Community Benchmark
+            </h4>
+            {benchmarkLoading && (
+              <div className="h-4 bg-gray-100 rounded animate-pulse w-3/4" />
+            )}
+            {benchmark && !benchmarkLoading && (
+              benchmark.sufficient_data && benchmark.percentile !== null ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-700">
+                    Your resume scores in the{' '}
+                    <span className="font-semibold text-violet-700">
+                      top {Math.round(100 - benchmark.percentile)}%
+                    </span>{' '}
+                    of{' '}
+                    <span className="font-medium">{benchmark.industry}</span>{' '}
+                    resumes on Latexy
+                    {benchmark.sample_size > 0 && (
+                      <span className="text-gray-400"> ({benchmark.sample_size.toLocaleString()} resumes)</span>
+                    )}
+                  </p>
+
+                  {/* Mini distribution bar */}
+                  {benchmark.cohort_p25 !== null && benchmark.cohort_p75 !== null && (
+                    <div className="relative h-3 rounded-full bg-gray-200 overflow-visible">
+                      {/* IQR band (p25–p75) */}
+                      <div
+                        className="absolute h-full rounded-full bg-violet-200"
+                        style={{
+                          left: `${benchmark.cohort_p25}%`,
+                          width: `${(benchmark.cohort_p75 ?? 100) - (benchmark.cohort_p25 ?? 0)}%`,
+                        }}
+                      />
+                      {/* Median marker */}
+                      {benchmark.cohort_median !== null && (
+                        <div
+                          className="absolute top-0 h-full w-0.5 bg-violet-500"
+                          style={{ left: `${benchmark.cohort_median}%` }}
+                          title={`Median: ${benchmark.cohort_median.toFixed(1)}`}
+                        />
+                      )}
+                      {/* User's score marker */}
+                      <div
+                        className="absolute -top-0.5 h-4 w-1.5 rounded-sm bg-violet-700 shadow-sm"
+                        style={{ left: `calc(${score}% - 3px)` }}
+                        title={`Your score: ${score?.toFixed(1)}`}
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex justify-between text-xs text-gray-400 mt-0.5 px-0.5">
+                    <span>0</span>
+                    {benchmark.cohort_p25 !== null && (
+                      <span style={{ position: 'absolute', left: `${benchmark.cohort_p25}%`, transform: 'translateX(-50%)' }}
+                        className="hidden sm:block">
+                        p25
+                      </span>
+                    )}
+                    {benchmark.cohort_median !== null && (
+                      <span>Median: {benchmark.cohort_median.toFixed(0)}</span>
+                    )}
+                    <span>100</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  {benchmark.message || `Benchmarking available once more ${benchmark.industry} users join`}
+                </p>
+              )
+            )}
+          </div>
+        )}
 
         {/* Score Interpretation */}
         <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
