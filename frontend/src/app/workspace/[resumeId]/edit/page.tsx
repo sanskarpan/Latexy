@@ -44,6 +44,9 @@ import {
   DollarSign,
   SlidersHorizontal,
   Cloud,
+  Code2,
+  LayoutTemplate,
+  TrendingUp,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type DropboxResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -99,6 +102,10 @@ import MobileEditor from '@/components/MobileEditor'
 import OfflineBanner, { useOnlineStatus } from '@/components/OfflineBanner'
 import { saveDraft, getPendingDrafts, deleteDraft, pendingDraftCount } from '@/lib/offline-drafts'
 import { enqueueCompile, getQueuedCompiles, dequeueCompile } from '@/lib/compile-queue'
+import WYSIWYGEditor from '@/components/WYSIWYGEditor'
+import { parseResume } from '@/lib/wysiwyg/latex-parser'
+import { serializeResume } from '@/lib/wysiwyg/latex-serializer'
+import type { ResumeDoc } from '@/lib/wysiwyg/document-model'
 
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout'
@@ -847,6 +854,14 @@ export default function ResumeEditPage() {
   const [dbxSyncing, setDbxSyncing] = useState(false)
   const [dbxTogglingSync, setDbxTogglingSync] = useState(false)
 
+  // WYSIWYG editor mode (Feature 78)
+  const [editorMode, setEditorMode] = useState<'source' | 'wysiwyg'>(() => {
+    if (typeof window === 'undefined') return 'source'
+    return (localStorage.getItem(`latexy_editor_mode_${resumeId}`) as 'source' | 'wysiwyg') ?? 'source'
+  })
+  const [wysiwygDoc, setWysiwygDoc] = useState<ResumeDoc | null>(null)
+  const [wysiwygHasRaw, setWysiwygHasRaw] = useState(false)
+
   // PWA / offline (Feature 79)
   const isOnline = useOnlineStatus()
   const [isMobile, setIsMobile] = useState(false)
@@ -1278,6 +1293,30 @@ export default function ResumeEditPage() {
       setDbxSyncing(false)
     }
   }
+
+  // WYSIWYG mode toggle (Feature 78)
+  const handleToggleEditorMode = useCallback((mode: 'source' | 'wysiwyg') => {
+    if (mode === editorMode) return
+    if (mode === 'wysiwyg') {
+      const src = editorRef.current?.getValue() ?? latexContent
+      const { doc, warnings } = parseResume(src)
+      setWysiwygDoc(doc)
+      setWysiwygHasRaw(warnings.some((w) => w.type === 'unrecognised_block'))
+    } else {
+      // wysiwyg → source: serialize back
+      if (wysiwygDoc) {
+        const src = serializeResume(wysiwygDoc)
+        setLatexContent(src)
+      }
+    }
+    setEditorMode(mode)
+    localStorage.setItem(`latexy_editor_mode_${resumeId}`, mode)
+  }, [editorMode, latexContent, wysiwygDoc, resumeId])
+
+  const handleWysiwygChange = useCallback((doc: ResumeDoc) => {
+    setWysiwygDoc(doc)
+    setLatexContent(serializeResume(doc))
+  }, [])
 
   const handleSave = async () => {
     const content = editorRef.current?.getValue() || latexContent
@@ -1775,6 +1814,14 @@ export default function ResumeEditPage() {
             Cover Letter
           </Link>
 
+          <Link
+            href={`/workspace/${resumeId}/career`}
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-emerald-300/80 transition hover:bg-emerald-500/10 hover:text-emerald-200"
+          >
+            <TrendingUp size={12} />
+            Career Path
+          </Link>
+
           {/* Create Variant button */}
           <div className="relative">
             <button
@@ -2057,6 +2104,30 @@ export default function ResumeEditPage() {
               <FileText size={11} className="text-zinc-600" />
               {title || 'Untitled'}.tex
             </div>
+            <div className="ml-auto flex items-center gap-0.5 rounded-md bg-white/[0.04] p-0.5">
+              <button
+                onClick={() => handleToggleEditorMode('source')}
+                className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition ${
+                  editorMode === 'source'
+                    ? 'bg-white/[0.08] text-zinc-200'
+                    : 'text-zinc-600 hover:text-zinc-400'
+                }`}
+              >
+                <Code2 size={10} />
+                Source
+              </button>
+              <button
+                onClick={() => handleToggleEditorMode('wysiwyg')}
+                className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition ${
+                  editorMode === 'wysiwyg'
+                    ? 'bg-white/[0.08] text-zinc-200'
+                    : 'text-zinc-600 hover:text-zinc-400'
+                }`}
+              >
+                <LayoutTemplate size={10} />
+                Visual
+              </button>
+            </div>
           </div>
           {/* Offline status banner (Feature 79F) */}
           <OfflineBanner pendingCount={offlinePendingCount} />
@@ -2076,8 +2147,21 @@ export default function ResumeEditPage() {
             </div>
           )}
           <div className="relative min-h-0 flex-1">
-            {/* Mobile: lightweight CodeMirror editor (Feature 79E) */}
-            {isMobile ? (
+            {/* WYSIWYG mode (Feature 78) */}
+            {editorMode === 'wysiwyg' && wysiwygDoc ? (
+              <div className="h-full overflow-auto p-4">
+                <WYSIWYGEditor
+                  doc={wysiwygDoc}
+                  onChange={handleWysiwygChange}
+                  hasRawEntries={wysiwygHasRaw}
+                />
+              </div>
+            ) : editorMode === 'wysiwyg' && !wysiwygDoc ? (
+              <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
+                Parsing…
+              </div>
+            ) : isMobile ? (
+              /* Mobile: lightweight CodeMirror editor (Feature 79E) */
               <MobileEditor
                 ref={editorRef}
                 value={latexContent}
