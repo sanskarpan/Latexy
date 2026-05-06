@@ -15,11 +15,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-from httpx import AsyncClient
 
-from app.api.snippet_routes import _check_content_safety, router
+from app.api.snippet_routes import _check_content_safety
 from app.database.models import Snippet, SnippetInstall, SnippetUpvote
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -111,7 +109,7 @@ class TestSnippetCreate:
         mock_db.refresh = AsyncMock()
 
         with patch('app.api.snippet_routes.get_current_user', return_value=user):
-            from app.api.snippet_routes import SnippetCreate, create_snippet
+            from app.api.snippet_routes import SnippetCreate
             body = SnippetCreate(
                 title="My Snippet",
                 description="A longer description for the snippet.",
