@@ -2301,6 +2301,36 @@ class ApiClient {
     if (industry) params.set('industry', industry)
     return this.request<BenchmarkResult>(`/ats/benchmark?${params}`)
   }
+
+  // ── Keyboard Macros (Feature 83) ───────────────────────────────────────── //
+
+  async getMacros(): Promise<MacroSummary[]> {
+    return this.request<MacroSummary[]>('/macros')
+  }
+
+  async createMacro(payload: CreateMacroPayload): Promise<MacroDetail> {
+    return this.request<MacroDetail>('/macros', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async getMacro(macroId: string): Promise<MacroDetail> {
+    return this.request<MacroDetail>(`/macros/${macroId}`)
+  }
+
+  async updateMacro(macroId: string, payload: UpdateMacroPayload): Promise<MacroDetail> {
+    return this.request<MacroDetail>(`/macros/${macroId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async deleteMacro(macroId: string): Promise<void> {
+    await this.request<void>(`/macros/${macroId}`, { method: 'DELETE' })
+  }
 }
 
 // Singleton
@@ -2803,6 +2833,35 @@ export interface UsernameAvailabilityResponse {
 
 export interface GeneratePortfolioResponse {
   portfolio_url: string
+}
+
+// ── Keyboard Macros (Feature 83) ──────────────────────────────────────────
+
+export interface MacroSummary {
+  id: string
+  name: string
+  description: string | null
+  shortcut: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MacroDetail extends MacroSummary {
+  actions: unknown[]
+}
+
+export interface CreateMacroPayload {
+  name: string
+  description?: string | null
+  shortcut?: string | null
+  actions: unknown[]
+}
+
+export interface UpdateMacroPayload {
+  name?: string
+  description?: string | null
+  shortcut?: string | null
+  actions?: unknown[]
 }
 
 // ── Career Path (Feature 80) ───────────────────────────────────────────────

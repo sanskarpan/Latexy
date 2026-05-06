@@ -653,6 +653,20 @@ class CareerAnalysis(Base):
     target_role: Mapped[Optional["CareerRole"]] = relationship("CareerRole", foreign_keys=[target_role_id])
 
 
+class UserMacro(Base):
+    """Keyboard macro saved by a user (Feature 83)."""
+    __tablename__ = "user_macros"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    shortcut: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    actions: Mapped[Dict] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 # Create indexes for performance
 Index('idx_users_email', User.email)
 Index('idx_device_trials_fingerprint', DeviceTrial.device_fingerprint)

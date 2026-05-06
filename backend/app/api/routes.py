@@ -159,6 +159,11 @@ from .career_routes import router as career_router
 router.include_router(career_router)
 router.include_router(career_admin_router)
 
+# Include Macro routes (Feature 83)
+from .macro_routes import router as macro_router
+
+router.include_router(macro_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
