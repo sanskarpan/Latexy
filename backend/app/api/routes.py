@@ -152,6 +152,13 @@ from .portfolio_routes import router as portfolio_router
 
 router.include_router(portfolio_router)
 
+# Include Career Path routes (Feature 80)
+from .career_routes import admin_router as career_admin_router
+from .career_routes import router as career_router
+
+router.include_router(career_router)
+router.include_router(career_admin_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():

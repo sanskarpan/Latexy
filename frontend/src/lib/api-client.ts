@@ -2260,6 +2260,28 @@ class ApiClient {
       { method: 'POST' }
     )
   }
+
+  // ── Career Path (Feature 80) ───────────────────────────────────────────── //
+
+  async analyzeCareerPath(resumeId: string, targetRoleTitle: string): Promise<CareerAnalysisResponse> {
+    return this.request<CareerAnalysisResponse>('/career/analyze', {
+      method: 'POST',
+      body: JSON.stringify({ resume_id: resumeId, target_role_title: targetRoleTitle }),
+    })
+  }
+
+  async listCareerAnalyses(resumeId: string): Promise<CareerAnalysisResponse[]> {
+    return this.request<CareerAnalysisResponse[]>(`/career/analyses/${resumeId}`)
+  }
+
+  async getCareerAnalysis(analysisId: string): Promise<CareerAnalysisResponse> {
+    return this.request<CareerAnalysisResponse>(`/career/analysis/${analysisId}`)
+  }
+
+  async searchCareerRoles(q: string): Promise<CareerRoleResponse[]> {
+    const params = new URLSearchParams({ q })
+    return this.request<CareerRoleResponse[]>(`/career/roles?${params}`)
+  }
 }
 
 // Singleton
@@ -2762,5 +2784,32 @@ export interface UsernameAvailabilityResponse {
 
 export interface GeneratePortfolioResponse {
   portfolio_url: string
+}
+
+// ── Career Path (Feature 80) ───────────────────────────────────────────────
+
+export interface CareerRoleResponse {
+  id: string
+  title: string
+  level: string
+  industry: string
+  required_skills: string[]
+  typical_yoe_min?: number | null
+  typical_yoe_max?: number | null
+}
+
+export interface CareerAnalysisResponse {
+  id: string
+  resume_id: string
+  target_role_id?: string | null
+  target_role_freetext?: string | null
+  current_skills: string[]
+  gap_skills: string[]
+  path_role_ids?: string[] | null
+  timeline_months?: number | null
+  llm_analysis?: string | null
+  created_at: string
+  path_roles?: CareerRoleResponse[] | null
+  target_role?: CareerRoleResponse | null
 }
 

@@ -149,7 +149,7 @@ LaTeX source, and LaTeX edits round-trip back to the WYSIWYG state. Covers the s
 LaTeX constructs used in resume templates — not general LaTeX WYSIWYG.
 
 ### 78A · Document Model (Frontend)
-- [ ] Create `frontend/src/lib/wysiwyg/document-model.ts`:
+- [x] Create `frontend/src/lib/wysiwyg/document-model.ts`:
   ```typescript
   // Intermediate representation between LaTeX and WYSIWYG DOM
   export interface ResumeDoc {
@@ -173,7 +173,7 @@ LaTeX constructs used in resume templates — not general LaTeX WYSIWYG.
   ```
 
 ### 78B · LaTeX → Document Model Parser
-- [ ] Create `frontend/src/lib/wysiwyg/latex-parser.ts`:
+- [x] Create `frontend/src/lib/wysiwyg/latex-parser.ts`:
   - `parseResume(latex: string): ResumeDoc`
   - Recognize `\section{Title}` → new Section
   - Recognize `\resumeSubheading`, `\cventry`, `\cvevent`, `\job` macros → Entry
@@ -183,14 +183,14 @@ LaTeX constructs used in resume templates — not general LaTeX WYSIWYG.
   - Preserve preamble (everything before `\begin{document}`) verbatim
 
 ### 78C · Document Model → LaTeX Serializer
-- [ ] Create `frontend/src/lib/wysiwyg/latex-serializer.ts`:
+- [x] Create `frontend/src/lib/wysiwyg/latex-serializer.ts`:
   - `serializeResume(doc: ResumeDoc): string`
   - Reconstruct the same macro set that was detected at parse time (store original macro name)
   - For `raw` entries: emit verbatim
   - Produce valid LaTeX with proper `\begin{document}...\end{document}` wrapper
 
 ### 78D · WYSIWYG Editor Component
-- [ ] Create `frontend/src/components/WYSIWYGEditor.tsx`:
+- [x] Create `frontend/src/components/WYSIWYGEditor.tsx`:
   - Props: `doc: ResumeDoc`, `onChange: (doc: ResumeDoc) => void`
   - Uses **Slate.js** (`slate`, `slate-react`) for rich-text editing
   - Toolbar: Bold, Italic, Bullet list, Add Section, Add Job Entry, Add Education Entry
@@ -202,7 +202,7 @@ LaTeX constructs used in resume templates — not general LaTeX WYSIWYG.
     edited visually — switch to Source mode to edit them"
 
 ### 78E · Mode Toggle + Integration
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - Add `editorMode: 'source' | 'wysiwyg'` state (default `'source'`, persisted to localStorage per resume)
   - Toggle button: "Source" | "Visual" in editor header
   - On switch to Visual: call `parseResume(latexContent)` → render `<WYSIWYGEditor />`
@@ -211,7 +211,7 @@ LaTeX constructs used in resume templates — not general LaTeX WYSIWYG.
   - Show parse warnings from `latex-parser.ts` as dismissible info toast
 
 ### 78F · Round-Trip Quality Tests
-- [ ] Create `frontend/src/lib/wysiwyg/__tests__/round-trip.test.ts`:
+- [x] Create `frontend/src/lib/wysiwyg/__tests__/round-trip.test.ts`:
   - Jake's Resume standard subheading → parse → serialize → identical LaTeX output
   - `\section{Experience}` + 3 `\resumeSubheading` + bullets → full round trip
   - Unknown macro (`\customcommand{...}`) preserved as `raw` and re-emitted verbatim
@@ -329,7 +329,7 @@ showing the trajectory from current state to target. Identify skills to develop 
 Uses a curated career graph knowledge base + LLM for personalized gap analysis.
 
 ### 80A · Database Migration
-- [ ] Create `backend/alembic/versions/0021_add_career_paths.py`:
+- [x] Create `backend/alembic/versions/0021_add_career_paths.py`:
   ```sql
   CREATE TABLE career_roles (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -367,18 +367,18 @@ Uses a curated career graph knowledge base + LLM for personalized gap analysis.
   - `down_revision = '0020'`
 
 ### 80B · Backend — Models
-- [ ] In `backend/app/database/models.py`:
+- [x] In `backend/app/database/models.py`:
   - Add `CareerRole`, `CareerTransition`, `CareerAnalysis` models with SQLAlchemy mappings
 
 ### 80C · Backend — Career Graph Seed Data
-- [ ] Create `backend/app/data/career_graph_seed.py`:
+- [x] Create `backend/app/data/career_graph_seed.py`:
   - Seed 80+ common career roles across: Software Engineering, Data Science, Product Management,
     Finance/Quant, Consulting, Marketing
   - Seed transitions: e.g., SWE II → Senior SWE (avg 2.5 yrs, moderate), Senior SWE → Staff SWE (avg 3 yrs, hard)
   - Load via `POST /admin/career-graph/seed` endpoint (admin only)
 
 ### 80D · Backend — Analysis Service
-- [ ] Create `backend/app/services/career_path_service.py`:
+- [x] Create `backend/app/services/career_path_service.py`:
   ```python
   class CareerPathService:
       async def detect_current_role(self, latex_content: str) -> str:
@@ -404,32 +404,32 @@ Uses a curated career graph knowledge base + LLM for personalized gap analysis.
   ```
 
 ### 80E · Backend — API Endpoints
-- [ ] Create `backend/app/api/career_routes.py` with prefix `/career`:
+- [x] Create `backend/app/api/career_routes.py` with prefix `/career`:
   - `POST /career/analyze` — body: `{ resume_id, target_role_title: str }` →
     run full analysis (detect current role, find path, gap analysis), return `CareerAnalysis`
   - `GET /career/analyses/{resume_id}` — list past analyses for resume
   - `GET /career/roles?q=<search>` — search career_roles for autocomplete
   - `GET /career/analysis/{analysis_id}` — retrieve full analysis with path data
-- [ ] Register router in `backend/app/api/routes.py`
+- [x] Register router in `backend/app/api/routes.py`
 
 ### 80F · Frontend — Career Path Page
-- [ ] Create `frontend/src/app/workspace/[resumeId]/career/page.tsx`:
+- [x] Create `frontend/src/app/workspace/[resumeId]/career/page.tsx`:
   - Target role search input with autocomplete from `GET /career/roles?q=`
   - "Analyze Career Path" button → calls `POST /career/analyze`
   - Loading state with progress steps: "Parsing resume... Analyzing skills... Building path..."
-- [ ] Create `frontend/src/components/CareerPathChart.tsx`:
+- [x] Create `frontend/src/components/CareerPathChart.tsx`:
   - Uses **D3.js** (`d3-dag` or `@visx/network`) to render career transition graph
   - Nodes: role titles with level badges; current role (purple), path nodes (gray), target role (green)
   - Edges: labeled with avg years to transition
   - Highlight the recommended path from current → target
   - Click a node → show required skills for that role
-- [ ] Create `frontend/src/components/SkillsGapPanel.tsx`:
+- [x] Create `frontend/src/components/SkillsGapPanel.tsx`:
   - Two columns: "Skills You Have" (green chips) vs "Skills to Develop" (amber chips)
   - Timeline estimate: "Estimated path: ~N years with consistent growth"
   - Full LLM analysis text rendered as markdown below
 
 ### 80G · Tests
-- [ ] Create `backend/test/test_career_paths.py` — 6 tests:
+- [x] Create `backend/test/test_career_paths.py` — 19 tests (6 planned, extended):
   - `match_career_role`: "Software Engineer II" → matches seeded SWE Mid role
   - `find_path`: SWE Mid → Staff SWE returns ordered path of 2 intermediate roles
   - `POST /career/analyze` with valid resume_id → returns analysis with gap_skills

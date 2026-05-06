@@ -605,6 +605,54 @@ class ResumeComment(Base):
     author: Mapped["User"] = relationship("User")
 
 
+# ── Career Path Models (Feature 80) ──────────────────────────────────────────
+
+class CareerRole(Base):
+    """A node in the career progression graph."""
+    __tablename__ = "career_roles"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    level: Mapped[str] = mapped_column(Text, nullable=False)  # junior|mid|senior|staff|principal|director|vp|c-suite
+    industry: Mapped[str] = mapped_column(Text, nullable=False)
+    required_skills: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
+    typical_yoe_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    typical_yoe_max: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CareerTransition(Base):
+    """A directed edge in the career progression graph."""
+    __tablename__ = "career_transitions"
+
+    from_role_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("career_roles.id", ondelete="CASCADE"), nullable=False)
+    to_role_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("career_roles.id", ondelete="CASCADE"), nullable=False)
+    avg_years: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    difficulty: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # easy|moderate|hard
+
+    __table_args__ = (PrimaryKeyConstraint('from_role_id', 'to_role_id'),)
+
+
+class CareerAnalysis(Base):
+    """Stored career path + gap analysis for a user's resume."""
+    __tablename__ = "career_analyses"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    resume_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_role_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("career_roles.id", ondelete="SET NULL"), nullable=True)
+    target_role_freetext: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    current_skills: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
+    gap_skills: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
+    path_role_ids: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    timeline_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    llm_analysis: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    target_role: Mapped[Optional["CareerRole"]] = relationship("CareerRole", foreign_keys=[target_role_id])
+
+
 # Create indexes for performance
 Index('idx_users_email', User.email)
 Index('idx_device_trials_fingerprint', DeviceTrial.device_fingerprint)
