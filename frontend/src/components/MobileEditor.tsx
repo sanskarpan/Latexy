@@ -111,6 +111,8 @@ const MobileEditor = forwardRef<LaTeXEditorRef, MobileEditorProps>(
       rejectTrackedChange: () => {},
       acceptAllTrackedChanges: () => {},
       rejectAllTrackedChanges: () => {},
+      // MobileEditor has no Monaco instance — return null
+      getEditor: () => null,
     }))
 
     // Initialise the CodeMirror view once on mount
