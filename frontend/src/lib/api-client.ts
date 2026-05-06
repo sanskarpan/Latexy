@@ -85,6 +85,17 @@ export interface OptimizationHistoryEntry {
   tokens_used: number | null
 }
 
+export interface BenchmarkResult {
+  percentile: number | null
+  sample_size: number
+  cohort_median: number | null
+  cohort_p25: number | null
+  cohort_p75: number | null
+  industry: string
+  sufficient_data: boolean
+  message?: string | null
+}
+
 export interface RecordOptimizationRequest {
   original_latex: string
   optimized_latex: string
@@ -2281,6 +2292,14 @@ class ApiClient {
   async searchCareerRoles(q: string): Promise<CareerRoleResponse[]> {
     const params = new URLSearchParams({ q })
     return this.request<CareerRoleResponse[]>(`/career/roles?${params}`)
+  }
+
+  // ── Benchmarking (Feature 81) ──────────────────────────────────────────── //
+
+  async getBenchmark(atsScore: number, industry?: string): Promise<BenchmarkResult> {
+    const params = new URLSearchParams({ ats_score: String(atsScore) })
+    if (industry) params.set('industry', industry)
+    return this.request<BenchmarkResult>(`/ats/benchmark?${params}`)
   }
 }
 
