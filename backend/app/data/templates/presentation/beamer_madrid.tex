@@ -1,0 +1,113 @@
+\documentclass[aspectratio=169]{beamer}
+\usetheme{Madrid}
+\usecolortheme{default}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{booktabs}
+
+% ── Metadata ──────────────────────────────────────────────────────────────────
+\title[Short Title]{Full Presentation Title}
+\subtitle{Conference / Workshop Name}
+\author[J. Smith]{Jane Smith}
+\institute[MIT]{Massachusetts Institute of Technology \\ \texttt{jsmith@mit.edu}}
+\date{May 2026}
+
+% ── Title slide ───────────────────────────────────────────────────────────────
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ── Table of contents ─────────────────────────────────────────────────────────
+\begin{frame}{Outline}
+  \tableofcontents
+\end{frame}
+
+% ── Section 1 ─────────────────────────────────────────────────────────────────
+\section{Introduction}
+
+\begin{frame}{Motivation}
+  \begin{itemize}
+    \item Problem statement: why does this research matter?
+    \item Prior work and its limitations.
+    \item Our key contributions.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Research Question}
+  \begin{block}{Core Question}
+    How can we improve X by leveraging Y?
+  \end{block}
+
+  \vspace{0.5em}
+  \begin{exampleblock}{Hypothesis}
+    We hypothesise that Z leads to significant gains in W.
+  \end{exampleblock}
+\end{frame}
+
+% ── Section 2 ─────────────────────────────────────────────────────────────────
+\section{Methodology}
+
+\begin{frame}{Approach Overview}
+  \begin{columns}
+    \column{0.5\textwidth}
+    \textbf{Step 1: Data Collection}
+    \begin{itemize}
+      \item Dataset A: 50{,}000 samples
+      \item Dataset B: 10{,}000 samples
+      \item Quality filtering applied
+    \end{itemize}
+
+    \column{0.5\textwidth}
+    \textbf{Step 2: Model Training}
+    \begin{itemize}
+      \item Architecture: Transformer-based
+      \item Training time: 24 h on 8 GPUs
+      \item Hyperparameter search: grid
+    \end{itemize}
+  \end{columns}
+\end{frame}
+
+% ── Section 3 ─────────────────────────────────────────────────────────────────
+\section{Results}
+
+\begin{frame}{Quantitative Results}
+  \begin{table}
+    \centering
+    \begin{tabular}{lcc}
+      \toprule
+      \textbf{Method} & \textbf{Accuracy} & \textbf{F1} \\
+      \midrule
+      Baseline        & 72.3\%            & 0.68        \\
+      Prior SOTA      & 81.5\%            & 0.79        \\
+      \textbf{Ours}   & \textbf{87.2\%}   & \textbf{0.85} \\
+      \bottomrule
+    \end{tabular}
+    \caption{Comparison on benchmark dataset.}
+  \end{table}
+\end{frame}
+
+% ── Section 4 ─────────────────────────────────────────────────────────────────
+\section{Conclusion}
+
+\begin{frame}{Summary}
+  \begin{itemize}
+    \item We proposed a novel approach to X using Y.
+    \item Achieved state-of-the-art results on benchmark Z.
+    \item Code and data available at \url{https://github.com/username/repo}.
+  \end{itemize}
+
+  \vspace{1em}
+  \textbf{Future work:} Extend to domain D, improve efficiency.
+\end{frame}
+
+\begin{frame}[plain]
+  \centering
+  {\Huge Thank You!} \\[1em]
+  {\large Questions?} \\[2em]
+  \href{mailto:jsmith@mit.edu}{jsmith@mit.edu}
+\end{frame}
+
+\end{document}
