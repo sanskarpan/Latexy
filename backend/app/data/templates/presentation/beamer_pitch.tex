@@ -1,0 +1,200 @@
+\documentclass[aspectratio=169]{beamer}
+\usetheme{Frankfurt}
+\usecolortheme{seahorse}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning}
+
+% ── Colours ───────────────────────────────────────────────────────────────────
+\definecolor{pitchBlue}{HTML}{1A73E8}
+\definecolor{pitchGreen}{HTML}{34A853}
+\setbeamercolor{structure}{fg=pitchBlue}
+\setbeamercolor{alerted text}{fg=pitchGreen}
+
+% ── Metadata ──────────────────────────────────────────────────────────────────
+\title{StartupName}
+\subtitle{Seed Round Pitch Deck}
+\author{Founder Name \\ \texttt{founder@startup.io}}
+\institute{}
+\date{May 2026}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ── Slide 1: Problem ──────────────────────────────────────────────────────────
+\begin{frame}{The Problem}
+  \begin{columns}[T]
+    \column{0.5\textwidth}
+    \textbf{Today's pain points:}
+    \begin{itemize}
+      \item Companies waste 40\% of budget on X.
+      \item Existing tools are slow, fragmented, and expensive.
+      \item Small teams lack access to enterprise-grade solutions.
+    \end{itemize}
+
+    \column{0.45\textwidth}
+    \begin{tikzpicture}
+      \node[draw, fill=red!15, rounded corners, text width=3.5cm, align=center,
+            minimum height=1.8cm, font=\small] {
+        \textbf{\$120B} market\\
+        under-served\\
+        by legacy tools
+      };
+    \end{tikzpicture}
+  \end{columns}
+\end{frame}
+
+% ── Slide 2: Solution ─────────────────────────────────────────────────────────
+\begin{frame}{Our Solution}
+  \begin{alertblock}{One-sentence pitch}
+    StartupName automates X for Y teams — saving 10\,h/week at 80\% lower cost.
+  \end{alertblock}
+
+  \vspace{0.8em}
+  \begin{columns}[T]
+    \column{0.3\textwidth}
+    \centering
+    \textbf{Fast}\\[0.3em]
+    Results in minutes,\\not days.
+
+    \column{0.3\textwidth}
+    \centering
+    \textbf{Simple}\\[0.3em]
+    No training required.\\Plug and play.
+
+    \column{0.3\textwidth}
+    \centering
+    \textbf{Affordable}\\[0.3em]
+    Flat \$99/mo vs.\\{\raise.2ex\hbox{\$}}500+ alternatives.
+  \end{columns}
+\end{frame}
+
+% ── Slide 3: Traction ─────────────────────────────────────────────────────────
+\begin{frame}{Traction}
+  \begin{table}
+    \centering
+    \begin{tabular}{lcc}
+      \toprule
+      \textbf{Metric}        & \textbf{3 months ago} & \textbf{Today} \\
+      \midrule
+      Paying customers       & 12                    & 87             \\
+      MRR                    & \$1{,}200             & \$8{,}600      \\
+      NPS score              & ---                   & 71             \\
+      Churn (monthly)        & ---                   & 2.1\%          \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+
+  \vspace{0.5em}
+  \begin{block}{Notable customers}
+    Acme Corp, Beta Labs, Gamma Inc — 3 Fortune\,500 pilots signed.
+  \end{block}
+\end{frame}
+
+% ── Slide 4: Market ───────────────────────────────────────────────────────────
+\begin{frame}{Market Opportunity}
+  \begin{columns}[T]
+    \column{0.55\textwidth}
+    \begin{description}
+      \item[TAM] \$120B — all companies needing X globally.
+      \item[SAM] \$18B — SMBs with 10--500 employees.
+      \item[SOM] \$900M — English-speaking markets, Year 3 target.
+    \end{description}
+
+    \column{0.4\textwidth}
+    \begin{tikzpicture}[scale=0.8]
+      \fill[pitchBlue!20] (0,0) circle (1.8cm);
+      \fill[pitchBlue!45] (0,0) circle (1.2cm);
+      \fill[pitchBlue!80] (0,0) circle (0.6cm);
+      \node[font=\tiny] at (0, 1.5)  {TAM \$120B};
+      \node[font=\tiny] at (0, 0.95) {SAM};
+      \node[font=\tiny\bfseries, white] at (0, 0) {SOM};
+    \end{tikzpicture}
+  \end{columns}
+\end{frame}
+
+% ── Slide 5: Business Model ───────────────────────────────────────────────────
+\begin{frame}{Business Model}
+  \textbf{SaaS — monthly \& annual subscriptions}
+
+  \begin{columns}[T]
+    \column{0.3\textwidth}
+    \centering
+    \textbf{Starter}\\
+    \$49/mo\\[0.4em]
+    {\small Up to 5 users\\Core features\\Email support}
+
+    \column{0.3\textwidth}
+    \centering
+    \alert{\textbf{Growth}} \alert{$\star$}\\
+    \$99/mo\\[0.4em]
+    {\small Up to 25 users\\All features\\Priority support}
+
+    \column{0.3\textwidth}
+    \centering
+    \textbf{Enterprise}\\
+    Custom\\[0.4em]
+    {\small Unlimited users\\SSO \& audit logs\\Dedicated CSM}
+  \end{columns}
+
+  \vspace{0.8em}
+  \textbf{Unit economics (current):} CAC \$240 · LTV \$1{,}980 · LTV:CAC $= 8.25\times$
+\end{frame}
+
+% ── Slide 6: Team ─────────────────────────────────────────────────────────────
+\begin{frame}{Team}
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+    \textbf{Jane Doe — CEO}\\
+    {\small Ex-Google PM. Built and sold PreviousStartup (\$4M exit). MBA, Stanford.}
+
+    \vspace{0.8em}
+    \textbf{John Smith — CTO}\\
+    {\small Former Staff Engineer at Stripe. 10 yrs distributed systems. MS, MIT.}
+
+    \column{0.48\textwidth}
+    \textbf{Sara Lee — Head of Sales}\\
+    {\small Scaled revenue 0 $\to$ \$5M ARR at SaaS Co. 8 yrs enterprise sales.}
+
+    \vspace{0.8em}
+    \textbf{Advisors}\\
+    {\small Partner at Sequoia · VP Eng at Salesforce · Domain expert, Author}
+  \end{columns}
+\end{frame}
+
+% ── Slide 7: The Ask ──────────────────────────────────────────────────────────
+\begin{frame}{The Ask}
+  \begin{block}{Raising \$1.5M Seed Round}
+    \begin{itemize}
+      \item \textbf{Use of funds:} 60\% engineering, 25\% sales \& marketing, 15\% ops.
+      \item \textbf{Runway:} 18 months to Series A milestone (ARR \$1M+).
+      \item \textbf{Lead investor:} negotiating term sheet with Venture Fund X.
+    \end{itemize}
+  \end{block}
+
+  \vspace{0.8em}
+  \textbf{Milestones with this round:}
+  \begin{itemize}
+    \item 300 paying customers by month 12.
+    \item Launch enterprise tier and 2 integration partnerships.
+    \item Expand to EU market.
+  \end{itemize}
+\end{frame}
+
+% ── Closing slide ─────────────────────────────────────────────────────────────
+\begin{frame}[plain]
+  \centering
+  \vfill
+  {\Large\bfseries Let's build this together.}\\[1em]
+  {\normalsize founder@startup.io \quad|\quad startup.io}\\[0.5em]
+  {\small Deck \& financials: \texttt{startup.io/deck}}
+  \vfill
+\end{frame}
+
+\end{document}

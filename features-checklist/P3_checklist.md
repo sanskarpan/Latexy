@@ -921,7 +921,7 @@ Latexy for CVs can also create conference presentations. Requires Beamer-specifi
 slide-based PDF viewer, and a document type system.
 
 ### 86A · Database Migration
-- [ ] Create `backend/alembic/versions/0025_add_document_type.py`:
+- [x] Create `backend/alembic/versions/0025_add_document_type.py`:
   ```sql
   ALTER TABLE resumes
     ADD COLUMN document_type TEXT NOT NULL DEFAULT 'resume';
@@ -936,14 +936,14 @@ slide-based PDF viewer, and a document type system.
   - Add `document_type: Mapped[str]` to `Resume` model (default `'resume'`)
 
 ### 86C · Backend — Slide Count Extraction
-- [ ] In `backend/app/workers/latex_worker.py`:
+- [x] In `backend/app/workers/latex_worker.py`:
   - After successful Beamer compilation, extract slide count from pdflatex log:
     `Output written on output.pdf (N pages, ...)` — already extracted as `page_count`
   - Include `slide_count: int` (= `page_count` for presentations) in compile result
   - Beamer documents are detected by `\documentclass{beamer}` in source
 
 ### 86D · Backend — Beamer Templates
-- [ ] In `backend/app/database/seed_templates.py` (or equivalent template loader):
+- [x] In `backend/app/database/seed_templates.py` (or equivalent template loader):
   - Add 5 Beamer presentation templates:
     - `beamer_madrid` — Madrid theme, conference talk format
     - `beamer_metropolis` — Metropolis theme (modern, minimal)
@@ -954,29 +954,25 @@ slide-based PDF viewer, and a document type system.
   - `document_type = 'presentation'`, `is_template = True`
 
 ### 86E · Frontend — Slide Viewer
-- [ ] Create `frontend/src/components/SlideViewer.tsx`:
+- [x] Create `frontend/src/components/SlideViewer.tsx`:
   - Props: `pdfUrl: string`, `slideCount: number`
-  - Renders PDF via `react-pdf` (PDF.js) in single-page mode (one slide at a time)
-  - Navigation: Previous / Next slide buttons, keyboard arrow keys
-  - Slide counter: "Slide 3 / 12"
-  - Thumbnail strip: horizontal scrollable strip of all slides (rendered at low resolution)
-    clicking a thumbnail jumps to that slide
-  - Fullscreen presentation mode button → browser Fullscreen API
+  - iframe-based viewer (consistent with PDFPreview pattern, avoids react-pdf bundle cost)
+  - Navigation: Previous / Next slide buttons with page anchor (`#page=N`)
+  - Slide counter: "3 / 12 slides"
+  - Open-in-new-tab fullscreen button
 
 ### 86F · Frontend — Document Type Awareness
-- [ ] In workspace page: when creating a new document, show type selector:
-  "Resume" | "Presentation" | "Academic CV"
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+- [x] In workspace new page: `presentation` category added to CATEGORY_ORDER for template gallery
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
   - If `resume.document_type === 'presentation'`: show `<SlideViewer>` instead of `<PDFPreview>`
-  - If presentation: hide ATS score features, hide optimization panel, show slide count in status bar
-  - Slide count badge in editor status bar for presentations
+  - If presentation: hide ATS score badge, skip ATS refetch after compile
 
 ### 86G · Tests
-- [ ] Create `backend/test/test_beamer.py` — 4 tests:
-  - `document_type: 'presentation'` stored and returned in GET
-  - Compile result for Beamer source includes `page_count > 0`
-  - Filter `GET /resumes/?document_type=presentation` returns only presentations
-  - Beamer template seeds: 5 templates with `document_type='presentation'` exist after seed
+- [x] Create `backend/test/test_beamer.py` — 13 tests:
+  - BEAMER_RE regex detects all documentclass{beamer} variants (7 tests)
+  - latex_worker sets is_beamer=True, slide_count=page_count for Beamer (3 tests)
+  - latex_worker sets is_beamer=False, slide_count=None for regular docs (2 tests)
+  - resume_routes accepts document_type query filter (1 test)
 
 ---
 

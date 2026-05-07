@@ -39,6 +39,13 @@ CATEGORY_META: dict[str, dict] = {
     "medical":              {"order": 9, "description": "Medical and healthcare career templates."},
     "legal":                {"order": 10, "description": "Templates for legal professionals."},
     "graduate":             {"order": 11, "description": "Entry-level and graduate / career-change templates."},
+    # Feature 86 — Beamer presentation templates
+    "presentation":         {"order": 12, "description": "LaTeX Beamer presentation templates for conferences, seminars, and pitches."},
+}
+
+# Category → document_type mapping (Feature 86)
+CATEGORY_DOCUMENT_TYPE: dict[str, str] = {
+    "presentation": "presentation",
 }
 
 
@@ -90,11 +97,14 @@ async def seed():
                     .where(ResumeTemplate.name == name, ResumeTemplate.category == category)
                 )).scalar_one_or_none()
 
+                doc_type = CATEGORY_DOCUMENT_TYPE.get(category, "resume")
+
                 if existing:
                     # Update latex_content in case template was edited
                     if existing.latex_content != latex_content:
                         existing.latex_content = latex_content
                         existing.sort_order = sort_order
+                        existing.document_type = doc_type
                         updated += 1
                         print(f"  UPDATED  {category}/{name}")
                     else:
@@ -109,6 +119,7 @@ async def seed():
                         latex_content=latex_content,
                         is_active=True,
                         sort_order=sort_order,
+                        document_type=doc_type,
                     )
                     session.add(t)
                     inserted += 1

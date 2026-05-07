@@ -150,6 +150,8 @@ class Resume(Base):
     dropbox_last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # Archive (Feature 39)
     archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Document type — Feature 86: 'resume' | 'presentation' | 'academic_cv'
+    document_type: Mapped[str] = mapped_column(Text, nullable=False, server_default="resume", default="resume")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -398,6 +400,8 @@ class ResumeTemplate(Base):
     latex_content: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # Document type — Feature 86: 'resume' | 'presentation' | 'academic_cv'
+    document_type: Mapped[str] = mapped_column(Text, nullable=False, server_default="resume", default="resume")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

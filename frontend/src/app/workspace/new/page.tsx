@@ -61,6 +61,7 @@ const CATEGORY_ORDER = [
   'software_engineering', 'finance', 'academic', 'creative',
   'minimal', 'ats_safe', 'two_column', 'executive',
   'marketing', 'medical', 'legal', 'graduate',
+  'presentation', // Feature 86 — Beamer presentation templates
 ]
 
 // ------------------------------------------------------------------ //

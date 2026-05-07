@@ -111,6 +111,7 @@ import type { ResumeDoc } from '@/lib/wysiwyg/document-model'
 import SnippetMarketplace from '@/components/SnippetMarketplace'
 import MacroLibraryPanel from '@/components/MacroLibraryPanel'
 import TikZEditor from '@/components/TikZEditor'
+import SlideViewer from '@/components/SlideViewer'
 
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout' | 'snippets' | 'macros' | 'tikz'
@@ -727,6 +728,7 @@ export default function ResumeEditPage() {
   const [lastStartedJobKind, setLastStartedJobKind] = useState<'compile' | 'ai'>('compile')
   const userInitiatedJobRef = useRef(false)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [documentType, setDocumentType] = useState<string>('resume')
   const [showImportModal, setShowImportModal] = useState(false)
   const [qrInserterOpen, setQrInserterOpen] = useState(false)
   const [dateStandardizerOpen, setDateStandardizerOpen] = useState(false)
@@ -1005,6 +1007,8 @@ export default function ResumeEditPage() {
         // Load share token state
         setShareToken(data.share_token ?? null)
         setShareUrl(data.share_url ?? null)
+        // Feature 86 — presentation support
+        setDocumentType(data.document_type ?? 'resume')
 
         // GitHub sync state
         setGhSyncEnabled(data.github_sync_enabled ?? false)
@@ -1076,7 +1080,7 @@ export default function ResumeEditPage() {
     if (compileStream.status === 'completed' && compileJobId) {
       apiClient.trackCompilation(compileJobId, 'completed')
       apiClient.trackFeatureUsage('compile')
-      refetchATS()
+      if (documentType !== 'presentation') refetchATS()
     } else if (compileStream.status === 'failed' && compileJobId) {
       apiClient.trackCompilation(compileJobId, 'failed')
     }
@@ -2213,8 +2217,8 @@ export default function ResumeEditPage() {
               onCursorLineChange={handleCursorLineChange}
               syncLine={syncFromLine}
               onAutoCompile={autoCompile && !isAnyRunning ? handleAutoCompile : undefined}
-              atsScore={quickATSScore}
-              atsScoreLoading={quickATSLoading}
+              atsScore={documentType === 'presentation' ? null : quickATSScore}
+              atsScoreLoading={documentType === 'presentation' ? false : quickATSLoading}
               onATSBadgeClick={() => setDeepPanelOpen(true)}
               confidenceScore={confidenceResult?.overall ?? null}
               confidenceScoreLoading={confidenceLoading}
@@ -2408,7 +2412,14 @@ export default function ResumeEditPage() {
 
           {/* Tab content */}
           <div className="min-h-0 flex-1 overflow-hidden">
-            {rightTab === 'preview' && (
+            {rightTab === 'preview' && documentType === 'presentation' && (
+              <SlideViewer
+                pdfUrl={pdfUrl}
+                isLoading={isAnyRunning}
+                slideCount={compileStream.pageCount ?? aiStream.pageCount}
+              />
+            )}
+            {rightTab === 'preview' && documentType !== 'presentation' && (
               <PDFPreview
                 pdfUrl={pdfUrl}
                 isLoading={isAnyRunning}

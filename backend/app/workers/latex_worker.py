@@ -25,6 +25,7 @@ from ..workers.event_publisher import is_cancelled, publish_event, publish_job_r
 logger = get_logger(__name__)
 
 PAGE_COUNT_RE = re.compile(r"Output written on .*?\((\d+) page", re.IGNORECASE)
+BEAMER_RE = re.compile(r"\\documentclass\s*(?:\[.*?\])?\s*\{beamer\}", re.DOTALL)
 
 # Flags allowed to be appended from compile_settings (must match resume_routes whitelist)
 _ALLOWED_EXTRA_FLAGS = {
@@ -222,6 +223,9 @@ def compile_latex_task(
             cwd=compile_cwd,
         )
 
+        # ── Detect Beamer presentation ───────────────────────────────
+        is_beamer = bool(BEAMER_RE.search(latex_content))
+
         # ── Stream log lines ─────────────────────────────────────────
         page_count: Optional[int] = None
         for line in proc.stdout:
@@ -308,6 +312,9 @@ def compile_latex_task(
             except Exception as pt_exc:
                 logger.error(f"pdftotext failed for job {job_id}: {pt_exc}")
 
+            # For Beamer, slide_count == page_count (one PDF page per slide)
+            slide_count = page_count if is_beamer else None
+
             result = {
                 "success": True,
                 "job_id": job_id,
@@ -315,6 +322,8 @@ def compile_latex_task(
                 "compilation_time": compilation_time,
                 "pdf_size": pdf_size,
                 "page_count": page_count,
+                "slide_count": slide_count,
+                "is_beamer": is_beamer,
                 "extracted_text": extracted_text,
             }
             publish_job_result(job_id, result)
@@ -335,6 +344,8 @@ def compile_latex_task(
                 "optimization_time": 0.0,
                 "tokens_used": 0,
                 "page_count": page_count,
+                "slide_count": slide_count,
+                "is_beamer": is_beamer,
                 "compiler": compiler,
             })
             logger.info(
