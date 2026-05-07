@@ -2436,6 +2436,56 @@ class ApiClient {
       method: 'POST',
     })
   }
+
+  // ── Feature 87 — One-Click Job Applications ──────────────────────────────
+
+  async detectJobPlatform(jobUrl: string): Promise<DetectPlatformResponse> {
+    return this.request<DetectPlatformResponse>('/apply/detect', {
+      method: 'POST',
+      body: JSON.stringify({ job_url: jobUrl }),
+    })
+  }
+
+  async previewGreenhouseJob(jobUrl: string): Promise<JobPreviewResponse> {
+    return this.request<JobPreviewResponse>('/apply/greenhouse/preview', {
+      method: 'POST',
+      body: JSON.stringify({ job_url: jobUrl }),
+    })
+  }
+
+  async previewLeverJob(jobUrl: string): Promise<JobPreviewResponse> {
+    return this.request<JobPreviewResponse>('/apply/lever/preview', {
+      method: 'POST',
+      body: JSON.stringify({ job_url: jobUrl }),
+    })
+  }
+
+  async applyGreenhouse(body: GreenhouseApplyRequest): Promise<ApplicationSubmission> {
+    return this.request<ApplicationSubmission>('/apply/greenhouse', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async applyLever(body: LeverApplyRequest): Promise<ApplicationSubmission> {
+    return this.request<ApplicationSubmission>('/apply/lever', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async getSubmissions(params?: { platform?: string; status?: string; limit?: number }): Promise<ApplicationSubmission[]> {
+    const qs = new URLSearchParams()
+    if (params?.platform) qs.set('platform', params.platform)
+    if (params?.status) qs.set('status', params.status)
+    if (params?.limit) qs.set('limit', String(params.limit))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<ApplicationSubmission[]>(`/apply/submissions${suffix}`)
+  }
+
+  async getSubmission(id: string): Promise<ApplicationSubmission> {
+    return this.request<ApplicationSubmission>(`/apply/submissions/${encodeURIComponent(id)}`)
+  }
 }
 
 // Singleton
@@ -3070,3 +3120,58 @@ export interface CurrentContextResponse {
   } | null
 }
 
+
+// ── Feature 87 — One-Click Application types ─────────────────────────────────
+
+export interface DetectPlatformResponse {
+  platform: 'greenhouse' | 'lever' | 'unknown'
+  company: string | null
+  job_id: string | null
+}
+
+export interface JobPreviewResponse {
+  platform: string
+  company: string
+  job_id?: string
+  posting_id?: string
+  title: string
+  location: string
+  team?: string
+  apply_url: string
+}
+
+export interface GreenhouseApplyRequest {
+  job_url: string
+  resume_id: string
+  first_name: string
+  last_name: string
+  email: string
+  phone: string
+  cover_letter?: string
+}
+
+export interface LeverApplyRequest {
+  job_url: string
+  resume_id: string
+  name: string
+  email: string
+  phone: string
+  org?: string
+  cover_letter?: string
+}
+
+export interface ApplicationSubmission {
+  id: string
+  user_id: string
+  resume_id: string | null
+  job_tracker_id: string | null
+  platform: string
+  platform_job_id: string | null
+  application_url: string
+  job_title: string | null
+  company_name: string | null
+  status: 'pending' | 'submitted' | 'failed'
+  submitted_at: string | null
+  error_message: string | null
+  created_at: string
+}

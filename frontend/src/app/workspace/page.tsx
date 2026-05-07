@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { BookUser, GitFork, GitMerge, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate, Globe } from 'lucide-react'
+import { BookUser, GitFork, GitMerge, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate, Globe, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult, type TranslateResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -17,6 +17,7 @@ import AddApplicationModal from '@/components/AddApplicationModal'
 import QuickTailorModal from '@/components/QuickTailorModal'
 import OnboardingFlow, { useOnboarding } from '@/components/onboarding/OnboardingFlow'
 import GenerateReferencesModal from '@/components/GenerateReferencesModal'
+import ApplyModal from '@/components/ApplyModal'
 
 // ── Translation languages (Feature 44) ────────────────────────────────────
 const TRANSLATE_LANGUAGES = [
@@ -81,6 +82,9 @@ export default function WorkspacePage() {
   const trackerModalResume = trackerModalResumeId
     ? resumes.find((r) => r.id === trackerModalResumeId) ?? null
     : null
+
+  // Quick Apply modal (Feature 87)
+  const [applyModalResume, setApplyModalResume] = useState<ResumeResponse | null>(null)
 
   // Cmd+Shift+F global shortcut
   useEffect(() => {
@@ -562,6 +566,14 @@ export default function WorkspacePage() {
           className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
         >
           Track
+        </button>
+        <button
+          onClick={() => setApplyModalResume(resume)}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-orange-400/20 bg-orange-500/[0.06] px-3 py-2 text-xs font-semibold text-orange-300 transition hover:bg-orange-500/10"
+          title="Apply to a job with this resume"
+        >
+          <Send size={11} />
+          Apply
         </button>
       </div>
       <div className="mt-2">
@@ -1299,6 +1311,15 @@ export default function WorkspacePage() {
           onClose={() => setReferencesModalResume(null)}
           resumeId={referencesModalResume.id}
           resumeTitle={referencesModalResume.title}
+        />
+      )}
+
+      {/* Quick Apply modal (Feature 87) */}
+      {applyModalResume && (
+        <ApplyModal
+          resumeId={applyModalResume.id}
+          resumeTitle={applyModalResume.title}
+          onClose={() => setApplyModalResume(null)}
         />
       )}
 
