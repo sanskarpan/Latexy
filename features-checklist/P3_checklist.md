@@ -829,7 +829,7 @@ under their own brand with custom domain, logo, colors, and per-tenant user mana
 Requires a parallel tenant-aware routing layer and per-tenant billing.
 
 ### 85A · Database Migration
-- [ ] Create `backend/alembic/versions/0024_add_tenants.py`:
+- [x] Create `backend/alembic/versions/0024_add_tenants.py`:
   ```sql
   CREATE TABLE tenants (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -863,61 +863,54 @@ Requires a parallel tenant-aware routing layer and per-tenant billing.
   - Add `default_tenant_id` to `User`
 
 ### 85C · Backend — Tenant Resolution Middleware
-- [ ] Create `backend/app/middleware/tenant_middleware.py`:
-  ```python
-  class TenantMiddleware(BaseHTTPMiddleware):
-      """Resolves current tenant from Host header or X-Tenant-Slug header.
-      Attaches tenant_id to request.state for use in route handlers."""
-      async def dispatch(self, request: Request, call_next):
-          host = request.headers.get("host", "")
-          # Check if custom_domain matches
-          # Check if subdomain slug matches (slug.latexy.io)
-          # Set request.state.tenant_id (or None for main latexy.io)
-  ```
-- [ ] Register middleware in `backend/app/main.py`
+- [x] Create `backend/app/middleware/tenant_middleware.py`:
+  - `TenantMiddleware(BaseHTTPMiddleware)` — resolves tenant from X-Tenant-Slug header, `<slug>.latexy.io` subdomain, or `custom_domain` match
+  - Redis-cached 5 min, negative cache (empty string) for "no tenant"
+- [x] Register middleware in `backend/app/main.py`; added `X-Tenant-Slug` to CORS
 
 ### 85D · Backend — Tenant Admin Routes
-- [ ] Create `backend/app/api/tenant_routes.py` with prefix `/tenants`:
+- [x] Create `backend/app/api/tenant_routes.py` with prefix `/tenants`:
+  - `GET /tenants/current-context` — branding from resolved tenant
   - `POST /tenants` — create tenant (owner_id = current user)
-  - `GET /tenants/my` — list tenants where current user is owner or admin
-  - `PATCH /tenants/{tenant_id}` — update branding (logo_url, primary_color, name)
-  - `POST /tenants/{tenant_id}/members/invite` — invite user by email
-  - `DELETE /tenants/{tenant_id}/members/{user_id}` — remove member
-  - `GET /tenants/{tenant_id}/members` — list members
-  - `POST /tenants/{tenant_id}/domain/verify` — initiate DNS TXT record verification
-  - `GET /tenants/{tenant_id}/stats` — member count, total resumes, avg ATS score
-- [ ] Register router in `backend/app/api/routes.py`
+  - `GET /tenants/my` — list tenants where current user is owner or member
+  - `PATCH /tenants/{id}` — update branding (owner/admin only → 403)
+  - `GET /tenants/{id}/members` — list members
+  - `POST /tenants/{id}/members/invite` — invite user by email, checks max_members cap
+  - `DELETE /tenants/{id}/members/{user_id}` — remove member → 204
+  - `GET /tenants/{id}/stats` — member count, total resumes, total compilations
+  - `POST /tenants/{id}/domain/verify` — returns DNS TXT record instructions
+- [x] Register router in `backend/app/api/routes.py`
 
 ### 85E · Frontend — Tenant Admin Dashboard
-- [ ] Create `frontend/src/app/admin/tenant/page.tsx`:
-  - Branding editor: logo upload, primary color picker (updates CSS custom properties live)
-  - Member management: invite by email, list members with roles, remove members
-  - Domain settings: input custom domain, show DNS TXT verification instructions
-  - Stats cards: members, resumes shared, compilations this month
+- [x] Created `frontend/src/app/admin/tenant/page.tsx`:
+  - Branding editor: logo URL + preview, primary color picker (live CSS updates on save)
+  - Member management: invite by email + role, list members with roles, remove members
+  - Domain settings: input custom domain + DNS TXT verification instructions panel
+  - Stats cards: members, resumes, compilations
+  - Create new tenant modal with slug auto-validation
 
 ### 85F · Frontend — Tenant Theme Injection
-- [ ] Create `frontend/src/lib/tenant-theme.ts`:
-  ```typescript
-  export function applyTenantTheme(tenant: TenantBranding): void {
-    document.documentElement.style.setProperty('--color-primary', tenant.primary_color)
-    // Replace logo element src
-  }
-  ```
-- [ ] In `frontend/src/app/layout.tsx`:
-  - On mount: `GET /tenants/current-context` (resolved by middleware from Host header) →
-    if tenant found, call `applyTenantTheme()`
-  - Show tenant logo in nav if tenant is set
+- [x] Created `frontend/src/lib/tenant-theme.ts`: `applyTenantTheme(tenant)` + `clearTenantTheme()`
+  - Sets `--tenant-primary` and `--tenant-primary-rgb` CSS custom properties
+  - Sets `data-tenant-logo` and `data-tenant-slug` on `<html>` element
+  - Updates `document.title` to `"{name} | Powered by Latexy"`
+- [x] Created `frontend/src/components/TenantThemeSync.tsx` — client component, calls `GET /tenants/current-context` on mount
+- [x] In `frontend/src/app/layout.tsx`: Added `<TenantThemeSync />` inside `WebSocketProvider`
 
 ### 85G · Tests
-- [ ] Create `backend/test/test_tenants.py` — 8 tests:
-  - Create tenant → slug is unique; duplicate slug → 409
-  - Tenant middleware resolves tenant from `Host: myslug.latexy.io` header
-  - Non-owner cannot `PATCH /tenants/{id}`
-  - Invite member → `TenantMember` row created
-  - Remove member → row deleted
-  - `GET /tenants/{id}/stats` returns correct member count
-  - Custom domain stored and retrievable
-  - `primary_color: "not-a-hex"` → 422 validation error
+- [x] Created `backend/test/test_tenants.py` — 14 tests across 8 classes:
+  - 85T-01: Create tenant → 201; duplicate slug → 409
+  - 85T-02: Middleware resolves tenant from X-Tenant-Slug header
+  - 85T-03: Middleware resolves from `Host: <slug>.latexy.io` subdomain
+  - 85T-04: Non-owner PATCH → 403
+  - 85T-05: Invite member → TenantMember row created → 201
+  - 85T-06: Remove member → row deleted → 204; non-existent → 404
+  - 85T-07: Stats returns correct member count, resume count, compilation count
+  - 85T-08: Custom domain stored via PATCH
+  - 85T-09: `primary_color: "not-a-hex"` → 422; valid hex accepted; 3-char hex rejected
+  - 85T-10: GET /tenants/my returns owned + member-of tenants
+  - 85T-11: GET /current-context → None when no tenant; returns dict when state set
+  - 85T-12: list_members → 403 for non-member; 200 for member
 
 ---
 
