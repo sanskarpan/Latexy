@@ -747,7 +747,7 @@ network diagrams) that generates valid TikZ code. Target: academic CVs and techn
 Output is inserted as LaTeX at cursor position. No new DB schema needed.
 
 ### 84A · TikZ Code Generator
-- [ ] Create `frontend/src/lib/tikz/tikz-generator.ts`:
+- [x] Create `frontend/src/lib/tikz/tikz-generator.ts`:
   ```typescript
   export type DiagramType = 'timeline' | 'skill-bars' | 'flowchart' | 'network'
 
@@ -764,7 +764,7 @@ Output is inserted as LaTeX at cursor position. No new DB schema needed.
   - Include required `\usetikzlibrary{...}` directives as comments at the top
 
 ### 84B · Timeline Generator
-- [ ] `generateTimeline` produces:
+- [x] `generateTimeline` produces:
   ```latex
   % Requires: \usepackage{tikz} \usetikzlibrary{positioning}
   \begin{tikzpicture}[every node/.style={font=\small}]
@@ -777,7 +777,7 @@ Output is inserted as LaTeX at cursor position. No new DB schema needed.
   ```
 
 ### 84C · Skill Bars Generator
-- [ ] `generateSkillBars` produces:
+- [x] `generateSkillBars` produces:
   ```latex
   % Requires: \usepackage{tikz}
   \begin{tikzpicture}
@@ -789,7 +789,7 @@ Output is inserted as LaTeX at cursor position. No new DB schema needed.
   ```
 
 ### 84D · Visual Editor Canvas
-- [ ] Create `frontend/src/components/TikZEditor.tsx`:
+- [x] Create `frontend/src/components/TikZEditor.tsx`:
   - Tabs: "Timeline" | "Skill Bars" | "Flowchart" | "Network"
   - **Timeline tab**: ordered list of entries (year, label, description). Add/remove/drag-to-reorder.
   - **Skill bars tab**: list of (skill name, level slider 1–10). Add/remove.
@@ -802,20 +802,19 @@ Output is inserted as LaTeX at cursor position. No new DB schema needed.
   - "Copy TikZ" button
 
 ### 84E · Compile Preview
-- [ ] Add "Preview Diagram" button in `TikZEditor`:
+- [x] Add "Preview Diagram" button in `TikZEditor`:
   - Wraps generated TikZ in minimal `\documentclass{standalone}` document
   - Posts to `POST /compile` with the standalone LaTeX source
   - Shows compiled PNG/PDF thumbnail inline in the editor panel
 
 ### 84F · Integration
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
-  - Add "TikZ" tab to editor sidebar
-  - Render `<TikZEditor onInsert={(code) => editorRef.current?.insertAtCursor(code)} />`
-- [ ] In editor `LaTeXEditor.tsx`:
-  - Ensure `insertAtCursor` properly handles multi-line TikZ blocks (inserts with newlines before/after)
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx`:
+  - Add "TikZ" tab to editor sidebar (Pencil icon)
+  - Render `<TikZEditor onInsert={(code) => editorRef.current?.insertAtCursor(code)} onPreview={handleTikZPreview} />`
+- [x] `insertAtCursor` in LaTeXEditor wraps code with leading/trailing newlines
 
 ### 84G · Generator Unit Tests
-- [ ] Create `frontend/src/lib/tikz/__tests__/tikz-generator.test.ts`:
+- [x] Create `frontend/src/lib/tikz/__tests__/tikz-generator.test.ts`:
   - `generateTimeline([...])` output contains `\begin{tikzpicture}` and `\end{tikzpicture}`
   - Timeline with 3 entries has 3 `\node[right]` occurrences
   - `generateSkillBars([{skill:'Python', level:8}])` → bar fill width is proportional to level
