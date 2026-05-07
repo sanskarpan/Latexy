@@ -1,4 +1,6 @@
+import inspect
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
@@ -126,3 +128,39 @@ class TestResumeCRUD:
         # Try to access with 'auth_headers' (different user)
         resp = await client.get(f"/resumes/{resume_id}", headers=auth_headers)
         assert resp.status_code == 404 # We return 404 instead of 403 for privacy usually
+
+
+# ── BUG-01 / BUG-02 (F86): document_type field in schema and list filter ──────
+
+
+class TestDocumentTypeField:
+    """Unit tests for BUG-01 (document_type in ResumeResponse) and BUG-02 (list filter)."""
+
+    def test_resume_response_includes_document_type(self):
+        """ResumeResponse schema exposes document_type field (BUG-01 fix)."""
+        from app.api.resume_routes import ResumeResponse
+
+        now = datetime.now(timezone.utc)
+        r = ResumeResponse(
+            id="abc", user_id="u1", title="Test", latex_content=r"\doc",
+            document_type="beamer", created_at=now, updated_at=now,
+        )
+        assert r.document_type == "beamer"
+
+    def test_resume_response_document_type_defaults_to_resume(self):
+        """ResumeResponse.document_type defaults to 'resume' when not provided."""
+        from app.api.resume_routes import ResumeResponse
+
+        now = datetime.now(timezone.utc)
+        r = ResumeResponse(
+            id="abc", user_id="u1", title="Test", latex_content=r"\doc",
+            created_at=now, updated_at=now,
+        )
+        assert r.document_type == "resume"
+
+    def test_list_resumes_accepts_document_type_filter(self):
+        """list_resumes handler signature includes document_type parameter (BUG-02 fix)."""
+        from app.api.resume_routes import list_resumes
+
+        sig = inspect.signature(list_resumes)
+        assert "document_type" in sig.parameters
