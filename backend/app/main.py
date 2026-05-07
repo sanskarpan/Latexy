@@ -9,12 +9,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.routes import router
-from .middleware.tenant_middleware import TenantMiddleware
 from .core.config import settings
 from .core.event_bus import event_bus
 from .core.logging import get_logger, setup_logging
 from .core.redis import get_redis_client, redis_manager
 from .database.connection import close_db, init_db
+from .middleware.tenant_middleware import TenantMiddleware
 from .services.latex_compiler import latex_compiler
 
 # Setup logging

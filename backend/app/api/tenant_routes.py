@@ -8,8 +8,8 @@ All write endpoints require the caller to be the tenant owner or an admin member
 
 from __future__ import annotations
 
-import re
 import logging
+import re
 from datetime import datetime
 from typing import Any, List, Optional
 
@@ -19,7 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.connection import get_db
-from ..database.models import Compilation, Optimization, Resume, Tenant, TenantMember, User
+from ..database.models import Compilation, Resume, Tenant, TenantMember, User
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.tenant_middleware import get_current_tenant
 

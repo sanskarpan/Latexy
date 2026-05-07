@@ -19,7 +19,7 @@ Coverage map:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,7 +30,6 @@ from app.api.tenant_routes import (
     InviteRequest,
     TenantCreate,
     TenantUpdate,
-    _require_tenant_owner_or_admin,
     create_tenant,
     invite_member,
     list_members,
@@ -40,7 +39,6 @@ from app.api.tenant_routes import (
     update_tenant,
 )
 from app.database.models import Tenant, TenantMember, User
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -162,6 +160,7 @@ class TestMiddlewareSlugHeader:
         """TenantMiddleware sets request.state.tenant when X-Tenant-Slug header is present."""
         from starlette.requests import Request as StarletteRequest
         from starlette.responses import JSONResponse
+
         from app.middleware.tenant_middleware import TenantMiddleware
 
         fake_tenant = {
@@ -199,6 +198,7 @@ class TestMiddlewareSubdomain:
         """TenantMiddleware resolves slug from <slug>.latexy.io Host header."""
         from starlette.requests import Request as StarletteRequest
         from starlette.responses import JSONResponse
+
         from app.middleware.tenant_middleware import TenantMiddleware
 
         fake_tenant = {
@@ -440,6 +440,7 @@ class TestCurrentContext:
     async def test_no_tenant_returns_none(self):
         """GET /tenants/current-context → tenant: None when middleware resolved nothing."""
         from starlette.requests import Request as StarletteRequest
+
         from app.api.tenant_routes import current_context
 
         scope = {
@@ -459,6 +460,7 @@ class TestCurrentContext:
     async def test_tenant_in_state_returned(self):
         """GET /tenants/current-context → returns tenant dict from request.state."""
         from starlette.requests import Request as StarletteRequest
+
         from app.api.tenant_routes import current_context
 
         scope = {
