@@ -171,6 +171,11 @@ from .macro_routes import router as macro_router
 
 router.include_router(macro_router)
 
+# Include Tenant admin routes (Feature 85)
+from .tenant_routes import router as tenant_router
+
+router.include_router(tenant_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():

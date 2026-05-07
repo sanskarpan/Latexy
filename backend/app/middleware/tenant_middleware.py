@@ -24,7 +24,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from ..core.redis import cache_manager
-from ..database.connection import AsyncSessionLocal
+from ..database.connection import SessionLocal as AsyncSessionLocal
 from ..database.models import Tenant
 
 logger = logging.getLogger(__name__)
