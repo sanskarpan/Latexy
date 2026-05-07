@@ -39,6 +39,8 @@ class AnalyzeRequest(BaseModel):
 
 
 class CareerRoleSchema(BaseModel):
+    model_config = {'from_attributes': True}
+
     id: str
     title: str
     level: str
@@ -47,11 +49,10 @@ class CareerRoleSchema(BaseModel):
     typical_yoe_min: Optional[int] = None
     typical_yoe_max: Optional[int] = None
 
-    class Config:
-        from_attributes = True
-
 
 class CareerAnalysisSchema(BaseModel):
+    model_config = {'from_attributes': True}
+
     id: str
     resume_id: str
     target_role_id: Optional[str] = None
@@ -65,9 +66,6 @@ class CareerAnalysisSchema(BaseModel):
     # Resolved path roles (populated on detail endpoint)
     path_roles: Optional[list[CareerRoleSchema]] = None
     target_role: Optional[CareerRoleSchema] = None
-
-    class Config:
-        from_attributes = True
 
 
 class SeedResponse(BaseModel):
