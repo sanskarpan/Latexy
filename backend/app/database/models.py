@@ -58,6 +58,8 @@ class User(Base):
     portfolio_custom_domain: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True)
     portfolio_theme: Mapped[str] = mapped_column(Text, default="minimal", server_default="minimal")
     portfolio_tagline: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # White-label tenancy (Feature 85)
+    default_tenant_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -714,6 +716,44 @@ class UserMacro(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     user: Mapped['User'] = relationship('User', foreign_keys=[user_id])
+
+
+# ── White-Label Tenancy (Feature 85) ─────────────────────────────────────────
+
+class Tenant(Base):
+    """White-label tenant — agency or university career center."""
+    __tablename__ = "tenants"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    slug: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    custom_domain: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    logo_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    primary_color: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
+    owner_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    plan_id: Mapped[str] = mapped_column(Text, nullable=False, server_default="agency")
+    max_members: Mapped[int] = mapped_column(Integer, nullable=False, server_default="50")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    owner: Mapped["User"] = relationship("User", foreign_keys=[owner_id])
+    members: Mapped[List["TenantMember"]] = relationship("TenantMember", back_populates="tenant", cascade="all, delete-orphan")
+
+
+class TenantMember(Base):
+    """Membership record linking a user to a tenant."""
+    __tablename__ = "tenant_members"
+    __table_args__ = (PrimaryKeyConstraint("tenant_id", "user_id"),)
+
+    tenant_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False, server_default="member")
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    tenant: Mapped["Tenant"] = relationship("Tenant", back_populates="members")
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
 
 
 # Create indexes for performance

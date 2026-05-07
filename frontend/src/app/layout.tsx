@@ -5,6 +5,7 @@ import { WebSocketProvider } from '@/components/WebSocketProvider'
 import { AuthSync } from '@/components/AuthSync'
 import GlobalHeader from '@/components/GlobalHeader'
 import MarketingFooter from '@/components/marketing/MarketingFooter'
+import TenantThemeSync from '@/components/TenantThemeSync'
 import { Toaster } from 'sonner'
 import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext'
 
@@ -33,6 +34,7 @@ export default function RootLayout({
         <NotificationProvider>
           <WebSocketProvider>
             <AuthSync />
+            <TenantThemeSync />
             <div className="min-h-screen enterprise-grid noise-overlay flex flex-col">
               <GlobalHeader />
               <main className="flex-1">

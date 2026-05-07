@@ -14,6 +14,7 @@ from .core.event_bus import event_bus
 from .core.logging import get_logger, setup_logging
 from .core.redis import get_redis_client, redis_manager
 from .database.connection import close_db, init_db
+from .middleware.tenant_middleware import TenantMiddleware
 from .services.latex_compiler import latex_compiler
 
 # Setup logging
@@ -85,8 +86,11 @@ app.add_middleware(
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-Device-Fingerprint"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-Device-Fingerprint", "X-Tenant-Slug"],
 )
+
+# Resolve white-label tenant from Host / X-Tenant-Slug (Feature 85)
+app.add_middleware(TenantMiddleware)
 
 # Include routes
 app.include_router(router)
