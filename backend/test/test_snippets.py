@@ -351,3 +351,27 @@ class TestOfficialSnippetSeed:
         from app.data.official_snippets import OFFICIAL_SNIPPETS
         for s in OFFICIAL_SNIPPETS:
             assert s['category'] in valid_cats, f"Invalid category in '{s['title']}': {s['category']}"
+
+
+# ── BUG-03 regression: PATCH exclude_unset allows null clearing ───────────────
+
+class TestPatchNullClearing:
+    def test_snippet_update_exclude_unset_preserves_null(self):
+        """PATCH /snippets/{id} with null field must clear it (BUG-03).
+
+        model_dump(exclude_unset=True) includes fields the caller explicitly
+        set (even to None); exclude_none=True would silently drop them.
+        """
+        from app.api.snippet_routes import SnippetUpdate
+        body = SnippetUpdate(description=None)
+        dumped = body.model_dump(exclude_unset=True)
+        assert 'description' in dumped, 'exclude_unset=True must preserve explicit null'
+        assert dumped['description'] is None
+
+    def test_snippet_update_omitted_field_not_in_dump(self):
+        """Fields not provided at all must NOT appear in the patch dump."""
+        from app.api.snippet_routes import SnippetUpdate
+        body = SnippetUpdate(title='New Title')
+        dumped = body.model_dump(exclude_unset=True)
+        assert 'title' in dumped
+        assert 'description' not in dumped

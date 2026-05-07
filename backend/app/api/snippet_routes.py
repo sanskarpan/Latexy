@@ -228,7 +228,7 @@ async def update_snippet(
         raise HTTPException(status_code=403, detail='Only the author can update this snippet')
     if body.content:
         _check_content_safety(body.content)
-    for field, val in body.model_dump(exclude_none=True).items():
+    for field, val in body.model_dump(exclude_unset=True).items():
         setattr(snippet, field, val)
     await db.commit()
     await db.refresh(snippet)
