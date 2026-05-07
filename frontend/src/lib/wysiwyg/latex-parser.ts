@@ -94,6 +94,16 @@ export function parseResume(latex: string): ParseResult {
       continue
     }
 
+    // Epilogue trigger: \end{document} — everything from here goes to epilogue
+    if (/^\\end\{document\}/.test(trimmed)) {
+      flushBuffer()
+      epilogueLines.push(line)
+      for (let j = i + 1; j < lines.length; j++) {
+        epilogueLines.push(lines[j])
+      }
+      break
+    }
+
     // Blank line — flush (end of block)
     if (!trimmed) {
       flushBuffer()

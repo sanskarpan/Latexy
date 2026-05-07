@@ -81,6 +81,22 @@ describe('parseResume', () => {
     expect(doc.sections).toHaveLength(2)
   })
 
+  it('extracts \\end{document} into epilogue, not as a raw entry in the last section', () => {
+    const latex = `\\documentclass{resume}\n\\begin{document}\n\n\\section{Skills}\n\n\\end{document}`
+    const { doc } = parseResume(latex)
+    expect(doc.epilogue).toContain('\\end{document}')
+    expect(doc.sections[0].entries).toHaveLength(0)
+  })
+
+  it('epilogue is preserved through round-trip', () => {
+    const latex = `\\section{Skills}\n\n\\end{document}`
+    const { doc } = parseResume(latex)
+    const out = serializeResume(doc)
+    expect(out).toContain('\\end{document}')
+    const { doc: doc2 } = parseResume(out)
+    expect(doc2.epilogue).toContain('\\end{document}')
+  })
+
   it('full resume with 3 resumeSubheadings round-trips without data loss', () => {
     const latex = `\\section{Experience}
 \\resumeSubHeadingListStart
