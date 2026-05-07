@@ -217,16 +217,8 @@ async def update_tenant(
     """Update tenant branding. Only owner or admin can update."""
     tenant = await _require_tenant_owner_or_admin(tenant_id, user_id, db)
 
-    if body.name is not None:
-        tenant.name = body.name
-    if body.logo_url is not None:
-        tenant.logo_url = body.logo_url
-    if body.primary_color is not None:
-        tenant.primary_color = body.primary_color
-    if body.custom_domain is not None:
-        tenant.custom_domain = body.custom_domain or None
-    if body.active is not None:
-        tenant.active = body.active
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(tenant, field, value)
 
     await db.commit()
     await db.refresh(tenant)
