@@ -317,6 +317,9 @@ class TestFetchReferencesEndpoint:
         httpx_call_count = {"n": 0}
 
         async def _mock_cache_get(key):
+            # Ignore non-reference cache lookups (e.g. tenant resolution from middleware)
+            if not key.startswith("bibtex:"):
+                return None
             if get_call_count["n"] > 0:
                 return {**cached_entry, "cached": True}
             get_call_count["n"] += 1
