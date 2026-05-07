@@ -22,3 +22,8 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[dependency-groups]
+dev = [
+    "respx>=0.23.1",
+]

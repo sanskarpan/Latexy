@@ -176,6 +176,11 @@ from .tenant_routes import router as tenant_router
 
 router.include_router(tenant_router)
 
+# Include One-Click Application routes (Feature 87)
+from .application_routes import router as application_router
+
+router.include_router(application_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():

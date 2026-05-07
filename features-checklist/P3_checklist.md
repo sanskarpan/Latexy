@@ -983,92 +983,57 @@ Latexy. LinkedIn Easy Apply is restricted to LinkedIn's own clients — use Gree
 public APIs for direct integration. Auto-updates job tracker on successful application.
 
 ### 87A · Database Migration
-- [ ] Create `backend/alembic/versions/0026_add_application_submissions.py`:
-  ```sql
-  CREATE TABLE application_submissions (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    resume_id        UUID REFERENCES resumes(id) ON DELETE SET NULL,
-    job_tracker_id   UUID REFERENCES job_applications(id) ON DELETE SET NULL,
-    platform         TEXT NOT NULL,     -- 'greenhouse' | 'lever' | 'manual'
-    platform_job_id  TEXT,
-    application_url  TEXT NOT NULL,
-    status           TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'submitted' | 'failed'
-    submitted_at     TIMESTAMPTZ,
-    error_message    TEXT,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-  );
-  CREATE INDEX ON application_submissions(user_id);
-  ```
+- [x] Created `backend/alembic/versions/0026_add_application_submissions.py`
+  - `application_submissions` table with platform, status, submitted_at, error_message
+  - Indexes on user_id and (user_id, status)
   - `down_revision = '0025'`
 
 ### 87B · Backend — Platform Integration Services
-- [ ] Create `backend/app/services/greenhouse_service.py`:
-  ```python
-  class GreenhouseService:
-      # Uses Greenhouse Job Board API (public, no auth required for reading)
-      # Uses Greenhouse Application API (requires job-specific tokens embedded in apply links)
-      BASE_URL = "https://boards-api.greenhouse.io/v1/boards/{company}/jobs/{job_id}"
-
-      async def get_job_details(self, company: str, job_id: str) -> dict:
-          """GET job details: title, company, description, apply_url, custom_fields."""
-
-      async def submit_application(
-          self,
-          company: str,
-          job_id: str,
-          applicant: ApplicantData,  # name, email, phone, resume_pdf_bytes, cover_letter_text
-      ) -> dict:
-          """POST to Greenhouse job board application endpoint with multipart form data.
-          Returns { id, status }."""
-  ```
-- [ ] Create `backend/app/services/lever_service.py`:
-  ```python
-  class LeverService:
-      BASE_URL = "https://api.lever.co/v0/postings/{company}/{posting_id}"
-
-      async def get_posting(self, company: str, posting_id: str) -> dict: ...
-      async def apply(
-          self, company: str, posting_id: str, applicant: ApplicantData
-      ) -> dict: ...
-  ```
+- [x] Created `backend/app/services/greenhouse_service.py`:
+  - `parse_url()` — regex extraction of company/job_id from boards.greenhouse.io URLs
+  - `get_job_details()` — async GET with httpx, parses title/location/apply_url
+  - `submit_application()` — multipart POST with resume PDF bytes + cover letter
+- [x] Created `backend/app/services/lever_service.py`:
+  - `parse_url()` — regex extraction of company/posting_id from jobs.lever.co URLs
+  - `get_posting()` — async GET with httpx
+  - `apply()` — multipart POST with name/email/phone/resume/comments
 
 ### 87C · Backend — Application Routes
-- [ ] Create `backend/app/api/application_routes.py` with prefix `/apply`:
-  - `POST /apply/greenhouse` — body: `{ job_url, resume_id, cover_letter_text? }` →
-    parse company/job_id from URL, fetch PDF from MinIO, submit via `GreenhouseService`,
-    create `ApplicationSubmission`, optionally create/update `JobApplication` tracker entry
-  - `POST /apply/lever` — same flow for Lever
-  - `GET /apply/submissions` — list user's submission history with status
-  - `GET /apply/submissions/{submission_id}` — single submission detail
-- [ ] Register router in `backend/app/api/routes.py`
+- [x] Created `backend/app/api/application_routes.py` with prefix `/apply`:
+  - `POST /apply/detect` — detect platform from URL
+  - `POST /apply/greenhouse/preview` — fetch job details without submitting
+  - `POST /apply/lever/preview` — same for Lever
+  - `POST /apply/greenhouse` — full submit flow (parse URL → fetch PDF → submit → create tracker entry)
+  - `POST /apply/lever` — same for Lever
+  - `GET /apply/submissions` — list with platform/status filters
+  - `GET /apply/submissions/{id}` — single submission
+- [x] Registered router in `backend/app/api/routes.py`
 
 ### 87D · Frontend — Apply Modal
-- [ ] Create `frontend/src/components/ApplyModal.tsx`:
-  - Props: `resumeId: string`, `jobUrl?: string`
-  - Step 1: Paste job URL → auto-detect platform (Greenhouse: `boards.greenhouse.io`,
-    Lever: `jobs.lever.co`)
-  - Step 2: Show detected job: company, role title, location (from API fetch)
-  - Step 3: Review resume to submit (dropdown to select resume variant)
-  - Step 4: Optional cover letter textarea
-  - "Submit Application" button → calls `POST /apply/{platform}`
-  - Success: "Application submitted! Added to your job tracker." with link to tracker
-  - Error: show error message, offer "Open in browser" fallback
+- [x] Created `frontend/src/components/ApplyModal.tsx`:
+  - 4-step wizard: URL → Preview → Form (name/email/phone/cover letter) → Success/Error
+  - Auto-detects Greenhouse vs Lever from URL
+  - Shows job title, company, location from preview API
+  - On success: links to Job Tracker; on error: "Open in browser" fallback
 
 ### 87E · Frontend — Quick Apply from Workspace
-- [ ] In workspace resume card actions: "Quick Apply" button
-  - Opens `<ApplyModal resumeId={id} />`
-- [ ] In `frontend/src/lib/api-client.ts`:
-  - `applyGreenhouse(jobUrl, resumeId, coverLetter?)`, `applyLever(...)`, `getSubmissions()`
+- [x] "Apply" button added to workspace resume card (orange, with Send icon)
+  - Opens `<ApplyModal resumeId={id} resumeTitle={title} />`
+- [x] `frontend/src/lib/api-client.ts`:
+  - `detectJobPlatform`, `previewGreenhouseJob`, `previewLeverJob`
+  - `applyGreenhouse`, `applyLever`, `getSubmissions`, `getSubmission`
+  - Types: `DetectPlatformResponse`, `JobPreviewResponse`, `GreenhouseApplyRequest`,
+    `LeverApplyRequest`, `ApplicationSubmission`
 
 ### 87F · Tests
-- [ ] Create `backend/test/test_apply.py` — 6 tests:
-  - `GreenhouseService.get_job_details` with mocked HTTP → parses company/title correctly
-  - `POST /apply/greenhouse` with invalid job URL → 422
-  - `POST /apply/greenhouse` with unknown company → 404 from upstream → returns 502 with message
-  - Successful submission → `ApplicationSubmission.status = 'submitted'`, `submitted_at` set
-  - Failed submission → `status = 'failed'`, `error_message` populated
-  - `GET /apply/submissions` returns only current user's submissions
+- [x] Created `backend/test/test_apply.py` — 18 tests:
+  - URL parsing: Greenhouse (5 tests) and Lever (4 tests) covering valid/invalid URLs
+  - `GreenhouseService.get_job_details` with mocked HTTP via `respx` (2 tests)
+  - Route validation: invalid URL → 422, missing fields → 422 (3 tests)
+  - Successful submission → status='submitted', submitted_at set, tracker linked (1 test)
+  - Failed submission → status='failed', error_message set, 502 raised (1 test)
+  - `GET /apply/submissions` returns only current user's data (1 test)
+  - `GET /apply/submissions/{id}` 404 for unknown ID (1 test)
 
 ---
 

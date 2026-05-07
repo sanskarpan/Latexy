@@ -367,6 +367,29 @@ class JobApplication(Base):
     resume: Mapped[Optional["Resume"]] = relationship("Resume")
 
 
+class ApplicationSubmission(Base):
+    """One-click job application submission record (Feature 87)."""
+    __tablename__ = "application_submissions"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    resume_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True)
+    job_tracker_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("job_applications.id", ondelete="SET NULL"), nullable=True)
+    platform: Mapped[str] = mapped_column(Text, nullable=False)           # 'greenhouse' | 'lever' | 'manual'
+    platform_job_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    application_url: Mapped[str] = mapped_column(Text, nullable=False)
+    job_title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    company_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending", default="pending")
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    user: Mapped["User"] = relationship("User")
+    resume: Mapped[Optional["Resume"]] = relationship("Resume")
+
+
 class InterviewPrep(Base):
     """Interview question sets generated per resume/job."""
     __tablename__ = "interview_prep"

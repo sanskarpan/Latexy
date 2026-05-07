@@ -327,7 +327,7 @@ async def invite_member(
     )
 
 
-@router.delete("/{tenant_id}/members/{target_user_id}", status_code=204)
+@router.delete("/{tenant_id}/members/{target_user_id}", status_code=204, response_model=None)
 async def remove_member(
     tenant_id: str,
     target_user_id: str,
