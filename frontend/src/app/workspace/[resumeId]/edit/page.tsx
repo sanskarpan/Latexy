@@ -48,6 +48,7 @@ import {
   LayoutTemplate,
   TrendingUp,
   Keyboard,
+  Pencil,
 } from 'lucide-react'
 import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type DropboxResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -109,9 +110,10 @@ import { serializeResume } from '@/lib/wysiwyg/latex-serializer'
 import type { ResumeDoc } from '@/lib/wysiwyg/document-model'
 import SnippetMarketplace from '@/components/SnippetMarketplace'
 import MacroLibraryPanel from '@/components/MacroLibraryPanel'
+import TikZEditor from '@/components/TikZEditor'
 
 
-type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout' | 'snippets' | 'macros'
+type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout' | 'snippets' | 'macros' | 'tikz'
 type OptLevel = 'conservative' | 'balanced' | 'aggressive'
 type AIModel = 'gpt-4o-mini' | 'gpt-4o'
 
@@ -1375,6 +1377,33 @@ export default function ResumeEditPage() {
     }
   }
 
+  // ── 84E: TikZ compile preview ────────────────────────────────────────────────
+  const handleTikZPreview = async (tikzCode: string) => {
+    const standaloneDoc = [
+      '\\documentclass[border=4pt]{standalone}',
+      '\\usepackage{tikz}',
+      '\\usetikzlibrary{shapes.geometric, arrows.meta, positioning}',
+      '\\begin{document}',
+      tikzCode,
+      '\\end{document}',
+    ].join('\n')
+    try {
+      const r = await apiClient.compileLatex({
+        latex_content: standaloneDoc,
+        resume_id: resumeId,
+        compiler,
+      })
+      if (!r.success || !r.job_id) throw new Error(r.message)
+      userInitiatedJobRef.current = true
+      setCompileJobId(r.job_id)
+      setLastStartedJobKind('compile')
+      setRightTab('preview')
+      toast.success('TikZ preview compiling…')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Preview failed')
+    }
+  }
+
   const runAiOptimize = async () => {
     const content = editorRef.current?.getValue() || latexContent
     setIsAiSubmitting(true)
@@ -2324,6 +2353,7 @@ export default function ResumeEditPage() {
                 { id: 'layout', label: 'Layout', icon: SlidersHorizontal },
                 { id: 'snippets', label: 'Snippets', icon: Package },
                 { id: 'macros', label: 'Macros', icon: Keyboard },
+                { id: 'tikz', label: 'TikZ', icon: Pencil },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -2606,6 +2636,13 @@ export default function ResumeEditPage() {
                     ? (editorRef.current as unknown as import('monaco-editor').editor.IStandaloneCodeEditor)
                     : null
                 }
+              />
+            )}
+
+            {rightTab === 'tikz' && (
+              <TikZEditor
+                onInsert={(code) => editorRef.current?.insertAtCursor(code)}
+                onPreview={handleTikZPreview}
               />
             )}
           </div>
