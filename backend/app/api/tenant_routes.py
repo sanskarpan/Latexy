@@ -6,8 +6,6 @@ prefix: /tenants
 All write endpoints require the caller to be the tenant owner or an admin member.
 """
 
-from __future__ import annotations
-
 import logging
 import re
 from datetime import datetime
