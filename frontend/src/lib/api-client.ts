@@ -190,6 +190,8 @@ export interface ResumeResponse extends ResumeBase {
   // Freshness (Feature 48) — computed server-side from updated_at
   days_since_updated?: number
   freshness_status?: 'fresh' | 'stale' | 'very_stale'
+  // Feature 86 — presentation support
+  document_type?: string
 }
 
 export interface DiffWithParentResponse {
@@ -199,13 +201,16 @@ export interface DiffWithParentResponse {
   variant_title: string
 }
 
-export interface ResumeCreate extends ResumeBase {}
+export interface ResumeCreate extends ResumeBase {
+  document_type?: string
+}
 
 export interface ResumeUpdate {
   title?: string
   latex_content?: string
   is_template?: boolean
   tags?: string[]
+  document_type?: string
 }
 
 export interface ResumeStats {
@@ -2528,6 +2533,7 @@ export interface TemplateResponse {
   thumbnail_url: string | null
   pdf_url: string | null
   sort_order: number
+  document_type?: string
 }
 
 export interface TemplateDetailResponse extends TemplateResponse {
