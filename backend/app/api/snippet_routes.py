@@ -18,6 +18,7 @@ from ..database.connection import get_db
 from ..database.models import Snippet, SnippetInstall, SnippetUpvote, User
 from ..middleware.auth_middleware import (
     get_current_user_optional,
+    require_admin,
 )
 from ..middleware.auth_middleware import (
     get_current_user_required as get_current_user,
@@ -333,7 +334,7 @@ async def toggle_upvote(
 @admin_router.post('/snippets/seed', status_code=200)
 async def seed_official_snippets(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    _admin_user_id: str = Depends(require_admin),
 ) -> dict:
     """Upsert official snippets by title (idempotent)."""
     upserted = 0

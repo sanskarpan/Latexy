@@ -334,6 +334,20 @@ class TestAnalysesOrdering:
         assert ordered[1].id == older.id
 
 
+# ── BUG-04 regression: career-graph seed requires require_admin ───────────────
+
+class TestCareerGraphSeedRequiresAdmin:
+    def test_seed_career_graph_uses_require_admin(self):
+        """POST /admin/career-graph/seed must gate on require_admin (BUG-04)."""
+        import inspect
+        from app.api.career_routes import seed_career_graph
+        from app.middleware.auth_middleware import require_admin
+        sig = inspect.signature(seed_career_graph)
+        deps = [p.default.dependency for p in sig.parameters.values()
+                if hasattr(p.default, 'dependency')]
+        assert require_admin in deps, 'seed_career_graph must depend on require_admin'
+
+
 # ── Mock helpers ──────────────────────────────────────────────────────────────
 
 

@@ -22,6 +22,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import CareerAnalysis, CareerRole, Resume
 from ..middleware.auth_middleware import get_current_user_required as get_current_user
+from ..middleware.auth_middleware import require_admin
 from ..services.career_path_service import career_path_service
 
 logger = get_logger(__name__)
@@ -246,7 +247,7 @@ async def search_career_roles(
 @admin_router.post("/career-graph/seed", response_model=SeedResponse)
 async def seed_career_graph(
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user),
+    _admin_user_id: str = Depends(require_admin),
 ) -> SeedResponse:
     """
     Seed the career graph with roles and transitions (admin only, idempotent).
