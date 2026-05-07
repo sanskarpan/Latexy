@@ -2361,6 +2361,76 @@ class ApiClient {
   async deleteMacro(macroId: string): Promise<void> {
     await this.request<void>(`/macros/${macroId}`, { method: 'DELETE' })
   }
+
+  // ── Tenant / White-Label (Feature 85) ──────────────────────────────────────
+
+  async getCurrentTenantContext(): Promise<CurrentContextResponse> {
+    return this.request<CurrentContextResponse>('/tenants/current-context')
+  }
+
+  async createTenant(body: {
+    name: string
+    slug: string
+    plan_id?: string
+    logo_url?: string | null
+    primary_color?: string | null
+  }): Promise<TenantResponse> {
+    return this.request<TenantResponse>('/tenants', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async listMyTenants(): Promise<TenantResponse[]> {
+    return this.request<TenantResponse[]>('/tenants/my')
+  }
+
+  async updateTenant(
+    tenantId: string,
+    body: {
+      name?: string
+      logo_url?: string | null
+      primary_color?: string | null
+      custom_domain?: string | null
+      active?: boolean
+    }
+  ): Promise<TenantResponse> {
+    return this.request<TenantResponse>(`/tenants/${tenantId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async listTenantMembers(tenantId: string): Promise<MemberResponse[]> {
+    return this.request<MemberResponse[]>(`/tenants/${tenantId}/members`)
+  }
+
+  async inviteTenantMember(
+    tenantId: string,
+    email: string,
+    role: 'admin' | 'member' = 'member'
+  ): Promise<MemberResponse> {
+    return this.request<MemberResponse>(`/tenants/${tenantId}/members/invite`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    })
+  }
+
+  async removeTenantMember(tenantId: string, userId: string): Promise<void> {
+    await this.request<void>(`/tenants/${tenantId}/members/${userId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async getTenantStats(tenantId: string): Promise<TenantStats> {
+    return this.request<TenantStats>(`/tenants/${tenantId}/stats`)
+  }
+
+  async verifyTenantDomain(tenantId: string): Promise<DomainVerifyResponse> {
+    return this.request<DomainVerifyResponse>(`/tenants/${tenantId}/domain/verify`, {
+      method: 'POST',
+    })
+  }
 }
 
 // Singleton
@@ -2942,5 +3012,55 @@ export interface CareerAnalysisResponse {
   created_at: string
   path_roles?: CareerRoleResponse[] | null
   target_role?: CareerRoleResponse | null
+}
+
+// ── Tenant / White-Label (Feature 85) ─────────────────────────────────────────
+
+export interface TenantResponse {
+  id: string
+  slug: string
+  name: string
+  logo_url?: string | null
+  primary_color?: string | null
+  custom_domain?: string | null
+  plan_id: string
+  max_members: number
+  active: boolean
+  owner_id: string
+  created_at: string
+}
+
+export interface MemberResponse {
+  user_id: string
+  email: string
+  name?: string | null
+  role: string
+  joined_at: string
+}
+
+export interface TenantStats {
+  member_count: number
+  total_resumes: number
+  total_compilations: number
+}
+
+export interface DomainVerifyResponse {
+  domain: string
+  txt_record_name: string
+  txt_record_value: string
+  instructions: string
+}
+
+export interface CurrentContextResponse {
+  tenant: {
+    id: string
+    slug: string
+    name: string
+    logo_url?: string | null
+    primary_color?: string | null
+    custom_domain?: string | null
+    plan_id: string
+    max_members: number
+  } | null
 }
 
