@@ -2428,6 +2428,8 @@ export default function ResumeEditPage() {
                 jobId={activePdfJobId.current}
                 onSyncToSource={handleSyncToSource}
                 syncFromLine={cursorLine}
+                latexContent={latexContent}
+                onJumpToLine={(line) => editorRef.current?.highlightLine(line)}
               />
             )}
 
