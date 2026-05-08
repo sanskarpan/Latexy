@@ -1,14 +1,18 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect, type MutableRefObject } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo, type MutableRefObject } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
-import { FileText, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, MousePointer, Moon, Sun } from 'lucide-react'
+import { AlertTriangle, FileText, Download, ZoomIn, ZoomOut, MousePointer, Moon, Printer, Sun } from 'lucide-react'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import { parseSynctex, synctexReverse, synctexForward, type SynctexData } from '@/lib/synctex-parser'
 import { computePageHeatmap, heatmapColor } from '@/lib/heatmap-generator'
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`
+
+// ── Color usage analysis (Feature 89B) ───────────────────────────────────────
+import { analyzeColorUsage, type ColorWarning } from '@/lib/print-preview'
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface PDFPreviewProps {
   pdfUrl: string | null
@@ -20,6 +24,10 @@ interface PDFPreviewProps {
   onSyncToSource?: (line: number) => void
   /** When set, scroll PDF to show this source line */
   syncFromLine?: number | null
+  /** LaTeX source for color-dependency analysis in print preview mode (Feature 89B) */
+  latexContent?: string
+  /** Called when user clicks a warning line number to jump to editor line (Feature 89B) */
+  onJumpToLine?: (line: number) => void
 }
 
 interface PageDimensions {
@@ -84,6 +92,8 @@ export default function PDFPreview({
   jobId,
   onSyncToSource,
   syncFromLine,
+  latexContent,
+  onJumpToLine,
 }: PDFPreviewProps) {
   const [numPages, setNumPages] = useState(0)
   const [zoom, setZoom] = useState(1)
@@ -96,6 +106,24 @@ export default function PDFPreview({
     return localStorage.getItem('latexy_pdf_dark') === '1'
   })
   const [showHeatmap, setShowHeatmap] = useState(false)
+  const [printPreview, setPrintPreview] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('latexy_print_preview') === '1'
+  })
+
+  const togglePrintPreview = () => {
+    setPrintPreview((prev) => {
+      const next = !prev
+      localStorage.setItem('latexy_print_preview', next ? '1' : '0')
+      return next
+    })
+  }
+
+  // Color warnings — only computed when print preview is active
+  const colorWarnings = useMemo<ColorWarning[]>(() => {
+    if (!printPreview || !latexContent) return []
+    return analyzeColorUsage(latexContent)
+  }, [printPreview, latexContent])
 
   const toggleDarkPdf = () => {
     setDarkPdf((prev) => {
@@ -334,6 +362,17 @@ export default function PDFPreview({
           >
             {darkPdf ? <Sun size={12} /> : <Moon size={12} />}
           </button>
+          <button
+            onClick={togglePrintPreview}
+            aria-label={printPreview ? 'Exit print preview' : 'B&W print preview'}
+            title={printPreview ? 'Exit B&W print preview' : 'Preview as B&W printed page'}
+            className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] transition hover:bg-white/10 ${
+              printPreview ? 'text-amber-300' : 'text-zinc-600 hover:text-zinc-200'
+            }`}
+          >
+            <Printer size={12} />
+            {printPreview ? 'B&W' : 'Print'}
+          </button>
           {onDownload && (
             <button
               onClick={onDownload}
@@ -345,6 +384,16 @@ export default function PDFPreview({
           )}
         </div>
       </div>
+
+      {/* Print preview banner */}
+      {printPreview && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5">
+          <Printer size={12} className="shrink-0 text-amber-400" />
+          <span className="text-[11px] text-amber-300">
+            Print Preview — showing how this looks on a B&W printer
+          </span>
+        </div>
+      )}
 
       {/* Pages */}
       <div
@@ -384,8 +433,11 @@ export default function PDFPreview({
                 style={{ lineHeight: 0, position: 'relative' }}
                 onClick={(e) => handlePageClick(e, pageNum)}
               >
-                {/* Dark filter wraps Page only so HeatmapCanvas colours are unaffected */}
-                <div style={darkPdf ? { filter: 'invert(1) hue-rotate(180deg)', background: '#fff' } : undefined}>
+                {/* Dark + print preview filters wrap Page only so HeatmapCanvas colours are unaffected */}
+                <div style={{
+                  ...(darkPdf ? { filter: 'invert(1) hue-rotate(180deg)', background: '#fff' } : undefined),
+                  ...(printPreview ? { filter: (darkPdf ? 'invert(1) hue-rotate(180deg) ' : '') + 'grayscale(1) contrast(1.05)' } : undefined),
+                }}>
                   <Page
                     pageNumber={pageNum}
                     width={pageWidth}
@@ -404,6 +456,33 @@ export default function PDFPreview({
               </div>
             ))}
           </Document>
+        )}
+
+        {/* Color-dependency warnings (Feature 89B) */}
+        {printPreview && colorWarnings.length > 0 && (
+          <div className="shrink-0 border-t border-amber-500/20 bg-[#111] px-4 py-3">
+            <div className="mb-2 flex items-center gap-2">
+              <AlertTriangle size={13} className="text-amber-400" />
+              <span className="text-[11px] font-semibold text-amber-300">
+                Color-dependent elements detected — these may become invisible or lose meaning in grayscale print:
+              </span>
+            </div>
+            <ul className="space-y-1">
+              {colorWarnings.map((w, i) => (
+                <li key={i} className="flex items-baseline gap-2 text-[11px]">
+                  <button
+                    onClick={() => onJumpToLine?.(w.line)}
+                    className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 font-mono text-[10px] text-amber-400 hover:bg-amber-500/30 transition"
+                    title={`Jump to line ${w.line} in editor`}
+                  >
+                    L{w.line}
+                  </button>
+                  <code className="font-mono text-amber-200">{w.command}</code>
+                  <span className="truncate text-zinc-500" title={w.context}>{w.context}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
     </div>
