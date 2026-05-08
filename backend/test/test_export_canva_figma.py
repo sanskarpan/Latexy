@@ -255,3 +255,88 @@ class TestFigmaRoute:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get(f"/export/{resume_id}/figma")
         assert resp.status_code == 403
+
+
+# ── Regression tests: BUG-01 / BUG-02 (audit F90) ────────────────────────────
+# A line like \textbf{Acme Corp} \hfill \textbf{2021--2024} produces markdown
+# "**Acme Corp**   —  **2021–2024**".  _DATE_RE matches because "2021" + "–"
+# are present.  Before the fix, the date check ran first, causing to_canva() to
+# render the line as tiny italic text and to_figma() to put the whole line in
+# entry["date"] instead of entry["heading"].
+
+_COMBINED_LATEX = r"""
+\documentclass{article}
+\begin{document}
+
+\section{Experience}
+\textbf{Acme Corp} \hfill \textbf{2021--2024}
+
+\textit{Senior Engineer}
+
+\begin{itemize}
+  \item Built scalable systems
+\end{itemize}
+
+\end{document}
+"""
+
+
+class TestBug01CanvaBoldVsDateOrdering:
+    """BUG-01: to_canva() must not misclassify a bold company+date line as a date line."""
+
+    service = DocumentExportService()
+
+    def test_combined_bold_date_line_is_rendered_bold_not_italic(self):
+        """Lines with '**' should be classified as bold TEXT, not italic date TEXT."""
+        result = self.service.to_canva(_COMBINED_LATEX)
+        text_elements = [e for e in result["elements"] if e["type"] == "TEXT"]
+        # The "Acme Corp" / "2021–2024" combined line must appear as bold
+        bold_texts = [e for e in text_elements if e["style"].get("bold")]
+        assert any("Acme" in e["text"] for e in bold_texts), (
+            "Expected company+date line rendered as bold TEXT; got: "
+            + str(text_elements)
+        )
+
+    def test_combined_bold_date_line_is_not_rendered_italic_small(self):
+        """Lines with '**' must NOT be given italic/fontSize-9 date styling."""
+        result = self.service.to_canva(_COMBINED_LATEX)
+        italic_small = [
+            e for e in result["elements"]
+            if e["type"] == "TEXT"
+            and e["style"].get("italic")
+            and e["style"].get("fontSize", 10) <= 9
+            and "Acme" in e["text"]
+        ]
+        assert italic_small == [], (
+            "Company+date line must not be styled as italic date text; found: "
+            + str(italic_small)
+        )
+
+
+class TestBug02FigmaBoldVsDateOrdering:
+    """BUG-02: to_figma() must not put a bold company line into entry['date']."""
+
+    service = DocumentExportService()
+
+    def test_company_name_goes_into_heading_not_date(self):
+        """Bold company line must populate entry['heading'], not entry['date']."""
+        result = self.service.to_figma(_COMBINED_LATEX)
+        exp_sections = [s for s in result["sections"] if "experience" in s["title"].lower()]
+        assert exp_sections, "Expected an Experience section"
+        entries = exp_sections[0]["entries"]
+        assert entries, "Expected at least one entry in Experience"
+        entry = entries[0]
+        assert "Acme" in entry["heading"], (
+            f"Expected 'Acme' in entry['heading'], got heading={entry['heading']!r}, "
+            f"date={entry['date']!r}"
+        )
+
+    def test_date_field_does_not_contain_company_name(self):
+        """entry['date'] must not contain the company name."""
+        result = self.service.to_figma(_COMBINED_LATEX)
+        exp_sections = [s for s in result["sections"] if "experience" in s["title"].lower()]
+        entries = exp_sections[0]["entries"]
+        entry = entries[0]
+        assert "Acme" not in entry["date"], (
+            f"Company name leaked into entry['date']: {entry['date']!r}"
+        )

@@ -304,24 +304,26 @@ class DocumentExportService:
                     "style": {"fontSize": 10, "indent": True},
                 })
 
-            elif self._DATE_RE.search(line):
-                # Date range line → smaller italic text
-                clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
-                clean = re.sub(r'\*(.+?)\*', r'\1', clean)
-                elements.append({
-                    "type": "TEXT",
-                    "text": clean,
-                    "style": {"italic": True, "fontSize": 9},
-                })
-
             elif '**' in line:
-                # Bold company/role line
+                # Bold company/role line — check before date regex so that
+                # combined lines like "**Acme Corp**  —  **2021–2024**" are
+                # rendered bold rather than as a date line.
                 clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
                 clean = re.sub(r'\*(.+?)\*', r'\1', clean)
                 elements.append({
                     "type": "TEXT",
                     "text": clean,
                     "style": {"bold": True, "fontSize": 11},
+                })
+
+            elif self._DATE_RE.search(line):
+                # Date range line (plain text, no bold markers) → smaller italic text
+                clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
+                clean = re.sub(r'\*(.+?)\*', r'\1', clean)
+                elements.append({
+                    "type": "TEXT",
+                    "text": clean,
+                    "style": {"italic": True, "fontSize": 9},
                 })
 
             else:
@@ -388,15 +390,11 @@ class DocumentExportService:
                     current_entry = _new_entry()
                 current_entry["bullets"].append(line[2:].strip())
 
-            elif self._DATE_RE.search(line):
-                if current_entry is None:
-                    current_entry = _new_entry()
-                clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
-                clean = re.sub(r'\*(.+?)\*', r'\1', clean)
-                current_entry["date"] = clean
-
             elif '**' in line and line.count('**') >= 2:
-                # Bold line → heading (company) or subheading (role)
+                # Bold line → heading (company) or subheading (role).
+                # Must come before date regex: combined lines like
+                # "**Acme Corp**  —  **2021–2024**" should populate heading,
+                # not date.
                 if current_entry is None:
                     current_entry = _new_entry()
                 clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
@@ -405,6 +403,14 @@ class DocumentExportService:
                     current_entry["heading"] = clean
                 else:
                     current_entry["subheading"] = clean
+
+            elif self._DATE_RE.search(line):
+                # Plain-text date range (no bold markers)
+                if current_entry is None:
+                    current_entry = _new_entry()
+                clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
+                clean = re.sub(r'\*(.+?)\*', r'\1', clean)
+                current_entry["date"] = clean
 
             elif line and not line.startswith('#'):
                 if current_entry is None:
