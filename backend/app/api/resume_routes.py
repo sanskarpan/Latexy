@@ -394,6 +394,52 @@ async def search_resumes(
     )
 
 
+# ── Error History (Feature 88) ────────────────────────────────────────────
+
+
+class ErrorHistorySummarySchema(BaseModel):
+    error_type: str
+    count: int
+    last_seen: datetime
+    last_resume_id: Optional[str]
+    last_resume_title: Optional[str]
+    example_line: str
+    resolved: bool
+
+
+@router.get("/error-history", response_model=List[ErrorHistorySummarySchema])
+async def get_error_history(
+    limit: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """
+    Return grouped compile-error history for the current user.
+
+    Each entry represents a distinct LaTeX error type with occurrence count,
+    last-seen timestamp, the offending resume, and whether it has since
+    been resolved (i.e. a successful compile of that same resume followed).
+    Sorted by count DESC, last_seen DESC.
+    """
+    from ..services.error_history_service import error_history_service
+
+    summaries = await error_history_service.get_error_history(
+        user_id=user_id, db=db, limit=limit
+    )
+    return [
+        ErrorHistorySummarySchema(
+            error_type=s.error_type,
+            count=s.count,
+            last_seen=s.last_seen,
+            last_resume_id=s.last_resume_id,
+            last_resume_title=s.last_resume_title,
+            example_line=s.example_line,
+            resolved=s.resolved,
+        )
+        for s in summaries
+    ]
+
+
 @router.get("/{resume_id}", response_model=ResumeResponse)
 async def get_resume(
     resume_id: str,

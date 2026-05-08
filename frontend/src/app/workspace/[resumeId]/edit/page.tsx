@@ -112,6 +112,7 @@ import SnippetMarketplace from '@/components/SnippetMarketplace'
 import MacroLibraryPanel from '@/components/MacroLibraryPanel'
 import TikZEditor from '@/components/TikZEditor'
 import SlideViewer from '@/components/SlideViewer'
+import CompileErrorHistory from '@/components/CompileErrorHistory'
 
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout' | 'snippets' | 'macros' | 'tikz'
@@ -736,6 +737,7 @@ export default function ResumeEditPage() {
   const [contactFormatterOpen, setContactFormatterOpen] = useState(false)
   const [salaryEstimatorOpen, setSalaryEstimatorOpen] = useState(false)
   const [sectionReorderOpen, setSectionReorderOpen] = useState(false)
+  const [showErrorHistory, setShowErrorHistory] = useState(false)
   const [docCommand, setDocCommand] = useState<string | undefined>(undefined)
 
   // Priority queue badge (Feature 34)
@@ -2457,23 +2459,32 @@ export default function ResumeEditPage() {
                   <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-700">
                     {isCompiling ? 'Compilation output' : isAiRunning ? 'AI pipeline logs' : 'Last run logs'}
                   </span>
-                  <span
-                    className={`text-[10px] font-medium capitalize ${
-                      isAnyRunning
-                        ? 'text-orange-400'
-                        : compileStream.status === 'completed' || aiStream.status === 'completed'
-                        ? 'text-emerald-400'
-                        : 'text-zinc-600'
-                    }`}
-                  >
-                    {isAnyRunning
-                      ? 'Running'
-                      : compileStream.status !== 'idle'
-                      ? compileStream.status
-                      : aiStream.status !== 'idle'
-                      ? aiStream.status
-                      : '—'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowErrorHistory(true)}
+                      className="text-[10px] font-medium text-zinc-500 hover:text-orange-400 transition"
+                      title="View error history"
+                    >
+                      Error History
+                    </button>
+                    <span
+                      className={`text-[10px] font-medium capitalize ${
+                        isAnyRunning
+                          ? 'text-orange-400'
+                          : compileStream.status === 'completed' || aiStream.status === 'completed'
+                          ? 'text-emerald-400'
+                          : 'text-zinc-600'
+                      }`}
+                    >
+                      {isAnyRunning
+                        ? 'Running'
+                        : compileStream.status !== 'idle'
+                        ? compileStream.status
+                        : aiStream.status !== 'idle'
+                        ? aiStream.status
+                        : '—'}
+                    </span>
+                  </div>
                 </div>
                 <LogViewer lines={logLines} maxHeight="100%" className="h-full text-[11px]" />
               </div>
@@ -2773,6 +2784,11 @@ export default function ResumeEditPage() {
           setLatexContent(newLatex)
         }}
       />
+
+      {/* Compile Error History (Feature 88) */}
+      {showErrorHistory && (
+        <CompileErrorHistory onClose={() => setShowErrorHistory(false)} />
+      )}
 
       {/* Diff viewer modal */}
       {showDiffModal && (
