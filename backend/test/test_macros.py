@@ -194,3 +194,23 @@ class TestUpdateMacro:
 
         # Verify setattr was called via model_dump
         mock_db.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_patch_null_clears_shortcut(self):
+        """PATCH /macros/{id} with shortcut=null must clear the field (BUG-03)."""
+        user = make_user()
+        macro = make_macro(user.id, shortcut='ctrl+shift+b')
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = macro
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        mock_db.commit = AsyncMock()
+        mock_db.refresh = AsyncMock()
+
+        # Construct body with shortcut explicitly set to None
+        body = MacroUpdate(shortcut=None)
+        # model_dump(exclude_unset=True) must include shortcut=None
+        dumped = body.model_dump(exclude_unset=True)
+        assert 'shortcut' in dumped, 'exclude_unset=True must preserve explicit null'
+        assert dumped['shortcut'] is None

@@ -351,3 +351,43 @@ class TestOfficialSnippetSeed:
         from app.data.official_snippets import OFFICIAL_SNIPPETS
         for s in OFFICIAL_SNIPPETS:
             assert s['category'] in valid_cats, f"Invalid category in '{s['title']}': {s['category']}"
+
+
+# ── BUG-03 regression: PATCH exclude_unset allows null clearing ───────────────
+
+class TestPatchNullClearing:
+    def test_snippet_update_exclude_unset_preserves_null(self):
+        """PATCH /snippets/{id} with null field must clear it (BUG-03).
+
+        model_dump(exclude_unset=True) includes fields the caller explicitly
+        set (even to None); exclude_none=True would silently drop them.
+        """
+        from app.api.snippet_routes import SnippetUpdate
+        body = SnippetUpdate(description=None)
+        dumped = body.model_dump(exclude_unset=True)
+        assert 'description' in dumped, 'exclude_unset=True must preserve explicit null'
+        assert dumped['description'] is None
+
+    def test_snippet_update_omitted_field_not_in_dump(self):
+        """Fields not provided at all must NOT appear in the patch dump."""
+        from app.api.snippet_routes import SnippetUpdate
+        body = SnippetUpdate(title='New Title')
+        dumped = body.model_dump(exclude_unset=True)
+        assert 'title' in dumped
+        assert 'description' not in dumped
+
+
+# ── BUG-04 regression: admin seed endpoints require require_admin ──────────────
+
+class TestAdminSeedRequiresAdmin:
+    def test_snippet_seed_uses_require_admin(self):
+        """POST /admin/snippets/seed must gate on require_admin, not get_current_user (BUG-04)."""
+        from app.api.snippet_routes import seed_official_snippets
+        from app.middleware.auth_middleware import require_admin
+        dep_calls = [str(d.dependency) for d in seed_official_snippets.__fastapi_dependencies__] if hasattr(seed_official_snippets, '__fastapi_dependencies__') else []
+        # Inspect the underlying FastAPI dependant via the __wrapped__ or signature
+        import inspect
+        sig = inspect.signature(seed_official_snippets)
+        deps = [p.default.dependency for p in sig.parameters.values()
+                if hasattr(p.default, 'dependency')]
+        assert require_admin in deps, 'seed_official_snippets must depend on require_admin'

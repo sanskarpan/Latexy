@@ -45,6 +45,7 @@ class ResumeUpdate(BaseModel):
 class ResumeResponse(ResumeBase):
     id: str
     user_id: str
+    document_type: str = "resume"
     parent_resume_id: Optional[str] = None
     variant_count: int = 0
     # resume_settings is the ORM attribute; we expose it as "metadata" in JSON
@@ -272,6 +273,7 @@ async def list_resumes(
     limit: int = 20,
     parent_id: Optional[str] = Query(None),
     archived: bool = Query(False),
+    document_type: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required)
 ):
@@ -283,6 +285,8 @@ async def list_resumes(
     filters = [Resume.user_id == user_id]
     if parent_id is not None:
         filters.append(Resume.parent_resume_id == parent_id)
+    if document_type is not None:
+        filters.append(Resume.document_type == document_type)
     # Filter by archive status
     if archived:
         filters.append(Resume.archived_at.is_not(None))

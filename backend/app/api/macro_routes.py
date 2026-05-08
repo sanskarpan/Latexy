@@ -108,7 +108,7 @@ async def update_macro(
         raise HTTPException(status_code=404, detail='Macro not found')
     if macro.user_id != current_user.id:
         raise HTTPException(status_code=403, detail='Access denied')
-    for field, val in body.model_dump(exclude_none=True).items():
+    for field, val in body.model_dump(exclude_unset=True).items():
         setattr(macro, field, val)
     await db.commit()
     await db.refresh(macro)

@@ -521,3 +521,59 @@ class TestListMembersAuth:
         result = await list_members(tenant_id=tenant.id, db=db, user_id=member_user.id)
         assert len(result) == 1
         assert result[0].user_id == member_user.id
+
+
+# ── BUG-03 (F85): PATCH /tenants/{id} can clear optional branding fields ──────
+
+
+class TestUpdateTenantNullClearing:
+    """Tests for BUG-03: update_tenant PATCH must clear nullable fields when sent as null."""
+
+    def test_exclude_unset_includes_explicit_none(self):
+        """TenantUpdate.model_dump(exclude_unset=True) includes fields explicitly set to null."""
+        body = TenantUpdate.model_validate({'logo_url': None})
+        dumped = body.model_dump(exclude_unset=True)
+        assert 'logo_url' in dumped
+        assert dumped['logo_url'] is None
+
+    def test_exclude_unset_omits_missing_fields(self):
+        """TenantUpdate.model_dump(exclude_unset=True) omits fields absent from request."""
+        body = TenantUpdate.model_validate({'name': 'New Name'})
+        dumped = body.model_dump(exclude_unset=True)
+        assert 'name' in dumped
+        assert 'logo_url' not in dumped
+
+    @pytest.mark.asyncio
+    async def test_null_logo_url_clears_field(self):
+        """PATCH with logo_url=null clears the tenant's logo_url (BUG-03 fix)."""
+        owner_id = _uid()
+        tenant = make_tenant(owner_id)
+        tenant.logo_url = 'https://old.example.com/logo.png'
+
+        # Simulate JSON body: {"logo_url": null}
+        body = TenantUpdate.model_validate({'logo_url': None})
+
+        db = _mock_db()
+        db.refresh = AsyncMock(side_effect=lambda obj: None)
+
+        with patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)):
+            await update_tenant(tenant_id=tenant.id, body=body, db=db, user_id=owner_id)
+
+        assert tenant.logo_url is None
+        db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_null_primary_color_clears_field(self):
+        """PATCH with primary_color=null clears the tenant's primary_color (BUG-03 fix)."""
+        owner_id = _uid()
+        tenant = make_tenant(owner_id, primary_color='#6d28d9')
+
+        body = TenantUpdate.model_validate({'primary_color': None})
+
+        db = _mock_db()
+        db.refresh = AsyncMock(side_effect=lambda obj: None)
+
+        with patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)):
+            await update_tenant(tenant_id=tenant.id, body=body, db=db, user_id=owner_id)
+
+        assert tenant.primary_color is None

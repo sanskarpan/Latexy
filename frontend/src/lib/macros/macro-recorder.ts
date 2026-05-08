@@ -17,6 +17,10 @@ export class MacroRecorder {
   private _disposables: IDisposable[] = []
   private _lastContent = ''
   private _lastPosition: { lineNumber: number; column: number } | null = null
+  /** Set to true after a content-change event so the next cursor-position
+   *  event (which is always fired by Monaco immediately after a content edit)
+   *  is skipped — the player already advances the cursor as part of 'insert'. */
+  private _skipNextCursorMove = false
 
   get isRecording(): boolean {
     return this._recording
@@ -47,6 +51,11 @@ export class MacroRecorder {
           }
         }
         this._lastContent = editor.getValue()
+        // Monaco always fires onDidChangeCursorPosition immediately after a
+        // content edit (cursor advances to end of inserted text). Skip that
+        // synthetic move — the player's 'insert' handler already repositions
+        // the cursor correctly.
+        this._skipNextCursorMove = true
       }),
     )
 
@@ -54,6 +63,12 @@ export class MacroRecorder {
     this._disposables.push(
       editor.onDidChangeCursorPosition((e) => {
         if (!this._lastPosition) {
+          this._lastPosition = { lineNumber: e.position.lineNumber, column: e.position.column }
+          return
+        }
+        // Skip moves caused by content edits (handled by player's 'insert' action)
+        if (this._skipNextCursorMove) {
+          this._skipNextCursorMove = false
           this._lastPosition = { lineNumber: e.position.lineNumber, column: e.position.column }
           return
         }
@@ -101,6 +116,7 @@ export class MacroRecorder {
   /** Stop recording and return the captured action sequence. */
   stopRecording(): MacroAction[] {
     this._recording = false
+    this._skipNextCursorMove = false
     this._disposables.forEach((d) => d.dispose())
     this._disposables = []
     return [...this._actions]
@@ -109,6 +125,7 @@ export class MacroRecorder {
   /** Cancel recording without returning actions. */
   cancelRecording(): void {
     this._recording = false
+    this._skipNextCursorMove = false
     this._disposables.forEach((d) => d.dispose())
     this._disposables = []
     this._actions = []
