@@ -78,6 +78,92 @@ async def list_export_formats():
     }
 
 
+# ── Feature 90: Canva / Figma export ─────────────────────────────────────────
+# These routes must be registered BEFORE the generic /{resume_id}/{fmt} route
+# so that literal path segments ("canva", "figma") win over the path parameter.
+
+
+class CanvaElement(BaseModel):
+    type: str       # "HEADING" | "TEXT" | "DIVIDER"
+    text: str
+    style: dict = {}
+
+
+class CanvaResumeExport(BaseModel):
+    type: str = "DESIGN"
+    elements: list[CanvaElement]
+
+
+class FigmaEntry(BaseModel):
+    heading: str = ""
+    subheading: str = ""
+    date: str = ""
+    bullets: list[str] = []
+
+
+class FigmaSection(BaseModel):
+    title: str
+    entries: list[FigmaEntry]
+
+
+class FigmaResumeExport(BaseModel):
+    sections: list[FigmaSection]
+
+
+@router.get("/{resume_id}/canva", response_model=CanvaResumeExport)
+async def export_canva(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+) -> CanvaResumeExport:
+    """
+    Export a resume as Canva Content Import API JSON.
+    Maps LaTeX sections to typed Canva elements (HEADING, TEXT, DIVIDER).
+    Requires authentication; user must own the resume.
+    """
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if resume.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not (resume.latex_content or "").strip():
+        raise HTTPException(status_code=400, detail="Resume has no content to export")
+
+    data = document_export_service.to_canva(resume.latex_content)
+    elements = [CanvaElement(**e) for e in data["elements"]]
+    return CanvaResumeExport(elements=elements)
+
+
+@router.get("/{resume_id}/figma", response_model=FigmaResumeExport)
+async def export_figma(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+) -> FigmaResumeExport:
+    """
+    Export a resume as Figma plugin JSON (structured sections → entries).
+    The returned JSON is consumed by the Latexy Figma plugin.
+    Requires authentication; user must own the resume.
+    """
+    resume = await db.get(Resume, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if resume.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not (resume.latex_content or "").strip():
+        raise HTTPException(status_code=400, detail="Resume has no content to export")
+
+    data = document_export_service.to_figma(resume.latex_content)
+    sections = [
+        FigmaSection(
+            title=s["title"],
+            entries=[FigmaEntry(**e) for e in s["entries"]],
+        )
+        for s in data["sections"]
+    ]
+    return FigmaResumeExport(sections=sections)
+
+
 @router.get("/{resume_id}/{fmt}")
 async def export_resume(
     resume_id: str,

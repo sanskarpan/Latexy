@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Latexy Resume Importer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 12px;
+      color: #1a1a1a;
+      background: #fff;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-height: 100vh;
+    }
+    h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #111;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    h1 span { font-size: 18px; }
+    p.subtitle {
+      font-size: 11px;
+      color: #666;
+      line-height: 1.5;
+    }
+    label { font-size: 11px; font-weight: 600; color: #333; display: block; margin-bottom: 6px; }
+    textarea {
+      width: 100%;
+      height: 180px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 10px;
+      font-size: 11px;
+      font-family: 'Courier New', monospace;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.15s;
+      color: #222;
+    }
+    textarea:focus { border-color: #7c3aed; }
+    button.primary {
+      width: 100%;
+      padding: 10px;
+      background: #7c3aed;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button.primary:hover { background: #6d28d9; }
+    button.primary:disabled { background: #a78bfa; cursor: not-allowed; }
+    .status {
+      font-size: 11px;
+      border-radius: 6px;
+      padding: 8px 12px;
+      display: none;
+    }
+    .status.error { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; display: block; }
+    .status.success { background: #f0fdf4; color: #16a34a; border: 1px solid #86efac; display: block; }
+    .hint {
+      font-size: 10px;
+      color: #888;
+      line-height: 1.5;
+      background: #f9f9f9;
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .hint a { color: #7c3aed; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <h1><span>🎨</span> Latexy Resume Importer</h1>
+
+  <p class="subtitle">
+    Import a resume exported from Latexy as a structured Figma frame.
+  </p>
+
+  <div>
+    <label for="json-input">Paste your resume-figma.json here</label>
+    <textarea id="json-input" placeholder='{"sections": [...]}' spellcheck="false"></textarea>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <button class="primary" id="import-btn">Import Resume into Figma</button>
+
+  <div class="hint">
+    <strong>How to get the JSON:</strong><br />
+    1. Open your resume in the Latexy workspace<br />
+    2. Click <strong>Export → Figma JSON</strong><br />
+    3. Open the downloaded <code>resume-figma.json</code> and paste here
+  </div>
+
+  <script>
+    const textarea = document.getElementById('json-input')
+    const statusEl = document.getElementById('status')
+    const importBtn = document.getElementById('import-btn')
+
+    function showStatus(type, message) {
+      statusEl.className = 'status ' + type
+      statusEl.textContent = message
+    }
+
+    importBtn.addEventListener('click', () => {
+      const raw = textarea.value.trim()
+      if (!raw) {
+        showStatus('error', 'Please paste your resume-figma.json content first.')
+        return
+      }
+
+      let parsed
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        showStatus('error', 'Invalid JSON — make sure you pasted the full file contents.')
+        return
+      }
+
+      if (!parsed.sections || !Array.isArray(parsed.sections)) {
+        showStatus('error', 'JSON does not look like a Latexy resume export (missing "sections" array).')
+        return
+      }
+
+      importBtn.disabled = true
+      importBtn.textContent = 'Importing…'
+      statusEl.className = 'status'
+
+      parent.postMessage({ pluginMessage: { type: 'import-resume', payload: parsed } }, '*')
+    })
+
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage
+      if (!msg) return
+      importBtn.disabled = false
+      importBtn.textContent = 'Import Resume into Figma'
+
+      if (msg.type === 'done') {
+        showStatus('success', '✓ Resume imported! Check the "Latexy Resume" frame on your canvas.')
+      } else if (msg.type === 'error') {
+        showStatus('error', 'Import failed: ' + msg.message)
+      }
+    }
+  </script>
+</body>
+</html>
