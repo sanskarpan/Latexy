@@ -340,6 +340,7 @@ class TestCareerGraphSeedRequiresAdmin:
     def test_seed_career_graph_uses_require_admin(self):
         """POST /admin/career-graph/seed must gate on require_admin (BUG-04)."""
         import inspect
+
         from app.api.career_routes import seed_career_graph
         from app.middleware.auth_middleware import require_admin
         sig = inspect.signature(seed_career_graph)

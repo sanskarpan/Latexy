@@ -175,6 +175,7 @@ def _make_mock_resume(extra_meta=None):
     resume.github_sync_enabled = False
     resume.github_repo_name = None
     resume.github_last_sync_at = None
+    resume.document_type = "resume"
     from datetime import datetime
     resume.created_at = datetime(2024, 1, 1)
     resume.updated_at = datetime(2024, 1, 1)
