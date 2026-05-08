@@ -228,6 +228,7 @@ def compile_latex_task(
 
         # ── Stream log lines ─────────────────────────────────────────
         page_count: Optional[int] = None
+        first_latex_error: Optional[str] = None  # first "! ..." line from pdflatex
         for line in proc.stdout:
             stripped = line.rstrip()
             if not stripped:
@@ -237,6 +238,10 @@ def compile_latex_task(
             m = PAGE_COUNT_RE.search(stripped)
             if m:
                 page_count = int(m.group(1))
+
+            # Capture the first "! <error type>" line for persistent storage
+            if first_latex_error is None and stripped.startswith("!"):
+                first_latex_error = stripped[:250]
 
             is_error_line = (
                 "error" in stripped.lower()
@@ -373,7 +378,10 @@ def compile_latex_task(
             "error_message": error_msg,
             "retryable": False,
         })
-        return {"success": False, "job_id": job_id, "error": error_msg}
+        result = {"success": False, "job_id": job_id, "error": error_msg}
+        if first_latex_error:
+            result["latex_error_line"] = first_latex_error
+        return result
 
     except SoftTimeLimitExceeded:
         logger.error(f"LaTeX task {task_id} hit soft time limit for job {job_id}")

@@ -1044,7 +1044,7 @@ Build a personal "error log" helping users recognize recurring mistakes. Uses ex
 `compilations` table — no new schema required.
 
 ### 88A · Backend — Error Aggregation Service
-- [ ] Create `backend/app/services/error_history_service.py`:
+- [x] Create `backend/app/services/error_history_service.py`:
   ```python
   class ErrorHistoryService:
       async def get_error_history(
@@ -1067,22 +1067,22 @@ Build a personal "error log" helping users recognize recurring mistakes. Uses ex
   ```
 
 ### 88B · Backend — Endpoint
-- [ ] Add `GET /resumes/error-history?limit=50` to `backend/app/api/resume_routes.py`:
+- [x] Add `GET /resumes/error-history?limit=50` to `backend/app/api/resume_routes.py`:
   - Returns list of `ErrorHistorySummary` from `ErrorHistoryService.get_error_history()`
   - Grouped and sorted by `count DESC, last_seen DESC`
 
 ### 88C · Frontend — Error History Panel
-- [ ] Create `frontend/src/components/CompileErrorHistory.tsx`:
+- [x] Create `frontend/src/components/CompileErrorHistory.tsx`:
   - Triggered from editor by "Error History" button in Log Viewer panel header
   - Displays table: Error Type | Times Encountered | Last Seen | Status (Resolved / Recurring)
   - Click a row → expand details with `example_line` and link to the resume it occurred in
   - "Most common mistake" banner for error_type with highest count
   - Empty state: "No compile errors yet — great work!"
-- [ ] In `frontend/src/lib/api-client.ts`:
+- [x] In `frontend/src/lib/api-client.ts`:
   - Add `getErrorHistory(): Promise<ErrorHistorySummary[]>`
 
 ### 88D · Tests
-- [ ] Create `backend/test/test_error_history.py` — 4 tests:
+- [x] Create `backend/test/test_error_history.py` — 16 tests (expanded from 4):
   - User with 3 failed compilations → `get_error_history` returns 3 grouped entries
   - Same error in multiple compilations → `count > 1` in summary
   - Error followed by successful compile → `resolved: true`
@@ -1097,7 +1097,7 @@ Applies a grayscale CSS filter to the PDF canvas — purely display-side, origin
 Zero backend changes.
 
 ### 89A · Frontend — Toggle Button
-- [ ] In `frontend/src/components/PDFPreview.tsx` (or equivalent PDF viewer component):
+- [x] In `frontend/src/components/PDFPreview.tsx` (or equivalent PDF viewer component):
   - Add `printPreviewMode: boolean` state (default `false`)
   - "B&W Print Preview" button in PDF viewer toolbar (printer icon)
   - When `printPreviewMode=true`:
@@ -1106,15 +1106,17 @@ Zero backend changes.
   - Toggle off restores full color
 
 ### 89B · Color Dependency Warnings
-- [ ] In print preview mode, run a lightweight analysis of the LaTeX source:
+- [x] In print preview mode, run a lightweight analysis of the LaTeX source:
   - Check for `\textcolor`, `\color`, `\colorbox`, `\definecolor` usage
   - If found: show warning list under the preview: "Color-dependent elements detected —
     these may become invisible or lose meaning in grayscale print:"
   - List each detected color usage with the line number (link to editor line)
 
 ### 89C · Integration
-- [ ] Add `printPreviewMode` prop to `LaTeXEditor.tsx` if needed to pass line warnings back
-- [ ] Persist print preview mode preference to `localStorage` per user
+- [x] Pass `latexContent` + `onJumpToLine` props from edit page to PDFPreview
+- [x] Persist print preview mode preference to `localStorage` per user (`latexy_print_preview`)
+- [x] Color analysis extracted to `frontend/src/lib/print-preview.ts` (testable)
+- [x] 10 vitest tests in `frontend/src/__tests__/print-preview.test.ts`
 
 ---
 
@@ -1125,7 +1127,7 @@ Figma (via plugin API), allowing users to create a visually designed resume vers
 Complements the ATS-safe LaTeX version with a design-focused output.
 
 ### 90A · Backend — Canva-Compatible Export Format
-- [ ] Add `GET /resumes/{resume_id}/export/canva` to `backend/app/api/export_routes.py`:
+- [x] Add `GET /resumes/{resume_id}/export/canva` to `backend/app/api/export_routes.py`:
   ```python
   class CanvaResumeExport(BaseModel):
       # Canva Content Import API format
@@ -1148,7 +1150,7 @@ Complements the ATS-safe LaTeX version with a design-focused output.
   ```
 
 ### 90B · Backend — Figma-Compatible Export Format
-- [ ] Add `GET /resumes/{resume_id}/export/figma` to `backend/app/api/export_routes.py`:
+- [x] Add `GET /resumes/{resume_id}/export/figma` to `backend/app/api/export_routes.py`:
   - Returns structured JSON mapping resume sections to Figma text nodes:
     ```python
     class FigmaResumeExport(BaseModel):
@@ -1167,25 +1169,25 @@ Complements the ATS-safe LaTeX version with a design-focused output.
   - This JSON is consumed by a Figma plugin (separate artifact) that populates a resume frame
 
 ### 90C · Frontend — Export Buttons
-- [ ] In `frontend/src/components/ExportDropdown.tsx` (or wherever export options are shown):
+- [x] In `frontend/src/components/ExportDropdown.tsx` (or wherever export options are shown):
   - Add "Export to Canva" option: calls `GET /resumes/{id}/export/canva`,
     then opens Canva import URL with the JSON payload
   - Add "Export to Figma" option: calls `GET /resumes/{id}/export/figma`,
     downloads `resume-figma.json` for use in Figma plugin
   - Both options show tooltip: "Opens [Canva/Figma] with your resume content pre-filled"
-- [ ] In `frontend/src/lib/api-client.ts`:
+- [x] In `frontend/src/lib/api-client.ts`:
   - Add `exportCanva(resumeId: string): Promise<CanvaResumeExport>`
   - Add `exportFigma(resumeId: string): Promise<Blob>` (returns downloadable JSON)
 
 ### 90D · Figma Plugin (Separate Artifact)
-- [ ] Create `frontend/figma-plugin/` directory:
+- [x] Create `frontend/figma-plugin/` directory:
   - `manifest.json`: Figma plugin manifest with `networkAccess: ["latexy.io"]`
   - `code.ts`: plugin entry that reads the JSON and populates a Figma resume template frame
   - `ui.html`: simple plugin UI: "Fetch from Latexy" button, API key input
   - This plugin is published to the Figma Community separately
 
 ### 90E · Tests
-- [ ] Create `backend/test/test_export_canva_figma.py` — 4 tests:
+- [x] Create `backend/test/test_export_canva_figma.py` — 4 tests:
   - `GET /resumes/{id}/export/canva` returns JSON with `elements` array non-empty
   - Section headers appear as `type: "HEADING"` elements
   - `GET /resumes/{id}/export/figma` returns JSON with `sections` array

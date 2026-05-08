@@ -667,6 +667,10 @@ async def get_job_result(
             compilation_time = result_data.get("compilation_time")
             pdf_size = result_data.get("pdf_size")
             error_msg = result_data.get("error")
+            # Prefer the specific LaTeX error line (e.g. "! Undefined control sequence.")
+            # over the generic "pdflatex exited with code 1" message.
+            latex_error_line = result_data.get("latex_error_line")
+            stored_error = (latex_error_line or error_msg or "")[:500] or None
             await db.execute(
                 update(Compilation)
                 .where(Compilation.job_id == job_id)
@@ -674,7 +678,7 @@ async def get_job_result(
                     status=final_status,
                     compilation_time=compilation_time,
                     pdf_size=pdf_size,
-                    error_message=error_msg[:500] if error_msg else None,
+                    error_message=stored_error,
                 )
             )
             await db.commit()

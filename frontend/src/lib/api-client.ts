@@ -2486,6 +2486,15 @@ class ApiClient {
   async getSubmission(id: string): Promise<ApplicationSubmission> {
     return this.request<ApplicationSubmission>(`/apply/submissions/${encodeURIComponent(id)}`)
   }
+
+  // ── Feature 88 — Compile Error History ───────────────────────────────────
+
+  async getErrorHistory(limit = 50): Promise<ErrorHistorySummary[]> {
+    return this.request<ErrorHistorySummary[]>(
+      `/resumes/error-history?limit=${limit}`
+    )
+  }
+
 }
 
 // Singleton
@@ -3175,3 +3184,16 @@ export interface ApplicationSubmission {
   error_message: string | null
   created_at: string
 }
+
+// ── Feature 88 — Compile Error History ───────────────────────────────────────
+
+export interface ErrorHistorySummary {
+  error_type: string
+  count: number
+  last_seen: string
+  last_resume_id: string | null
+  last_resume_title: string | null
+  example_line: string
+  resolved: boolean
+}
+
