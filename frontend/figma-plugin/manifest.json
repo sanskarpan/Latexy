@@ -1,0 +1,11 @@
+{
+  "name": "Latexy Resume Importer",
+  "id": "latexy-resume-importer",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["https://latexy.io", "https://api.latexy.io"]
+  }
+}

@@ -2,20 +2,22 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Download, ChevronDown, Loader2, FileText, Code, File, Globe, Database } from 'lucide-react'
+import { Download, ChevronDown, Loader2, FileText, Code, File, Globe, Database, Figma, Palette } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/api-client'
 
 const EXPORT_FORMATS = [
-  { key: 'pdf',  label: 'PDF',        icon: FileText, desc: 'Compiled PDF document' },
-  { key: 'tex',  label: 'LaTeX',      icon: Code,     desc: 'LaTeX source code (.tex)' },
-  { key: 'docx', label: 'Word',       icon: FileText, desc: 'Microsoft Word (.docx)' },
-  { key: 'md',   label: 'Markdown',   icon: File,     desc: 'Markdown (.md)' },
-  { key: 'html', label: 'HTML',       icon: Globe,    desc: 'Web page (.html)' },
-  { key: 'txt',  label: 'Plain Text', icon: File,     desc: 'ATS-safe plain text (.txt)' },
-  { key: 'json', label: 'JSON',       icon: Database, desc: 'JSON Resume format (.json)' },
-  { key: 'yaml', label: 'YAML',       icon: Database, desc: 'YAML resume (.yaml)' },
-  { key: 'xml',  label: 'XML',        icon: Database, desc: 'XML resume (.xml)' },
+  { key: 'pdf',   label: 'PDF',        icon: FileText, desc: 'Compiled PDF document' },
+  { key: 'tex',   label: 'LaTeX',      icon: Code,     desc: 'LaTeX source code (.tex)' },
+  { key: 'docx',  label: 'Word',       icon: FileText, desc: 'Microsoft Word (.docx)' },
+  { key: 'md',    label: 'Markdown',   icon: File,     desc: 'Markdown (.md)' },
+  { key: 'html',  label: 'HTML',       icon: Globe,    desc: 'Web page (.html)' },
+  { key: 'txt',   label: 'Plain Text', icon: File,     desc: 'ATS-safe plain text (.txt)' },
+  { key: 'json',  label: 'JSON',       icon: Database, desc: 'JSON Resume format (.json)' },
+  { key: 'yaml',  label: 'YAML',       icon: Database, desc: 'YAML resume (.yaml)' },
+  { key: 'xml',   label: 'XML',        icon: Database, desc: 'XML resume (.xml)' },
+  { key: 'canva', label: 'Canva',      icon: Palette,  desc: 'Opens resume in Canva with pre-filled content' },
+  { key: 'figma', label: 'Figma JSON', icon: Figma,    desc: 'Download JSON for the Latexy Figma plugin' },
 ] as const
 
 type ExportFormatKey = (typeof EXPORT_FORMATS)[number]['key']
@@ -94,6 +96,13 @@ export default function ExportDropdown({
       return
     }
 
+    // Canva + Figma only work for saved resumes (need resume_id)
+    if ((format === 'canva' || format === 'figma') && !resumeId) {
+      toast.error('Save your resume first to export to Canva or Figma')
+      setIsOpen(false)
+      return
+    }
+
     // Validate content before hitting the API
     const hasContent = resumeId || (latexContent && latexContent.trim().length > 0)
     if (!hasContent) {
@@ -105,6 +114,26 @@ export default function ExportDropdown({
     setLoading(format)
     setIsOpen(false)
     try {
+      if (format === 'canva' && resumeId) {
+        const data = await apiClient.exportCanva(resumeId)
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+        downloadBlob(blob, 'resume-canva.json')
+        toast.success("Canva JSON downloaded — import it via Canva's Content Import feature", {
+          duration: 6000,
+        })
+        return
+      }
+
+      if (format === 'figma' && resumeId) {
+        const data = await apiClient.exportFigma(resumeId)
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+        downloadBlob(blob, 'resume-figma.json')
+        toast.success('Figma JSON downloaded — open it with the Latexy Figma plugin', {
+          duration: 6000,
+        })
+        return
+      }
+
       let blob: Blob
       if (resumeId) {
         blob = await apiClient.exportResume(resumeId, format)
@@ -182,26 +211,38 @@ export default function ExportDropdown({
               </p>
             </div>
             <div className="pb-1.5">
-              {EXPORT_FORMATS.map((fmt) => {
+              {EXPORT_FORMATS.map((fmt, idx) => {
                 const Icon = fmt.icon
                 const isLoading = loading === fmt.key
+                const isDesignExport = fmt.key === 'canva' || fmt.key === 'figma'
+                // Separator before design exports
+                const showSeparator = idx > 0 && isDesignExport && !(['canva', 'figma'] as string[]).includes(EXPORT_FORMATS[idx - 1].key)
                 return (
-                  <button
-                    key={fmt.key}
-                    onClick={() => handleExport(fmt.key)}
-                    disabled={isExporting}  // Disable ALL items while any export is in progress
-                    className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-white/[0.05] disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isLoading ? (
-                      <Loader2 size={14} className="shrink-0 animate-spin text-orange-300" />
-                    ) : (
-                      <Icon size={14} className="shrink-0 text-zinc-500" />
+                  <div key={fmt.key}>
+                    {showSeparator && (
+                      <div className="mx-3 my-1 border-t border-white/10">
+                        <p className="mt-1.5 mb-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-600 font-medium">
+                          Design Exports
+                        </p>
+                      </div>
                     )}
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-zinc-200">{fmt.label}</div>
-                      <div className="text-[11px] text-zinc-600 truncate">{fmt.desc}</div>
-                    </div>
-                  </button>
+                    <button
+                      onClick={() => handleExport(fmt.key)}
+                      disabled={isExporting || ((fmt.key === 'canva' || fmt.key === 'figma') && !resumeId)}
+                      title={fmt.desc}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-white/[0.05] disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoading ? (
+                        <Loader2 size={14} className="shrink-0 animate-spin text-orange-300" />
+                      ) : (
+                        <Icon size={14} className={`shrink-0 ${isDesignExport ? 'text-violet-400' : 'text-zinc-500'}`} />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-zinc-200">{fmt.label}</div>
+                        <div className="text-[11px] text-zinc-600 truncate">{fmt.desc}</div>
+                      </div>
+                    </button>
+                  </div>
                 )
               })}
             </div>

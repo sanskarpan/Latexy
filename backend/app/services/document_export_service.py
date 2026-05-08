@@ -255,6 +255,168 @@ class DocumentExportService:
 
         return result
 
+    # ─── Canva (Feature 90A) ─────────────────────────────────────────────────
+
+    # Regex for detecting date-range lines (e.g. "Jan 2020 – May 2023")
+    _DATE_RE = re.compile(
+        r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4})'
+        r'[^A-Za-z]*(?:–|--|—|to|–|present)',
+        re.IGNORECASE,
+    )
+
+    def to_canva(self, latex_content: str) -> dict:
+        """
+        Convert LaTeX resume to Canva Content Import API format.
+
+        Returns a dict with:
+          type: "DESIGN"
+          elements: list of CanvaElement dicts
+            {type: "HEADING"|"TEXT"|"DIVIDER", text: str, style: dict}
+        """
+        md = self.to_markdown(latex_content)
+        elements: list[dict] = []
+
+        for raw_line in md.split('\n'):
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            if line.startswith('## '):
+                # Section heading → HEADING + DIVIDER
+                elements.append({
+                    "type": "HEADING",
+                    "text": line[3:].strip(),
+                    "style": {"bold": True, "fontSize": 14},
+                })
+                elements.append({"type": "DIVIDER", "text": "", "style": {}})
+
+            elif line.startswith('### '):
+                elements.append({
+                    "type": "TEXT",
+                    "text": line[4:].strip(),
+                    "style": {"bold": True, "fontSize": 11},
+                })
+
+            elif line.startswith('- '):
+                elements.append({
+                    "type": "TEXT",
+                    "text": "• " + line[2:].strip(),
+                    "style": {"fontSize": 10, "indent": True},
+                })
+
+            elif self._DATE_RE.search(line):
+                # Date range line → smaller italic text
+                clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
+                clean = re.sub(r'\*(.+?)\*', r'\1', clean)
+                elements.append({
+                    "type": "TEXT",
+                    "text": clean,
+                    "style": {"italic": True, "fontSize": 9},
+                })
+
+            elif '**' in line:
+                # Bold company/role line
+                clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
+                clean = re.sub(r'\*(.+?)\*', r'\1', clean)
+                elements.append({
+                    "type": "TEXT",
+                    "text": clean,
+                    "style": {"bold": True, "fontSize": 11},
+                })
+
+            else:
+                clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
+                clean = re.sub(r'\*(.+?)\*', r'\1', clean)
+                if clean:
+                    elements.append({
+                        "type": "TEXT",
+                        "text": clean,
+                        "style": {"fontSize": 10},
+                    })
+
+        return {"type": "DESIGN", "elements": elements}
+
+    # ─── Figma (Feature 90B) ─────────────────────────────────────────────────
+
+    def to_figma(self, latex_content: str) -> dict:
+        """
+        Convert LaTeX resume to Figma plugin JSON format.
+
+        Returns a dict with:
+          sections: list of {title, entries: [{heading, subheading, date, bullets}]}
+        """
+        md = self.to_markdown(latex_content)
+        lines = md.split('\n')
+
+        sections: list[dict] = []
+        current_section: dict | None = None
+        current_entry: dict | None = None
+
+        def _flush_entry():
+            if current_entry and current_section is not None:
+                # Only add if entry has any real content
+                if any([
+                    current_entry["heading"],
+                    current_entry["subheading"],
+                    current_entry["date"],
+                    current_entry["bullets"],
+                ]):
+                    current_section["entries"].append(current_entry)
+
+        def _new_entry() -> dict:
+            return {"heading": "", "subheading": "", "date": "", "bullets": []}
+
+        for raw_line in lines:
+            line = raw_line.strip()
+
+            if line.startswith('## '):
+                _flush_entry()
+                current_entry = None
+                current_section = {"title": line[3:].strip(), "entries": []}
+                sections.append(current_section)
+
+            elif current_section is None:
+                continue  # Skip preamble before first section
+
+            elif line.startswith('### '):
+                _flush_entry()
+                current_entry = _new_entry()
+                current_entry["heading"] = line[4:].strip()
+
+            elif line.startswith('- '):
+                if current_entry is None:
+                    current_entry = _new_entry()
+                current_entry["bullets"].append(line[2:].strip())
+
+            elif self._DATE_RE.search(line):
+                if current_entry is None:
+                    current_entry = _new_entry()
+                clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
+                clean = re.sub(r'\*(.+?)\*', r'\1', clean)
+                current_entry["date"] = clean
+
+            elif '**' in line and line.count('**') >= 2:
+                # Bold line → heading (company) or subheading (role)
+                if current_entry is None:
+                    current_entry = _new_entry()
+                clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
+                clean = re.sub(r'\*(.+?)\*', r'\1', clean)
+                if not current_entry["heading"]:
+                    current_entry["heading"] = clean
+                else:
+                    current_entry["subheading"] = clean
+
+            elif line and not line.startswith('#'):
+                if current_entry is None:
+                    current_entry = _new_entry()
+                clean = re.sub(r'\*\*(.+?)\*\*', r'\1', line)
+                clean = re.sub(r'\*(.+?)\*', r'\1', clean)
+                if not current_entry["subheading"]:
+                    current_entry["subheading"] = clean
+
+        _flush_entry()
+        return {"sections": sections}
+
     # ─── YAML ────────────────────────────────────────────────────────────────
 
     def to_yaml(self, latex_content: str) -> str:

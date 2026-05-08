@@ -2495,6 +2495,15 @@ class ApiClient {
     )
   }
 
+  // ── Feature 90 — Canva / Figma Export ────────────────────────────────────
+
+  async exportCanva(resumeId: string): Promise<CanvaResumeExport> {
+    return this.request<CanvaResumeExport>(`/export/${encodeURIComponent(resumeId)}/canva`)
+  }
+
+  async exportFigma(resumeId: string): Promise<FigmaResumeExport> {
+    return this.request<FigmaResumeExport>(`/export/${encodeURIComponent(resumeId)}/figma`)
+  }
 }
 
 // Singleton
@@ -3195,5 +3204,34 @@ export interface ErrorHistorySummary {
   last_resume_title: string | null
   example_line: string
   resolved: boolean
+}
+
+// ── Feature 90 — Canva / Figma Export ────────────────────────────────────────
+
+export interface CanvaElement {
+  type: 'HEADING' | 'TEXT' | 'DIVIDER'
+  text: string
+  style: Record<string, unknown>
+}
+
+export interface CanvaResumeExport {
+  type: 'DESIGN'
+  elements: CanvaElement[]
+}
+
+export interface FigmaEntry {
+  heading: string
+  subheading: string
+  date: string
+  bullets: string[]
+}
+
+export interface FigmaSection {
+  title: string
+  entries: FigmaEntry[]
+}
+
+export interface FigmaResumeExport {
+  sections: FigmaSection[]
 }
 
