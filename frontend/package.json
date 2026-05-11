@@ -51,7 +51,7 @@
         "@radix-ui/react-tooltip": "^1.2.8",
         "@react-three/drei": "^9.122.0",
         "@react-three/fiber": "^8.17.10",
-        "@tabler/icons-react": "^3.41.1",
+        "@tabler/icons-react": "^3.44.0",
         "@types/pg": "^8.20.0",
         "@types/qrcode": "^1.5.6",
         "@visx/axis": "^3.12.0",
