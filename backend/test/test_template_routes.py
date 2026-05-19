@@ -16,6 +16,7 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from app.core.config import settings
 from app.database.models import ResumeTemplate
 
 # ---------------------------------------------------------------------------
@@ -241,6 +242,10 @@ async def _create_auth_headers(db_session) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _admin_headers() -> dict:
+    return {"X-Admin-Secret": "test-template-admin-secret"}
+
+
 @pytest.mark.asyncio
 class TestUseTemplate:
     async def test_creates_resume_and_returns_id(self, client: AsyncClient, db_session):
@@ -334,6 +339,96 @@ class TestUseTemplate:
             headers=headers,
         )
         assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+class TestTemplateAdminEndpoints:
+    async def test_create_template_requires_admin_secret(self, client: AsyncClient):
+        previous_secret = settings.ADMIN_SECRET_KEY
+        settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
+        try:
+            resp = await client.post(
+                "/templates",
+                json={
+                    "name": "Admin Created Template",
+                    "description": "Created through admin route",
+                    "category": "finance",
+                    "tags": ["finance", "admin"],
+                    "latex_content": _VALID_LATEX,
+                    "sort_order": 12,
+                },
+            )
+        finally:
+            settings.ADMIN_SECRET_KEY = previous_secret
+        assert resp.status_code == 403
+
+    async def test_create_update_activate_deactivate_and_delete_template(self, client: AsyncClient, db_session):
+        previous_secret = settings.ADMIN_SECRET_KEY
+        settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
+        try:
+            create_resp = await client.post(
+                "/templates",
+                headers=_admin_headers(),
+                json={
+                    "name": "Admin Lifecycle Template",
+                    "description": "Lifecycle test",
+                    "category": "finance",
+                    "tags": ["finance", "lifecycle"],
+                    "latex_content": _VALID_LATEX,
+                    "sort_order": 4,
+                },
+            )
+            assert create_resp.status_code == 201
+            created = create_resp.json()
+            assert created["name"] == "Admin Lifecycle Template"
+            template_id = created["id"]
+
+            update_resp = await client.put(
+                f"/templates/{template_id}",
+                headers=_admin_headers(),
+                json={
+                    "name": "Admin Lifecycle Template Updated",
+                    "description": "Updated",
+                    "category": "marketing",
+                    "tags": ["marketing"],
+                    "latex_content": _VALID_LATEX_2,
+                    "thumbnail_url": "https://example.com/template.png",
+                    "sort_order": 8,
+                    "is_active": True,
+                },
+            )
+            assert update_resp.status_code == 200
+            updated = update_resp.json()
+            assert updated["name"] == "Admin Lifecycle Template Updated"
+            assert updated["category"] == "marketing"
+
+            deactivate_resp = await client.patch(
+                f"/templates/{template_id}/deactivate",
+                headers=_admin_headers(),
+            )
+            assert deactivate_resp.status_code == 200
+            template = await db_session.get(ResumeTemplate, template_id)
+            assert template is not None
+            assert template.is_active is False
+
+            activate_resp = await client.patch(
+                f"/templates/{template_id}/activate",
+                headers=_admin_headers(),
+            )
+            assert activate_resp.status_code == 200
+            await db_session.refresh(template)
+            assert template.is_active is True
+
+            delete_resp = await client.delete(
+                f"/templates/{template_id}",
+                headers=_admin_headers(),
+            )
+            assert delete_resp.status_code == 204
+
+            gone = await db_session.get(ResumeTemplate, template_id)
+            assert gone is None
+        finally:
+            settings.ADMIN_SECRET_KEY = previous_secret
 
 
 # ---------------------------------------------------------------------------
