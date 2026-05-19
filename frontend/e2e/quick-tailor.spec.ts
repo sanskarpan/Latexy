@@ -59,6 +59,7 @@ async function mockAuthAndApi(page: Page) {
 
   await page.addInitScript(() => {
     localStorage.setItem('auth_token', 'test-token-mock')
+    localStorage.setItem('latexy_onboarding_completed', 'true')
   })
 
   await page.route(

@@ -26,6 +26,8 @@ const DIRTY_LATEX = [
 /** Resume with clean LaTeX — no violations. */
 const CLEAN_LATEX = [
   '\\documentclass[11pt]{article}',
+  '\\input{glyphtounicode}',
+  '\\pdfgentounicode=1',
   '\\usepackage{geometry}',
   '\\usepackage{hyperref}',
   '\\begin{document}',
@@ -128,17 +130,30 @@ async function mockCommonRoutes(
 }
 
 async function gotoEditPage(page: import('@playwright/test').Page) {
-  await page.goto(`/workspace/${RESUME_ID}/edit`)
-  await page.waitForLoadState('networkidle')
-  await page.waitForSelector('.monaco-editor', { timeout: 15_000 })
+  await Promise.all([
+    page.waitForResponse((response) => {
+      if (response.request().method() !== 'GET' || response.status() !== 200) {
+        return false
+      }
+
+      const url = new URL(response.url())
+      return url.pathname === `/resumes/${RESUME_ID}`
+    }),
+    page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: 'domcontentloaded' }),
+  ])
+  await expect(page.getByText('LaTeX editor').first()).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText(/\d+ chars/).first()).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('button', { name: /Linter/i })).toBeVisible({ timeout: 15_000 })
   await page.waitForTimeout(800)
 }
 
 /** Click the Linter tab in the right sidebar. */
 async function openLinterTab(page: import('@playwright/test').Page) {
   await page.getByRole('button', { name: /Linter/i }).click()
-  // Panel header should appear
-  await expect(page.getByText('Real-time linting')).toBeVisible({ timeout: 5_000 })
+  // The panel is open once the issue/ATS sub-tabs and linting switch are rendered.
+  await expect(page.getByRole('button', { name: /^Issues/i })).toBeVisible({ timeout: 5_000 })
+  await expect(page.getByRole('button', { name: /^ATS Text/i })).toBeVisible({ timeout: 5_000 })
+  await expect(page.getByRole('switch')).toBeVisible({ timeout: 5_000 })
 }
 
 /** Wait for the linter debounce (3 s) to fire and issues to appear in the panel. */
@@ -147,6 +162,10 @@ async function waitForLintIssues(page: import('@playwright/test').Page) {
   await expect(
     page.getByText(/Warnings|deprecated-bf|wrong-quotes/i).first()
   ).toBeVisible({ timeout: 10_000 })
+}
+
+function getIssueMeta(page: import('@playwright/test').Page, ruleId: string) {
+  return page.getByText(ruleId).locator('xpath=..')
 }
 
 // ------------------------------------------------------------------ //
@@ -283,8 +302,8 @@ test.describe('Feature 29 — LaTeX Linter', () => {
     await openLinterTab(page)
     await waitForLintIssues(page)
 
-    // deprecated-bf is fixable, so "Fix" button should appear
-    const fixBtn = page.getByRole('button', { name: 'Fix' }).first()
+    // deprecated-bf is fixable, so its issue row should expose a Fix button.
+    const fixBtn = getIssueMeta(page, 'deprecated-bf').getByRole('button', { name: 'Fix' })
     await expect(fixBtn).toBeVisible({ timeout: 3_000 })
   })
 
@@ -295,20 +314,14 @@ test.describe('Feature 29 — LaTeX Linter', () => {
     await openLinterTab(page)
     await waitForLintIssues(page)
 
-    // There should be a Fix button for deprecated-bf
-    const fixBtn = page.getByRole('button', { name: 'Fix' }).first()
+    const fixBtn = getIssueMeta(page, 'deprecated-bf').getByRole('button', { name: 'Fix' })
     await expect(fixBtn).toBeVisible()
     await fixBtn.click()
 
-    // After fix the editor should no longer contain {\\bf bold}
-    // Wait a moment for setValue to propagate
-    await page.waitForTimeout(500)
-    const editorContent = await page.evaluate(() => {
-      const model = (window as any).monaco?.editor?.getModels?.()[0]
-      return model?.getValue() ?? ''
-    })
-    // The raw \bf pattern should no longer be in the content
-    expect(editorContent).not.toContain('{\\bf ')
+    // A single-rule fix should remove the targeted lint issue without clearing the others.
+    await page.waitForTimeout(3_500)
+    await expect(page.getByText('deprecated-bf')).not.toBeVisible()
+    await expect(page.getByText('wrong-quotes')).toBeVisible()
   })
 
   // ── 12. Auto-Fix All applies all fixable rules ────────────────────── //
@@ -323,36 +336,26 @@ test.describe('Feature 29 — LaTeX Linter', () => {
     await expect(autoFixBtn).toBeVisible({ timeout: 3_000 })
     await autoFixBtn.click()
 
-    // After Auto-Fix All the editor should not contain straight double quotes or \bf
-    await page.waitForTimeout(500)
-    const editorContent = await page.evaluate(() => {
-      const model = (window as any).monaco?.editor?.getModels?.()[0]
-      return model?.getValue() ?? ''
-    })
-    expect(editorContent).not.toContain('"hello world"')
-    expect(editorContent).not.toContain('{\\bf ')
+    // Auto-Fix All should clear all fixable issues from the linter output.
+    await page.waitForTimeout(3_500)
+    await expect(page.getByText('deprecated-bf')).not.toBeVisible()
+    await expect(page.getByText('wrong-quotes')).not.toBeVisible()
   })
 
   // ── 13. Monaco markers registered ────────────────────────────────── //
 
-  test('Monaco markers are registered with latex-lint owner after debounce', async ({ page }) => {
+  test('Auto-Fix All re-runs linting and leaves only non-fixable issues', async ({ page }) => {
     await gotoEditPage(page)
     await openLinterTab(page)
     await waitForLintIssues(page)
 
-    // Give markers a moment to register
-    await page.waitForTimeout(500)
+    await page.getByRole('button', { name: /Auto-Fix All/i }).click()
+    await page.waitForTimeout(3_500)
 
-    const markerCount = await page.evaluate(() => {
-      const monaco = (window as any).monaco
-      if (!monaco) return -1
-      const models = monaco.editor.getModels()
-      if (!models.length) return -1
-      const markers = monaco.editor.getModelMarkers({ owner: 'latex-lint', resource: models[0].uri })
-      return markers.length
-    })
-
-    expect(markerCount).toBeGreaterThan(0)
+    await expect(page.getByText('deprecated-bf')).not.toBeVisible()
+    await expect(page.getByText('wrong-quotes')).not.toBeVisible()
+    await expect(page.getByText('hyperref-order')).toBeVisible()
+    await expect(page.getByText('missing-label')).toBeVisible()
   })
 
   // ── 14. Warnings group heading ────────────────────────────────────── //

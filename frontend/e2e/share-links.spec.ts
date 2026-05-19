@@ -58,6 +58,7 @@ async function mockAuth(page: Page) {
   )
   await page.addInitScript(() => {
     localStorage.setItem('auth_token', 'test-token-mock')
+    localStorage.setItem('latexy_onboarding_completed', 'true')
   })
 }
 

@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import settings
+from ..core.config import resolve_plan_family, settings
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client, redis_manager
 from ..database.connection import get_db
@@ -229,7 +229,7 @@ async def submit_job(
             "cover_letter_generation": 60,
         }
         estimated_time = estimated_times.get(request.job_type, 60)
-        if request.user_plan in ("pro", "byok"):
+        if resolve_plan_family(request.user_plan) in {"pro", "byok", "team"}:
             estimated_time = int(estimated_time * 0.7)
 
         # Sanitise caller-supplied metadata: cap at 10 keys, 256 chars per value.
@@ -443,7 +443,7 @@ async def compile_watermarked(
     try:
         job_id = str(uuid.uuid4())
         ip_address = http_request.client.host if http_request.client else None
-        estimated_time = 30 if request.user_plan in ("pro", "byok") else 45
+        estimated_time = 30 if resolve_plan_family(request.user_plan) in {"pro", "byok", "team"} else 45
 
         await _write_initial_redis_state(job_id, "latex_compilation", user_id, estimated_time)
 
@@ -528,7 +528,7 @@ async def create_batch_tailor(
     batch_id = str(uuid.uuid4())
     job_entries: List[Dict] = []
     job_ids: List[str] = []
-    estimated_time = 84 if user_plan in ("pro", "byok") else 120  # mirrors submit_job logic
+    estimated_time = 84 if resolve_plan_family(user_plan) in {"pro", "byok", "team"} else 120  # mirrors submit_job logic
 
     for fork, item in forks:
         job_id = str(uuid.uuid4())

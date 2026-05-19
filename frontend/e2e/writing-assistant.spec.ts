@@ -5,6 +5,7 @@ import { test, expect } from '@playwright/test'
 // ------------------------------------------------------------------ //
 
 const RESUME_ID = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee'
+const TARGET_SELECTION_TEXT = 'Responsible for building payment integration'
 
 const MOCK_RESUME = {
   id: RESUME_ID,
@@ -44,6 +45,10 @@ const MOCK_REWRITE_RESPONSE = {
 // ------------------------------------------------------------------ //
 
 async function mockAuth(page: import('@playwright/test').Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('latexy_onboarding_completed', 'true')
+  })
+
   await page.route('**/api/auth/get-session', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_SESSION) })
   )
@@ -90,24 +95,155 @@ async function mockRewriteEndpoint(
 }
 
 async function gotoEditPage(page: import('@playwright/test').Page) {
-  await page.goto(`/workspace/${RESUME_ID}/edit`)
-  await page.waitForLoadState('networkidle')
-  // Wait for Monaco to finish mounting
-  await page.waitForSelector('.monaco-editor', { timeout: 15_000 })
+  await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByText(/\d+ chars/).first()).toBeVisible({ timeout: 15_000 })
+  await waitForMonacoEditor(page)
   await page.waitForTimeout(800)
 }
 
-/** Select some text in the Monaco editor and open the right-click context menu. */
+async function waitForMonacoEditor(page: import('@playwright/test').Page) {
+  await page.waitForFunction(
+    () => {
+      const editor = (window as Window & {
+        __latexyMonacoEditor?: { getModel?: () => unknown }
+      }).__latexyMonacoEditor
+      return typeof editor?.getModel === 'function' && !!editor.getModel()
+    },
+    null,
+    { timeout: 15_000 }
+  )
+}
+
+async function selectWritingSample(page: import('@playwright/test').Page) {
+  await page.waitForFunction(
+    (targetText) => {
+      const editor = (window as Window & {
+        __latexyMonacoEditor?: {
+          getModel: () => { getValue: () => string } | null
+        }
+      }).__latexyMonacoEditor
+      const model = editor?.getModel()
+      return !!model && model.getValue().includes(targetText)
+    },
+    TARGET_SELECTION_TEXT,
+    { timeout: 10_000 }
+  )
+
+  const selection = await page.evaluate((targetText) => {
+    const editor = (window as Window & {
+      __latexyMonacoEditor?: {
+        focus: () => void
+        getModel: () => {
+          getValue: () => string
+          getLineCount: () => number
+          getLineContent: (line: number) => string
+        } | null
+        revealLineInCenter: (line: number) => void
+        setSelection: (selection: {
+          startLineNumber: number
+          startColumn: number
+          endLineNumber: number
+          endColumn: number
+        }) => void
+      }
+    }).__latexyMonacoEditor
+
+    const model = editor?.getModel()
+    if (!editor || !model) return null
+
+    for (let lineNumber = 1; lineNumber <= model.getLineCount(); lineNumber += 1) {
+      const line = model.getLineContent(lineNumber)
+      const startIndex = line.indexOf(targetText)
+      if (startIndex === -1) continue
+
+      const startColumn = startIndex + 1
+      const endColumn = startColumn + targetText.length
+      editor.focus()
+      editor.revealLineInCenter(lineNumber)
+      editor.setSelection({
+        startLineNumber: lineNumber,
+        startColumn,
+        endLineNumber: lineNumber,
+        endColumn,
+      })
+      return { lineNumber, startColumn, endColumn }
+    }
+
+    return null
+  }, TARGET_SELECTION_TEXT)
+
+  expect(selection).not.toBeNull()
+
+  await page.waitForFunction(
+    () => {
+      const editor = (window as Window & {
+        __latexyMonacoEditor?: {
+          getAction?: (id: string) => { isSupported?: () => boolean } | null
+          getSelection?: () => {
+            startLineNumber: number
+            startColumn: number
+            endLineNumber: number
+            endColumn: number
+          } | null
+        }
+      }).__latexyMonacoEditor
+
+      const selection = editor?.getSelection?.()
+      const action = editor?.getAction?.('latexy.writingAssistant')
+      const hasSelection = !!selection && (
+        selection.startLineNumber !== selection.endLineNumber ||
+        selection.startColumn !== selection.endColumn
+      )
+      const isSupported = typeof action?.isSupported === 'function' ? action.isSupported() : !!action
+      return hasSelection && isSupported
+    },
+    null,
+    { timeout: 5_000 }
+  )
+}
+
 async function openWritingAssistantMenu(page: import('@playwright/test').Page) {
-  const editor = page.locator('.monaco-editor .view-lines')
-  // Click to focus editor
-  await editor.click()
-  // Select all text via keyboard shortcut
-  await page.keyboard.press('Control+a')
-  await page.waitForTimeout(200)
-  // Right-click to open context menu
-  await editor.click({ button: 'right' })
-  await page.waitForTimeout(300)
+  await selectWritingSample(page)
+  await page.evaluate(() => {
+    const editor = (window as Window & {
+      __latexyMonacoEditor?: { focus: () => void; trigger: (source: string, handlerId: string, payload: unknown) => void }
+    }).__latexyMonacoEditor
+
+    editor?.focus()
+    editor?.trigger('playwright', 'editor.action.showContextMenu', null)
+  })
+  await expect(page.locator('.context-view.monaco-component')).toBeVisible({ timeout: 5_000 })
+}
+
+async function triggerWritingAssistant(page: import('@playwright/test').Page) {
+  await selectWritingSample(page)
+
+  const triggered = await page.evaluate(async () => {
+    const editor = (window as Window & {
+      __latexyMonacoEditor?: {
+        focus: () => void
+        getAction?: (id: string) => { isSupported?: () => boolean; run: () => Promise<void> } | null
+      }
+    }).__latexyMonacoEditor
+
+    const action = editor?.getAction?.('latexy.writingAssistant')
+    const isSupported = typeof action?.isSupported === 'function' ? action.isSupported() : !!action
+    if (!editor || !action || !isSupported) return false
+
+    editor.focus()
+    await action.run()
+    return true
+  })
+
+  expect(triggered).toBe(true)
+  await expect(page.getByText('AI Writing Assistant').last()).toBeVisible({ timeout: 5_000 })
+}
+
+function getWritingAssistantPanel(page: import('@playwright/test').Page) {
+  return page
+    .locator('div.z-50')
+    .filter({ has: page.getByRole('button', { name: 'Close writing assistant' }) })
+    .first()
 }
 
 // ------------------------------------------------------------------ //
@@ -129,30 +265,23 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     expect(errors).toEqual([])
   })
 
-  // ── 2. Context menu entry ────────────────────────────────────────── //
+  // ── 2. Context menu entry ───────────────────────────────────────── //
 
   test('AI Writing Assistant appears in Monaco context menu when text is selected', async ({ page }) => {
     await gotoEditPage(page)
     await openWritingAssistantMenu(page)
 
-    // Monaco renders context menu items in .context-view
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
+    const menuItem = page.locator('.context-view.monaco-component').getByText('AI Writing Assistant')
     await expect(menuItem).toBeVisible({ timeout: 5_000 })
   })
 
-  // ── 3. Widget opens with action picker ───────────────────────────── //
+  // ── 3. Widget opens with action picker ──────────────────────────── //
 
-  test('widget opens with all action buttons after triggering context menu', async ({ page }) => {
+  test('widget opens with all action buttons when the editor action is triggered', async ({ page }) => {
     await mockRewriteEndpoint(page)
     await gotoEditPage(page)
-    await openWritingAssistantMenu(page)
+    await triggerWritingAssistant(page)
 
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
-    await expect(menuItem).toBeVisible({ timeout: 5_000 })
-    await menuItem.click()
-
-    // Widget should show all actions
-    await expect(page.getByText('AI Writing Assistant').last()).toBeVisible({ timeout: 5_000 })
     await expect(page.getByRole('button', { name: /Improve/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Shorten/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Quantify/i })).toBeVisible()
@@ -160,22 +289,19 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     await expect(page.getByRole('button', { name: /Expand/i })).toBeVisible()
   })
 
-  // ── 4. Selected text preview ─────────────────────────────────────── //
+  // ── 4. Selected text preview ───────────────────────────────────── //
 
   test('widget shows selected text in preview', async ({ page }) => {
     await mockRewriteEndpoint(page)
     await gotoEditPage(page)
-    await openWritingAssistantMenu(page)
+    await triggerWritingAssistant(page)
 
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
-    await expect(menuItem).toBeVisible({ timeout: 5_000 })
-    await menuItem.click()
-
-    // The selected text preview section header should be present
+    const panel = getWritingAssistantPanel(page)
     await expect(page.getByText('Selected text')).toBeVisible({ timeout: 5_000 })
+    await expect(panel.getByText(TARGET_SELECTION_TEXT, { exact: true })).toBeVisible()
   })
 
-  // ── 5. API call made with correct fields ─────────────────────────── //
+  // ── 5. API call made with correct fields ───────────────────────── //
 
   test('clicking an action sends correct request to /ai/rewrite', async ({ page }) => {
     let capturedBody: Record<string, unknown> | null = null
@@ -186,13 +312,8 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     })
 
     await gotoEditPage(page)
-    await openWritingAssistantMenu(page)
+    await triggerWritingAssistant(page)
 
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
-    await expect(menuItem).toBeVisible({ timeout: 5_000 })
-    await menuItem.click()
-
-    // Click "Improve" — set up waitForResponse BEFORE the click to avoid race
     const improveBtn = page.getByRole('button', { name: /Improve/i })
     await expect(improveBtn).toBeVisible({ timeout: 5_000 })
     const responsePromise = page.waitForResponse((r) => r.url().includes('/ai/rewrite'), { timeout: 10_000 })
@@ -202,69 +323,51 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     expect(capturedBody).not.toBeNull()
     expect(typeof capturedBody!.selected_text).toBe('string')
     expect((capturedBody!.selected_text as string).length).toBeGreaterThan(0)
+    expect(capturedBody!.selected_text).toBe(TARGET_SELECTION_TEXT)
     expect(capturedBody!.action).toBe('improve')
   })
 
-  // ── 6. Loading state ─────────────────────────────────────────────── //
+  // ── 6. Loading state ───────────────────────────────────────────── //
 
   test('loading spinner shows while API call is in progress', async ({ page }) => {
-    // Delayed response to catch loading state
     await page.route((url) => url.pathname === '/ai/rewrite', async (route) => {
-      await new Promise((r) => setTimeout(r, 1_500))
+      await new Promise((resolve) => setTimeout(resolve, 1_500))
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_REWRITE_RESPONSE) })
     })
 
     await gotoEditPage(page)
-    await openWritingAssistantMenu(page)
-
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
-    await expect(menuItem).toBeVisible({ timeout: 5_000 })
-    await menuItem.click()
+    await triggerWritingAssistant(page)
 
     await page.getByRole('button', { name: /Improve/i }).click()
 
-    // Loading text should be visible before API returns
     await expect(page.getByText('Rewriting')).toBeVisible({ timeout: 3_000 })
     await expect(page.locator('.animate-spin').first()).toBeVisible({ timeout: 3_000 })
   })
 
-  // ── 7. Result state — diff view ───────────────────────────────────── //
+  // ── 7. Result state — diff view ────────────────────────────────── //
 
   test('result state shows original and rewritten text in diff view', async ({ page }) => {
     await mockRewriteEndpoint(page)
     await gotoEditPage(page)
-    await openWritingAssistantMenu(page)
+    await triggerWritingAssistant(page)
 
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
-    await expect(menuItem).toBeVisible({ timeout: 5_000 })
-    await menuItem.click()
-
+    const responsePromise = page.waitForResponse((r) => r.url().includes('/ai/rewrite'), { timeout: 10_000 })
     await page.getByRole('button', { name: /Improve/i }).click()
-    await page.waitForResponse((r) => r.url().includes('/ai/rewrite'), { timeout: 10_000 })
+    await responsePromise
 
-    // Diff headers
     await expect(page.getByText('Original')).toBeVisible({ timeout: 5_000 })
     await expect(page.getByText('Rewritten')).toBeVisible()
-
-    // Rewritten content
     await expect(page.getByText('Spearheaded payment integration')).toBeVisible()
-
-    // Action buttons
     await expect(page.getByRole('button', { name: /Accept/i })).toBeVisible()
   })
 
-  // ── 8. Accept replaces editor content ────────────────────────────── //
+  // ── 8. Accept replaces editor content ──────────────────────────── //
 
   test('Accept button applies rewrite and closes the widget', async ({ page }) => {
     await mockRewriteEndpoint(page)
     await gotoEditPage(page)
-    await openWritingAssistantMenu(page)
+    await triggerWritingAssistant(page)
 
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
-    await expect(menuItem).toBeVisible({ timeout: 5_000 })
-    await menuItem.click()
-
-    // Set up response waiter BEFORE the click to avoid race condition
     const improveBtn = page.getByRole('button', { name: /Improve/i })
     await expect(improveBtn).toBeVisible({ timeout: 5_000 })
     const responsePromise = page.waitForResponse((r) => r.url().includes('/ai/rewrite'), { timeout: 10_000 })
@@ -275,22 +378,16 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     await expect(acceptBtn).toBeVisible({ timeout: 5_000 })
     await acceptBtn.click()
 
-    // Widget should close after accept — use the specific widget container
     await expect(page.locator('[aria-label="Close writing assistant"]')).not.toBeVisible({ timeout: 5_000 })
   })
 
-  // ── 9. Close button closes widget ────────────────────────────────── //
+  // ── 9. Close button closes widget ──────────────────────────────── //
 
   test('X button closes the widget without making changes', async ({ page }) => {
     await mockRewriteEndpoint(page)
     await gotoEditPage(page)
-    await openWritingAssistantMenu(page)
+    await triggerWritingAssistant(page)
 
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
-    await expect(menuItem).toBeVisible({ timeout: 5_000 })
-    await menuItem.click()
-
-    // Widget opens — verify close button is present
     const closeBtn = page.getByRole('button', { name: 'Close writing assistant' })
     await expect(closeBtn).toBeVisible({ timeout: 5_000 })
     await closeBtn.click()
@@ -298,27 +395,22 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     await expect(closeBtn).not.toBeVisible({ timeout: 3_000 })
   })
 
-  // ── 10. Escape key closes widget ─────────────────────────────────── //
+  // ── 10. Escape key closes widget ───────────────────────────────── //
 
   test('Escape key closes the widget', async ({ page }) => {
     await mockRewriteEndpoint(page)
     await gotoEditPage(page)
-    await openWritingAssistantMenu(page)
-
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
-    await expect(menuItem).toBeVisible({ timeout: 5_000 })
-    await menuItem.click()
+    await triggerWritingAssistant(page)
 
     const closeBtn = page.getByRole('button', { name: 'Close writing assistant' })
     await expect(closeBtn).toBeVisible({ timeout: 5_000 })
 
-    // Click widget header to ensure focus is on widget (not Monaco), then Escape
     await page.getByText('Selected text').click()
     await page.keyboard.press('Escape')
     await expect(closeBtn).not.toBeVisible({ timeout: 3_000 })
   })
 
-  // ── 11. API error is handled gracefully ──────────────────────────── //
+  // ── 11. API error is handled gracefully ────────────────────────── //
 
   test('API error shows error message and returns to picker', async ({ page }) => {
     const errors: string[] = []
@@ -329,25 +421,18 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     )
 
     await gotoEditPage(page)
-    await openWritingAssistantMenu(page)
+    await triggerWritingAssistant(page)
 
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
-    await expect(menuItem).toBeVisible({ timeout: 5_000 })
-    await menuItem.click()
-
+    const responsePromise = page.waitForResponse((r) => r.url().includes('/ai/rewrite'), { timeout: 10_000 })
     await page.getByRole('button', { name: /Improve/i }).click()
-
-    // Should show an error, not crash
-    await page.waitForResponse((r) => r.url().includes('/ai/rewrite'), { timeout: 10_000 })
+    await responsePromise
     await page.waitForTimeout(500)
 
-    // No runtime JS errors
     expect(errors.filter((e) => !e.includes('Warning:'))).toEqual([])
-    // Error text should appear
     await expect(page.locator('.z-50')).toBeVisible({ timeout: 3_000 })
   })
 
-  // ── 12. Regenerate calls API again ───────────────────────────────── //
+  // ── 12. Regenerate calls API again ─────────────────────────────── //
 
   test('Regenerate button triggers a second API call', async ({ page }) => {
     let callCount = 0
@@ -357,20 +442,15 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     })
 
     await gotoEditPage(page)
-    await openWritingAssistantMenu(page)
+    await triggerWritingAssistant(page)
 
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
-    await expect(menuItem).toBeVisible({ timeout: 5_000 })
-    await menuItem.click()
-
-    const improveBtn2 = page.getByRole('button', { name: /Improve/i })
-    await expect(improveBtn2).toBeVisible({ timeout: 5_000 })
+    const improveBtn = page.getByRole('button', { name: /Improve/i })
+    await expect(improveBtn).toBeVisible({ timeout: 5_000 })
     const firstResponse = page.waitForResponse((r) => r.url().includes('/ai/rewrite'), { timeout: 10_000 })
-    await improveBtn2.click()
+    await improveBtn.click()
     await firstResponse
     expect(callCount).toBe(1)
 
-    // Click Regenerate
     const regenerateBtn = page.getByRole('button', { name: 'Try again' })
     await expect(regenerateBtn).toBeVisible({ timeout: 3_000 })
     const secondResponse = page.waitForResponse((r) => r.url().includes('/ai/rewrite'), { timeout: 10_000 })
@@ -379,34 +459,28 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     expect(callCount).toBe(2)
   })
 
-  // ── 13. "Try a different action" resets to picker ────────────────── //
+  // ── 13. "Try a different action" resets to picker ─────────────── //
 
   test('"Try a different action" link returns to action picker', async ({ page }) => {
     await mockRewriteEndpoint(page)
     await gotoEditPage(page)
-    await openWritingAssistantMenu(page)
+    await triggerWritingAssistant(page)
 
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
-    await expect(menuItem).toBeVisible({ timeout: 5_000 })
-    await menuItem.click()
+    const improveBtn = page.getByRole('button', { name: /Improve/i })
+    await expect(improveBtn).toBeVisible({ timeout: 5_000 })
+    const responsePromise = page.waitForResponse((r) => r.url().includes('/ai/rewrite'), { timeout: 10_000 })
+    await improveBtn.click()
+    await responsePromise
 
-    const improveBtn3 = page.getByRole('button', { name: /Improve/i })
-    await expect(improveBtn3).toBeVisible({ timeout: 5_000 })
-    const rp = page.waitForResponse((r) => r.url().includes('/ai/rewrite'), { timeout: 10_000 })
-    await improveBtn3.click()
-    await rp
-
-    // Should be in result state — click "Try a different action"
     const backLink = page.getByText('Try a different action')
     await expect(backLink).toBeVisible({ timeout: 5_000 })
     await backLink.click()
 
-    // Should be back to picker — all action buttons visible
     await expect(page.getByRole('button', { name: /Improve/i })).toBeVisible({ timeout: 3_000 })
     await expect(page.getByRole('button', { name: /Shorten/i })).toBeVisible()
   })
 
-  // ── 14. Request body includes context ────────────────────────────── //
+  // ── 14. Request body includes context ──────────────────────────── //
 
   test('API request body contains context field', async ({ page }) => {
     let capturedBody: Record<string, unknown> | null = null
@@ -417,21 +491,17 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     })
 
     await gotoEditPage(page)
-    await openWritingAssistantMenu(page)
+    await triggerWritingAssistant(page)
 
-    const menuItem = page.locator('.context-view').getByText('AI Writing Assistant')
-    await expect(menuItem).toBeVisible({ timeout: 5_000 })
-    await menuItem.click()
-
-    const improveBtn4 = page.getByRole('button', { name: /Improve/i })
-    await expect(improveBtn4).toBeVisible({ timeout: 5_000 })
-    const rp2 = page.waitForResponse((r) => r.url().includes('/ai/rewrite'), { timeout: 10_000 })
-    await improveBtn4.click()
-    await rp2
+    const improveBtn = page.getByRole('button', { name: /Improve/i })
+    await expect(improveBtn).toBeVisible({ timeout: 5_000 })
+    const responsePromise = page.waitForResponse((r) => r.url().includes('/ai/rewrite'), { timeout: 10_000 })
+    await improveBtn.click()
+    await responsePromise
 
     expect(capturedBody).not.toBeNull()
     expect(capturedBody!.action).toBe('improve')
-    expect(capturedBody!.selected_text).toBeTruthy()
+    expect(capturedBody!.selected_text).toBe(TARGET_SELECTION_TEXT)
     expect(typeof capturedBody!.context).toBe('string')
     expect((capturedBody!.context as string).length).toBeGreaterThan(0)
   })

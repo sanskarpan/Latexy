@@ -529,15 +529,17 @@ test.describe('/workspace/[resumeId]/optimize — ATS Quick Score badge', () => 
   })
 
   test('ATS badge renders in LaTeX editor', async ({ page }) => {
+    await page.clock.install()
     await page.goto(`/workspace/${RESUME_ID}/optimize`)
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByText('ATS —')).toBeVisible()
+    await page.waitForLoadState('domcontentloaded')
+    await expect(page.getByText('ATS —')).toBeVisible({ timeout: 3_000 })
   })
 
   test('ATS badge initially shows dash', async ({ page }) => {
+    await page.clock.install()
     await page.goto(`/workspace/${RESUME_ID}/optimize`)
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByText('ATS —')).toBeVisible()
+    await page.waitForLoadState('domcontentloaded')
+    await expect(page.getByText('ATS —')).toBeVisible({ timeout: 3_000 })
   })
 
   test('ATS badge shows score after debounce fires', async ({ page }) => {

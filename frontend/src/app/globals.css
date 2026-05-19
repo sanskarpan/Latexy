@@ -232,3 +232,82 @@
 .monaco-editor .monaco-editor-background {
   background: rgba(7, 7, 7, 0.96) !important;
 }
+
+.synctex-highlight {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+  border-left: 2px solid #f59e0b !important;
+}
+
+.proofreader-weak {
+  text-decoration: underline wavy #f59e0b;
+  text-underline-offset: 2px;
+}
+
+.proofreader-passive {
+  text-decoration: underline wavy #60a5fa;
+  text-underline-offset: 2px;
+}
+
+.proofreader-buzzword {
+  text-decoration: underline wavy #a78bfa;
+  text-underline-offset: 2px;
+}
+
+.proofreader-vague {
+  text-decoration: underline wavy #f87171;
+  text-underline-offset: 2px;
+}
+
+.yRemoteSelectionHead::after {
+  content: attr(data-user-name);
+  font-size: 10px;
+  font-family: sans-serif;
+  padding: 1px 4px;
+  border-radius: 3px;
+  position: absolute;
+  top: -1.4em;
+  left: 0;
+  white-space: nowrap;
+  background-color: var(--user-color, #7c3aed);
+  color: #fff;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.yRemoteSelectionHead {
+  position: absolute;
+  border-left: 2px solid var(--user-color, #7c3aed);
+  height: 100%;
+}
+
+.yRemoteSelection {
+  background-color: var(--user-color-light, rgba(124, 58, 237, 0.12));
+}
+
+.tracked-insertion {
+  background-color: rgba(74, 222, 128, 0.15);
+  border-bottom: 2px solid rgba(74, 222, 128, 0.6);
+}
+
+.tracked-deletion-glyph {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 50%;
+  background-color: rgba(248, 113, 113, 0.8);
+  margin-top: 6px;
+}
+
+.comment-gutter-icon {
+  width: 14px !important;
+  height: 14px !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b5cf6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: contain;
+  cursor: pointer;
+  opacity: 0.7;
+  margin-top: 3px;
+}
+
+.comment-gutter-icon:hover {
+  opacity: 1;
+}

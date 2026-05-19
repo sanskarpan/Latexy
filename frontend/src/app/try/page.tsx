@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { ChevronDown, Link2, Loader2, Upload, X, Zap } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
@@ -9,16 +10,18 @@ import { useSession } from '@/lib/auth-client'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useTrialStatus } from '@/hooks/useTrialStatus'
 import LaTeXEditor, { LaTeXEditorRef } from '@/components/LaTeXEditor'
-import LogViewer from '@/components/LogViewer'
-import PDFPreview from '@/components/PDFPreview'
-import DeepAnalysisPanel from '@/components/ats/DeepAnalysisPanel'
-import MultiFormatUpload from '@/components/MultiFormatUpload'
-import ExportDropdown from '@/components/ExportDropdown'
-import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
+
+const LogViewer = dynamic(() => import('@/components/LogViewer'))
+const PDFPreview = dynamic(() => import('@/components/PDFPreview'))
+const DeepAnalysisPanel = dynamic(() => import('@/components/ats/DeepAnalysisPanel'))
+const MultiFormatUpload = dynamic(() => import('@/components/MultiFormatUpload'))
+const ExportDropdown = dynamic(() => import('@/components/ExportDropdown'))
+const ErrorExplainerPanel = dynamic(() => import('@/components/ErrorExplainerPanel'))
+
 const CATEGORY_LABELS: Record<string, string> = {
   formatting: 'Formatting',
   structure: 'Structure',
@@ -29,6 +32,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function TryPage() {
   const flags = useFeatureFlags()
+  const [hydrated, setHydrated] = useState(false)
   const [latexContent, setLatexContent] = useState(DEMO_RESUME_TEMPLATE)
   const [jobDescription, setJobDescription] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -61,8 +65,13 @@ export default function TryPage() {
   const { state: deepStream } = useJobStream(deepAnalysisJobId)
   const trialStatus = useTrialStatus()
   const { data: session } = useSession()
+  const resolvedSession = hydrated ? session : null
   // When trial_limits flag is off, every visitor can run without restriction
   const effectiveCanRun = flags.trial_limits ? trialStatus.canRun : true
+
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
 
   useEffect(() => {
     if (stream.streamingLatex && editorRef.current) {
@@ -307,7 +316,7 @@ export default function TryPage() {
             ['Mode', 'Resume Studio'],
             ['Status', stream.status],
             ['Active Job', activeJobId ? `${activeJobId.slice(0, 12)}…` : 'None'],
-            ['Trials Left', session ? '∞' : String(trialStatus.remaining)],
+            ['Trials Left', resolvedSession ? '∞' : hydrated ? String(trialStatus.remaining) : '…'],
           ].map(([k, v]) => (
             <article key={k} className="surface-card edge-highlight p-3">
               <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">{k}</p>
@@ -491,14 +500,14 @@ export default function TryPage() {
               </button>
               <button
                 onClick={() => runCompile('compile')}
-                disabled={isSubmitting || isProcessing || (!session && !effectiveCanRun)}
+                disabled={isSubmitting || isProcessing || (!resolvedSession && !effectiveCanRun)}
                 className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {isSubmitting ? 'Compiling…' : 'Compile'}
               </button>
               <button
                 onClick={() => runCompile('combined')}
-                disabled={isSubmitting || isProcessing || (!session && !effectiveCanRun)}
+                disabled={isSubmitting || isProcessing || (!resolvedSession && !effectiveCanRun)}
                 className="rounded-lg bg-orange-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-orange-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSubmitting ? 'Running…' : 'Optimize + Compile'}
