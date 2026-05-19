@@ -189,6 +189,8 @@ class TestReorderSectionsEndpoint:
         with (
             patch("openai.AsyncOpenAI") as mock_openai,
             patch("app.api.ai_routes.settings") as mock_settings,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
         ):
             mock_settings.OPENAI_API_KEY = "sk-test-key"
             mock_settings.OPENAI_MODEL = "gpt-4o-mini"
@@ -229,6 +231,8 @@ class TestReorderSectionsEndpoint:
         with (
             patch("openai.AsyncOpenAI") as mock_openai,
             patch("app.api.ai_routes.settings") as mock_settings,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
         ):
             mock_settings.OPENAI_API_KEY = "sk-test-key"
             mock_settings.OPENAI_MODEL = "gpt-4o-mini"
@@ -277,6 +281,8 @@ class TestReorderSectionsEndpoint:
         with (
             patch("openai.AsyncOpenAI") as mock_openai,
             patch("app.api.ai_routes.settings") as mock_settings,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
         ):
             mock_settings.OPENAI_API_KEY = "sk-test-key"
             mock_settings.OPENAI_MODEL = "gpt-4o-mini"
