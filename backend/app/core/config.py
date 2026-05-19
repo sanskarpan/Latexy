@@ -280,6 +280,20 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
+def resolve_plan_family(user_plan: str) -> str:
+    """Normalize plan aliases to the core plan families used in early workers."""
+    normalized = (user_plan or "free").strip().lower()
+    if normalized.startswith("pro"):
+        return "pro"
+    if normalized.startswith("byok"):
+        return "byok"
+    if normalized.startswith("basic"):
+        return "basic"
+    if normalized.startswith("team"):
+        return "team"
+    return "free"
+
+
 def get_compile_timeout(user_plan: str) -> int:
     """Return compile timeout (seconds) for a given subscription plan.
 
@@ -297,4 +311,4 @@ def get_compile_timeout(user_plan: str) -> int:
         "basic": settings.COMPILE_TIMEOUT_BASIC,
         "pro":   settings.COMPILE_TIMEOUT_PRO,
         "byok":  settings.COMPILE_TIMEOUT_BYOK,
-    }.get(user_plan, settings.COMPILE_TIMEOUT_FREE)
+    }.get(resolve_plan_family(user_plan), settings.COMPILE_TIMEOUT_FREE)
