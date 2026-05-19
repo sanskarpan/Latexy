@@ -449,3 +449,135 @@ class TestEncryptionConsolidation:
         # Retrieved value must match original
         retrieved = enc.decrypt(stored)
         assert retrieved == original_key
+
+
+def _set_minimal_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in [
+        "ENVIRONMENT",
+        "DATABASE_URL",
+        "BETTER_AUTH_SECRET",
+        "JWT_SECRET_KEY",
+        "API_KEY_ENCRYPTION_KEY",
+        "RAZORPAY_KEY_ID",
+        "RAZORPAY_KEY_SECRET",
+        "RAZORPAY_WEBHOOK_SECRET",
+        "BILLING_MODE",
+        "SKIP_ENV_VALIDATION",
+    ]:
+        monkeypatch.delenv(key, raising=False)
+
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/latexy_test",
+    )
+    monkeypatch.setenv(
+        "BETTER_AUTH_SECRET",
+        "test-better-auth-secret-minimum-48-chars-padding!!",
+    )
+    monkeypatch.setenv(
+        "JWT_SECRET_KEY",
+        "test-jwt-secret-key-minimum-32-chars!!",
+    )
+
+
+class TestProductionConfigHardening:
+    def test_settings_require_api_key_encryption_key_in_production(self, monkeypatch):
+        from app.core.config import Settings
+
+        _set_minimal_settings_env(monkeypatch)
+        monkeypatch.setenv("ENVIRONMENT", "production")
+
+        with pytest.raises(ValueError, match="API_KEY_ENCRYPTION_KEY"):
+            Settings(_env_file=None)
+
+    def test_settings_reject_invalid_api_key_encryption_key(self, monkeypatch):
+        from app.core.config import Settings
+
+        _set_minimal_settings_env(monkeypatch)
+        monkeypatch.setenv("ENVIRONMENT", "staging")
+        monkeypatch.setenv("API_KEY_ENCRYPTION_KEY", "not-a-valid-fernet-key")
+
+        with pytest.raises(ValueError, match="valid Fernet key"):
+            Settings(_env_file=None)
+
+    def test_settings_reject_partial_razorpay_config(self, monkeypatch):
+        from app.core.config import Settings
+
+        _set_minimal_settings_env(monkeypatch)
+        monkeypatch.setenv("ENVIRONMENT", "development")
+        monkeypatch.setenv("BILLING_MODE", "auto")
+        monkeypatch.setenv("RAZORPAY_KEY_ID", "rzp_test_key")
+
+        with pytest.raises(ValueError, match="Partial Razorpay configuration"):
+            Settings(_env_file=None)
+
+    def test_encryption_service_rejects_missing_key_in_production_env(self):
+        import app.core.config as cfg
+        from app.services.encryption_service import EncryptionService
+
+        original_env = cfg.settings.ENVIRONMENT
+        original_key = cfg.settings.API_KEY_ENCRYPTION_KEY
+
+        try:
+            cfg.settings.ENVIRONMENT = "production"
+            cfg.settings.API_KEY_ENCRYPTION_KEY = ""
+            with pytest.raises(ValueError, match="API_KEY_ENCRYPTION_KEY"):
+                EncryptionService()
+        finally:
+            cfg.settings.ENVIRONMENT = original_env
+            cfg.settings.API_KEY_ENCRYPTION_KEY = original_key
+
+
+class TestBillingStatusContract:
+    def test_payment_service_reports_disabled_mode(self):
+        import app.core.config as cfg
+        from app.services.payment_service import PaymentService
+
+        original_mode = cfg.settings.BILLING_MODE
+
+        try:
+            cfg.settings.BILLING_MODE = "disabled"
+            service = PaymentService()
+            status = service.get_status()
+            assert status["mode"] == "disabled"
+            assert status["available"] is False
+        finally:
+            cfg.settings.BILLING_MODE = original_mode
+
+    def test_payment_service_reports_unconfigured_mode(self):
+        import app.core.config as cfg
+        from app.services.payment_service import PaymentService
+
+        original_mode = cfg.settings.BILLING_MODE
+        original_key_id = cfg.settings.RAZORPAY_KEY_ID
+        original_key_secret = cfg.settings.RAZORPAY_KEY_SECRET
+        original_webhook_secret = cfg.settings.RAZORPAY_WEBHOOK_SECRET
+
+        try:
+            cfg.settings.BILLING_MODE = "auto"
+            cfg.settings.RAZORPAY_KEY_ID = ""
+            cfg.settings.RAZORPAY_KEY_SECRET = ""
+            cfg.settings.RAZORPAY_WEBHOOK_SECRET = ""
+            service = PaymentService()
+            status = service.get_status()
+            assert status["mode"] == "unconfigured"
+            assert status["available"] is False
+            assert "Razorpay" in status["message"]
+        finally:
+            cfg.settings.BILLING_MODE = original_mode
+            cfg.settings.RAZORPAY_KEY_ID = original_key_id
+            cfg.settings.RAZORPAY_KEY_SECRET = original_key_secret
+            cfg.settings.RAZORPAY_WEBHOOK_SECRET = original_webhook_secret
+
+    @pytest.mark.asyncio
+    async def test_subscription_plans_exposes_billing_status(self, client: AsyncClient):
+        from app.api.routes import payment_service
+
+        response = await client.get("/subscription/plans")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert "plans" in payload
+        assert "billing" in payload
+        assert payload["billing"]["mode"] == payment_service.get_status()["mode"]
+        assert payload["billing"]["available"] == payment_service.get_status()["available"]
