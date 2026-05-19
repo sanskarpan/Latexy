@@ -49,6 +49,15 @@ describe('jobStreamReducer — job.started', () => {
     expect(s.status).toBe('processing')
     expect(s.stage).toBe('latex_compilation')
   })
+
+  test('preserves pageCount and extractedPdfText when a later stage starts', () => {
+    const s = jobStreamReducer(
+      { ...initialState, pageCount: 2, extractedPdfText: 'plain text' },
+      { ...BASE_EVENT, type: 'job.started', worker_id: 'w1', stage: 'llm_optimization' },
+    )
+    expect(s.pageCount).toBe(2)
+    expect(s.extractedPdfText).toBe('plain text')
+  })
 })
 
 // ─── job.progress ─────────────────────────────────────────────────────────────
