@@ -1470,7 +1470,7 @@ These features were identified through direct market research as genuine gaps �
 
 ---
 
-### 7.1 Academic CV → Industry Resume Conversion
+### 7.1 Academic CV → Industry Resume Conversion ✅ IMPLEMENTED
 **Priority:** P1 | **Complexity:** M
 
 **Description:**
@@ -1565,7 +1565,7 @@ Page target:
 
 ---
 
-### 7.2 DOCX Export Quality (Macro-Aware Conversion)
+### 7.2 DOCX Export Quality (Macro-Aware Conversion) ✅ IMPLEMENTED
 **Priority:** P1 | **Complexity:** M
 
 **Description:**
