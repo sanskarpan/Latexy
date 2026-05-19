@@ -566,6 +566,7 @@ async def compile_latex_anonymous(
 
 class SubscriptionPlanResponse(BaseModel):
     plans: dict
+    billing: dict
 
 class CreateSubscriptionRequest(BaseModel):
     planId: str
@@ -596,11 +597,13 @@ class CancelSubscriptionResponse(BaseModel):
 
 
 @router.get("/subscription/plans", response_model=SubscriptionPlanResponse)
-async def get_subscription_plans():
+async def get_subscription_plans(db: AsyncSession = Depends(get_db)):
     """Get available subscription plans."""
     try:
         plans = await payment_service.get_subscription_plans()
-        return SubscriptionPlanResponse(plans=plans)
+        billing_enabled = await feature_flag_service.get_flag("billing", db)
+        billing = payment_service.get_status(feature_enabled=billing_enabled)
+        return SubscriptionPlanResponse(plans=plans, billing=billing)
     except Exception as e:
         logger.error(f"Error getting subscription plans: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -957,4 +960,3 @@ async def get_shared_resume(
         is_anonymous=is_anonymous,
         anonymous_processing=anonymous_processing,
     )
-
