@@ -10,7 +10,7 @@
 .PHONY: help run run-prod run-stop run-logs infra down logs \
         logs-backend logs-celery logs-flower clean \
         backend frontend dev \
-        test test-backend test-frontend lint lint-backend lint-frontend \
+        test test-backend test-frontend smoke lint lint-backend lint-frontend \
         migrate db-backup db-restore redis-backup \
         build build-backend build-frontend \
         k8s-deploy k8s-status k8s-migrate k8s-clean k8s-logs \
@@ -54,6 +54,7 @@ help:
 	@echo "    test-backend     pytest backend/test/ (local DB — requires make infra)"
 	@echo "    test-db-setup    Create + migrate latexy_test DB (run after new migrations)"
 	@echo "    test-frontend    pnpm test (frontend)"
+	@echo "    smoke            Boot backend + frontend and run Playwright full-stack smoke"
 	@echo "    lint             ruff + eslint"
 	@echo "    lint-backend     ruff check app/ test/"
 	@echo "    lint-frontend    eslint frontend/src"
@@ -146,24 +147,25 @@ LOCAL_TEST_SYNC_URL := postgresql://latexy:latexy_password@localhost:5434/$(LOCA
 
 # Create (idempotent) and migrate the local test database.
 # Requires the latexy-postgres Docker container to be running (make infra).
-# Run this once after pulling new migrations; test-backend skips it for speed.
+# Recreates the local test database from scratch so schema always matches Alembic.
 test-db-setup:
 	@docker inspect latexy-postgres --format='{{.State.Status}}' 2>/dev/null | grep -q running \
 	  || (echo "ERROR: latexy-postgres container is not running. Run: make infra"; exit 1)
-	@docker exec latexy-postgres psql -U latexy -tc \
-	  "SELECT 1 FROM pg_database WHERE datname='$(LOCAL_TEST_DB)'" \
-	  | grep -q 1 \
-	  || docker exec latexy-postgres psql -U latexy -c "CREATE DATABASE $(LOCAL_TEST_DB);"
+	@docker exec latexy-postgres psql -U latexy -d postgres -c "DROP DATABASE IF EXISTS $(LOCAL_TEST_DB) WITH (FORCE);"
+	@docker exec latexy-postgres psql -U latexy -d postgres -c "CREATE DATABASE $(LOCAL_TEST_DB);"
 	@cd $(BACKEND_DIR) && DATABASE_URL=$(LOCAL_TEST_SYNC_URL) SKIP_ENV_VALIDATION=true \
 	  .venv/bin/alembic upgrade head
 
-test-backend:
+test-backend: test-db-setup
 	@docker inspect latexy-postgres --format='{{.State.Status}}' 2>/dev/null | grep -q running \
 	  || (echo "ERROR: latexy-postgres container is not running. Run: make infra"; exit 1)
-	cd $(BACKEND_DIR) && TEST_DATABASE_URL=$(LOCAL_TEST_DB_URL) .venv/bin/pytest test/
+	cd $(BACKEND_DIR) && RATE_LIMIT_ENABLED=false TEST_DATABASE_URL=$(LOCAL_TEST_DB_URL) .venv/bin/pytest test/
 
 test-frontend:
 	cd $(FRONTEND_DIR) && pnpm run test:unit
+
+smoke:
+	bash scripts/ci/full-stack-smoke.sh
 
 # ── Linting ────────────────────────────────────────────────────────────────
 lint: lint-backend lint-frontend
