@@ -91,8 +91,6 @@ export function jobStreamReducer(state: JobStreamState, action: ReducerAction): 
         status: 'processing',
         stage: event.stage,
         message: `Starting ${event.stage}`,
-        extractedPdfText: null,
-        pageCount: null,
       }
 
     case 'job.progress':
