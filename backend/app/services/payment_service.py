@@ -23,10 +23,16 @@ from ..core.config import (
 )
 from ..core.logging import get_logger
 from ..core.redis import get_redis_cache_client
-from ..database.models import CouponCode, CouponRedemption, Payment, Subscription, User
+from ..database import models as db_models
 from .email_service import email_service
 
 logger = get_logger(__name__)
+
+Payment = db_models.Payment
+Subscription = db_models.Subscription
+User = db_models.User
+CouponCode = getattr(db_models, "CouponCode", None)
+CouponRedemption = getattr(db_models, "CouponRedemption", None)
 
 class PaymentService:
     """Service for handling payments and subscriptions via Razorpay."""
@@ -243,6 +249,9 @@ class PaymentService:
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Validate a coupon for the given plan."""
+        if CouponCode is None or CouponRedemption is None:
+            return {"valid": False, "message": "Coupons are not available in this environment"}
+
         normalized_code = (code or "").strip().upper()
         if not normalized_code:
             return {"valid": False, "message": "Coupon code is required"}
@@ -406,7 +415,13 @@ class PaymentService:
                 coupon_code=(coupon_result or {}).get("code"),
             )
 
-            if result.get("success") and coupon_result and coupon_result.get("code"):
+            if (
+                result.get("success")
+                and coupon_result
+                and coupon_result.get("code")
+                and CouponCode is not None
+                and CouponRedemption is not None
+            ):
                 coupon_row_result = await db.execute(
                     select(CouponCode).where(CouponCode.code == coupon_result["code"])
                 )
