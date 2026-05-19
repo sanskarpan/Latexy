@@ -1,5 +1,5 @@
 import './globals.css'
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { NotificationProvider } from '@/components/NotificationProvider'
 import { WebSocketProvider } from '@/components/WebSocketProvider'
 import { AuthSync } from '@/components/AuthSync'
@@ -14,12 +14,15 @@ export const metadata: Metadata = {
   description: 'Compile, optimize, and score LaTeX resumes with enterprise-grade speed and ATS precision.',
   keywords: 'LaTeX, ATS, resume optimization, AI, job applications',
   manifest: '/manifest.json',
-  themeColor: '#6d28d9',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'Latexy',
   },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#ff845d',
 }
 
 export default function RootLayout({
