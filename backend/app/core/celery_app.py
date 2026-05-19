@@ -164,6 +164,7 @@ def get_task_priority(user_plan: str = "free") -> int:
         "basic": TASK_PRIORITY_NORMAL,
         "pro": TASK_PRIORITY_HIGH,
         "byok": TASK_PRIORITY_HIGH,
+        "team": TASK_PRIORITY_HIGH,
     }
     return priority_mapping.get(user_plan, TASK_PRIORITY_NORMAL)
 

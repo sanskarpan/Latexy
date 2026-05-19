@@ -582,3 +582,45 @@ class TestAutoSaveWorker:
         rows = result.scalars().all()
         # Should be exactly 20 after pruning (21 existed + 1 new = 22, pruned to 20)
         assert len(rows) == 20
+
+    async def test_auto_save_uses_current_resume_owner_when_queued_user_is_stale(
+        self, db_session: AsyncSession, db_session_factory, auth_headers: dict, client: AsyncClient
+    ):
+        """Worker should resolve ownership at execution time instead of trusting queued user_id."""
+        resume_id = await _create_resume(client, auth_headers)
+        owner_id = await _get_user_id(db_session, auth_headers)
+        stale_user_id = str(uuid.uuid4())
+
+        from app.workers.auto_save_worker import _do_auto_save
+
+        await _do_auto_save(resume_id, stale_user_id, _LATEX, session_factory=db_session_factory)
+
+        result = await db_session.execute(
+            select(Optimization).where(
+                Optimization.resume_id == resume_id,
+                Optimization.is_auto_save.is_(True),
+            )
+        )
+        rows = result.scalars().all()
+        assert len(rows) == 1
+        assert rows[0].user_id == owner_id
+
+    async def test_auto_save_skips_missing_resume(
+        self, db_session: AsyncSession, db_session_factory
+    ):
+        """Missing resumes should not crash the worker or create orphan checkpoints."""
+        missing_resume_id = str(uuid.uuid4())
+
+        from app.workers.auto_save_worker import _do_auto_save
+
+        await _do_auto_save(
+            missing_resume_id,
+            str(uuid.uuid4()),
+            _LATEX,
+            session_factory=db_session_factory,
+        )
+
+        result = await db_session.execute(
+            select(Optimization).where(Optimization.resume_id == missing_resume_id)
+        )
+        assert result.scalars().all() == []

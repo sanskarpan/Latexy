@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional
 from celery.exceptions import SoftTimeLimitExceeded
 
 from ..core.celery_app import celery_app, get_task_priority
-from ..core.config import get_compile_timeout, settings
+from ..core.config import get_compile_timeout, resolve_plan_family, settings
 from ..core.logging import get_logger
 from ..services.latex_service import latex_service
 from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
@@ -265,7 +265,7 @@ def compile_latex_task(
                 proc.kill()
                 upgrade_msg = (
                     "Upgrade to Pro for a 4-minute compile timeout"
-                    if user_plan in ("free", "basic") else None
+                    if resolve_plan_family(user_plan) in {"free", "basic"} else None
                 )
                 publish_event(job_id, "job.failed", {
                     "stage": "latex_compilation",
@@ -387,7 +387,7 @@ def compile_latex_task(
         logger.error(f"LaTeX task {task_id} hit soft time limit for job {job_id}")
         upgrade_msg = (
             "Upgrade to Pro for a 4-minute compile timeout"
-            if user_plan in ("free", "basic") else None
+            if resolve_plan_family(user_plan) in {"free", "basic"} else None
         )
         publish_event(job_id, "job.failed", {
             "stage": "latex_compilation",
