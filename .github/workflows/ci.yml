@@ -63,8 +63,8 @@ jobs:
       CELERY_RESULT_BACKEND: redis://localhost:6379/0
       SKIP_ENV_VALIDATION: "true"
       # Non-secret CI-only fallbacks — real secrets override via repo secrets
-      JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY || 'ci-jwt-secret-key-minimum-32-chars!!' }}
-      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'ci-better-auth-secret-minimum-48-chars-padding!!' }}
+      JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY || '6f8d0f1ac54098cdd3c71f4f26bd9250d37bbf3efd1e8fc70dffc39d4ed7836a' }}
+      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'sK6fP1vR9mL0dQ4xN8cT2yH7aB5uE3wJ6rZ9pC4nV1k=' }}
       # API_KEY_ENCRYPTION_KEY must be a valid Fernet key (32 url-safe base64 bytes)
       API_KEY_ENCRYPTION_KEY: ${{ secrets.CI_API_KEY_ENCRYPTION_KEY || 'R2OlT4klI7izaWpn19Qv4qGjXvHpW446ZLxMtU8IjUo=' }}
       OPENAI_API_KEY: ""
@@ -119,7 +119,7 @@ jobs:
       NEXT_PUBLIC_APP_URL: "http://localhost:5180"
       NEXT_PUBLIC_API_URL: "http://localhost:8030"
       NEXT_PUBLIC_WS_URL: "ws://localhost:8030"
-      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'ci-better-auth-secret-minimum-48-chars-padding!!' }}
+      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'sK6fP1vR9mL0dQ4xN8cT2yH7aB5uE3wJ6rZ9pC4nV1k=' }}
       BETTER_AUTH_URL: "http://localhost:5180"
       DATABASE_URL: ${{ secrets.CI_DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/latexy_test' }}
       NEXT_TELEMETRY_DISABLED: "1"
@@ -138,3 +138,79 @@ jobs:
       - name: Build
         run: pnpm build
 
+  full-stack-smoke:
+    name: Full-Stack Smoke
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: latexy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/latexy_test
+      REDIS_URL: redis://localhost:6379/0
+      REDIS_CACHE_URL: redis://localhost:6379/1
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/0
+      JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY || '6f8d0f1ac54098cdd3c71f4f26bd9250d37bbf3efd1e8fc70dffc39d4ed7836a' }}
+      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'sK6fP1vR9mL0dQ4xN8cT2yH7aB5uE3wJ6rZ9pC4nV1k=' }}
+      API_KEY_ENCRYPTION_KEY: ${{ secrets.CI_API_KEY_ENCRYPTION_KEY || 'R2OlT4klI7izaWpn19Qv4qGjXvHpW446ZLxMtU8IjUo=' }}
+      BILLING_MODE: disabled
+      ENVIRONMENT: staging
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "backend/requirements-dev.txt"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv pip install -r requirements-dev.txt
+
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run full-stack smoke
+        run: bash scripts/ci/full-stack-smoke.sh
