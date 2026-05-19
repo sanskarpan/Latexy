@@ -36,7 +36,7 @@ import openai
 from celery.exceptions import SoftTimeLimitExceeded
 
 from ..core.celery_app import celery_app, get_task_priority
-from ..core.config import get_compile_timeout, settings
+from ..core.config import get_compile_timeout, resolve_plan_family, settings
 from ..core.logging import get_logger
 from ..services.ats_scoring_service import ats_scoring_service
 from ..services.llm_service import llm_service
@@ -169,8 +169,10 @@ def optimize_and_compile_task(
                 "stage": "latex_compilation",
                 "error_code": error_code,
                 "error_message": compile_error,
-                **({"upgrade_message": "Upgrade to Pro for a 4-minute compile timeout",
-                    "user_plan": user_plan} if is_timeout else {}),
+                **({
+                    "upgrade_message": "Upgrade to Pro for a 4-minute compile timeout",
+                    "user_plan": user_plan,
+                } if is_timeout and resolve_plan_family(user_plan) in {"free", "basic"} else {}),
                 "retryable": False,
                 "optimized_latex": optimized_latex,
                 "changes_made": changes_made,
@@ -267,7 +269,7 @@ def optimize_and_compile_task(
         logger.error(f"Orchestrator task {task_id} exceeded soft time limit for job {job_id}")
         upgrade_msg = (
             "Upgrade to Pro for a 4-minute compile timeout"
-            if user_plan in ("free", "basic") else None
+            if resolve_plan_family(user_plan) in {"free", "basic"} else None
         )
         publish_event(job_id, "job.failed", {
             "stage": current_stage,
