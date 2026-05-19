@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 interface APIKey {
@@ -31,12 +31,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
   const [validating, setValidating] = useState(false)
   const [showKey, setShowKey] = useState<Record<string, boolean>>({})
 
-  useEffect(() => {
-    fetchAPIKeys()
-    fetchProviders()
-  }, [])
-
-  const fetchAPIKeys = async () => {
+  const fetchAPIKeys = useCallback(async () => {
     try {
       const response = await fetch('/api/byok/api-keys')
       if (!response.ok) throw new Error('Failed to fetch API keys')
@@ -47,9 +42,9 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to load keys')
     }
-  }
+  }, [onKeysChange])
 
-  const fetchProviders = async () => {
+  const fetchProviders = useCallback(async () => {
     try {
       const response = await fetch('/api/byok/providers')
       if (!response.ok) throw new Error('Failed to fetch providers')
@@ -67,7 +62,12 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchAPIKeys()
+    fetchProviders()
+  }, [fetchAPIKeys, fetchProviders])
 
   const validateAPIKey = async (provider: string, apiKey: string) => {
     setValidating(true)
