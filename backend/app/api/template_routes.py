@@ -8,17 +8,23 @@ Endpoints:
   GET  /templates/{id}/thumbnail   — PNG thumbnail from MinIO
   GET  /templates/{id}/pdf         — compiled PDF from MinIO
   POST /templates/{id}/use         — authenticated; create a Resume from this template
+  POST /templates                  — admin; create a template
+  PUT  /templates/{id}             — admin; replace template fields
+  PATCH /templates/{id}/activate   — admin; mark active
+  PATCH /templates/{id}/deactivate — admin; mark inactive
+  DELETE /templates/{id}           — admin; delete template
 """
 
 import uuid as _uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import Resume, ResumeTemplate
@@ -84,6 +90,17 @@ class UseTemplateRequest(BaseModel):
     title: Optional[str] = None
 
 
+class TemplateAdminUpsertRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=1000)
+    category: str = Field(..., min_length=1, max_length=100)
+    tags: List[str] = Field(default_factory=list)
+    thumbnail_url: Optional[str] = Field(default=None, max_length=1000)
+    latex_content: str = Field(..., min_length=1)
+    is_active: bool = True
+    sort_order: int = 0
+
+
 # ------------------------------------------------------------------ #
 #  Helpers                                                            #
 # ------------------------------------------------------------------ #
@@ -99,6 +116,22 @@ def _validate_uuid(value: str) -> str:
 
 def _category_label(category: str) -> str:
     return CATEGORY_LABELS.get(category, category.replace("_", " ").title())
+
+
+def _require_valid_category(category: str) -> str:
+    normalized = category.strip()
+    if normalized not in VALID_CATEGORIES:
+        raise HTTPException(status_code=400, detail=f"Unknown category: '{category}'")
+    return normalized
+
+
+async def require_template_admin(
+    admin_secret: Optional[str] = Header(default=None, alias="X-Admin-Secret"),
+):
+    if not settings.ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Admin template management is not configured")
+    if admin_secret != settings.ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
 
 
 def _to_response(t: ResumeTemplate, request: Request) -> TemplateResponse:
@@ -292,3 +325,101 @@ async def use_template(
 
     logger.info("User %s created resume %s from template %s (%s)", user_id, resume.id, template_id, t.name)
     return {"resume_id": resume.id, "title": resume.title}
+
+
+@router.post("", response_model=TemplateDetailResponse, status_code=status.HTTP_201_CREATED)
+async def create_template(
+    body: TemplateAdminUpsertRequest,
+    request: Request,
+    _: None = Depends(require_template_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    template = ResumeTemplate(
+        name=body.name.strip(),
+        description=body.description.strip() if body.description else None,
+        category=_require_valid_category(body.category),
+        tags=[tag.strip() for tag in body.tags if tag.strip()],
+        thumbnail_url=body.thumbnail_url.strip() if body.thumbnail_url else None,
+        latex_content=body.latex_content,
+        is_active=body.is_active,
+        sort_order=body.sort_order,
+    )
+    db.add(template)
+    await db.commit()
+    await db.refresh(template)
+    return _to_detail(template, request)
+
+
+@router.put("/{template_id}", response_model=TemplateDetailResponse)
+async def update_template(
+    template_id: str,
+    body: TemplateAdminUpsertRequest,
+    request: Request,
+    _: None = Depends(require_template_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    _validate_uuid(template_id)
+    template = await db.get(ResumeTemplate, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    template.name = body.name.strip()
+    template.description = body.description.strip() if body.description else None
+    template.category = _require_valid_category(body.category)
+    template.tags = [tag.strip() for tag in body.tags if tag.strip()]
+    template.thumbnail_url = body.thumbnail_url.strip() if body.thumbnail_url else None
+    template.latex_content = body.latex_content
+    template.is_active = body.is_active
+    template.sort_order = body.sort_order
+    await db.commit()
+    await db.refresh(template)
+    return _to_detail(template, request)
+
+
+@router.patch("/{template_id}/activate", response_model=TemplateDetailResponse)
+async def activate_template(
+    template_id: str,
+    request: Request,
+    _: None = Depends(require_template_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    _validate_uuid(template_id)
+    template = await db.get(ResumeTemplate, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    template.is_active = True
+    await db.commit()
+    await db.refresh(template)
+    return _to_detail(template, request)
+
+
+@router.patch("/{template_id}/deactivate", response_model=TemplateDetailResponse)
+async def deactivate_template(
+    template_id: str,
+    request: Request,
+    _: None = Depends(require_template_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    _validate_uuid(template_id)
+    template = await db.get(ResumeTemplate, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    template.is_active = False
+    await db.commit()
+    await db.refresh(template)
+    return _to_detail(template, request)
+
+
+@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_template(
+    template_id: str,
+    _: None = Depends(require_template_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    _validate_uuid(template_id)
+    template = await db.get(ResumeTemplate, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    await db.delete(template)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
