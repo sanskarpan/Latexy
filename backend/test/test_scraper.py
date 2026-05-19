@@ -437,20 +437,15 @@ class TestJobScraperService:
         mock_job_resp = _mock_http_response(200, json_data=job_data)
         mock_board_resp = _mock_http_response(200, json_data=board_data)
 
-        async def mock_gather(*coros, **kw):
-            # Resolve coroutines in order
-            return [mock_job_resp, mock_board_resp]
-
         with (
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
-            patch("app.services.job_scraper_service.asyncio.gather", side_effect=mock_gather),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_client = AsyncMock()
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_cls.return_value = mock_client
+            mock_client.get = AsyncMock(side_effect=[mock_job_resp, mock_board_resp])
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
             result = await service.scrape("https://boards.greenhouse.io/stripe/jobs/987654")
 
@@ -494,9 +489,8 @@ class TestJobScraperService:
         ):
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(return_value=mock_resp)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_cls.return_value = mock_client
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
             result = await service.scrape("https://careers.unknown.com/job/1")
 
@@ -516,9 +510,8 @@ class TestJobScraperService:
         ):
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(return_value=mock_resp)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_cls.return_value = mock_client
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
             # Use a generic URL so no API path is attempted
             result = await service.scrape("https://careers.cloudco.com/job/devops-123")
@@ -541,9 +534,8 @@ class TestJobScraperService:
         ):
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(return_value=mock_resp)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_cls.return_value = mock_client
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
 
             result = await service.scrape("https://www.indeed.com/viewjob?jk=abc123")
 
@@ -580,14 +572,13 @@ class TestScrapeJobEndpoint:
         with (
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
-            patch("app.api.scraper_routes._check_rate_limit", new_callable=AsyncMock),
+            patch("app.api.scraper_routes._check_rate_limit", new=AsyncMock(return_value=None)),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(return_value=mock_resp)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_cls.return_value = mock_client
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             resp = await client.post("/scrape-job-description", json={"url": "https://example.com/job/1"})
 
         assert resp.status_code == 200
@@ -600,14 +591,13 @@ class TestScrapeJobEndpoint:
         mock_resp = _mock_http_response(503)
         with (
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
-            patch("app.api.scraper_routes._check_rate_limit", new_callable=AsyncMock),
+            patch("app.api.scraper_routes._check_rate_limit", new=AsyncMock(return_value=None)),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(return_value=mock_resp)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_cls.return_value = mock_client
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             resp = await client.post("/scrape-job-description", json={"url": "https://example.com/job/999"})
 
         assert resp.status_code == 200
@@ -629,14 +619,13 @@ class TestScrapeJobEndpoint:
         with (
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
-            patch("app.api.scraper_routes._check_rate_limit", new_callable=AsyncMock),
+            patch("app.api.scraper_routes._check_rate_limit", new=AsyncMock(return_value=None)),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(return_value=mock_resp)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_cls.return_value = mock_client
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
             resp = await client.post("/scrape-job-description", json={"url": "https://example.com/job/1"})
 
         data = resp.json()
