@@ -5,13 +5,103 @@ All conversions are rule-based (no LLM), synchronous, and fast (<200ms).
 import io
 import logging
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
 
 class DocumentExportService:
     """Service for exporting LaTeX resumes to other file formats."""
+
+    _INLINE_MD_RE = re.compile(r"(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\t)")
+
+    def _linearize_resume_layout(self, text: str) -> str:
+        """Collapse common multi-column layout helpers into a single reading order."""
+        text = re.sub(r"\\begin\{multicols\}\{[^}]+\}", "", text)
+        text = re.sub(r"\\end\{multicols\}", "", text)
+        text = re.sub(r"\\columnbreak\b", "\n", text)
+        text = re.sub(r"\\begin\{minipage\}\{[^}]+\}", "", text)
+        text = re.sub(r"\\end\{minipage\}", "", text)
+        return text
+
+    def _replace_resume_macros(self, text: str) -> str:
+        """Expand popular resume macros into markdown-friendly text before generic stripping."""
+        text = self._linearize_resume_layout(text)
+
+        def _resume_subheading(match: re.Match[str]) -> str:
+            company, dates, title, location = [g.strip() for g in match.groups()]
+            first = f"**{company}**\t{dates}" if dates else f"**{company}**"
+            second_parts = [f"*{title}*" if title else "", location]
+            second = " — ".join(part for part in second_parts if part)
+            return f"\n{first}\n{second}\n"
+
+        def _resume_item(match: re.Match[str]) -> str:
+            return f"\n- {match.group(1).strip()}\n"
+
+        def _resume_subitem(match: re.Match[str]) -> str:
+            key, value = [g.strip() for g in match.groups()]
+            return f"\n- **{key}:** {value}\n"
+
+        def _cv_entry(match: re.Match[str]) -> str:
+            year, title, org, location, detail_a, detail_b = [g.strip() for g in match.groups()]
+            first = " — ".join(part for part in (title, org) if part)
+            if year:
+                first = f"**{first}**\t{year}" if first else f"**{year}**"
+            else:
+                first = f"**{first}**" if first else ""
+            lines = [first]
+            if location:
+                lines.append(location)
+            for detail in (detail_a, detail_b):
+                if detail:
+                    lines.append(f"- {detail}")
+            return "\n" + "\n".join(line for line in lines if line) + "\n"
+
+        def _cv_event(match: re.Match[str]) -> str:
+            title, org, dates, location = [g.strip() for g in match.groups()]
+            first = " — ".join(part for part in (title, org) if part)
+            first = f"**{first}**\t{dates}" if dates else f"**{first}**"
+            second = location
+            return f"\n{first}\n{second}\n" if second else f"\n{first}\n"
+
+        def _job(match: re.Match[str]) -> str:
+            company, title, dates, location = [g.strip() for g in match.groups()]
+            first = f"**{company}**\t{dates}" if dates else f"**{company}**"
+            second = " — ".join(part for part in (title, location) if part)
+            return f"\n{first}\n{second}\n" if second else f"\n{first}\n"
+
+        replacements: List[Tuple[str, Any]] = [
+            (r"\\resumeSubheading\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}", _resume_subheading),
+            (r"\\resumeItem\{([^}]*)\}", _resume_item),
+            (r"\\resumeSubItem\{([^}]*)\}\{([^}]*)\}", _resume_subitem),
+            (r"\\cventry\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}", _cv_entry),
+            (r"\\cvevent\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}", _cv_event),
+            (r"\\job\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}", _job),
+        ]
+        for pattern, repl in replacements:
+            text = re.sub(pattern, repl, text)
+
+        text = re.sub(r"\\resumeItemListStart\b", "", text)
+        text = re.sub(r"\\resumeItemListEnd\b", "", text)
+        return text
+
+    def _add_inline_markdown_runs(self, paragraph: Any, text: str) -> None:
+        """Render a tiny subset of markdown markers into python-docx runs."""
+        parts = [part for part in self._INLINE_MD_RE.split(text) if part]
+        for part in parts:
+            if part == "\t":
+                paragraph.add_run("\t")
+                continue
+            run = paragraph.add_run(part)
+            if part.startswith("**") and part.endswith("**"):
+                run.text = part[2:-2]
+                run.bold = True
+            elif part.startswith("*") and part.endswith("*"):
+                run.text = part[1:-1]
+                run.italic = True
+            elif part.startswith("`") and part.endswith("`"):
+                run.text = part[1:-1]
+                run.font.name = "Courier New"
 
     # ─── Text Extraction ────────────────────────────────────────────────────
 
@@ -53,7 +143,7 @@ class DocumentExportService:
 
     def to_markdown(self, latex_content: str) -> str:
         """Convert LaTeX resume to Markdown."""
-        text = latex_content
+        text = self._replace_resume_macros(latex_content)
 
         # Escaped special characters → plain text (before any other processing)
         text = text.replace(r'\%', '%')
@@ -126,7 +216,7 @@ class DocumentExportService:
         # Clean up braces, extra whitespace
         text = re.sub(r'[{}]', '', text)
         text = re.sub(r'\n{3,}', '\n\n', text)
-        text = re.sub(r'[ \t]+', ' ', text)
+        text = re.sub(r' {2,}', ' ', text)
         # Clean trailing spaces on lines
         text = re.sub(r' +\n', '\n', text)
 
@@ -508,21 +598,23 @@ class DocumentExportService:
                 doc.add_paragraph().paragraph_format.space_after = Pt(2)
             elif line.startswith('### '):
                 p = doc.add_paragraph()
-                run = p.add_run(line[4:].strip())
-                run.bold = True
-                run.font.size = Pt(11)
+                self._add_inline_markdown_runs(p, line[4:].strip())
+                for run in p.runs:
+                    run.bold = True if run.bold is None else run.bold
+                    run.font.size = Pt(11)
             elif line.startswith('- '):
                 # Bullet point
                 p = doc.add_paragraph(style='List Bullet')
-                p.add_run(line[2:].strip())
+                self._add_inline_markdown_runs(p, line[2:].strip())
                 p.paragraph_format.space_after = Pt(2)
             elif line.startswith('**') and line.endswith('**'):
                 p = doc.add_paragraph()
-                run = p.add_run(line.strip('*'))
-                run.bold = True
+                self._add_inline_markdown_runs(p, line)
+                for run in p.runs:
+                    run.bold = True
             else:
                 p = doc.add_paragraph()
-                p.add_run(line)
+                self._add_inline_markdown_runs(p, line)
                 p.paragraph_format.space_after = Pt(2)
 
         buf = io.BytesIO()
