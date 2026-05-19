@@ -1,9 +1,10 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react'
 
 let _latexLanguageRegistered = false
-import Editor, { type OnMount } from '@monaco-editor/react'
+import type { OnMount } from '@monaco-editor/react'
 import type { LogLine } from '@/hooks/useJobStream'
 import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import ATSScoreBadge from '@/components/ATSScoreBadge'
@@ -13,6 +14,33 @@ import { addWordToDict, getPersonalDict } from '@/hooks/useSpellCheck'
 import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
 import { LATEX_SEARCH_PRESETS, type LatexSearchPreset } from '@/data/latex-search-presets'
 import { observeChanges, type TrackedChange, type TrackChangesHandle } from '@/lib/yjs-track-changes'
+
+const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
+  ssr: false,
+  loading: () => <div className="h-full w-full bg-[#07090f]" aria-hidden="true" />,
+})
+
+type MonacoEditorInstance = import('monaco-editor').editor.IStandaloneCodeEditor
+type MonacoNamespace = typeof import('monaco-editor')
+type LatexyMonacoTestWindow = Window & {
+  __latexyMonacoEditor?: MonacoEditorInstance
+  __latexyMonaco?: MonacoNamespace
+}
+
+function exposeMonacoTestHook(editor: MonacoEditorInstance, monaco: MonacoNamespace) {
+  if (process.env.NODE_ENV === 'production' || typeof window === 'undefined') return
+  const testWindow = window as LatexyMonacoTestWindow
+  testWindow.__latexyMonacoEditor = editor
+  testWindow.__latexyMonaco = monaco
+}
+
+function clearMonacoTestHook(editor?: MonacoEditorInstance | null) {
+  if (process.env.NODE_ENV === 'production' || typeof window === 'undefined') return
+  const testWindow = window as LatexyMonacoTestWindow
+  if (editor && testWindow.__latexyMonacoEditor && testWindow.__latexyMonacoEditor !== editor) return
+  delete testWindow.__latexyMonacoEditor
+  delete testWindow.__latexyMonaco
+}
 
 export interface LaTeXEditorRef {
   setValue: (value: string) => void
@@ -494,8 +522,13 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
       monaco.editor.setModelMarkers(model, 'latex-log', markers)
 
-      // Refresh CodeLens so "Explain this error" links appear for new markers
-      editor.trigger('latexy', 'editor.action.refreshCodeLenses', null)
+      // Monaco builds without the CodeLens refresh command should not emit a runtime error.
+      const supportsCodeLensRefresh = editor
+        .getSupportedActions()
+        .some((action: { id: string }) => action.id === 'editor.action.refreshCodeLenses')
+      if (supportsCodeLensRefresh) {
+        editor.trigger('latexy', 'editor.action.refreshCodeLenses', null)
+      }
     }, [logLines])
 
     // Sync editor position from PDF click
@@ -696,6 +729,17 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editorRef.current, monacoRef.current])
 
+    // Keep the Monaco model in sync with fetched resume content until the
+    // collaborative Y.js document has completed its initial sync and binding.
+    useEffect(() => {
+      if (!collabEnabled || bindingRef.current) return
+      const editor = editorRef.current
+      const model = editor?.getModel()
+      if (!model) return
+      if (model.getValue() === value) return
+      model.setValue(value)
+    }, [collabEnabled, value])
+
     // Auto-compile: debounce 2s after last keystroke
     useEffect(() => {
       const editor = editorRef.current
@@ -721,6 +765,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     // Cleanup on unmount
     useEffect(() => {
       return () => {
+        clearMonacoTestHook(editorRef.current)
         for (const d of disposablesRef.current) d?.dispose?.()
         disposablesRef.current = []
       }
@@ -729,6 +774,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     const handleEditorDidMount: OnMount = async (editor, monaco) => {
       editorRef.current = editor
       monacoRef.current = monaco
+      exposeMonacoTestHook(editor, monaco)
+      disposablesRef.current.push({ dispose: () => clearMonacoTestHook(editor) })
+
+      if (collabEnabled && value && !editor.getValue()) {
+        editor.setValue(value)
+      }
 
       // ── Language registration ──────────────────────────────────────
       if (!_latexLanguageRegistered) {
@@ -1427,9 +1478,26 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
           const yText = ydoc.getText('content')
           const model = editor.getModel()
-          if (model) {
+          if (!model) return
+
+          const bindCollabDocument = () => {
+            if (bindingRef.current) return
+
+            const localContent = model.getValue()
+            if (yText.length === 0 && localContent) {
+              ydoc.transact(() => {
+                yText.insert(0, localContent)
+              })
+            }
+
             const binding = new MonacoBinding(yText, model, new Set([editor]), provider.awareness)
             bindingRef.current = binding
+
+            // Track changes (Feature 41)
+            trackChangesRef.current?.cleanup()
+            trackChangesRef.current = observeChanges(yText, provider, (updatedChanges) => {
+              onTrackedChangesUpdateRef.current?.(updatedChanges)
+            })
           }
 
           provider.awareness.setLocalStateField('user', {
@@ -1450,20 +1518,14 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           // Seed the Y.Doc with the current value once synced (if remote doc is empty)
           const handleSync = (isSynced: boolean) => {
             if (!isSynced) return
-            if (yText.length === 0 && value) {
-              ydoc.transact(() => yText.insert(0, value))
-            }
+            bindCollabDocument()
             provider.off('sync', handleSync)
           }
           provider.on('sync', handleSync)
+          if (provider.synced) bindCollabDocument()
 
           ydocRef.current = ydoc
           providerRef.current = provider
-
-          // Track changes (Feature 41)
-          trackChangesRef.current = observeChanges(yText, provider, (updatedChanges) => {
-            onTrackedChangesUpdateRef.current?.(updatedChanges)
-          })
         } catch (err) {
           console.warn('[LaTeXEditor] Y.js collab init failed:', err)
         }
@@ -1473,78 +1535,6 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
     return (
       <div className="flex h-full flex-col">
-        <style>{`
-          .synctex-highlight {
-            background-color: rgba(245,158,11,0.15) !important;
-            border-left: 2px solid #f59e0b !important;
-          }
-          .proofreader-weak {
-            text-decoration: underline wavy #f59e0b;
-            text-underline-offset: 2px;
-          }
-          .proofreader-passive {
-            text-decoration: underline wavy #60a5fa;
-            text-underline-offset: 2px;
-          }
-          .proofreader-buzzword {
-            text-decoration: underline wavy #a78bfa;
-            text-underline-offset: 2px;
-          }
-          .proofreader-vague {
-            text-decoration: underline wavy #f87171;
-            text-underline-offset: 2px;
-          }
-          /* Y.js remote cursor labels */
-          .yRemoteSelectionHead::after {
-            content: attr(data-user-name);
-            font-size: 10px;
-            font-family: sans-serif;
-            padding: 1px 4px;
-            border-radius: 3px;
-            position: absolute;
-            top: -1.4em;
-            left: 0;
-            white-space: nowrap;
-            background-color: var(--user-color, #7c3aed);
-            color: #fff;
-            pointer-events: none;
-            z-index: 10;
-          }
-          .yRemoteSelectionHead {
-            position: absolute;
-            border-left: 2px solid var(--user-color, #7c3aed);
-            height: 100%;
-          }
-          .yRemoteSelection {
-            background-color: var(--user-color-light, rgba(124,58,237,0.12));
-          }
-          /* Tracked changes (Feature 41) */
-          .tracked-insertion {
-            background-color: rgba(74,222,128,0.15);
-            border-bottom: 2px solid rgba(74,222,128,0.6);
-          }
-          .tracked-deletion-glyph {
-            width: 8px !important;
-            height: 8px !important;
-            border-radius: 50%;
-            background-color: rgba(248,113,113,0.8);
-            margin-top: 6px;
-          }
-          /* Comment gutter icon (Feature 74) */
-          .comment-gutter-icon {
-            width: 14px !important;
-            height: 14px !important;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b5cf6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'%3E%3C/path%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-size: contain;
-            cursor: pointer;
-            opacity: 0.7;
-            margin-top: 3px;
-          }
-          .comment-gutter-icon:hover {
-            opacity: 1;
-          }
-        `}</style>
         {!value ? (
           <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
             <p className="text-sm uppercase tracking-[0.14em] text-zinc-600">Empty document</p>
@@ -1569,7 +1559,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               onClose={() => setSearchPanelOpen(false)}
               onPresetSelect={handlePresetSelect}
             />
-            <Editor
+            <MonacoEditor
               height="100%"
               defaultLanguage="latex"
               {...(collabEnabled ? { defaultValue: '' } : { value })}
