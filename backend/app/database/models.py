@@ -67,6 +67,9 @@ class User(Base):
     # Relationships
     resumes: Mapped[List["Resume"]] = relationship("Resume", back_populates="user", cascade="all, delete-orphan")
     api_keys: Mapped[List["UserAPIKey"]] = relationship("UserAPIKey", back_populates="user", cascade="all, delete-orphan")
+    developer_api_keys: Mapped[List["DeveloperAPIKey"]] = relationship(
+        "DeveloperAPIKey", back_populates="user", cascade="all, delete-orphan"
+    )
     compilations: Mapped[List["Compilation"]] = relationship("Compilation", back_populates="user")
     optimizations: Mapped[List["Optimization"]] = relationship("Optimization", back_populates="user")
     subscriptions: Mapped[List["Subscription"]] = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
@@ -76,6 +79,17 @@ class User(Base):
     cover_letters: Mapped[List["CoverLetter"]] = relationship("CoverLetter", back_populates="user")
     job_applications: Mapped[List["JobApplication"]] = relationship("JobApplication", back_populates="user", cascade="all, delete-orphan")
     interview_preps: Mapped[List["InterviewPrep"]] = relationship("InterviewPrep", back_populates="user", cascade="all, delete-orphan")
+    owned_team_seats: Mapped[List["TeamSeat"]] = relationship(
+        "TeamSeat",
+        foreign_keys="[TeamSeat.owner_user_id]",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+    )
+    team_memberships: Mapped[List["TeamSeat"]] = relationship(
+        "TeamSeat",
+        foreign_keys="[TeamSeat.member_user_id]",
+        back_populates="member",
+    )
 
 class DeviceTrial(Base):
     """Device trial tracking for freemium model."""
@@ -114,6 +128,31 @@ class UserAPIKey(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="api_keys")
+
+
+class DeveloperAPIKey(Base):
+    """Developer public API keys (Feature 21)."""
+    __tablename__ = "developer_api_keys"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    key_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    key_prefix: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    scopes: Mapped[List[str]] = mapped_column(
+        ARRAY(String),
+        nullable=False,
+        default=lambda: ["compile", "optimize", "ats", "export"],
+        server_default='{"compile","optimize","ats","export"}',
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship("User", back_populates="developer_api_keys")
 
 class Resume(Base):
     """Resume model for storing user resumes."""
@@ -306,6 +345,58 @@ class Payment(Base):
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="payments")
     subscription: Mapped[Optional["Subscription"]] = relationship("Subscription", back_populates="payments")
+
+
+class TeamSeat(Base):
+    """Team plan seat allocation and invitations (Feature 32)."""
+    __tablename__ = "team_seats"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "member_email", name="uq_team_seats_owner_email"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    owner_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    member_email: Mapped[str] = mapped_column(Text, nullable=False)
+    member_user_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="invited", server_default="invited")
+    invited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    joined_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    owner: Mapped["User"] = relationship("User", foreign_keys=[owner_user_id], back_populates="owned_team_seats")
+    member: Mapped[Optional["User"]] = relationship("User", foreign_keys=[member_user_id], back_populates="team_memberships")
+
+
+class CouponCode(Base):
+    """Billing coupon codes (Feature 32)."""
+    __tablename__ = "coupon_codes"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    code: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    discount_percent: Mapped[int] = mapped_column(Integer, nullable=False)
+    applicable_plans: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    max_uses: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    used_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CouponRedemption(Base):
+    """Audit trail for coupon redemptions."""
+    __tablename__ = "coupon_redemptions"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    coupon_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("coupon_codes.id", ondelete="SET NULL"), nullable=True
+    )
+    user_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    redeemed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 class CoverLetter(Base):
     """Cover letter generated from a resume."""
