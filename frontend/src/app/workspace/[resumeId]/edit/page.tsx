@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
@@ -49,33 +50,16 @@ import {
   TrendingUp,
   Keyboard,
   Pencil,
+  GraduationCap,
 } from 'lucide-react'
-import { apiClient, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type DropboxResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
+import { apiClient, type AcademicCVReport, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type DropboxResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'
-import ShareResumeModal from '@/components/ShareResumeModal'
 import { useJobStream, type JobStreamState } from '@/hooks/useJobStream'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
-import LogViewer from '@/components/LogViewer'
-import PDFPreview from '@/components/PDFPreview'
 import LoadingSpinner from '@/components/LoadingSpinner'
-import DeepAnalysisPanel from '@/components/ats/DeepAnalysisPanel'
-import InterviewPrepPanel from '@/components/InterviewPrepPanel'
-import ExportDropdown from '@/components/ExportDropdown'
-import MultiFormatUpload from '@/components/MultiFormatUpload'
-import VersionHistoryPanel from '@/components/VersionHistoryPanel'
-import SaveCheckpointPopover from '@/components/SaveCheckpointPopover'
-import DiffViewerModal from '@/components/DiffViewerModal'
-import CompareModal from '@/components/CompareModal'
-import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
-import ReferencesPanel from '@/components/ReferencesPanel'
-import DesignPanel from '@/components/DesignPanel'
 import BulletGeneratorWidget from '@/components/BulletGeneratorWidget'
 import SummaryGeneratorWidget from '@/components/SummaryGeneratorWidget'
-import ProofreadPanel from '@/components/ProofreadPanel'
-import PackageManagerPanel from '@/components/PackageManagerPanel'
-import LinterPanel from '@/components/LinterPanel'
-import SymbolPalette from '@/components/SymbolPalette'
 import QrCodeInserter from '@/components/QrCodeInserter'
 import DateStandardizerPanel from '@/components/DateStandardizerPanel'
 import AgeAnalysisPanel from '@/components/AgeAnalysisPanel'
@@ -84,35 +68,53 @@ import SalaryEstimatorPanel from '@/components/SalaryEstimatorPanel'
 import SectionReorderPanel from '@/components/SectionReorderPanel'
 import WatermarkDownloadPopover from '@/components/WatermarkDownloadPopover'
 import CompilerSelector from '@/components/CompilerSelector'
-import CompileSettingsModal from '@/components/CompileSettingsModal'
-import CollaboratorPanel from '@/components/CollaboratorPanel'
-import ChangesPanel from '@/components/ChangesPanel'
-import LaTeXDocPanel from '@/components/LaTeXDocPanel'
 import TemplateCustomizerPanel from '@/components/TemplateCustomizerPanel'
 import type { TrackedChange } from '@/lib/yjs-track-changes'
 import { GitMerge } from 'lucide-react'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { useConfidenceScore } from '@/hooks/useConfidenceScore'
-import ConfidenceScorePanel from '@/components/ConfidenceScorePanel'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
 import { useSpellCheck, addWordToDict } from '@/hooks/useSpellCheck'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
-import KeyboardShortcutsPanel from '@/components/KeyboardShortcutsPanel'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 import MobileEditor from '@/components/MobileEditor'
 import OfflineBanner, { useOnlineStatus } from '@/components/OfflineBanner'
 import { saveDraft, getPendingDrafts, deleteDraft, pendingDraftCount } from '@/lib/offline-drafts'
 import { enqueueCompile, getQueuedCompiles, dequeueCompile } from '@/lib/compile-queue'
-import WYSIWYGEditor from '@/components/WYSIWYGEditor'
 import { parseResume } from '@/lib/wysiwyg/latex-parser'
 import { serializeResume } from '@/lib/wysiwyg/latex-serializer'
 import type { ResumeDoc } from '@/lib/wysiwyg/document-model'
-import SnippetMarketplace from '@/components/SnippetMarketplace'
-import MacroLibraryPanel from '@/components/MacroLibraryPanel'
-import TikZEditor from '@/components/TikZEditor'
-import SlideViewer from '@/components/SlideViewer'
-import CompileErrorHistory from '@/components/CompileErrorHistory'
+const ShareResumeModal = dynamic(() => import('@/components/ShareResumeModal'))
+const LogViewer = dynamic(() => import('@/components/LogViewer'))
+const PDFPreview = dynamic(() => import('@/components/PDFPreview'))
+const DeepAnalysisPanel = dynamic(() => import('@/components/ats/DeepAnalysisPanel'))
+const InterviewPrepPanel = dynamic(() => import('@/components/InterviewPrepPanel'))
+const ExportDropdown = dynamic(() => import('@/components/ExportDropdown'))
+const MultiFormatUpload = dynamic(() => import('@/components/MultiFormatUpload'))
+const VersionHistoryPanel = dynamic(() => import('@/components/VersionHistoryPanel'))
+const SaveCheckpointPopover = dynamic(() => import('@/components/SaveCheckpointPopover'))
+const DiffViewerModal = dynamic(() => import('@/components/DiffViewerModal'))
+const CompareModal = dynamic(() => import('@/components/CompareModal'))
+const ErrorExplainerPanel = dynamic(() => import('@/components/ErrorExplainerPanel'))
+const ReferencesPanel = dynamic(() => import('@/components/ReferencesPanel'))
+const DesignPanel = dynamic(() => import('@/components/DesignPanel'))
+const ProofreadPanel = dynamic(() => import('@/components/ProofreadPanel'))
+const PackageManagerPanel = dynamic(() => import('@/components/PackageManagerPanel'))
+const LinterPanel = dynamic(() => import('@/components/LinterPanel'))
+const SymbolPalette = dynamic(() => import('@/components/SymbolPalette'))
+const CompileSettingsModal = dynamic(() => import('@/components/CompileSettingsModal'))
+const CollaboratorPanel = dynamic(() => import('@/components/CollaboratorPanel'))
+const ChangesPanel = dynamic(() => import('@/components/ChangesPanel'))
+const LaTeXDocPanel = dynamic(() => import('@/components/LaTeXDocPanel'))
+const ConfidenceScorePanel = dynamic(() => import('@/components/ConfidenceScorePanel'))
+const KeyboardShortcutsPanel = dynamic(() => import('@/components/KeyboardShortcutsPanel'))
+const WYSIWYGEditor = dynamic(() => import('@/components/WYSIWYGEditor'))
+const SnippetMarketplace = dynamic(() => import('@/components/SnippetMarketplace'))
+const MacroLibraryPanel = dynamic(() => import('@/components/MacroLibraryPanel'))
+const TikZEditor = dynamic(() => import('@/components/TikZEditor'))
+const SlideViewer = dynamic(() => import('@/components/SlideViewer'))
+const CompileErrorHistory = dynamic(() => import('@/components/CompileErrorHistory'))
 
 
 type RightTab = 'preview' | 'ai' | 'logs' | 'history' | 'references' | 'interview' | 'design' | 'proofread' | 'packages' | 'linter' | 'symbols' | 'changes' | 'docs' | 'layout' | 'snippets' | 'macros' | 'tikz'
@@ -718,6 +720,7 @@ export default function ResumeEditPage() {
   const resumeId = params.resumeId as string
   const flags = useFeatureFlags()
   const { data: sessionData } = useSession()
+  const sessionUserId = sessionData?.user?.id ?? null
 
   // Core state
   const [title, setTitle] = useState('')
@@ -820,6 +823,11 @@ export default function ResumeEditPage() {
   const [forkPopoverOpen, setForkPopoverOpen] = useState(false)
   const [forkTitleInput, setForkTitleInput] = useState('')
   const [isForkingResume, setIsForkingResume] = useState(false)
+  const [academicReport, setAcademicReport] = useState<AcademicCVReport | null>(null)
+  const [academicConvertOpen, setAcademicConvertOpen] = useState(false)
+  const [academicTargetIndustry, setAcademicTargetIndustry] = useState<'tech' | 'data_science' | 'finance' | 'consulting' | 'product' | 'other'>('tech')
+  const [academicRoleDescription, setAcademicRoleDescription] = useState('')
+  const [isAcademicConverting, setIsAcademicConverting] = useState(false)
 
   // Error explainer
   const [explainerOpen, setExplainerOpen] = useState(false)
@@ -1011,6 +1019,9 @@ export default function ResumeEditPage() {
         setShareUrl(data.share_url ?? null)
         // Feature 86 — presentation support
         setDocumentType(data.document_type ?? 'resume')
+        if ((data.document_type ?? 'resume') !== 'presentation') {
+          apiClient.getAcademicCVReport(resumeId).then(setAcademicReport).catch(() => {})
+        }
 
         // GitHub sync state
         setGhSyncEnabled(data.github_sync_enabled ?? false)
@@ -1018,7 +1029,7 @@ export default function ResumeEditPage() {
         setDbxSyncEnabled(data.dropbox_sync_enabled ?? false)
 
         // Collaboration ownership (Feature 40)
-        setCollabIsOwner(data.user_id === sessionData?.user?.id)
+        setCollabIsOwner(data.user_id === sessionUserId)
 
         setParentResumeId(data.parent_resume_id ?? null)
         // Fetch parent title if this is a variant
@@ -1046,7 +1057,7 @@ export default function ResumeEditPage() {
       }
     }
     fetchResume()
-  }, [resumeId, router])
+  }, [resumeId, router, sessionUserId])
 
   // Stream AI tokens to Monaco in real-time (direct model mutation, no setState per token)
   useEffect(() => {
@@ -1059,6 +1070,9 @@ export default function ResumeEditPage() {
     if (aiStream.status === 'completed') {
       const finalLatex = editorRef.current?.getValue() || ''
       setLatexContent(finalLatex)
+      if (documentType !== 'presentation') {
+        apiClient.getAcademicCVReport(resumeId).then(setAcademicReport).catch(() => {})
+      }
       // Feature 1: save optimization record
       if (finalLatex && aiJobId) {
         const baselineLatex = undoStack[undoStack.length - 1]?.latex || ''
@@ -1075,7 +1089,7 @@ export default function ResumeEditPage() {
         apiClient.trackFeatureUsage('ai_optimization')
       }
     }
-  }, [aiStream.status]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [aiStream.status, documentType, resumeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track compilation completion for analytics
   useEffect(() => {
@@ -1086,7 +1100,7 @@ export default function ResumeEditPage() {
     } else if (compileStream.status === 'failed' && compileJobId) {
       apiClient.trackCompilation(compileJobId, 'failed')
     }
-  }, [compileStream.status, compileJobId, refetchATS])
+  }, [compileStream.status, compileJobId, documentType, refetchATS])
 
   // Load PDF after either job completes
   useEffect(() => {
@@ -1674,6 +1688,27 @@ export default function ResumeEditPage() {
     }
   }, [resumeId, forkTitleInput, isForkingResume, router])
 
+  const handleAcademicConvert = useCallback(async () => {
+    if (isAcademicConverting) return
+    setIsAcademicConverting(true)
+    try {
+      const result = await apiClient.convertAcademicCV(resumeId, {
+        target_industry: academicTargetIndustry,
+        target_role_description: academicRoleDescription.trim() || undefined,
+        force: !!academicReport && !academicReport.is_academic_cv,
+      })
+      setAcademicReport(result.report)
+      setAcademicConvertOpen(false)
+      setAcademicRoleDescription('')
+      toast.success('Industry resume variant created')
+      router.push(`/workspace/${result.variant_resume_id}/edit`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to convert academic CV')
+    } finally {
+      setIsAcademicConverting(false)
+    }
+  }, [resumeId, academicTargetIndustry, academicRoleDescription, academicReport, isAcademicConverting, router])
+
   const isCompiling = compileStream.status === 'queued' || compileStream.status === 'processing'
   const isAiRunning = aiStream.status === 'queued' || aiStream.status === 'processing'
   const isAnyRunning = isCompiling || isAiRunning
@@ -1859,6 +1894,19 @@ export default function ResumeEditPage() {
             <TrendingUp size={12} />
             Career Path
           </Link>
+
+          <button
+            onClick={() => setAcademicConvertOpen(true)}
+            title="Convert academic CV to industry resume"
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition ${
+              academicReport?.is_academic_cv
+                ? 'text-cyan-200 hover:bg-cyan-500/10 hover:text-cyan-100'
+                : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200'
+            }`}
+          >
+            <GraduationCap size={12} />
+            CV→Industry
+          </button>
 
           {/* Create Variant button */}
           <div className="relative">
@@ -2169,6 +2217,19 @@ export default function ResumeEditPage() {
           </div>
           {/* Offline status banner (Feature 79F) */}
           <OfflineBanner pendingCount={offlinePendingCount} />
+          {academicReport?.is_academic_cv && (
+            <div className="flex shrink-0 items-center justify-between border-b border-cyan-500/20 bg-cyan-500/10 px-4 py-1.5">
+              <span className="text-[11px] text-cyan-200">
+                Academic CV detected ({academicReport.estimated_pages} pages, {academicReport.detected_sections.join(', ') || 'academic signals'}). Convert it into an industry resume variant.
+              </span>
+              <button
+                onClick={() => setAcademicConvertOpen(true)}
+                className="ml-3 text-[11px] text-cyan-100 underline hover:text-white"
+              >
+                Convert with AI →
+              </button>
+            </div>
+          )}
           {/* Page overflow warning banner */}
           {pageCount !== null && pageCount > 1 && (
             <div className="flex shrink-0 items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-4 py-1.5">
@@ -2592,7 +2653,7 @@ export default function ResumeEditPage() {
                 onJumpToLine={(line) => editorRef.current?.highlightLine(line)}
                 onApplyFix={(issue) => {
                   if (!issue.fix) return
-                  const currentContent = editorRef.current?.getValue() ?? latexContent
+                  const currentContent = editorRef.current?.getValue() || latexContent
                   const lines = currentContent.split('\n')
                   const lineContent = lines[issue.line - 1] ?? ''
                   const fixed = issue.fix(lineContent)
@@ -2602,7 +2663,7 @@ export default function ResumeEditPage() {
                   setLatexContent(newLines.join('\n'))
                 }}
                 onAutoFixAll={() => {
-                  const currentContent = editorRef.current?.getValue() ?? latexContent
+                  const currentContent = editorRef.current?.getValue() || latexContent
                   const fixed = runLintAutoFixAll(currentContent)
                   editorRef.current?.setValue(fixed)
                   setLatexContent(fixed)
@@ -2865,6 +2926,80 @@ export default function ResumeEditPage() {
           onClose={() => setShareModalOpen(false)}
           onShareTokenChange={(token, url) => { setShareToken(token); setShareUrl(url) }}
         />
+      )}
+
+      {academicConvertOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm" onClick={() => setAcademicConvertOpen(false)}>
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0f1012] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-base font-semibold text-zinc-100">Academic CV → Industry Resume</h2>
+                <p className="mt-1 text-sm text-zinc-400">
+                  Create a new variant that reframes academic work into industry outcomes without overwriting the original CV.
+                </p>
+              </div>
+              <button onClick={() => setAcademicConvertOpen(false)} className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300">
+                <X size={16} />
+              </button>
+            </div>
+
+            {academicReport && (
+              <div className="mt-4 rounded-xl border border-cyan-400/15 bg-cyan-500/[0.06] p-3 text-xs text-cyan-100/90">
+                <div>Detection confidence: {Math.round(academicReport.confidence * 100)}%</div>
+                <div className="mt-1">Signals: {academicReport.detected_sections.join(', ') || 'general academic structure'}</div>
+              </div>
+            )}
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="grid gap-2 text-sm text-zinc-300">
+                <span>Target industry</span>
+                <select
+                  value={academicTargetIndustry}
+                  onChange={(e) => setAcademicTargetIndustry(e.target.value as typeof academicTargetIndustry)}
+                  className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-300/40"
+                >
+                  <option value="tech">Software Engineering / Tech</option>
+                  <option value="data_science">Data Science / ML</option>
+                  <option value="finance">Finance / Quant</option>
+                  <option value="consulting">Consulting</option>
+                  <option value="product">Product Management</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <div className="rounded-lg border border-white/8 bg-white/[0.03] p-3 text-xs text-zinc-500">
+                The output is saved as a child variant. You keep the original academic CV unchanged.
+              </div>
+            </div>
+
+            <label className="mt-4 grid gap-2 text-sm text-zinc-300">
+              <span>Optional target role or job description</span>
+              <textarea
+                value={academicRoleDescription}
+                onChange={(e) => setAcademicRoleDescription(e.target.value)}
+                rows={7}
+                placeholder="Paste a target role description to bias the conversion toward the right framing and keywords."
+                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-300/40"
+              />
+            </label>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setAcademicConvertOpen(false)}
+                className="rounded-md px-3 py-2 text-sm text-zinc-500 transition hover:text-zinc-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAcademicConvert}
+                disabled={isAcademicConverting}
+                className="inline-flex items-center gap-2 rounded-md bg-cyan-500/20 px-3 py-2 text-sm font-medium text-cyan-100 ring-1 ring-cyan-400/20 transition hover:bg-cyan-500/30 disabled:opacity-50"
+              >
+                {isAcademicConverting ? <Loader2 size={14} className="animate-spin" /> : <GraduationCap size={14} />}
+                {isAcademicConverting ? 'Creating Variant…' : 'Create Industry Variant'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Keyboard shortcuts panel (Feature 61) */}
