@@ -10,12 +10,10 @@ job_cleanup_{task_id}, health_check_{task_id}) purely for internal progress
 tracking.  These ids are NOT user-facing WebSocket channels, so the events
 published here will not be consumed by any frontend client.
 
-Async job_status_manager calls are still used for READ operations
-(get_active_jobs, get_job_status, delete_job_data, health_check) because
-event_publisher only provides write helpers.
+Read operations also use the synchronous Redis helpers so Celery prefork
+workers never reuse async Redis clients across closed event loops.
 """
 
-import asyncio
 import shutil
 import time
 from datetime import datetime, timedelta
@@ -275,8 +273,7 @@ def cleanup_expired_jobs_task(
             "message": "Scanning for expired jobs",
         })
 
-        # Get all active job IDs (READ operation — still uses async manager)
-        active_jobs = asyncio.run(job_status_manager.get_active_jobs())
+        active_jobs = job_status_manager.get_active_jobs_sync()
 
         if not active_jobs:
             logger.info("No active jobs found for cleanup")
@@ -328,8 +325,7 @@ def cleanup_expired_jobs_task(
                 try:
                     jobs_scanned += 1
 
-                    # Get job status
-                    status_data = asyncio.run(job_status_manager.get_job_status(job_id_to_check))
+                    status_data = job_status_manager.get_job_status_sync(job_id_to_check)
 
                     if status_data:
                         updated_at = status_data.get("updated_at", 0)
@@ -337,8 +333,7 @@ def cleanup_expired_jobs_task(
 
                         # Check if job is expired
                         if updated_at < cutoff_time and job_status in ["completed", "failed", "cancelled"]:
-                            # Delete job data
-                            asyncio.run(job_status_manager.delete_job_data(job_id_to_check))
+                            job_status_manager.delete_job_data_sync(job_id_to_check)
                             jobs_cleaned += 1
                             logger.debug(f"Cleaned expired job: {job_id_to_check}")
 
@@ -453,8 +448,7 @@ def health_check_task(
             "message": "Checking Redis connections",
         })
 
-        # Check Redis health (READ operation — still uses async manager)
-        redis_health = asyncio.run(redis_manager.health_check())
+        redis_health = redis_manager.health_check_sync()
 
         # Update progress
         publish_event(job_id, "job.progress", {
@@ -477,8 +471,7 @@ def health_check_task(
             "message": "Checking active jobs",
         })
 
-        # Check active jobs count (READ operation — still uses async manager)
-        active_jobs = asyncio.run(job_status_manager.get_active_jobs())
+        active_jobs = job_status_manager.get_active_jobs_sync()
         active_jobs_count = len(active_jobs)
 
         # Determine overall health
