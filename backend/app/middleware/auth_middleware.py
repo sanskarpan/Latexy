@@ -13,7 +13,7 @@ Device fingerprint and client info helpers are unchanged.
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import jwt
 from fastapi import Depends, HTTPException, Request, status
@@ -23,7 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..database.connection import get_db
-from ..database.models import DeveloperAPIKey
+if TYPE_CHECKING:
+    from ..database.models import DeveloperAPIKey
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +162,7 @@ async def get_developer_api_key_optional(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: AsyncSession = Depends(get_db),
-) -> Optional[DeveloperAPIKey]:
+) -> Optional["DeveloperAPIKey"]:
     """Return a validated developer API key record, or None when absent/invalid."""
     token = _extract_token(request, credentials)
     if not token or not token.startswith("lx_sk_"):
@@ -176,7 +177,7 @@ async def get_developer_api_key_required(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: AsyncSession = Depends(get_db),
-) -> DeveloperAPIKey:
+) -> "DeveloperAPIKey":
     """Return a validated developer API key or raise HTTP 401."""
     record = await get_developer_api_key_optional(request, credentials, db)
     if not record:
