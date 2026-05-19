@@ -14,6 +14,7 @@ from .core.event_bus import event_bus
 from .core.logging import get_logger, setup_logging
 from .core.redis import get_redis_client, redis_manager
 from .database.connection import close_db, init_db
+from .middleware.rate_limiting import APIKeyRateLimitMiddleware, RateLimitMiddleware
 from .middleware.tenant_middleware import TenantMiddleware
 from .services.latex_compiler import latex_compiler
 
@@ -56,9 +57,15 @@ async def lifespan(app: FastAPI):
 
     # Check LaTeX installation
     if not latex_compiler.is_available():
-        logger.warning("LaTeX installation not found or not working properly")
+        logger.warning(
+            "LaTeX compilation is unavailable (mode=%s)",
+            latex_compiler.capability_summary(),
+        )
     else:
-        logger.info("LaTeX installation verified successfully")
+        logger.info(
+            "LaTeX compilation available (mode=%s)",
+            latex_compiler.capability_summary(),
+        )
 
     # Ensure temp directory exists
     settings.TEMP_DIR.mkdir(exist_ok=True)
@@ -88,6 +95,14 @@ app.add_middleware(
     allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-Device-Fingerprint", "X-Tenant-Slug"],
 )
+
+if settings.RATE_LIMIT_ENABLED:
+    app.add_middleware(
+        RateLimitMiddleware,
+        calls_per_minute=settings.RATE_LIMIT_CALLS_PER_MINUTE,
+        calls_per_hour=settings.RATE_LIMIT_CALLS_PER_HOUR,
+    )
+    app.add_middleware(APIKeyRateLimitMiddleware)
 
 # Resolve white-label tenant from Host / X-Tenant-Slug (Feature 85)
 app.add_middleware(TenantMiddleware)
