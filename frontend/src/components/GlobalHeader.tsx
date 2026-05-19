@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -31,19 +31,27 @@ export default function GlobalHeader() {
   const pathname = usePathname()
   const { data: session } = useSession()
   const flags = useFeatureFlags()
+  const [hydrated, setHydrated] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const { canInstall, prompt: promptInstall } = usePWAInstall()
+
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
 
   if (fullscreenPatterns.some((pattern) => pattern.test(pathname))) {
     return null
   }
 
+  const resolvedSession = hydrated ? session : null
+  const resolvedUser = resolvedSession?.user ?? null
+  const isAuthenticated = Boolean(resolvedUser)
   const effectiveGuestNav = flags.billing
     ? guestNav
     : guestNav.filter((item) => item.href !== '/billing')
-  const activeNav = session ? appNav : effectiveGuestNav
-  const firstName = session?.user.name?.trim().split(' ')[0] || 'Account'
+  const activeNav = isAuthenticated ? appNav : effectiveGuestNav
+  const firstName = resolvedUser?.name?.trim().split(' ')[0] || 'Account'
 
   const handleSignOut = async () => {
     await signOut()
@@ -73,7 +81,7 @@ export default function GlobalHeader() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          {canInstall && (
+          {hydrated && canInstall && (
             <button
               onClick={promptInstall}
               title="Add Latexy to Home Screen"
@@ -83,7 +91,7 @@ export default function GlobalHeader() {
               Install
             </button>
           )}
-          {session ? (
+          {isAuthenticated ? (
             <div className="relative">
               <button
                 onClick={() => setIsUserMenuOpen((open) => !open)}
@@ -111,7 +119,7 @@ export default function GlobalHeader() {
                     >
                       <div className="px-3 py-2">
                         <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Account</p>
-                        <p className="mt-1 truncate text-sm font-semibold text-white">{session.user.email}</p>
+                        <p className="mt-1 truncate text-sm font-semibold text-white">{resolvedUser?.email || 'Unknown account'}</p>
                       </div>
                       <div className="my-1 h-px bg-white/10" />
                       <Link
@@ -130,6 +138,13 @@ export default function GlobalHeader() {
                           Billing
                         </Link>
                       )}
+                      <Link
+                        href="/developer"
+                        className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        Developer API
+                      </Link>
                       <Link
                         href="/byok"
                         className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
@@ -198,7 +213,7 @@ export default function GlobalHeader() {
                 </Link>
               ))}
 
-              {!session && (
+              {!isAuthenticated && (
                 <div className="mt-3 grid grid-cols-2 gap-2 border-t border-white/10 pt-3">
                   <Link
                     href="/login"
