@@ -2,8 +2,8 @@
 Redis connection and management for Phase 8.
 """
 
-import asyncio
 import json
+import time
 from typing import Any, Dict, List, Optional
 
 import redis
@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 redis_client: Optional[aioredis.Redis] = None
 redis_cache_client: Optional[aioredis.Redis] = None
 sync_redis_client: Optional[redis.Redis] = None
+sync_redis_cache_client: Optional[redis.Redis] = None
 
 
 class RedisManager:
@@ -27,10 +28,11 @@ class RedisManager:
         self.redis_client: Optional[aioredis.Redis] = None
         self.redis_cache_client: Optional[aioredis.Redis] = None
         self.sync_redis_client: Optional[redis.Redis] = None
+        self.sync_redis_cache_client: Optional[redis.Redis] = None
 
     async def init_redis(self):
         """Initialize Redis connections."""
-        global redis_client, redis_cache_client, sync_redis_client
+        global redis_client, redis_cache_client, sync_redis_client, sync_redis_cache_client
 
         try:
             # Async Redis client for job queue
@@ -60,14 +62,24 @@ class RedisManager:
                 retry_on_timeout=True
             )
 
+            sync_redis_cache_client = redis.from_url(
+                settings.REDIS_CACHE_URL,
+                password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
+                max_connections=settings.REDIS_MAX_CONNECTIONS,
+                decode_responses=True,
+                retry_on_timeout=True
+            )
+
             # Test connections
             await redis_client.ping()
             await redis_cache_client.ping()
             sync_redis_client.ping()
+            sync_redis_cache_client.ping()
 
             self.redis_client = redis_client
             self.redis_cache_client = redis_cache_client
             self.sync_redis_client = sync_redis_client
+            self.sync_redis_cache_client = sync_redis_cache_client
 
             logger.info("Redis connections initialized successfully")
 
@@ -77,7 +89,7 @@ class RedisManager:
 
     async def close_redis(self):
         """Close Redis connections."""
-        global redis_client, redis_cache_client, sync_redis_client
+        global redis_client, redis_cache_client, sync_redis_client, sync_redis_cache_client
 
         try:
             if redis_client:
@@ -91,6 +103,10 @@ class RedisManager:
             if sync_redis_client:
                 sync_redis_client.close()
                 sync_redis_client = None
+
+            if sync_redis_cache_client:
+                sync_redis_cache_client.close()
+                sync_redis_cache_client = None
 
             logger.info("Redis connections closed")
 
@@ -128,6 +144,31 @@ class RedisManager:
 
         return health
 
+    def health_check_sync(self) -> Dict[str, bool]:
+        """Check Redis connection health using synchronous clients."""
+        health = {
+            "redis_queue": False,
+            "redis_cache": False,
+            "redis_sync": False,
+        }
+
+        try:
+            if sync_redis_client:
+                sync_redis_client.ping()
+                health["redis_queue"] = True
+                health["redis_sync"] = True
+        except Exception as e:
+            logger.error(f"Redis queue sync health check failed: {e}")
+
+        try:
+            if sync_redis_cache_client:
+                sync_redis_cache_client.ping()
+                health["redis_cache"] = True
+        except Exception as e:
+            logger.error(f"Redis cache sync health check failed: {e}")
+
+        return health
+
 
 class JobStatusManager:
     """Manager for job status tracking in Redis."""
@@ -144,7 +185,7 @@ class JobStatusManager:
 
         status_data = {
             "status": status,
-            "updated_at": asyncio.get_event_loop().time(),
+            "updated_at": time.time(),
             "metadata": metadata or {}
         }
 
@@ -203,7 +244,7 @@ class JobStatusManager:
         progress_data = {
             "progress": progress,
             "message": message,
-            "updated_at": asyncio.get_event_loop().time()
+            "updated_at": time.time()
         }
 
         key = f"{self.progress_prefix}{job_id}"
@@ -255,6 +296,39 @@ class JobStatusManager:
             job_ids.append(job_id)
 
         return job_ids
+
+    def get_job_status_sync(self, job_id: str) -> Optional[Dict]:
+        """Get job status from Redis using the synchronous client."""
+        if not sync_redis_client:
+            raise RuntimeError("Sync Redis client not initialized")
+
+        key = f"{self.status_prefix}{job_id}"
+        data = sync_redis_client.get(key)
+        if data:
+            return json.loads(data)
+        return None
+
+    def delete_job_data_sync(self, job_id: str):
+        """Delete all job data using the synchronous Redis client."""
+        if not sync_redis_client:
+            raise RuntimeError("Sync Redis client not initialized")
+
+        keys = [
+            f"{self.status_prefix}{job_id}",
+            f"{self.result_prefix}{job_id}",
+            f"{self.progress_prefix}{job_id}",
+        ]
+        sync_redis_client.delete(*keys)
+        logger.debug(f"Deleted job data for {job_id}")
+
+    def get_active_jobs_sync(self) -> List[str]:
+        """Get list of active job IDs using the synchronous Redis client."""
+        if not sync_redis_client:
+            raise RuntimeError("Sync Redis client not initialized")
+
+        pattern = f"{self.status_prefix}*"
+        keys = sync_redis_client.keys(pattern)
+        return [key.replace(self.status_prefix, "") for key in keys]
 
 
 class CacheManager:
