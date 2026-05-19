@@ -51,14 +51,17 @@ TEST_DATABASE_URL = _to_asyncpg_url(_raw_db_url) if _raw_db_url else ""
 # ── Set env before importing app so settings picks them up ───────────────────
 
 os.environ["SKIP_ENV_VALIDATION"] = "true"
+os.environ.setdefault("ENVIRONMENT", "test")
 # Always force test secrets — overrides anything in .env so make_jwt() matches settings
 os.environ["JWT_SECRET_KEY"] = "test_jwt_secret_32chars_minimum_!"
 os.environ["BETTER_AUTH_SECRET"] = "test_secret_key_32chars_minimum_!"
+os.environ.setdefault("API_KEY_ENCRYPTION_KEY", "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
 os.environ.setdefault("DATABASE_URL", _raw_db_url)
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 os.environ.setdefault("CELERY_BROKER_URL", "redis://localhost:6379/15")
 os.environ.setdefault("CELERY_RESULT_BACKEND", "redis://localhost:6379/15")
 os.environ["OPENAI_API_KEY"] = ""  # always disable live LLM in tests — use mocks instead
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # DEBUG=true in tests to get verbose error messages in responses.
 # Production validation is tested explicitly in test_health.py via DEBUG=false assertions.
 os.environ.setdefault("DEBUG", "true")
@@ -82,7 +85,19 @@ def check_infrastructure():
     except Exception as e:
         pytest.fail(f"Redis not available at {redis_url}: {e}. Start Redis before running tests.")
 
-from app.database.connection import Base, get_db
+
+@pytest.fixture(scope="session", autouse=True)
+def reset_test_redis():
+    """Flush the dedicated Redis test DB so repeated runs stay deterministic."""
+    import redis as sync_redis
+
+    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/15")
+    client = sync_redis.from_url(redis_url, socket_connect_timeout=3)
+    client.flushdb()
+    yield
+    client.flushdb()
+
+from app.database.connection import get_db
 from app.main import app
 
 # ── Dependency Overrides ──────────────────────────────────────────────────
@@ -107,8 +122,31 @@ async def test_engine():
 
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
     async with engine.begin() as conn:
-        # create_all is idempotent — skips tables that already exist
-        await conn.run_sync(Base.metadata.create_all)
+        required_columns = {
+            ("users", "github_access_token"),
+            ("users", "dropbox_access_token"),
+            ("resumes", "archived_at"),
+            ("resumes", "dropbox_sync_enabled"),
+            ("resumes", "document_type"),
+        }
+        for table_name, column_name in required_columns:
+            result = await conn.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = :table_name
+                      AND column_name = :column_name
+                    """
+                ),
+                {"table_name": table_name, "column_name": column_name},
+            )
+            if result.scalar() != 1:
+                pytest.fail(
+                    "Test database schema is out of date. "
+                    "Run `make test-db-setup` before running backend tests."
+                )
         # Better Auth tables (not in SQLAlchemy models)
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS session (
