@@ -159,6 +159,92 @@ export interface HealthResponse {
   latex_available: boolean
 }
 
+export interface BillingAvailability {
+  featureEnabled: boolean
+  mode: 'enabled' | 'disabled' | 'unconfigured'
+  available: boolean
+  reason: string | null
+  message: string
+}
+
+export interface CurrentSubscriptionResponse {
+  userId: string
+  planId: string
+  planName: string
+  status: string
+  features: {
+    compilations: number | string
+    optimizations: number | string
+    historyRetention: number
+    prioritySupport: boolean
+    apiAccess: boolean
+    customModels?: boolean
+  }
+  subscriptionId?: string
+  currentPeriodEnd?: string
+}
+
+export interface CouponValidationResponse {
+  valid: boolean
+  message: string
+  discountPercent?: number | null
+  code?: string | null
+}
+
+export interface SubscriptionCreateResponse {
+  shortUrl?: string
+  subscriptionId?: string
+  customerId?: string
+  message?: string
+  verificationRequired?: boolean
+  verificationPreviewUrl?: string | null
+  coupon?: {
+    code: string
+    discount_percent: number
+    message: string
+  } | null
+}
+
+export interface DeveloperKey {
+  id: string
+  name: string
+  key_prefix: string
+  last_used_at: string | null
+  request_count: number
+  is_active: boolean
+  scopes: string[]
+  created_at: string
+}
+
+export interface DeveloperKeyCreateResponse extends DeveloperKey {
+  full_key: string
+}
+
+export interface DeveloperUsagePoint {
+  date: string
+  count: number
+}
+
+export interface DeveloperUsageResponse {
+  plan_id: string
+  daily_limit: number
+  history: DeveloperUsagePoint[]
+}
+
+export interface TeamSeat {
+  id: string
+  member_email: string
+  member_user_id?: string | null
+  status: string
+  invited_at: string
+  joined_at?: string | null
+}
+
+export interface TeamInviteResponse extends TeamSeat {
+  invite_preview_url?: string | null
+  message: string
+}
+
 export interface ResumeBase {
   title: string
   latex_content: string
@@ -220,6 +306,28 @@ export interface ResumeStats {
   avg_ats_score: number | null
   best_ats_score: number | null
   optimized_count: number
+}
+
+export interface AcademicCVReport {
+  is_academic_cv: boolean
+  detected_sections: string[]
+  estimated_pages: number
+  confidence: number
+  reasons: string[]
+}
+
+export interface AcademicCVConvertRequest {
+  target_industry: 'tech' | 'data_science' | 'finance' | 'consulting' | 'product' | 'other'
+  target_role_description?: string
+  title?: string
+  force?: boolean
+}
+
+export interface AcademicCVConvertResponse {
+  success: boolean
+  variant_resume_id: string
+  job_id: string
+  report: AcademicCVReport
 }
 
 export interface ScoreHistoryPoint {
@@ -676,7 +784,14 @@ class ApiClient {
       const body = await res.text().catch(() => '')
       throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
     }
-    return res.json() as Promise<T>
+    if (res.status === 204) {
+      return undefined as T
+    }
+    const contentType = res.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      return res.json() as Promise<T>
+    }
+    return (await res.text()) as T
   }
 
   // ---------------------------------------------------------------- //
@@ -1012,21 +1127,55 @@ class ApiClient {
   /** Returns the current user's plan ID (e.g. "free", "pro", "byok"). */
   async getCurrentPlan(): Promise<string> {
     try {
-      const data = await this.request<{ planId: string }>('/subscription/current')
+      const data = await this.request<CurrentSubscriptionResponse>('/subscription/current')
       return data.planId ?? 'free'
     } catch {
       return 'free'
     }
   }
 
-  async getSubscriptionPlans(): Promise<{
+  async getCurrentSubscription(): Promise<{
     success: boolean
-    data?: { plans: Record<string, unknown> }
+    data?: CurrentSubscriptionResponse
     error?: string
   }> {
     try {
-      const data = await this.request<{ plans: Record<string, unknown> }>('/subscription/plans')
+      const data = await this.request<CurrentSubscriptionResponse>('/subscription/current')
       return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async getSubscriptionPlans(): Promise<{
+    success: boolean
+    data?: { plans: Record<string, unknown>; billing: BillingAvailability }
+    error?: string
+  }> {
+    try {
+      const data = await this.request<{
+        plans: Record<string, unknown>
+        billing: {
+          feature_enabled: boolean
+          mode: 'enabled' | 'disabled' | 'unconfigured'
+          available: boolean
+          reason?: string | null
+          message: string
+        }
+      }>('/subscription/plans')
+      return {
+        success: true,
+        data: {
+          plans: data.plans,
+          billing: {
+            featureEnabled: data.billing.feature_enabled,
+            mode: data.billing.mode,
+            available: data.billing.available,
+            reason: data.billing.reason ?? null,
+            message: data.billing.message,
+          },
+        },
+      }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
     }
@@ -1035,20 +1184,181 @@ class ApiClient {
   async createSubscription(
     planId: string,
     email: string,
-    name: string
+    name: string,
+    options?: {
+      billingPeriod?: 'monthly' | 'annual'
+      couponCode?: string
+      studentEmail?: string
+    }
   ): Promise<{
     success: boolean
-    data?: { shortUrl?: string; subscriptionId?: string }
+    data?: SubscriptionCreateResponse
     error?: string
   }> {
     try {
-      const data = await this.request<{ shortUrl?: string; subscriptionId?: string }>(
+      const data = await this.request<SubscriptionCreateResponse>(
         '/subscription/create',
         {
           method: 'POST',
-          body: JSON.stringify({ planId, customerEmail: email, customerName: name }),
+          body: JSON.stringify({
+            planId,
+            customerEmail: email,
+            customerName: name,
+            billingPeriod: options?.billingPeriod ?? 'monthly',
+            couponCode: options?.couponCode ?? null,
+            studentEmail: options?.studentEmail ?? null,
+          }),
         }
       )
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async cancelSubscription(): Promise<{
+    success: boolean
+    message?: string
+    error?: string
+  }> {
+    try {
+      const data = await this.request<{ success: boolean; message?: string; error?: string }>(
+        '/subscription/cancel',
+        { method: 'POST' }
+      )
+      return data
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async validateCoupon(
+    code: string,
+    planId: string,
+    billingPeriod: 'monthly' | 'annual' = 'monthly',
+  ): Promise<{
+    success: boolean
+    data?: CouponValidationResponse
+    error?: string
+  }> {
+    try {
+      const data = await this.request<CouponValidationResponse>('/billing/validate-coupon', {
+        method: 'POST',
+        body: JSON.stringify({ code, planId, billingPeriod }),
+      })
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async verifyStudentSubscription(token: string): Promise<{
+    success: boolean
+    data?: { success: boolean; message: string }
+    error?: string
+  }> {
+    try {
+      const data = await this.request<{ success: boolean; message: string }>(`/subscription/student/verify/${encodeURIComponent(token)}`)
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async getDeveloperKeys(): Promise<{ success: boolean; data?: DeveloperKey[]; error?: string }> {
+    try {
+      const data = await this.request<DeveloperKey[]>('/developer/keys')
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async getDeveloperUsage(): Promise<{ success: boolean; data?: DeveloperUsageResponse; error?: string }> {
+    try {
+      const data = await this.request<DeveloperUsageResponse>('/developer/usage')
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async createDeveloperKey(
+    name: string,
+    scopes?: string[],
+  ): Promise<{ success: boolean; data?: DeveloperKeyCreateResponse; error?: string }> {
+    try {
+      const data = await this.request<DeveloperKeyCreateResponse>('/developer/keys', {
+        method: 'POST',
+        body: JSON.stringify({ name, scopes }),
+      })
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async renameDeveloperKey(
+    keyId: string,
+    name: string,
+  ): Promise<{ success: boolean; data?: DeveloperKey; error?: string }> {
+    try {
+      const data = await this.request<DeveloperKey>(`/developer/keys/${encodeURIComponent(keyId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      })
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async revokeDeveloperKey(keyId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      await this.request(`/developer/keys/${encodeURIComponent(keyId)}`, { method: 'DELETE' })
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async getTeamSeats(): Promise<{ success: boolean; data?: TeamSeat[]; error?: string }> {
+    try {
+      const data = await this.request<TeamSeat[]>('/team/seats')
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async inviteTeamSeat(email: string): Promise<{ success: boolean; data?: TeamInviteResponse; error?: string }> {
+    try {
+      const data = await this.request<TeamInviteResponse>('/team/invite', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      })
+      return { success: true, data }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async removeTeamSeat(seatId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      await this.request(`/team/seats/${encodeURIComponent(seatId)}`, { method: 'DELETE' })
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  async joinTeamSeat(token: string): Promise<{
+    success: boolean
+    data?: { success: boolean; message: string }
+    error?: string
+  }> {
+    try {
+      const data = await this.request<{ success: boolean; message: string }>(`/team/join/${encodeURIComponent(token)}`)
       return { success: true, data }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) }
@@ -1356,6 +1666,20 @@ class ApiClient {
 
   async getResumeDiffWithParent(resumeId: string): Promise<DiffWithParentResponse> {
     return this.request<DiffWithParentResponse>(`/resumes/${encodeURIComponent(resumeId)}/diff-with-parent`)
+  }
+
+  async getAcademicCVReport(resumeId: string): Promise<AcademicCVReport> {
+    return this.request<AcademicCVReport>(`/resumes/${encodeURIComponent(resumeId)}/academic-cv-report`)
+  }
+
+  async convertAcademicCV(
+    resumeId: string,
+    body: AcademicCVConvertRequest,
+  ): Promise<AcademicCVConvertResponse> {
+    return this.request<AcademicCVConvertResponse>(`/resumes/${encodeURIComponent(resumeId)}/academic-cv-convert`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
   }
 
   // Export raw LaTeX content in a specific format (for /try page, no auth needed)
@@ -3234,4 +3558,3 @@ export interface FigmaSection {
 export interface FigmaResumeExport {
   sections: FigmaSection[]
 }
-
