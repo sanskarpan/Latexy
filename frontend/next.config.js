@@ -31,6 +31,7 @@ module.exports = withPWA({
   aggressiveFrontEndNavCaching: true,
   reloadOnOnline: true,
   workboxOptions: {
+    maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
     runtimeCaching: [
       // App shell: static assets cached with StaleWhileRevalidate
       {
