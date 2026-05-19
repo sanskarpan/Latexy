@@ -45,6 +45,15 @@ def mock_jsm():
     publish_event and publish_job_result are accessible as mock_jsm.publish_event
     and mock_jsm.publish_job_result for call count assertions.
     """
+    def _resolve(mock, *args, **kwargs):
+        side_effect = mock.side_effect
+        if side_effect is not None:
+            if isinstance(side_effect, Exception):
+                raise side_effect
+            if callable(side_effect):
+                return side_effect(*args, **kwargs)
+        return mock.return_value
+
     with patch("app.workers.cleanup_worker.job_status_manager") as m, \
          patch("app.workers.cleanup_worker.publish_event") as mock_pub, \
          patch("app.workers.cleanup_worker.publish_job_result") as mock_res:
@@ -54,6 +63,9 @@ def mock_jsm():
         m.get_active_jobs = AsyncMock(return_value=[])
         m.get_job_status = AsyncMock(return_value=None)
         m.delete_job_data = AsyncMock(return_value=True)
+        m.get_active_jobs_sync = MagicMock(side_effect=lambda: _resolve(m.get_active_jobs))
+        m.get_job_status_sync = MagicMock(side_effect=lambda job_id: _resolve(m.get_job_status, job_id))
+        m.delete_job_data_sync = MagicMock(side_effect=lambda job_id: _resolve(m.delete_job_data, job_id))
         mock_pub.return_value = None
         mock_res.return_value = None
         # Expose on mock_jsm for test assertions
@@ -65,8 +77,18 @@ def mock_jsm():
 @pytest.fixture
 def mock_rm():
     """Patch redis_manager with a healthy health_check stub."""
+    def _resolve(mock):
+        side_effect = mock.side_effect
+        if side_effect is not None:
+            if isinstance(side_effect, Exception):
+                raise side_effect
+            if callable(side_effect):
+                return side_effect()
+        return mock.return_value
+
     with patch("app.workers.cleanup_worker.redis_manager") as m:
         m.health_check = AsyncMock(return_value={"redis": True, "cache": True})
+        m.health_check_sync = MagicMock(side_effect=lambda: _resolve(m.health_check))
         yield m
 
 
@@ -313,7 +335,7 @@ class TestCleanupExpiredJobsTask:
         )
         result = self._run(mock_jsm)
         assert result["jobs_cleaned"] == 1
-        mock_jsm.delete_job_data.assert_called_once_with("job-done")
+        mock_jsm.delete_job_data_sync.assert_called_once_with("job-done")
 
     def test_failed_expired_job_deleted(self, mock_jsm):
         mock_jsm.get_active_jobs = AsyncMock(return_value=["job-fail"])
@@ -340,7 +362,7 @@ class TestCleanupExpiredJobsTask:
         )
         result = self._run(mock_jsm)
         assert result["jobs_cleaned"] == 0
-        mock_jsm.delete_job_data.assert_not_called()
+        mock_jsm.delete_job_data_sync.assert_not_called()
 
     def test_queued_job_never_cleaned(self, mock_jsm):
         mock_jsm.get_active_jobs = AsyncMock(return_value=["job-q"])
@@ -359,7 +381,7 @@ class TestCleanupExpiredJobsTask:
         )
         result = self._run(mock_jsm)
         assert result["jobs_cleaned"] == 0
-        mock_jsm.delete_job_data.assert_not_called()
+        mock_jsm.delete_job_data_sync.assert_not_called()
 
     # ── edge: no status data ──────────────────────────────────────────────────
 
@@ -430,6 +452,7 @@ class TestHealthCheckTask:
     def _run(self, mock_jsm, mock_rm, *, free_gb=10.0, total_gb=100.0, active_jobs=None):
         du = _disk_usage(free_gb, total_gb)
         mock_jsm.get_active_jobs = AsyncMock(return_value=active_jobs or [])
+        mock_jsm.get_active_jobs_sync = MagicMock(return_value=active_jobs or [])
         with patch("shutil.disk_usage", return_value=du):
             return health_check_task.apply(kwargs={}).result
 
@@ -469,12 +492,14 @@ class TestHealthCheckTask:
 
     def test_redis_failure_causes_degraded(self, mock_jsm, mock_rm):
         mock_rm.health_check = AsyncMock(return_value={"redis": False, "cache": True})
+        mock_rm.health_check_sync = MagicMock(return_value={"redis_queue": False, "redis_cache": True, "redis_sync": True})
         result = self._run(mock_jsm, mock_rm, free_gb=10.0)
         assert result["overall_health"] == "degraded"
         assert any("redis" in issue.lower() for issue in result["health_issues"])
 
     def test_all_redis_down_causes_degraded(self, mock_jsm, mock_rm):
         mock_rm.health_check = AsyncMock(return_value={"redis": False, "cache": False})
+        mock_rm.health_check_sync = MagicMock(return_value={"redis_queue": False, "redis_cache": False, "redis_sync": False})
         result = self._run(mock_jsm, mock_rm, free_gb=10.0)
         assert result["overall_health"] == "degraded"
 
@@ -508,6 +533,7 @@ class TestHealthCheckTask:
 
     def test_multiple_issues_all_reported(self, mock_jsm, mock_rm):
         mock_rm.health_check = AsyncMock(return_value={"redis": False, "cache": False})
+        mock_rm.health_check_sync = MagicMock(return_value={"redis_queue": False, "redis_cache": False, "redis_sync": False})
         result = self._run(mock_jsm, mock_rm, free_gb=0.1, active_jobs=["j"] * 1001)
         assert result["overall_health"] == "degraded"
         assert len(result["health_issues"]) >= 2
@@ -522,7 +548,7 @@ class TestHealthCheckTask:
 
     def test_redis_health_check_called_once(self, mock_jsm, mock_rm):
         self._run(mock_jsm, mock_rm)
-        mock_rm.health_check.assert_called_once()
+        mock_rm.health_check_sync.assert_called_once()
 
     def test_set_job_status_called_at_least_twice(self, mock_jsm, mock_rm):
         """Task publishes at least 2 events: job.started and job.completed."""
