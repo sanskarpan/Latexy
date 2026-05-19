@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..database.connection import get_db
+from ..database.models import DeveloperAPIKey
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,47 @@ async def get_current_user_required(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user_id
+
+
+async def get_developer_api_key_optional(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[DeveloperAPIKey]:
+    """Return a validated developer API key record, or None when absent/invalid."""
+    token = _extract_token(request, credentials)
+    if not token or not token.startswith("lx_sk_"):
+        return None
+
+    from ..services.developer_key_service import developer_key_service
+
+    return await developer_key_service.verify_api_key(token, db)
+
+
+async def get_developer_api_key_required(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> DeveloperAPIKey:
+    """Return a validated developer API key or raise HTTP 401."""
+    record = await get_developer_api_key_optional(request, credentials, db)
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Valid developer API key required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return record
+
+
+async def get_api_key_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[str]:
+    """Return the owner user_id for a developer API key, or None."""
+    record = await get_developer_api_key_optional(request, credentials, db)
+    return record.user_id if record else None
 
 
 async def require_admin(
