@@ -3,9 +3,11 @@ Application configuration settings.
 """
 
 import os
+from copy import deepcopy
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List
 
+from cryptography.fernet import Fernet
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,6 +31,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Latexy-Backend"
     APP_VERSION: str = "1.0.0"
     APP_DESCRIPTION: str = "LaTeX resume compilation and optimization service"
+    ENVIRONMENT: str = "development"
     DEBUG: bool = False
 
     # Server
@@ -63,6 +66,11 @@ class Settings(BaseSettings):
 
     # Logging
     LOG_LEVEL: str = "INFO"
+
+    # Rate limiting
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_CALLS_PER_MINUTE: int = 60
+    RATE_LIMIT_CALLS_PER_HOUR: int = 1000
 
     # OpenAI Configuration
     OPENAI_API_KEY: str = Field(default="", description="OpenAI API key for LLM services")
@@ -142,6 +150,7 @@ class Settings(BaseSettings):
 
     # Admin email — user with this email can access /admin/* endpoints
     ADMIN_EMAIL: str = Field(default="", description="Email of the admin user for /admin/* access")
+    ADMIN_SECRET_KEY: str = Field(default="", description="Shared secret for template/admin utility endpoints")
 
     # Comma-separated list of emails that get TEST_TRIAL_LIMIT instead of TRIAL_LIMIT
     TEST_USER_EMAILS: str = Field(default="", description="Comma-separated test user emails with elevated trial quota")
@@ -158,6 +167,27 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: str = Field(default="", description="Razorpay API Key ID")
     RAZORPAY_KEY_SECRET: str = Field(default="", description="Razorpay API Key Secret")
     RAZORPAY_WEBHOOK_SECRET: str = Field(default="", description="Razorpay Webhook Secret")
+    RAZORPAY_PLAN_BASIC_MONTHLY: str = Field(default="", description="Razorpay plan ID for Basic monthly")
+    RAZORPAY_PLAN_BASIC_ANNUAL: str = Field(default="", description="Razorpay plan ID for Basic annual")
+    RAZORPAY_PLAN_PRO_MONTHLY: str = Field(default="", description="Razorpay plan ID for Pro monthly")
+    RAZORPAY_PLAN_PRO_ANNUAL: str = Field(default="", description="Razorpay plan ID for Pro annual")
+    RAZORPAY_PLAN_BYOK_MONTHLY: str = Field(default="", description="Razorpay plan ID for BYOK monthly")
+    RAZORPAY_PLAN_BYOK_ANNUAL: str = Field(default="", description="Razorpay plan ID for BYOK annual")
+    RAZORPAY_PLAN_STUDENT: str = Field(default="", description="Razorpay plan ID for Student monthly")
+    RAZORPAY_PLAN_TEAM: str = Field(default="", description="Razorpay plan ID for Team monthly")
+    BILLING_MODE: str = Field(
+        default="auto",
+        description="Billing mode: disabled | auto | required",
+    )
+    TEAM_PLAN_MAX_SEATS: int = 5
+    STUDENT_EMAIL_ALLOWED_SUFFIXES: List[str] = Field(
+        default=[".edu", ".edu.in", ".ac.in"],
+        description="Allowed student email suffixes for discounted student plans",
+    )
+    DEV_API_DAILY_LIMIT_FREE: int = 10
+    DEV_API_DAILY_LIMIT_BASIC: int = 100
+    DEV_API_DAILY_LIMIT_PRO: int = 1000
+    DEV_API_DAILY_LIMIT_BYOK: int = 500
 
     # Redis Config
     REDIS_URL: str = Field(default="redis://localhost:6379/0", description="Redis URL for job queue")
@@ -190,6 +220,9 @@ class Settings(BaseSettings):
             "price": 0,
             "currency": "INR",
             "interval": "month",
+            "billing_period": "monthly",
+            "plan_family": "free",
+            "discount_percent": 0,
             "features": {
                 "compilations": 3,
                 "optimizations": 0,
@@ -203,6 +236,26 @@ class Settings(BaseSettings):
             "price": 29900,  # 299 INR in paise
             "currency": "INR",
             "interval": "month",
+            "billing_period": "monthly",
+            "plan_family": "basic",
+            "discount_percent": 0,
+            "features": {
+                "compilations": 50,
+                "optimizations": 10,
+                "historyRetention": 30,
+                "prioritySupport": False,
+                "apiAccess": False
+            }
+        },
+        "basic_annual": {
+            "name": "Basic Annual",
+            "price": 287100,  # 20% off 12 months
+            "currency": "INR",
+            "interval": "year",
+            "billing_period": "annual",
+            "plan_family": "basic",
+            "discount_percent": 20,
+            "monthly_equivalent_price": 23925,
             "features": {
                 "compilations": 50,
                 "optimizations": 10,
@@ -216,6 +269,26 @@ class Settings(BaseSettings):
             "price": 59900,  # 599 INR in paise
             "currency": "INR",
             "interval": "month",
+            "billing_period": "monthly",
+            "plan_family": "pro",
+            "discount_percent": 0,
+            "features": {
+                "compilations": "unlimited",
+                "optimizations": "unlimited",
+                "historyRetention": 365,
+                "prioritySupport": True,
+                "apiAccess": True
+            }
+        },
+        "pro_annual": {
+            "name": "Pro Annual",
+            "price": 575000,
+            "currency": "INR",
+            "interval": "year",
+            "billing_period": "annual",
+            "plan_family": "pro",
+            "discount_percent": 20,
+            "monthly_equivalent_price": 47917,
             "features": {
                 "compilations": "unlimited",
                 "optimizations": "unlimited",
@@ -229,6 +302,9 @@ class Settings(BaseSettings):
             "price": 19900,  # 199 INR in paise
             "currency": "INR",
             "interval": "month",
+            "billing_period": "monthly",
+            "plan_family": "byok",
+            "discount_percent": 0,
             "features": {
                 "compilations": "unlimited",
                 "optimizations": "unlimited",
@@ -236,6 +312,59 @@ class Settings(BaseSettings):
                 "prioritySupport": True,
                 "apiAccess": True,
                 "customModels": True
+            }
+        },
+        "byok_annual": {
+            "name": "BYOK Annual",
+            "price": 191000,
+            "currency": "INR",
+            "interval": "year",
+            "billing_period": "annual",
+            "plan_family": "byok",
+            "discount_percent": 20,
+            "monthly_equivalent_price": 15917,
+            "features": {
+                "compilations": "unlimited",
+                "optimizations": "unlimited",
+                "historyRetention": 365,
+                "prioritySupport": True,
+                "apiAccess": True,
+                "customModels": True
+            }
+        },
+        "student": {
+            "name": "Student",
+            "price": 29900,
+            "currency": "INR",
+            "interval": "month",
+            "billing_period": "monthly",
+            "plan_family": "pro",
+            "discount_percent": 50,
+            "requires_student_verification": True,
+            "features": {
+                "compilations": "unlimited",
+                "optimizations": "unlimited",
+                "historyRetention": 365,
+                "prioritySupport": True,
+                "apiAccess": True
+            }
+        },
+        "team": {
+            "name": "Team",
+            "price": 249900,
+            "currency": "INR",
+            "interval": "month",
+            "billing_period": "monthly",
+            "plan_family": "team",
+            "discount_percent": 0,
+            "max_seats": 5,
+            "features": {
+                "compilations": "unlimited",
+                "optimizations": "unlimited",
+                "historyRetention": 365,
+                "prioritySupport": True,
+                "apiAccess": True,
+                "teamSeats": 5
             }
         }
     })
@@ -258,8 +387,38 @@ class Settings(BaseSettings):
         description="Dropbox OAuth callback URI",
     )
 
+    @property
+    def normalized_environment(self) -> str:
+        """Return the normalized deployment environment name."""
+        return (self.ENVIRONMENT or "development").strip().lower()
+
+    @property
+    def normalized_billing_mode(self) -> str:
+        """Return the normalized billing mode."""
+        return (self.BILLING_MODE or "auto").strip().lower()
+
+    def is_production_like(self) -> bool:
+        """Return whether the app is running in a production-like environment."""
+        return self.normalized_environment in {"production", "staging"}
+
+    def billing_credentials_configured(self) -> bool:
+        """Return whether the full Razorpay credential set is present."""
+        return all(
+            [
+                self.RAZORPAY_KEY_ID,
+                self.RAZORPAY_KEY_SECRET,
+                self.RAZORPAY_WEBHOOK_SECRET,
+            ]
+        )
+
     def model_post_init(self, __context) -> None:
         """Validate required settings at startup."""
+        billing_mode = self.normalized_billing_mode
+        if billing_mode not in {"disabled", "auto", "required"}:
+            raise ValueError(
+                "BILLING_MODE must be one of: disabled, auto, required."
+            )
+
         if os.environ.get("SKIP_ENV_VALIDATION") == "true":
             return
         missing = []
@@ -269,10 +428,42 @@ class Settings(BaseSettings):
             missing.append("BETTER_AUTH_SECRET")
         if not self.JWT_SECRET_KEY:
             missing.append("JWT_SECRET_KEY")
+        if self.is_production_like() and not self.API_KEY_ENCRYPTION_KEY:
+            missing.append("API_KEY_ENCRYPTION_KEY")
         if missing:
             raise ValueError(
                 f"Missing required environment variables: {', '.join(missing)}. "
                 f"Copy backend/.env.example to backend/.env and fill in the values."
+            )
+
+        if self.API_KEY_ENCRYPTION_KEY:
+            try:
+                Fernet(self.API_KEY_ENCRYPTION_KEY.encode("utf-8"))
+            except Exception as exc:
+                raise ValueError(
+                    "API_KEY_ENCRYPTION_KEY must be a valid Fernet key. "
+                    "Generate one with: python -c \"from cryptography.fernet import Fernet; "
+                    "print(Fernet.generate_key().decode())\""
+                ) from exc
+
+        razorpay_fields = {
+            "RAZORPAY_KEY_ID": self.RAZORPAY_KEY_ID,
+            "RAZORPAY_KEY_SECRET": self.RAZORPAY_KEY_SECRET,
+            "RAZORPAY_WEBHOOK_SECRET": self.RAZORPAY_WEBHOOK_SECRET,
+        }
+        populated_razorpay_fields = [key for key, value in razorpay_fields.items() if value]
+
+        if billing_mode == "required" and len(populated_razorpay_fields) != len(razorpay_fields):
+            raise ValueError(
+                "BILLING_MODE=required requires RAZORPAY_KEY_ID, "
+                "RAZORPAY_KEY_SECRET, and RAZORPAY_WEBHOOK_SECRET."
+            )
+
+        if billing_mode != "disabled" and 0 < len(populated_razorpay_fields) < len(razorpay_fields):
+            raise ValueError(
+                "Partial Razorpay configuration detected. Set RAZORPAY_KEY_ID, "
+                "RAZORPAY_KEY_SECRET, and RAZORPAY_WEBHOOK_SECRET together, or "
+                "set BILLING_MODE=disabled."
             )
 
 
@@ -280,18 +471,69 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
-def resolve_plan_family(user_plan: str) -> str:
-    """Normalize plan aliases to the core plan families used in early workers."""
-    normalized = (user_plan or "free").strip().lower()
-    if normalized.startswith("pro"):
-        return "pro"
-    if normalized.startswith("byok"):
-        return "byok"
-    if normalized.startswith("basic"):
-        return "basic"
-    if normalized.startswith("team"):
-        return "team"
-    return "free"
+PLAN_FAMILY_ALIASES = {
+    "free": "free",
+    "basic": "basic",
+    "basic_monthly": "basic",
+    "basic_annual": "basic",
+    "pro": "pro",
+    "pro_monthly": "pro",
+    "pro_annual": "pro",
+    "student": "pro",
+    "student_monthly": "pro",
+    "byok": "byok",
+    "byok_monthly": "byok",
+    "byok_annual": "byok",
+    "team": "team",
+    "team_monthly": "team",
+    "team_member": "team",
+}
+
+
+def resolve_plan_family(plan_id: str | None) -> str:
+    """Map a concrete billing SKU to the feature bucket used by the app."""
+    normalized = (plan_id or "free").strip().lower()
+    return PLAN_FAMILY_ALIASES.get(normalized, "free")
+
+
+def get_plan_config(plan_id: str | None) -> Dict[str, Any]:
+    """Return a defensive copy of plan configuration for the given plan ID."""
+    normalized = (plan_id or "free").strip().lower()
+    direct = settings.SUBSCRIPTION_PLANS.get(normalized)
+    if direct:
+        return deepcopy(direct)
+
+    family = resolve_plan_family(normalized)
+    return deepcopy(settings.SUBSCRIPTION_PLANS.get(family, settings.SUBSCRIPTION_PLANS["free"]))
+
+
+def get_razorpay_plan_id(plan_id: str | None) -> str:
+    """Resolve the configured Razorpay plan ID for a concrete plan SKU."""
+    normalized = (plan_id or "").strip().lower()
+    env_map = {
+        "basic": "RAZORPAY_PLAN_BASIC_MONTHLY",
+        "basic_annual": "RAZORPAY_PLAN_BASIC_ANNUAL",
+        "pro": "RAZORPAY_PLAN_PRO_MONTHLY",
+        "pro_annual": "RAZORPAY_PLAN_PRO_ANNUAL",
+        "byok": "RAZORPAY_PLAN_BYOK_MONTHLY",
+        "byok_annual": "RAZORPAY_PLAN_BYOK_ANNUAL",
+        "student": "RAZORPAY_PLAN_STUDENT",
+        "team": "RAZORPAY_PLAN_TEAM",
+    }
+    env_key = env_map.get(normalized)
+    return getattr(settings, env_key, "") if env_key else ""
+
+
+def get_developer_api_daily_limit(plan_id: str | None) -> int:
+    """Return the daily public-API request cap for the effective plan family."""
+    family = resolve_plan_family(plan_id)
+    return {
+        "free": settings.DEV_API_DAILY_LIMIT_FREE,
+        "basic": settings.DEV_API_DAILY_LIMIT_BASIC,
+        "pro": settings.DEV_API_DAILY_LIMIT_PRO,
+        "byok": settings.DEV_API_DAILY_LIMIT_BYOK,
+        "team": settings.DEV_API_DAILY_LIMIT_PRO,
+    }.get(family, settings.DEV_API_DAILY_LIMIT_FREE)
 
 
 def get_compile_timeout(user_plan: str) -> int:
@@ -306,9 +548,11 @@ def get_compile_timeout(user_plan: str) -> int:
             return settings.COMPILE_TIMEOUT_PRO
     except Exception:
         pass
+    family = resolve_plan_family(user_plan)
     return {
         "free":  settings.COMPILE_TIMEOUT_FREE,
         "basic": settings.COMPILE_TIMEOUT_BASIC,
         "pro":   settings.COMPILE_TIMEOUT_PRO,
         "byok":  settings.COMPILE_TIMEOUT_BYOK,
-    }.get(resolve_plan_family(user_plan), settings.COMPILE_TIMEOUT_FREE)
+        "team":  settings.COMPILE_TIMEOUT_PRO,
+    }.get(family, settings.COMPILE_TIMEOUT_FREE)

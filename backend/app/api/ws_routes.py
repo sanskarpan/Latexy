@@ -181,6 +181,19 @@ async def _heartbeat(websocket: WebSocket) -> None:
         pass
 
 
+async def _close_expected_collab_rejection(
+    websocket: WebSocket,
+    code: int,
+    reason: str,
+) -> None:
+    """Accept then close expected auth/permission failures to avoid noisy 4xx handshakes."""
+    try:
+        await websocket.accept()
+    except Exception:
+        pass
+    await websocket.close(code=code, reason=reason)
+
+
 @ws_router.websocket("/ws/collab/{resume_id}")
 async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
     """
@@ -215,7 +228,11 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
             user_id = auth_middleware.user_id(token)
 
     if not user_id:
-        await websocket.close(code=4001, reason="Unauthorized")
+        await _close_expected_collab_rejection(
+            websocket,
+            code=4001,
+            reason="Unauthorized",
+        )
         return
 
     # ── Permission ────────────────────────────────────────────────────────
@@ -225,7 +242,11 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
         resume = result.scalar_one_or_none()
 
         if resume is None:
-            await websocket.close(code=4004, reason="Resume not found")
+            await _close_expected_collab_rejection(
+                websocket,
+                code=4004,
+                reason="Resume not found",
+            )
             return
 
         is_owner = resume.user_id == user_id
@@ -239,7 +260,11 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
             )
             collab = collab_result.scalar_one_or_none()
             if collab is None:
-                await websocket.close(code=4003, reason="Forbidden")
+                await _close_expected_collab_rejection(
+                    websocket,
+                    code=4003,
+                    reason="Forbidden",
+                )
                 return
 
     # ── Accept and join room ──────────────────────────────────────────────

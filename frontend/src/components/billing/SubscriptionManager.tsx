@@ -1,65 +1,50 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-
-interface Subscription {
-  userId: string
-  planId: string
-  planName: string
-  status: string
-  features: {
-    compilations: number | string
-    optimizations: number | string
-    historyRetention: number
-    prioritySupport: boolean
-    apiAccess: boolean
-    customModels?: boolean
-  }
-  subscriptionId?: string
-  currentPeriodEnd?: string
-}
+import { useCallback, useEffect, useState } from 'react'
+import { apiClient, type BillingAvailability, type CurrentSubscriptionResponse } from '@/lib/api-client'
 
 interface SubscriptionManagerProps {
+  authToken: string | null
+  billingStatus: BillingAvailability | null
   onUpgrade: () => void
+  onLoaded?: (subscription: CurrentSubscriptionResponse | null) => void
 }
 
-export default function SubscriptionManager({ onUpgrade }: SubscriptionManagerProps) {
-  const [subscription, setSubscription] = useState<Subscription | null>(null)
+export default function SubscriptionManager({ authToken, billingStatus, onUpgrade, onLoaded }: SubscriptionManagerProps) {
+  const [subscription, setSubscription] = useState<CurrentSubscriptionResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isCancelling, setIsCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchSubscription = async () => {
+  const fetchSubscription = useCallback(async () => {
     setIsLoading(true)
     setError(null)
-    try {
-      const response = await fetch('/api/subscription/current')
-      if (response.status === 404) {
-        setSubscription(null)
-      } else if (response.ok) {
-        setSubscription(await response.json())
-      } else {
-        throw new Error('Failed to fetch subscription')
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load subscription')
-    } finally {
+    apiClient.setAuthToken(authToken)
+    const response = await apiClient.getCurrentSubscription()
+    if (response.success && response.data) {
+      setSubscription(response.data)
+      onLoaded?.(response.data)
       setIsLoading(false)
+      return
     }
-  }
+
+    onLoaded?.(null)
+    setError(response.error || 'Failed to load subscription')
+    setIsLoading(false)
+  }, [authToken, onLoaded])
 
   useEffect(() => {
     fetchSubscription()
-  }, [])
+  }, [fetchSubscription])
 
   const handleCancel = async () => {
     if (!subscription || !confirm('Cancel this subscription?')) return
     setIsCancelling(true)
     setError(null)
     try {
-      const response = await fetch('/api/subscription/cancel', { method: 'POST' })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok || !payload.success) throw new Error(payload.error || 'Failed to cancel subscription')
+      apiClient.setAuthToken(authToken)
+      const response = await apiClient.cancelSubscription()
+      if (!response.success) throw new Error(response.error || 'Failed to cancel subscription')
       await fetchSubscription()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cancel subscription')
@@ -83,14 +68,22 @@ export default function SubscriptionManager({ onUpgrade }: SubscriptionManagerPr
     )
   }
 
-  if (!subscription) {
+  if (!subscription || (subscription.planId === 'free' && !subscription.subscriptionId)) {
     return (
       <div className="surface-card p-5 text-center">
-        <h3 className="text-lg font-semibold text-white">No Active Subscription</h3>
-        <p className="mt-1 text-sm text-slate-400">You are on the free tier.</p>
-        <button onClick={onUpgrade} className="mt-4 rounded-lg bg-orange-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-orange-200">
-          Browse Plans
-        </button>
+        <h3 className="text-lg font-semibold text-white">
+          {subscription?.planName ?? 'Free Tier'}
+        </h3>
+        <p className="mt-1 text-sm text-slate-400">
+          {billingStatus?.available
+            ? 'You are on the free tier.'
+            : billingStatus?.message || 'Billing is unavailable in this environment.'}
+        </p>
+        {billingStatus?.available && (
+          <button onClick={onUpgrade} className="mt-4 rounded-lg bg-orange-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-orange-200">
+            Browse Plans
+          </button>
+        )}
       </div>
     )
   }
@@ -136,19 +129,27 @@ export default function SubscriptionManager({ onUpgrade }: SubscriptionManagerPr
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <button onClick={onUpgrade} className="rounded-lg border border-white/15 px-3 py-2 text-sm text-slate-100 hover:bg-white/10">
+        <button
+          onClick={onUpgrade}
+          disabled={!billingStatus?.available}
+          className="rounded-lg border border-white/15 px-3 py-2 text-sm text-slate-100 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+        >
           Change Plan
         </button>
         {subscription.status === 'active' && subscription.subscriptionId && (
           <button
             onClick={handleCancel}
-            disabled={isCancelling}
+            disabled={isCancelling || !billingStatus?.available}
             className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-sm text-rose-100 hover:bg-rose-300/20 disabled:opacity-60"
           >
             {isCancelling ? 'Cancelling...' : 'Cancel'}
           </button>
         )}
       </div>
+
+      {billingStatus && !billingStatus.available && (
+        <p className="mt-4 text-sm text-amber-200">{billingStatus.message}</p>
+      )}
     </div>
   )
 }

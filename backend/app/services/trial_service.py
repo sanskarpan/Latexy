@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
@@ -57,16 +58,23 @@ class TrialService:
             trial = result.scalar_one_or_none()
 
             if not trial:
-                # Create new trial record
-                trial = DeviceTrial(
-                    device_fingerprint=device_fingerprint,
-                    ip_address=ip_address,
-                    usage_count=0,
-                    blocked=False
+                # Concurrent page loads can hit this endpoint at the same time.
+                # Use an idempotent upsert so only one insert wins.
+                await db.execute(
+                    pg_insert(DeviceTrial)
+                    .values(
+                        device_fingerprint=device_fingerprint,
+                        ip_address=ip_address,
+                        usage_count=0,
+                        blocked=False,
+                    )
+                    .on_conflict_do_nothing(
+                        index_elements=[DeviceTrial.device_fingerprint]
+                    )
                 )
-                db.add(trial)
                 await db.commit()
-                await db.refresh(trial)
+                result = await db.execute(stmt)
+                trial = result.scalar_one()
 
             # Test users are never considered blocked regardless of usage_count
             is_test = limit > TRIAL_LIMIT
@@ -83,10 +91,11 @@ class TrialService:
             logger.error(f"Error getting trial status: {e}")
             return {
                 "usageCount": 0,
-                "remainingUses": TRIAL_LIMIT,
+                "remainingUses": limit,
                 "blocked": False,
                 "lastUsed": None,
-                "canUse": True
+                "canUse": True,
+                "trialLimit": limit,
             }
 
     async def check_rate_limits(

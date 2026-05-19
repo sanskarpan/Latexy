@@ -14,12 +14,13 @@ Key strategy:
 
 import base64
 import logging
-import os
 from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+from ..core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class EncryptionService:
     """Authoritative service for encrypting and decrypting sensitive data."""
 
     def __init__(self, encryption_key: Optional[str] = None):
-        raw_key = encryption_key or os.getenv('API_KEY_ENCRYPTION_KEY')
+        raw_key = encryption_key or settings.API_KEY_ENCRYPTION_KEY
         if raw_key:
             key_bytes = raw_key.encode() if isinstance(raw_key, str) else raw_key
             # Use directly if it is already a valid Fernet key; otherwise derive via PBKDF2.
@@ -40,9 +41,15 @@ class EncryptionService:
             except Exception:
                 self._fernet = Fernet(self._derive_key(key_bytes))
         else:
+            if settings.is_production_like():
+                raise ValueError(
+                    "API_KEY_ENCRYPTION_KEY is required when ENVIRONMENT is "
+                    "staging or production."
+                )
             logger.warning(
-                "API_KEY_ENCRYPTION_KEY is not set — using development fallback. "
-                "Set this variable in production!"
+                "API_KEY_ENCRYPTION_KEY is not set in %s — using development-only "
+                "fallback encryption. Never use this mode in staging or production.",
+                settings.normalized_environment,
             )
             self._fernet = Fernet(self._derive_key(b'latexy_dev_key_fallback!'))
 

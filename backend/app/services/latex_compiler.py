@@ -24,7 +24,10 @@ class LaTeXCompiler:
         # Ensure temp directory exists
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"LaTeX compiler initialized (Docker: {self.use_docker})")
+        logger.info(
+            "LaTeX compiler initialized (mode=%s)",
+            self.capability_summary(),
+        )
 
     def _check_docker_available(self) -> bool:
         """Check if Docker is available on the system."""
@@ -39,7 +42,7 @@ class LaTeXCompiler:
         except Exception:
             return False
 
-    def _get_latex_command(self) -> str:
+    def _get_latex_command(self) -> Optional[str]:
         """Get the appropriate LaTeX command based on availability."""
         # Try different LaTeX commands in order of preference
         commands = ["pdflatex", "xelatex", "lualatex"]
@@ -53,13 +56,11 @@ class LaTeXCompiler:
                     timeout=5
                 )
                 if result.returncode == 0:
-                    logger.info(f"Found LaTeX command: {cmd}")
                     return cmd
             except Exception:
                 continue
 
-        logger.warning("No LaTeX command found on system")
-        return "pdflatex"  # Default fallback
+        return None
 
     async def compile_latex(
         self,
@@ -149,7 +150,7 @@ class LaTeXCompiler:
         try:
             # Run pdflatex command
             process = await asyncio.create_subprocess_exec(
-                self.latex_command,
+                self.latex_command or "pdflatex",
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 "-output-directory", str(work_dir),
@@ -257,18 +258,15 @@ class LaTeXCompiler:
         """Check if LaTeX compilation is available."""
         if self.use_docker:
             return True
-        else:
-            # Check if local LaTeX is available
-            try:
-                result = subprocess.run(
-                    [self.latex_command, "--version"],
-                    capture_output=True,
-                    timeout=5
-                )
-                return result.returncode == 0
-            except Exception:
-                return False
+        return self.latex_command is not None
+
+    def capability_summary(self) -> str:
+        """Return a short human-readable description of compilation capability."""
+        if self.use_docker:
+            return f"docker:{self.docker_image}"
+        if self.latex_command:
+            return f"local:{self.latex_command}"
+        return "unavailable"
 
 # Global instance
 latex_compiler = LaTeXCompiler()
-
