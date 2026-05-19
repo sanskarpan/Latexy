@@ -57,7 +57,7 @@ async def _do_auto_save(
     from sqlalchemy import delete as sa_delete
     from sqlalchemy import select
 
-    from ..database.models import Optimization
+    from ..database.models import Optimization, Resume, User
 
     engine = None
     if session_factory is None:
@@ -77,12 +77,44 @@ async def _do_auto_save(
 
     try:
         async with session_factory() as session:
+            resume_owner_id = await session.scalar(
+                select(Resume.user_id).where(Resume.id == resume_id)
+            )
+            if resume_owner_id is None:
+                logger.warning(
+                    "Skipping auto-save for missing resume %s", resume_id
+                )
+                return
+
+            effective_user_id = user_id
+            if effective_user_id != resume_owner_id:
+                logger.warning(
+                    "Auto-save queued with mismatched user for resume %s; "
+                    "queued=%s owner=%s. Using current owner.",
+                    resume_id,
+                    effective_user_id,
+                    resume_owner_id,
+                )
+                effective_user_id = resume_owner_id
+
+            if effective_user_id is not None:
+                user_exists = await session.scalar(
+                    select(User.id).where(User.id == effective_user_id)
+                )
+                if user_exists is None:
+                    logger.warning(
+                        "Auto-save owner %s missing for resume %s; "
+                        "saving checkpoint without user reference",
+                        effective_user_id,
+                        resume_id,
+                    )
+                    effective_user_id = None
+
             # Dedup: check if latest auto-save is < 5 min old
             result = await session.execute(
                 select(Optimization)
                 .where(
                     Optimization.resume_id == resume_id,
-                    Optimization.user_id == user_id,
                     Optimization.is_auto_save.is_(True),
                 )
                 .order_by(Optimization.created_at.desc())
@@ -109,7 +141,7 @@ async def _do_auto_save(
 
             cp = Optimization(
                 id=str(uuid4()),
-                user_id=user_id,
+                user_id=effective_user_id,
                 resume_id=resume_id,
                 original_latex=latex_content,
                 optimized_latex=latex_content,
@@ -128,7 +160,6 @@ async def _do_auto_save(
                 select(Optimization.id)
                 .where(
                     Optimization.resume_id == resume_id,
-                    Optimization.user_id == user_id,
                     Optimization.is_auto_save.is_(True),
                 )
                 .order_by(Optimization.created_at.desc())
