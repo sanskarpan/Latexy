@@ -181,6 +181,16 @@ from .application_routes import router as application_router
 
 router.include_router(application_router)
 
+# Include Developer API management routes (Feature 21)
+from .developer_routes import router as developer_router
+
+router.include_router(developer_router)
+
+# Include public API v1 routes (Feature 21)
+from .public_api_routes import router as public_api_router
+
+router.include_router(public_api_router)
+
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -957,4 +967,3 @@ async def get_shared_resume(
         is_anonymous=is_anonymous,
         anonymous_processing=anonymous_processing,
     )
-
