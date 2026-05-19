@@ -5,7 +5,7 @@ Celery application configuration for Phase 8.
 from celery import Celery
 from celery.schedules import crontab
 
-from ..core.config import resolve_plan_family, settings
+from ..core.config import settings
 from ..core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -166,7 +166,7 @@ def get_task_priority(user_plan: str = "free") -> int:
         "byok": TASK_PRIORITY_HIGH,
         "team": TASK_PRIORITY_HIGH,
     }
-    return priority_mapping.get(resolve_plan_family(user_plan), TASK_PRIORITY_NORMAL)
+    return priority_mapping.get(user_plan, TASK_PRIORITY_NORMAL)
 
 
 # Celery signals for monitoring
