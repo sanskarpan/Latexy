@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..database.connection import get_db
+
 if TYPE_CHECKING:
     from ..database.models import DeveloperAPIKey
 
