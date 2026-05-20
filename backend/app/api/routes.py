@@ -585,11 +585,7 @@ class BillingStatusResponse(BaseModel):
 
 class SubscriptionPlanResponse(BaseModel):
     plans: dict
-<<<<<<< HEAD
-    billing: dict
-=======
     billing: BillingStatusResponse
->>>>>>> 989db09 (feat(subscription): wire billing developer and team routes into api)
 
 class CreateSubscriptionRequest(BaseModel):
     planId: str
@@ -637,29 +633,19 @@ class CancelSubscriptionResponse(BaseModel):
 
 
 @router.get("/subscription/plans", response_model=SubscriptionPlanResponse)
-<<<<<<< HEAD
-async def get_subscription_plans(db: AsyncSession = Depends(get_db)):
-=======
 async def get_subscription_plans(
     db: AsyncSession = Depends(get_db),
 ):
->>>>>>> 989db09 (feat(subscription): wire billing developer and team routes into api)
     """Get available subscription plans."""
     try:
         feature_enabled = await feature_flag_service.get_flag("billing", db)
         plans = await payment_service.get_subscription_plans()
-<<<<<<< HEAD
-        billing_enabled = await feature_flag_service.get_flag("billing", db)
-        billing = payment_service.get_status(feature_enabled=billing_enabled)
-        return SubscriptionPlanResponse(plans=plans, billing=billing)
-=======
         return SubscriptionPlanResponse(
             plans=plans,
             billing=BillingStatusResponse(
                 **payment_service.get_status(feature_enabled=feature_enabled)
             ),
         )
->>>>>>> 989db09 (feat(subscription): wire billing developer and team routes into api)
     except Exception as e:
         logger.error(f"Error getting subscription plans: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

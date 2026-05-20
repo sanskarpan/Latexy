@@ -5,9 +5,10 @@ Revises: 0027
 Create Date: 2026-05-19
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
+
+from alembic import op
 
 revision = "0028"
 down_revision = "0027"
