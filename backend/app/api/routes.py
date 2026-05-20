@@ -171,25 +171,27 @@ from .macro_routes import router as macro_router
 
 router.include_router(macro_router)
 
+# Include Developer API routes (Feature 21)
+from .developer_routes import router as developer_router
+from .public_api_routes import router as public_api_router
+
+router.include_router(developer_router)
+router.include_router(public_api_router)
+
 # Include Tenant admin routes (Feature 85)
 from .tenant_routes import router as tenant_router
 
 router.include_router(tenant_router)
 
+# Include Team billing seat routes (Feature 32)
+from .team_routes import router as team_router
+
+router.include_router(team_router)
+
 # Include One-Click Application routes (Feature 87)
 from .application_routes import router as application_router
 
 router.include_router(application_router)
-
-# Include Developer API management routes (Feature 21)
-from .developer_routes import router as developer_router
-
-router.include_router(developer_router)
-
-# Include public API v1 routes (Feature 21)
-from .public_api_routes import router as public_api_router
-
-router.include_router(public_api_router)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -473,7 +475,7 @@ async def track_usage(
     try:
         ip_address = request.client.host if request.client else None
 
-        result = await trial_service.track_usage(
+        result = await trial_service.check_and_track_usage(
             db=db,
             device_fingerprint=request_data.deviceFingerprint,
             action=request_data.action,
@@ -574,22 +576,46 @@ async def compile_latex_anonymous(
 
 # Payment & Subscription Endpoints
 
+class BillingStatusResponse(BaseModel):
+    feature_enabled: bool
+    mode: str
+    available: bool
+    reason: Optional[str] = None
+    message: str
+
 class SubscriptionPlanResponse(BaseModel):
     plans: dict
-    billing: dict
+    billing: BillingStatusResponse
 
 class CreateSubscriptionRequest(BaseModel):
     planId: str
     customerEmail: str
     customerName: str
+    billingPeriod: str = "monthly"
+    couponCode: Optional[str] = None
+    studentEmail: Optional[str] = None
 
 class CreateSubscriptionResponse(BaseModel):
     success: bool
     subscriptionId: Optional[str] = None
     shortUrl: Optional[str] = None
     customerId: Optional[str] = None
+    verificationRequired: bool = False
+    verificationPreviewUrl: Optional[str] = None
+    coupon: Optional[dict] = None
     error: Optional[str] = None
     message: Optional[str] = None
+
+class CouponValidationRequest(BaseModel):
+    code: str
+    planId: str
+    billingPeriod: str = "monthly"
+
+class CouponValidationResponse(BaseModel):
+    valid: bool
+    message: str
+    discountPercent: Optional[int] = None
+    code: Optional[str] = None
 
 class UserSubscriptionResponse(BaseModel):
     userId: str
@@ -607,13 +633,19 @@ class CancelSubscriptionResponse(BaseModel):
 
 
 @router.get("/subscription/plans", response_model=SubscriptionPlanResponse)
-async def get_subscription_plans(db: AsyncSession = Depends(get_db)):
+async def get_subscription_plans(
+    db: AsyncSession = Depends(get_db),
+):
     """Get available subscription plans."""
     try:
+        feature_enabled = await feature_flag_service.get_flag("billing", db)
         plans = await payment_service.get_subscription_plans()
-        billing_enabled = await feature_flag_service.get_flag("billing", db)
-        billing = payment_service.get_status(feature_enabled=billing_enabled)
-        return SubscriptionPlanResponse(plans=plans, billing=billing)
+        return SubscriptionPlanResponse(
+            plans=plans,
+            billing=BillingStatusResponse(
+                **payment_service.get_status(feature_enabled=feature_enabled)
+            ),
+        )
     except Exception as e:
         logger.error(f"Error getting subscription plans: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -627,14 +659,8 @@ async def create_subscription(
 ):
     """Create a new subscription."""
     try:
-        if not await feature_flag_service.get_flag("billing", db):
+        if request_data.planId != "free" and not await feature_flag_service.get_flag("billing", db):
             raise HTTPException(status_code=503, detail="Billing is currently disabled")
-
-        if not payment_service.is_available():
-            raise HTTPException(
-                status_code=503,
-                detail="Payment service is not available"
-            )
 
         if not user_id:
             raise HTTPException(status_code=401, detail="Authentication required to create a subscription")
@@ -644,14 +670,23 @@ async def create_subscription(
             user_id=user_id,
             plan_id=request_data.planId,
             customer_email=request_data.customerEmail,
-            customer_name=request_data.customerName
+            customer_name=request_data.customerName,
+            billing_period=request_data.billingPeriod,
+            coupon_code=request_data.couponCode,
+            student_email=request_data.studentEmail,
         )
+
+        if not result.get("success") and result.get("error") == payment_service.get_status()["message"]:
+            raise HTTPException(status_code=503, detail=result["error"])
 
         return CreateSubscriptionResponse(
             success=result["success"],
             subscriptionId=result.get("subscription_id"),
             shortUrl=result.get("short_url"),
             customerId=result.get("customer_id"),
+            verificationRequired=bool(result.get("verification_required")),
+            verificationPreviewUrl=result.get("verification_preview_url"),
+            coupon=result.get("coupon"),
             error=result.get("error"),
             message=result.get("message")
         )
@@ -661,6 +696,43 @@ async def create_subscription(
     except Exception as e:
         logger.error(f"Error creating subscription: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/subscription/student/verify/{token}")
+async def verify_student_subscription(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Activate a student plan after email verification."""
+    result = await payment_service.verify_student_subscription(db, token)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "Verification failed")
+    return result
+
+
+@router.post("/billing/validate-coupon", response_model=CouponValidationResponse)
+async def validate_coupon(
+    body: CouponValidationRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
+    """Validate a coupon code for the requested subscription plan."""
+    concrete_plan_id = body.planId
+    if body.billingPeriod == "annual" and concrete_plan_id in {"basic", "pro", "byok"}:
+        concrete_plan_id = f"{concrete_plan_id}_annual"
+
+    result = await payment_service.validate_coupon(
+        db=db,
+        code=body.code,
+        plan_id=concrete_plan_id,
+        user_id=user_id,
+    )
+    return CouponValidationResponse(
+        valid=bool(result.get("valid")),
+        message=result.get("message", ""),
+        discountPercent=result.get("discount_percent"),
+        code=result.get("code"),
+    )
 
 
 @router.get("/subscription/current", response_model=UserSubscriptionResponse)
@@ -702,10 +774,16 @@ async def cancel_subscription(
 ):
     """Cancel current user's subscription."""
     try:
+        if not await feature_flag_service.get_flag("billing", db):
+            raise HTTPException(status_code=503, detail="Billing is currently disabled")
+
         if not user_id:
             raise HTTPException(status_code=401, detail="Authentication required")
 
         result = await payment_service.cancel_subscription(db, user_id)
+
+        if not result["success"] and result.get("error") == payment_service.get_status()["message"]:
+            raise HTTPException(status_code=503, detail=result["error"])
 
         return CancelSubscriptionResponse(
             success=result["success"],
@@ -727,6 +805,12 @@ async def razorpay_webhook(
 ):
     """Handle Razorpay webhook events."""
     try:
+        if not payment_service.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail=payment_service.get_status()["message"],
+            )
+
         payload = await request.body()
         signature = request.headers.get("X-Razorpay-Signature", "")
 
