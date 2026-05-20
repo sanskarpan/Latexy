@@ -182,16 +182,18 @@ Copy `.env.example` and fill in values. Key variables:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
+| `ENVIRONMENT` | Yes | `development`, `staging`, or `production` |
 | `DATABASE_URL` | Yes | `postgresql+asyncpg://user:pass@host:5432/latexy` |
 | `BETTER_AUTH_SECRET` | Yes | 48+ char random secret |
 | `JWT_SECRET_KEY` | Yes | 32+ char random secret |
 | `REDIS_URL` | Yes | `redis://localhost:6379/0` |
 | `OPENAI_API_KEY` | — | Enables LLM optimize + ATS deep analysis |
-| `API_KEY_ENCRYPTION_KEY` | Yes | Fernet key for BYOK encryption |
+| `API_KEY_ENCRYPTION_KEY` | Yes in `staging`/`production` | Fernet key for BYOK encryption |
 | `MINIO_ENDPOINT` | — | Defaults to `http://minio:9000` in Docker |
 | `MINIO_ACCESS_KEY` | — | Defaults to `minioadmin` |
 | `MINIO_SECRET_KEY` | — | Defaults to `minioadmin_secret` |
 | `MINIO_BUCKET` | — | Defaults to `latexy` |
+| `BILLING_MODE` | — | `disabled`, `auto`, or `required` |
 | `RAZORPAY_KEY_ID` | — | Payments (India) |
 | `RAZORPAY_KEY_SECRET` | — | Payments (India) |
 | `RAZORPAY_WEBHOOK_SECRET` | — | Webhook signature validation |
@@ -200,7 +202,13 @@ Generate strong secrets:
 ```bash
 openssl rand -base64 48   # BETTER_AUTH_SECRET
 openssl rand -hex 32      # JWT_SECRET_KEY
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"  # API_KEY_ENCRYPTION_KEY
 ```
+
+Production startup is fail-fast:
+- `ENVIRONMENT=staging|production` requires `API_KEY_ENCRYPTION_KEY`.
+- `BILLING_MODE=required` requires all Razorpay credentials.
+- Partial Razorpay config is rejected at startup so billing cannot silently degrade.
 
 ---
 

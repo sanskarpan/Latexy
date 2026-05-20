@@ -327,7 +327,7 @@ return `compile_timeout` error code with upgrade CTA. Latency SLA differentiatio
     ```
 
 ### 11C · Submit Helper — Pass Timeout
-- [ ] In `submit_latex_compilation()`:
+- [x] In `submit_latex_compilation()`:
   ```python
   def submit_latex_compilation(..., user_plan: str = "free", ...):
       timeout = get_compile_timeout(user_plan)
@@ -344,15 +344,15 @@ return `compile_timeout` error code with upgrade CTA. Latency SLA differentiatio
   ```
 
 ### 11D · Orchestrator — Same Change
-- [ ] In `backend/app/workers/orchestrator.py`:
+- [x] In `backend/app/workers/orchestrator.py`:
   - Pass `timeout_seconds` when spawning the compile sub-task
   - Orchestrator also has its own `time_limit` — ensure it's `timeout + llm_timeout` (don't cut LLM short)
 
 ### 11E · Frontend — Timeout Error Handling
-- [ ] In `frontend/src/hooks/useJobStream.ts`, `job.failed` handler:
+- [x] In `frontend/src/hooks/useJobStream.reducer.ts`, `job.failed` handler:
   - Detect `error_code === "compile_timeout"` in event payload
   - Set special state: `timeoutError: { plan: string; upgradeMessage: string }`
-- [ ] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx` and try/page.tsx:
+- [x] In `frontend/src/app/workspace/[resumeId]/edit/page.tsx` and try/page.tsx:
   - When `stream.timeoutError` is set:
     ```tsx
     {stream.timeoutError && (
@@ -369,7 +369,7 @@ return `compile_timeout` error code with upgrade CTA. Latency SLA differentiatio
     ```
 
 ### 11F · Tests
-- [ ] `backend/test/test_compile_timeout.py`:
+- [x] `backend/test/test_compile_timeout.py`:
   - `get_compile_timeout("free")` returns 30
   - `get_compile_timeout("pro")` returns 240
   - `get_compile_timeout("unknown")` returns 30 (fallback)
@@ -721,7 +721,7 @@ Cards show company logo, ATS score, status. Drag-and-drop between status columns
 New `job_applications` DB table with full CRUD API.
 
 ### 15A · Database Migration
-- [ ] Create `backend/alembic/versions/0009_add_job_applications.py`:
+- [x] Create `backend/alembic/versions/0009_add_job_applications.py`:
   ```sql
   CREATE TYPE application_status AS ENUM (
     'applied', 'phone_screen', 'technical', 'onsite', 'offer', 'rejected', 'withdrawn'
@@ -750,7 +750,7 @@ New `job_applications` DB table with full CRUD API.
   ```
 
 ### 15B · Backend Model
-- [ ] Add `JobApplication` SQLAlchemy model to `backend/app/database/models.py`:
+- [x] Add `JobApplication` SQLAlchemy model to `backend/app/database/models.py`:
   ```python
   class JobApplication(Base):
       __tablename__ = "job_applications"
@@ -774,10 +774,10 @@ New `job_applications` DB table with full CRUD API.
       user: Mapped["User"] = relationship(back_populates="job_applications")
       resume: Mapped[Optional["Resume"]] = relationship()
   ```
-- [ ] Add reverse relation on `User`: `job_applications: Mapped[List["JobApplication"]] = relationship(...)`
+- [x] Add reverse relation on `User`: `job_applications: Mapped[List["JobApplication"]] = relationship(...)`
 
 ### 15C · Backend — Job Application Routes
-- [ ] Create `backend/app/api/tracker_routes.py`:
+- [x] Create `backend/app/api/tracker_routes.py`:
   ```
   POST   /tracker/applications               — create application
   GET    /tracker/applications               — list all (grouped by status or flat)
@@ -823,10 +823,10 @@ New `job_applications` DB table with full CRUD API.
         response_rate: float               # (phone_screen + technical + onsite + offer) / total
         offer_rate: float                  # offer / total
     ```
-- [ ] Register router in `backend/app/api/routes.py`
+- [x] Register router in `backend/app/api/routes.py`
 
 ### 15D · Frontend — API Client
-- [ ] Add to `frontend/src/lib/api-client.ts`:
+- [x] Add to `frontend/src/lib/api-client.ts`:
   ```typescript
   // Types
   interface JobApplication { id, company_name, role_title, status, resume_id?, ats_score_at_submission?, job_url?, company_logo_url?, notes?, applied_at, updated_at }
@@ -843,7 +843,7 @@ New `job_applications` DB table with full CRUD API.
   ```
 
 ### 15E · Frontend — Tracker Page (Kanban)
-- [ ] Create `frontend/src/app/tracker/page.tsx`:
+- [x] Create `frontend/src/app/tracker/page.tsx`:
   - Layout: full-width board with horizontal scroll for columns
   - **Status columns (7):** Applied · Phone Screen · Technical · On-Site · Offer · Rejected · Withdrawn
     - Column headers: status name + count badge
@@ -864,7 +864,7 @@ New `job_applications` DB table with full CRUD API.
   - **"Add Application" button** (top right): opens `AddApplicationModal`
 
 ### 15F · Frontend — Add Application Modal
-- [ ] Create `frontend/src/components/AddApplicationModal.tsx`:
+- [x] Create `frontend/src/components/AddApplicationModal.tsx`:
   - Fields:
     - Company name (required, text)
     - Role title (required, text)
@@ -879,18 +879,18 @@ New `job_applications` DB table with full CRUD API.
   - "Add to Tracker" deep link from workspace card: pre-fill `resume_id` + ATS score
 
 ### 15G · Frontend — Statistics Dashboard
-- [ ] Add stats bar at top of tracker page:
+- [x] Add stats bar at top of tracker page:
   - "Total: 12 applications" · "Response rate: 42%" · "Avg ATS: 74"
   - Small sparkline or progress bar showing funnel (Applied → Phone → Technical → Offer)
   - Fetched from `GET /tracker/stats`
 
 ### 15H · Frontend — Workspace Integration
-- [ ] In workspace resume cards: add "Add to Tracker" option in actions dropdown
+- [x] In workspace resume cards: add "Add to Tracker" option in actions dropdown
   - Opens `AddApplicationModal` pre-filled with `resume_id`
   - If resume has recent optimization: pre-fill `ats_score_at_submission`
 
 ### 15I · Tests
-- [ ] `backend/test/test_tracker.py`:
+- [x] `backend/test/test_tracker.py`:
   - Create application → 201, returns correct fields
   - Update status → reflects in GET list
   - Stats: `response_rate = 0` when all applications are `applied`
@@ -1490,14 +1490,14 @@ triggers auto-compile for instant preview. Replaces manual preamble editing for 
 
 ---
 
-## Feature 21 — Developer Public API · P1 · M
+## Feature 21 — Developer Public API · P1 · M ✅ COMPLETED
 
 **Goal:** Let third-party developers call Latexy's core capabilities (compile, optimize, ATS score,
 export) via API keys with `lx_sk_` prefix. Rate-limited per plan. Separate from BYOK LLM keys.
 Enables agency/platform integrations.
 
 ### 21A · Database Migration — Developer API Keys
-- [ ] Create `backend/alembic/versions/0012_add_developer_api_keys.py`:
+- [x] Create `backend/alembic/versions/0027_add_developer_api_keys.py`:
   ```sql
   CREATE TABLE developer_api_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1518,11 +1518,11 @@ Enables agency/platform integrations.
   - `key_prefix` shown in UI to help user identify which key (lx_sk_Ab3d...)
 
 ### 21B · Backend Model
-- [ ] Add `DeveloperAPIKey` SQLAlchemy model to `backend/app/database/models.py`
-- [ ] Add reverse relation on `User`: `developer_api_keys: Mapped[List["DeveloperAPIKey"]] = relationship(...)`
+- [x] Add `DeveloperAPIKey` SQLAlchemy model to `backend/app/database/models.py`
+- [x] Add reverse relation on `User`: `developer_api_keys: Mapped[List["DeveloperAPIKey"]] = relationship(...)`
 
 ### 21C · Backend — API Key Service
-- [ ] Create `backend/app/services/developer_key_service.py`:
+- [x] Create `backend/app/services/developer_key_service.py`:
   ```python
   import hashlib, secrets
 
@@ -1554,7 +1554,7 @@ Enables agency/platform integrations.
   ```
 
 ### 21D · Backend — API Key Management Routes
-- [ ] Create `backend/app/api/developer_routes.py`:
+- [x] Create `backend/app/api/developer_routes.py`:
   ```
   GET    /developer/keys          — list all keys (shows prefix, name, stats; never full key)
   POST   /developer/keys          — create new key (returns full key ONCE in response)
@@ -1567,7 +1567,7 @@ Enables agency/platform integrations.
   - Max keys per user: 5 (enforce in endpoint, return 400 if exceeded)
 
 ### 21E · Backend — API Key Auth Middleware
-- [ ] In `backend/app/middleware/auth_middleware.py`:
+- [x] In `backend/app/middleware/auth_middleware.py`:
   - Add `get_api_key_user` dependency:
     ```python
     async def get_api_key_user(
@@ -1584,7 +1584,7 @@ Enables agency/platform integrations.
     ```
 
 ### 21F · Backend — Rate Limiting per Plan
-- [ ] In `backend/app/services/developer_key_service.py`:
+- [x] In `backend/app/services/developer_key_service.py`:
   ```python
   DAILY_RATE_LIMITS = {
       "free":  10,
@@ -1605,7 +1605,7 @@ Enables agency/platform integrations.
   - Called at the start of each public API endpoint
 
 ### 21G · Backend — Public API v1 Endpoints
-- [ ] Create `backend/app/api/public_api_routes.py`:
+- [x] Create `backend/app/api/public_api_routes.py`:
   - Router prefix: `/api/v1`
   - All endpoints use `get_api_key_user` for auth (no session cookie needed)
   ```
@@ -1630,7 +1630,7 @@ Enables agency/platform integrations.
   - Reuse existing Celery tasks — just a different entry point
 
 ### 21H · Frontend — Developer Portal Page
-- [ ] Create `frontend/src/app/developer/page.tsx`:
+- [x] Create `frontend/src/app/developer/page.tsx`:
   - **API Key Management:**
     - List of existing keys: name, prefix, created date, last used, request count
     - "Create New API Key" button → modal with name input
@@ -1643,7 +1643,7 @@ Enables agency/platform integrations.
   - **Usage stats:** bar chart of daily API usage (last 7 days) using visx
 
 ### 21I · Tests
-- [ ] `backend/test/test_developer_api.py`:
+- [x] `backend/test/test_developer_api.py`:
   - `POST /developer/keys` → returns full key once, only prefix in subsequent GET
   - Key hash stored, not plaintext
   - `Authorization: Bearer lx_sk_{valid}` → resolves to correct user_id
@@ -2603,14 +2603,14 @@ item bullets. No backend changes needed.
 
 ---
 
-## Feature 32 — Advanced Subscription Tiers · P1 · M
+## Feature 32 — Advanced Subscription Tiers · P1 · M ✅ COMPLETED
 
 **Goal:** Add annual billing (20% off), student plan (50% off + .edu verification), and agency/
 team plan (5 seats). Add coupon code support. Show upgrade prompts at friction points. Uses
 existing Razorpay infrastructure.
 
 ### 32A · Config — New Plan Definitions
-- [ ] Update `backend/app/core/config.py` plan definitions:
+- [x] Update `backend/app/core/config.py` plan definitions:
   ```python
   # Existing monthly plan IDs (Razorpay)
   RAZORPAY_PLAN_BASIC_MONTHLY = "plan_..."
@@ -2632,7 +2632,7 @@ existing Razorpay infrastructure.
   - Create these plans in Razorpay dashboard first, then paste IDs here
 
 ### 32B · Database — Team Seats
-- [ ] Create `backend/alembic/versions/0013_add_team_members.py`:
+- [x] Create `backend/alembic/versions/0028_add_subscription_extensions.py`:
   ```sql
   CREATE TABLE team_seats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2648,7 +2648,7 @@ existing Razorpay infrastructure.
   ```
 
 ### 32C · Database — Coupon Codes
-- [ ] Add to the same migration:
+- [x] Add to the same migration:
   ```sql
   CREATE TABLE coupon_codes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2670,7 +2670,7 @@ existing Razorpay infrastructure.
   ```
 
 ### 32D · Backend — Annual/Student/Team Billing
-- [ ] Add to existing billing/subscription routes (`routes.py`):
+- [x] Add to existing billing/subscription routes (`routes.py`):
   - `POST /subscription/create` already exists — extend it to accept:
     - `billing_period: "monthly" | "annual"` — maps to correct Razorpay plan ID
     - `coupon_code?: str` — validates coupon, applies Razorpay discount
@@ -2687,7 +2687,7 @@ existing Razorpay infrastructure.
   - Annual billing: Razorpay subscriptions with `interval: "yearly"` and `interval_count: 1`
 
 ### 32E · Backend — Team Seat Management
-- [ ] Create `backend/app/api/team_routes.py`:
+- [x] Create `backend/app/api/team_routes.py`:
   ```
   GET    /team/seats         — list team seats (owner only)
   POST   /team/invite        — invite member by email
@@ -2701,7 +2701,7 @@ existing Razorpay infrastructure.
   - Verify seat count: `SELECT COUNT(*) FROM team_seats WHERE owner_user_id = :uid AND status != 'removed'`
 
 ### 32F · Backend — Coupon Code Validation
-- [ ] Add `POST /billing/validate-coupon`:
+- [x] Add `POST /billing/validate-coupon`:
   ```python
   async def validate_coupon(code: str, plan_id: str) -> CouponValidationResponse:
       coupon = await db.execute(select(CouponCode).where(
@@ -2716,29 +2716,29 @@ existing Razorpay infrastructure.
   ```
 
 ### 32G · Frontend — Annual Billing Toggle
-- [ ] In `frontend/src/app/pricing/page.tsx` (or wherever pricing is):
+- [x] In `frontend/src/app/pricing/page.tsx` (or wherever pricing is):
   - Add "Monthly / Annual" toggle with "20% off" badge for annual
   - Prices update dynamically when toggled
   - Annual: show crossed-out monthly price + "Save INR {amount}/year" tag
 
 ### 32H · Frontend — Coupon Code Input
-- [ ] In subscription checkout flow:
+- [x] In subscription checkout flow:
   - Expandable "Have a coupon code?" section
   - Input + "Apply" button → calls `POST /billing/validate-coupon`
   - If valid: show "INR {discount} off applied ✓" with discount in summary
 
 ### 32I · Frontend — Student Plan CTA
-- [ ] In pricing page: "Student? Get 50% off" card/button
+- [x] In pricing page: "Student? Get 50% off" card/button
   - Opens modal: enter .edu email → verification email sent → link activates student plan
 
 ### 32J · Frontend — Upgrade Prompts at Friction Points
-- [ ] When anonymous user hits compile trial limit → show plan comparison modal
-- [ ] When compile timeout hit (Feature 11) → show "Upgrade for 4× compile time" inline
-- [ ] When deep analysis trial (2 uses) exhausted → show upgrade prompt
-- [ ] When trying to use BYOK features without setting key → link to subscription page
+- [x] When anonymous user hits compile trial limit → show plan comparison modal
+- [x] When compile timeout hit (Feature 11) → show "Upgrade for 4× compile time" inline
+- [x] When deep analysis trial (2 uses) exhausted → show upgrade prompt
+- [x] When trying to use BYOK features without setting key → link to subscription page
 
 ### 32K · Tests
-- [ ] `backend/test/test_subscriptions.py`:
+- [x] `backend/test/test_subscriptions.py`:
   - Valid `.edu` email → student plan verification email sent
   - Non-`.edu` email for student plan → 400
   - Valid coupon code → discount_percent returned
@@ -3025,25 +3025,24 @@ Recommended build order:
 
 ## Shared Infrastructure Needed
 
-- [ ] **`httpx`** — **NOT in `backend/requirements.txt`** — must add before implementing Features 14, 33
+- [x] **`httpx`** — present in `backend/requirements.txt` and in active use across Features 14, 21, 33, and multiple integration paths
   - Add: `httpx==0.27.0` (async HTTP client for Crossref/arXiv/job-scraper calls)
   - `pip install httpx` then freeze to `backend/requirements.txt`
-- [ ] **`@dnd-kit/core` + `@dnd-kit/sortable`** — not in `package.json` — needed for Feature 15 kanban
+- [x] **`@dnd-kit/core` + `@dnd-kit/sortable`** — present in `frontend/package.json` and used by the tracker kanban board
   - `pnpm add @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities`
-- [ ] **`recharts`** — not in `package.json` — needed for Feature 18 radar chart
-  - `pnpm add recharts`
-  - Note: `framer-motion@^12.35.2` is already present (can use for animations instead of recharts transitions)
-- [ ] **Rate limiting middleware** — `backend/app/middleware/rate_limiting.py` already has a full
+- [x] **Feature 18 charting** — shipped with `@visx/*` plus native SVG components, so no `recharts` dependency was required
+  - `framer-motion@^12.35.2` remains available for motion; the score/radar UI uses the implemented visx/SVG path instead
+- [x] **Rate limiting middleware** — `backend/app/middleware/rate_limiting.py` is registered in `main.py`
   Redis-based `RateLimitMiddleware` — just not registered in `main.py`. Wire it up (needed for P0
   ATS/AI endpoints and P1 Features 13, 33). No SlowAPI dep needed.
-- [ ] **Celery Beat scheduler** — for Feature 19 weekly digest
+- [x] **Celery Beat scheduler** — configured in `backend/app/core/celery_app.py` for Feature 19 weekly digest
   - `celery==5.3.4` already present in requirements.txt — just needs schedule config in `celery_app.py`
   - `beautifulsoup4==4.12.3` already present — used directly by Feature 33 scraper
   - Production: run a separate `celery beat` process (`make run` docker-compose may need update)
-- [ ] **Status bar layout** — Features 9 adds compiler indicator; Features 11 adds timeout badge;
+- [x] **Status bar layout** — compiler, timeout, page count, ATS, and quality/confidence indicators now coexist in the editor status bar
   all should coordinate with P0's ATS badge and page count badge already in status bar
   - Recommended order: `[🔧 pdflatex] [Auto ●] [~2 pages ⚠] [ATS 74] [1,234 chars] [⌘S · ⌘↵]`
-- [ ] **Preamble utility library** — Features 20, 28, 29, 30 all manipulate/read the LaTeX preamble
+- [x] **Preamble utility library** — centralized in `frontend/src/lib/latex-preamble.ts`
   - Centralize in `frontend/src/lib/latex-preamble.ts` (Feature 20 creates this; others import from it)
-- [ ] **`frontend/src/lib/latex-linter.ts`** — Feature 29; import from Feature 30's completion provider
+- [x] **`frontend/src/lib/latex-linter.ts`** — present and used by the editor/linter flow
   to avoid duplicating LaTeX command knowledge

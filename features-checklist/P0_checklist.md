@@ -62,7 +62,7 @@ a real `resume_templates` DB table with category filtering, thumbnail previews, 
   - Sets `title = body.title or template.name`
   - Triggers `embed_resume_task` if OpenAI key available (same pattern as `resume_routes.py:POST /resumes/`)
   - Records `UsageAnalytics` event `template_used`
-- [ ] Admin endpoints (guarded by `settings.ADMIN_SECRET_KEY` header): — _skipped; templates managed via seed script_
+- [x] Admin endpoints (guarded by `settings.ADMIN_SECRET_KEY` header)
   - `POST /templates` — create template
   - `PUT /templates/{id}` — update template
   - `PATCH /templates/{id}/activate` / `deactivate`
@@ -951,14 +951,14 @@ patches the editor in one click.
 
 ---
 
-## Feature 8 — Real-Time Page Count Warning · P0 · S
+## Feature 8 — Real-Time Page Count Warning · P0 · S ✅ COMPLETED
 
 **Goal:** After each successful compile, show an actual page count badge in the editor status bar.
 Turn "2 pages" amber, "3+ pages" red. Offer a one-click AI trim action.
 Zero new endpoints needed — piggybacks on existing job result payload.
 
 ### 8A · Backend — Extract Page Count in latex_worker.py
-- [ ] In `backend/app/workers/latex_worker.py`:
+- [x] In `backend/app/workers/latex_worker.py`:
   - Add `PAGE_COUNT_RE = re.compile(r'Output written on .*?\((\d+) page', re.IGNORECASE)` at module level
   - In the log parsing loop (where log lines are streamed), scan for the pattern:
     ```python
@@ -987,17 +987,17 @@ Zero new endpoints needed — piggybacks on existing job result payload.
     })
     ```
 
-- [ ] Same extraction needed in `orchestrator.py` (which also runs pdflatex):
+- [x] Same extraction needed in `orchestrator.py` (which also runs pdflatex):
   - `orchestrator.py` calls pdflatex and streams `log.line` events — add same `PAGE_COUNT_RE` scan
   - Include `page_count` in its `job.completed` event and `publish_job_result` call
 
 ### 8B · Backend — Event Schema Update
-- [ ] In `backend/app/models/event_schemas.py`:
+- [x] In `backend/app/models/event_schemas.py`:
   - Add `page_count: Optional[int] = None` to `JobCompletedEvent`
   - Add `page_count: Optional[int] = None` to job result schema if one exists
 
 ### 8C · Frontend — useJobStream Update
-- [ ] In `frontend/src/hooks/useJobStream.ts`:
+- [x] In `frontend/src/hooks/useJobStream.reducer.ts`:
   - Add `pageCount: number | null` to `JobStreamState` initial state
   - In `job.completed` reducer case:
     ```typescript
@@ -1015,7 +1015,7 @@ Zero new endpoints needed — piggybacks on existing job result payload.
     ```
 
 ### 8D · Frontend — LaTeXEditor Status Bar
-- [ ] In `frontend/src/components/LaTeXEditor.tsx`:
+- [x] In `frontend/src/components/LaTeXEditor.tsx`:
   - Add props: `pageCount?: number | null`
   - In status bar (right side, alongside char count and ATS badge):
     ```tsx
@@ -1035,7 +1035,7 @@ Zero new endpoints needed — piggybacks on existing job result payload.
     ```
 
 ### 8E · Frontend — Page Overflow Warning Banner
-- [ ] In `frontend/src/app/try/page.tsx` and edit/optimize pages:
+- [x] In `frontend/src/app/try/page.tsx` and edit/optimize pages:
   - When `stream.pageCount && stream.pageCount > 1`:
     - Show inline warning banner between editor toolbar and editor:
       ```tsx
@@ -1060,7 +1060,7 @@ Zero new endpoints needed — piggybacks on existing job result payload.
     - Follows the same flow as clicking "Optimize Resume"
 
 ### 8F · Frontend — Pre-Compile Heuristic (Bonus)
-- [ ] Add lightweight client-side page count estimate in `LaTeXEditor.tsx`:
+- [x] Add lightweight client-side page count estimate in `LaTeXEditor.tsx`:
   - On every `onDidChangeModelContent` (debounced at 3s):
     ```typescript
     const estimatePageCount = (content: string): number => {
@@ -1075,10 +1075,10 @@ Zero new endpoints needed — piggybacks on existing job result payload.
   - Only show estimated count if `pageCount` prop is null
 
 ### 8G · Tests
-- [ ] `backend/test/test_latex_worker.py` — add assertion:
+- [x] `backend/test/test_latex_worker.py` — add assertion:
   - Successful compile result includes `page_count` field
   - Page count is correct for known test fixtures (1-page template → 1, 2-page → 2)
-- [ ] `backend/test/test_orchestrator.py` — same assertion on orchestrator's job result
+- [x] `backend/test/test_orchestrator.py` — same assertion on orchestrator's job result
 
 ---
 
