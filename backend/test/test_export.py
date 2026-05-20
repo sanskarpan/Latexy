@@ -10,6 +10,7 @@ Tests cover:
 
 import json
 import uuid
+from io import BytesIO
 
 import pytest
 from httpx import AsyncClient
@@ -34,6 +35,20 @@ VALID_LATEX = r"""
 \textbf{B.S. Computer Science}, State University \hfill 2019
 \section*{Skills}
 Python, TypeScript, Docker, PostgreSQL
+\end{document}
+"""
+
+MACRO_LATEX = r"""
+\documentclass{article}
+\begin{document}
+\section{Experience}
+\resumeSubheading{OpenAI}{2022--Present}{Research Engineer}{San Francisco, CA}
+\resumeItemListStart
+\resumeItem{Built evaluation systems for multimodal models}
+\resumeSubItem{Impact}{Reduced review latency by 35\%}
+\resumeItemListEnd
+\section{Education}
+\cventry{2019}{B.S. Computer Science}{State University}{Boston, MA}{}{Graduated magna cum laude}
 \end{document}
 """
 
@@ -159,6 +174,29 @@ class TestDocumentExportService:
         result = document_export_service.to_docx(VALID_LATEX)
         # DOCX files are ZIP archives; magic bytes are PK (50 4B)
         assert result[:2] == b"PK"
+
+    def test_to_markdown_expands_resume_macros(self):
+        from app.services.document_export_service import document_export_service
+
+        result = document_export_service.to_markdown(MACRO_LATEX)
+        assert r"\resumeSubheading" not in result
+        assert "OpenAI" in result
+        assert "Research Engineer" in result
+        assert "Built evaluation systems for multimodal models" in result
+        assert "Impact" in result
+
+    def test_to_docx_handles_resume_macros(self):
+        from docx import Document
+
+        from app.services.document_export_service import document_export_service
+
+        result = document_export_service.to_docx(MACRO_LATEX)
+        doc = Document(BytesIO(result))
+        text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        assert "OpenAI" in text
+        assert "Research Engineer" in text
+        assert "Built evaluation systems for multimodal models" in text
+        assert "Impact:" in text
 
 
 # ── GET /export/formats ────────────────────────────────────────────────────────
