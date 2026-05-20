@@ -18,8 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..database.models import Optimization, Resume, ResumeCollaborator, UsageAnalytics
+from ..database.models import Optimization, Resume, ResumeCollaborator, UsageAnalytics, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..services.academic_cv_service import academic_cv_service
 
 logger = get_logger(__name__)
 
@@ -737,6 +738,28 @@ class QuickTailorResponse(BaseModel):
     job_id: str
 
 
+class AcademicCVReportResponse(BaseModel):
+    is_academic_cv: bool
+    detected_sections: List[str]
+    estimated_pages: int
+    confidence: float
+    reasons: List[str]
+
+
+class AcademicCVConvertRequest(BaseModel):
+    target_industry: str = Field(default="tech", pattern="^(tech|data_science|finance|consulting|product|other)$")
+    target_role_description: Optional[str] = Field(None, max_length=10000)
+    title: Optional[str] = Field(None, max_length=255)
+    force: bool = False
+
+
+class AcademicCVConvertResponse(BaseModel):
+    success: bool
+    variant_resume_id: str
+    job_id: str
+    report: AcademicCVReportResponse
+
+
 @router.post(
     "/{resume_id}/quick-tailor",
     response_model=QuickTailorResponse,
@@ -794,6 +817,126 @@ async def quick_tailor_resume(
         raise
 
     return QuickTailorResponse(fork_id=str(fork.id), job_id=job_id)
+
+
+@router.get("/{resume_id}/academic-cv-report", response_model=AcademicCVReportResponse)
+async def get_academic_cv_report(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Inspect a resume and report whether it looks like an academic CV."""
+    resume = await _verify_resume_ownership(db, resume_id, user_id)
+    report = academic_cv_service.detect(
+        resume.latex_content or "",
+        document_type=resume.document_type,
+    )
+    return AcademicCVReportResponse(**report.to_dict())
+
+
+@router.post(
+    "/{resume_id}/academic-cv-convert",
+    response_model=AcademicCVConvertResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def convert_academic_cv(
+    resume_id: str,
+    body: AcademicCVConvertRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """
+    Create an industry-resume variant from an academic CV and queue a combined
+    optimize+compile job for the new fork.
+    """
+    parent = await _verify_resume_ownership(db, resume_id, user_id)
+    report = academic_cv_service.detect(
+        parent.latex_content or "",
+        document_type=parent.document_type,
+    )
+    if not report.is_academic_cv and not body.force:
+        raise HTTPException(
+            status_code=400,
+            detail="Resume does not strongly resemble an academic CV. Pass force=true to continue anyway.",
+        )
+
+    label = {
+        "tech": "Industry Resume",
+        "data_science": "Data Science Resume",
+        "finance": "Finance Resume",
+        "consulting": "Consulting Resume",
+        "product": "Product Resume",
+        "other": "Industry Resume",
+    }.get(body.target_industry, "Industry Resume")
+    variant_title = body.title or f"{parent.title} — {label}"
+
+    variant = Resume(
+        id=str(uuid4()),
+        user_id=user_id,
+        title=variant_title,
+        latex_content=parent.latex_content,
+        is_template=False,
+        tags=list(parent.tags) if parent.tags else None,
+        parent_resume_id=parent.id,
+        resume_settings=dict(parent.resume_settings or {}),
+        document_type="resume",
+    )
+    db.add(variant)
+
+    analytics = UsageAnalytics(
+        id=str(uuid4()),
+        user_id=user_id,
+        action="academic_cv_converted",
+        resource_type="resume",
+        event_metadata={
+            "parent_resume_id": parent.id,
+            "variant_resume_id": variant.id,
+            "target_industry": body.target_industry,
+            "confidence": report.confidence,
+        },
+    )
+    db.add(analytics)
+    await db.commit()
+    await db.refresh(variant)
+
+    from ..workers.orchestrator import submit_optimize_and_compile
+    from .job_routes import _write_initial_redis_state
+
+    job_id = str(uuid4())
+    user_plan = "free"
+    user_result = await db.execute(select(User.subscription_plan).where(User.id == user_id))
+    stored_plan = user_result.scalar_one_or_none()
+    if isinstance(stored_plan, str) and stored_plan:
+        user_plan = stored_plan
+    instructions = academic_cv_service.build_conversion_instructions(
+        report,
+        target_industry=body.target_industry,
+        target_role_description=body.target_role_description,
+    )
+
+    try:
+        await _write_initial_redis_state(job_id, "combined", user_id, 120)
+        submit_optimize_and_compile(
+            latex_content=variant.latex_content,
+            job_description=body.target_role_description,
+            job_id=job_id,
+            user_id=user_id,
+            user_plan=user_plan,
+            optimization_level="aggressive",
+            custom_instructions=instructions,
+            resume_id=str(variant.id),
+        )
+    except Exception:
+        await db.delete(variant)
+        await db.commit()
+        raise
+
+    return AcademicCVConvertResponse(
+        success=True,
+        variant_resume_id=str(variant.id),
+        job_id=job_id,
+        report=AcademicCVReportResponse(**report.to_dict()),
+    )
 
 
 @router.get("/{resume_id}/variants", response_model=List[ResumeResponse])
