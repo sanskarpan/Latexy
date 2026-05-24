@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import time
 import uuid
+from os import X_OK, access
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -39,6 +40,104 @@ _MAIN_FILE_RE = re.compile(r"^[a-zA-Z0-9_-]+\.tex$")
 # Watermark validation
 _WATERMARK_RE = re.compile(r"^[A-Za-z0-9 \-\.]+$")
 _WATERMARK_MAX_LEN = 30
+_PDFTOTEXT_CANDIDATES = (
+    "/opt/homebrew/bin/pdftotext",
+    "/usr/local/bin/pdftotext",
+    "/usr/bin/pdftotext",
+)
+
+
+def _resolve_pdftotext_binary() -> str | None:
+    """Resolve the pdftotext binary from PATH or common install locations."""
+    host_pdftotext = shutil.which("pdftotext")
+    if host_pdftotext:
+        return host_pdftotext
+
+    for candidate in _PDFTOTEXT_CANDIDATES:
+        if Path(candidate).exists() and access(candidate, X_OK):
+            return candidate
+
+    return None
+
+
+def _extract_pdf_text_with_pdfminer(pdf_file: Path) -> Optional[str]:
+    """Fallback text extraction using pdfminer when pdftotext is unavailable."""
+    try:
+        from pdfminer.high_level import extract_text as extract_pdf_text
+    except Exception:
+        return None
+
+    try:
+        text = extract_pdf_text(str(pdf_file))
+    except Exception as exc:
+        logger.debug("pdfminer extraction failed for %s: %s", pdf_file, exc)
+        return None
+    return text if text and text.strip() else None
+
+
+def _extract_pdf_text(job_id: str, job_dir: Path, pdf_file: Path) -> Optional[str]:
+    """Extract text from a compiled PDF with bounded retries and structured warnings."""
+    resolved_binary = _resolve_pdftotext_binary()
+    timeout = max(1, int(settings.PDF_TEXT_EXTRACTION_TIMEOUT))
+    max_attempts = max(1, int(settings.PDF_TEXT_EXTRACTION_RETRIES))
+    backoff_seconds = max(0.0, float(settings.PDF_TEXT_EXTRACTION_BACKOFF_SECONDS))
+    failures: list[str] = []
+
+    if resolved_binary:
+        command = [resolved_binary, "-layout", str(pdf_file), "-"]
+        for attempt in range(1, max_attempts + 1):
+            try:
+                pt_result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+                if pt_result.returncode == 0 and pt_result.stdout.strip():
+                    if attempt > 1:
+                        logger.info(
+                            "Recovered PDF text extraction for job %s via native backend on attempt %s",
+                            job_id,
+                            attempt,
+                        )
+                    return pt_result.stdout
+
+                detail = (pt_result.stderr or pt_result.stdout or "").strip()
+                failures.append(
+                    f"attempt={attempt} backend=native returncode={pt_result.returncode} detail={detail[:240] or 'empty_output'}"
+                )
+            except subprocess.TimeoutExpired:
+                failures.append(
+                    f"attempt={attempt} backend=native timeout={timeout}s"
+                )
+            except Exception as exc:
+                failures.append(
+                    f"attempt={attempt} backend=native error={type(exc).__name__}: {exc}"
+                )
+
+            if attempt < max_attempts and backoff_seconds > 0:
+                time.sleep(backoff_seconds * attempt)
+
+    pdfminer_text = _extract_pdf_text_with_pdfminer(pdf_file)
+    if pdfminer_text is not None:
+        if failures:
+            logger.info(
+                "Recovered PDF text extraction for job %s via pdfminer fallback",
+                job_id,
+            )
+        return pdfminer_text
+
+    if resolved_binary is None:
+        failures.append("backend=native unavailable")
+    failures.append("backend=pdfminer unavailable_or_empty")
+
+    logger.warning(
+        "PDF text extraction failed for job %s after %s attempt(s): %s",
+        job_id,
+        max_attempts if resolved_binary else 0,
+        "; ".join(failures),
+    )
+    return None
 
 
 def _inject_watermark(latex_content: str, watermark_text: str) -> str:
@@ -293,29 +392,7 @@ def compile_latex_task(
             pdf_size = pdf_file.stat().st_size
 
             # ── PDF text extraction for ATS pre-flight ───────────────
-            extracted_text: Optional[str] = None
-            try:
-                if _use_docker:
-                    pt_cmd = [
-                        "docker", "run", "--rm",
-                        "-v", f"{job_dir}:/workspace",
-                        "-w", "/workspace",
-                        settings.LATEX_DOCKER_IMAGE,
-                        "pdftotext", "-layout", "/workspace/resume.pdf", "-",
-                    ]
-                else:
-                    pt_cmd = ["pdftotext", "-layout", str(pdf_file), "-"]
-
-                pt_result = subprocess.run(
-                    pt_cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                if pt_result.returncode == 0 and pt_result.stdout.strip():
-                    extracted_text = pt_result.stdout
-            except Exception as pt_exc:
-                logger.error(f"pdftotext failed for job {job_id}: {pt_exc}")
+            extracted_text = _extract_pdf_text(job_id, job_dir, pdf_file)
 
             # For Beamer, slide_count == page_count (one PDF page per slide)
             slide_count = page_count if is_beamer else None

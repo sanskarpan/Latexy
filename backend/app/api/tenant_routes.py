@@ -19,7 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.connection import get_db
 from ..database.models import Compilation, Resume, Tenant, TenantMember, User
 from ..middleware.auth_middleware import get_current_user_required
-from ..middleware.tenant_middleware import get_current_tenant
+from ..middleware.tenant_middleware import (
+    get_current_tenant,
+    invalidate_tenant_cache,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tenants", tags=["tenants"])
@@ -216,12 +219,17 @@ async def update_tenant(
 ) -> TenantResponse:
     """Update tenant branding. Only owner or admin can update."""
     tenant = await _require_tenant_owner_or_admin(tenant_id, user_id, db)
+    previous_custom_domain = tenant.custom_domain
 
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(tenant, field, value)
 
     await db.commit()
     await db.refresh(tenant)
+    await invalidate_tenant_cache(
+        slug=tenant.slug,
+        domains=[previous_custom_domain, tenant.custom_domain],
+    )
     return _tenant_response(tenant)
 
 

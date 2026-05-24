@@ -1,5 +1,7 @@
 import { test, expect, type Page, type Route } from '@playwright/test'
 
+const LIVE_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030'
+
 // ------------------------------------------------------------------ //
 //  Mock data                                                          //
 // ------------------------------------------------------------------ //
@@ -232,14 +234,14 @@ test.describe('Project Search — workspace page', () => {
     await gotoWorkspace(page)
     await openSearchModal(page)
     await page.locator('input[placeholder*="Search across all resumes"]').fill('SRCH_UNIQ_42')
-    await expect(page.getByText('Software Engineer Resume')).toBeVisible({ timeout: 3000 })
+    await expect(page.getByRole('heading', { name: 'Software Engineer Resume' })).toBeVisible({ timeout: 3000 })
   })
 
   test('result shows resume title', async ({ page }) => {
     await gotoWorkspace(page)
     await openSearchModal(page)
     await page.locator('input[placeholder*="Search across all resumes"]').fill('SRCH_UNIQ_42')
-    await expect(page.getByText('Software Engineer Resume')).toBeVisible({ timeout: 3000 })
+    await expect(page.getByRole('heading', { name: 'Software Engineer Resume' })).toBeVisible({ timeout: 3000 })
   })
 
   test('result shows line number badge', async ({ page }) => {
@@ -352,12 +354,12 @@ test.describe('Project Search — workspace page', () => {
 
 test.describe('Search API endpoint — live backend', () => {
   test('GET /resumes/search exists and rejects unauthenticated', async ({ request }) => {
-    const resp = await request.get('http://localhost:8031/resumes/search?q=hello')
+    const resp = await request.get(`${LIVE_API_BASE_URL}/resumes/search?q=hello`)
     expect([401, 403, 429]).toContain(resp.status())
   })
 
   test('GET /resumes/search?q=x (1 char) returns 422', async ({ request }) => {
-    const resp = await request.get('http://localhost:8031/resumes/search?q=x')
+    const resp = await request.get(`${LIVE_API_BASE_URL}/resumes/search?q=x`)
     // Auth and rate-limiting middleware may run before validation in live stacks.
     expect([401, 403, 422, 429]).toContain(resp.status())
   })

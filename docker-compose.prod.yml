@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Nginx Reverse Proxy & Load Balancer
   nginx:
@@ -28,13 +26,28 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-/ws}
+        BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost}
+        BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+        DATABASE_URL: ${DATABASE_URL}
+    env_file:
+      - .env.production
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://localhost/api}
+      - PORT=3000
+      - DATABASE_URL=${DATABASE_URL}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api}
+      - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL:-/ws}
       - NEXT_TELEMETRY_DISABLED=1
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -55,17 +68,25 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
+    env_file:
+      - .env.production
     environment:
-      - FASTAPI_ENV=production
+      - ENVIRONMENT=production
       - DEBUG=false
+      - PORT=8030
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_CACHE_URL=redis://redis:6379/1
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost}
+      - FRONTEND_URL=${NEXT_PUBLIC_APP_URL:-http://localhost}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
       - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET}
       - API_KEY_ENCRYPTION_KEY=${API_KEY_ENCRYPTION_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
@@ -97,13 +118,17 @@ services:
       context: ./backend
       dockerfile: Dockerfile.prod
     command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4 --queues=latex,llm,combined,ats,cleanup,email
+    env_file:
+      - .env.production
     environment:
-      - FASTAPI_ENV=production
+      - ENVIRONMENT=production
       - DEBUG=false
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - API_KEY_ENCRYPTION_KEY=${API_KEY_ENCRYPTION_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -136,9 +161,14 @@ services:
       context: ./backend
       dockerfile: Dockerfile.prod
     command: celery -A app.core.celery_app beat --loglevel=info
+    env_file:
+      - .env.production
     environment:
-      - FASTAPI_ENV=production
+      - ENVIRONMENT=production
       - DEBUG=false
+      - DATABASE_URL=${DATABASE_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -161,6 +191,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile.prod
     command: celery -A app.core.celery_app flower --port=5555 --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD}
+    env_file:
+      - .env.production
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -194,14 +226,13 @@ services:
 
   # PostgreSQL Database (for development - use managed DB in production)
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg16
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-latexy}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]

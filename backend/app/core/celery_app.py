@@ -102,6 +102,7 @@ celery_app.conf.update(
         "sep": ":",
         "queue_order_strategy": "priority",
     },
+    broker_connection_retry_on_startup=True,
     task_queue_max_priority=9,
 
     # Monitoring

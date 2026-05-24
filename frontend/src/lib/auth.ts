@@ -12,6 +12,38 @@
 import { betterAuth } from 'better-auth'
 import { Pool } from 'pg'
 
+const WEAK_BETTER_AUTH_SECRETS = new Set([
+  'change-me-in-production',
+  'changeme',
+  'change-me',
+  'default-secret',
+  'secret',
+])
+
+function isLocalAuthBaseUrl(url: string | undefined): boolean {
+  if (!url) return true
+  return url.includes('localhost') || url.includes('127.0.0.1')
+}
+
+function resolveBetterAuthSecret(): string {
+  const secret = process.env.BETTER_AUTH_SECRET?.trim()
+  const baseUrl = process.env.BETTER_AUTH_URL
+  const enforceProductionSecret =
+    process.env.NODE_ENV === 'production' && !isLocalAuthBaseUrl(baseUrl)
+
+  if (secret && secret.length >= 32 && !WEAK_BETTER_AUTH_SECRETS.has(secret.toLowerCase())) {
+    return secret
+  }
+
+  if (enforceProductionSecret) {
+    throw new Error(
+      'BETTER_AUTH_SECRET must be configured with a strong non-placeholder value in production.'
+    )
+  }
+
+  return 'dev-only-better-auth-secret-000000000000'
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 })
@@ -65,7 +97,7 @@ export const auth = betterAuth({
       : {}),
   },
 
-  secret: process.env.BETTER_AUTH_SECRET || 'change-me-in-production',
+  secret: resolveBetterAuthSecret(),
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:5180',
 
   // Trust requests from both the frontend and the FastAPI backend

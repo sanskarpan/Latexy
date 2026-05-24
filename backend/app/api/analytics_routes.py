@@ -211,13 +211,10 @@ async def get_user_analytics(
     user_id: UUID,
     days: int = 30,
     db: AsyncSession = Depends(get_db),
-    admin_user: str = Depends(require_admin)
+    _admin_user: str = Depends(require_admin)
 ):
     """Get analytics data for a specific user."""
     try:
-        # TODO: Add authentication check to ensure user can only access their own data
-        # or is an admin
-
         analytics_data = await analytics_service.get_user_analytics(
             db=db,
             user_id=user_id,
@@ -245,12 +242,10 @@ async def get_user_analytics(
 async def get_system_analytics(
     days: int = 7,
     db: AsyncSession = Depends(get_db),
-    admin_user: str = Depends(require_admin)
+    _admin_user: str = Depends(require_admin)
 ):
     """Get system-wide analytics. Requires admin access."""
     try:
-        # TODO: Add admin authentication check
-
         analytics_data = await analytics_service.get_system_analytics(
             db=db,
             days=days
@@ -269,12 +264,10 @@ async def get_system_analytics(
 async def get_conversion_funnel(
     days: int = 30,
     db: AsyncSession = Depends(get_db),
-    admin_user: str = Depends(require_admin)
+    _admin_user: str = Depends(require_admin)
 ):
     """Get conversion funnel analytics. Requires admin access."""
     try:
-        # TODO: Add admin authentication check
-
         funnel_data = await analytics_service.get_conversion_funnel(
             db=db,
             days=days
@@ -423,12 +416,10 @@ async def track_feature_usage(
 async def get_analytics_dashboard(
     days: int = 7,
     db: AsyncSession = Depends(get_db),
-    admin_user: str = Depends(require_admin)
+    _admin_user: str = Depends(require_admin)
 ):
     """Get comprehensive analytics dashboard data."""
     try:
-        # TODO: Add admin authentication check
-
         # Get all analytics data
         system_analytics = await analytics_service.get_system_analytics(db, days)
         conversion_funnel = await analytics_service.get_conversion_funnel(db, days)

@@ -186,8 +186,8 @@ test.describe('Workspace — Share button on resume cards', () => {
   test.beforeEach(async ({ page }) => {
     await mockAuth(page)
     await mockWorkspaceApi(page)
-    await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
+    await page.goto('/workspace', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('button', { name: 'Share' }).first()).toBeVisible()
   })
 
   test('page loads without runtime errors', async ({ page }) => {
@@ -247,8 +247,8 @@ test.describe('ShareResumeModal — generate link flow', () => {
   test.beforeEach(async ({ page }) => {
     await mockAuth(page)
     await mockWorkspaceApi(page)
-    await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
+    await page.goto('/workspace', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('button', { name: 'Share' }).first()).toBeVisible()
     const noShareCard = page.locator('article').filter({ hasText: 'Software Engineer Resume' })
     await noShareCard.getByRole('button', { name: 'Share' }).click()
     await expect(page.getByRole('heading', { name: 'Share Resume' })).toBeVisible()
@@ -329,7 +329,6 @@ test.describe('ShareResumeModal — existing share link state', () => {
     await mockAuth(page)
     await mockWorkspaceApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
     const shareCard = page.locator('article').filter({ hasText: 'Product Manager Resume' })
     await shareCard.getByRole('button', { name: 'Share' }).click()
     await expect(page.getByRole('heading', { name: 'Share Resume' })).toBeVisible()
@@ -364,7 +363,6 @@ test.describe('ShareResumeModal — revoke link flow', () => {
     await mockAuth(page)
     await mockWorkspaceApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
     const shareCard = page.locator('article').filter({ hasText: 'Product Manager Resume' })
     await shareCard.getByRole('button', { name: 'Share' }).click()
     await expect(page.getByRole('heading', { name: 'Share Resume' })).toBeVisible()
@@ -431,7 +429,6 @@ test.describe('ShareResumeModal — close behaviours', () => {
     await mockAuth(page)
     await mockWorkspaceApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
     const noShareCard = page.locator('article').filter({ hasText: 'Software Engineer Resume' })
     await noShareCard.getByRole('button', { name: 'Share' }).click()
     await expect(page.getByRole('heading', { name: 'Share Resume' })).toBeVisible()
@@ -499,14 +496,12 @@ test.describe('Edit page — Share button in header', () => {
 
   test('edit page has a Share button in header', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_NO_SHARE.id}/edit`)
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByRole('button', { name: 'Share' }).first()).toBeVisible()
   })
 
   test('Share button on edit page (no token) is not highlighted sky blue', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_NO_SHARE.id}/edit`)
-    await page.waitForLoadState('networkidle')
 
     const shareBtn = page.getByRole('button', { name: 'Share' }).first()
     await expect(shareBtn).toBeVisible()
@@ -516,7 +511,6 @@ test.describe('Edit page — Share button in header', () => {
 
   test('Share button on edit page (with token) is highlighted sky blue', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_WITH_SHARE.id}/edit`)
-    await page.waitForLoadState('networkidle')
 
     const shareBtn = page.getByRole('button', { name: 'Share' }).first()
     await expect(shareBtn).toBeVisible()
@@ -525,7 +519,6 @@ test.describe('Edit page — Share button in header', () => {
 
   test('clicking Share on edit page opens ShareResumeModal', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_NO_SHARE.id}/edit`)
-    await page.waitForLoadState('networkidle')
 
     await page.getByRole('button', { name: 'Share' }).first().click()
     await expect(page.getByRole('heading', { name: 'Share Resume' })).toBeVisible()
@@ -536,7 +529,6 @@ test.describe('Edit page — Share button in header', () => {
     page.on('pageerror', (err) => errors.push(err.message))
 
     await page.goto(`/workspace/${RESUME_NO_SHARE.id}/edit`)
-    await page.waitForLoadState('networkidle')
     await page.waitForTimeout(1000)
 
     expect(errors).toEqual([])
@@ -574,7 +566,6 @@ test.describe('Public share page /r/[token]', () => {
     )
 
     await page.goto(`/r/${RESUME_WITH_SHARE.share_token}`)
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByText('Software Engineer Resume')).toBeVisible()
     await expect(page.locator('iframe')).toBeVisible()
@@ -590,7 +581,6 @@ test.describe('Public share page /r/[token]', () => {
     )
 
     await page.goto(`/r/${RESUME_WITH_SHARE.share_token}`)
-    await page.waitForLoadState('networkidle')
 
     const src = await page.locator('iframe').getAttribute('src')
     expect(src).toBe(SHARED_RESUME_RESPONSE.pdf_url)
@@ -606,7 +596,6 @@ test.describe('Public share page /r/[token]', () => {
     )
 
     await page.goto(`/r/${RESUME_WITH_SHARE.share_token}`)
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByText(/View only/)).toBeVisible()
   })
@@ -621,7 +610,6 @@ test.describe('Public share page /r/[token]', () => {
     )
 
     await page.goto('/r/totally_invalid_token_xyz')
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByRole('heading', { name: 'Link unavailable' })).toBeVisible()
   })
@@ -636,7 +624,6 @@ test.describe('Public share page /r/[token]', () => {
     )
 
     await page.goto('/r/revoked_token_111')
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByText(/revoked or does not exist/i)).toBeVisible()
   })
@@ -652,7 +639,6 @@ test.describe('Public share page /r/[token]', () => {
     )
 
     await page.goto('/r/no_pdf_token_222')
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByRole('heading', { name: 'Link unavailable' })).toBeVisible()
     // 404 responses always show the generic revoked message
@@ -669,7 +655,6 @@ test.describe('Public share page /r/[token]', () => {
     )
 
     await page.goto('/r/bad_token_000')
-    await page.waitForLoadState('networkidle')
 
     const link = page.getByRole('link', { name: 'Go to Latexy' })
     await expect(link).toBeVisible()
@@ -687,7 +672,6 @@ test.describe('Public share page /r/[token]', () => {
     )
 
     await page.goto(`/r/${RESUME_WITH_SHARE.share_token}`)
-    await page.waitForLoadState('networkidle')
 
     // Should show the resume, not a login redirect
     await expect(page.getByText('Software Engineer Resume')).toBeVisible()
@@ -706,7 +690,6 @@ test.describe('Public share page /r/[token]', () => {
     )
 
     await page.goto(`/r/${RESUME_WITH_SHARE.share_token}`)
-    await page.waitForLoadState('networkidle')
 
     expect(errors).toEqual([])
   })
@@ -723,7 +706,6 @@ test.describe('API route verification — share endpoints', () => {
     await mockAuth(page)
     await mockWorkspaceApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
   })
 
   test('generate link calls POST /resumes/:id/share', async ({ page }) => {
@@ -771,10 +753,7 @@ test.describe('API route verification — share endpoints', () => {
   })
 
   test('public share page calls GET /share/:token', async ({ page }) => {
-    const apiCalls: string[] = []
-
     await page.route(`**/share/${RESUME_WITH_SHARE.share_token}`, (route) => {
-      apiCalls.push(route.request().url())
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -782,10 +761,12 @@ test.describe('API route verification — share endpoints', () => {
       })
     })
 
+    const responsePromise = page.waitForResponse((resp) =>
+      resp.url().includes(`/share/${RESUME_WITH_SHARE.share_token}`)
+    )
     await page.goto(`/r/${RESUME_WITH_SHARE.share_token}`)
-    await page.waitForLoadState('networkidle')
-
-    expect(apiCalls.some((u) => u.includes(`/share/${RESUME_WITH_SHARE.share_token}`))).toBe(true)
+    const response = await responsePromise
+    expect(response.ok()).toBe(true)
   })
 
   test('share link URL contains token', async ({ page }) => {
@@ -818,7 +799,6 @@ test.describe('Resume list — share_token reflected in card state', () => {
     await mockAuth(page)
     await mockWorkspaceApi(page, [RESUME_WITH_SHARE])
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
 
     const shareBtn = page.getByRole('button', { name: 'Share' }).first()
     await expect(shareBtn).toBeVisible()
@@ -829,7 +809,6 @@ test.describe('Resume list — share_token reflected in card state', () => {
     await mockAuth(page)
     await mockWorkspaceApi(page, [RESUME_NO_SHARE])
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
 
     const noShareCard = page.locator('article').filter({ hasText: 'Software Engineer Resume' })
     await noShareCard.getByRole('button', { name: 'Share' }).click()

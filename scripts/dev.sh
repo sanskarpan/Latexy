@@ -158,6 +158,7 @@ start_app() {
 
   local BACKEND_PORT=$((8029 + SLOT))
   local FRONTEND_PORT=$((5179 + SLOT))
+  local WORKER_NODENAME="latexy-slot${SLOT}@%h"
 
   echo ""
   echo -e "${CYAN}→ Slot ${SLOT} — backend :${BACKEND_PORT}  frontend :${FRONTEND_PORT}${NC}"
@@ -208,7 +209,7 @@ start_app() {
   CELERY_BROKER_URL="$REDIS" \
   CELERY_RESULT_BACKEND="$REDIS" \
   MINIO_ENDPOINT="$MINIO" \
-  "$CELERY" -A app.core.celery_app worker --loglevel=info --concurrency=2 \
+  "$CELERY" -A app.core.celery_app worker -n "$WORKER_NODENAME" --loglevel=info --concurrency=2 \
     --queues=latex,llm,combined,ats,cleanup,email \
     2>&1 | sed "s/^/[worker]   /" &
   echo $! >> "$PID_FILE"

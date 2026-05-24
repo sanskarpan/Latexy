@@ -39,6 +39,7 @@ from app.api.tenant_routes import (
     update_tenant,
 )
 from app.database.models import Tenant, TenantMember, User
+from app.middleware.tenant_middleware import invalidate_tenant_cache
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -577,3 +578,40 @@ class TestUpdateTenantNullClearing:
             await update_tenant(tenant_id=tenant.id, body=body, db=db, user_id=owner_id)
 
         assert tenant.primary_color is None
+
+
+class TestTenantCacheInvalidation:
+    @pytest.mark.asyncio
+    async def test_invalidate_tenant_cache_deletes_slug_and_domains(self):
+        """Tenant cache invalidation removes both slug and domain keys."""
+        with patch('app.middleware.tenant_middleware.cache_manager.delete', new=AsyncMock()) as mock_delete:
+            await invalidate_tenant_cache(
+                slug='acme',
+                domains=['old.acme.com', 'new.acme.com', None, ''],
+            )
+
+        deleted = {call.args[0] for call in mock_delete.await_args_list}
+        assert deleted == {
+            'tenant:slug:acme',
+            'tenant:domain:old.acme.com',
+            'tenant:domain:new.acme.com',
+        }
+
+    @pytest.mark.asyncio
+    async def test_update_tenant_invalidates_related_cache_keys(self):
+        """PATCH /tenants/{id} clears slug and both old/new domain caches."""
+        owner_id = _uid()
+        tenant = make_tenant(owner_id, custom_domain='old.acme.com')
+        body = TenantUpdate(custom_domain='new.acme.com', name='Acme 2')
+
+        db = _mock_db()
+        db.refresh = AsyncMock(side_effect=lambda obj: None)
+
+        with patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)):
+            with patch('app.api.tenant_routes.invalidate_tenant_cache', new=AsyncMock()) as mock_invalidate:
+                await update_tenant(tenant_id=tenant.id, body=body, db=db, user_id=owner_id)
+
+        mock_invalidate.assert_awaited_once_with(
+            slug=tenant.slug,
+            domains=['old.acme.com', 'new.acme.com'],
+        )

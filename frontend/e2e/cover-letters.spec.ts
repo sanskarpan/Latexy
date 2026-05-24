@@ -81,6 +81,7 @@ const MOCK_SESSION = {
 
 // Helper: mock the auth session API so pages think the user is logged in
 async function mockAuth(page: import('@playwright/test').Page) {
+  await page.route('**/ws/**', route => route.abort())
   await page.route('**/api/auth/get-session', (route) =>
     route.fulfill({
       status: 200,
@@ -151,8 +152,8 @@ test.describe('Cover Letters Listing Page (/workspace/cover-letters)', () => {
       return route.continue()
     })
 
-    await page.goto('/workspace/cover-letters')
-    await page.waitForLoadState('networkidle')
+    await page.goto('/workspace/cover-letters', { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('h1')).toContainText('Cover Letter Library')
   })
 
   // ---- Basic rendering ----
@@ -211,7 +212,6 @@ test.describe('Cover Letters Listing Page (/workspace/cover-letters)', () => {
   test('search filters by company name', async ({ page }) => {
     const searchInput = page.locator('input[placeholder*="Search by company"]')
     await searchInput.fill('Acme')
-    await page.waitForLoadState('networkidle')
     await expect(page.getByRole('heading', { name: 'Acme Corp' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'StartupCo' })).not.toBeVisible()
   })
@@ -219,7 +219,6 @@ test.describe('Cover Letters Listing Page (/workspace/cover-letters)', () => {
   test('search filters by role title', async ({ page }) => {
     const searchInput = page.locator('input[placeholder*="Search by company"]')
     await searchInput.fill('Frontend')
-    await page.waitForLoadState('networkidle')
     await expect(page.getByRole('heading', { name: 'StartupCo' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Acme Corp' })).not.toBeVisible()
   })
@@ -227,7 +226,6 @@ test.describe('Cover Letters Listing Page (/workspace/cover-letters)', () => {
   test('search with no results shows empty state', async ({ page }) => {
     const searchInput = page.locator('input[placeholder*="Search by company"]')
     await searchInput.fill('nonexistent_xyz')
-    await page.waitForLoadState('networkidle')
     await expect(page.getByText('No cover letters yet')).toBeVisible()
   })
 
@@ -313,7 +311,6 @@ test.describe('Cover Letters Listing — empty state', () => {
     })
 
     await page.goto('/workspace/cover-letters')
-    await page.waitForLoadState('networkidle')
   })
 
   test('shows empty state message', async ({ page }) => {
@@ -380,7 +377,6 @@ test.describe('Cover Letters Listing — pagination', () => {
     })
 
     await page.goto('/workspace/cover-letters')
-    await page.waitForLoadState('networkidle')
   })
 
   test('shows pagination controls', async ({ page }) => {
@@ -395,7 +391,6 @@ test.describe('Cover Letters Listing — pagination', () => {
 
   test('clicking Next navigates to page 2', async ({ page }) => {
     await page.getByRole('button', { name: 'Next' }).click()
-    await page.waitForLoadState('networkidle')
     await expect(page.getByText('Page 2 of 3')).toBeVisible()
   })
 })
@@ -409,7 +404,6 @@ test.describe('GlobalHeader — Cover Letters not in nav', () => {
   test('Cover Letters link not in main nav for authenticated users', async ({ page }) => {
     await mockAuth(page)
     await page.goto('/dashboard')
-    await page.waitForLoadState('networkidle')
     const navLink = page.locator('nav a', { hasText: 'Cover Letters' })
     await expect(navLink).not.toBeVisible()
   })
@@ -488,7 +482,6 @@ test.describe('Dashboard — Cover Letter stat', () => {
     )
 
     await page.goto('/dashboard')
-    await page.waitForLoadState('networkidle')
   })
 
   test('shows Cover Letters KPI card', async ({ page }) => {
@@ -576,39 +569,33 @@ test.describe('Cover Letter Generation Page', () => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     expect(errors).toEqual([])
   })
 
   test('shows page heading', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     await expect(page.locator('h1')).toContainText('AI Cover Letter Generator')
   })
 
   test('shows resume title in description', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     await expect(page.getByText(MOCK_RESUME.title)).toBeVisible()
   })
 
   test('shows job description textarea', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     const textarea = page.locator('textarea[placeholder*="Paste the job description"]')
     await expect(textarea).toBeVisible()
   })
 
   test('shows company name and role title inputs', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     await expect(page.locator('input[placeholder="Company name"]')).toBeVisible()
     await expect(page.locator('input[placeholder="Role title"]')).toBeVisible()
   })
 
   test('shows tone selection buttons', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     await expect(page.getByRole('button', { name: 'Formal' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Conversational' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Enthusiastic' })).toBeVisible()
@@ -616,7 +603,6 @@ test.describe('Cover Letter Generation Page', () => {
 
   test('shows length selection buttons', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     await expect(page.getByRole('button', { name: '3 Paragraphs' })).toBeVisible()
     await expect(page.getByRole('button', { name: '4 Paragraphs' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Detailed' })).toBeVisible()
@@ -624,14 +610,12 @@ test.describe('Cover Letter Generation Page', () => {
 
   test('generate button disabled when no job description', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     const btn = page.getByRole('button', { name: /Generate Cover Letter/ })
     await expect(btn).toBeDisabled()
   })
 
   test('generate button enabled when job description entered', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     const textarea = page.locator('textarea[placeholder*="Paste the job description"]')
     await textarea.fill('We are looking for a Python developer with 5 years of experience.')
     const btn = page.getByRole('button', { name: /Generate Cover Letter/ })
@@ -640,7 +624,6 @@ test.describe('Cover Letter Generation Page', () => {
 
   test('shows existing cover letters in sidebar', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     await expect(page.getByText('Previous Cover Letters (2)')).toBeVisible()
     await expect(page.getByText('Acme Corp').first()).toBeVisible()
     await expect(page.getByText('StartupCo')).toBeVisible()
@@ -648,7 +631,6 @@ test.describe('Cover Letter Generation Page', () => {
 
   test('loads most recent cover letter into editor on page load', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     // The first CL (Acme Corp) should be highlighted as active in the sidebar
     // Active card uniquely has bg-violet-500/10 (tone/length buttons use bg-violet-500/20)
     const activeCard = page.locator('.border-violet-400\\/40.bg-violet-500\\/10')
@@ -657,7 +639,6 @@ test.describe('Cover Letter Generation Page', () => {
 
   test('has Back to Editor link', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     const link = page.getByText('Back to Editor')
     await expect(link).toBeVisible()
     await expect(link).toHaveAttribute('href', `/workspace/${resumeId}/edit`)
@@ -665,31 +646,26 @@ test.describe('Cover Letter Generation Page', () => {
 
   test('has Compile PDF button', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     await expect(page.getByText('Compile PDF')).toBeVisible()
   })
 
   test('has auto-compile toggle', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     await expect(page.getByText('Auto')).toBeVisible()
   })
 
   test('shows Live Logs section', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     await expect(page.getByText('Live Logs')).toBeVisible()
   })
 
   test('shows Output Preview section', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     await expect(page.getByText('Output Preview')).toBeVisible()
   })
 
   test('tone selection changes active state', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     const conversational = page.getByRole('button', { name: 'Conversational' })
     await conversational.click()
     await expect(conversational).toHaveClass(/bg-violet-500/)
@@ -697,7 +673,6 @@ test.describe('Cover Letter Generation Page', () => {
 
   test('length selection changes active state', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     const detailed = page.getByRole('button', { name: 'Detailed' })
     await detailed.click()
     await expect(detailed).toHaveClass(/bg-violet-500/)
@@ -721,7 +696,6 @@ test.describe('Cover Letter Generation Page', () => {
     })
 
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
 
     // Fill form
     await page.locator('textarea[placeholder*="Paste the job description"]').fill('Need a developer')
@@ -759,7 +733,6 @@ test.describe('Cover Letter Generation Page', () => {
     })
 
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
 
     // Initially 2 existing CLs
     await expect(page.getByText('Previous Cover Letters (2)')).toBeVisible()
@@ -785,7 +758,6 @@ test.describe('Cover Letter Generation Page', () => {
     })
 
     await page.goto(`/workspace/${resumeId}/cover-letter`)
-    await page.waitForLoadState('networkidle')
     await expect(page.getByText('Previous Cover Letters (2)')).toBeVisible()
 
     // Click delete on first CL
@@ -843,27 +815,26 @@ test.describe('API Client — cover letter methods exist', () => {
     )
 
     await page.goto('/workspace/cover-letters', { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
     const hasNotAFunctionError = errors.some((e) => e.includes('is not a function'))
     expect(hasNotAFunctionError).toBe(false)
   })
 
-  test('cover-letters API calls made on listing page load', async ({ page }) => {
+  test('cover-letters API calls are made during client-side listing interactions', async ({ page }) => {
     const apiCalls: string[] = []
     await mockAuth(page)
-    await page.route('**/*', async (route) => {
-      const url = route.request().url()
-      if (url.includes('/cover-letters')) {
-        apiCalls.push(url)
-      }
-      if (url.includes('/cover-letters/stats')) {
+    await page.route((url) => url.pathname.startsWith('/cover-letters'), async (route) => {
+      const url = new URL(route.request().url())
+      apiCalls.push(url.toString())
+
+      if (url.pathname === '/cover-letters/stats') {
         return route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({ total: 0 }),
         })
       }
-      if (url.match(/\/cover-letters\/(\?|$)/)) {
+
+      if ((url.pathname === '/cover-letters/' || url.pathname === '/cover-letters') && route.request().method() === 'GET') {
         return route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -876,11 +847,18 @@ test.describe('API Client — cover letter methods exist', () => {
           }),
         })
       }
-      await route.continue()
+
+      return route.continue()
     })
 
-    await page.goto('/workspace/cover-letters')
-    await page.waitForLoadState('networkidle')
-    expect(apiCalls.some((u) => u.includes('/cover-letters/'))).toBe(true)
+    await page.goto('/workspace/cover-letters', { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('h1')).toContainText('Cover Letter Library')
+
+    const searchInput = page.locator('input[placeholder*="Search by company"]')
+    await searchInput.fill('Acme')
+
+    await expect
+      .poll(() => apiCalls.some((u) => u.includes('/cover-letters')))
+      .toBe(true)
   })
 })

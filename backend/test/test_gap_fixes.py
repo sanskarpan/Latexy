@@ -510,6 +510,28 @@ class TestProductionConfigHardening:
         with pytest.raises(ValueError, match="valid Fernet key"):
             Settings(_env_file=None)
 
+    def test_settings_reject_weak_better_auth_secret_in_production(self, monkeypatch):
+        from app.core.config import Settings
+
+        _set_minimal_settings_env(monkeypatch)
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setenv("API_KEY_ENCRYPTION_KEY", "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
+        monkeypatch.setenv("BETTER_AUTH_SECRET", "change-me-in-production")
+
+        with pytest.raises(ValueError, match="BETTER_AUTH_SECRET"):
+            Settings(_env_file=None)
+
+    def test_settings_reject_short_jwt_secret_in_staging(self, monkeypatch):
+        from app.core.config import Settings
+
+        _set_minimal_settings_env(monkeypatch)
+        monkeypatch.setenv("ENVIRONMENT", "staging")
+        monkeypatch.setenv("API_KEY_ENCRYPTION_KEY", "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
+        monkeypatch.setenv("JWT_SECRET_KEY", "too-short-secret")
+
+        with pytest.raises(ValueError, match="JWT_SECRET_KEY"):
+            Settings(_env_file=None)
+
     def test_settings_reject_partial_razorpay_config(self, monkeypatch):
         from app.core.config import Settings
 

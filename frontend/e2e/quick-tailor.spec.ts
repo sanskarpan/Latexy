@@ -128,8 +128,8 @@ async function mockAuthAndApi(page: Page) {
 }
 
 async function openQuickTailorModal(page: Page) {
-  await page.goto('/workspace')
-  await page.waitForLoadState('networkidle')
+  await page.goto('/workspace', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('button', { name: /tailor/i }).first()).toBeVisible()
   await page.getByRole('button', { name: /tailor/i }).first().click()
   await expect(page.getByRole('heading', { name: /quick tailor/i })).toBeVisible()
 }
@@ -142,7 +142,6 @@ test.describe('Quick Tailor — workspace integration', () => {
   test('Quick Tailor button is visible on resume card', async ({ page }) => {
     await mockAuthAndApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
 
     const tailorBtn = page.getByRole('button', { name: /tailor/i }).first()
     await expect(tailorBtn).toBeVisible()
@@ -301,7 +300,6 @@ test.describe('Quick Tailor — list view', () => {
   test('Quick Tailor (Tailor) button is visible in list view', async ({ page }) => {
     await mockAuthAndApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
 
     // Switch to list view
     await page.getByRole('button', { name: /list/i }).click()

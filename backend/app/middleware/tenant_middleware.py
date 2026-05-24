@@ -132,6 +132,27 @@ async def _cache_set(key: str, data: dict | None) -> None:
         pass
 
 
+async def invalidate_tenant_cache(
+    *,
+    slug: str | None = None,
+    domains: list[str | None] | None = None,
+) -> None:
+    """Invalidate cached tenant lookups after branding or routing changes."""
+    keys: set[str] = set()
+    if slug:
+        keys.add(f"tenant:slug:{slug}")
+    for domain in domains or []:
+        normalized = (domain or "").strip().lower()
+        if normalized:
+            keys.add(f"tenant:domain:{normalized}")
+
+    for key in keys:
+        try:
+            await cache_manager.delete(key)
+        except Exception:
+            logger.debug("Failed to invalidate tenant cache key %s", key)
+
+
 def _serialize(tenant: Tenant | None) -> dict | None:
     if tenant is None:
         return None

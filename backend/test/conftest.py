@@ -125,6 +125,7 @@ async def test_engine():
         required_columns = {
             ("users", "github_access_token"),
             ("users", "dropbox_access_token"),
+            ("users", "default_tenant_id"),
             ("resumes", "archived_at"),
             ("resumes", "dropbox_sync_enabled"),
             ("resumes", "document_type"),

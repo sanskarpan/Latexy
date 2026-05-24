@@ -171,26 +171,23 @@ test.describe('Optimize page — Version History panel', () => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
+    await expect(page.getByText('Version History')).toBeVisible()
     expect(errors.filter((e) => !e.toLowerCase().includes('warning'))).toHaveLength(0)
   })
 
   test('Version History section is present in aside', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
     await expect(page.getByText('Version History')).toBeVisible()
   })
 
   test('Version History panel is collapsed by default', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
     // Checkpoint labels should not be visible yet (panel collapsed)
     await expect(page.getByText('After AI optimization')).not.toBeVisible()
   })
 
   test('clicking "Version History" header expands the panel', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
 
     await page.getByText('Version History').click()
     await expect(page.getByText('After AI optimization')).toBeVisible({ timeout: 8_000 })
@@ -199,7 +196,6 @@ test.describe('Optimize page — Version History panel', () => {
 
   test('clicking header again collapses the panel', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
 
     await page.getByText('Version History').click()
     await expect(page.getByText('After AI optimization')).toBeVisible({ timeout: 8_000 })
@@ -210,7 +206,6 @@ test.describe('Optimize page — Version History panel', () => {
 
   test('expanded panel shows "Show"/"Hide" toggle label', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByText('Show')).toBeVisible()
     await page.getByText('Version History').click()
@@ -223,7 +218,6 @@ test.describe('Optimize page — Version History panel', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
     )
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
 
     await page.getByText('Version History').click()
     await expect(page.getByText(/No version history yet/i)).toBeVisible({ timeout: 8_000 })
@@ -231,7 +225,6 @@ test.describe('Optimize page — Version History panel', () => {
 
   test('checkpoint entries show label and type badge', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
 
     await page.getByText('Version History').click()
     await expect(page.getByText('After AI optimization')).toBeVisible({ timeout: 8_000 })
@@ -241,7 +234,6 @@ test.describe('Optimize page — Version History panel', () => {
 
   test('checkpoint entries have Restore button', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
 
     await page.getByText('Version History').click()
     await expect(page.getByRole('button', { name: 'Restore' }).first()).toBeVisible({ timeout: 8_000 })
@@ -265,7 +257,6 @@ test.describe('Optimize page — checkpoint compare flow', () => {
 
   test('selecting two checkpoints shows "Compare Selected" button', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
 
     await page.getByText('Version History').click()
     await expect(page.getByText('After AI optimization')).toBeVisible({ timeout: 8_000 })
@@ -279,7 +270,6 @@ test.describe('Optimize page — checkpoint compare flow', () => {
 
   test('clicking "Compare Selected" opens DiffViewerModal', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
 
     await page.getByText('Version History').click()
     await expect(page.getByText('After AI optimization')).toBeVisible({ timeout: 8_000 })
@@ -294,7 +284,6 @@ test.describe('Optimize page — checkpoint compare flow', () => {
 
   test('DiffViewerModal shows checkpoint label as column header', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
 
     await page.getByText('Version History').click()
     await expect(page.getByText('After AI optimization')).toBeVisible({ timeout: 8_000 })
@@ -327,7 +316,6 @@ test.describe('DiffViewerModal — fullscreen toggle', () => {
 
   async function openDiffModal(page: Page) {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
     await page.getByText('Version History').click()
     await expect(page.getByText('After AI optimization')).toBeVisible({ timeout: 8_000 })
     await page.getByText('After AI optimization').click()
@@ -395,7 +383,6 @@ test.describe('DiffViewerModal — restore confirmation', () => {
 
   async function openDiffModal(page: Page) {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
     await page.getByText('Version History').click()
     await expect(page.getByText('After AI optimization')).toBeVisible({ timeout: 8_000 })
     await page.getByText('After AI optimization').click()
@@ -503,7 +490,6 @@ test.describe('DiffViewerModal — header structure', () => {
 
   test('modal header contains "Compare Versions" title', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
     await page.getByText('Version History').click()
     await expect(page.getByText('After AI optimization')).toBeVisible({ timeout: 8_000 })
     await page.getByText('After AI optimization').click()
@@ -515,7 +501,6 @@ test.describe('DiffViewerModal — header structure', () => {
 
   test('modal has Restore Left button', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
     await page.getByText('Version History').click()
     await expect(page.getByText('After AI optimization')).toBeVisible({ timeout: 8_000 })
     await page.getByText('After AI optimization').click()
@@ -528,7 +513,6 @@ test.describe('DiffViewerModal — header structure', () => {
 
   test('X button closes the modal', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle')
     await page.getByText('Version History').click()
     await expect(page.getByText('After AI optimization')).toBeVisible({ timeout: 8_000 })
     await page.getByText('After AI optimization').click()

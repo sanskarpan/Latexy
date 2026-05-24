@@ -49,11 +49,11 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: anthropic-api-key
-        - name: GOOGLE_API_KEY
+        - name: GEMINI_API_KEY
           valueFrom:
             secretKeyRef:
               name: latexy-secrets
-              key: google-api-key
+              key: gemini-api-key
         - name: OPENROUTER_API_KEY
           valueFrom:
             secretKeyRef:

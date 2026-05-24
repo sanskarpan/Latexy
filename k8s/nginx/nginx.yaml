@@ -95,11 +95,22 @@ data:
                 }
             }
 
+            # Next.js auth routes must stay on the frontend service.
+            location /api/auth/ {
+                limit_req zone=api burst=10 nodelay;
+
+                proxy_pass http://frontend;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
             # Backend API
             location /api/ {
                 limit_req zone=api burst=20 nodelay;
                 
-                proxy_pass http://backend;
+                proxy_pass http://backend/;
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -109,22 +120,6 @@ data:
                 proxy_connect_timeout 60s;
                 proxy_send_timeout 60s;
                 proxy_read_timeout 60s;
-            }
-
-            # Compilation endpoint (stricter rate limiting)
-            location /compile {
-                limit_req zone=compile burst=5 nodelay;
-                
-                proxy_pass http://backend;
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                
-                # Extended timeouts for compilation
-                proxy_connect_timeout 120s;
-                proxy_send_timeout 120s;
-                proxy_read_timeout 120s;
             }
 
             # WebSocket support for job updates
@@ -146,7 +141,7 @@ data:
 
             # Health check endpoint
             location /health {
-                proxy_pass http://backend;
+                proxy_pass http://backend/health;
                 access_log off;
             }
 

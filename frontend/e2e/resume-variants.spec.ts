@@ -222,8 +222,8 @@ test.describe('Workspace — Variant Grouping', () => {
 
   test.beforeEach(async ({ page }) => {
     await mockAuthAndApi(page)
-    await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
+    await page.goto('/workspace', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByText('Full Stack Developer Resume').first()).toBeVisible()
   })
 
   test('page loads without runtime errors', async ({ page }) => {
@@ -316,7 +316,6 @@ test.describe('Workspace — Fork Modal', () => {
   test.beforeEach(async ({ page }) => {
     await mockAuthAndApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
   })
 
   test('clicking Fork opens fork modal', async ({ page }) => {
@@ -426,7 +425,6 @@ test.describe('Workspace — Compare with Parent', () => {
   test.beforeEach(async ({ page }) => {
     await mockAuthAndApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
   })
 
   test('clicking Compare on variant opens diff modal', async ({ page }) => {
@@ -511,7 +509,6 @@ test.describe('Workspace — List View Variants', () => {
   test.beforeEach(async ({ page }) => {
     await mockAuthAndApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
   })
 
   test('list view shows variant badge on parent row', async ({ page }) => {
@@ -581,7 +578,6 @@ test.describe('Workspace — Search across variants', () => {
   test.beforeEach(async ({ page }) => {
     await mockAuthAndApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
   })
 
   test('searching for "Data Science" shows only standalone resume', async ({ page }) => {
@@ -622,7 +618,6 @@ test.describe('Workspace — Updated workflow tip', () => {
   test.beforeEach(async ({ page }) => {
     await mockAuthAndApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
   })
 
   test('workflow tip mentions Fork', async ({ page }) => {
@@ -662,7 +657,6 @@ test.describe('Edit Page — Variant Banner', () => {
 
   test('variant resume shows banner with parent title', async ({ page }) => {
     await page.goto(`/workspace/${VARIANT_A.id}/edit`)
-    await page.waitForLoadState('networkidle')
 
     // Should show variant banner
     await expect(page.getByText('Variant of:')).toBeVisible()
@@ -671,28 +665,24 @@ test.describe('Edit Page — Variant Banner', () => {
 
   test('variant banner has Compare with Parent link', async ({ page }) => {
     await page.goto(`/workspace/${VARIANT_A.id}/edit`)
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByText('Compare with Parent')).toBeVisible()
   })
 
   test('non-variant resume does not show banner', async ({ page }) => {
     await page.goto(`/workspace/${PARENT_RESUME.id}/edit`)
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByText('Variant of:')).not.toBeVisible()
   })
 
   test('edit page has Variant button in toolbar', async ({ page }) => {
     await page.goto(`/workspace/${PARENT_RESUME.id}/edit`)
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByRole('button', { name: 'Variant' })).toBeVisible()
   })
 
   test('clicking Variant button opens fork popover', async ({ page }) => {
     await page.goto(`/workspace/${PARENT_RESUME.id}/edit`)
-    await page.waitForLoadState('networkidle')
 
     await page.getByRole('button', { name: 'Variant' }).click()
     await expect(page.locator('input[placeholder="Variant title"]')).toBeVisible()
@@ -700,7 +690,6 @@ test.describe('Edit Page — Variant Banner', () => {
 
   test('fork popover closes on Escape', async ({ page }) => {
     await page.goto(`/workspace/${PARENT_RESUME.id}/edit`)
-    await page.waitForLoadState('networkidle')
 
     await page.getByRole('button', { name: 'Variant' }).click()
     await expect(page.locator('input[placeholder="Variant title"]')).toBeVisible()
@@ -721,7 +710,6 @@ test.describe('Edit Page — Variant Banner', () => {
     })
 
     await page.goto(`/workspace/${PARENT_RESUME.id}/edit`)
-    await page.waitForLoadState('networkidle')
 
     await page.getByRole('button', { name: 'Variant' }).click()
     const input = page.locator('input[placeholder="Variant title"]')
@@ -735,7 +723,6 @@ test.describe('Edit Page — Variant Banner', () => {
 
   test('Compare with Parent opens diff modal', async ({ page }) => {
     await page.goto(`/workspace/${VARIANT_A.id}/edit`)
-    await page.waitForLoadState('networkidle')
 
     await page.getByText('Compare with Parent').click()
 
@@ -774,7 +761,6 @@ test.describe('Optimize Page — Variant Awareness', () => {
 
   test('variant resume shows banner on optimize page', async ({ page }) => {
     await page.goto(`/workspace/${VARIANT_A.id}/optimize`)
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByText('Variant of:')).toBeVisible()
     await expect(page.getByText(PARENT_RESUME.title, { exact: true })).toBeVisible()
@@ -782,28 +768,24 @@ test.describe('Optimize Page — Variant Awareness', () => {
 
   test('optimize page has Compare with Parent button for variants', async ({ page }) => {
     await page.goto(`/workspace/${VARIANT_A.id}/optimize`)
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByText('Compare with Parent')).toBeVisible()
   })
 
   test('non-variant resume does not show banner on optimize page', async ({ page }) => {
     await page.goto(`/workspace/${PARENT_RESUME.id}/optimize`)
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByText('Variant of:')).not.toBeVisible()
   })
 
   test('optimize page has Variant button', async ({ page }) => {
     await page.goto(`/workspace/${PARENT_RESUME.id}/optimize`)
-    await page.waitForLoadState('networkidle')
 
     await expect(page.getByRole('button', { name: 'Variant' })).toBeVisible()
   })
 
   test('Compare with Parent on optimize page opens diff modal', async ({ page }) => {
     await page.goto(`/workspace/${VARIANT_A.id}/optimize`)
-    await page.waitForLoadState('networkidle')
 
     await page.getByText('Compare with Parent').click()
     await expect(page.getByText('Compare Versions')).toBeVisible()
@@ -820,7 +802,6 @@ test.describe('DiffViewerModal — Parent-diff mode', () => {
   test.beforeEach(async ({ page }) => {
     await mockAuthAndApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
   })
 
   test('diff modal renders without errors in parent-diff mode', async ({ page }) => {
@@ -884,7 +865,6 @@ test.describe('API route verification', () => {
     })
 
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
 
     // Open fork modal and submit
     const forkBtn = page.getByRole('button', { name: 'Fork' }).first()
@@ -907,7 +887,6 @@ test.describe('API route verification', () => {
     })
 
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
 
     // Expand variants and click Compare
     const badge = page.locator('button').filter({ hasText: '2' }).first()
@@ -929,9 +908,10 @@ test.describe('API route verification', () => {
     })
 
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
 
-    expect(apiCalls.some(u => u.match(/\/resumes\/?\?/))).toBe(true)
+    await expect
+      .poll(() => apiCalls.some((u) => /\/resumes\/?(?:\?|$)/.test(u)))
+      .toBe(true)
   })
 
   test('no "is not a function" errors on workspace page', async ({ page }) => {
@@ -939,7 +919,6 @@ test.describe('API route verification', () => {
     page.on('pageerror', (err) => errors.push(err.message))
     await mockAuthAndApi(page)
     await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
     const hasNotAFunctionError = errors.some(e => e.includes('is not a function'))
     expect(hasNotAFunctionError).toBe(false)
   })

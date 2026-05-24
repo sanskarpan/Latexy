@@ -14,6 +14,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Resolve paths relative to this file so they work regardless of CWD
 _backend_dir = Path(__file__).parent.parent.parent   # backend/
 _root_dir = _backend_dir.parent                      # Latexy/
+_WEAK_SECRET_VALUES = {
+    "change-me-in-production",
+    "changeme",
+    "change-me",
+    "default-secret",
+    "secret",
+}
 
 
 class Settings(BaseSettings):
@@ -53,6 +60,9 @@ class Settings(BaseSettings):
 
     # Docker
     LATEX_DOCKER_IMAGE: str = "texlive/texlive:latest"
+    PDF_TEXT_EXTRACTION_TIMEOUT: int = 20
+    PDF_TEXT_EXTRACTION_RETRIES: int = 2
+    PDF_TEXT_EXTRACTION_BACKOFF_SECONDS: float = 1.0
 
     # CORS
     CORS_ORIGINS: List[str] = Field(
@@ -66,6 +76,7 @@ class Settings(BaseSettings):
 
     # Logging
     LOG_LEVEL: str = "INFO"
+    SQL_ECHO: bool = False
 
     # Rate limiting
     RATE_LIMIT_ENABLED: bool = True
@@ -401,6 +412,16 @@ class Settings(BaseSettings):
         """Return whether the app is running in a production-like environment."""
         return self.normalized_environment in {"production", "staging"}
 
+    def _is_weak_secret(self, value: str) -> bool:
+        normalized = (value or "").strip().lower()
+        if len(normalized) < 32:
+            return True
+        if normalized in _WEAK_SECRET_VALUES:
+            return True
+        if "change-me" in normalized:
+            return True
+        return False
+
     def billing_credentials_configured(self) -> bool:
         """Return whether the full Razorpay credential set is present."""
         return all(
@@ -445,6 +466,18 @@ class Settings(BaseSettings):
                     "Generate one with: python -c \"from cryptography.fernet import Fernet; "
                     "print(Fernet.generate_key().decode())\""
                 ) from exc
+
+        if self.is_production_like() and self._is_weak_secret(self.BETTER_AUTH_SECRET):
+            raise ValueError(
+                "BETTER_AUTH_SECRET must be a strong non-placeholder secret with at least "
+                "32 characters in production-like environments."
+            )
+
+        if self.is_production_like() and self._is_weak_secret(self.JWT_SECRET_KEY):
+            raise ValueError(
+                "JWT_SECRET_KEY must be a strong non-placeholder secret with at least "
+                "32 characters in production-like environments."
+            )
 
         razorpay_fields = {
             "RAZORPAY_KEY_ID": self.RAZORPAY_KEY_ID,

@@ -38,7 +38,7 @@ async def init_db():
     # Create async engine
     engine = create_async_engine(
         database_url,
-        echo=settings.DEBUG,
+        echo=settings.SQL_ECHO,
         pool_pre_ping=True,
         pool_recycle=300,
     )

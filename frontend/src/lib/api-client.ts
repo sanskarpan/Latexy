@@ -787,8 +787,11 @@ class ApiClient {
     if (res.status === 204) {
       return undefined as T
     }
-    const contentType = res.headers.get('content-type') || ''
-    if (contentType.includes('application/json')) {
+    const contentType =
+      typeof res.headers?.get === 'function'
+        ? res.headers.get('content-type') || ''
+        : ''
+    if (contentType.includes('application/json') || (!contentType && typeof res.json === 'function')) {
       return res.json() as Promise<T>
     }
     return (await res.text()) as T
