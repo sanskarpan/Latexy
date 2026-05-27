@@ -14,7 +14,7 @@
         migrate db-backup db-restore redis-backup \
         build build-backend build-frontend \
         k8s-deploy k8s-status k8s-migrate k8s-clean k8s-logs \
-        health-check logs-all
+        health-check logs-all observability-smoke
 
 # Root compose = full dev stack (postgres, redis, minio, backend, worker, beat, frontend, flower)
 ROOT_COMPOSE      := docker-compose.yml
@@ -80,6 +80,7 @@ help:
 	@echo "  ── Monitoring ───────────────────────────────────────────────"
 	@echo "    health-check     Run scripts/monitoring/health-check.sh"
 	@echo "    logs-all         Collect + analyse service logs"
+	@echo "    observability-smoke Validate monitoring configs and metrics contracts"
 	@echo ""
 
 # ── Full stack (one-command start) ─────────────────────────────────────────
@@ -166,6 +167,9 @@ test-frontend:
 
 smoke:
 	bash scripts/ci/full-stack-smoke.sh
+
+observability-smoke:
+	bash scripts/ci/observability-smoke.sh
 
 # ── Linting ────────────────────────────────────────────────────────────────
 lint: lint-backend lint-frontend

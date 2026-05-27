@@ -2,13 +2,23 @@
 Celery application configuration for Phase 8.
 """
 
+from __future__ import annotations
+
+from time import perf_counter
+
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import task_failure, task_postrun, task_prerun, worker_process_init
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.observability import record_celery_task, reset_context, set_task_context
+from ..core.tracing import instrument_celery, setup_telemetry
 
+setup_telemetry("worker")
+instrument_celery()
 logger = get_logger(__name__)
+_task_start_times: dict[str, float] = {}
 
 # Create Celery instance
 celery_app = Celery(
@@ -107,6 +117,7 @@ celery_app.conf.update(
     # Monitoring
     worker_send_task_events=True,
     task_send_sent_event=True,
+    broker_connection_retry_on_startup=True,
 
     # Security
     worker_hijack_root_logger=False,
@@ -181,8 +192,6 @@ def debug_task(self):
 #  Worker process initialisation signal                               #
 # ------------------------------------------------------------------ #
 
-from celery.signals import worker_process_init  # noqa: E402
-
 
 @worker_process_init.connect
 def init_worker_process(sender=None, **kwargs):
@@ -211,6 +220,88 @@ def init_worker_process(sender=None, **kwargs):
         logger.info("Worker process: async Redis initialised")
     except Exception as exc:
         logger.warning(f"Worker process: async Redis init failed (non-critical): {exc}")
+
+
+def _extract_job_id(args, kwargs) -> str | None:
+    candidates = [kwargs]
+    candidates.extend(item for item in args if isinstance(item, dict))
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        for key in ("job_id", "resume_id", "compilation_id"):
+            value = candidate.get(key)
+            if value:
+                return str(value)
+    return None
+
+
+def _extract_queue_name(task) -> str:
+    delivery_info = getattr(task.request, "delivery_info", {}) or {}
+    return delivery_info.get("routing_key") or delivery_info.get("exchange") or "default"
+
+
+@task_prerun.connect
+def on_task_prerun(task_id=None, task=None, args=None, kwargs=None, **_unused):
+    """Attach correlation context and start timing for Celery tasks."""
+    if task is None or task_id is None:
+        return
+
+    queue_name = _extract_queue_name(task)
+    job_id = _extract_job_id(args or (), kwargs or {})
+    context_tokens = set_task_context(
+        task_id=str(task_id),
+        task_name=task.name,
+        queue_name=queue_name,
+        job_id=job_id,
+    )
+    setattr(task.request, "_latexy_context_tokens", context_tokens)
+    _task_start_times[str(task_id)] = perf_counter()
+    logger.info(
+        "celery_task_started",
+        extra={"queue": queue_name, "job_id": job_id},
+    )
+
+
+@task_postrun.connect
+def on_task_postrun(task_id=None, task=None, state=None, **_unused):
+    """Record task completion metrics and clear context."""
+    if task is None or task_id is None:
+        return
+
+    queue_name = _extract_queue_name(task)
+    duration = perf_counter() - _task_start_times.pop(str(task_id), perf_counter())
+    status = (state or "unknown").lower()
+    record_celery_task(task_name=task.name, queue_name=queue_name, status=status, duration_seconds=duration)
+    logger.info(
+        "celery_task_finished",
+        extra={
+            "queue": queue_name,
+            "status_code": status,
+            "latency_seconds": round(duration, 6),
+        },
+    )
+    context_tokens = getattr(task.request, "_latexy_context_tokens", None)
+    if context_tokens:
+        reset_context(context_tokens)
+
+
+@task_failure.connect
+def on_task_failure(task_id=None, exception=None, traceback=None, einfo=None, sender=None, **_unused):
+    """Emit structured failure logs for failed Celery tasks."""
+    task = sender
+    if task is None or task_id is None:
+        return
+
+    queue_name = _extract_queue_name(task)
+    logger.error(
+        "celery_task_failed",
+        extra={
+            "queue": queue_name,
+            "status_code": "failed",
+            "latency_seconds": None,
+        },
+        exc_info=(type(exception), exception, traceback) if exception and traceback else None,
+    )
 
 
 # Import tasks to register them

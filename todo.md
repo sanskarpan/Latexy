@@ -97,3 +97,180 @@ No open audited P0/P1/P2 production-code items remain on this pass. The sections
 - The checklist markdown had stale unchecked items for already-shipped features; that documentation has now been reconciled with the verified implementation.
 - The current stack is materially healthier than the starting point, but production readiness still depends on environment discipline, issue triage, and keeping the full browser suite green continuously.
 - Operational follow-up: deploy a strong high-entropy `BETTER_AUTH_SECRET`; local build output still warns when the configured value is weak.
+
+## Observability Program — 2026-05-26
+
+### Current State Audit
+- [x] Repo contains infrastructure scaffolding for Prometheus, Grafana, Alertmanager, Flower, Kubernetes monitoring manifests, and Nginx status.
+- [x] `docker-compose.prod.yml` already defines Prometheus and Grafana services.
+- [x] Kubernetes manifests already define Prometheus, Grafana, and exporter resources.
+- [x] Nginx has an `/nginx_status` location for basic upstream visibility.
+- [ ] Backend application metrics exposure is not verified as production-complete.
+- [ ] Frontend `/api/metrics` exposure is referenced by Prometheus config but is not verified as implemented and production-useful.
+- [ ] Redis and Postgres scrape targets in the root `monitoring/prometheus.yml` currently point at raw service ports, but the actual exporter wiring in the local compose stack is incomplete.
+- [ ] Alerting configuration exists, but delivery is placeholder-level and not validated against a real notification channel.
+- [ ] Structured application logging, request correlation, and trace propagation are not yet implemented to production standard.
+- [ ] There is no verified OpenTelemetry tracing pipeline across frontend, backend, worker, and external calls.
+- [ ] There are no production-grade SLOs, error budgets, runbooks, dashboard ownership, or alert review rules encoded in the repo.
+
+### Gap Summary
+- [ ] Monitoring exists as partial infra scaffolding, not as a fully wired observability system.
+- [ ] The largest gap is application-level telemetry, not dashboard YAML.
+- [ ] Current monitoring config overstates readiness because some scrape targets assume exporters or endpoints that are not fully integrated into the running stack.
+- [ ] The project currently has health checks and some logs, but not end-to-end debuggability.
+
+### Target End State
+- [ ] Every user request and async job can be traced end to end with a stable request/job correlation ID.
+- [ ] Backend exposes Prometheus metrics for HTTP, DB latency, Redis latency, Celery queue depth, job outcomes, external API calls, compile latency, and auth/billing/storage failures.
+- [ ] Frontend exposes production-safe web vitals and API route metrics, and forwards correlation headers to the backend.
+- [ ] Celery workers expose task execution metrics, queue lag, retry counts, failure rates, and task duration histograms.
+- [ ] Prometheus scrapes real application/exporter endpoints only.
+- [ ] Grafana dashboards cover product health, infra health, queue health, external dependency health, and deployment/regression visibility.
+- [ ] Alertmanager sends real alerts to Slack/email/PagerDuty or the chosen on-call path.
+- [ ] Runbooks exist for every critical alert class.
+
+### Phase 1 — Logging Foundation
+- [ ] Introduce structured JSON logging in backend API, worker, and beat processes.
+  Why: current logs are readable but not consistently machine-queryable.
+  Deliverable: one logging formatter config shared across FastAPI, Celery, and app services.
+- [ ] Add request correlation IDs for every HTTP request.
+  Deliverable: middleware that generates/propagates `X-Request-ID` and includes it in all log lines.
+- [ ] Add job correlation IDs for all async work.
+  Deliverable: every Celery task logs `job_id`, `resume_id`, `user_id`, and request origin metadata where available.
+- [ ] Normalize log severity and event names.
+  Deliverable: explicit event taxonomy such as `resume.compile.started`, `resume.compile.failed`, `auth.session.invalid`, `billing.webhook.failed`.
+- [ ] Add log redaction rules.
+  Deliverable: prevent secrets, API keys, auth tokens, and raw PII-heavy payloads from entering logs.
+
+### Phase 2 — Metrics Instrumentation
+- [ ] Add backend Prometheus metrics endpoint and instrumentation if missing or incomplete.
+  Deliverable: verified `/metrics` endpoint with HTTP request counters, latency histograms, and in-flight request gauges.
+- [ ] Instrument DB and Redis latency.
+  Deliverable: metrics for query latency buckets, connection pool usage, Redis operation latency, and error counts.
+- [ ] Instrument resume pipeline metrics.
+  Deliverable: counters and histograms for compile success/failure, compile timeout, PDF extraction fallback use, ATS scoring latency, optimize latency, export latency.
+- [ ] Instrument external-provider metrics.
+  Deliverable: per-provider counters for OpenAI/Gemini/Anthropic/email/storage/billing calls, including errors, retries, and latencies.
+- [ ] Instrument Celery metrics.
+  Deliverable: task counts by name/status, retries, execution duration, worker heartbeat visibility, queue lag metrics.
+- [ ] Add frontend observability metrics.
+  Deliverable: capture web vitals, route transition failures, API route latencies, auth bootstrap failures, and editor hydration errors.
+
+### Phase 3 — Exporters And Scrape Topology
+- [ ] Replace invalid direct Redis/Postgres scrape assumptions in the root Prometheus config with verified exporter targets.
+  Deliverable: local compose and production scrape configs both use real exporters or real app metrics endpoints.
+- [ ] Add or wire Redis exporter in compose.
+  Deliverable: `redis-exporter` service and Prometheus scrape target.
+- [ ] Add or wire Postgres exporter in compose.
+  Deliverable: `postgres-exporter` service and Prometheus scrape target.
+- [ ] Add node/container metrics only where justified.
+  Deliverable: `node-exporter` and `cadvisor` are either fully wired or removed from the config to avoid false readiness.
+- [ ] Verify frontend metrics path.
+  Deliverable: either real `/api/metrics` instrumentation or removal from scrape config until implemented.
+
+### Phase 4 — Dashboards
+- [ ] Create a Backend API dashboard.
+  Panels: request rate, error rate, p50/p95/p99 latency, top failing routes, auth failures, billing failures, 5xx trends.
+- [ ] Create a Resume Pipeline dashboard.
+  Panels: compile volume, compile success rate, timeout rate, ATS latency, optimize latency, export failure breakdown, PDF extraction fallback rate.
+- [ ] Create a Worker/Queue dashboard.
+  Panels: queue depth by queue, task throughput, retry volume, oldest queued job age, worker heartbeat status.
+- [ ] Create a Data Layer dashboard.
+  Panels: Postgres connections, slow queries, deadlocks, Redis memory, Redis rejected connections, cache hit/miss, storage errors.
+- [ ] Create an External Dependencies dashboard.
+  Panels: provider error rates, billing webhook failures, email failures, storage failures, third-party latency.
+- [ ] Create a Release/Regression dashboard.
+  Panels: deploy time markers, smoke-test status, post-deploy error rate changes, browser-suite regression signal.
+
+### Phase 5 — Alerting
+- [ ] Replace placeholder Alertmanager delivery config with real channel integration.
+  Deliverable: Slack/email/PagerDuty values loaded from env/secret manager.
+- [ ] Define critical alerts.
+  Examples:
+  - API down
+  - worker down
+  - queue lag above threshold
+  - compile timeout spike
+  - 5xx rate spike
+  - auth/session failure spike
+  - billing webhook failure spike
+  - storage failure spike
+  - DB connection saturation
+  - Redis rejected connections
+- [ ] Define warning alerts.
+  Examples:
+  - p95 latency regression
+  - elevated retry rates
+  - fallback extraction usage spike
+  - email backlog/failure increase
+  - disk/memory pressure
+- [ ] Add alert routing rules and severity ownership.
+  Deliverable: who gets paged for infra vs application vs billing incidents.
+
+### Phase 6 — Tracing
+- [ ] Introduce OpenTelemetry tracing for FastAPI, outbound HTTP, DB, Redis, and Celery.
+  Deliverable: spans across request entry, service logic, DB, Redis, provider calls, and worker execution.
+- [ ] Propagate trace context from frontend to backend and backend to worker.
+  Deliverable: request-triggered background jobs can be traced back to the initiating user action.
+- [ ] Select a trace backend.
+  Options to evaluate:
+  - Grafana Tempo
+  - Jaeger
+  - vendor SaaS if operational simplicity is preferred
+- [ ] Add sampling strategy.
+  Deliverable: high-value failures kept at higher fidelity, low-value high-volume traffic sampled.
+
+### Phase 7 — Runbooks And SLOs
+- [ ] Define service-level objectives.
+  Examples:
+  - API availability
+  - compile success rate
+  - p95 compile latency
+  - ATS scoring latency
+  - job queue freshness
+  - auth success rate
+- [ ] Define error budgets and escalation policy.
+- [ ] Add runbooks for every critical alert.
+  Runbooks should cover:
+  - how to identify blast radius
+  - how to mitigate
+  - rollback criteria
+  - owner/team path
+- [ ] Add deployment smoke gates tied to observability checks.
+  Deliverable: post-deploy smoke validates health, metrics endpoint, worker heartbeat, and queue processing.
+
+### Immediate P0 Observability Work
+- [ ] Verify whether backend `/metrics` is actually implemented and usable in the current runtime.
+- [ ] Verify whether frontend `/api/metrics` exists and whether it reports anything meaningful.
+- [ ] Fix Prometheus scrape config so every listed target is real.
+- [ ] Add structured JSON logging with request IDs in backend.
+- [ ] Add worker/task/job correlation fields to Celery logs.
+- [ ] Add one minimal Grafana dashboard that is guaranteed to work with the real metrics we expose.
+
+### Immediate P1 Observability Work
+- [ ] Add Redis and Postgres exporters to local compose if they are not already present there.
+- [ ] Add backend metrics for compile outcomes, queue lag, ATS, optimize, export, and provider failures.
+- [ ] Add alerting for API down, worker down, queue lag, and 5xx spikes.
+- [ ] Add deployment/runbook documentation for observability bring-up.
+
+### Immediate P2 Observability Work
+- [ ] Add distributed tracing.
+- [ ] Add frontend web vitals dashboarding.
+- [ ] Add business-health metrics: sign-in failures, billing conversion failures, export usage, share-link errors, feature adoption.
+
+### Blockers / Inputs Needed Later
+- [ ] Final notification destination for alerts.
+  Needed for: Alertmanager production rollout.
+- [ ] Choice of trace backend.
+  Needed for: OpenTelemetry deployment.
+- [ ] SLO ownership model.
+  Needed for: final alert thresholds and escalation policy.
+
+### Execution Order Recommendation
+- [ ] Step 1: Instrument backend logs and request IDs.
+- [ ] Step 2: Verify and wire backend/frontend metrics endpoints.
+- [ ] Step 3: Fix Prometheus target topology and exporters.
+- [ ] Step 4: Create minimal working dashboards.
+- [ ] Step 5: Add critical alerts only.
+- [ ] Step 6: Add tracing.
+- [ ] Step 7: Add runbooks, SLOs, and on-call policy.

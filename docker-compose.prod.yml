@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Nginx Reverse Proxy & Load Balancer
   nginx:
@@ -70,9 +68,14 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OTEL_ENABLED=${OTEL_ENABLED:-true}
+      - OTEL_EXPORTER_MODE=${OTEL_EXPORTER_MODE:-otlp}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4318/v1/traces}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-latexy}
     depends_on:
       - redis
       - postgres
+      - tempo
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8030/health"]
@@ -109,9 +112,14 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OTEL_ENABLED=${OTEL_ENABLED:-true}
+      - OTEL_EXPORTER_MODE=${OTEL_EXPORTER_MODE:-otlp}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4318/v1/traces}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-latexy}
     depends_on:
       - redis
       - postgres
+      - tempo
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping"]
@@ -142,8 +150,13 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OTEL_ENABLED=${OTEL_ENABLED:-true}
+      - OTEL_EXPORTER_MODE=${OTEL_EXPORTER_MODE:-otlp}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4318/v1/traces}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-latexy}
     depends_on:
       - redis
+      - tempo
     restart: unless-stopped
     volumes:
       - celery_beat_data:/app/celerybeat-schedule
@@ -223,6 +236,7 @@ services:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -231,6 +245,72 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--storage.tsdb.retention.time=200h'
       - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - latexy-network
+    depends_on:
+      - backend
+      - redis-exporter
+      - postgres-exporter
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.base.yml:ro
+      - ./scripts/monitoring/render-alertmanager-config.sh:/etc/alertmanager/render-alertmanager-config.sh:ro
+    command:
+      - sh
+      - -c
+      - /etc/alertmanager/render-alertmanager-config.sh /etc/alertmanager/alertmanager.generated.yml && /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.generated.yml --storage.path=/alertmanager
+    restart: unless-stopped
+    networks:
+      - latexy-network
+    environment:
+      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
+      - ALERT_SLACK_WEBHOOK_URL=${ALERT_SLACK_WEBHOOK_URL:-}
+      - ALERT_SLACK_CHANNEL=${ALERT_SLACK_CHANNEL:-}
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM:-}
+      - ALERT_SMARTHOST=${ALERT_SMARTHOST:-}
+      - ALERT_EMAIL_USER=${ALERT_EMAIL_USER:-}
+      - ALERT_EMAIL_PASSWORD=${ALERT_EMAIL_PASSWORD:-}
+      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO:-}
+
+  tempo:
+    image: grafana/tempo:latest
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+      - "4318:4318"
+    command:
+      - -config.file=/etc/tempo/tempo.yml
+    volumes:
+      - ./monitoring/tempo.yml:/etc/tempo/tempo.yml:ro
+    restart: unless-stopped
+    networks:
+      - latexy-network
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - latexy-network
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-latexy}?sslmode=disable
+      - PG_EXPORTER_DISABLE_DEFAULT_METRICS=false
+      - PG_EXPORTER_DISABLE_SETTINGS_METRICS=false
+    depends_on:
+      - postgres
     restart: unless-stopped
     networks:
       - latexy-network

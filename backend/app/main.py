@@ -13,13 +13,16 @@ from .core.config import settings
 from .core.event_bus import event_bus
 from .core.logging import get_logger, setup_logging
 from .core.redis import get_redis_client, redis_manager
+from .core.tracing import instrument_fastapi, setup_telemetry
 from .database.connection import close_db, init_db
 from .middleware.rate_limiting import APIKeyRateLimitMiddleware, RateLimitMiddleware
+from .middleware.request_context import RequestContextMiddleware
 from .middleware.tenant_middleware import TenantMiddleware
 from .services.latex_compiler import latex_compiler
 
 # Setup logging
 setup_logging()
+setup_telemetry("api")
 logger = get_logger(__name__)
 
 
@@ -86,6 +89,7 @@ app = FastAPI(
     version=settings.APP_VERSION,
     lifespan=lifespan
 )
+instrument_fastapi(app)
 
 # Configure CORS
 app.add_middleware(
@@ -106,6 +110,7 @@ if settings.RATE_LIMIT_ENABLED:
 
 # Resolve white-label tenant from Host / X-Tenant-Slug (Feature 85)
 app.add_middleware(TenantMiddleware)
+app.add_middleware(RequestContextMiddleware)
 
 # Include routes
 app.include_router(router)

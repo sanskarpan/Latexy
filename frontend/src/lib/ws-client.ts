@@ -13,6 +13,7 @@
 
 import { getWebSocketUrl } from './api-client'
 import type { AnyEvent } from './event-types'
+import { createTraceHeaders } from './telemetry'
 
 // ------------------------------------------------------------------ //
 //  Event emitter types                                                //
@@ -118,8 +119,15 @@ class WSClient {
 
   private _openSocket(): void {
     try {
-      const url = getWebSocketUrl()
-      const ws = new WebSocket(url)
+      const url = new URL(getWebSocketUrl())
+      const traceHeaders = createTraceHeaders()
+      if (traceHeaders.traceparent) {
+        url.searchParams.set('traceparent', traceHeaders.traceparent)
+      }
+      if (traceHeaders['X-Request-ID']) {
+        url.searchParams.set('request_id', traceHeaders['X-Request-ID'])
+      }
+      const ws = new WebSocket(url.toString())
       this._ws = ws
 
       ws.onopen = () => {

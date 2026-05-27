@@ -2,6 +2,8 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  external_labels:
+    service: latexy
 
 rule_files:
   - "alert_rules.yml"
@@ -13,55 +15,27 @@ alerting:
           - alertmanager:9093
 
 scrape_configs:
-  # Prometheus self-monitoring
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
 
-  # Latexy Backend API
   - job_name: 'latexy-backend'
     static_configs:
       - targets: ['backend:8030']
     metrics_path: '/metrics'
-    scrape_interval: 30s
+    scrape_interval: 15s
     scrape_timeout: 10s
 
-  # Latexy Frontend
-  - job_name: 'latexy-frontend'
+  - job_name: 'redis-exporter'
     static_configs:
-      - targets: ['frontend:5180']
-    metrics_path: '/api/metrics'
-    scrape_interval: 30s
-
-  # Redis Monitoring
-  - job_name: 'redis'
-    static_configs:
-      - targets: ['redis:6379']
+      - targets: ['redis-exporter:9121']
     metrics_path: '/metrics'
 
-  # PostgreSQL Monitoring
-  - job_name: 'postgres'
+  - job_name: 'postgres-exporter'
     static_configs:
-      - targets: ['postgres:5432']
-
-  # Nginx Monitoring
-  - job_name: 'nginx'
-    static_configs:
-      - targets: ['nginx:8080']
-    metrics_path: '/nginx_status'
-
-  # Celery Worker Monitoring
-  - job_name: 'celery-worker'
-    static_configs:
-      - targets: ['celery-worker:8000']
+      - targets: ['postgres-exporter:9187']
     metrics_path: '/metrics'
 
-  # Node Exporter (System Metrics)
-  - job_name: 'node-exporter'
+  - job_name: 'alertmanager'
     static_configs:
-      - targets: ['node-exporter:9100']
-
-  # Docker Container Metrics
-  - job_name: 'cadvisor'
-    static_configs:
-      - targets: ['cadvisor:8080']
+      - targets: ['alertmanager:9093']

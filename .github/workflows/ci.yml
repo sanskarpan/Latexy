@@ -214,3 +214,13 @@ jobs:
 
       - name: Run full-stack smoke
         run: bash scripts/ci/full-stack-smoke.sh
+
+  observability-smoke:
+    name: Observability Smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate observability stack
+        run: bash scripts/ci/observability-smoke.sh
