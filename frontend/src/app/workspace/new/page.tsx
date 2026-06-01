@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, Upload, LayoutTemplate, X, Linkedin, PackageOpen } from 'lucide-react'
+import { Search, Upload, LayoutTemplate, X, Linkedin, PackageOpen, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { apiClient } from '@/lib/api-client'
@@ -243,6 +243,23 @@ export default function NewResumePage() {
           />
         </section>
 
+        <section className="surface-panel edge-highlight flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Recommended</p>
+            <h2 className="mt-2 flex items-center gap-2 text-xl font-semibold text-white">
+              <Sparkles className="h-4 w-4 text-orange-300" />
+              Guided Builder
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm text-zinc-400">
+              Use the new structured builder if you want live preview, section forms, template swapping, and a safer
+              path than starting directly in LaTeX.
+            </p>
+          </div>
+          <Link href="/workspace/builder/new" className="btn-accent px-5 py-3 text-sm">
+            Open Guided Builder
+          </Link>
+        </section>
+
         {/* Mode toggle */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <button
@@ -300,8 +317,8 @@ export default function NewResumePage() {
           >
             <PackageOpen className="mt-0.5 h-5 w-5 shrink-0 text-violet-400/80" />
             <div>
-              <h2 className="text-sm font-semibold text-white">Import from Builder</h2>
-              <p className="mt-0.5 text-xs text-zinc-400">Kickresume, Resume.io, Novoresume, and more.</p>
+              <h2 className="text-sm font-semibold text-white">Import Builder Export</h2>
+              <p className="mt-0.5 text-xs text-zinc-400">Bring in content from Kickresume, Resume.io, Novoresume, and similar tools.</p>
             </div>
           </button>
         </div>
