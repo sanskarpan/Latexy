@@ -4,6 +4,8 @@
  * All real-time updates come through the WebSocket (ws-client.ts).
  */
 
+import { createTraceHeaders, trackBusinessEvent } from './telemetry'
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
 
@@ -761,6 +763,7 @@ class ApiClient {
   private headers(extra: Record<string, string> = {}): HeadersInit {
     const h: Record<string, string> = {
       'Content-Type': 'application/json',
+      ...(typeof window !== 'undefined' ? createTraceHeaders() : {}),
       ...extra,
     }
     const token =
@@ -807,10 +810,14 @@ class ApiClient {
   // ---------------------------------------------------------------- //
 
   async submitJob(req: JobSubmitRequest): Promise<JobSubmitResponse> {
-    return this.request<JobSubmitResponse>('/jobs/submit', {
+    const response = await this.request<JobSubmitResponse>('/jobs/submit', {
       method: 'POST',
       body: JSON.stringify(req),
     })
+    if (typeof window !== 'undefined') {
+      trackBusinessEvent('job_submit', '/jobs/submit', { jobType: req.job_type })
+    }
+    return response
   }
 
   // ---------------------------------------------------------------- //

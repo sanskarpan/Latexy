@@ -66,11 +66,19 @@ class Settings(BaseSettings):
 
     # Logging
     LOG_LEVEL: str = "INFO"
+    SQL_ECHO: bool = False
+    OTEL_ENABLED: bool = False
+    OTEL_SERVICE_NAME: str = "latexy"
+    OTEL_EXPORTER_MODE: str = "none"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+    OTEL_EXPORTER_OTLP_HEADERS: str = ""
+    OTEL_RESOURCE_ATTRIBUTES: str = ""
 
     # Rate limiting
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_CALLS_PER_MINUTE: int = 60
     RATE_LIMIT_CALLS_PER_HOUR: int = 1000
+    FRONTEND_TELEMETRY_ENABLED: bool = True
 
     # OpenAI Configuration
     OPENAI_API_KEY: str = Field(default="", description="OpenAI API key for LLM services")

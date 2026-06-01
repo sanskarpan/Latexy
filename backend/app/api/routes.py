@@ -6,12 +6,13 @@ import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.observability import metrics_content_type, metrics_payload
 from ..database.connection import get_db
 from ..database.models import Compilation, Resume
 from ..middleware.auth_middleware import get_current_user_optional
@@ -190,8 +191,10 @@ router.include_router(team_router)
 
 # Include One-Click Application routes (Feature 87)
 from .application_routes import router as application_router
+from .telemetry_routes import router as telemetry_router
 
 router.include_router(application_router)
+router.include_router(telemetry_router)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -208,6 +211,12 @@ async def health_check():
         version=settings.APP_VERSION,
         latex_available=latex_available
     )
+
+
+@router.get("/metrics", include_in_schema=False)
+async def metrics():
+    """Prometheus scrape endpoint for backend metrics."""
+    return Response(content=metrics_payload(), media_type=metrics_content_type())
 
 
 @router.post("/compile", response_model=CompilationResponse)

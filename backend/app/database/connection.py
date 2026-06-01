@@ -8,6 +8,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.tracing import instrument_sqlalchemy
 
 logger = get_logger(__name__)
 
@@ -42,6 +43,7 @@ async def init_db():
         pool_pre_ping=True,
         pool_recycle=300,
     )
+    instrument_sqlalchemy(engine.sync_engine)
 
     # Create session factory
     SessionLocal = async_sessionmaker(

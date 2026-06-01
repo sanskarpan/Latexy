@@ -56,6 +56,14 @@ razorpay==2.0.1
 redis==7.4.0
 celery==5.3.4
 flower==2.0.1
+prometheus-client==0.23.1
+opentelemetry-api==1.38.0
+opentelemetry-sdk==1.38.0
+opentelemetry-exporter-otlp-proto-http==1.38.0
+opentelemetry-instrumentation-fastapi==0.59b0
+opentelemetry-instrumentation-sqlalchemy==0.59b0
+opentelemetry-instrumentation-redis==0.59b0
+opentelemetry-instrumentation-celery==0.59b0
 
 # Additional dependencies for Phase 8
 aioredis==2.0.1
