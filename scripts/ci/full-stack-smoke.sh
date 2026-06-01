@@ -29,6 +29,7 @@ export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 export NEXT_TELEMETRY_DISABLED=1
 
 backend_pid=""
+started_backend="false"
 backend_alembic=()
 backend_uvicorn=()
 
@@ -41,7 +42,7 @@ else
 fi
 
 cleanup() {
-  if [[ -n "$backend_pid" ]] && kill -0 "$backend_pid" 2>/dev/null; then
+  if [[ "$started_backend" == "true" ]] && [[ -n "$backend_pid" ]] && kill -0 "$backend_pid" 2>/dev/null; then
     kill "$backend_pid" 2>/dev/null || true
     wait "$backend_pid" 2>/dev/null || true
   fi
@@ -49,18 +50,23 @@ cleanup() {
 
 trap cleanup EXIT
 
-echo "==> Running backend migrations"
-(
-  cd "$BACKEND_DIR"
-  "${backend_alembic[@]}" upgrade head
-)
+if curl -fsS "http://127.0.0.1:${BACKEND_PORT}/health" >/dev/null 2>&1; then
+  echo "==> Reusing existing backend on :${BACKEND_PORT}"
+else
+  echo "==> Running backend migrations"
+  (
+    cd "$BACKEND_DIR"
+    "${backend_alembic[@]}" upgrade head
+  )
 
-echo "==> Starting backend on :${BACKEND_PORT}"
-(
-  cd "$BACKEND_DIR"
-  "${backend_uvicorn[@]}" app.main:app --host 127.0.0.1 --port "$BACKEND_PORT"
-) &
-backend_pid=$!
+  echo "==> Starting backend on :${BACKEND_PORT}"
+  (
+    cd "$BACKEND_DIR"
+    "${backend_uvicorn[@]}" app.main:app --host 127.0.0.1 --port "$BACKEND_PORT"
+  ) &
+  backend_pid=$!
+  started_backend="true"
+fi
 
 echo "==> Waiting for backend readiness"
 for _ in $(seq 1 60); do
