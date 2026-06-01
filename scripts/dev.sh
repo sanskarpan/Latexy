@@ -72,6 +72,29 @@ cleanup() {
   echo "  Stop infra with: ./scripts/dev.sh stop infra"
 }
 
+kill_matching_processes() {
+  local pattern="$1"
+  local pids
+  pids="$(pgrep -f "$pattern" 2>/dev/null || true)"
+  [[ -z "$pids" ]] && return 0
+
+  while IFS= read -r pid; do
+    [[ -z "$pid" ]] && continue
+    kill "$pid" 2>/dev/null || true
+  done <<< "$pids"
+
+  sleep 1
+
+  local survivors
+  survivors="$(pgrep -f "$pattern" 2>/dev/null || true)"
+  [[ -z "$survivors" ]] && return 0
+
+  while IFS= read -r pid; do
+    [[ -z "$pid" ]] && continue
+    kill -9 "$pid" 2>/dev/null || true
+  done <<< "$survivors"
+}
+
 # ── stop ─────────────────────────────────────────────────────────────────────
 
 stop_app() {
@@ -98,6 +121,16 @@ stop_app() {
   local fp=$((5179 + slot))
   lsof -ti:"$bp" 2>/dev/null | xargs kill 2>/dev/null || true
   lsof -ti:"$fp" 2>/dev/null | xargs kill 2>/dev/null || true
+
+  # Clean up any stale Latexy-local processes left behind by prior runs or
+  # interrupted shells. These can otherwise keep consuming Celery jobs with an
+  # older code version and make validation results inconsistent.
+  kill_matching_processes "${PROJECT_ROOT}/backend/.venv/bin/celery"
+  kill_matching_processes "${PROJECT_ROOT}/backend/venv/bin/celery"
+  kill_matching_processes "${PROJECT_ROOT}/backend/.venv/bin/uvicorn app.main:app"
+  kill_matching_processes "${PROJECT_ROOT}/backend/venv/bin/uvicorn app.main:app"
+  kill_matching_processes "${PROJECT_ROOT}/frontend/node_modules/.*/next/dist/bin/next dev -p"
+
   echo -e "${GREEN}✓ App processes stopped.${NC}"
 }
 
@@ -209,6 +242,7 @@ start_app() {
   CELERY_RESULT_BACKEND="$REDIS" \
   MINIO_ENDPOINT="$MINIO" \
   "$CELERY" -A app.core.celery_app worker --loglevel=info --concurrency=2 \
+    -n "latexy-slot${SLOT}@%h" \
     --queues=latex,llm,combined,ats,cleanup,email \
     2>&1 | sed "s/^/[worker]   /" &
   echo $! >> "$PID_FILE"
