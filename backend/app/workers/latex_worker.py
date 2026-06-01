@@ -35,6 +35,11 @@ _ALLOWED_EXTRA_FLAGS = {
 # Note: --synctex=1, --interaction=nonstopmode, --halt-on-error are already hardcoded
 
 _MAIN_FILE_RE = re.compile(r"^[a-zA-Z0-9_-]+\.tex$")
+_HOST_PDFTOTEXT_CANDIDATES = (
+    "/opt/homebrew/bin/pdftotext",
+    "/usr/local/bin/pdftotext",
+    "/usr/bin/pdftotext",
+)
 
 # Watermark validation
 _WATERMARK_RE = re.compile(r"^[A-Za-z0-9 \-\.]+$")
@@ -70,6 +75,90 @@ def _inject_packages(latex_content: str, packages: list) -> str:
     if not lines_to_insert:
         return latex_content
     return latex_content[:insert_pos] + "\n".join(lines_to_insert) + "\n" + latex_content[insert_pos:]
+
+
+def _extract_pdf_text(pdf_file: Path, job_dir: Path, use_docker: bool) -> Optional[str]:
+    """Extract PDF text with bounded retries and a pure-Python fallback."""
+    candidate_commands: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+
+    host_binary = shutil.which("pdftotext")
+    for binary in [host_binary, *_HOST_PDFTOTEXT_CANDIDATES]:
+        if not binary:
+            continue
+        cmd = [binary, "-layout", str(pdf_file), "-"]
+        key = tuple(cmd)
+        if key not in seen:
+            seen.add(key)
+            candidate_commands.append(cmd)
+
+    if use_docker:
+        docker_cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{job_dir}:/workspace",
+            "-w", "/workspace",
+            settings.LATEX_DOCKER_IMAGE,
+            "pdftotext", "-layout", "/workspace/resume.pdf", "-",
+        ]
+        candidate_commands.append(docker_cmd)
+
+    # Docker bind mounts can make the output PDF visible before a first read
+    # returns meaningful text. Retry a few times before giving up.
+    for attempt, delay in enumerate((0.0, 0.25, 0.75), start=1):
+        if delay:
+            time.sleep(delay)
+
+        for cmd in candidate_commands:
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "pdftotext invocation failed",
+                    extra={"command": cmd[0], "attempt": attempt, "error": str(exc)},
+                )
+                continue
+
+            if result.returncode == 0 and result.stdout.strip():
+                if attempt > 1:
+                    logger.info(
+                        "Recovered PDF text extraction after retry",
+                        extra={"command": cmd[0], "attempt": attempt},
+                    )
+                return result.stdout
+
+            logger.warning(
+                "pdftotext returned no extracted text",
+                extra={
+                    "command": cmd[0],
+                    "attempt": attempt,
+                    "returncode": result.returncode,
+                    "stderr": (result.stderr or "")[:300],
+                },
+            )
+
+    try:
+        from pdfminer.high_level import extract_text as pdfminer_extract_text
+
+        extracted = pdfminer_extract_text(str(pdf_file))
+        if extracted.strip():
+            logger.info("Recovered PDF text extraction with pdfminer fallback")
+            return extracted
+    except Exception as exc:
+        logger.warning("pdfminer extraction failed", extra={"error": str(exc)})
+
+    return None
+
+
+def _finalize_failure(job_id: str, **result: Any) -> Dict[str, Any]:
+    """Persist a terminal failure result so REST polling can resolve it."""
+    payload = {"success": False, "job_id": job_id, **result}
+    publish_job_result(job_id, payload)
+    return payload
 
 
 @celery_app.task(
@@ -137,7 +226,7 @@ def compile_latex_task(
                 "error_message": error_msg,
                 "retryable": False,
             })
-            return {"success": False, "job_id": job_id, "error": error_msg}
+            return _finalize_failure(job_id, error=error_msg)
 
         # ── Apply compile settings ───────────────────────────────────
         _cs = compile_settings or {}
@@ -157,7 +246,7 @@ def compile_latex_task(
                     "error_message": error_msg,
                     "retryable": False,
                 })
-                return {"success": False, "job_id": job_id, "error": error_msg}
+                return _finalize_failure(job_id, error=error_msg)
             latex_content = _inject_watermark(latex_content, watermark)
 
         # Determine main .tex filename (validated regex, default resume.tex)
@@ -258,7 +347,7 @@ def compile_latex_task(
             if is_cancelled(job_id):
                 proc.kill()
                 publish_event(job_id, "job.cancelled", {})
-                return {"success": False, "job_id": job_id, "cancelled": True}
+                return _finalize_failure(job_id, cancelled=True)
 
             # ── Timeout check ────────────────────────────────────────
             if time.time() - start_time > timeout:
@@ -275,7 +364,7 @@ def compile_latex_task(
                     "user_plan": user_plan,
                     "retryable": False,
                 })
-                return {"success": False, "job_id": job_id, "error": "compile_timeout"}
+                return _finalize_failure(job_id, error="compile_timeout")
 
         proc.wait()
         compilation_time = time.time() - start_time
@@ -293,29 +382,7 @@ def compile_latex_task(
             pdf_size = pdf_file.stat().st_size
 
             # ── PDF text extraction for ATS pre-flight ───────────────
-            extracted_text: Optional[str] = None
-            try:
-                if _use_docker:
-                    pt_cmd = [
-                        "docker", "run", "--rm",
-                        "-v", f"{job_dir}:/workspace",
-                        "-w", "/workspace",
-                        settings.LATEX_DOCKER_IMAGE,
-                        "pdftotext", "-layout", "/workspace/resume.pdf", "-",
-                    ]
-                else:
-                    pt_cmd = ["pdftotext", "-layout", str(pdf_file), "-"]
-
-                pt_result = subprocess.run(
-                    pt_cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                if pt_result.returncode == 0 and pt_result.stdout.strip():
-                    extracted_text = pt_result.stdout
-            except Exception as pt_exc:
-                logger.error(f"pdftotext failed for job {job_id}: {pt_exc}")
+            extracted_text = _extract_pdf_text(pdf_file, job_dir, _use_docker)
 
             # For Beamer, slide_count == page_count (one PDF page per slide)
             slide_count = page_count if is_beamer else None
@@ -378,10 +445,10 @@ def compile_latex_task(
             "error_message": error_msg,
             "retryable": False,
         })
-        result = {"success": False, "job_id": job_id, "error": error_msg}
+        result: Dict[str, Any] = {"error": error_msg}
         if first_latex_error:
             result["latex_error_line"] = first_latex_error
-        return result
+        return _finalize_failure(job_id, **result)
 
     except SoftTimeLimitExceeded:
         logger.error(f"LaTeX task {task_id} hit soft time limit for job {job_id}")
@@ -397,7 +464,7 @@ def compile_latex_task(
             "user_plan": user_plan,
             "retryable": False,
         })
-        return {"success": False, "job_id": job_id, "error": "compile_timeout"}
+        return _finalize_failure(job_id, error="compile_timeout")
 
     except Exception as exc:
         logger.error(f"LaTeX task {task_id} raised: {exc}")
@@ -410,7 +477,7 @@ def compile_latex_task(
         })
         if retryable:
             raise self.retry(countdown=60, exc=exc)
-        return {"success": False, "job_id": job_id, "error": str(exc)}
+        return _finalize_failure(job_id, error=str(exc))
 
 
 # ------------------------------------------------------------------ #
