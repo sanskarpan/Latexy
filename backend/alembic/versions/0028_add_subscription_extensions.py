@@ -6,6 +6,7 @@ Create Date: 2026-05-19
 """
 
 import sqlalchemy as sa
+from sqlalchemy import inspect
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 
 from alembic import op
@@ -17,81 +18,96 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "team_seats",
-        sa.Column("id", UUID(as_uuid=False), primary_key=True),
-        sa.Column(
-            "owner_user_id",
-            UUID(as_uuid=False),
-            sa.ForeignKey("users.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column("member_email", sa.Text(), nullable=False),
-        sa.Column(
-            "member_user_id",
-            UUID(as_uuid=False),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-        sa.Column("status", sa.Text(), nullable=False, server_default="invited"),
-        sa.Column(
-            "invited_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("now()"),
-        ),
-        sa.Column("joined_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("now()"),
-        ),
-        sa.UniqueConstraint("owner_user_id", "member_email", name="uq_team_seats_owner_email"),
-    )
-    op.create_index("ix_team_seats_owner_user_id", "team_seats", ["owner_user_id"])
+    bind = op.get_bind()
+    inspector = inspect(bind)
 
-    op.create_table(
-        "coupon_codes",
-        sa.Column("id", UUID(as_uuid=False), primary_key=True),
-        sa.Column("code", sa.Text(), nullable=False),
-        sa.Column("discount_percent", sa.Integer(), nullable=False),
-        sa.Column("applicable_plans", ARRAY(sa.String()), nullable=True),
-        sa.Column("max_uses", sa.Integer(), nullable=True),
-        sa.Column("used_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("now()"),
-        ),
-    )
-    op.create_unique_constraint("uq_coupon_codes_code", "coupon_codes", ["code"])
+    if not inspector.has_table("team_seats"):
+        op.create_table(
+            "team_seats",
+            sa.Column("id", UUID(as_uuid=False), primary_key=True),
+            sa.Column(
+                "owner_user_id",
+                UUID(as_uuid=False),
+                sa.ForeignKey("users.id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            sa.Column("member_email", sa.Text(), nullable=False),
+            sa.Column(
+                "member_user_id",
+                UUID(as_uuid=False),
+                sa.ForeignKey("users.id", ondelete="SET NULL"),
+                nullable=True,
+            ),
+            sa.Column("status", sa.Text(), nullable=False, server_default="invited"),
+            sa.Column(
+                "invited_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.text("now()"),
+            ),
+            sa.Column("joined_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.text("now()"),
+            ),
+            sa.UniqueConstraint("owner_user_id", "member_email", name="uq_team_seats_owner_email"),
+        )
+        inspector = inspect(bind)
+    team_indexes = {index["name"] for index in inspector.get_indexes("team_seats")}
+    if "ix_team_seats_owner_user_id" not in team_indexes:
+        op.create_index("ix_team_seats_owner_user_id", "team_seats", ["owner_user_id"])
 
-    op.create_table(
-        "coupon_redemptions",
-        sa.Column("id", UUID(as_uuid=False), primary_key=True),
-        sa.Column(
-            "coupon_id",
-            UUID(as_uuid=False),
-            sa.ForeignKey("coupon_codes.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-        sa.Column(
-            "user_id",
-            UUID(as_uuid=False),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-        sa.Column(
-            "redeemed_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.text("now()"),
-        ),
-    )
-    op.create_index("ix_coupon_redemptions_user_id", "coupon_redemptions", ["user_id"])
+    if not inspector.has_table("coupon_codes"):
+        op.create_table(
+            "coupon_codes",
+            sa.Column("id", UUID(as_uuid=False), primary_key=True),
+            sa.Column("code", sa.Text(), nullable=False),
+            sa.Column("discount_percent", sa.Integer(), nullable=False),
+            sa.Column("applicable_plans", ARRAY(sa.String()), nullable=True),
+            sa.Column("max_uses", sa.Integer(), nullable=True),
+            sa.Column("used_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.text("now()"),
+            ),
+        )
+        inspector = inspect(bind)
+    coupon_uniques = {tuple(constraint["column_names"]) for constraint in inspector.get_unique_constraints("coupon_codes")}
+    if ("code",) not in coupon_uniques:
+        op.create_unique_constraint("uq_coupon_codes_code", "coupon_codes", ["code"])
+
+    if not inspector.has_table("coupon_redemptions"):
+        op.create_table(
+            "coupon_redemptions",
+            sa.Column("id", UUID(as_uuid=False), primary_key=True),
+            sa.Column(
+                "coupon_id",
+                UUID(as_uuid=False),
+                sa.ForeignKey("coupon_codes.id", ondelete="SET NULL"),
+                nullable=True,
+            ),
+            sa.Column(
+                "user_id",
+                UUID(as_uuid=False),
+                sa.ForeignKey("users.id", ondelete="SET NULL"),
+                nullable=True,
+            ),
+            sa.Column(
+                "redeemed_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.text("now()"),
+            ),
+        )
+        inspector = inspect(bind)
+    redemption_indexes = {index["name"] for index in inspector.get_indexes("coupon_redemptions")}
+    if "ix_coupon_redemptions_user_id" not in redemption_indexes:
+        op.create_index("ix_coupon_redemptions_user_id", "coupon_redemptions", ["user_id"])
 
 
 def downgrade() -> None:
