@@ -66,6 +66,7 @@ class Settings(BaseSettings):
 
     # Logging
     LOG_LEVEL: str = "INFO"
+    SQL_ECHO: bool = False
     OTEL_ENABLED: bool = False
     OTEL_SERVICE_NAME: str = "latexy"
     OTEL_EXPORTER_MODE: str = "none"
