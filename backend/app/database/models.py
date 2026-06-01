@@ -162,6 +162,8 @@ class Resume(Base):
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     latex_content: Mapped[str] = mapped_column(Text, nullable=False)
+    structured_content: Mapped[Optional[Dict]] = mapped_column(JSONB, nullable=True)
+    structured_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     is_template: Mapped[bool] = mapped_column(Boolean, default=False)
     tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String))
     # Layer 3: vector embedding for semantic job matching (1536-dim OpenAI text-embedding-3-small)
@@ -170,6 +172,11 @@ class Resume(Base):
     # Note: "metadata" is reserved by SQLAlchemy's Declarative API, so we use
     # resume_settings as the Python attribute name while keeping the DB column "metadata".
     resume_settings: Mapped[Optional[Dict]] = mapped_column("metadata", JSONB, nullable=True, default={})
+    selected_template_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("resume_templates.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    content_source: Mapped[str] = mapped_column(Text, nullable=False, server_default="manual_latex", default="manual_latex")
+    builder_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="detached", default="detached")
     # Shareable link token (null = not shared)
     share_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True, index=False)
     share_token_created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -218,6 +225,7 @@ class Resume(Base):
     views: Mapped[List["ResumeView"]] = relationship(
         "ResumeView", back_populates="resume", cascade="all, delete-orphan"
     )
+    selected_template: Mapped[Optional["ResumeTemplate"]] = relationship("ResumeTemplate")
 
 class Compilation(Base):
     """Compilation history for tracking LaTeX compilations."""
