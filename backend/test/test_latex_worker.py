@@ -74,6 +74,8 @@ def mock_popen_success():
     """Mock subprocess.Popen returning success with one log line."""
     with (
         patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, ["Compilation OK\n"])) as m,
+        patch("app.workers.latex_worker.subprocess.run", return_value=MagicMock(returncode=0, stdout="Hello World\n")),
+        patch("app.workers.latex_worker.shutil.which", return_value="/usr/bin/pdftotext"),
         patch("pathlib.Path.mkdir"),
         patch("pathlib.Path.write_text"),
         patch("pathlib.Path.exists", return_value=True),
@@ -284,6 +286,17 @@ class TestLatexCompilationFailure:
         types = [c.args[1] for c in mock_publish.call_args_list]
         assert "job.failed" in types
 
+    def test_nonzero_exit_code_persists_terminal_result(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(1, ["! Undefined control sequence.\n"])),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+
+        mock_job_result.assert_called_once_with(result["job_id"], result)
+
 
 # ── Cancellation ──────────────────────────────────────────────────────────────
 
@@ -326,6 +339,18 @@ class TestLatexCancellation:
             lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
 
         assert mock_proc.kill.called
+
+    def test_cancelled_persists_terminal_result(self, mock_publish, mock_job_result, mock_validate_ok):
+        with (
+            patch("app.workers.latex_worker.is_cancelled", return_value=True),
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, ["output\n"])),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+
+        mock_job_result.assert_called_once_with(result["job_id"], result)
 
 
 # ── Timeout ───────────────────────────────────────────────────────────────────
@@ -409,6 +434,39 @@ class TestLatexExceptionHandling:
 
         failed = [c for c in mock_publish.call_args_list if c.args[1] == "job.failed"]
         assert failed[-1].args[2]["error_code"] == "internal"
+
+
+class TestPdfTextExtraction:
+
+    def test_success_uses_host_pdftotext_when_available(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, ["Compilation OK\n"])),
+            patch("app.workers.latex_worker.subprocess.run", return_value=MagicMock(returncode=0, stdout="Extracted text\n")) as mock_run,
+            patch("app.workers.latex_worker.shutil.which", return_value="/opt/homebrew/bin/pdftotext"),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=12345)),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+
+        assert result["extracted_text"] == "Extracted text\n"
+        assert mock_run.call_args.args[0][0] == "/opt/homebrew/bin/pdftotext"
+
+    def test_success_falls_back_to_pdfminer_when_pdftotext_empty(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, ["Compilation OK\n"])),
+            patch("app.workers.latex_worker.subprocess.run", return_value=MagicMock(returncode=0, stdout="   ")),
+            patch("app.workers.latex_worker.shutil.which", return_value="/usr/bin/pdftotext"),
+            patch("pdfminer.high_level.extract_text", return_value="Fallback text\n"),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=12345)),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+
+        assert result["extracted_text"] == "Fallback text\n"
 
 
 # ── Page count extraction ─────────────────────────────────────────────────────
