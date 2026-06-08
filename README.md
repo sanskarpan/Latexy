@@ -172,7 +172,9 @@ make test-backend     # pytest backend/test/  (requires Postgres + Redis)
 make test-frontend    # eslint + next build check
 ```
 
-Tests require `DATABASE_URL` and `REDIS_URL` in the environment (the CI workflow supplies them via service containers).
+Backend tests are intended to run against an isolated test database. Use `make test-backend`,
+which provisions `latexy_test` and passes `TEST_DATABASE_URL` automatically. In CI, `DATABASE_URL`
+already points at `latexy_test`.
 
 ---
 
