@@ -61,6 +61,12 @@ class Settings(BaseSettings):
             "http://127.0.0.1:3000",
             "http://localhost:5180",
             "http://127.0.0.1:5180",
+            "http://localhost:5181",
+            "http://127.0.0.1:5181",
+            "http://localhost:5182",
+            "http://127.0.0.1:5182",
+            "http://localhost:5183",
+            "http://127.0.0.1:5183",
         ]
     )
 
