@@ -790,8 +790,19 @@ class ApiClient {
     if (res.status === 204) {
       return undefined as T
     }
-    const contentType = res.headers.get('content-type') || ''
-    if (contentType.includes('application/json')) {
+    const responseHeaders = res.headers as
+      | { get?: (name: string) => string | null }
+      | Record<string, string>
+      | undefined
+    const plainResponseHeaders =
+      typeof responseHeaders?.get === 'function'
+        ? undefined
+        : (responseHeaders as Record<string, string> | undefined)
+    const contentType =
+      (typeof responseHeaders?.get === 'function'
+        ? responseHeaders.get('content-type')
+        : plainResponseHeaders?.['content-type'] ?? plainResponseHeaders?.['Content-Type']) || ''
+    if (contentType.includes('application/json') || (!contentType && typeof res.json === 'function')) {
       return res.json() as Promise<T>
     }
     return (await res.text()) as T
