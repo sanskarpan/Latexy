@@ -794,10 +794,14 @@ class ApiClient {
       | { get?: (name: string) => string | null }
       | Record<string, string>
       | undefined
+    const plainResponseHeaders =
+      typeof responseHeaders?.get === 'function'
+        ? undefined
+        : (responseHeaders as Record<string, string> | undefined)
     const contentType =
       (typeof responseHeaders?.get === 'function'
         ? responseHeaders.get('content-type')
-        : responseHeaders?.['content-type'] ?? responseHeaders?.['Content-Type']) || ''
+        : plainResponseHeaders?.['content-type'] ?? plainResponseHeaders?.['Content-Type']) || ''
     if (contentType.includes('application/json') || (!contentType && typeof res.json === 'function')) {
       return res.json() as Promise<T>
     }
