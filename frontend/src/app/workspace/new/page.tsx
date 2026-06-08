@@ -465,8 +465,8 @@ export default function NewResumePage() {
           </section>
         )}
 
-        {/* Create button — shown for import/linkedin mode */}
-        {(mode === 'import' || mode === 'linkedin') && (
+        {/* Create button — shown for non-template creation flows */}
+        {(mode === 'import' || mode === 'linkedin' || mode === 'builder') && (
           <div className="flex items-center justify-end gap-3">
             <button
               onClick={handleCreate}
