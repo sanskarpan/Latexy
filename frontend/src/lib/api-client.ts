@@ -791,9 +791,9 @@ class ApiClient {
     path: string,
     init: RequestInit = {}
   ): Promise<T> {
-    const headers = {
-      ...this.headers({}, this.shouldSendJsonContentType(init)),
-      ...(init.headers as Record<string, string> ?? {}),
+    const headers: Record<string, string> = {
+      ...(this.headers({}, this.shouldSendJsonContentType(init)) as Record<string, string>),
+      ...((init.headers as Record<string, string> | undefined) ?? {}),
     }
     if (headers['Content-Type'] === '') {
       delete headers['Content-Type']
