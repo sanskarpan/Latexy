@@ -760,11 +760,13 @@ class ApiClient {
     return this.authToken
   }
 
-  private headers(extra: Record<string, string> = {}): HeadersInit {
+  private headers(extra: Record<string, string> = {}, includeJsonContentType: boolean = true): HeadersInit {
     const h: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(typeof window !== 'undefined' ? createTraceHeaders() : {}),
       ...extra,
+    }
+    if (includeJsonContentType && !('Content-Type' in h)) {
+      h['Content-Type'] = 'application/json'
     }
     const token =
       this.authToken ??
@@ -772,16 +774,33 @@ class ApiClient {
         ? localStorage.getItem('auth_token')
         : null)
     if (token) h['Authorization'] = `Bearer ${token}`
+    for (const [key, value] of Object.entries(h)) {
+      if (value === '') delete h[key]
+    }
     return h
+  }
+
+  private shouldSendJsonContentType(init: RequestInit): boolean {
+    const method = (init.method ?? 'GET').toUpperCase()
+    if (method === 'GET' || method === 'HEAD') return false
+    if (init.body == null) return false
+    return !(typeof FormData !== 'undefined' && init.body instanceof FormData)
   }
 
   private async request<T>(
     path: string,
     init: RequestInit = {}
   ): Promise<T> {
+    const headers = {
+      ...this.headers({}, this.shouldSendJsonContentType(init)),
+      ...(init.headers as Record<string, string> ?? {}),
+    }
+    if (headers['Content-Type'] === '') {
+      delete headers['Content-Type']
+    }
     const res = await fetch(`${API_BASE}${path}`, {
       ...init,
-      headers: { ...this.headers(), ...(init.headers as Record<string, string> ?? {}) },
+      headers,
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -924,7 +943,7 @@ class ApiClient {
   async deleteResume(resumeId: string): Promise<void> {
     await fetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}`, {
       method: 'DELETE',
-      headers: this.headers(),
+      headers: this.headers({}, false),
     })
   }
 
@@ -961,7 +980,7 @@ class ApiClient {
   async cancelJob(jobId: string): Promise<void> {
     await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}`, {
       method: 'DELETE',
-      headers: this.headers(),
+      headers: this.headers({}, false),
     })
   }
 
@@ -975,7 +994,7 @@ class ApiClient {
 
   async downloadPdf(jobId: string): Promise<Blob> {
     const res = await fetch(this.getPdfUrl(jobId), {
-      headers: this.headers({ 'Content-Type': '' }),
+      headers: this.headers({}, false),
     })
     if (!res.ok) throw new Error(`PDF download failed: HTTP ${res.status}`)
     return res.blob()
@@ -1648,7 +1667,7 @@ class ApiClient {
   async deleteCheckpoint(resumeId: string, checkpointId: string): Promise<void> {
     const res = await fetch(
       `${API_BASE}/resumes/${encodeURIComponent(resumeId)}/checkpoints/${encodeURIComponent(checkpointId)}`,
-      { method: 'DELETE', headers: this.headers() }
+      { method: 'DELETE', headers: this.headers({}, false) }
     )
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
@@ -1780,7 +1799,7 @@ class ApiClient {
   async deleteCoverLetter(id: string): Promise<void> {
     await fetch(`${API_BASE}/cover-letters/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-      headers: this.headers(),
+      headers: this.headers({}, false),
     })
   }
 
@@ -1939,7 +1958,7 @@ class ApiClient {
   async revokeShareLink(resumeId: string): Promise<void> {
     const res = await fetch(
       `${API_BASE}/resumes/${encodeURIComponent(resumeId)}/share`,
-      { method: 'DELETE', headers: this.headers() }
+      { method: 'DELETE', headers: this.headers({}, false) }
     )
     if (!res.ok && res.status !== 204) {
       const body = await res.text().catch(() => '')
@@ -1958,7 +1977,7 @@ class ApiClient {
   async bulkExport(format: 'tex' | 'pdf' | 'docx'): Promise<Blob> {
     const res = await fetch(
       `${API_BASE}/resumes/export/bulk?format=${format}`,
-      { headers: this.headers() }
+      { headers: this.headers({}, false) }
     )
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -2039,7 +2058,7 @@ class ApiClient {
   async deleteApplication(id: string): Promise<void> {
     const res = await fetch(`${API_BASE}/tracker/applications/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-      headers: this.headers(),
+      headers: this.headers({}, false),
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -2080,7 +2099,7 @@ class ApiClient {
   async deleteInterviewPrep(prepId: string): Promise<void> {
     const res = await fetch(`${API_BASE}/interview-prep/${encodeURIComponent(prepId)}`, {
       method: 'DELETE',
-      headers: this.headers(),
+      headers: this.headers({}, false),
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -2277,7 +2296,7 @@ class ApiClient {
   async removeCollaborator(resumeId: string, collabUserId: string): Promise<void> {
     const res = await fetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}/collaborators/${encodeURIComponent(collabUserId)}`, {
       method: 'DELETE',
-      headers: this.headers(),
+      headers: this.headers({}, false),
     })
     if (!res.ok) {
       const body = await res.text()
