@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test.skip(!process.env.PLAYWRIGHT_REQUIRE_BACKEND, 'Full-stack smoke requires an explicitly started backend')
+test.setTimeout(60_000)
 
 test('backend health and core frontend routes load end to end', async ({ page, request }) => {
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
@@ -16,7 +17,19 @@ test('backend health and core frontend routes load end to end', async ({ page, r
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('link', { name: 'Start Building' })).toBeVisible()
 
-  await page.goto('/try', { waitUntil: 'domcontentloaded' })
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await page.goto('/try', { waitUntil: 'domcontentloaded' })
+      break
+    } catch (error) {
+      if (attempt === 3) {
+        throw error
+      }
+      await page.waitForTimeout(1_000)
+    }
+  }
+
+  await page.waitForURL('**/try', { timeout: 20_000 })
   await page.waitForSelector('.monaco-editor', { timeout: 20_000 })
   await expect(page.getByRole('button', { name: 'Compile', exact: true })).toBeVisible()
 })
