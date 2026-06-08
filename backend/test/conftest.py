@@ -1,8 +1,10 @@
 """
 pytest configuration and shared fixtures for Latexy backend tests.
 
-Points at the Neon DB (same as development) by default.
-Override with TEST_DATABASE_URL env var if you need a separate DB.
+Backend tests must run against an isolated test database. Resolution order:
+1. TEST_DATABASE_URL when explicitly provided
+2. DATABASE_URL only when it already points at a test database
+3. local Docker default: postgresql+asyncpg://latexy:latexy_password@localhost:5434/latexy_test
 
 Tables are never dropped on teardown — tests use rollbacks + a post-session
 cleanup pass that removes rows inserted with the test_ prefix.
@@ -16,6 +18,7 @@ import re
 import uuid
 from pathlib import Path
 from typing import AsyncGenerator
+from urllib.parse import urlparse
 
 import pytest
 from dotenv import load_dotenv
@@ -45,7 +48,33 @@ def _to_asyncpg_url(url: str) -> str:
     return url
 
 
-_raw_db_url = os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL", "")
+DEFAULT_LOCAL_TEST_DB_URL = "postgresql+asyncpg://latexy:latexy_password@localhost:5434/latexy_test"
+
+
+def _looks_like_test_db_url(url: str) -> bool:
+    """Return True only for URLs that clearly target a test database."""
+    if not url:
+        return False
+    parsed = urlparse(url)
+    db_name = parsed.path.rsplit("/", 1)[-1].strip()
+    return db_name.endswith("_test") or db_name in {"test", "testing"}
+
+
+_explicit_test_db_url = os.environ.get("TEST_DATABASE_URL", "")
+_env_database_url = os.environ.get("DATABASE_URL", "")
+
+if _explicit_test_db_url:
+    if not _looks_like_test_db_url(_explicit_test_db_url):
+        raise RuntimeError(
+            "TEST_DATABASE_URL must point at an isolated test database "
+            "(expected a database name ending in '_test')."
+        )
+    _raw_db_url = _explicit_test_db_url
+elif _looks_like_test_db_url(_env_database_url):
+    _raw_db_url = _env_database_url
+else:
+    _raw_db_url = DEFAULT_LOCAL_TEST_DB_URL
+
 TEST_DATABASE_URL = _to_asyncpg_url(_raw_db_url) if _raw_db_url else ""
 
 # ── Set env before importing app so settings picks them up ───────────────────
@@ -56,7 +85,7 @@ os.environ.setdefault("ENVIRONMENT", "test")
 os.environ["JWT_SECRET_KEY"] = "test_jwt_secret_32chars_minimum_!"
 os.environ["BETTER_AUTH_SECRET"] = "test_secret_key_32chars_minimum_!"
 os.environ.setdefault("API_KEY_ENCRYPTION_KEY", "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
-os.environ.setdefault("DATABASE_URL", _raw_db_url)
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 os.environ.setdefault("CELERY_BROKER_URL", "redis://localhost:6379/15")
 os.environ.setdefault("CELERY_RESULT_BACKEND", "redis://localhost:6379/15")
