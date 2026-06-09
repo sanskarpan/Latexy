@@ -157,6 +157,11 @@ async def test_engine():
             ("resumes", "archived_at"),
             ("resumes", "dropbox_sync_enabled"),
             ("resumes", "document_type"),
+            ("resumes", "structured_content"),
+            ("resumes", "structured_version"),
+            ("resumes", "selected_template_id"),
+            ("resumes", "content_source"),
+            ("resumes", "builder_status"),
         }
         for table_name, column_name in required_columns:
             result = await conn.execute(

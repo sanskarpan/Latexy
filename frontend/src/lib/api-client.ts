@@ -259,6 +259,11 @@ export interface ResumeResponse extends ResumeBase {
   user_id: string
   parent_resume_id?: string | null
   variant_count?: number
+  selected_template_id?: string | null
+  content_source?: string
+  builder_status?: 'active' | 'detached'
+  structured_content?: StructuredResume | null
+  structured_version?: number
   metadata?: { compiler?: string; custom_flags?: string; pinned?: boolean; [key: string]: unknown } | null
   share_token?: string | null
   share_url?: string | null
@@ -330,6 +335,114 @@ export interface AcademicCVConvertResponse {
   variant_resume_id: string
   job_id: string
   report: AcademicCVReport
+}
+
+export interface StructuredResume {
+  basics: {
+    name: string
+    label: string
+    email: string
+    phone: string
+    location: string
+    website: string
+    linkedin: string
+    github: string
+    summary: string
+  }
+  experience: Array<{
+    id: string
+    title: string
+    company: string
+    location: string
+    start_date: string
+    end_date: string
+    current: boolean
+    summary: string
+    bullets: string[]
+    technologies: string[]
+  }>
+  education: Array<{
+    id: string
+    institution: string
+    degree: string
+    field: string
+    location: string
+    start_date: string
+    end_date: string
+    gpa: string
+    highlights: string[]
+  }>
+  projects: Array<{
+    id: string
+    name: string
+    role: string
+    url: string
+    start_date: string
+    end_date: string
+    description: string
+    bullets: string[]
+    technologies: string[]
+  }>
+  skills: Array<{
+    id: string
+    name: string
+    keywords: string[]
+  }>
+  certifications: Array<{
+    id: string
+    name: string
+    issuer: string
+    date: string
+    url: string
+  }>
+  awards: Array<{ id: string; name: string; detail: string }>
+  languages: Array<{ id: string; name: string; detail: string }>
+  interests: Array<{ id: string; name: string; detail: string }>
+  section_order: string[]
+  hidden_sections: string[]
+}
+
+export interface BuilderTemplateResponse {
+  id: string
+  name: string
+  description: string | null
+  category: string
+  category_label: string
+  sort_order: number
+  thumbnail_url: string | null
+  pdf_url: string | null
+  template_family: string
+}
+
+export interface BuilderMetricsResponse {
+  completeness_score: number
+  page_estimate: number
+  warnings: string[]
+  missing_sections: string[]
+}
+
+export interface BuilderPreviewResponse {
+  template_family: string
+  sections: Array<{
+    key: string
+    title: string
+    items: unknown[]
+  }>
+}
+
+export interface BuilderResumeResponse {
+  resume: ResumeResponse
+  metrics: BuilderMetricsResponse
+  preview: BuilderPreviewResponse
+  template_family: string
+}
+
+export interface BuilderSeedUploadResponse {
+  success: boolean
+  filename: string
+  format: string
+  structured_content: StructuredResume
+  metrics: BuilderMetricsResponse
 }
 
 export interface ScoreHistoryPoint {
@@ -824,7 +937,15 @@ class ApiClient {
     if (contentType.includes('application/json') || (!contentType && typeof res.json === 'function')) {
       return res.json() as Promise<T>
     }
-    return (await res.text()) as T
+    const textBody = await res.text()
+    if (textBody) {
+      try {
+        return JSON.parse(textBody) as T
+      } catch {
+        // Fall through for plain-text responses and incomplete mock headers.
+      }
+    }
+    return textBody as T
   }
 
   // ---------------------------------------------------------------- //
@@ -922,6 +1043,58 @@ class ApiClient {
     return this.request<ResumeResponse>('/resumes/', {
       method: 'POST',
       body: JSON.stringify(resume),
+    })
+  }
+
+  async getBuilderTemplates(): Promise<BuilderTemplateResponse[]> {
+    return this.request<BuilderTemplateResponse[]>('/resumes/builder/templates')
+  }
+
+  async seedBuilderFromUpload(file: File): Promise<BuilderSeedUploadResponse> {
+    const form = new FormData()
+    form.append('file', file)
+    const headers = { ...(this.headers() as Record<string, string>) }
+    delete headers['Content-Type']
+    const res = await fetch(`${API_BASE}/resumes/builder/seed-upload`, {
+      method: 'POST',
+      body: form,
+      headers,
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+    }
+    return res.json()
+  }
+
+  async createBuilderResume(body: {
+    title: string
+    template_id: string
+    structured_content?: StructuredResume
+  }): Promise<BuilderResumeResponse> {
+    return this.request<BuilderResumeResponse>('/resumes/builder', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  async getBuilderResume(resumeId: string): Promise<BuilderResumeResponse> {
+    return this.request<BuilderResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/builder`)
+  }
+
+  async updateBuilderResume(
+    resumeId: string,
+    body: {
+      title?: string
+      template_id?: string
+      structured_content?: StructuredResume
+      force_reattach?: boolean
+    }
+  ): Promise<BuilderResumeResponse> {
+    return this.request<BuilderResumeResponse>(`/resumes/${encodeURIComponent(resumeId)}/builder`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
     })
   }
 

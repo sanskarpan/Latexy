@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from jinja2 import Environment as _JinjaEnv
 from jinja2 import FileSystemLoader as _JinjaFSL
@@ -18,9 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..database.models import Optimization, Resume, ResumeCollaborator, UsageAnalytics, User
+from ..database.models import Optimization, Resume, ResumeCollaborator, ResumeTemplate, UsageAnalytics, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..parsers.parser_factory import parser_factory
 from ..services.academic_cv_service import academic_cv_service
+from ..services.format_detection import ResumeFormat, format_detection_service
+from ..services.resume_builder_service import SUPPORTED_BUILDER_CATEGORIES, resume_builder_service
 
 logger = get_logger(__name__)
 
@@ -33,6 +36,7 @@ class ResumeBase(BaseModel):
     latex_content: str
     is_template: bool = False
     tags: Optional[List[str]] = None
+    document_type: str = "resume"
 
 class ResumeCreate(ResumeBase):
     pass
@@ -42,6 +46,7 @@ class ResumeUpdate(BaseModel):
     latex_content: Optional[str] = None
     is_template: Optional[bool] = None
     tags: Optional[List[str]] = None
+    document_type: Optional[str] = None
 
 class ResumeResponse(ResumeBase):
     id: str
@@ -49,6 +54,11 @@ class ResumeResponse(ResumeBase):
     document_type: str = "resume"
     parent_resume_id: Optional[str] = None
     variant_count: int = 0
+    selected_template_id: Optional[str] = None
+    content_source: str = "manual_latex"
+    builder_status: str = "detached"
+    structured_content: Optional[Dict[str, Any]] = None
+    structured_version: int = 1
     # resume_settings is the ORM attribute; we expose it as "metadata" in JSON
     metadata: Optional[Dict[str, Any]] = Field(default=None, validation_alias="resume_settings")
     share_token: Optional[str] = None
@@ -91,6 +101,48 @@ class ResumeResponse(ResumeBase):
     def freshness_status(self) -> str:
         days = self.days_since_updated
         return "fresh" if days < 30 else "stale" if days < 90 else "very_stale"
+
+
+def _typed_attr(obj: Any, name: str, expected_type: type | tuple[type, ...], default: Any = None) -> Any:
+    """Return an attribute only when it is the expected concrete type.
+
+    Mock-based tests and partially-populated objects can expose MagicMock
+    placeholders for newly added optional ORM fields. Those should fall back to
+    response defaults instead of turning API serialization into a 500.
+    """
+    value = getattr(obj, name, default)
+    return value if isinstance(value, expected_type) else default
+
+
+def _resume_response_from_obj(resume: Any) -> ResumeResponse:
+    """Serialize a Resume-like object with safe fallbacks for optional fields."""
+    payload = {
+        "id": str(resume.id),
+        "user_id": str(resume.user_id),
+        "title": resume.title,
+        "latex_content": resume.latex_content,
+        "is_template": bool(getattr(resume, "is_template", False)),
+        "tags": _typed_attr(resume, "tags", list),
+        "document_type": _typed_attr(resume, "document_type", str, "resume"),
+        "parent_resume_id": _typed_attr(resume, "parent_resume_id", str),
+        "variant_count": int(getattr(resume, "variant_count", 0) or 0),
+        "selected_template_id": _typed_attr(resume, "selected_template_id", str),
+        "content_source": _typed_attr(resume, "content_source", str, "manual_latex"),
+        "builder_status": _typed_attr(resume, "builder_status", str, "detached"),
+        "structured_content": _typed_attr(resume, "structured_content", dict),
+        "structured_version": int(getattr(resume, "structured_version", 1) or 1),
+        "metadata": _typed_attr(resume, "resume_settings", dict),
+        "share_token": _typed_attr(resume, "share_token", str),
+        "share_url": _typed_attr(resume, "share_url", str),
+        "github_sync_enabled": bool(getattr(resume, "github_sync_enabled", False)),
+        "github_repo_name": _typed_attr(resume, "github_repo_name", str),
+        "github_last_sync_at": getattr(resume, "github_last_sync_at", None),
+        "created_at": resume.created_at,
+        "updated_at": resume.updated_at,
+        "archived_at": getattr(resume, "archived_at", None),
+        "pinned": bool(getattr(resume, "pinned", False)),
+    }
+    return ResumeResponse.model_validate(payload)
 
 
 ALLOWED_LATEXMK_FLAGS = [
@@ -158,6 +210,64 @@ class ResumeStats(BaseModel):
     optimized_count: int = 0
 
 
+class BuilderTemplateResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str]
+    category: str
+    category_label: str
+    sort_order: int
+    thumbnail_url: Optional[str]
+    pdf_url: Optional[str]
+    template_family: str
+
+
+class BuilderMetricsResponse(BaseModel):
+    completeness_score: int
+    page_estimate: int
+    warnings: List[str]
+    missing_sections: List[str]
+
+
+class BuilderPreviewSectionResponse(BaseModel):
+    key: str
+    title: str
+    items: List[Any]
+
+
+class BuilderPreviewResponse(BaseModel):
+    template_family: str
+    sections: List[BuilderPreviewSectionResponse]
+
+
+class BuilderResumeCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    template_id: str
+    structured_content: Optional[Dict[str, Any]] = None
+
+
+class BuilderResumePatchRequest(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    template_id: Optional[str] = None
+    structured_content: Optional[Dict[str, Any]] = None
+    force_reattach: bool = False
+
+
+class BuilderResumeResponse(BaseModel):
+    resume: ResumeResponse
+    metrics: BuilderMetricsResponse
+    preview: BuilderPreviewResponse
+    template_family: str
+
+
+class BuilderSeedUploadResponse(BaseModel):
+    success: bool
+    filename: str
+    format: str
+    structured_content: Dict[str, Any]
+    metrics: BuilderMetricsResponse
+
+
 # --- Search schemas ---
 
 class SearchMatch(BaseModel):
@@ -180,6 +290,136 @@ class SearchResponse(BaseModel):
     query: str
 
 # --- Endpoints ---
+
+_BUILDER_CATEGORY_LABELS = {
+    "ats_safe": "ATS-Safe",
+    "minimal": "Minimal / Clean",
+    "software_engineering": "Software Engineering",
+    "executive": "Executive",
+    "graduate": "Graduate / Entry-Level",
+}
+
+
+def _builder_category_label(category: str) -> str:
+    return _BUILDER_CATEGORY_LABELS.get(category, category.replace("_", " ").title())
+
+
+def _template_to_builder_response(template: ResumeTemplate, base_url: str) -> BuilderTemplateResponse:
+    root = base_url.rstrip("/")
+    return BuilderTemplateResponse(
+        id=template.id,
+        name=template.name,
+        description=template.description,
+        category=template.category,
+        category_label=_builder_category_label(template.category),
+        sort_order=template.sort_order,
+        thumbnail_url=f"{root}/templates/{template.id}/thumbnail",
+        pdf_url=f"{root}/templates/{template.id}/pdf",
+        template_family=resume_builder_service.template_family(template.category),
+    )
+
+
+async def _get_builder_template(db: AsyncSession, template_id: str) -> ResumeTemplate:
+    template = await db.get(ResumeTemplate, template_id)
+    if not template or not template.is_active:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if not resume_builder_service.is_supported_category(template.category, template.document_type):
+        raise HTTPException(status_code=400, detail="Template is not supported by the guided builder")
+    return template
+
+
+def _builder_payload(resume: Resume, category: str) -> BuilderResumeResponse:
+    render = resume_builder_service.render(resume.structured_content or {}, category)
+    preview = resume_builder_service.build_preview(resume.structured_content or {}, category)
+    return BuilderResumeResponse(
+        resume=_resume_response_from_obj(resume),
+        metrics=BuilderMetricsResponse.model_validate(render.metrics.model_dump()),
+        preview=BuilderPreviewResponse.model_validate(preview),
+        template_family=render.template_family,
+    )
+
+
+@router.get("/builder/templates", response_model=List[BuilderTemplateResponse])
+async def list_builder_templates(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(ResumeTemplate)
+        .where(
+            ResumeTemplate.is_active.is_(True),
+            ResumeTemplate.document_type == "resume",
+            ResumeTemplate.category.in_(tuple(sorted(SUPPORTED_BUILDER_CATEGORIES))),
+        )
+        .order_by(ResumeTemplate.category, ResumeTemplate.sort_order, ResumeTemplate.name)
+    )
+    templates = (await db.execute(stmt)).scalars().all()
+    base_url = str(request.base_url)
+    return [_template_to_builder_response(template, base_url) for template in templates]
+
+
+@router.post("/builder/seed-upload", response_model=BuilderSeedUploadResponse)
+async def seed_builder_from_upload(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    del db, user_id
+    content = await file.read()
+    filename = file.filename or "upload"
+    detected_format = format_detection_service.detect_format(
+        filename=filename,
+        mime_type=file.content_type,
+        content=content,
+    )
+    if detected_format == ResumeFormat.UNKNOWN:
+        raise HTTPException(status_code=415, detail=f"Unsupported file format: '{filename}'")
+    parser = parser_factory.get_parser(detected_format)
+    if not parser:
+        raise HTTPException(status_code=415, detail=f"No parser available for {detected_format.value}")
+    try:
+        parsed = await parser.parse(content, filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    structured = resume_builder_service.from_parsed_resume(parsed)
+    metrics = resume_builder_service.render(structured, "minimal").metrics
+    return BuilderSeedUploadResponse(
+        success=True,
+        filename=filename,
+        format=detected_format.value,
+        structured_content=structured,
+        metrics=BuilderMetricsResponse.model_validate(metrics.model_dump()),
+    )
+
+
+@router.post("/builder", response_model=BuilderResumeResponse, status_code=status.HTTP_201_CREATED)
+async def create_builder_resume(
+    body: BuilderResumeCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    template = await _get_builder_template(db, body.template_id)
+    structured = resume_builder_service.normalize(body.structured_content)
+    render = resume_builder_service.render(structured, template.category)
+
+    resume = Resume(
+        id=str(uuid4()),
+        user_id=user_id,
+        title=body.title.strip(),
+        latex_content=render.latex_content,
+        structured_content=structured,
+        structured_version=1,
+        is_template=False,
+        selected_template_id=template.id,
+        content_source="builder",
+        builder_status="active",
+        document_type="resume",
+    )
+    db.add(resume)
+    await db.commit()
+    await db.refresh(resume)
+    return _builder_payload(resume, template.category)
 
 @router.get("/stats", response_model=ResumeStats)
 async def get_resume_stats(
@@ -233,10 +473,15 @@ async def create_resume(
     user_id: str = Depends(get_current_user_required)
 ):
     """Create a new resume for the authenticated user."""
+    payload = resume_in.model_dump()
+    payload.setdefault("document_type", "resume")
     resume = Resume(
         id=str(uuid4()),
         user_id=user_id,
-        **resume_in.model_dump()
+        content_source="manual_latex",
+        builder_status="detached",
+        structured_content=None,
+        **payload
     )
     db.add(resume)
     await db.commit()
@@ -311,7 +556,7 @@ async def list_resumes(
 
     resumes_out = []
     for resume, vc in rows:
-        d = ResumeResponse.model_validate(resume).model_dump()
+        d = _resume_response_from_obj(resume).model_dump()
         d["variant_count"] = vc or 0
         resumes_out.append(d)
 
@@ -445,6 +690,64 @@ async def get_error_history(
     ]
 
 
+@router.get("/{resume_id}/builder", response_model=BuilderResumeResponse)
+async def get_builder_resume(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    resume = await _verify_resume_ownership(db, resume_id, user_id)
+    if not resume.selected_template_id or not resume.structured_content:
+        raise HTTPException(status_code=404, detail="Builder data not available for this resume")
+    template = await db.get(ResumeTemplate, resume.selected_template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Selected template not found")
+    return _builder_payload(resume, template.category)
+
+
+@router.patch("/{resume_id}/builder", response_model=BuilderResumeResponse)
+async def update_builder_resume(
+    resume_id: str,
+    body: BuilderResumePatchRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    resume = await _verify_resume_ownership(db, resume_id, user_id)
+    if resume.builder_status == "detached" and not body.force_reattach:
+        raise HTTPException(
+            status_code=409,
+            detail="Builder is detached because this resume was edited in advanced mode. Pass force_reattach=true to overwrite LaTeX from builder data.",
+        )
+
+    template: Optional[ResumeTemplate] = None
+    if body.template_id:
+        template = await _get_builder_template(db, body.template_id)
+        resume.selected_template_id = template.id
+    elif resume.selected_template_id:
+        template = await db.get(ResumeTemplate, resume.selected_template_id)
+
+    if not template:
+        raise HTTPException(status_code=400, detail="Builder resume must have a supported selected template")
+
+    if body.title is not None:
+        resume.title = body.title.strip()
+    if body.structured_content is not None:
+        resume.structured_content = resume_builder_service.normalize(body.structured_content)
+        resume.structured_version = (resume.structured_version or 1) + 1
+    elif not resume.structured_content:
+        resume.structured_content = resume_builder_service.empty_document()
+
+    render = resume_builder_service.render(resume.structured_content, template.category)
+    resume.latex_content = render.latex_content
+    resume.content_source = "builder"
+    resume.builder_status = "active"
+    resume.document_type = "resume"
+    resume.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(resume)
+    return _builder_payload(resume, template.category)
+
+
 @router.get("/{resume_id}", response_model=ResumeResponse)
 async def get_resume(
     resume_id: str,
@@ -461,7 +764,7 @@ async def get_resume(
     if not row:
         raise HTTPException(status_code=404, detail="Resume not found")
     resume, vc = row
-    resp = ResumeResponse.model_validate(resume)
+    resp = _resume_response_from_obj(resume)
     resp.variant_count = vc or 0
     return resp
 
@@ -482,8 +785,17 @@ async def update_resume(
         raise HTTPException(status_code=404, detail="Resume not found")
 
     update_data = resume_in.model_dump(exclude_unset=True)
+    latex_changed = (
+        "latex_content" in update_data
+        and update_data["latex_content"] is not None
+        and update_data["latex_content"] != resume.latex_content
+    )
     for key, value in update_data.items():
         setattr(resume, key, value)
+
+    if latex_changed and resume.selected_template_id and resume.structured_content:
+        resume.builder_status = "detached"
+        resume.content_source = "manual_latex"
 
     resume.updated_at = datetime.now(timezone.utc)
     await db.commit()
@@ -563,7 +875,7 @@ async def update_resume_settings(
     await db.commit()
     await db.refresh(resume)
 
-    resp = ResumeResponse.model_validate(resume)
+    resp = _resume_response_from_obj(resume)
     resp.variant_count = 0
     return resp
 
@@ -597,7 +909,7 @@ async def update_resume_tags(
     resume.tags = body.tags
     await db.commit()
     await db.refresh(resume)
-    return ResumeResponse.model_validate(resume)
+    return _resume_response_from_obj(resume)
 
 
 @router.patch("/{resume_id}/pin", response_model=ResumeResponse)
@@ -613,7 +925,7 @@ async def pin_resume(
     resume.resume_settings = settings_dict
     await db.commit()
     await db.refresh(resume)
-    return ResumeResponse.model_validate(resume)
+    return _resume_response_from_obj(resume)
 
 
 @router.patch("/{resume_id}/unpin", response_model=ResumeResponse)
@@ -629,7 +941,7 @@ async def unpin_resume(
     resume.resume_settings = settings_dict
     await db.commit()
     await db.refresh(resume)
-    return ResumeResponse.model_validate(resume)
+    return _resume_response_from_obj(resume)
 
 
 @router.patch("/{resume_id}/archive", response_model=ResumeResponse)
@@ -643,7 +955,7 @@ async def archive_resume(
     resume.archived_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(resume)
-    return ResumeResponse.model_validate(resume)
+    return _resume_response_from_obj(resume)
 
 
 @router.patch("/{resume_id}/unarchive", response_model=ResumeResponse)
@@ -657,7 +969,7 @@ async def unarchive_resume(
     resume.archived_at = None
     await db.commit()
     await db.refresh(resume)
-    return ResumeResponse.model_validate(resume)
+    return _resume_response_from_obj(resume)
 
 
 # ── Variant / Fork system ─────────────────────────────────────────────────
@@ -720,7 +1032,7 @@ async def fork_resume(
         except Exception as exc:
             logger.warning(f"Failed to enqueue embedding for variant {variant.id}: {exc}")
 
-    resp = ResumeResponse.model_validate(variant)
+    resp = _resume_response_from_obj(variant)
     resp.variant_count = 0
     return resp
 
@@ -958,7 +1270,7 @@ async def list_variants(
 
     out = []
     for resume, vc in rows:
-        d = ResumeResponse.model_validate(resume)
+        d = _resume_response_from_obj(resume)
         d.variant_count = vc or 0
         out.append(d)
     return out
