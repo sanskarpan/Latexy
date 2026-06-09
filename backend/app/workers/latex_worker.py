@@ -35,6 +35,11 @@ _ALLOWED_EXTRA_FLAGS = {
 # Note: --synctex=1, --interaction=nonstopmode, --halt-on-error are already hardcoded
 
 _MAIN_FILE_RE = re.compile(r"^[a-zA-Z0-9_-]+\.tex$")
+_HOST_PDFTOTEXT_CANDIDATES = (
+    "/opt/homebrew/bin/pdftotext",
+    "/usr/local/bin/pdftotext",
+    "/usr/bin/pdftotext",
+)
 
 # Watermark validation
 _WATERMARK_RE = re.compile(r"^[A-Za-z0-9 \-\.]+$")
@@ -130,6 +135,13 @@ def _extract_pdf_text(pdf_file: Path, job_id: str) -> Optional[str]:
         return None
 
 
+def _finalize_failure(job_id: str, **result: Any) -> Dict[str, Any]:
+    """Persist a terminal failure result so REST polling can resolve it."""
+    payload = {"success": False, "job_id": job_id, **result}
+    publish_job_result(job_id, payload)
+    return payload
+
+
 @celery_app.task(
     bind=True,
     name="app.workers.latex_worker.compile_latex_task",
@@ -195,9 +207,7 @@ def compile_latex_task(
                 "error_message": error_msg,
                 "retryable": False,
             })
-            result = {"success": False, "job_id": job_id, "error": error_msg}
-            publish_job_result(job_id, result)
-            return result
+            return _finalize_failure(job_id, error=error_msg)
 
         # ── Apply compile settings ───────────────────────────────────
         _cs = compile_settings or {}
@@ -217,9 +227,7 @@ def compile_latex_task(
                     "error_message": error_msg,
                     "retryable": False,
                 })
-                result = {"success": False, "job_id": job_id, "error": error_msg}
-                publish_job_result(job_id, result)
-                return result
+                return _finalize_failure(job_id, error=error_msg)
             latex_content = _inject_watermark(latex_content, watermark)
 
         # Determine main .tex filename (validated regex, default resume.tex)
@@ -320,9 +328,7 @@ def compile_latex_task(
             if is_cancelled(job_id):
                 proc.kill()
                 publish_event(job_id, "job.cancelled", {})
-                result = {"success": False, "job_id": job_id, "cancelled": True}
-                publish_job_result(job_id, result)
-                return result
+                return _finalize_failure(job_id, cancelled=True)
 
             # ── Timeout check ────────────────────────────────────────
             if time.time() - start_time > timeout:
@@ -339,9 +345,7 @@ def compile_latex_task(
                     "user_plan": user_plan,
                     "retryable": False,
                 })
-                result = {"success": False, "job_id": job_id, "error": "compile_timeout"}
-                publish_job_result(job_id, result)
-                return result
+                return _finalize_failure(job_id, error="compile_timeout")
 
         proc.wait()
         compilation_time = time.time() - start_time
@@ -422,11 +426,10 @@ def compile_latex_task(
             "error_message": error_msg,
             "retryable": False,
         })
-        result = {"success": False, "job_id": job_id, "error": error_msg}
+        result: Dict[str, Any] = {"error": error_msg}
         if first_latex_error:
             result["latex_error_line"] = first_latex_error
-        publish_job_result(job_id, result)
-        return result
+        return _finalize_failure(job_id, **result)
 
     except SoftTimeLimitExceeded:
         logger.error(f"LaTeX task {task_id} hit soft time limit for job {job_id}")
@@ -442,9 +445,7 @@ def compile_latex_task(
             "user_plan": user_plan,
             "retryable": False,
         })
-        result = {"success": False, "job_id": job_id, "error": "compile_timeout"}
-        publish_job_result(job_id, result)
-        return result
+        return _finalize_failure(job_id, error="compile_timeout")
 
     except Exception as exc:
         logger.error(f"LaTeX task {task_id} raised: {exc}")
@@ -457,9 +458,7 @@ def compile_latex_task(
         })
         if retryable:
             raise self.retry(countdown=60, exc=exc)
-        result = {"success": False, "job_id": job_id, "error": str(exc)}
-        publish_job_result(job_id, result)
-        return result
+        return _finalize_failure(job_id, error=str(exc))
 
 
 # ------------------------------------------------------------------ #

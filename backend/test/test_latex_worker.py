@@ -234,6 +234,63 @@ class TestLatexCompilationSuccess:
         log_events = [c for c in mock_publish.call_args_list if c.args[1] == "log.line"]
         assert len(log_events) == 1
 
+    def test_success_uses_host_pdftotext_when_available(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        run_result = MagicMock(returncode=0, stdout="Extracted text", stderr="")
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, ["Compilation OK\n"])),
+            patch("app.workers.latex_worker.shutil.which", side_effect=lambda name: "/opt/homebrew/bin/pdftotext" if name == "pdftotext" else "/usr/bin/docker"),
+            patch("app.workers.latex_worker.subprocess.run", return_value=run_result) as mock_run,
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=12345)),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+
+        assert result["extracted_text"] == "Extracted text"
+        assert mock_run.call_args.args[0][0] == "/opt/homebrew/bin/pdftotext"
+
+    def test_success_falls_back_when_first_pdftotext_attempt_returns_empty(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        run_results = [
+            MagicMock(returncode=1, stdout="", stderr="missing binary"),
+            MagicMock(returncode=0, stdout="Recovered text", stderr=""),
+        ]
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, ["Compilation OK\n"])),
+            patch("app.workers.latex_worker.shutil.which", side_effect=lambda name: "/opt/homebrew/bin/pdftotext" if name == "pdftotext" else None),
+            patch("app.workers.latex_worker._HOST_PDFTOTEXT_CANDIDATES", ()),
+            patch("app.workers.latex_worker.subprocess.run", side_effect=run_results) as mock_run,
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=12345)),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+
+        assert result["extracted_text"] == "Recovered text"
+        assert mock_run.call_count >= 2
+
+    def test_success_uses_pdfminer_after_pdftotext_retries_fail(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        run_results = [
+            MagicMock(returncode=1, stdout="", stderr="missing text"),
+            MagicMock(returncode=1, stdout="", stderr="missing text"),
+            MagicMock(returncode=1, stdout="", stderr="missing text"),
+        ]
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, ["Compilation OK\n"])),
+            patch("app.workers.latex_worker.shutil.which", side_effect=lambda name: "/opt/homebrew/bin/pdftotext" if name == "pdftotext" else None),
+            patch("app.workers.latex_worker._HOST_PDFTOTEXT_CANDIDATES", ()),
+            patch("app.workers.latex_worker.subprocess.run", side_effect=run_results),
+            patch("pdfminer.high_level.extract_text", return_value="Recovered via pdfminer"),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=MagicMock(st_size=12345)),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+
+        assert result["extracted_text"] == "Recovered via pdfminer"
+
 
 # ── Compilation failure (non-zero exit code) ──────────────────────────────────
 
@@ -250,6 +307,20 @@ class TestLatexCompilationFailure:
 
         types = [c.args[1] for c in mock_publish.call_args_list]
         assert "job.failed" in types
+
+    def test_nonzero_exit_code_persists_failed_result(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(1, ["pdflatex error\n"])),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+
+        assert mock_job_result.call_count == 1
+        stored = mock_job_result.call_args.args[1]
+        assert stored["success"] is False
+        assert stored["error"].startswith("pdflatex exited with code")
 
     def test_nonzero_exit_code_returns_success_false(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
         with (
@@ -326,6 +397,20 @@ class TestLatexCancellation:
 
         types = [c.args[1] for c in mock_publish.call_args_list]
         assert "job.cancelled" in types
+
+    def test_cancelled_persists_failed_result(self, mock_publish, mock_job_result, mock_validate_ok):
+        with (
+            patch("app.workers.latex_worker.is_cancelled", return_value=True),
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(0, ["output\n"])),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+
+        stored = mock_job_result.call_args.args[1]
+        assert stored["success"] is False
+        assert stored["cancelled"] is True
 
     def test_cancelled_kills_process(self, mock_publish, mock_job_result, mock_validate_ok):
         mock_proc = _make_popen(0, ["output\n"])
