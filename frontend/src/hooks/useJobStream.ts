@@ -35,6 +35,8 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
   useEffect(() => {
     if (!jobId) return
 
+    dispatch({ type: '__reset__' })
+
     const handleEvent = (event: AnyEvent) => {
       if (event.job_id === jobId) {
         dispatch(event)
