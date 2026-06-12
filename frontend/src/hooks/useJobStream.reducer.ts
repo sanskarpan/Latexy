@@ -78,9 +78,19 @@ export const initialState: JobStreamState = {
 
 export type ReducerAction = AnyEvent | { type: '__reset__' }
 
+const TERMINAL_STATES = new Set<JobStreamState['status']>(['completed', 'failed', 'cancelled'])
+const TERMINAL_EVENT_TYPES = new Set<AnyEvent['type']>(['job.completed', 'job.failed', 'job.cancelled'])
+
 export function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStreamState {
   if (action.type === '__reset__') return { ...initialState }
   const event = action as AnyEvent
+
+  // CANCEL-02: once a terminal state is reached, ignore any subsequent
+  // terminal-state transitions (e.g. a late job.cancelled after job.completed).
+  if (TERMINAL_STATES.has(state.status) && TERMINAL_EVENT_TYPES.has(event.type)) {
+    return state
+  }
+
   switch (event.type) {
     case 'job.queued':
       return { ...state, status: 'queued', stage: '', percent: 0, extractedPdfText: null, pageCount: null }
@@ -114,12 +124,11 @@ export function jobStreamReducer(state: JobStreamState, action: ReducerAction): 
 
     case 'log.line': {
       const pageCountMatch = event.line?.match(/Output written on .+?\((\d+) page/)
+      const newLine: LogLine = { source: event.source, line: event.line, is_error: event.is_error }
       return {
         ...state,
-        logLines: [
-          ...state.logLines,
-          { source: event.source, line: event.line, is_error: event.is_error },
-        ],
+        // PERF-009: cap accumulated log lines to prevent unbounded memory growth
+        logLines: [...state.logLines, newLine].slice(-2000),
         ...(pageCountMatch ? { pageCount: parseInt(pageCountMatch[1], 10) } : {}),
       }
     }
