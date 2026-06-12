@@ -154,7 +154,7 @@ async function mockWebSocketPageCount(
     sequence: seq,
   })
 
-  await page.routeWebSocket('**/ws/jobs', (ws) => {
+  await page.routeWebSocket('**/ws/jobs**', (ws) => {
     ws.onMessage((data) => {
       try {
         const msg = JSON.parse(data as string)
@@ -659,7 +659,7 @@ test.describe('"Trim with AI →" button — action', () => {
   test('"Trim with AI →" button is disabled while processing', async ({ page }) => {
     // Set up a compile job that never completes (no WS mock)
     await mockCompileEndpoint(page, JOB_ID_COMPILE)
-    await page.routeWebSocket('**/ws/jobs', (ws) => {
+    await page.routeWebSocket('**/ws/jobs**', (ws) => {
       ws.onMessage((data) => {
         try {
           const msg = JSON.parse(data as string)
@@ -760,7 +760,7 @@ test.describe('Page count — early extraction from log.line event', () => {
     const base = (jobId: string) => ({ event_id: `e-${++seq}`, job_id: jobId, timestamp: Date.now() / 1000, sequence: seq })
 
     // Custom WS mock: only send log.line, NOT job.completed
-    await page.routeWebSocket('**/ws/jobs', (ws) => {
+    await page.routeWebSocket('**/ws/jobs**', (ws) => {
       ws.onMessage((data) => {
         try {
           const msg = JSON.parse(data as string)
@@ -851,7 +851,7 @@ test.describe('Page count — WebSocket event schema validation', () => {
 
     let receivedEvents: Record<string, unknown>[] = []
 
-    await page.routeWebSocket('**/ws/jobs', (ws) => {
+    await page.routeWebSocket('**/ws/jobs**', (ws) => {
       ws.onMessage((data) => {
         try {
           const msg = JSON.parse(data as string)
@@ -898,7 +898,7 @@ test.describe('Page count — WebSocket event schema validation', () => {
     await mockCommonBackend(page)
     await mockResume(page, MOCK_RESUME_LARGE)
 
-    await page.routeWebSocket('**/ws/jobs', (ws) => {
+    await page.routeWebSocket('**/ws/jobs**', (ws) => {
       ws.onMessage((data) => {
         try {
           const msg = JSON.parse(data as string)

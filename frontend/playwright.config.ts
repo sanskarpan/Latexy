@@ -33,5 +33,10 @@ export default defineConfig({
     url: `http://localhost:${PORT}`,
     reuseExistingServer: true,
     timeout: 60_000,
+    // Point WebSocket URL to the Playwright server so routeWebSocket() can intercept it.
+    // The tests mock ws/jobs entirely via routeWebSocket; no real backend WS is needed.
+    env: {
+      NEXT_PUBLIC_WS_URL: `ws://localhost:${PORT}`,
+    },
   },
 })

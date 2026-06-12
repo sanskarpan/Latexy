@@ -137,7 +137,17 @@ test.describe('Template Gallery with mocked API', () => {
     latex_content: '\\documentclass{article}\n\\begin{document}\n\\textbf{Hello World}\n\\end{document}',
   }
 
+  const MOCK_SESSION = {
+    session: { id: 's-1', userId: 'user-1', token: 'test-token', expiresAt: '2099-01-01T00:00:00Z' },
+    user: { id: 'user-1', email: 'test@example.com', name: 'Test User' },
+  }
+
   test.beforeEach(async ({ page }) => {
+    // Mock auth so useSession() returns a session and template fetches actually fire
+    await page.route('**/api/auth/get-session', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_SESSION) })
+    )
+
     // Single route handler for all template API requests
     await page.route((url) => url.pathname.startsWith('/templates'), async (route) => {
       const url = new URL(route.request().url())
@@ -168,16 +178,19 @@ test.describe('Template Gallery with mocked API', () => {
     })
 
     await page.route('**/ws/**', route => route.abort())
-    await page.goto('/workspace/new')
-    await page.waitForLoadState('networkidle')
+    const categoriesReq = page.waitForResponse((r) => r.url().includes('/templates/categories'))
+    const templatesReq = page.waitForResponse((r) => /\/templates\/(\?|$)/.test(r.url()))
+    await page.goto('/workspace/new', { waitUntil: 'domcontentloaded' })
+    await Promise.all([categoriesReq, templatesReq])
+    await expect(page.locator('input[placeholder*="Search templates"]')).toBeVisible()
   })
 
   // ---- Template cards render ----
 
   test('renders template cards from API', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: 'SWE Clean Resume' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Finance Pro' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Academic CV' })).toBeVisible()
+    await expect(page.locator('h3', { hasText: 'SWE Clean Resume' })).toBeVisible()
+    await expect(page.locator('h3', { hasText: 'Finance Pro' })).toBeVisible()
+    await expect(page.locator('h3', { hasText: 'Academic CV' })).toBeVisible()
   })
 
   test('shows correct template count in All tab', async ({ page }) => {
@@ -194,16 +207,16 @@ test.describe('Template Gallery with mocked API', () => {
 
   test('clicking category tab filters templates', async ({ page }) => {
     await page.getByRole('button', { name: /Finance \(1\)/ }).click()
-    await expect(page.getByRole('heading', { name: 'Finance Pro' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'SWE Clean Resume' })).not.toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Academic CV' })).not.toBeVisible()
+    await expect(page.locator('h3', { hasText: 'Finance Pro' })).toBeVisible()
+    await expect(page.locator('h3', { hasText: 'SWE Clean Resume' })).not.toBeVisible()
+    await expect(page.locator('h3', { hasText: 'Academic CV' })).not.toBeVisible()
   })
 
   test('clicking All tab shows all templates', async ({ page }) => {
     await page.getByRole('button', { name: /Finance \(1\)/ }).click()
     await page.getByRole('button', { name: /^All \(3\)/ }).click()
-    await expect(page.getByRole('heading', { name: 'SWE Clean Resume' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Finance Pro' })).toBeVisible()
+    await expect(page.locator('h3', { hasText: 'SWE Clean Resume' })).toBeVisible()
+    await expect(page.locator('h3', { hasText: 'Finance Pro' })).toBeVisible()
   })
 
   // ---- Search ----
@@ -211,8 +224,8 @@ test.describe('Template Gallery with mocked API', () => {
   test('search filters templates by name', async ({ page }) => {
     const searchInput = page.locator('input[placeholder*="Search templates"]')
     await searchInput.fill('Finance')
-    await expect(page.getByRole('heading', { name: 'Finance Pro' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'SWE Clean Resume' })).not.toBeVisible()
+    await expect(page.locator('h3', { hasText: 'Finance Pro' })).toBeVisible()
+    await expect(page.locator('h3', { hasText: 'SWE Clean Resume' })).not.toBeVisible()
   })
 
   test('search clear button resets results', async ({ page }) => {
@@ -220,10 +233,9 @@ test.describe('Template Gallery with mocked API', () => {
     await searchInput.fill('Finance')
     // Find the X clear button near the search input
     const clearBtn = searchInput.locator('..').locator('button')
-    if (await clearBtn.isVisible()) {
-      await clearBtn.click()
-      await expect(page.getByRole('heading', { name: 'SWE Clean Resume' })).toBeVisible()
-    }
+    await expect(clearBtn).toBeVisible() // always assert it exists
+    await clearBtn.click()
+    await expect(page.locator('h3', { hasText: 'SWE Clean Resume' })).toBeVisible()
   })
 
   test('no results shows empty state', async ({ page }) => {
@@ -291,7 +303,6 @@ test.describe('Template Gallery with mocked API', () => {
     const card = page.locator('.group').first()
     await card.hover()
     await card.getByRole('button', { name: 'Preview' }).click()
-    await page.waitForLoadState('networkidle')
     // Modal should show the template name
     const modal = page.locator('.fixed.inset-0')
     await expect(modal.locator('h2')).toContainText('SWE Clean Resume')
@@ -301,7 +312,6 @@ test.describe('Template Gallery with mocked API', () => {
     const card = page.locator('.group').first()
     await card.hover()
     await card.getByRole('button', { name: 'Preview' }).click()
-    await page.waitForLoadState('networkidle')
     await expect(page.getByRole('button', { name: 'Use This Template' })).toBeVisible()
   })
 
@@ -324,7 +334,6 @@ test.describe('Template Gallery with mocked API', () => {
     const card = page.locator('.group').first()
     await card.hover()
     await card.getByRole('button', { name: 'Preview' }).click()
-    await page.waitForLoadState('networkidle')
     const requestPromise = page.waitForRequest((r) => r.url().includes('/use') && r.method() === 'POST')
     await page.getByRole('button', { name: 'Use This Template' }).click()
     await requestPromise
@@ -371,7 +380,6 @@ test.describe('Template Gallery with mocked API', () => {
     const card = page.locator('.group').first()
     await card.hover()
     await card.getByRole('button', { name: 'Preview' }).click()
-    await page.waitForLoadState('networkidle')
     // No thumbnail/pdf_url: falls back to showing latex content directly
     await expect(page.getByRole('button', { name: 'LaTeX Source' })).toBeVisible()
     await expect(page.getByText('\\documentclass{article}')).toBeVisible()
@@ -381,7 +389,6 @@ test.describe('Template Gallery with mocked API', () => {
     const card = page.locator('.group').first()
     await card.hover()
     await card.getByRole('button', { name: 'Preview' }).click()
-    await page.waitForLoadState('networkidle')
     await expect(page.getByText('Tags')).toBeVisible()
   })
 })
@@ -438,6 +445,12 @@ test.describe('API Client methods exist at runtime', () => {
 
   test('template API calls are made on page load', async ({ page }) => {
     await page.route('**/ws/**', route => route.abort())
+    await page.route('**/api/auth/get-session', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        session: { id: 's-1', userId: 'user-1', token: 'test-token', expiresAt: '2099-01-01T00:00:00Z' },
+        user: { id: 'user-1', email: 'test@example.com', name: 'Test User' },
+      }) })
+    )
     // Wait for both template API calls rather than networkidle — WS retries block networkidle
     const categoriesReq = page.waitForRequest(r => r.url().includes('/templates/categories'), { timeout: 12000 })
     const listReq = page.waitForRequest(r => /\/templates\/(\?|$)/.test(r.url()), { timeout: 12000 })
