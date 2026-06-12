@@ -197,12 +197,18 @@ async def list_my_tenants(
     member_of = await db.execute(
         select(TenantMember).where(TenantMember.user_id == user_id)
     )
-    for m in member_of.scalars().all():
-        if m.tenant_id not in owned_tenants:
-            t_result = await db.execute(select(Tenant).where(Tenant.id == m.tenant_id))
-            t = t_result.scalar_one_or_none()
-            if t:
-                owned_tenants[t.id] = t
+    # Collect non-owned membership tenant IDs, then bulk-fetch in one query
+    non_owned_ids = [
+        m.tenant_id
+        for m in member_of.scalars().all()
+        if m.tenant_id not in owned_tenants
+    ]
+    if non_owned_ids:
+        member_tenants_result = await db.execute(
+            select(Tenant).where(Tenant.id.in_(non_owned_ids))
+        )
+        for t in member_tenants_result.scalars().all():
+            owned_tenants[t.id] = t
 
     return [_tenant_response(t) for t in owned_tenants.values()]
 
@@ -247,25 +253,22 @@ async def list_members(
     if not membership.scalar_one_or_none() and tenant.owner_id != user_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    members_result = await db.execute(
-        select(TenantMember).where(TenantMember.tenant_id == tenant_id)
+    # Single JOIN query — avoids N+1 (one SELECT per member)
+    join_result = await db.execute(
+        select(TenantMember, User)
+        .join(User, User.id == TenantMember.user_id)
+        .where(TenantMember.tenant_id == tenant_id)
     )
-    members = members_result.scalars().all()
-
-    responses: List[MemberResponse] = []
-    for m in members:
-        user_result = await db.execute(select(User).where(User.id == m.user_id))
-        u = user_result.scalar_one_or_none()
-        if u:
-            responses.append(
-                MemberResponse(
-                    user_id=m.user_id,
-                    email=u.email,
-                    name=u.name,
-                    role=m.role,
-                    joined_at=m.joined_at,
-                )
-            )
+    responses: List[MemberResponse] = [
+        MemberResponse(
+            user_id=m.user_id,
+            email=u.email,
+            name=u.name,
+            role=m.role,
+            joined_at=m.joined_at,
+        )
+        for m, u in join_result.all()
+    ]
     return responses
 
 
