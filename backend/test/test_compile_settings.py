@@ -231,7 +231,7 @@ class TestCompileSettingsEndpoint:
                 json={
                     "texlive_version": "2023",
                     "main_file": "main.tex",
-                    "latexmk_flags": ["--shell-escape"],
+                    "latexmk_flags": ["--halt-on-error"],
                     "extra_packages": ["xcolor"],
                 },
             )
