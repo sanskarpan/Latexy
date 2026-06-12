@@ -421,8 +421,8 @@ class TestListMyTenants:
         owned_result = MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[owned]))))
         # 2) TenantMember query (memberships)
         member_result = MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[membership]))))
-        # 3) Fetch membered tenant by id
-        membered_result = MagicMock(scalar_one_or_none=MagicMock(return_value=membered))
+        # 3) Bulk-fetch membered tenants by id (uses .scalars().all())
+        membered_result = MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[membered]))))
 
         db.execute = AsyncMock(side_effect=[owned_result, member_result, membered_result])
 
@@ -513,10 +513,10 @@ class TestListMembersAuth:
         db = _mock_db()
         tenant_result = MagicMock(scalar_one_or_none=MagicMock(return_value=tenant))
         membership_result = MagicMock(scalar_one_or_none=MagicMock(return_value=membership))
-        members_list = MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[membership]))))
-        user_result = MagicMock(scalar_one_or_none=MagicMock(return_value=member_user))
+        # Implementation uses a JOIN query → result.all() returns (TenantMember, User) tuples
+        members_list = MagicMock(all=MagicMock(return_value=[(membership, member_user)]))
 
-        db.execute = AsyncMock(side_effect=[tenant_result, membership_result, members_list, user_result])
+        db.execute = AsyncMock(side_effect=[tenant_result, membership_result, members_list])
 
         result = await list_members(tenant_id=tenant.id, db=db, user_id=member_user.id)
         assert len(result) == 1

@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 from uuid import uuid4
 
 import jwt as pyjwt
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Compilation, Optimization, Resume, UsageAnalytics, User
@@ -113,7 +115,7 @@ async def test_me_timeseries_returns_series_data(client: AsyncClient, db_session
 
 
 @pytest.mark.asyncio
-async def test_admin_analytics_routes_require_admin(client: AsyncClient):
+async def test_admin_analytics_routes_require_admin(client: AsyncClient, db_session: AsyncSession):
     no_auth = await client.get('/analytics/system?days=7')
     assert no_auth.status_code == 401
 
@@ -121,8 +123,24 @@ async def test_admin_analytics_routes_require_admin(client: AsyncClient):
     forbidden = await client.get('/analytics/system?days=7', headers={'Authorization': f'Bearer {non_admin_token}'})
     assert forbidden.status_code == 403
 
-    admin_token = make_jwt(str(uuid4()), is_admin=True)
-    allowed = await client.get('/analytics/system?days=7', headers={'Authorization': f'Bearer {admin_token}'})
+    # Admin access is granted via ADMIN_EMAIL match — create a real DB user
+    admin_id = str(uuid4())
+    admin_email = f'admin_{admin_id[:8]}@example.com'
+    await db_session.execute(
+        text(
+            "INSERT INTO users (id, email, name, email_verified, subscription_plan, "
+            "subscription_status, trial_used) VALUES (:id, :email, 'Admin', true, 'pro', 'active', false)"
+        ),
+        {"id": admin_id, "email": admin_email},
+    )
+    await db_session.commit()
+
+    admin_token = make_jwt(admin_id)
+    with patch('app.middleware.auth_middleware.settings') as mock_settings:
+        mock_settings.ADMIN_EMAIL = admin_email
+        mock_settings.JWT_SECRET_KEY = 'test_jwt_secret_32chars_minimum_!'
+        mock_settings.BETTER_AUTH_SECRET = 'test_secret_key_32chars_minimum_!'
+        allowed = await client.get('/analytics/system?days=7', headers={'Authorization': f'Bearer {admin_token}'})
     assert allowed.status_code == 200
 
 
@@ -158,8 +176,24 @@ async def test_conversion_funnel_uses_event_metadata_page(client: AsyncClient, d
     ])
     await db_session.commit()
 
-    admin_token = make_jwt(str(uuid4()), is_admin=True)
-    response = await client.get('/analytics/conversion-funnel?days=7', headers={'Authorization': f'Bearer {admin_token}'})
+    # Admin access requires real DB user matching ADMIN_EMAIL
+    admin_id = str(uuid4())
+    admin_email = f'admin_funnel_{admin_id[:8]}@example.com'
+    await db_session.execute(
+        text(
+            "INSERT INTO users (id, email, name, email_verified, subscription_plan, "
+            "subscription_status, trial_used) VALUES (:id, :email, 'Admin', true, 'pro', 'active', false)"
+        ),
+        {"id": admin_id, "email": admin_email},
+    )
+    await db_session.commit()
+
+    admin_token = make_jwt(admin_id)
+    with patch('app.middleware.auth_middleware.settings') as mock_settings:
+        mock_settings.ADMIN_EMAIL = admin_email
+        mock_settings.JWT_SECRET_KEY = 'test_jwt_secret_32chars_minimum_!'
+        mock_settings.BETTER_AUTH_SECRET = 'test_secret_key_32chars_minimum_!'
+        response = await client.get('/analytics/conversion-funnel?days=7', headers={'Authorization': f'Bearer {admin_token}'})
 
     assert response.status_code == 200
     data = response.json()
