@@ -8,7 +8,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api.routes import router
+from .api.routes import _check_cors_origins_on_startup, router
 from .core.config import settings
 from .core.event_bus import event_bus
 from .core.logging import get_logger, setup_logging
@@ -39,6 +39,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         raise
+
+    # Validate Redis URL before connecting (OBS-004)
+    if not settings.REDIS_URL or "localhost" in settings.REDIS_URL.lower():
+        if settings.ENVIRONMENT in ("production", "staging"):
+            logger.warning("REDIS_URL points to localhost in production environment")
 
     # Initialize Redis connections
     try:
@@ -73,6 +78,9 @@ async def lifespan(app: FastAPI):
     # Ensure temp directory exists
     settings.TEMP_DIR.mkdir(exist_ok=True)
     logger.info(f"Temporary directory ready: {settings.TEMP_DIR}")
+
+    # CONFIG-002: Warn if CORS origins include localhost in production
+    _check_cors_origins_on_startup()
 
     yield
 
