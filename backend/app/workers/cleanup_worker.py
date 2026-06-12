@@ -14,6 +14,7 @@ Read operations also use the synchronous Redis helpers so Celery prefork
 workers never reuse async Redis clients across closed event loops.
 """
 
+import json
 import shutil
 import time
 from datetime import datetime, timedelta
@@ -24,7 +25,7 @@ from ..core.celery_app import celery_app
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.redis import job_status_manager, redis_manager
-from ..workers.event_publisher import publish_event, publish_job_result
+from ..workers.event_publisher import get_worker_redis, publish_event, publish_job_result
 
 logger = get_logger(__name__)
 
@@ -206,7 +207,7 @@ def cleanup_temp_files_task(
         return result_data
 
     except Exception as e:
-        logger.error(f"Temp files cleanup task {task_id} failed for job {job_id}: {e}")
+        logger.error(f"Temp files cleanup task {task_id} failed for job {job_id}: {e}", exc_info=True)
 
         error_data = {
             "success": False,
@@ -220,14 +221,16 @@ def cleanup_temp_files_task(
             "completed_at": time.time()
         }
 
-        # Set error status
-        publish_event(job_id, "job.failed", {
-            "stage": "temp_file_cleanup",
-            "error_code": "internal",
-            "error_message": str(e),
-            "retryable": False,
-        })
-        publish_job_result(job_id, error_data)
+        try:
+            publish_event(job_id, "job.failed", {
+                "stage": "temp_file_cleanup",
+                "error_code": "internal",
+                "error_message": str(e),
+                "retryable": False,
+            })
+            publish_job_result(job_id, error_data)
+        except Exception:
+            pass  # best-effort; don't mask the original error
 
         return error_data
 
@@ -273,7 +276,13 @@ def cleanup_expired_jobs_task(
             "message": "Scanning for expired jobs",
         })
 
-        active_jobs = job_status_manager.get_active_jobs_sync()
+        # Scan for all job state keys using the canonical latexy:job:*:state pattern.
+        # get_active_jobs_sync() uses an old job_status: prefix that does not match
+        # the keys written by publish_event / _update_state_snapshot.
+        r = get_worker_redis()
+        state_keys = r.keys("latexy:job:*:state")
+        # Derive job IDs by stripping the trailing ":state" suffix.
+        active_jobs = [k[len("latexy:job:"):-len(":state")] for k in state_keys]
 
         if not active_jobs:
             logger.info("No active jobs found for cleanup")
@@ -284,6 +293,7 @@ def cleanup_expired_jobs_task(
                 "message": "No active jobs found for cleanup",
                 "jobs_cleaned": 0,
                 "total_jobs_scanned": 0,
+                "jobs_timed_out": 0,
                 "max_age_hours": max_age_hours,
                 "batch_size": batch_size,
                 "errors": [],
@@ -303,8 +313,10 @@ def cleanup_expired_jobs_task(
             publish_job_result(job_id, result_data)
             return result_data
 
-        # Calculate cutoff time
+        # Calculate cutoff time for expired jobs
         cutoff_time = time.time() - (max_age_hours * 3600)
+        # Threshold for detecting stuck "processing" jobs (10 minutes)
+        processing_timeout = 10 * 60
 
         # Update progress
         publish_event(job_id, "job.progress", {
@@ -315,6 +327,7 @@ def cleanup_expired_jobs_task(
 
         jobs_cleaned = 0
         jobs_scanned = 0
+        jobs_timed_out = 0
         errors = []
 
         # Process jobs in batches
@@ -325,17 +338,48 @@ def cleanup_expired_jobs_task(
                 try:
                     jobs_scanned += 1
 
-                    status_data = job_status_manager.get_job_status_sync(job_id_to_check)
+                    # Read state from the canonical latexy:job:{id}:state key
+                    raw_state = r.get(f"latexy:job:{job_id_to_check}:state")
+                    if not raw_state:
+                        continue
 
-                    if status_data:
-                        updated_at = status_data.get("updated_at", 0)
-                        job_status = status_data.get("status", "unknown")
+                    state_data = json.loads(raw_state)
+                    last_updated = state_data.get("last_updated", 0)
+                    job_status_value = state_data.get("status", "unknown")
 
-                        # Check if job is expired
-                        if updated_at < cutoff_time and job_status in ["completed", "failed", "cancelled"]:
-                            job_status_manager.delete_job_data_sync(job_id_to_check)
-                            jobs_cleaned += 1
-                            logger.debug(f"Cleaned expired job: {job_id_to_check}")
+                    # Detect stuck "processing" jobs older than 10 minutes and
+                    # transition them to "failed" so the frontend gets a clear signal.
+                    if job_status_value == "processing":
+                        raw_meta = r.get(f"latexy:job:{job_id_to_check}:meta")
+                        if raw_meta:
+                            meta_data = json.loads(raw_meta)
+                            submitted_at = meta_data.get("submitted_at", time.time())
+                        else:
+                            submitted_at = last_updated or time.time()
+                        if time.time() - submitted_at > processing_timeout:
+                            logger.warning(
+                                f"Job {job_id_to_check} stuck in 'processing' for "
+                                f"{(time.time() - submitted_at):.0f}s — marking failed"
+                            )
+                            publish_event(job_id_to_check, "job.failed", {
+                                "stage": "timeout",
+                                "error_code": "timeout",
+                                "error_message": "Job timed out — worker may have crashed",
+                                "retryable": False,
+                            })
+                            jobs_timed_out += 1
+
+                    # Check if job is expired (terminal state, last updated before cutoff)
+                    if last_updated < cutoff_time and job_status_value in ["completed", "failed", "cancelled"]:
+                        r.delete(
+                            f"latexy:job:{job_id_to_check}:state",
+                            f"latexy:job:{job_id_to_check}:result",
+                            f"latexy:job:{job_id_to_check}:meta",
+                            f"latexy:job:{job_id_to_check}:seq",
+                            f"latexy:stream:{job_id_to_check}",
+                        )
+                        jobs_cleaned += 1
+                        logger.debug(f"Cleaned expired job: {job_id_to_check}")
 
                 except Exception as e:
                     error_msg = f"Error processing job {job_id_to_check}: {e}"
@@ -355,8 +399,9 @@ def cleanup_expired_jobs_task(
             "success": True,
             "task_id": task_id,
             "job_id": job_id,
-            "message": f"Job cleanup completed: {jobs_cleaned} jobs cleaned",
+            "message": f"Job cleanup completed: {jobs_cleaned} jobs cleaned, {jobs_timed_out} timed out",
             "jobs_cleaned": jobs_cleaned,
+            "jobs_timed_out": jobs_timed_out,
             "total_jobs_scanned": jobs_scanned,
             "max_age_hours": max_age_hours,
             "batch_size": batch_size,
@@ -384,7 +429,10 @@ def cleanup_expired_jobs_task(
             "message": "Job cleanup task completed",
         })
 
-        logger.info(f"Expired jobs cleanup task {task_id} completed: {jobs_cleaned}/{jobs_scanned} jobs cleaned")
+        logger.info(
+            f"Expired jobs cleanup task {task_id} completed: "
+            f"{jobs_cleaned}/{jobs_scanned} jobs cleaned, {jobs_timed_out} timed out"
+        )
         return result_data
 
     except Exception as e:
@@ -410,7 +458,9 @@ def cleanup_expired_jobs_task(
         })
         publish_job_result(job_id, error_data)
 
-        return error_data
+        # Re-raise via Celery retry so the task is marked FAILED rather than
+        # silently swallowing the exception and returning a success-shaped dict.
+        raise self.retry(exc=e, countdown=60)
 
 
 @celery_app.task(bind=True, name="app.workers.cleanup_worker.health_check_task")
@@ -551,7 +601,9 @@ def health_check_task(
         })
         publish_job_result(job_id, error_data)
 
-        return error_data
+        # Re-raise via Celery retry so the task is marked FAILED rather than
+        # silently swallowing the exception and returning a success-shaped dict.
+        raise self.retry(exc=e, countdown=60)
 
 
 # Utility functions to submit cleanup jobs
