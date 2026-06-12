@@ -57,6 +57,7 @@ export interface ATSDetails {
   strengths?: string[]
   warnings?: string[]
   industry_label?: string | null
+  industry_key?: string | null
 }
 
 export interface ChangeEntry {
