@@ -37,7 +37,23 @@ class LaTeXService:
         has_begin_document = "\\begin{document}" in content
         has_end_document = "\\end{document}" in content
 
-        return has_document_class and has_begin_document and has_end_document
+        if not (has_document_class and has_begin_document and has_end_document):
+            return False
+
+        # Reject known shell-escape / file-write attack vectors regardless of
+        # whether --shell-escape is active.  These directives have no legitimate
+        # use in a resume template and are the primary LaTeX code-execution paths.
+        _DANGEROUS_PATTERNS = [
+            r"\write18",
+            r"\input{/",
+            r"\openout",
+            r"\openin{/",
+        ]
+        for pattern in _DANGEROUS_PATTERNS:
+            if pattern in content:
+                return False
+
+        return True
 
     def check_latex_installation(self) -> bool:
         """Check if Docker and LaTeX Docker image are available."""
