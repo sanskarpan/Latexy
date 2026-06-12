@@ -157,6 +157,10 @@ class DeveloperAPIKey(Base):
 class Resume(Base):
     """Resume model for storing user resumes."""
     __tablename__ = "resumes"
+    __table_args__ = (
+        # DB-015: composite index supports ORDER BY updated_at queries scoped to a user
+        Index("idx_resumes_user_updated", "user_id", "updated_at"),
+    )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -194,8 +198,6 @@ class Resume(Base):
     dropbox_sync_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     dropbox_folder_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     dropbox_last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Archive (Feature 39)
-    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # Document type — Feature 86: 'resume' | 'presentation' | 'academic_cv'
     document_type: Mapped[str] = mapped_column(Text, nullable=False, server_default="resume", default="resume")
 
@@ -230,11 +232,15 @@ class Resume(Base):
 class Compilation(Base):
     """Compilation history for tracking LaTeX compilations."""
     __tablename__ = "compilations"
+    __table_args__ = (
+        # DB-013: composite index supports queries filtering by resume filtered by status
+        Index("idx_compilations_resume_status", "resume_id", "status"),
+    )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     # SET NULL preserves anonymous compilation records after account deletion
     user_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), index=True)
-    resume_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"))
+    resume_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"), index=True)
     device_fingerprint: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     job_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -255,7 +261,7 @@ class Optimization(Base):
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     # SET NULL preserves anonymous optimization records after account deletion
     user_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), index=True)
-    resume_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False)
+    resume_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True)
     device_fingerprint: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     job_description: Mapped[str] = mapped_column(Text, nullable=False)
     original_latex: Mapped[str] = mapped_column(Text, nullable=False)
@@ -343,6 +349,8 @@ class Payment(Base):
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     subscription_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("subscriptions.id"))
+    # DB-018: nullable=True with unique=True is intentional — payments in progress have
+    # no Razorpay payment ID yet; PostgreSQL unique constraints allow multiple NULL rows.
     razorpay_payment_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="INR")
@@ -590,7 +598,8 @@ class ResumeView(Base):
         UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     share_token: Mapped[str] = mapped_column(Text, nullable=False)
-    viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    # DB-014: index supports time-range queries on view history
+    viewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     country_code: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     referrer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
