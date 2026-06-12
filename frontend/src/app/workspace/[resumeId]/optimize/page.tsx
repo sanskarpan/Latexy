@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSession } from '@/lib/auth-client'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -92,6 +93,8 @@ export default function OptimizationSuitePage() {
   const [explainerData, setExplainerData] = useState<ExplainErrorResponse | null>(null)
   const [explainerLine, setExplainerLine] = useState<number | null>(null)
 
+  const { data: session, isPending: sessionLoading } = useSession()
+
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(resume?.latex_content || '', jobDescription)
   const editorRef = useRef<LaTeXEditorRef>(null)
@@ -100,6 +103,8 @@ export default function OptimizationSuitePage() {
   const { requestPermission, notify } = usePushNotifications()
 
   useEffect(() => {
+    if (!session || sessionLoading) return
+
     const fetchResume = async () => {
       try {
         const data = await apiClient.getResume(resumeId)
@@ -140,7 +145,7 @@ export default function OptimizationSuitePage() {
     }
 
     fetchResume()
-  }, [resumeId, router])
+  }, [resumeId, router, session, sessionLoading])
 
   useEffect(() => {
     if (!stream.streamingLatex || !editorRef.current) return

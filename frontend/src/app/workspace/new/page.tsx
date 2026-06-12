@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Search, Upload, LayoutTemplate, X, Linkedin, PackageOpen, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
+import { useSession } from '@/lib/auth-client'
 
 import { apiClient } from '@/lib/api-client'
 import type { TemplateResponse, TemplateCategoryCount } from '@/lib/api-client'
@@ -72,6 +73,7 @@ type Mode = 'template' | 'import' | 'linkedin' | 'builder'
 
 export default function NewResumePage() {
   const router = useRouter()
+  const { data: session, isPending: sessionLoading } = useSession()
 
   // ---- form state ----
   const [title, setTitle] = useState('')
@@ -93,6 +95,7 @@ export default function NewResumePage() {
 
   // ---- fetch templates on mount ----
   useEffect(() => {
+    if (sessionLoading || !session) return
     let cancelled = false
     setLoadingTemplates(true)
     Promise.all([apiClient.getTemplates(), apiClient.getTemplateCategories()])
@@ -108,7 +111,7 @@ export default function NewResumePage() {
         if (!cancelled) setLoadingTemplates(false)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [session, sessionLoading])
 
   // ---- filtered templates (client-side) ----
   const filteredTemplates = useMemo(() => {

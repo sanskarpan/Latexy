@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Bell, BookOpen, Mail, Calendar, Save, Loader2, CheckCircle, Monitor, Github, Unlink, ExternalLink, Cloud } from 'lucide-react'
 import { apiClient, type NotificationPrefs, type GitHubStatusResponse, type ZoteroStatusResponse, type MendeleyStatusResponse, type DropboxStatusResponse } from '@/lib/api-client'
@@ -10,6 +10,21 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030'
 
 function SettingsContent() {
   const searchParams = useSearchParams()
+  const settingsTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+
+  // Clear all pending timers on unmount
+  useEffect(() => () => {
+    settingsTimersRef.current.forEach((t) => clearTimeout(t))
+    settingsTimersRef.current.clear()
+  }, [])
+
+  function scheduleTimer(fn: () => void, delay: number) {
+    const t = setTimeout(() => {
+      settingsTimersRef.current.delete(t)
+      fn()
+    }, delay)
+    settingsTimersRef.current.add(t)
+  }
 
   // Notification prefs
   const [prefs, setPrefs] = useState<NotificationPrefs>({ job_completed: true, weekly_digest: false })
@@ -84,12 +99,12 @@ function SettingsContent() {
     if (searchParams.get('github') === 'connected') {
       setGhSuccess('GitHub account connected successfully!')
       apiClient.getGitHubStatus().then(setGhStatus).catch(() => {})
-      setTimeout(() => setGhSuccess(null), 5000)
+      scheduleTimer(() => setGhSuccess(null), 5000)
     }
     if (searchParams.get('zotero') === 'connected') {
       setZotSuccess('Zotero connected successfully!')
       apiClient.getZoteroStatus().then(setZotStatus).catch(() => {})
-      setTimeout(() => setZotSuccess(null), 5000)
+      scheduleTimer(() => setZotSuccess(null), 5000)
       if (window.opener) {
         window.opener.postMessage({ type: 'zotero:connected' }, '*')
         window.close()
@@ -98,7 +113,7 @@ function SettingsContent() {
     if (searchParams.get('mendeley') === 'connected') {
       setMenSuccess('Mendeley connected successfully!')
       apiClient.getMendeleyStatus().then(setMenStatus).catch(() => {})
-      setTimeout(() => setMenSuccess(null), 5000)
+      scheduleTimer(() => setMenSuccess(null), 5000)
       if (window.opener) {
         window.opener.postMessage({ type: 'mendeley:connected' }, '*')
         window.close()
@@ -107,8 +122,9 @@ function SettingsContent() {
     if (searchParams.get('dropbox') === 'connected') {
       setDbxSuccess('Dropbox account connected successfully!')
       apiClient.getDropboxStatus().then(setDbxStatus).catch(() => {})
-      setTimeout(() => setDbxSuccess(null), 5000)
+      scheduleTimer(() => setDbxSuccess(null), 5000)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
   async function handleSave() {
@@ -119,7 +135,7 @@ function SettingsContent() {
       const updated = await apiClient.updateNotificationPrefs(prefs)
       setPrefs(updated)
       setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      scheduleTimer(() => setSaved(false), 3000)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to save preferences')
     } finally {

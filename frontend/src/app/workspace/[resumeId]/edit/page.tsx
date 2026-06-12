@@ -719,7 +719,7 @@ export default function ResumeEditPage() {
   const router = useRouter()
   const resumeId = params.resumeId as string
   const flags = useFeatureFlags()
-  const { data: sessionData } = useSession()
+  const { data: sessionData, isPending: sessionLoading } = useSession()
   const sessionUserId = sessionData?.user?.id ?? null
 
   // Core state
@@ -994,6 +994,7 @@ export default function ResumeEditPage() {
 
   // Load resume and auto-compile on load
   useEffect(() => {
+    if (sessionLoading || !sessionData) return
     const fetchResume = async () => {
       try {
         const data = await apiClient.getResume(resumeId)
@@ -1057,7 +1058,7 @@ export default function ResumeEditPage() {
       }
     }
     fetchResume()
-  }, [resumeId, router, sessionUserId])
+  }, [resumeId, router, sessionData, sessionLoading, sessionUserId])
 
   // Stream AI tokens to Monaco in real-time (direct model mutation, no setState per token)
   useEffect(() => {
