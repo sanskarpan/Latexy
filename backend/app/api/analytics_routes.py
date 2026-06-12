@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -131,7 +131,7 @@ async def track_event(
 
 @router.get("/me", response_model=UserAnalyticsResponse)
 async def get_my_analytics(
-    days: int = 30,
+    days: int = Query(default=30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required)
 ):
@@ -169,7 +169,7 @@ async def get_my_analytics(
 
 @router.get("/me/timeseries", response_model=UserAnalyticsTimeseriesResponse)
 async def get_my_analytics_timeseries(
-    days: int = 30,
+    days: int = Query(default=30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required)
 ):
@@ -209,15 +209,12 @@ async def get_my_analytics_timeseries(
 @router.get("/user/{user_id}", response_model=UserAnalyticsResponse)
 async def get_user_analytics(
     user_id: UUID,
-    days: int = 30,
+    days: int = Query(default=30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     admin_user: str = Depends(require_admin)
 ):
     """Get analytics data for a specific user."""
     try:
-        # TODO: Add authentication check to ensure user can only access their own data
-        # or is an admin
-
         analytics_data = await analytics_service.get_user_analytics(
             db=db,
             user_id=user_id,
@@ -243,14 +240,12 @@ async def get_user_analytics(
 
 @router.get("/system", response_model=SystemAnalyticsResponse)
 async def get_system_analytics(
-    days: int = 7,
+    days: int = Query(default=7, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     admin_user: str = Depends(require_admin)
 ):
     """Get system-wide analytics. Requires admin access."""
     try:
-        # TODO: Add admin authentication check
-
         analytics_data = await analytics_service.get_system_analytics(
             db=db,
             days=days
@@ -267,14 +262,12 @@ async def get_system_analytics(
 
 @router.get("/conversion-funnel", response_model=ConversionFunnelResponse)
 async def get_conversion_funnel(
-    days: int = 30,
+    days: int = Query(default=30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     admin_user: str = Depends(require_admin)
 ):
     """Get conversion funnel analytics. Requires admin access."""
     try:
-        # TODO: Add admin authentication check
-
         funnel_data = await analytics_service.get_conversion_funnel(
             db=db,
             days=days
@@ -421,14 +414,12 @@ async def track_feature_usage(
 
 @router.get("/dashboard")
 async def get_analytics_dashboard(
-    days: int = 7,
+    days: int = Query(default=7, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
     admin_user: str = Depends(require_admin)
 ):
     """Get comprehensive analytics dashboard data."""
     try:
-        # TODO: Add admin authentication check
-
         # Get all analytics data
         system_analytics = await analytics_service.get_system_analytics(db, days)
         conversion_funnel = await analytics_service.get_conversion_funnel(db, days)
