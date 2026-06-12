@@ -2,7 +2,6 @@
 Analytics Service for tracking user behavior and system metrics.
 """
 
-import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
