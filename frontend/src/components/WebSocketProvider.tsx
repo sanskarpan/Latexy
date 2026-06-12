@@ -67,8 +67,7 @@ export const WSProvider: React.FC<WSProviderProps> = ({ children }) => {
     return () => {
       wsClient.off('connected', onConnected)
       wsClient.off('disconnected', onDisconnected)
-      // Do NOT call wsClient.disconnect() here - the singleton should
-      // outlive any single provider mount/unmount cycle.
+      wsClient.disconnect()
     }
   }, [])
 
