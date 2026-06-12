@@ -54,9 +54,18 @@ def mock_jsm():
                 return side_effect(*args, **kwargs)
         return mock.return_value
 
+    # Mock Redis client returned by get_worker_redis()
+    mock_r = MagicMock()
+    mock_r.keys.return_value = []
+    mock_r.scan_iter.return_value = iter([])
+    mock_r.get.return_value = None
+    mock_r.delete.return_value = 1
+    mock_r.ping.return_value = True
+
     with patch("app.workers.cleanup_worker.job_status_manager") as m, \
          patch("app.workers.cleanup_worker.publish_event") as mock_pub, \
-         patch("app.workers.cleanup_worker.publish_job_result") as mock_res:
+         patch("app.workers.cleanup_worker.publish_job_result") as mock_res, \
+         patch("app.workers.cleanup_worker.get_worker_redis", return_value=mock_r):
         m.set_job_status = AsyncMock(return_value=True)
         m.set_job_progress = AsyncMock(return_value=True)
         m.set_job_result = AsyncMock(return_value=True)
@@ -71,6 +80,7 @@ def mock_jsm():
         # Expose on mock_jsm for test assertions
         m.publish_event = mock_pub
         m.publish_job_result = mock_res
+        m._mock_redis = mock_r  # expose for per-test customisation
         yield m
 
 
@@ -275,9 +285,12 @@ class TestCleanupTempFilesTask:
                 raise RuntimeError("Redis down")
             return None
 
+        mock_r2 = MagicMock()
+        mock_r2.keys.return_value = []
         with patch("app.workers.cleanup_worker.job_status_manager"), \
              patch("app.workers.cleanup_worker.publish_event", side_effect=_side_effect), \
-             patch("app.workers.cleanup_worker.publish_job_result"):
+             patch("app.workers.cleanup_worker.publish_job_result"), \
+             patch("app.workers.cleanup_worker.get_worker_redis", return_value=mock_r2):
             result = cleanup_temp_files_task.apply(
                 kwargs={"max_age_hours": 24, "target_directory": str(tmp_path)}
             ).result
@@ -289,9 +302,33 @@ class TestCleanupTempFilesTask:
 
 
 class TestCleanupExpiredJobsTask:
+    """Tests for cleanup_expired_jobs_task.
 
-    _OLD = time.time() - 48 * 3600   # 48 h ago — past any reasonable TTL
+    The implementation scans Redis for latexy:job:*:state keys directly using
+    get_worker_redis(), so tests configure the mock_jsm._mock_redis redis client.
+    """
+
+    _OLD = time.time() - 48 * 3600    # 48 h ago — past any reasonable TTL
     _RECENT = time.time() - 1 * 3600  # 1 h ago  — within TTL
+
+    import json as _json
+
+    def _redis_state(self, status: str, age: float) -> str:
+        import json
+        return json.dumps({"status": status, "last_updated": age})
+
+    def _set_jobs(self, mock_jsm, job_states: dict) -> None:
+        """Configure mock redis with {job_id: (status, last_updated)} pairs."""
+        import json
+        r = mock_jsm._mock_redis
+        keys = [f"latexy:job:{jid}:state" for jid in job_states]
+        r.keys.return_value = keys
+
+        state_map = {
+            f"latexy:job:{jid}:state": json.dumps({"status": st, "last_updated": ts})
+            for jid, (st, ts) in job_states.items()
+        }
+        r.get.side_effect = lambda key: state_map.get(key)
 
     def _run(self, mock_jsm, **kwargs):
         return cleanup_expired_jobs_task.apply(
@@ -320,7 +357,7 @@ class TestCleanupExpiredJobsTask:
     # ── empty queue ───────────────────────────────────────────────────────────
 
     def test_no_active_jobs_returns_zero(self, mock_jsm):
-        mock_jsm.get_active_jobs = AsyncMock(return_value=[])
+        mock_jsm._mock_redis.keys.return_value = []
         result = self._run(mock_jsm)
         assert result["success"] is True
         assert result["jobs_cleaned"] == 0
@@ -329,65 +366,47 @@ class TestCleanupExpiredJobsTask:
     # ── terminal state + expired → cleaned ───────────────────────────────────
 
     def test_completed_expired_job_deleted(self, mock_jsm):
-        mock_jsm.get_active_jobs = AsyncMock(return_value=["job-done"])
-        mock_jsm.get_job_status = AsyncMock(
-            return_value={"status": "completed", "updated_at": self._OLD}
-        )
+        self._set_jobs(mock_jsm, {"job-done": ("completed", self._OLD)})
         result = self._run(mock_jsm)
         assert result["jobs_cleaned"] == 1
-        mock_jsm.delete_job_data_sync.assert_called_once_with("job-done")
+        mock_jsm._mock_redis.delete.assert_called()
 
     def test_failed_expired_job_deleted(self, mock_jsm):
-        mock_jsm.get_active_jobs = AsyncMock(return_value=["job-fail"])
-        mock_jsm.get_job_status = AsyncMock(
-            return_value={"status": "failed", "updated_at": self._OLD}
-        )
+        self._set_jobs(mock_jsm, {"job-fail": ("failed", self._OLD)})
         result = self._run(mock_jsm)
         assert result["jobs_cleaned"] == 1
 
     def test_cancelled_expired_job_deleted(self, mock_jsm):
-        mock_jsm.get_active_jobs = AsyncMock(return_value=["job-cancel"])
-        mock_jsm.get_job_status = AsyncMock(
-            return_value={"status": "cancelled", "updated_at": self._OLD}
-        )
+        self._set_jobs(mock_jsm, {"job-cancel": ("cancelled", self._OLD)})
         result = self._run(mock_jsm)
         assert result["jobs_cleaned"] == 1
 
     # ── non-terminal states never cleaned ────────────────────────────────────
 
     def test_processing_job_never_cleaned(self, mock_jsm):
-        mock_jsm.get_active_jobs = AsyncMock(return_value=["job-proc"])
-        mock_jsm.get_job_status = AsyncMock(
-            return_value={"status": "processing", "updated_at": self._OLD}
-        )
+        self._set_jobs(mock_jsm, {"job-proc": ("processing", self._OLD)})
         result = self._run(mock_jsm)
         assert result["jobs_cleaned"] == 0
-        mock_jsm.delete_job_data_sync.assert_not_called()
+        mock_jsm._mock_redis.delete.assert_not_called()
 
     def test_queued_job_never_cleaned(self, mock_jsm):
-        mock_jsm.get_active_jobs = AsyncMock(return_value=["job-q"])
-        mock_jsm.get_job_status = AsyncMock(
-            return_value={"status": "queued", "updated_at": self._OLD}
-        )
+        self._set_jobs(mock_jsm, {"job-q": ("queued", self._OLD)})
         result = self._run(mock_jsm)
         assert result["jobs_cleaned"] == 0
 
     # ── recent terminal jobs preserved ────────────────────────────────────────
 
     def test_recent_completed_job_not_cleaned(self, mock_jsm):
-        mock_jsm.get_active_jobs = AsyncMock(return_value=["job-fresh"])
-        mock_jsm.get_job_status = AsyncMock(
-            return_value={"status": "completed", "updated_at": self._RECENT}
-        )
+        self._set_jobs(mock_jsm, {"job-fresh": ("completed", self._RECENT)})
         result = self._run(mock_jsm)
         assert result["jobs_cleaned"] == 0
-        mock_jsm.delete_job_data_sync.assert_not_called()
+        mock_jsm._mock_redis.delete.assert_not_called()
 
     # ── edge: no status data ──────────────────────────────────────────────────
 
     def test_job_with_no_status_skipped_gracefully(self, mock_jsm):
-        mock_jsm.get_active_jobs = AsyncMock(return_value=["ghost"])
-        mock_jsm.get_job_status = AsyncMock(return_value=None)
+        mock_jsm._mock_redis.keys.return_value = ["latexy:job:ghost:state"]
+        mock_jsm._mock_redis.get.return_value = None  # key exists but no data
         result = self._run(mock_jsm)
         assert result["success"] is True
         assert result["jobs_cleaned"] == 0
@@ -395,14 +414,12 @@ class TestCleanupExpiredJobsTask:
     # ── mixed states ─────────────────────────────────────────────────────────
 
     def test_mixed_states_cleans_only_expired_terminal(self, mock_jsm):
-        status_map = {
-            "j-old-done":  {"status": "completed",  "updated_at": self._OLD},
-            "j-old-fail":  {"status": "failed",     "updated_at": self._OLD},
-            "j-new-done":  {"status": "completed",  "updated_at": self._RECENT},
-            "j-running":   {"status": "processing", "updated_at": self._OLD},
-        }
-        mock_jsm.get_active_jobs = AsyncMock(return_value=list(status_map))
-        mock_jsm.get_job_status = AsyncMock(side_effect=lambda jid: status_map[jid])
+        self._set_jobs(mock_jsm, {
+            "j-old-done": ("completed",  self._OLD),
+            "j-old-fail": ("failed",     self._OLD),
+            "j-new-done": ("completed",  self._RECENT),
+            "j-running":  ("processing", self._OLD),
+        })
         result = self._run(mock_jsm)
         assert result["jobs_cleaned"] == 2
         assert result["total_jobs_scanned"] == 4
@@ -410,11 +427,8 @@ class TestCleanupExpiredJobsTask:
     # ── batch processing ──────────────────────────────────────────────────────
 
     def test_all_jobs_scanned_with_small_batch_size(self, mock_jsm):
-        jobs = [f"job-{i}" for i in range(15)]
-        mock_jsm.get_active_jobs = AsyncMock(return_value=jobs)
-        mock_jsm.get_job_status = AsyncMock(
-            return_value={"status": "completed", "updated_at": self._OLD}
-        )
+        jobs = {f"job-{i}": ("completed", self._OLD) for i in range(15)}
+        self._set_jobs(mock_jsm, jobs)
         result = self._run(mock_jsm, batch_size=5)
         assert result["total_jobs_scanned"] == 15
         assert result["jobs_cleaned"] == 15
@@ -422,23 +436,26 @@ class TestCleanupExpiredJobsTask:
     # ── error handling ────────────────────────────────────────────────────────
 
     def test_get_job_status_error_captured_not_propagated(self, mock_jsm):
-        mock_jsm.get_active_jobs = AsyncMock(return_value=["bad-job"])
-        mock_jsm.get_job_status = AsyncMock(side_effect=RuntimeError("timeout"))
+        mock_jsm._mock_redis.keys.return_value = ["latexy:job:bad-job:state"]
+        mock_jsm._mock_redis.get.side_effect = RuntimeError("Redis timeout")
         result = self._run(mock_jsm)
-        assert result["success"] is True          # task-level success despite error
+        assert result["success"] is True
         assert result["error_count"] >= 1
         assert any("bad-job" in e for e in result["errors"])
 
     def test_partial_errors_dont_abort_remaining_jobs(self, mock_jsm):
-        """An error on one job should not prevent other jobs from being processed."""
-        mock_jsm.get_active_jobs = AsyncMock(return_value=["bad", "good"])
+        import json
+        mock_jsm._mock_redis.keys.return_value = [
+            "latexy:job:bad:state",
+            "latexy:job:good:state",
+        ]
 
-        def _status(jid):
-            if jid == "bad":
+        def _get(key):
+            if "bad" in key:
                 raise RuntimeError("Redis timeout")
-            return {"status": "completed", "updated_at": self._OLD}
+            return json.dumps({"status": "completed", "last_updated": self._OLD})
 
-        mock_jsm.get_job_status = AsyncMock(side_effect=_status)
+        mock_jsm._mock_redis.get.side_effect = _get
         result = self._run(mock_jsm)
         assert result["jobs_cleaned"] == 1   # "good" was still cleaned
         assert result["error_count"] == 1    # "bad" produced one error
