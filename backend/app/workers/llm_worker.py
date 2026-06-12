@@ -84,6 +84,7 @@ def optimize_resume_task(
         "stage": "llm_optimization",
     })
 
+    start_time = time.time()
     try:
         publish_event(job_id, "job.progress", {
             "percent": 5,
@@ -219,7 +220,13 @@ def optimize_resume_task(
         return result
 
     except SoftTimeLimitExceeded:
-        logger.error(f"LLM task {task_id} exceeded soft time limit for job {job_id}")
+        elapsed = time.time() - start_time
+        logger.error(f"LLM task {task_id} exceeded soft time limit for job {job_id}", exc_info=True)
+        logger.warning(
+            "llm_timeout",
+            extra={"job_id": job_id, "duration_ms": elapsed * 1000},
+            exc_info=True,
+        )
         publish_event(job_id, "job.failed", {
             "stage": "llm_optimization",
             "error_code": "timeout",
@@ -229,7 +236,7 @@ def optimize_resume_task(
         return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
 
     except Exception as exc:
-        logger.error(f"LLM task {task_id} raised: {exc}")
+        logger.error(f"LLM task {task_id} raised: {exc}", exc_info=True)
         is_rate_limit = "rate limit" in str(exc).lower()
         has_retries_left = self.request.retries < self.max_retries
         retryable = has_retries_left
