@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 
 export interface Notification {
@@ -30,8 +30,14 @@ export function useNotifications() {
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const timersRef = useRef<Map<string, number>>(new Map())
 
   const removeNotification = useCallback((id: string) => {
+    const t = timersRef.current.get(id)
+    if (t !== undefined) {
+      clearTimeout(t)
+      timersRef.current.delete(id)
+    }
     setNotifications((prev) => prev.filter((item) => item.id !== id))
   }, [])
 
@@ -53,11 +59,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       if (next.type === 'info') toast.info(next.title, { description: message, duration: next.duration })
 
       if (next.duration && next.duration > 0) {
-        window.setTimeout(() => removeNotification(id), next.duration)
+        const t = window.setTimeout(() => removeNotification(id), next.duration)
+        timersRef.current.set(id, t)
       }
     },
     [removeNotification]
   )
+
+  // Clear all pending dismiss timers on unmount
+  useEffect(() => () => {
+    timersRef.current.forEach((t) => clearTimeout(t))
+    timersRef.current.clear()
+  }, [])
 
   const clearAll = useCallback(() => {
     setNotifications([])
