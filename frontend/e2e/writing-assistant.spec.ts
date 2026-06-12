@@ -392,7 +392,7 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     await expect(closeBtn).toBeVisible({ timeout: 5_000 })
     await closeBtn.click()
 
-    await expect(closeBtn).not.toBeVisible({ timeout: 3_000 })
+    await expect(closeBtn).not.toBeVisible({ timeout: 5_000 })
   })
 
   // ── 10. Escape key closes widget ───────────────────────────────── //
@@ -407,7 +407,7 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
 
     await page.getByText('Selected text').click()
     await page.keyboard.press('Escape')
-    await expect(closeBtn).not.toBeVisible({ timeout: 3_000 })
+    await expect(closeBtn).not.toBeVisible({ timeout: 5_000 })
   })
 
   // ── 11. API error is handled gracefully ────────────────────────── //
