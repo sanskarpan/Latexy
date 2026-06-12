@@ -95,7 +95,7 @@ async def _async_send_job_completion(
             text_body=text,
         )
     except Exception as exc:
-        logger.error(f"EMAIL: completion email failed for user {user_id}: {exc}")
+        logger.error(f"EMAIL: completion email failed for user {user_id}: {exc}", exc_info=True)
     finally:
         await engine.dispose()
 
@@ -198,7 +198,7 @@ async def _async_send_weekly_digest(user_id: str) -> None:
             text_body=text,
         )
     except Exception as exc:
-        logger.error(f"EMAIL: weekly digest failed for user {user_id}: {exc}")
+        logger.error(f"EMAIL: weekly digest failed for user {user_id}: {exc}", exc_info=True)
     finally:
         await engine.dispose()
 
@@ -246,6 +246,6 @@ async def _async_fan_out_weekly_digest() -> None:
         for uid in user_ids:
             send_weekly_digest.apply_async(args=[uid], queue="email", countdown=1)
     except Exception as exc:
-        logger.error(f"EMAIL: fan-out weekly digest failed: {exc}")
+        logger.error(f"EMAIL: fan-out weekly digest failed: {exc}", exc_info=True)
     finally:
         await engine.dispose()
