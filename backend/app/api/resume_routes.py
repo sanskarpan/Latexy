@@ -145,8 +145,8 @@ def _resume_response_from_obj(resume: Any) -> ResumeResponse:
     return ResumeResponse.model_validate(payload)
 
 
+# NOTE: --shell-escape is intentionally excluded — it enables arbitrary code execution
 ALLOWED_LATEXMK_FLAGS = [
-    "--shell-escape",
     "--synctex=1",
     "--file-line-error",
     "--interaction=nonstopmode",
