@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.redis import redis_manager
+from ..core.redis import cache_manager, redis_manager
 from ..database.models import Compilation, DeviceTrial, Optimization, Payment, Subscription, UsageAnalytics, User
 
 logger = logging.getLogger(__name__)
@@ -98,60 +98,74 @@ class AnalyticsService:
     ) -> Dict[str, Any]:
         """Get analytics data for a specific user."""
         try:
+            # PERF-003: cache-aside — return cached result if available
+            cache_key = f"analytics:user:{user_id}:{days}"
+            try:
+                cached = await cache_manager.get(cache_key)
+                if cached is not None:
+                    return cached
+            except Exception:
+                pass  # Redis unavailable — fall through to DB
+
             start_date = datetime.now() - timedelta(days=days)
 
-            # Get user's compilations
-            compilations_query = select(Compilation).where(
+            # PERF-001: SQL aggregations instead of fetching all rows into Python
+            # Compilation counts and timing via a single SQL query
+            comp_agg_query = select(
+                func.count(Compilation.id).label("total"),
+                func.count(Compilation.id).filter(Compilation.status == "completed").label("completed"),
+                func.avg(Compilation.compilation_time).label("avg_time"),
+            ).where(
                 and_(
                     Compilation.user_id == user_id,
-                    Compilation.created_at >= start_date
+                    Compilation.created_at >= start_date,
                 )
             )
-            compilations_result = await db.execute(compilations_query)
-            compilations = compilations_result.scalars().all()
+            comp_agg_row = (await db.execute(comp_agg_query)).one()
+            total_compilations = comp_agg_row.total or 0
+            successful_compilations = comp_agg_row.completed or 0
+            avg_compilation_time = float(comp_agg_row.avg_time or 0)
 
-            # Get user's optimizations
-            optimizations_query = select(Optimization).where(
+            # Optimization count via a single SQL query
+            opt_count_query = select(func.count(Optimization.id)).where(
                 and_(
                     Optimization.user_id == user_id,
-                    Optimization.created_at >= start_date
+                    Optimization.created_at >= start_date,
                 )
             )
-            optimizations_result = await db.execute(optimizations_query)
-            optimizations = optimizations_result.scalars().all()
+            total_optimizations = (await db.execute(opt_count_query)).scalar() or 0
 
-            # Get user's analytics events
-            analytics_query = select(UsageAnalytics).where(
+            # Feature usage: aggregate by action in SQL
+            feature_usage_query = select(
+                UsageAnalytics.action,
+                func.count(UsageAnalytics.id).label("cnt"),
+            ).where(
                 and_(
                     UsageAnalytics.user_id == user_id,
-                    UsageAnalytics.created_at >= start_date
+                    UsageAnalytics.created_at >= start_date,
                 )
-            )
-            analytics_result = await db.execute(analytics_query)
-            analytics_events = analytics_result.scalars().all()
+            ).group_by(UsageAnalytics.action)
+            feature_usage_rows = (await db.execute(feature_usage_query)).all()
+            feature_usage = {row.action: row.cnt for row in feature_usage_rows if row.action}
 
-            # Calculate metrics
-            total_compilations = len(compilations)
-            successful_compilations = len([c for c in compilations if c.status == 'completed'])
-            total_optimizations = len(optimizations)
+            # Daily activity: aggregate by date in SQL using date_trunc
+            daily_agg_query = select(
+                func.date_trunc("day", UsageAnalytics.created_at).label("day"),
+                func.count(UsageAnalytics.id).label("cnt"),
+            ).where(
+                and_(
+                    UsageAnalytics.user_id == user_id,
+                    UsageAnalytics.created_at >= start_date,
+                )
+            ).group_by(func.date_trunc("day", UsageAnalytics.created_at))
+            daily_rows = (await db.execute(daily_agg_query)).all()
+            daily_activity = {
+                row.day.strftime("%Y-%m-%d"): row.cnt
+                for row in daily_rows
+                if row.day is not None
+            }
 
-            # Average compilation time
-            compilation_times = [c.compilation_time for c in compilations if c.compilation_time]
-            avg_compilation_time = sum(compilation_times) / len(compilation_times) if compilation_times else 0
-
-            # Most used features
-            feature_usage = {}
-            for event in analytics_events:
-                action = event.action
-                feature_usage[action] = feature_usage.get(action, 0) + 1
-
-            # Daily activity
-            daily_activity = {}
-            for event in analytics_events:
-                day = event.created_at.strftime("%Y-%m-%d")
-                daily_activity[day] = daily_activity.get(day, 0) + 1
-
-            return {
+            result = {
                 "user_id": str(user_id),
                 "period_days": days,
                 "total_compilations": total_compilations,
@@ -161,8 +175,16 @@ class AnalyticsService:
                 "avg_compilation_time": round(avg_compilation_time, 2),
                 "feature_usage": feature_usage,
                 "daily_activity": daily_activity,
-                "most_active_day": max(daily_activity, key=daily_activity.get) if daily_activity else None
+                "most_active_day": max(daily_activity, key=daily_activity.get) if daily_activity else None,
             }
+
+            # PERF-003: store in cache for 5 minutes
+            try:
+                await cache_manager.set(cache_key, result, ttl=300)
+            except Exception:
+                pass  # Redis unavailable — best effort
+
+            return result
 
         except Exception as e:
             logger.error(f"Error getting user analytics: {e}")
@@ -538,21 +560,27 @@ class AnalyticsService:
     ) -> Dict[str, Any]:
         """Get conversion funnel analytics."""
         try:
+            # PERF-003: cache-aside
+            cache_key = f"analytics:funnel:{days}"
+            try:
+                cached = await cache_manager.get(cache_key)
+                if cached is not None:
+                    return cached
+            except Exception:
+                pass  # Redis unavailable — fall through to DB
+
             start_date = datetime.now() - timedelta(days=days)
 
-            # Landing page visits (from analytics events)
-            events_query = select(UsageAnalytics).where(
+            # PERF-002: replace Python-side JSON filter with SQL JSON path operator
+            # .as_string() generates the ->> operator (text extraction, no JSON quoting)
+            landing_visits_query = select(func.count(UsageAnalytics.id)).where(
                 and_(
-                    UsageAnalytics.action == 'page_view',
-                    UsageAnalytics.created_at >= start_date
+                    UsageAnalytics.action == "page_view",
+                    UsageAnalytics.created_at >= start_date,
+                    UsageAnalytics.event_metadata["page"].as_string() == "landing",
                 )
             )
-            page_view_events = (await db.execute(events_query)).scalars().all()
-            landing_visits = 0
-            for event in page_view_events:
-                metadata = event.event_metadata or {}
-                if isinstance(metadata, dict) and metadata.get("page") == "landing":
-                    landing_visits += 1
+            landing_visits = (await db.execute(landing_visits_query)).scalar() or 0
 
             # Trial starts
             trial_starts_query = select(func.count(DeviceTrial.id)).where(
@@ -584,21 +612,29 @@ class AnalyticsService:
             subscription_conversion = (subscriptions / registrations * 100) if registrations > 0 else 0
             overall_conversion = (subscriptions / landing_visits * 100) if landing_visits > 0 else 0
 
-            return {
+            funnel_result = {
                 "period_days": days,
                 "funnel_steps": {
                     "landing_visits": landing_visits,
                     "trial_starts": trial_starts,
                     "registrations": registrations,
-                    "subscriptions": subscriptions
+                    "subscriptions": subscriptions,
                 },
                 "conversion_rates": {
                     "landing_to_trial": round(trial_conversion, 2),
                     "trial_to_registration": round(registration_conversion, 2),
                     "registration_to_subscription": round(subscription_conversion, 2),
-                    "overall_conversion": round(overall_conversion, 2)
-                }
+                    "overall_conversion": round(overall_conversion, 2),
+                },
             }
+
+            # PERF-003: store in cache for 5 minutes
+            try:
+                await cache_manager.set(cache_key, funnel_result, ttl=300)
+            except Exception:
+                pass  # Redis unavailable — best effort
+
+            return funnel_result
 
         except Exception as e:
             logger.error(f"Error getting conversion funnel: {e}")
