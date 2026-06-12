@@ -2,6 +2,7 @@
 Application configuration settings.
 """
 
+import logging
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import Any, Dict, List
 from cryptography.fernet import Fernet
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_config_logger = logging.getLogger(__name__)
 
 # Resolve paths relative to this file so they work regardless of CWD
 _backend_dir = Path(__file__).parent.parent.parent   # backend/
@@ -100,8 +103,8 @@ class Settings(BaseSettings):
 
     # MinIO / S3 Configuration
     MINIO_ENDPOINT: str = Field(default="http://localhost:9000", description="MinIO S3 endpoint URL")
-    MINIO_ACCESS_KEY: str = Field(default="minioadmin", description="MinIO access key")
-    MINIO_SECRET_KEY: str = Field(default="minioadmin_secret", description="MinIO secret key")
+    MINIO_ACCESS_KEY: str = Field(default="", description="MinIO access key")
+    MINIO_SECRET_KEY: str = Field(default="", description="MinIO secret key")
     MINIO_BUCKET: str = Field(default="latexy", description="MinIO bucket name")
 
     # File Management
@@ -478,6 +481,28 @@ class Settings(BaseSettings):
                 "Partial Razorpay configuration detected. Set RAZORPAY_KEY_ID, "
                 "RAZORPAY_KEY_SECRET, and RAZORPAY_WEBHOOK_SECRET together, or "
                 "set BILLING_MODE=disabled."
+            )
+
+        # CONFIG-001: Warn when MinIO credentials are still at insecure default values
+        # in a production-like environment.
+        _MINIO_DEFAULT_KEYS = {"minioadmin", "minioadmin_secret", ""}
+        if self.is_production_like() and (
+            self.MINIO_ACCESS_KEY in _MINIO_DEFAULT_KEYS
+            or self.MINIO_SECRET_KEY in _MINIO_DEFAULT_KEYS
+        ):
+            _config_logger.warning(
+                "MINIO credentials are using default values — this is a security risk in production"
+            )
+
+        # OBS-004: Warn when REDIS_URL is empty or pointing at localhost in production.
+        _REDIS_LOCALHOST_PREFIXES = ("redis://localhost", "redis://127.0.0.1")
+        if self.is_production_like() and (
+            not self.REDIS_URL
+            or self.REDIS_URL.startswith(_REDIS_LOCALHOST_PREFIXES)
+        ):
+            _config_logger.warning(
+                "REDIS_URL is %s — using a localhost Redis in production is likely misconfigured",
+                repr(self.REDIS_URL) if self.REDIS_URL else "empty",
             )
 
 
