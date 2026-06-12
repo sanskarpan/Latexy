@@ -112,7 +112,7 @@ async function mockWebSocketTimeout(
   let seq = 0
   const base = () => ({ event_id: `evt-${++seq}`, job_id: jobId, timestamp: Date.now() / 1000, sequence: seq })
 
-  await page.routeWebSocket('**/ws/jobs', (ws) => {
+  await page.routeWebSocket('**/ws/jobs**', (ws) => {
     ws.onMessage((data) => {
       try {
         const msg = JSON.parse(data as string)
@@ -167,7 +167,7 @@ async function mockWebSocketSuccess(
   let seq = 0
   const base = () => ({ event_id: `evt-${++seq}`, job_id: jobId, timestamp: Date.now() / 1000, sequence: seq })
 
-  await page.routeWebSocket('**/ws/jobs', (ws) => {
+  await page.routeWebSocket('**/ws/jobs**', (ws) => {
     ws.onMessage((data) => {
       try {
         const msg = JSON.parse(data as string)
@@ -222,7 +222,7 @@ async function mockWebSocketLatexError(
   let seq = 0
   const base = () => ({ event_id: `evt-${++seq}`, job_id: jobId, timestamp: Date.now() / 1000, sequence: seq })
 
-  await page.routeWebSocket('**/ws/jobs', (ws) => {
+  await page.routeWebSocket('**/ws/jobs**', (ws) => {
     ws.onMessage((data) => {
       try {
         const msg = JSON.parse(data as string)
@@ -493,7 +493,7 @@ test.describe('/workspace/edit — AI stream (optimize+compile) timeout banner',
     let seq = 0
     const base = (jid: string) => ({ event_id: `evt-${++seq}`, job_id: jid, timestamp: Date.now() / 1000, sequence: seq })
 
-    await page.routeWebSocket('**/ws/jobs', (ws) => {
+    await page.routeWebSocket('**/ws/jobs**', (ws) => {
       ws.onMessage((data) => {
         try {
           const msg = JSON.parse(data as string)
@@ -550,15 +550,12 @@ test.describe('/workspace/edit — AI stream (optimize+compile) timeout banner',
   }
 
   test('AI stream timeout shows plan limit reached banner (free plan)', async ({ page }) => {
-    // First job is compile (auto-compile on load), second is AI
-    let submitCount = 0
+    // Route any submit straight to JOB_ID_AI so the WS mock sends the timeout failure
     await page.route((url) => url.pathname === '/jobs/submit', (route) => {
-      submitCount++
-      const jobId = submitCount === 1 ? JOB_ID_COMPILE : JOB_ID_AI
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, job_id: jobId, message: 'Started' }),
+        body: JSON.stringify({ success: true, job_id: JOB_ID_AI, message: 'Started' }),
       })
     })
     await mockWebSocketAITimeout(page, 'free')
@@ -566,13 +563,10 @@ test.describe('/workspace/edit — AI stream (optimize+compile) timeout banner',
     await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: 'domcontentloaded' })
     await page.waitForSelector('.monaco-editor', { timeout: 15_000 })
 
-    // Wait for auto-compile to settle (WS mock sends success events for JOB_ID_COMPILE)
-    await page.waitForTimeout(1_500)
-
-    // Step 1: Click "AI Optimize" header button to open the AI panel
+    // Open the AI panel
     await page.getByRole('button', { name: 'AI Optimize' }).click()
 
-    // Step 2: Wait for AI panel's "Optimize Resume" button, then click it
+    // Wait for AI panel's "Optimize Resume" button, then click it
     await page.waitForSelector('button:has-text("Optimize Resume")', { timeout: 8_000 })
     await page.getByRole('button', { name: /Optimize Resume/i }).click()
 
@@ -595,7 +589,7 @@ test.describe('WebSocket event schema — compile_timeout fields', () => {
 
     const receivedEvents: Record<string, unknown>[] = []
 
-    await page.routeWebSocket('**/ws/jobs', (ws) => {
+    await page.routeWebSocket('**/ws/jobs**', (ws) => {
       ws.onMessage((data) => {
         try {
           const msg = JSON.parse(data as string)
