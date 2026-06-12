@@ -114,10 +114,17 @@ def optimize_and_compile_task(
         })
         return {"success": False, "job_id": job_id, "error": "No OpenAI API key"}
 
-    publish_event(job_id, "job.started", {
-        "worker_id": worker_id,
-        "stage": "llm_optimization",
-    })
+    if self.request.retries == 0:
+        publish_event(job_id, "job.started", {
+            "worker_id": worker_id,
+            "stage": "llm_optimization",
+        })
+    else:
+        publish_event(job_id, "job.retrying", {
+            "worker_id": worker_id,
+            "stage": "llm_optimization",
+            "attempt": self.request.retries + 1,
+        })
 
     current_stage = "llm_optimization"
     try:
@@ -266,7 +273,7 @@ def optimize_and_compile_task(
         return result
 
     except SoftTimeLimitExceeded:
-        logger.error(f"Orchestrator task {task_id} exceeded soft time limit for job {job_id}")
+        logger.error(f"Orchestrator task {task_id} exceeded soft time limit for job {job_id}", exc_info=True)
         upgrade_msg = (
             "Upgrade to Pro for a 4-minute compile timeout"
             if resolve_plan_family(user_plan) in {"free", "basic"} else None
@@ -282,15 +289,15 @@ def optimize_and_compile_task(
         return {"success": False, "job_id": job_id, "error": "compile_timeout"}
 
     except Exception as exc:
-        logger.error(f"Orchestrator task {task_id} raised: {exc}")
+        logger.error(f"Orchestrator task {task_id} raised: {exc}", exc_info=True)
         publish_event(job_id, "job.failed", {
-            "stage": "llm_optimization",
+            "stage": current_stage,
             "error_code": "internal",
             "error_message": str(exc),
             "retryable": self.request.retries < self.max_retries,
         })
         if self.request.retries < self.max_retries:
-            raise self.retry(countdown=60, exc=exc)
+            raise self.retry(countdown=min(60 * (2 ** self.request.retries), 600), exc=exc)
         return {"success": False, "job_id": job_id, "error": str(exc)}
 
 
@@ -520,77 +527,89 @@ def _run_latex_stage(
 
     job_dir = Path(settings.TEMP_DIR) / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
-    tex_file = job_dir / "resume.tex"
-    tex_file.write_text(latex_content, encoding="utf-8")
+    try:
+        tex_file = job_dir / "resume.tex"
+        tex_file.write_text(latex_content, encoding="utf-8")
 
-    if shutil.which("docker"):
-        cmd = [
-            "docker", "run", "--rm",
-            "-v", f"{job_dir}:/workdir",
-            "-w", "/workdir",
-            settings.LATEX_DOCKER_IMAGE,
-            compiler,
-            "-interaction=nonstopmode",
-            "-halt-on-error",
-            "-synctex=1",
-            "resume.tex",
-        ]
-        cwd = None
-    else:
-        cmd = [
-            compiler,
-            "-interaction=nonstopmode",
-            "-halt-on-error",
-            "-synctex=1",
-            "-output-directory", str(job_dir),
-            str(tex_file),
-        ]
-        cwd = str(job_dir)
+        if shutil.which("docker"):
+            cmd = [
+                "docker", "run", "--rm",
+                "-v", f"{job_dir}:/workdir",
+                "-w", "/workdir",
+                settings.LATEX_DOCKER_IMAGE,
+                compiler,
+                "-interaction=nonstopmode",
+                "-halt-on-error",
+                "-synctex=1",
+                "resume.tex",
+            ]
+            cwd = None
+        else:
+            cmd = [
+                compiler,
+                "-interaction=nonstopmode",
+                "-halt-on-error",
+                "-synctex=1",
+                "-output-directory", str(job_dir),
+                str(tex_file),
+            ]
+            cwd = str(job_dir)
 
-    timeout = float(timeout_seconds) if timeout_seconds else float(settings.COMPILE_TIMEOUT)
-    start_time = time.time()
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        cwd=cwd,
-    )
+        timeout = float(timeout_seconds) if timeout_seconds else float(settings.COMPILE_TIMEOUT)
+        start_time = time.time()
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=cwd,
+        )
 
-    page_count: Optional[int] = None
-    for line in proc.stdout:
-        stripped = line.rstrip()
-        if stripped:
-            # Extract page count from pdflatex summary line
-            m = _PAGE_COUNT_RE.search(stripped)
-            if m:
-                page_count = int(m.group(1))
+        page_count: Optional[int] = None
+        try:
+            for line in proc.stdout:
+                stripped = line.rstrip()
+                if stripped:
+                    # Extract page count from pdflatex summary line
+                    m = _PAGE_COUNT_RE.search(stripped)
+                    if m:
+                        page_count = int(m.group(1))
 
-            is_error = "error" in stripped.lower() or stripped.startswith("!")
-            if "fatal" in stripped.lower():
-                is_error = True
-            publish_event(job_id, "log.line", {
-                "line": stripped,
-                "source": compiler,
-                "is_error": is_error,
-            })
+                    is_error = "error" in stripped.lower() or stripped.startswith("!")
+                    if "fatal" in stripped.lower():
+                        is_error = True
+                    publish_event(job_id, "log.line", {
+                        "line": stripped,
+                        "source": compiler,
+                        "is_error": is_error,
+                    })
 
-        if is_cancelled(job_id):
-            proc.kill()
-            return False, time.time() - start_time, "cancelled", None
+                if is_cancelled(job_id):
+                    proc.kill()
+                    return False, time.time() - start_time, "cancelled", None
 
-        if time.time() - start_time > timeout:
-            proc.kill()
-            return False, time.time() - start_time, f"Compilation timed out after {int(timeout)}s", None
+                if time.time() - start_time > timeout:
+                    proc.kill()
+                    return False, time.time() - start_time, f"Compilation timed out after {int(timeout)}s", None
+        except SoftTimeLimitExceeded:
+            # Kill the subprocess before the exception propagates to the task handler
+            try:
+                proc.kill()
+                proc.wait()
+            except Exception:
+                pass
+            raise
 
-    proc.wait()
-    compilation_time = time.time() - start_time
+        proc.wait()
+        compilation_time = time.time() - start_time
 
-    pdf_file = job_dir / "resume.pdf"
-    if proc.returncode == 0 and pdf_file.exists():
-        return True, compilation_time, "", page_count
+        pdf_file = job_dir / "resume.pdf"
+        if proc.returncode == 0 and pdf_file.exists():
+            return True, compilation_time, "", page_count
 
-    return False, compilation_time, f"{compiler} exited with code {proc.returncode}", None
+        return False, compilation_time, f"{compiler} exited with code {proc.returncode}", None
+    finally:
+        shutil.rmtree(job_dir, ignore_errors=True)
 
 
 def _run_ats_stage(
