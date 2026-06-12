@@ -3,6 +3,7 @@ API routes for the application.
 """
 
 import asyncio
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -13,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.observability import metrics_content_type, metrics_payload
-from ..database.connection import get_db
+from ..core.redis import redis_manager as _redis_manager
+from ..database.connection import get_async_db_session, get_db
 from ..database.models import Compilation, Resume
 from ..middleware.auth_middleware import get_current_user_optional
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
@@ -197,19 +199,59 @@ router.include_router(application_router)
 router.include_router(telemetry_router)
 
 
+def _check_cors_origins_on_startup() -> None:
+    """CONFIG-002: Warn if CORS origins include localhost in a production-like environment."""
+    if settings.is_production_like():
+        localhost_origins = [o for o in (settings.CORS_ORIGINS or []) if "localhost" in o]
+        if localhost_origins:
+            logger.warning(
+                "CORS_ORIGINS contains localhost entries — ensure this is intentional for production"
+                " (entries: %s)",
+                localhost_origins,
+            )
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint."""
     latex_available = latex_compiler.is_available()
     llm_service.is_available()
 
-    # Consider service healthy if LaTeX is available (LLM is optional)
-    status = "healthy" if latex_available else "degraded"
+    # OBS-001: probe DB and Redis connectivity
+    db_status = "ok"
+    redis_status = "ok"
+
+    try:
+        from sqlalchemy import text
+        async with get_async_db_session() as session:
+            await session.execute(text("SELECT 1"))
+    except Exception as exc:
+        logger.warning("Health check: database unavailable: %s", exc)
+        db_status = "unavailable"
+
+    try:
+        rc = _redis_manager.redis_client
+        if rc is not None:
+            await rc.ping()
+        else:
+            redis_status = "unavailable"
+    except Exception as exc:
+        logger.warning("Health check: redis unavailable: %s", exc)
+        redis_status = "unavailable"
+
+    # Consider service healthy if LaTeX is available AND both backing services are up.
+    # DB/Redis unavailability degrades status but does not change HTTP status code.
+    if not latex_available or db_status != "ok" or redis_status != "ok":
+        status = "degraded"
+    else:
+        status = "healthy"
 
     return HealthResponse(
         status=status,
         version=settings.APP_VERSION,
-        latex_available=latex_available
+        latex_available=latex_available,
+        database=db_status,
+        redis=redis_status,
     )
 
 
@@ -521,18 +563,27 @@ async def compile_latex_anonymous(
     try:
         ip_address = request.client.host if request.client else None
 
-        # Check trial limits first
-        rate_check = await trial_service.check_rate_limits(db, device_fingerprint, ip_address)
-        if not rate_check["allowed"]:
+        # Atomically check trial limit and increment usage (SELECT FOR UPDATE).
+        # Mirrors /public/track-usage — prevents TOCTOU race where concurrent
+        # requests both pass the limit check before either increments the counter.
+        usage_result = await trial_service.check_and_track_usage(
+            db=db,
+            device_fingerprint=device_fingerprint,
+            action="compile",
+            ip_address=ip_address,
+            user_agent=request.headers.get("user-agent") if request else None,
+            resource_type="resume",
+        )
+        if not usage_result["success"]:
             error_messages = {
                 "trial_limit_exceeded": "Free trial limit exceeded. Please sign up to continue.",
-                "cooldown": f"Please wait {int(rate_check.get('waitTime', 0))} seconds before trying again.",
+                "cooldown": f"Please wait {int(usage_result.get('waitTime') or 0)} seconds before trying again.",
                 "blocked": "Device blocked due to abuse. Please contact support.",
-                "daily_limit_exceeded": "Daily request limit exceeded. Please try again tomorrow."
+                "daily_limit_exceeded": "Daily request limit exceeded. Please try again tomorrow.",
             }
             raise HTTPException(
                 status_code=429,
-                detail=error_messages.get(rate_check["reason"], "Rate limit exceeded")
+                detail=error_messages.get(usage_result.get("error", ""), "Rate limit exceeded"),
             )
 
         # Get LaTeX content from either form data or file upload
@@ -555,16 +606,6 @@ async def compile_latex_anonymous(
                 status_code=400,
                 detail="Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}"
             )
-
-        # Track usage
-        await trial_service.track_usage(
-            db=db,
-            device_fingerprint=device_fingerprint,
-            action="compile",
-            ip_address=ip_address,
-            user_agent=request.headers.get("user-agent") if request else None,
-            resource_type="resume"
-        )
 
         # Compile LaTeX
         result = await latex_service.compile_latex(latex_content)

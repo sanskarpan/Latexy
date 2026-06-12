@@ -155,13 +155,14 @@ async def analyze_career_path(
         logger.error(f"Career analysis failed: {exc}")
         raise HTTPException(status_code=500, detail=f"Analysis failed: {exc}")
 
-    # Resolve path roles for response
+    # Resolve path roles for response — single bulk query instead of N+1
     path_roles: list[CareerRole] = []
     if analysis.path_role_ids:
-        for rid in analysis.path_role_ids:
-            role = await db.get(CareerRole, rid)
-            if role:
-                path_roles.append(role)
+        roles_result = await db.execute(
+            select(CareerRole).where(CareerRole.id.in_(analysis.path_role_ids))
+        )
+        role_map = {r.id: r for r in roles_result.scalars().all()}
+        path_roles = [role_map[rid] for rid in analysis.path_role_ids if rid in role_map]
 
     target_role = (
         await db.get(CareerRole, analysis.target_role_id)
@@ -206,12 +207,14 @@ async def get_career_analysis(
     if not analysis or analysis.user_id != user_id:
         raise HTTPException(status_code=404, detail="Analysis not found")
 
+    # Bulk fetch — avoids N+1 (one SELECT per role ID)
     path_roles: list[CareerRole] = []
     if analysis.path_role_ids:
-        for rid in analysis.path_role_ids:
-            role = await db.get(CareerRole, rid)
-            if role:
-                path_roles.append(role)
+        roles_result = await db.execute(
+            select(CareerRole).where(CareerRole.id.in_(analysis.path_role_ids))
+        )
+        role_map = {r.id: r for r in roles_result.scalars().all()}
+        path_roles = [role_map[rid] for rid in analysis.path_role_ids if rid in role_map]
 
     target_role = (
         await db.get(CareerRole, analysis.target_role_id)

@@ -629,10 +629,23 @@ async def get_batch_status(
 # ------------------------------------------------------------------ #
 
 @router.get("/{job_id}/state", response_model=JobStateResponse)
-async def get_job_state(job_id: str):
+async def get_job_state(
+    job_id: str,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
     """Get current job state snapshot (for REST polling fallback)."""
     try:
         r = await get_redis_client()
+
+        # Ownership check — fetch meta first
+        meta_raw = await r.get(f"latexy:job:{job_id}:meta")
+        if not meta_raw:
+            raise HTTPException(status_code=404, detail="Job not found")
+        meta = json.loads(meta_raw)
+        job_owner = meta.get("user_id")
+        if user_id is not None and job_owner is not None and job_owner != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
         raw = await r.get(f"latexy:job:{job_id}:state")
         if not raw:
             raise HTTPException(status_code=404, detail="Job not found")
@@ -648,10 +661,20 @@ async def get_job_state(job_id: str):
 async def get_job_result(
     job_id: str,
     db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Fetch the final job result (available after job.completed event)."""
     try:
         r = await get_redis_client()
+
+        # Ownership check via meta (meta may have expired before result TTL)
+        meta_raw = await r.get(f"latexy:job:{job_id}:meta")
+        if meta_raw:
+            meta = json.loads(meta_raw)
+            job_owner = meta.get("user_id")
+            if user_id is not None and job_owner is not None and job_owner != user_id:
+                raise HTTPException(status_code=403, detail="Access denied")
+
         raw = await r.get(f"latexy:job:{job_id}:result")
         if not raw:
             raise HTTPException(
@@ -704,7 +727,10 @@ async def get_job_result(
 # ------------------------------------------------------------------ #
 
 @router.delete("/{job_id}")
-async def cancel_job(job_id: str):
+async def cancel_job(
+    job_id: str,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
     """
     Request cancellation of a running job.
 
@@ -713,24 +739,56 @@ async def cancel_job(job_id: str):
     """
     try:
         r = await get_redis_client()
+
+        # Ownership check via meta; if meta is absent the job has already
+        # completed/expired — setting the cancel flag is a safe no-op.
+        meta_raw = await r.get(f"latexy:job:{job_id}:meta")
+        if meta_raw:
+            meta = json.loads(meta_raw)
+            job_owner = meta.get("user_id")
+            if user_id is not None and job_owner is not None and job_owner != user_id:
+                raise HTTPException(status_code=403, detail="Access denied")
+
         await r.setex(f"latexy:job:{job_id}:cancel", 3600, "1")
 
         # Publish provisional cancellation event so WebSocket clients
         # get immediate feedback before the worker processes it.
+        # Write to the Redis Stream (for replay) AND publish to Pub/Sub (for live delivery).
+        event_id = str(uuid.uuid4())
+        seq_key = f"latexy:job:{job_id}:seq"
+        seq = await r.incr(seq_key)
+        await r.expire(seq_key, _JOB_TTL)
+
         cancel_event = {
-            "event_id": str(uuid.uuid4()),
+            "event_id": event_id,
             "job_id": job_id,
             "timestamp": time.time(),
-            "sequence": 0,
+            "sequence": seq,
             "type": "job.cancelled",
         }
-        await r.publish(
-            f"latexy:events:{job_id}",
-            json.dumps({"type": "event", "event": cancel_event}),
+        payload_json = json.dumps(cancel_event)
+
+        stream_key = f"latexy:stream:{job_id}"
+        entry_id = await r.xadd(
+            stream_key,
+            {
+                "payload": payload_json,
+                "type": "job.cancelled",
+                "sequence": str(seq),
+                "event_id": event_id,
+            },
+            maxlen=10000,
+            approximate=True,
         )
+        await r.expire(stream_key, _JOB_TTL)
+
+        ws_message = json.dumps({"type": "event", "event": cancel_event, "stream_id": entry_id})
+        await r.publish(f"latexy:events:{job_id}", ws_message)
 
         return {"success": True, "message": "Cancellation requested"}
 
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error(f"Error cancelling job {job_id}: {exc}")
         raise HTTPException(status_code=500, detail="Internal server error")
