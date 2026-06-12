@@ -61,7 +61,7 @@ export function useJobStatus(
   useEffect(() => { onCompleteRef.current = onComplete }, [onComplete])
   useEffect(() => { onErrorRef.current = onError }, [onError])
 
-  const { state, cancel: streamCancel } = useJobStream(jobId)
+  const { state, cancel: streamCancel, reset } = useJobStream(jobId)
 
   // ── Fire callbacks on state transitions ─────────────────────────
   useEffect(() => {
@@ -109,11 +109,33 @@ export function useJobStatus(
   const refresh = useCallback(async () => {
     if (!jobId) return
     try {
-      await apiClient.getJobState(jobId)
+      const snapshot = await apiClient.getJobState(jobId)
+      // Only apply when the stream is still in an active state so we don't
+      // overwrite a terminal result that arrived via WebSocket.
+      if (state.status !== 'queued' && state.status !== 'processing') return
+
+      // If the REST snapshot shows a terminal status that the WS hasn't
+      // delivered yet, fire the appropriate callback.
+      if (snapshot.status === 'completed' && onCompleteRef.current) {
+        onCompleteRef.current({
+          job_id: jobId,
+          success: true,
+          result: snapshot as unknown as Record<string, unknown>,
+        })
+      } else if (snapshot.status === 'failed' && onErrorRef.current) {
+        onErrorRef.current('Job failed')
+      } else if (onStatusChangeRef.current) {
+        // Propagate progress update from REST snapshot
+        onStatusChangeRef.current({
+          status: snapshot.status,
+          percent: snapshot.percent ?? 0,
+          stage: snapshot.stage ?? '',
+        })
+      }
     } catch {
       // Ignore — WebSocket is the primary update mechanism
     }
-  }, [jobId])
+  }, [jobId, state.status])
 
   // Poll every 5s when job is active (fallback when WS has not connected yet)
   useEffect(() => {
@@ -135,8 +157,9 @@ export function useJobStatus(
   }, [jobId, streamCancel])
 
   const clearError = useCallback(() => {
-    // No local error state to clear — error comes from stream reducer
-  }, [])
+    // Dispatch __reset__ through useJobStream to clear error state in the reducer
+    reset()
+  }, [reset])
 
   // ── Map stream state to legacy shape ────────────────────────────
   const status =
