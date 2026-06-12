@@ -3,6 +3,7 @@ BYOK (Bring Your Own Key) API routes for Phase 10
 Handles user API key management and multi-provider configuration
 """
 
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -343,7 +344,7 @@ async def get_system_health():
             "default_provider": multi_provider_service.default_provider,
             "total_requests": sum(stats.get("requests", 0) for stats in usage_stats.values()),
             "total_cost": sum(stats.get("cost", 0.0) for stats in usage_stats.values()),
-            "timestamp": "2024-01-01T00:00:00Z"  # TODO: Use actual timestamp
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     except Exception as e:
