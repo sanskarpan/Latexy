@@ -204,11 +204,14 @@ async def auth_client(app_with_settings_routes) -> AsyncGenerator[AsyncClient, N
 
     app_with_settings_routes.dependency_overrides[get_current_user_required] = _override_auth
     app_with_settings_routes.dependency_overrides[get_db] = _override_db
-
-    async with AsyncClient(
-        transport=ASGITransport(app=app_with_settings_routes), base_url="http://test"
-    ) as client:
-        yield client
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app_with_settings_routes), base_url="http://test"
+        ) as client:
+            yield client
+    finally:
+        app_with_settings_routes.dependency_overrides.pop(get_current_user_required, None)
+        app_with_settings_routes.dependency_overrides.pop(get_db, None)
 
 
 class TestNotificationPrefsEndpoints:
@@ -242,16 +245,19 @@ class TestNotificationPrefsEndpoints:
 
         app_with_settings_routes.dependency_overrides[get_current_user_required] = _override_auth
         app_with_settings_routes.dependency_overrides[get_db] = _override_db
+        try:
+            async with AsyncClient(
+                transport=ASGITransport(app=app_with_settings_routes), base_url="http://test"
+            ) as client:
+                resp = await client.get("/settings/notifications")
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app_with_settings_routes), base_url="http://test"
-        ) as client:
-            resp = await client.get("/settings/notifications")
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["job_completed"] is True
-        assert data["weekly_digest"] is False
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["job_completed"] is True
+            assert data["weekly_digest"] is False
+        finally:
+            app_with_settings_routes.dependency_overrides.pop(get_current_user_required, None)
+            app_with_settings_routes.dependency_overrides.pop(get_db, None)
 
     @pytest.mark.asyncio
     async def test_put_persists_changes(self, app_with_settings_routes):
@@ -281,20 +287,23 @@ class TestNotificationPrefsEndpoints:
 
         app_with_settings_routes.dependency_overrides[get_current_user_required] = _override_auth
         app_with_settings_routes.dependency_overrides[get_db] = _override_db
+        try:
+            async with AsyncClient(
+                transport=ASGITransport(app=app_with_settings_routes), base_url="http://test"
+            ) as client:
+                resp = await client.put(
+                    "/settings/notifications",
+                    json={"job_completed": False, "weekly_digest": True},
+                )
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app_with_settings_routes), base_url="http://test"
-        ) as client:
-            resp = await client.put(
-                "/settings/notifications",
-                json={"job_completed": False, "weekly_digest": True},
-            )
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["job_completed"] is False
-        assert data["weekly_digest"] is True
-        mock_session.commit.assert_awaited_once()
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["job_completed"] is False
+            assert data["weekly_digest"] is True
+            mock_session.commit.assert_awaited_once()
+        finally:
+            app_with_settings_routes.dependency_overrides.pop(get_current_user_required, None)
+            app_with_settings_routes.dependency_overrides.pop(get_db, None)
 
     @pytest.mark.asyncio
     async def test_put_missing_field_rejected(self, app_with_settings_routes):
@@ -324,20 +333,23 @@ class TestNotificationPrefsEndpoints:
 
         app_with_settings_routes.dependency_overrides[get_current_user_required] = _override_auth
         app_with_settings_routes.dependency_overrides[get_db] = _override_db
+        try:
+            async with AsyncClient(
+                transport=ASGITransport(app=app_with_settings_routes), base_url="http://test"
+            ) as client:
+                resp = await client.put(
+                    "/settings/notifications",
+                    json={"not_a_field": True},
+                )
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app_with_settings_routes), base_url="http://test"
-        ) as client:
-            resp = await client.put(
-                "/settings/notifications",
-                json={"not_a_field": True},
-            )
-
-        # Pydantic ignores extra fields; both prefs have defaults → 200 with defaults
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "job_completed" in data
-        assert "weekly_digest" in data
+            # Pydantic ignores extra fields; both prefs have defaults → 200 with defaults
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "job_completed" in data
+            assert "weekly_digest" in data
+        finally:
+            app_with_settings_routes.dependency_overrides.pop(get_current_user_required, None)
+            app_with_settings_routes.dependency_overrides.pop(get_db, None)
 
     @pytest.mark.asyncio
     async def test_get_requires_auth(self, app_with_settings_routes):
@@ -349,13 +361,15 @@ class TestNotificationPrefsEndpoints:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
         app_with_settings_routes.dependency_overrides[get_current_user_required] = _override_unauthed
+        try:
+            async with AsyncClient(
+                transport=ASGITransport(app=app_with_settings_routes), base_url="http://test"
+            ) as client:
+                resp = await client.get("/settings/notifications")
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app_with_settings_routes), base_url="http://test"
-        ) as client:
-            resp = await client.get("/settings/notifications")
-
-        assert resp.status_code == 401
+            assert resp.status_code == 401
+        finally:
+            app_with_settings_routes.dependency_overrides.pop(get_current_user_required, None)
 
 
 # ── Celery task tests ─────────────────────────────────────────────────────────
