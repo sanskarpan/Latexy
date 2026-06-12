@@ -72,18 +72,25 @@ class EventBusManager:
         already running for this job.
 
         Returns the number of replayed events.
+
+        EVENT-01 fix: pubsub.subscribe() is called BEFORE _replay_events so
+        that any event published between the end of replay and the first
+        listen() iteration is not lost.
         """
         if job_id not in self._connections:
             self._connections[job_id] = set()
         self._connections[job_id].add(websocket)
 
-        # Start listener BEFORE replay to avoid a race where two concurrent
-        # subscribe() calls both see no listener and both create tasks.
-        # Replay events arrive via send_text() directly and do not need the
-        # Pub/Sub task; the task only handles live events after replay.
         if job_id not in self._listeners or self._listeners[job_id].done():
+            # EVENT-01: subscribe to the Pub/Sub channel NOW, before replay,
+            # so we do not miss events published during the replay window.
+            channel = f"{_PUBSUB_PREFIX}{job_id}"
+            pubsub = self._redis.pubsub()
+            await pubsub.subscribe(channel)
+            logger.debug(f"[EventBus] subscribed to {channel} (pre-replay)")
+
             task = asyncio.create_task(
-                self._pubsub_listener(job_id),
+                self._pubsub_listener(job_id, pubsub),
                 name=f"pubsub:{job_id}",
             )
             self._listeners[job_id] = task
@@ -115,18 +122,15 @@ class EventBusManager:
     #  Internal: Pub/Sub listener task                                  #
     # ---------------------------------------------------------------- #
 
-    async def _pubsub_listener(self, job_id: str) -> None:
+    async def _pubsub_listener(self, job_id: str, pubsub: Any) -> None:
         """
-        Subscribe to latexy:events:{job_id} and fan out each message to
-        all registered WebSocket clients.  Auto-exits when no clients
-        remain or on error.
+        Fan out Pub/Sub messages for job_id to all registered WebSocket
+        clients.  Accepts a pre-subscribed pubsub object so that the
+        subscription is active before replay begins (EVENT-01).
+        Auto-exits when no clients remain or on error.
         """
         channel = f"{_PUBSUB_PREFIX}{job_id}"
-        pubsub = self._redis.pubsub()
         try:
-            await pubsub.subscribe(channel)
-            logger.debug(f"[EventBus] subscribed to {channel}")
-
             async for message in pubsub.listen():
                 if message["type"] != "message":
                     continue
@@ -154,6 +158,9 @@ class EventBusManager:
         except Exception as exc:
             logger.error(f"[EventBus] listener error for {job_id}: {exc}")
         finally:
+            # PUBSUB-01: remove stale listener reference FIRST so that a
+            # concurrent subscribe() call does not race against a half-dead task.
+            self._listeners.pop(job_id, None)
             try:
                 await pubsub.unsubscribe(channel)
                 await pubsub.aclose()
@@ -174,37 +181,47 @@ class EventBusManager:
         """
         XREAD from latexy:stream:{job_id} starting after last_event_id.
         Sends each replayed event to the WebSocket.  Returns count.
+
+        EVENT-02 fix: reads in pages of 100 entries until no more remain,
+        ensuring all events are replayed regardless of stream length.
         """
         stream_key = f"{_STREAM_PREFIX}{job_id}"
-        try:
-            entries = await self._redis.xread(
-                {stream_key: last_event_id},
-                count=500,
-            )
-        except Exception as exc:
-            logger.warning(f"[EventBus] replay XREAD failed for {job_id}: {exc}")
-            return 0
-
-        if not entries:
-            return 0
-
+        cursor = last_event_id
         count = 0
-        for _stream, messages in entries:
-            for msg_id, fields in messages:
-                payload = fields.get("payload")
-                if not payload:
-                    continue
-                try:
-                    # Wrap in the same envelope the live listener sends.
-                    # Include stream_id (Redis Stream entry ID, format ms-seq)
-                    # so the frontend can update its last_event_id for the next reconnect.
-                    event = json.loads(payload)
-                    envelope = json.dumps({"type": "event", "event": event, "stream_id": msg_id})
-                    await websocket.send_text(envelope)
-                    count += 1
-                except Exception as exc:
-                    logger.warning(f"[EventBus] replay send failed: {exc}")
-                    break
+
+        while True:
+            try:
+                entries = await self._redis.xread(
+                    {stream_key: cursor},
+                    count=100,
+                )
+            except Exception as exc:
+                logger.warning(f"[EventBus] replay XREAD failed for {job_id}: {exc}")
+                break
+
+            if not entries:
+                break
+
+            for _stream, messages in entries:
+                for msg_id, fields in messages:
+                    payload = fields.get("payload")
+                    if not payload:
+                        cursor = msg_id
+                        continue
+                    try:
+                        # Wrap in the same envelope the live listener sends.
+                        # Include stream_id (Redis Stream entry ID, format ms-seq)
+                        # so the frontend can update its last_event_id for the next reconnect.
+                        event = json.loads(payload)
+                        envelope = json.dumps(
+                            {"type": "event", "event": event, "stream_id": msg_id}
+                        )
+                        await websocket.send_text(envelope)
+                        count += 1
+                    except Exception as exc:
+                        logger.warning(f"[EventBus] replay send failed: {exc}")
+                        return count
+                    cursor = msg_id
 
         return count
 

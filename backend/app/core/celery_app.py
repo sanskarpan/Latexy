@@ -263,8 +263,13 @@ def on_task_prerun(task_id=None, task=None, args=None, kwargs=None, **_unused):
 
 
 @task_postrun.connect
-def on_task_postrun(task_id=None, task=None, state=None, **_unused):
-    """Record task completion metrics and clear context."""
+def on_task_postrun(task_id=None, task=None, args=None, kwargs=None, state=None, **_unused):
+    """Record task completion metrics and clear context.
+
+    JOB-01: When a task ends in FAILURE or REVOKED we write a terminal
+    "failed" state snapshot to Redis so the job never stays stuck in
+    "processing" state (e.g. after a worker OOM-kill or SIGKILL).
+    """
     if task is None or task_id is None:
         return
 
@@ -284,24 +289,172 @@ def on_task_postrun(task_id=None, task=None, state=None, **_unused):
     if context_tokens:
         reset_context(context_tokens)
 
+    # JOB-01: Ensure abnormally terminated jobs are marked failed in Redis
+    # so consumers never see a perpetual "processing" state.
+    if state in ("FAILURE", "REVOKED"):
+        job_id = _extract_job_id(args or (), kwargs or {})
+        if job_id:
+            try:
+                from ..workers.event_publisher import get_worker_redis, publish_event
+
+                r = get_worker_redis()
+                # Only write the failed state if the result key is absent —
+                # a properly handled task will have already published its own
+                # terminal event, so we must not overwrite it.
+                result_key = f"latexy:job:{job_id}:result"
+                if not r.exists(result_key):
+                    reason = "Task was revoked" if state == "REVOKED" else "Task ended abnormally"
+                    publish_event(
+                        job_id=job_id,
+                        event_type="job.failed",
+                        payload_extra={
+                            "stage": "worker",
+                            "percent": 0,
+                            "error": reason,
+                            "task_id": str(task_id),
+                            "task_name": task.name,
+                        },
+                    )
+                    logger.warning(
+                        "celery_task_stuck_job_recovered",
+                        extra={"job_id": job_id, "task_state": state},
+                    )
+            except Exception as exc:
+                # Best-effort — never crash the signal handler
+                logger.error(f"JOB-01 recovery failed for job {job_id}: {exc}")
+
 
 @task_failure.connect
-def on_task_failure(task_id=None, exception=None, traceback=None, einfo=None, sender=None, **_unused):
-    """Emit structured failure logs for failed Celery tasks."""
+def on_task_failure(
+    task_id=None,
+    exception=None,
+    traceback=None,
+    einfo=None,
+    sender=None,
+    args=None,
+    kwargs=None,
+    **_unused,
+):
+    """Emit structured failure logs for failed Celery tasks.
+
+    CW-002 (dead-letter queue): When a task has exhausted all retries we
+    publish a "job.failed" event and write the task details to a per-task
+    Redis dead-letter list (latexy:dlq:{task_name}) for post-mortem
+    inspection.
+
+    CW-008 (poison messages): TypeError / ValueError on task entry almost
+    always means a malformed payload was enqueued.  We log these at ERROR
+    with a distinct marker so they can be filtered and the offending
+    message identified without reprocessing the whole queue.
+    """
     task = sender
     if task is None or task_id is None:
         return
 
     queue_name = _extract_queue_name(task)
-    logger.error(
-        "celery_task_failed",
-        extra={
-            "queue": queue_name,
-            "status_code": "failed",
-            "latency_seconds": None,
-        },
-        exc_info=(type(exception), exception, traceback) if exception and traceback else None,
+
+    # CW-008: Detect likely poison/malformed messages early so they can be
+    # triaged separately from genuine runtime errors.  TypeError and
+    # ValueError at the start of a task execution almost always indicate
+    # that the enqueued payload does not match the task signature (e.g. a
+    # missing required argument, wrong type, or JSON that failed to
+    # deserialise into the expected structure).
+    if isinstance(exception, (TypeError, ValueError)):
+        logger.error(
+            "celery_task_poison_message_detected",
+            extra={
+                "queue": queue_name,
+                "task_name": task.name,
+                "task_id": str(task_id),
+                "exception_type": type(exception).__name__,
+                "exception": str(exception),
+                # args/kwargs may contain the raw payload — log for triage
+                "task_args": repr(args),
+                "task_kwargs": repr(kwargs),
+            },
+            exc_info=(type(exception), exception, traceback) if exception and traceback else None,
+        )
+    else:
+        logger.error(
+            "celery_task_failed",
+            extra={
+                "queue": queue_name,
+                "status_code": "failed",
+                "latency_seconds": None,
+            },
+            exc_info=(type(exception), exception, traceback) if exception and traceback else None,
+        )
+
+    # CW-002: Dead-letter queue — fires only when retries are exhausted.
+    # task.max_retries may be None (no limit) in which we skip DLQ logic.
+    max_retries = getattr(task, "max_retries", None)
+    current_retries = getattr(task.request, "retries", 0)
+    retries_exhausted = (
+        max_retries is not None and current_retries >= max_retries
     )
+    if retries_exhausted:
+        job_id = _extract_job_id(args or (), kwargs or {})
+        error_str = str(exception) if exception else "unknown error"
+
+        # 1. Publish a terminal job.failed event so the frontend unblocks.
+        if job_id:
+            try:
+                from ..workers.event_publisher import get_worker_redis, publish_event
+
+                r = get_worker_redis()
+                result_key = f"latexy:job:{job_id}:result"
+                if not r.exists(result_key):
+                    publish_event(
+                        job_id=job_id,
+                        event_type="job.failed",
+                        payload_extra={
+                            "stage": "worker",
+                            "percent": 0,
+                            "error": f"Task failed after {current_retries} retries: {error_str}",
+                            "task_id": str(task_id),
+                            "task_name": task.name,
+                        },
+                    )
+            except Exception as pub_exc:
+                logger.error(f"CW-002: failed to publish job.failed for {job_id}: {pub_exc}")
+
+        # 2. Write to the dead-letter list for debugging.
+        try:
+            import json as _json
+
+            from ..workers.event_publisher import get_worker_redis
+
+            r = get_worker_redis()
+            dlq_key = f"latexy:dlq:{task.name}"
+            dlq_entry = _json.dumps(
+                {
+                    "task_id": str(task_id),
+                    "task_name": task.name,
+                    "job_id": job_id,
+                    "retries": current_retries,
+                    "max_retries": max_retries,
+                    "error": error_str,
+                    "exception_type": type(exception).__name__ if exception else None,
+                    "args": repr(args),
+                    "kwargs": repr(kwargs),
+                    "timestamp": __import__("time").time(),
+                }
+            )
+            # Keep the most recent 500 dead-letter entries per task type
+            r.lpush(dlq_key, dlq_entry)
+            r.ltrim(dlq_key, 0, 499)
+            r.expire(dlq_key, 7 * 86400)  # 7-day retention
+            logger.error(
+                "celery_task_dead_lettered",
+                extra={
+                    "dlq_key": dlq_key,
+                    "job_id": job_id,
+                    "retries": current_retries,
+                    "error": error_str,
+                },
+            )
+        except Exception as dlq_exc:
+            logger.error(f"CW-002: failed to write DLQ entry for {task.name}/{task_id}: {dlq_exc}")
 
 
 # Import tasks to register them

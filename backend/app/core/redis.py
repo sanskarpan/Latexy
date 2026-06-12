@@ -288,14 +288,15 @@ class JobStatusManager:
             raise RuntimeError("Redis client not initialized")
 
         pattern = f"{self.status_prefix}*"
-        keys = await redis_client.keys(pattern)
+        keys: List[str] = []
+        cursor = 0
+        while True:
+            cursor, batch = await redis_client.scan(cursor, match=pattern, count=100)
+            keys.extend(batch)
+            if cursor == 0:
+                break
 
-        job_ids = []
-        for key in keys:
-            job_id = key.replace(self.status_prefix, "")
-            job_ids.append(job_id)
-
-        return job_ids
+        return [key.replace(self.status_prefix, "") for key in keys]
 
     def get_job_status_sync(self, job_id: str) -> Optional[Dict]:
         """Get job status from Redis using the synchronous client."""
@@ -327,7 +328,7 @@ class JobStatusManager:
             raise RuntimeError("Sync Redis client not initialized")
 
         pattern = f"{self.status_prefix}*"
-        keys = sync_redis_client.keys(pattern)
+        keys: List[str] = list(sync_redis_client.scan_iter(pattern, count=100))
         return [key.replace(self.status_prefix, "") for key in keys]
 
 
