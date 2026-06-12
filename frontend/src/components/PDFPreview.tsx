@@ -138,6 +138,8 @@ export default function PDFPreview({
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const containerRef = useRef<HTMLDivElement>(null)
   const prevJobIdRef = useRef<string | null>(null)
+  const syncHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flashTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
 
   const handleZoomIn = () => setZoom((p) => Math.min(+(p + 0.15).toFixed(2), 3))
   const handleZoomOut = () => setZoom((p) => Math.max(+(p - 0.15).toFixed(2), 0.4))
@@ -235,8 +237,14 @@ export default function PDFPreview({
     pageEl.style.position = 'relative'
     pageEl.appendChild(div)
     requestAnimationFrame(() => {
-      setTimeout(() => { div.style.opacity = '0' }, 400)
-      setTimeout(() => { pageEl.removeChild(div) }, 2000)
+      const t1 = setTimeout(() => { div.style.opacity = '0' }, 400)
+      const t2 = setTimeout(() => {
+        if (pageEl.contains(div)) pageEl.removeChild(div)
+        flashTimersRef.current.delete(t1)
+        flashTimersRef.current.delete(t2)
+      }, 2000)
+      flashTimersRef.current.add(t1)
+      flashTimersRef.current.add(t2)
     })
   }
 
@@ -265,11 +273,19 @@ export default function PDFPreview({
       if (result) {
         onSyncToSource(result.line)
         setSyncHint(true)
-        setTimeout(() => setSyncHint(false), 2000)
+        if (syncHintTimerRef.current !== null) clearTimeout(syncHintTimerRef.current)
+        syncHintTimerRef.current = setTimeout(() => setSyncHint(false), 2000)
       }
     },
     [onSyncToSource, pageWidth]
   )
+
+  // Clear all pending timers on unmount
+  useEffect(() => () => {
+    if (syncHintTimerRef.current !== null) clearTimeout(syncHintTimerRef.current)
+    flashTimersRef.current.forEach((t) => clearTimeout(t))
+    flashTimersRef.current.clear()
+  }, [])
 
   const storePagDims = useCallback((pageNumber: number, page: any) => {
     if (!page) return
