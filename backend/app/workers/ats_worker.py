@@ -150,7 +150,7 @@ def score_resume_ats_task(
         return result
 
     except SoftTimeLimitExceeded:
-        logger.error(f"ATS task {task_id} exceeded soft time limit for job {job_id}")
+        logger.error(f"ATS task {task_id} exceeded soft time limit for job {job_id}", exc_info=True)
         publish_event(job_id, "job.failed", {
             "stage": "ats_scoring",
             "error_code": "timeout",
@@ -160,7 +160,7 @@ def score_resume_ats_task(
         return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
 
     except Exception as exc:
-        logger.error(f"ATS task {task_id} raised: {exc}")
+        logger.error(f"ATS task {task_id} raised: {exc}", exc_info=True)
         retryable = self.request.retries < self.max_retries
         publish_event(job_id, "job.failed", {
             "stage": "ats_scoring",
@@ -295,7 +295,7 @@ def analyze_job_description_ats_task(
         return result
 
     except Exception as exc:
-        logger.error(f"ATS JD analysis task {task_id} raised: {exc}")
+        logger.error(f"ATS JD analysis task {task_id} raised: {exc}", exc_info=True)
         retryable = self.request.retries < self.max_retries
         publish_event(job_id, "job.failed", {
             "stage": "ats_scoring",
@@ -637,7 +637,7 @@ def deep_analyze_ats_task(
         )
         return {"success": bool(success), "job_id": job_id}
     except SoftTimeLimitExceeded:
-        logger.error(f"Deep ATS analysis exceeded soft time limit for job {job_id}")
+        logger.error(f"Deep ATS analysis exceeded soft time limit for job {job_id}", exc_info=True)
         publish_event(job_id, "job.failed", {
             "stage": "deep_analysis",
             "error_code": "timeout",
@@ -647,7 +647,7 @@ def deep_analyze_ats_task(
         return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
 
     except Exception as exc:
-        logger.error(f"Deep ATS analysis failed for job {job_id}: {exc}")
+        logger.error(f"Deep ATS analysis failed for job {job_id}: {exc}", exc_info=True)
         retryable = self.request.retries < self.max_retries
         publish_event(job_id, "job.failed", {
             "stage": "deep_analysis",
@@ -698,7 +698,7 @@ def embed_resume_task(
         asyncio.run(_async_embed_resume(resume_id, latex_content))
         return {"success": True, "resume_id": resume_id}
     except Exception as exc:
-        logger.error(f"embed_resume_task failed for {resume_id}: {exc}")
+        logger.error(f"embed_resume_task failed for {resume_id}: {exc}", exc_info=True)
         if self.request.retries < self.max_retries:
             raise self.retry(countdown=60, exc=exc)
         return {"success": False, "resume_id": resume_id, "error": str(exc)}
