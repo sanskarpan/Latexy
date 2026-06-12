@@ -421,15 +421,32 @@ class PaymentService:
                 and coupon_result.get("code")
                 and CouponCode is not None
                 and CouponRedemption is not None
+                and not coupon_result.get("already_redeemed")
             ):
-                coupon_row_result = await db.execute(
-                    select(CouponCode).where(CouponCode.code == coupon_result["code"])
+                # DB-007: atomic UPDATE WHERE to eliminate TOCTOU race on used_count
+                coupon_code_val = coupon_result["code"]
+                # First resolve the coupon id (needed for CouponRedemption FK)
+                coupon_id_result = await db.execute(
+                    select(CouponCode.id).where(CouponCode.code == coupon_code_val)
                 )
-                coupon_row = coupon_row_result.scalar_one_or_none()
-                if coupon_row and not coupon_result.get("already_redeemed"):
-                    coupon_row.used_count = int(coupon_row.used_count or 0) + 1
-                    db.add(CouponRedemption(coupon_id=coupon_row.id, user_id=user_id))
-                    await db.commit()
+                coupon_id = coupon_id_result.scalar_one_or_none()
+                if coupon_id is not None:
+                    inc_result = await db.execute(
+                        update(CouponCode)
+                        .where(
+                            CouponCode.id == coupon_id,
+                            CouponCode.used_count < CouponCode.max_uses,
+                        )
+                        .values(used_count=CouponCode.used_count + 1)
+                        .returning(CouponCode.id)
+                    )
+                    if inc_result.scalar_one_or_none() is None:
+                        # Limit reached between validate and use — still return success
+                        # for subscription but skip redemption record
+                        logger.warning(f"Coupon {coupon_code_val} limit reached at redemption time")
+                    else:
+                        db.add(CouponRedemption(coupon_id=coupon_id, user_id=user_id))
+                        await db.commit()
                 result["coupon"] = coupon_result
 
             return result
@@ -510,19 +527,38 @@ class PaymentService:
             event_type = event_data.get("event")
             entity = event_data.get("payload", {}).get("subscription", {})
 
+            # PAYMENT-001: idempotency — skip already-processed events
+            event_id = event_data.get("id")
+            if event_id:
+                redis = await get_redis_cache_client()
+                _redis_key = "latexy:webhook:processed"
+                if await redis.sismember(_redis_key, event_id):
+                    logger.info(f"Duplicate webhook event skipped: {event_id}")
+                    return {"success": True, "message": "Event already processed"}
+            else:
+                redis = None  # no event_id; can't do idempotency check
+
             logger.info(f"Processing webhook event: {event_type}")
 
             if event_type == "subscription.activated":
-                return await self._handle_subscription_activated(db, entity)
+                result = await self._handle_subscription_activated(db, entity)
             elif event_type == "subscription.charged":
-                return await self._handle_subscription_charged(db, entity)
+                result = await self._handle_subscription_charged(db, entity)
             elif event_type == "subscription.cancelled":
-                return await self._handle_subscription_cancelled(db, entity)
+                result = await self._handle_subscription_cancelled(db, entity)
             elif event_type == "subscription.paused":
-                return await self._handle_subscription_paused(db, entity)
+                result = await self._handle_subscription_paused(db, entity)
             else:
                 logger.info(f"Unhandled webhook event: {event_type}")
-                return {"success": True, "message": "Event ignored"}
+                result = {"success": True, "message": "Event ignored"}
+
+            # PAYMENT-001: mark event as processed after successful handling
+            if event_id and redis is not None and result.get("success"):
+                _redis_key = "latexy:webhook:processed"
+                await redis.sadd(_redis_key, event_id)
+                await redis.expire(_redis_key, 86400)
+
+            return result
 
         except Exception as e:
             logger.error(f"Error handling webhook: {e}")
@@ -560,38 +596,37 @@ class PaymentService:
             if not subscription_id:
                 return {"success": False, "error": "No subscription ID"}
 
-            # Update subscription status
-            stmt = update(Subscription).where(
-                Subscription.razorpay_subscription_id == subscription_id
-            ).values(
-                status="active",
-                current_period_start=datetime.utcnow(),
-                current_period_end=datetime.utcnow() + timedelta(days=30)
-            )
-            result = await db.execute(stmt)
-
-            if result.rowcount > 0:
-                # Update user status
-                subscription_result = await db.execute(
-                    select(Subscription).where(
+            # DB-012: wrap update + dependent update in a single explicit transaction
+            async with db.begin():
+                # Fetch user_id first so we can update User without a second SELECT
+                sub_result = await db.execute(
+                    select(Subscription.user_id).where(
                         Subscription.razorpay_subscription_id == subscription_id
                     )
                 )
-                subscription = subscription_result.scalar_one_or_none()
+                user_id_row = sub_result.scalar_one_or_none()
+                if user_id_row is None:
+                    logger.warning(f"Subscription not found: {subscription_id}")
+                    return {"success": False, "error": "Subscription not found"}
 
-                if subscription:
-                    await db.execute(
-                        update(User).where(User.id == subscription.user_id).values(
-                            subscription_status="active"
-                        )
+                await db.execute(
+                    update(Subscription).where(
+                        Subscription.razorpay_subscription_id == subscription_id
+                    ).values(
+                        status="active",
+                        current_period_start=datetime.utcnow(),
+                        current_period_end=datetime.utcnow() + timedelta(days=30),
                     )
+                )
+                await db.execute(
+                    update(User).where(User.id == user_id_row).values(
+                        subscription_status="active"
+                    )
+                )
+            # db.begin() context manager commits on exit
 
-                await db.commit()
-                logger.info(f"Subscription activated: {subscription_id}")
-                return {"success": True, "message": "Subscription activated"}
-            else:
-                logger.warning(f"Subscription not found: {subscription_id}")
-                return {"success": False, "error": "Subscription not found"}
+            logger.info(f"Subscription activated: {subscription_id}")
+            return {"success": True, "message": "Subscription activated"}
 
         except Exception as e:
             logger.error(f"Error handling subscription activation: {e}")
@@ -637,35 +672,35 @@ class PaymentService:
         try:
             subscription_id = entity.get("id")
 
-            # Update subscription status
-            stmt = update(Subscription).where(
-                Subscription.razorpay_subscription_id == subscription_id
-            ).values(
-                status="cancelled",
-                cancelled_at=datetime.utcnow()
-            )
-            result = await db.execute(stmt)
-
-            if result.rowcount > 0:
-                # Update user status to free
-                subscription_result = await db.execute(
-                    select(Subscription).where(
+            # DB-012: explicit transaction; resolve user_id before updating to avoid extra SELECT
+            async with db.begin():
+                sub_result = await db.execute(
+                    select(Subscription.user_id).where(
                         Subscription.razorpay_subscription_id == subscription_id
                     )
                 )
-                subscription = subscription_result.scalar_one_or_none()
+                user_id_row = sub_result.scalar_one_or_none()
+                if user_id_row is None:
+                    logger.warning(f"Subscription not found for cancel: {subscription_id}")
+                    return {"success": False, "error": "Subscription not found"}
 
-                if subscription:
-                    await db.execute(
-                        update(User).where(User.id == subscription.user_id).values(
-                            subscription_plan="free",
-                            subscription_status="cancelled"
-                        )
+                await db.execute(
+                    update(Subscription).where(
+                        Subscription.razorpay_subscription_id == subscription_id
+                    ).values(
+                        status="cancelled",
+                        cancelled_at=datetime.utcnow(),
                     )
+                )
+                await db.execute(
+                    update(User).where(User.id == user_id_row).values(
+                        subscription_plan="free",
+                        subscription_status="cancelled",
+                    )
+                )
 
-                await db.commit()
-                logger.info(f"Subscription cancelled: {subscription_id}")
-                return {"success": True, "message": "Subscription cancelled"}
+            logger.info(f"Subscription cancelled: {subscription_id}")
+            return {"success": True, "message": "Subscription cancelled"}
 
         except Exception as e:
             logger.error(f"Error handling subscription cancellation: {e}")
@@ -681,28 +716,28 @@ class PaymentService:
         try:
             subscription_id = entity.get("id")
 
-            # Update subscription status
-            stmt = update(Subscription).where(
-                Subscription.razorpay_subscription_id == subscription_id
-            ).values(status="paused")
-            await db.execute(stmt)
-
-            # Update user status
-            subscription_result = await db.execute(
-                select(Subscription).where(
-                    Subscription.razorpay_subscription_id == subscription_id
-                )
-            )
-            subscription = subscription_result.scalar_one_or_none()
-
-            if subscription:
-                await db.execute(
-                    update(User).where(User.id == subscription.user_id).values(
-                        subscription_status="paused"
+            # DB-012: explicit transaction; resolve user_id upfront to avoid extra SELECT
+            async with db.begin():
+                sub_result = await db.execute(
+                    select(Subscription.user_id).where(
+                        Subscription.razorpay_subscription_id == subscription_id
                     )
                 )
+                user_id_row = sub_result.scalar_one_or_none()
 
-            await db.commit()
+                await db.execute(
+                    update(Subscription).where(
+                        Subscription.razorpay_subscription_id == subscription_id
+                    ).values(status="paused")
+                )
+
+                if user_id_row:
+                    await db.execute(
+                        update(User).where(User.id == user_id_row).values(
+                            subscription_status="paused"
+                        )
+                    )
+
             logger.info(f"Subscription paused: {subscription_id}")
             return {"success": True, "message": "Subscription paused"}
 
