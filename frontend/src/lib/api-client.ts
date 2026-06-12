@@ -937,15 +937,10 @@ class ApiClient {
     if (contentType.includes('application/json') || (!contentType && typeof res.json === 'function')) {
       return res.json() as Promise<T>
     }
-    const textBody = await res.text()
-    if (textBody) {
-      try {
-        return JSON.parse(textBody) as T
-      } catch {
-        // Fall through for plain-text responses and incomplete mock headers.
-      }
+    if (contentType) {
+      throw new Error(`Unexpected response type ${contentType} from ${path}`)
     }
-    return textBody as T
+    return (await res.text()) as T
   }
 
   // ---------------------------------------------------------------- //
@@ -1125,10 +1120,14 @@ class ApiClient {
   }
 
   async deleteResume(resumeId: string): Promise<void> {
-    await fetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}`, {
+    const res = await fetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}`, {
       method: 'DELETE',
       headers: this.headers({}, false),
     })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.detail || `Delete failed (${res.status})`)
+    }
   }
 
   async updateResumeSettings(
@@ -1162,10 +1161,14 @@ class ApiClient {
   // ---------------------------------------------------------------- //
 
   async cancelJob(jobId: string): Promise<void> {
-    await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}`, {
+    const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}`, {
       method: 'DELETE',
       headers: this.headers({}, false),
     })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.detail || `Cancel failed (${res.status})`)
+    }
   }
 
   // ---------------------------------------------------------------- //
@@ -1184,9 +1187,10 @@ class ApiClient {
     return res.blob()
   }
 
-  async getPdfBlobUrl(jobId: string): Promise<string> {
+  async getPdfBlobUrl(jobId: string): Promise<{ url: string; revoke: () => void }> {
     const blob = await this.downloadPdf(jobId)
-    return URL.createObjectURL(blob)
+    const url = URL.createObjectURL(blob)
+    return { url, revoke: () => URL.revokeObjectURL(url) }
   }
 
   // ---------------------------------------------------------------- //
