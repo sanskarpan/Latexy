@@ -1,0 +1,39 @@
+{
+  "name": "latexy",
+  "version": "1.0.0",
+  "description": "Terminal UI for the Latexy LaTeX resume platform",
+  "type": "module",
+  "bin": { "latexy": "./dist/cli.js" },
+  "engines": { "node": ">=22" },
+  "files": ["dist/", "README.md"],
+  "publishConfig": { "access": "public", "provenance": true },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "@inkjs/ui": "^2.0.0",
+    "@nanostores/react": "^0.8.0",
+    "clipboardy": "^4.0.0",
+    "ink": "^5.2.0",
+    "ink-text-input": "^6.0.0",
+    "marked-terminal": "^7.1.0",
+    "nanostores": "^0.11.0",
+    "react": "^18.3.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/ws": "^8.5.0",
+    "ink-testing-library": "^4.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^2.0.0"
+  }
+}
