@@ -557,3 +557,75 @@ class TestMultiJobIsolation:
         call_args = redis.xread.call_args[0][0]  # first positional arg (the dict)
         assert f"latexy:stream:{job_a}" in call_args
         assert f"latexy:stream:{job_b}" not in call_args
+
+
+# ---------------------------------------------------------------------------
+# Regression tests — prevent known bugs from recurring
+# ---------------------------------------------------------------------------
+
+
+class TestEventBusRegressions:
+    """
+    Named regression tests for bugs fixed in the event-bus layer.
+    Each test describes WHY the contract exists, not just WHAT it asserts.
+    """
+
+    @pytest.mark.asyncio
+    async def test_replay_calls_xread_exactly_once(self):
+        """
+        Regression: _replay_events must NOT use a pagination loop.
+
+        The previous while-True/count=100 design caused test hangs because
+        AsyncMock(return_value=entries) always returns the same non-empty
+        data, so the break condition (empty response) was never reached and
+        the loop ran forever.
+
+        Contract: xread is called exactly once per _replay_events invocation,
+        regardless of whether entries are returned.
+        """
+        job_id = str(uuid.uuid4())
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "job_id": job_id,
+            "timestamp": 1234567890.0,
+            "sequence": 1,
+            "type": "job.started",
+        }
+        stream_entries = [
+            (f"latexy:stream:{job_id}", [("1-0", {"payload": json.dumps(event)})])
+        ]
+
+        redis, _ = _make_redis(stream_entries=stream_entries)
+        bus = EventBusManager()
+        await bus.init(redis)
+        ws = _make_ws()
+
+        await bus._replay_events(job_id, ws, "0-0")
+
+        # Must be exactly one call — not called again after processing entries.
+        assert redis.xread.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_replay_uses_count_500(self):
+        """
+        Regression: replay XREAD must request count=500 entries per call.
+
+        count=500 is the agreed contract: it provides enough headroom for any
+        job's event history within the 24-hour stream TTL, and it matches the
+        assert_called_once_with(..., count=500) assertion in TestEventReplay.
+        Changing count=100 (the old pagination value) would re-introduce the
+        mismatch that caused TestEventReplay::test_replay_uses_correct_stream_key
+        to fail.
+        """
+        job_id = str(uuid.uuid4())
+        redis, _ = _make_redis(stream_entries=[])
+        bus = EventBusManager()
+        await bus.init(redis)
+        ws = _make_ws()
+
+        await bus._replay_events(job_id, ws, "0-0")
+
+        redis.xread.assert_called_once_with(
+            {f"latexy:stream:{job_id}": "0-0"},
+            count=500,
+        )
