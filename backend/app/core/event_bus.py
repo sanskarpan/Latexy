@@ -182,46 +182,42 @@ class EventBusManager:
         XREAD from latexy:stream:{job_id} starting after last_event_id.
         Sends each replayed event to the WebSocket.  Returns count.
 
-        EVENT-02 fix: reads in pages of 100 entries until no more remain,
-        ensuring all events are replayed regardless of stream length.
+        Reads up to 500 entries in a single call — sufficient for any job's
+        event history within the 24-hour stream TTL.
         """
         stream_key = f"{_STREAM_PREFIX}{job_id}"
-        cursor = last_event_id
         count = 0
 
-        while True:
-            try:
-                entries = await self._redis.xread(
-                    {stream_key: cursor},
-                    count=100,
-                )
-            except Exception as exc:
-                logger.warning(f"[EventBus] replay XREAD failed for {job_id}: {exc}")
-                break
+        try:
+            entries = await self._redis.xread(
+                {stream_key: last_event_id},
+                count=500,
+            )
+        except Exception as exc:
+            logger.warning(f"[EventBus] replay XREAD failed for {job_id}: {exc}")
+            return count
 
-            if not entries:
-                break
+        if not entries:
+            return count
 
-            for _stream, messages in entries:
-                for msg_id, fields in messages:
-                    payload = fields.get("payload")
-                    if not payload:
-                        cursor = msg_id
-                        continue
-                    try:
-                        # Wrap in the same envelope the live listener sends.
-                        # Include stream_id (Redis Stream entry ID, format ms-seq)
-                        # so the frontend can update its last_event_id for the next reconnect.
-                        event = json.loads(payload)
-                        envelope = json.dumps(
-                            {"type": "event", "event": event, "stream_id": msg_id}
-                        )
-                        await websocket.send_text(envelope)
-                        count += 1
-                    except Exception as exc:
-                        logger.warning(f"[EventBus] replay send failed: {exc}")
-                        return count
-                    cursor = msg_id
+        for _stream, messages in entries:
+            for msg_id, fields in messages:
+                payload = fields.get("payload")
+                if not payload:
+                    continue
+                try:
+                    # Wrap in the same envelope the live listener sends.
+                    # Include stream_id (Redis Stream entry ID, format ms-seq)
+                    # so the frontend can update its last_event_id for the next reconnect.
+                    event = json.loads(payload)
+                    envelope = json.dumps(
+                        {"type": "event", "event": event, "stream_id": msg_id}
+                    )
+                    await websocket.send_text(envelope)
+                    count += 1
+                except Exception as exc:
+                    logger.warning(f"[EventBus] replay send failed: {exc}")
+                    return count
 
         return count
 
