@@ -1,5 +1,10 @@
 """
 OpenTelemetry setup and helpers.
+
+All opentelemetry imports are wrapped in a try/except so that the module
+loads cleanly in environments where the otel packages are not installed
+(e.g. the test venv).  When HAS_OTEL is False every public function is a
+no-op and current_trace_context() returns an empty dict.
 """
 
 from __future__ import annotations
@@ -7,16 +12,21 @@ from __future__ import annotations
 import logging
 from typing import Dict
 
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.celery import CeleryInstrumentor
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.redis import RedisInstrumentor
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-from opentelemetry.trace import format_span_id, format_trace_id
+try:
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.celery import CeleryInstrumentor
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.instrumentation.redis import RedisInstrumentor
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+    from opentelemetry.trace import format_span_id, format_trace_id
+
+    HAS_OTEL = True
+except ImportError:
+    HAS_OTEL = False
 
 from .config import settings
 
@@ -55,7 +65,7 @@ def setup_telemetry(component: str) -> None:
     """Initialize tracing provider and shared instrumentors for this process."""
     global _provider_initialized, _redis_instrumented
 
-    if _provider_initialized or not settings.OTEL_ENABLED:
+    if not HAS_OTEL or _provider_initialized or not settings.OTEL_ENABLED:
         return
 
     resource = Resource.create(
@@ -100,7 +110,7 @@ def setup_telemetry(component: str) -> None:
 def instrument_fastapi(app) -> None:
     """Instrument the FastAPI app once."""
     global _fastapi_instrumented
-    if _fastapi_instrumented or not settings.OTEL_ENABLED:
+    if not HAS_OTEL or _fastapi_instrumented or not settings.OTEL_ENABLED:
         return
     FastAPIInstrumentor.instrument_app(app)
     _fastapi_instrumented = True
@@ -109,7 +119,7 @@ def instrument_fastapi(app) -> None:
 def instrument_celery() -> None:
     """Instrument Celery once for producer/consumer spans."""
     global _celery_instrumented
-    if _celery_instrumented or not settings.OTEL_ENABLED:
+    if not HAS_OTEL or _celery_instrumented or not settings.OTEL_ENABLED:
         return
     CeleryInstrumentor().instrument()
     _celery_instrumented = True
@@ -117,7 +127,7 @@ def instrument_celery() -> None:
 
 def instrument_sqlalchemy(engine) -> None:
     """Instrument a SQLAlchemy engine once."""
-    if not settings.OTEL_ENABLED:
+    if not HAS_OTEL or not settings.OTEL_ENABLED:
         return
     identity = id(engine)
     if identity in _sqlalchemy_instrumented_engines:
@@ -128,6 +138,8 @@ def instrument_sqlalchemy(engine) -> None:
 
 def current_trace_context() -> dict[str, str]:
     """Return current trace identifiers for log enrichment."""
+    if not HAS_OTEL:
+        return {}
     span = trace.get_current_span()
     context = span.get_span_context()
     if not context.is_valid:

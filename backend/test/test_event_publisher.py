@@ -294,7 +294,7 @@ class TestPublishEvent:
         publish_event(job_id, "job.started", {"worker_id": "w1", "stage": "llm"})
         kwargs = mock_r.xadd.call_args[1]
         assert "maxlen" in kwargs
-        assert kwargs["maxlen"] == 10000
+        assert kwargs["maxlen"] == 1000  # PERF-005: reduced from 10000
 
     def test_state_ttl_is_24h(self, mock_r, job_id):
         publish_event(job_id, "job.started", {"worker_id": "w1", "stage": "llm"})

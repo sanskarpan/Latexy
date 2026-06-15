@@ -208,7 +208,7 @@ def compile_latex_task(
                 "error_message": error_msg,
                 "retryable": False,
             })
-result = {"success": False, "job_id": job_id, "error": error_msg}
+            result = {"success": False, "job_id": job_id, "error": error_msg}
             publish_job_result(job_id, result)
             return result
 

@@ -43,6 +43,10 @@ async def _validate_better_auth_session(
 ) -> Optional[str]:
     """Return userId if the Better Auth session token is valid, else None."""
     try:
+        # TODO(AUTH-003): token column should have a hashed index (e.g. hash("token"))
+        # for O(1) lookup. Currently relies on a full sequential scan or btree on the
+        # raw token value. Add a schema migration to create the index before this
+        # table grows large.
         result = await db.execute(
             text(
                 'SELECT "userId" FROM session '
@@ -208,12 +212,12 @@ async def require_admin(
     """
     Return the current user_id if the user has admin privileges, else raise.
 
-    Admin check order:
-      1. Better Auth session → look up user's email → compare to ADMIN_EMAIL setting.
-      2. Legacy JWT fallback → check is_admin claim (still accepted even if ADMIN_EMAIL is unset).
+    Admin access is granted exclusively by matching the authenticated user's
+    email against the ADMIN_EMAIL setting.  If ADMIN_EMAIL is not configured,
+    all requests are rejected with HTTP 403.
 
-    If ADMIN_EMAIL is not set, Better Auth users are rejected; legacy JWT with is_admin=true
-    is still accepted as a fallback.
+    The legacy JWT is_admin claim is intentionally NOT accepted here — a JWT
+    with is_admin=true must NOT bypass the ADMIN_EMAIL gate (AUTH-001).
     """
     token = _extract_token(request, credentials)
     if not token:
@@ -231,23 +235,25 @@ async def require_admin(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Check via Better Auth session — compare email to ADMIN_EMAIL
-    if settings.ADMIN_EMAIL:
-        try:
-            from sqlalchemy import text as _text
-            result = await db.execute(
-                _text('SELECT email FROM users WHERE id = :uid'),
-                {"uid": user_id},
-            )
-            row = result.fetchone()
-            if row and row[0].lower() == settings.ADMIN_EMAIL.lower():
-                return user_id
-        except Exception as exc:
-            logger.debug(f"require_admin email lookup failed: {exc}")
+    # ADMIN_EMAIL must be configured; absence means no admin access is possible.
+    if not settings.ADMIN_EMAIL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
 
-    # Legacy JWT fallback
-    if _jwt_validator.is_admin(token):
-        return user_id
+    # Compare the authenticated user's email to the configured ADMIN_EMAIL.
+    try:
+        from sqlalchemy import text as _text
+        result = await db.execute(
+            _text('SELECT email FROM users WHERE id = :uid'),
+            {"uid": user_id},
+        )
+        row = result.fetchone()
+        if row and row[0].lower() == settings.ADMIN_EMAIL.lower():
+            return user_id
+    except Exception as exc:
+        logger.debug(f"require_admin email lookup failed: {exc}")
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,

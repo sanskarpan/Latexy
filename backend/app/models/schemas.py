@@ -22,6 +22,8 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     latex_available: bool
+    database: str = "ok"
+    redis: str = "ok"
 
 
 class CompilationRequest(BaseModel):
