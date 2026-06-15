@@ -448,7 +448,7 @@ def compile_latex_task(
             "error_message": error_msg,
             "retryable": False,
         })
-        result: Dict[str, Any] = {"error": error_msg}
+        result: Dict[str, Any] = {"success": False, "job_id": job_id, "error": error_msg}
         if first_latex_error:
             result["latex_error_line"] = first_latex_error
         publish_job_result(job_id, result)
