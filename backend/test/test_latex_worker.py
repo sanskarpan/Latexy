@@ -653,3 +653,51 @@ class TestSubmitLatexCompilation:
             lw.submit_latex_compilation(VALID_LATEX, job_id=job_id, priority=7)
         _, kwargs = mock_async.call_args
         assert kwargs["priority"] == 7
+
+
+# ---------------------------------------------------------------------------
+# Regression tests — prevent known bugs from recurring
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("mock_cancelled", "mock_job_result", "mock_publish", "mock_validate_ok")
+class TestLatexWorkerRegressions:
+    """
+    Named regression tests for bugs fixed in the latex worker.
+    Each test describes WHY the contract exists.
+    """
+
+    def test_failure_result_contains_success_false(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        """
+        Regression: when the subprocess exits non-zero, publish_job_result must
+        receive a dict that includes success=False.
+
+        Previously the failure branch built {"error": error_msg} without
+        "success", causing KeyError in callers that assumed the same schema as
+        successful results.
+        """
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(1, ["error\n"])),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=str(uuid.uuid4()))
+
+        assert result.get("success") is False, "failure result must include success=False"
+
+    def test_failure_result_contains_job_id(self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok):
+        """
+        Regression: the failure result dict must include job_id so that
+        publish_job_result can be called as publish_job_result(result["job_id"], result).
+        """
+        job_id = str(uuid.uuid4())
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen", return_value=_make_popen(1, ["error\n"])),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            result = lw.compile_latex_task(VALID_LATEX, job_id=job_id)
+
+        assert result.get("job_id") == job_id, "failure result must include job_id"
