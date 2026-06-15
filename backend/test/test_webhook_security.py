@@ -16,15 +16,13 @@ import hashlib
 import hmac
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.payment_service import PaymentService
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -61,8 +59,6 @@ async def _create_user_with_subscription(
     subscription_id: str | None = None,
 ) -> tuple[str, str]:
     """Insert a user + subscription row; return (user_id, razorpay_sub_id)."""
-    from app.database import models as m
-
     user_id = str(uuid.uuid4())
     razorpay_sub_id = subscription_id or f"sub_{uuid.uuid4().hex[:12]}"
 

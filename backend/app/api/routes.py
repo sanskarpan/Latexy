@@ -3,7 +3,6 @@ API routes for the application.
 """
 
 import asyncio
-from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
