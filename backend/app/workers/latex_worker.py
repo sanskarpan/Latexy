@@ -28,8 +28,8 @@ PAGE_COUNT_RE = re.compile(r"Output written on .*?\((\d+) page", re.IGNORECASE)
 BEAMER_RE = re.compile(r"\\documentclass\s*(?:\[.*?\])?\s*\{beamer\}", re.DOTALL)
 
 # Flags allowed to be appended from compile_settings (must match resume_routes whitelist)
+# NOTE: --shell-escape is intentionally excluded — it enables arbitrary code execution
 _ALLOWED_EXTRA_FLAGS = {
-    "--shell-escape",
     "--file-line-error",
 }
 # Note: --synctex=1, --interaction=nonstopmode, --halt-on-error are already hardcoded
@@ -135,13 +135,6 @@ def _extract_pdf_text(pdf_file: Path, job_id: str) -> Optional[str]:
         return None
 
 
-def _finalize_failure(job_id: str, **result: Any) -> Dict[str, Any]:
-    """Persist a terminal failure result so REST polling can resolve it."""
-    payload = {"success": False, "job_id": job_id, **result}
-    publish_job_result(job_id, payload)
-    return payload
-
-
 @celery_app.task(
     bind=True,
     name="app.workers.latex_worker.compile_latex_task",
@@ -183,11 +176,19 @@ def compile_latex_task(
     worker_id = f"latex-{task_id}"
     logger.info(f"LaTeX task {task_id} starting for job {job_id} (compiler={compiler})")
 
-    publish_event(job_id, "job.started", {
-        "worker_id": worker_id,
-        "stage": "latex_compilation",
-    })
+    if self.request.retries == 0:
+        publish_event(job_id, "job.started", {
+            "worker_id": worker_id,
+            "stage": "latex_compilation",
+        })
+    else:
+        publish_event(job_id, "job.retrying", {
+            "worker_id": worker_id,
+            "stage": "latex_compilation",
+            "attempt": self.request.retries + 1,
+        })
 
+    job_dir: Optional[Path] = None
     try:
         # ── Validation ──────────────────────────────────────────────
         publish_event(job_id, "job.progress", {
@@ -207,7 +208,9 @@ def compile_latex_task(
                 "error_message": error_msg,
                 "retryable": False,
             })
-            return _finalize_failure(job_id, error=error_msg)
+result = {"success": False, "job_id": job_id, "error": error_msg}
+            publish_job_result(job_id, result)
+            return result
 
         # ── Apply compile settings ───────────────────────────────────
         _cs = compile_settings or {}
@@ -227,7 +230,9 @@ def compile_latex_task(
                     "error_message": error_msg,
                     "retryable": False,
                 })
-                return _finalize_failure(job_id, error=error_msg)
+                result = {"success": False, "job_id": job_id, "error": error_msg}
+                publish_job_result(job_id, result)
+                return result
             latex_content = _inject_watermark(latex_content, watermark)
 
         # Determine main .tex filename (validated regex, default resume.tex)
@@ -244,6 +249,7 @@ def compile_latex_task(
         # ── Setup ────────────────────────────────────────────────────
         job_dir = Path(settings.TEMP_DIR) / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
+        # job_dir is now set; finally block will clean it up
         tex_file = job_dir / main_file
         tex_file.write_text(latex_content, encoding="utf-8")
 
@@ -299,10 +305,13 @@ def compile_latex_task(
         # ── Stream log lines ─────────────────────────────────────────
         page_count: Optional[int] = None
         first_latex_error: Optional[str] = None  # first "! ..." line from pdflatex
+        all_output_lines: list = []  # accumulated for stderr tail on failure
         for line in proc.stdout:
             stripped = line.rstrip()
             if not stripped:
                 continue
+
+            all_output_lines.append(stripped)
 
             # Extract page count from pdflatex summary line
             m = PAGE_COUNT_RE.search(stripped)
@@ -328,7 +337,9 @@ def compile_latex_task(
             if is_cancelled(job_id):
                 proc.kill()
                 publish_event(job_id, "job.cancelled", {})
-                return _finalize_failure(job_id, cancelled=True)
+                result = {"success": False, "job_id": job_id, "cancelled": True}
+                publish_job_result(job_id, result)
+                return result
 
             # ── Timeout check ────────────────────────────────────────
             if time.time() - start_time > timeout:
@@ -345,7 +356,9 @@ def compile_latex_task(
                     "user_plan": user_plan,
                     "retryable": False,
                 })
-                return _finalize_failure(job_id, error="compile_timeout")
+                result = {"success": False, "job_id": job_id, "error": "compile_timeout"}
+                publish_job_result(job_id, result)
+                return result
 
         proc.wait()
         compilation_time = time.time() - start_time
@@ -420,6 +433,15 @@ def compile_latex_task(
             return result
 
         error_msg = f"{compiler} exited with code {proc.returncode}"
+        stderr = "\n".join(all_output_lines)
+        logger.error(
+            "latex_compile_failed",
+            extra={
+                "job_id": job_id,
+                "returncode": proc.returncode,
+                "stderr_tail": stderr[-500:] if stderr else "",
+            },
+        )
         publish_event(job_id, "job.failed", {
             "stage": "latex_compilation",
             "error_code": "latex_error",
@@ -429,10 +451,17 @@ def compile_latex_task(
         result: Dict[str, Any] = {"error": error_msg}
         if first_latex_error:
             result["latex_error_line"] = first_latex_error
-        return _finalize_failure(job_id, **result)
+        publish_job_result(job_id, result)
+        return result
 
     except SoftTimeLimitExceeded:
-        logger.error(f"LaTeX task {task_id} hit soft time limit for job {job_id}")
+        logger.error(f"LaTeX task {task_id} hit soft time limit for job {job_id}", exc_info=True)
+        # Kill the subprocess if it was started before the limit fired
+        try:
+            proc.kill()
+            proc.wait()
+        except Exception:
+            pass
         upgrade_msg = (
             "Upgrade to Pro for a 4-minute compile timeout"
             if resolve_plan_family(user_plan) in {"free", "basic"} else None
@@ -445,10 +474,12 @@ def compile_latex_task(
             "user_plan": user_plan,
             "retryable": False,
         })
-        return _finalize_failure(job_id, error="compile_timeout")
+        result = {"success": False, "job_id": job_id, "error": "compile_timeout"}
+        publish_job_result(job_id, result)
+        return result
 
     except Exception as exc:
-        logger.error(f"LaTeX task {task_id} raised: {exc}")
+        logger.error(f"LaTeX task {task_id} raised: {exc}", exc_info=True)
         retryable = self.request.retries < self.max_retries
         publish_event(job_id, "job.failed", {
             "stage": "latex_compilation",
@@ -457,8 +488,16 @@ def compile_latex_task(
             "retryable": retryable,
         })
         if retryable:
-            raise self.retry(countdown=60, exc=exc)
-        return _finalize_failure(job_id, error=str(exc))
+            raise self.retry(countdown=min(60 * (2 ** self.request.retries), 600), exc=exc)
+        result = {"success": False, "job_id": job_id, "error": str(exc)}
+        publish_job_result(job_id, result)
+        return result
+    finally:
+        if job_dir is not None and job_dir.exists():
+            try:
+                shutil.rmtree(job_dir)
+            except Exception as cleanup_exc:
+                logger.warning("Failed to remove job_dir %s: %s", job_dir, cleanup_exc)
 
 
 # ------------------------------------------------------------------ #

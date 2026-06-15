@@ -121,7 +121,7 @@ def publish_event(
             "sequence": str(seq),
             "event_id": event_id,
         },
-        maxlen=10000,
+        maxlen=1000,
         approximate=True,
     )
     r.expire(stream_key, ttl)
@@ -202,10 +202,36 @@ def store_job_meta(
 
 
 # ------------------------------------------------------------------ #
-#  Cancellation check (workers poll this between stages)             #
+#  Cancellation helpers (workers poll + publish via stream+pubsub)   #
 # ------------------------------------------------------------------ #
 
 def is_cancelled(job_id: str) -> bool:
     """Return True if the user has requested cancellation of this job."""
     r = get_worker_redis()
     return bool(r.exists(f"latexy:job:{job_id}:cancel"))
+
+
+def publish_cancel_event(
+    job_id: str,
+    reason: str = "Cancelled by user",
+    ttl: int = _DEFAULT_TTL,
+) -> str:
+    """
+    Publish a job.cancelled event to both the Redis Stream and Pub/Sub channel.
+
+    This ensures the frontend receives cancellation via WebSocket (Pub/Sub)
+    and can replay it on reconnect (Stream).  Call this after detecting
+    is_cancelled() inside a worker, immediately before returning.
+
+    Returns the Redis Stream entry ID.
+    """
+    return publish_event(
+        job_id=job_id,
+        event_type="job.cancelled",
+        payload_extra={
+            "reason": reason,
+            "stage": "cancelled",
+            "percent": 0,
+        },
+        ttl=ttl,
+    )
