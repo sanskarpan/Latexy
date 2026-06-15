@@ -9,6 +9,7 @@
         "clean": "rm -rf .next && rm -f tsconfig.tsbuildinfo",
         "lint": "next lint",
         "type-check": "tsc --noEmit",
+        "typecheck": "tsc --noEmit",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "test": "playwright test",

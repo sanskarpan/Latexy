@@ -1,0 +1,7 @@
+{
+  "name": "latexy-monorepo",
+  "private": true,
+  "devDependencies": {
+    "turbo": "latest"
+  }
+}
