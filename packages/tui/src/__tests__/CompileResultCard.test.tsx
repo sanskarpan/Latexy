@@ -16,7 +16,8 @@ describe('CompileResultCard', () => {
     const { lastFrame } = render(
       <CompileResultCard pages={1} sizeBytes={40000} compilationTimeMs={1500} pdfUrl="/dl/x.pdf" atsScore={null} />
     )
-    expect(lastFrame()).toContain('1.5s')
+    // New card shows locale-formatted ms: "1,500 ms"
+    expect(lastFrame()).toContain('1,500 ms')
   })
 
   it('shows ATS score when provided', () => {
@@ -30,6 +31,7 @@ describe('CompileResultCard', () => {
     const { lastFrame } = render(
       <CompileResultCard pages={1} sizeBytes={50000} compilationTimeMs={1000} pdfUrl={null} atsScore={null} />
     )
-    expect(lastFrame()).toContain('Compiled successfully')
+    // New card header text changed
+    expect(lastFrame()).toContain('Compilation Complete')
   })
 })
