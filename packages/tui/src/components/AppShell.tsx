@@ -8,9 +8,9 @@ import { clearMessages } from '../stores/messages.js'
 import { StatusBar } from './StatusBar.js'
 import { TranscriptView } from './TranscriptView.js'
 import { PromptInput } from './PromptInput.js'
+import { KeyboardHints } from './KeyboardHints.js'
 import { useWSEventRouter } from '../hooks/useJobStream.js'
 
-// dispatch is imported lazily to avoid circular dep at module load
 async function lazyDispatch(input: string): Promise<void> {
   const { dispatch } = await import('../commands/dispatch.js')
   return dispatch(input)
@@ -52,16 +52,16 @@ export function AppShell(): React.ReactElement {
         <TranscriptView />
       </Box>
       {overlay != null && (
-        <Box
-          position="absolute"
-          flexDirection="column"
-          width="100%"
-          height="100%"
-        >
-          {overlay as React.ReactElement}
+        <Box flexDirection="column">
+          <Box dimColor>
+            <Box marginX={4} marginY={1}>
+              {overlay as React.ReactElement}
+            </Box>
+          </Box>
         </Box>
       )}
       <PromptInput onSubmit={(input) => { void lazyDispatch(input) }} />
+      <KeyboardHints />
     </Box>
   )
 }
