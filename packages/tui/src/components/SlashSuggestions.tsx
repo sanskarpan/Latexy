@@ -56,8 +56,10 @@ export function SlashSuggestions({ query, maxItems = 7, onComplete }: Props): Re
         <Text dimColor>{matches.length} of {totalMatches}</Text>
       </Box>
       {matches.map((cmd, i) => (
-        <Box key={cmd.name} gap={2} backgroundColor={i === selectedIndex ? 'blue' : undefined}>
-          <Text bold color={i === selectedIndex ? 'white' : 'cyan'}>/{cmd.name}</Text>
+        <Box key={cmd.name} gap={2}>
+          <Text bold color={i === selectedIndex ? 'cyan' : undefined} underline={i === selectedIndex}>
+            /{cmd.name}
+          </Text>
           <Text dimColor={i !== selectedIndex}>{cmd.description}</Text>
           <Box flexGrow={1} />
           <Text dimColor>{cmd.isLocal ? 'local' : 'api'}</Text>
