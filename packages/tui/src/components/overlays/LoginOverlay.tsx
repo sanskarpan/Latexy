@@ -87,9 +87,12 @@ export function LoginOverlay(): React.ReactElement {
   })
 
   return (
-    <Box flexDirection="column" padding={2} borderStyle="round" borderColor="cyan">
-      <Text bold color="cyan">Welcome to Latexy</Text>
-      <Text dimColor>Sign in to continue</Text>
+    <Box borderStyle="round" borderColor="cyan" padding={2} width={50} flexDirection="column">
+      <Box gap={1} marginBottom={1}>
+        <Text bold color="cyan">⬡</Text>
+        <Text bold>Sign in to Latexy</Text>
+      </Box>
+      <Text dimColor>Enter your credentials to continue</Text>
       <Box marginTop={1} />
 
       {step === 'email' && (
@@ -125,7 +128,7 @@ export function LoginOverlay(): React.ReactElement {
       )}
 
       {step === 'error' && (
-        <Box flexDirection="column" gap={1}>
+        <Box flexDirection="column" gap={1} borderStyle="single" borderColor="red" paddingX={1}>
           <Text color="red">✗ {errorMsg}</Text>
           <Text dimColor>Press Esc to try again</Text>
         </Box>

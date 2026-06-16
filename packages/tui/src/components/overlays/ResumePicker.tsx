@@ -65,9 +65,8 @@ export function ResumePicker(): React.ReactElement {
   }
 
   return (
-    <Box flexDirection="column" borderStyle="double" borderColor="cyan" padding={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor="blue" padding={1} width={60}>
       <Text bold color="cyan">Select Resume</Text>
-      <Text dimColor>↑↓ navigate · Enter select · Esc cancel</Text>
       <Box marginTop={1} gap={1}>
         <Text dimColor>Filter:</Text>
         <TextInput value={filter} onChange={setFilter} placeholder="type to filter..." />
@@ -88,6 +87,9 @@ export function ResumePicker(): React.ReactElement {
             {r.is_pinned === true && <Text color="yellow">★</Text>}
           </Box>
         ))}
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>Type to filter · ↑↓ navigate · Enter select · Esc close</Text>
       </Box>
     </Box>
   )

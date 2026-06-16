@@ -12,7 +12,7 @@ describe('StatusBar', () => {
   it('shows user email and plan badge when logged in', () => {
     const { lastFrame } = render(<StatusBar email="a@b.com" plan="pro" health="healthy" wsConnected={true} />)
     expect(lastFrame()).toContain('a@b.com')
-    expect(lastFrame()).toContain('PRO')
+    expect(lastFrame()).toContain('pro')  // plan badge is lowercase in new design
   })
 
   it('shows health status', () => {

@@ -22,20 +22,33 @@ export function PromptInput({ onSubmit }: Props): React.ReactElement {
     onSubmit(trimmed)
   }, [onSubmit])
 
-  useInput((_input, _key) => {
-    // Global key handling delegated to AppShell
-  }, { isActive: !isBlocked })
+  useInput((_input, _key) => {}, { isActive: !isBlocked })
 
   const isSlash = value.startsWith('/')
   const slashQuery = isSlash ? value.slice(1) : ''
+  const promptGlyph = activeJobId != null ? '◉' : '❯'
+  const promptColor = activeJobId != null ? 'yellow' : 'cyan'
+
+  if (isBlocked) {
+    return (
+      <Box flexDirection="column">
+        <Box paddingX={1} borderStyle="single" borderColor="gray">
+          <Text dimColor>[ overlay open — press Esc to dismiss ]</Text>
+        </Box>
+        <Box paddingX={1}>
+          <Text dimColor>Ctrl+C exit  ·  Ctrl+L clear  ·  Esc close overlay  ·  / for commands</Text>
+        </Box>
+      </Box>
+    )
+  }
 
   return (
     <Box flexDirection="column">
       {isSlash && value.length > 1 && <SlashSuggestions query={slashQuery} />}
-      <Box gap={1} paddingX={1} borderStyle="round" borderColor={isBlocked ? 'gray' : 'cyan'}>
-        <Text bold color="cyan">›</Text>
-        {activeJobId != null && !isBlocked
-          ? <Text dimColor>Running… (Ctrl+C to cancel)</Text>
+      <Box gap={1} paddingX={1} borderStyle="single" borderColor="cyan">
+        <Text bold color={promptColor}>{promptGlyph}</Text>
+        {activeJobId != null
+          ? <Text dimColor>Running… (/cancel to stop)</Text>
           : (
             <TextInput
               value={value}
@@ -46,6 +59,12 @@ export function PromptInput({ onSubmit }: Props): React.ReactElement {
             />
           )
         }
+        {value.length > 80 && (
+          <Text dimColor>{value.length}</Text>
+        )}
+      </Box>
+      <Box paddingX={1}>
+        <Text dimColor>Ctrl+C exit  ·  Ctrl+L clear  ·  Esc close overlay  ·  / for commands</Text>
       </Box>
     </Box>
   )

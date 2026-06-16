@@ -1,5 +1,6 @@
 import React from 'react'
 import { Box, Text } from 'ink'
+import { Spinner } from '@inkjs/ui'
 import type { Message } from '../stores/messages.js'
 
 interface Props {
@@ -11,46 +12,50 @@ function formatMs(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-const STATE_ICON: Record<string, string> = {
-  running: '◐',
-  success: '✓',
-  error: '✗',
-  cancelled: '⊘',
-}
-
-const STATE_COLOR: Record<string, string> = {
-  running: 'cyan',
-  success: 'green',
-  error: 'red',
-  cancelled: 'yellow',
-}
-
 export function ToolUseCard({ message }: Props): React.ReactElement {
   const { toolName, toolState = 'running', durationMs, toolResult } = message
-  const icon = STATE_ICON[toolState] ?? '·'
-  const color = STATE_COLOR[toolState] ?? 'white'
 
-  return (
-    <Box flexDirection="column" marginY={0} paddingX={2}>
-      <Box gap={1}>
-        <Text color={color}>{icon}</Text>
-        <Text bold>{toolName ?? 'tool'}</Text>
-        {toolState === 'running' && <Text dimColor>running...</Text>}
-        {toolState === 'success' && durationMs != null && (
-          <Text dimColor>{formatMs(durationMs)}</Text>
-        )}
-        {toolState === 'error' && <Text color="red">error</Text>}
-        {toolState === 'cancelled' && <Text color="yellow">cancelled</Text>}
-      </Box>
-      {toolState === 'error' && toolResult != null && (
-        <Box paddingLeft={3}>
-          <Text color="red" wrap="wrap">
-            {typeof (toolResult as Record<string, unknown>)['error'] === 'string'
-              ? String((toolResult as Record<string, unknown>)['error'])
-              : JSON.stringify(toolResult)}
-          </Text>
+  if (toolState === 'running') {
+    return (
+      <Box flexDirection="column" marginY={0} paddingX={2}>
+        <Box gap={1}>
+          <Spinner />
+          <Text bold>{toolName ?? 'tool'}</Text>
+          {durationMs != null && <Text dimColor>({(durationMs / 1000).toFixed(1)}s…)</Text>}
         </Box>
-      )}
+      </Box>
+    )
+  }
+
+  if (toolState === 'success') {
+    return (
+      <Box paddingX={2}>
+        <Text color="green">✓ {toolName ?? 'tool'}</Text>
+        {durationMs != null && <Text dimColor>  {formatMs(durationMs)}</Text>}
+      </Box>
+    )
+  }
+
+  if (toolState === 'error') {
+    const errMsg = toolResult != null
+      ? (typeof (toolResult as Record<string, unknown>)['error'] === 'string'
+        ? String((toolResult as Record<string, unknown>)['error'])
+        : JSON.stringify(toolResult))
+      : 'unknown error'
+    return (
+      <Box flexDirection="column" paddingX={2}>
+        <Text color="red">✗ {toolName ?? 'tool'}  failed</Text>
+        <Box paddingLeft={2}>
+          <Text color="red" dimColor wrap="wrap">{errMsg}</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  // cancelled
+  return (
+    <Box paddingX={2}>
+      <Text color="gray">⊘ {toolName ?? 'tool'}  cancelled</Text>
     </Box>
   )
 }
