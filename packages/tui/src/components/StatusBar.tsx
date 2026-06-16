@@ -1,6 +1,7 @@
 import React from 'react'
 import { Box, Text } from 'ink'
 import type { HealthStatus } from '../stores/ui.js'
+import { theme } from '../lib/theme.js'
 
 interface Props {
   email: string | null
@@ -9,34 +10,43 @@ interface Props {
   wsConnected: boolean
 }
 
-const HEALTH_COLOR: Record<HealthStatus, string> = {
-  healthy: 'green',
-  degraded: 'yellow',
-  unhealthy: 'red',
-  unknown: 'gray',
-}
-
 const PLAN_LABEL: Record<string, string> = {
-  free: 'FREE', basic: 'BASIC', pro: 'PRO', byok: 'BYOK', team: 'TEAM',
+  free: 'free', basic: 'basic', pro: 'pro', byok: 'byok', team: 'team',
 }
 
 export function StatusBar({ email, plan, health, wsConnected }: Props): React.ReactElement {
-  const healthColor = HEALTH_COLOR[health]
-  const planLabel = plan ? (PLAN_LABEL[plan] ?? plan.toUpperCase()) : null
+  const healthColor = theme.health[health] ?? 'gray'
+  const planColor = plan ? (theme.plan[plan as keyof typeof theme.plan] ?? 'gray') : 'gray'
+  const planLabel = plan ? (PLAN_LABEL[plan] ?? plan) : null
+
+  const displayEmail = email
+    ? (email.length > 30 ? email.slice(0, 27) + '…' : email)
+    : null
 
   return (
     <Box paddingX={1} justifyContent="space-between">
-      <Text bold color="cyan">Latexy</Text>
+      {/* Left: brand */}
+      <Box gap={1}>
+        <Text bold color="cyan">⬡</Text>
+        <Text bold color="cyan">Latexy</Text>
+      </Box>
+
+      {/* Center: plan + email */}
       <Box gap={2}>
-        {email && (
-          <Text>
-            {email}
-            {planLabel && <Text color="magenta"> [{planLabel}]</Text>}
-          </Text>
+        {planLabel && (
+          <Text color={planColor}>{planLabel}</Text>
         )}
-        <Text color={healthColor as string}>● {health}</Text>
-        {!wsConnected && <Text color="yellow">⚡ disconnected</Text>}
-        <Text dimColor>? help · / commands</Text>
+        {displayEmail && (
+          <Text dimColor>{displayEmail}</Text>
+        )}
+      </Box>
+
+      {/* Right: WS status + health */}
+      <Box gap={2}>
+        <Text color={wsConnected ? 'green' : 'gray'}>
+          {wsConnected ? '● connected' : '○ disconnected'}
+        </Text>
+        <Text color={healthColor as string}>✦ {health}</Text>
       </Box>
     </Box>
   )
