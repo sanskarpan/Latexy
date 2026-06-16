@@ -12,21 +12,19 @@ interface Props {
 function UserRow({ message }: Props): React.ReactElement {
   const time = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   return (
-    <Box flexDirection="column" marginY={1} paddingX={1}>
-      <Box gap={1}>
-        <Text bold color="cyan">You</Text>
-        <Text dimColor>{time}</Text>
-      </Box>
-      <Box paddingLeft={2}>
-        <Text>╰─ {message.content}</Text>
-      </Box>
+    <Box paddingX={1} marginY={1} gap={1}>
+      <Text dimColor color="cyan">you  </Text>
+      <Text>{message.content}</Text>
+      <Box flexGrow={1} />
+      <Text dimColor>{time}</Text>
     </Box>
   )
 }
 
 function AssistantRow({ message }: Props): React.ReactElement {
   return (
-    <Box paddingX={2} marginY={1}>
+    <Box paddingX={2} marginY={1} gap={1}>
+      <Text bold color="cyan">⬡  </Text>
       <Text wrap="wrap">
         {message.content}
         {message.streaming === true && <Text color="cyan">▌</Text>}
@@ -37,7 +35,8 @@ function AssistantRow({ message }: Props): React.ReactElement {
 
 function SystemRow({ message }: Props): React.ReactElement {
   return (
-    <Box paddingX={2} marginY={1}>
+    <Box paddingX={2} marginY={1} gap={1}>
+      <Text dimColor color="blue">  ·  </Text>
       <Text dimColor>{message.content}</Text>
     </Box>
   )
@@ -45,8 +44,9 @@ function SystemRow({ message }: Props): React.ReactElement {
 
 function ErrorRow({ message }: Props): React.ReactElement {
   return (
-    <Box paddingX={2} marginY={1}>
-      <Text color="red">✗ {message.content}</Text>
+    <Box paddingX={2} marginY={1} gap={1}>
+      <Text color="red">  ✗  </Text>
+      <Text color="red">{message.content}</Text>
     </Box>
   )
 }
@@ -63,8 +63,8 @@ export function MessageRow({ message }: Props): React.ReactElement {
       return <ToolUseCard message={message} />
 
     case 'log_stream': {
-      const data = message.resultData as { lines: string[] } | undefined
-      return <LogStreamCard lines={data?.lines ?? []} />
+      const data = message.resultData as { lines: string[]; percent?: number } | undefined
+      return <LogStreamCard lines={data?.lines ?? []} percent={data?.percent} />
     }
 
     case 'compile_result': {
