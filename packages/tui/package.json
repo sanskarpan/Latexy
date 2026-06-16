@@ -1,17 +1,30 @@
 {
   "name": "latexy",
   "version": "1.0.0",
-  "description": "Terminal UI for the Latexy LaTeX resume platform",
+  "description": "Terminal UI for Latexy — LaTeX resume compilation, ATS scoring, and AI optimization in your terminal",
   "type": "module",
   "bin": { "latexy": "./dist/cli.js" },
   "engines": { "node": ">=22" },
-  "files": ["dist/", "README.md"],
-  "publishConfig": { "access": "public", "provenance": true },
+  "files": ["dist/", "README.md", "LICENSE"],
+  "exports": { ".": "./dist/cli.js" },
+  "keywords": ["latex", "resume", "terminal", "tui", "ink", "cli", "ats", "pdf"],
+  "homepage": "https://github.com/sanskarpan/Latexy#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sanskarpan/Latexy.git",
+    "directory": "packages/tui"
+  },
+  "bugs": { "url": "https://github.com/sanskarpan/Latexy/issues" },
+  "license": "MIT",
+  "author": "Latexy Contributors",
+  "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:e2e": "vitest run --project e2e",
     "test:watch": "vitest",
     "prepublishOnly": "pnpm run build"
   },
