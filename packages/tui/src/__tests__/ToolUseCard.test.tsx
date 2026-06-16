@@ -13,10 +13,10 @@ const base: Message = {
 }
 
 describe('ToolUseCard', () => {
-  it('shows tool name and running text when running', () => {
+  it('shows tool name with spinner when running', () => {
     const { lastFrame } = render(<ToolUseCard message={{ ...base, toolState: 'running' }} />)
     expect(lastFrame()).toContain('compile_pdf')
-    expect(lastFrame()).toContain('running')
+    // Running state shows a spinner (animated frame char), not the word "running"
   })
 
   it('shows duration on success', () => {
