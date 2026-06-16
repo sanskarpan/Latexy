@@ -52,12 +52,8 @@ export function AppShell(): React.ReactElement {
         <TranscriptView />
       </Box>
       {overlay != null && (
-        <Box flexDirection="column">
-          <Box dimColor>
-            <Box marginX={4} marginY={1}>
-              {overlay as React.ReactElement}
-            </Box>
-          </Box>
+        <Box flexDirection="column" marginX={4} marginY={1}>
+          {overlay as React.ReactElement}
         </Box>
       )}
       <PromptInput onSubmit={(input) => { void lazyDispatch(input) }} />
