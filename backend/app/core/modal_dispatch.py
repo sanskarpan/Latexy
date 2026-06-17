@@ -5,7 +5,6 @@ Call spawn(function_name, payload) to fire-and-forget a Modal function.
 All imports are lazy so this module is safe to import in local-dev mode.
 """
 import logging
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
