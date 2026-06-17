@@ -206,11 +206,18 @@ class Settings(BaseSettings):
     DEV_API_DAILY_LIMIT_PRO: int = 1000
     DEV_API_DAILY_LIMIT_BYOK: int = 500
 
+    # Deployment target
+    DEPLOY_TARGET: str = Field(default="local", description="Deployment target: 'local' (Celery) or 'modal'")
+
     # Redis Config
     REDIS_URL: str = Field(default="redis://localhost:6379/0", description="Redis URL for job queue")
     REDIS_CACHE_URL: str = Field(default="redis://localhost:6379/1", description="Redis URL for caching")
     REDIS_PASSWORD: str = Field(default="", description="Redis password")
     REDIS_MAX_CONNECTIONS: int = Field(default=20, description="Redis max connections")
+
+    # Upstash Redis (for Modal deployment)
+    UPSTASH_REDIS_REST_URL: str = Field(default="", description="Upstash Redis REST URL")
+    UPSTASH_REDIS_REST_TOKEN: str = Field(default="", description="Upstash Redis REST token")
 
     # Celery Configuration
     CELERY_BROKER_URL: str = Field(default="redis://localhost:6379/0", description="Celery broker URL")
