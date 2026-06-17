@@ -1,53 +1,53 @@
 # Production-optimized Dockerfile for Latexy Frontend
-FROM node:18-alpine as builder
+FROM node:22-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Copy lockfile and manifests first for layer caching
+COPY package.json pnpm-lock.yaml ./
+
+# Install all deps (including devDependencies needed for next build)
+RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY . .
 
 # Build the application
-RUN npm run build
+ARG NEXT_PUBLIC_API_URL=/api
+ARG NEXT_PUBLIC_WS_URL=/ws
+ARG BUILD_VERSION=local
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL \
+    NEXT_TELEMETRY_DISABLED=1
+
+RUN pnpm run build
 
 # Production stage
-FROM node:18-alpine as production
+FROM node:22-alpine AS production
 
-# Set environment variables
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
 
-# Install dumb-init for proper signal handling
 RUN apk add --no-cache dumb-init
 
-# Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nextjs -u 1001
 
-# Set working directory
 WORKDIR /app
 
-# Copy built application from builder stage
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Switch to non-root user
 USER nextjs
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
-# Expose port
 EXPOSE 3000
 
-# Run the application
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "server.js"]
