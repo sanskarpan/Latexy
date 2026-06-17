@@ -23,7 +23,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.calls_per_hour = calls_per_hour
 
     async def dispatch(self, request: Request, call_next):
-        # Skip rate limiting for health checks and static files
+        # Skip rate limiting for preflight requests and static/meta endpoints
+        if request.method == "OPTIONS":
+            return await call_next(request)
         if request.url.path in ["/health", "/docs", "/openapi.json"] or request.url.path.startswith("/static"):
             return await call_next(request)
 
@@ -120,6 +122,9 @@ class APIKeyRateLimitMiddleware(BaseHTTPMiddleware):
         }
 
     async def dispatch(self, request: Request, call_next):
+        # Skip preflight requests — OPTIONS must reach CORSMiddleware uninhibited
+        if request.method == "OPTIONS":
+            return await call_next(request)
         # Only apply to BYOK endpoints
         if not request.url.path.startswith("/byok/"):
             return await call_next(request)
