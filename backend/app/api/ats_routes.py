@@ -26,7 +26,7 @@ from ..services.ats_quick_scorer import quick_score_latex
 from ..services.ats_scoring_service import ats_scoring_service
 from ..services.ats_simulator_service import ATS_PROFILES, ats_simulator_service
 from ..services.industry_ats_profiles import INDUSTRY_PROFILES, detect_industry
-from ..workers.ats_worker import deep_analyze_ats_task, submit_ats_scoring, submit_job_description_analysis
+from ..workers.ats_worker import submit_ats_scoring, submit_deep_analyze_ats, submit_job_description_analysis
 
 logger = get_logger(__name__)
 
@@ -643,16 +643,13 @@ async def deep_analyze_resume(
     except Exception as e:
         logger.warning(f"Redis state write failed for job {job_id}: {e} — proceeding without state")
 
-    deep_analyze_ats_task.apply_async(
-        kwargs={
-            "latex_content": request.latex_content,
-            "job_id": job_id,
-            "job_description": request.job_description,
-            "api_key": api_key,
-            "industry_override": request.industry_override,
-            "metadata": {"user_id": user_id},
-        },
-        queue="ats",
+    submit_deep_analyze_ats(
+        latex_content=request.latex_content,
+        job_id=job_id,
+        job_description=request.job_description,
+        api_key=api_key,
+        industry_override=request.industry_override,
+        metadata={"user_id": user_id},
     )
 
     return DeepAnalyzeResponse(
@@ -713,11 +710,8 @@ async def semantic_match_resumes(
             # Fire background embed task so it's ready next time
             if settings.OPENAI_API_KEY:
                 try:
-                    from ..workers.ats_worker import embed_resume_task
-                    embed_resume_task.apply_async(
-                        kwargs={"resume_id": str(resume.id), "latex_content": resume.latex_content or ""},
-                        queue="ats", priority=1,
-                    )
+                    from ..workers.ats_worker import submit_embed_resume
+                    submit_embed_resume(str(resume.id), resume.latex_content or "")
                 except Exception:
                     pass
             continue
