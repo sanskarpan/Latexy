@@ -271,7 +271,7 @@ importers:
         specifier: ^8.5.14
         version: 8.5.14
       prettier:
-        specifier: ^3.8.3
+        specifier: ^3.8.4
         version: 3.8.3
       tailwindcss:
         specifier: ^3.3.6
@@ -280,7 +280,7 @@ importers:
         specifier: ^5.3.3
         version: 5.9.2
       vitest:
-        specifier: ^4.1.8
+        specifier: ^4.1.9
         version: 4.1.8(@opentelemetry/api@1.9.0)(@types/node@25.6.2)(vite@8.0.1(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.6.2)(jiti@1.21.7)(terser@5.48.0)(yaml@2.8.1))
 
 packages:
