@@ -620,8 +620,9 @@ def submit_temp_files_cleanup(
     """
     import os
     if os.environ.get("DEPLOY_TARGET") == "modal":
-        from ..core.modal_dispatch import spawn
         import uuid
+
+        from ..core.modal_dispatch import spawn
         job_id = f"cleanup_{uuid.uuid4()}"
         spawn("run_cleanup_task", {
             "task_type": "temp_files",
@@ -659,8 +660,9 @@ def submit_expired_jobs_cleanup(
     """
     import os
     if os.environ.get("DEPLOY_TARGET") == "modal":
-        from ..core.modal_dispatch import spawn
         import uuid
+
+        from ..core.modal_dispatch import spawn
         job_id = f"job_cleanup_{uuid.uuid4()}"
         spawn("run_cleanup_task", {
             "task_type": "expired_jobs",

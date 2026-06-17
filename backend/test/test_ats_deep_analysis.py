@@ -13,7 +13,6 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from celery.result import AsyncResult
 from httpx import AsyncClient
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
