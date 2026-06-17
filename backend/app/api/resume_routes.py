@@ -489,12 +489,8 @@ async def create_resume(
 
     if settings.OPENAI_API_KEY:
         try:
-            from ..workers.ats_worker import embed_resume_task
-            embed_resume_task.apply_async(
-                kwargs={"resume_id": str(resume.id), "latex_content": resume.latex_content,
-                        "user_id": user_id},
-                queue="ats", priority=1,
-            )
+            from ..workers.ats_worker import submit_embed_resume
+            submit_embed_resume(str(resume.id), resume.latex_content, user_id)
         except Exception as exc:
             logger.warning(f"Failed to enqueue embedding for resume {resume.id}: {exc}")
 
@@ -803,12 +799,8 @@ async def update_resume(
 
     if settings.OPENAI_API_KEY and update_data.get("latex_content"):
         try:
-            from ..workers.ats_worker import embed_resume_task
-            embed_resume_task.apply_async(
-                kwargs={"resume_id": str(resume.id), "latex_content": resume.latex_content,
-                        "user_id": user_id},
-                queue="ats", priority=1,
-            )
+            from ..workers.ats_worker import submit_embed_resume
+            submit_embed_resume(str(resume.id), resume.latex_content, user_id)
         except Exception as exc:
             logger.warning(f"Failed to enqueue embedding for resume {resume.id}: {exc}")
 
@@ -1023,12 +1015,8 @@ async def fork_resume(
     # Fire-and-forget embedding task
     if settings.OPENAI_API_KEY:
         try:
-            from ..workers.ats_worker import embed_resume_task
-            embed_resume_task.apply_async(
-                kwargs={"resume_id": str(variant.id), "latex_content": variant.latex_content,
-                        "user_id": user_id},
-                queue="ats", priority=1,
-            )
+            from ..workers.ats_worker import submit_embed_resume
+            submit_embed_resume(str(variant.id), variant.latex_content, user_id)
         except Exception as exc:
             logger.warning(f"Failed to enqueue embedding for variant {variant.id}: {exc}")
 

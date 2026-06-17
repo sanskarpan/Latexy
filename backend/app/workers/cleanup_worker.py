@@ -618,7 +618,20 @@ def submit_temp_files_cleanup(
     Returns:
         job_id: Job ID for tracking
     """
-    # Submit task to queue
+    import os
+    if os.environ.get("DEPLOY_TARGET") == "modal":
+        from ..core.modal_dispatch import spawn
+        import uuid
+        job_id = f"cleanup_{uuid.uuid4()}"
+        spawn("run_cleanup_task", {
+            "task_type": "temp_files",
+            "max_age_hours": max_age_hours,
+            "target_directory": target_directory,
+            "metadata": metadata,
+        })
+        logger.info(f"Modal spawn: temp files cleanup {job_id}")
+        return job_id
+
     task = cleanup_temp_files_task.apply_async(
         args=[max_age_hours],
         kwargs={
@@ -644,7 +657,20 @@ def submit_expired_jobs_cleanup(
     Returns:
         job_id: Job ID for tracking
     """
-    # Submit task to queue
+    import os
+    if os.environ.get("DEPLOY_TARGET") == "modal":
+        from ..core.modal_dispatch import spawn
+        import uuid
+        job_id = f"job_cleanup_{uuid.uuid4()}"
+        spawn("run_cleanup_task", {
+            "task_type": "expired_jobs",
+            "max_age_hours": max_age_hours,
+            "batch_size": batch_size,
+            "metadata": metadata,
+        })
+        logger.info(f"Modal spawn: expired jobs cleanup {job_id}")
+        return job_id
+
     task = cleanup_expired_jobs_task.apply_async(
         args=[max_age_hours],
         kwargs={

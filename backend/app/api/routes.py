@@ -213,7 +213,9 @@ def _check_cors_origins_on_startup() -> None:
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint."""
-    latex_available = latex_compiler.is_available()
+    import os
+    # On Modal, LaTeX runs in a separate worker container — report as available
+    latex_available = True if os.environ.get("DEPLOY_TARGET") == "modal" else latex_compiler.is_available()
     llm_service.is_available()
 
     # OBS-001: probe DB and Redis connectivity
