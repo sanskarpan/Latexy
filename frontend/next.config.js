@@ -2,6 +2,7 @@
 const withPWA = require('@ducanh2912/next-pwa').default
 
 const nextConfig = {
+  output: 'standalone',
   webpack: (config) => {
     // Handle canvas for react-pdf
     config.resolve.alias.canvas = false
