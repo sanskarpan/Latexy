@@ -42,10 +42,9 @@ async def _post_deep_analyze(client: AsyncClient, body: dict, headers: dict = {}
 def mock_celery_task():
     """Prevent actual Celery task dispatch during endpoint tests."""
     with patch(
-        "app.api.ats_routes.deep_analyze_ats_task",
+        "app.api.ats_routes.submit_deep_analyze_ats",
         new_callable=MagicMock,
     ) as mock:
-        mock.apply_async = MagicMock(return_value=MagicMock(spec=AsyncResult, id="fake-task-id"))
         yield mock
 
 
