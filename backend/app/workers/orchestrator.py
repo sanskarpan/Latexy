@@ -672,6 +672,30 @@ def submit_optimize_and_compile(
     # Task time_limit covers both LLM stage (~120s) + compile stage + buffer
     task_time_limit = compile_timeout + 180
 
+    import os
+    if os.environ.get("DEPLOY_TARGET") == "modal":
+        from ..core.modal_dispatch import spawn
+        spawn("run_orchestrator_task", {
+            "latex_content": latex_content,
+            "job_description": job_description,
+            "job_id": job_id,
+            "user_id": user_id,
+            "user_plan": user_plan,
+            "optimization_level": optimization_level,
+            "user_api_key": user_api_key,
+            "device_fingerprint": device_fingerprint,
+            "target_sections": target_sections,
+            "custom_instructions": custom_instructions,
+            "model": model,
+            "metadata": metadata,
+            "resume_id": resume_id,
+            "compiler": compiler,
+            "timeout_seconds": compile_timeout,
+            "persona": persona,
+        })
+        logger.info(f"Modal spawn: orchestrator for job {job_id} (compiler={compiler})")
+        return job_id
+
     optimize_and_compile_task.apply_async(
         args=[latex_content, job_description],
         kwargs={
