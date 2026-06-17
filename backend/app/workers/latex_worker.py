@@ -518,11 +518,30 @@ def submit_latex_compilation(
     compile_settings: Optional[Dict] = None,
     watermark: Optional[str] = None,
 ) -> str:
-    """Enqueue compile_latex_task on the latex queue."""
+    """Enqueue compile_latex_task on the latex queue (Celery) or Modal."""
+    import os
     if priority is None:
         priority = get_task_priority(user_plan)
     compiler = compiler or settings.DEFAULT_LATEX_COMPILER
     timeout = timeout_seconds or get_compile_timeout(user_plan)
+
+    if os.environ.get("DEPLOY_TARGET") == "modal":
+        from ..core.modal_dispatch import spawn
+        spawn("run_latex_task", {
+            "latex_content": latex_content,
+            "job_id": job_id,
+            "user_id": user_id,
+            "user_plan": user_plan,
+            "device_fingerprint": device_fingerprint,
+            "metadata": metadata,
+            "resume_id": resume_id,
+            "compiler": compiler,
+            "timeout_seconds": timeout,
+            "compile_settings": compile_settings,
+            "watermark": watermark,
+        })
+        logger.info(f"Modal spawn: LaTeX compilation for job {job_id} (compiler={compiler})")
+        return job_id
 
     compile_latex_task.apply_async(
         args=[latex_content],
@@ -540,8 +559,8 @@ def submit_latex_compilation(
         },
         priority=priority,
         queue="latex",
-        time_limit=timeout + 30,       # Celery hard kill
-        soft_time_limit=timeout + 15,  # raises SoftTimeLimitExceeded
+        time_limit=timeout + 30,
+        soft_time_limit=timeout + 15,
     )
     logger.info(f"Submitted LaTeX compilation for job {job_id} (compiler={compiler}, timeout={timeout}s)")
     return job_id
