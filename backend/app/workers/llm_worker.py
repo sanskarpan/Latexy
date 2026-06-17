@@ -275,6 +275,23 @@ def submit_resume_optimization(
     if priority is None:
         priority = get_task_priority(user_plan)
 
+    import os
+    if os.environ.get("DEPLOY_TARGET") == "modal":
+        from ..core.modal_dispatch import spawn
+        spawn("run_llm_task", {
+            "latex_content": latex_content,
+            "job_description": job_description,
+            "job_id": job_id,
+            "user_id": user_id,
+            "user_plan": user_plan,
+            "optimization_level": optimization_level,
+            "user_api_key": user_api_key,
+            "metadata": metadata,
+            "model": model,
+        })
+        logger.info(f"Modal spawn: LLM optimization for job {job_id}")
+        return job_id
+
     optimize_resume_task.apply_async(
         args=[latex_content, job_description],
         kwargs={
