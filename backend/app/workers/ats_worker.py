@@ -328,6 +328,23 @@ def submit_ats_scoring(
     if priority is None:
         priority = get_task_priority(user_plan)
 
+    import os
+    if os.environ.get("DEPLOY_TARGET") == "modal":
+        from ..core.modal_dispatch import spawn
+        spawn("run_ats_task", {
+            "latex_content": latex_content,
+            "job_id": job_id,
+            "job_description": job_description,
+            "industry": industry,
+            "industry_profile_key": industry_profile_key,
+            "user_id": user_id,
+            "user_plan": user_plan,
+            "device_fingerprint": device_fingerprint,
+            "metadata": metadata,
+        })
+        logger.info(f"Modal spawn: ATS scoring for job {job_id}")
+        return job_id
+
     score_resume_ats_task.apply_async(
         args=[latex_content],
         kwargs={
@@ -358,6 +375,19 @@ def submit_job_description_analysis(
     """Enqueue analyze_job_description_ats_task on the ats queue."""
     if priority is None:
         priority = get_task_priority(user_plan)
+
+    import os
+    if os.environ.get("DEPLOY_TARGET") == "modal":
+        from ..core.modal_dispatch import spawn
+        spawn("run_jd_analysis_task", {
+            "job_description": job_description,
+            "job_id": job_id,
+            "user_id": user_id,
+            "user_plan": user_plan,
+            "metadata": metadata,
+        })
+        logger.info(f"Modal spawn: JD analysis for job {job_id}")
+        return job_id
 
     analyze_job_description_ats_task.apply_async(
         args=[job_description],
@@ -702,3 +732,68 @@ def embed_resume_task(
         if self.request.retries < self.max_retries:
             raise self.retry(countdown=60, exc=exc)
         return {"success": False, "resume_id": resume_id, "error": str(exc)}
+
+
+# ------------------------------------------------------------------ #
+#  Submit helpers for tasks without existing wrappers                 #
+# ------------------------------------------------------------------ #
+
+def submit_deep_analyze_ats(
+    latex_content: str,
+    job_id: str,
+    job_description: Optional[str] = None,
+    api_key: Optional[str] = None,
+    industry_override: Optional[str] = None,
+    metadata: Optional[Dict] = None,
+) -> str:
+    """Enqueue deep_analyze_ats_task (Celery) or Modal."""
+    import os
+    if os.environ.get("DEPLOY_TARGET") == "modal":
+        from ..core.modal_dispatch import spawn
+        spawn("run_deep_analyze_task", {
+            "latex_content": latex_content,
+            "job_id": job_id,
+            "job_description": job_description,
+            "api_key": api_key,
+            "industry_override": industry_override,
+            "metadata": metadata,
+        })
+        logger.info(f"Modal spawn: deep ATS analysis for job {job_id}")
+        return job_id
+
+    deep_analyze_ats_task.apply_async(
+        kwargs={
+            "latex_content": latex_content,
+            "job_id": job_id,
+            "job_description": job_description,
+            "api_key": api_key,
+            "industry_override": industry_override,
+            "metadata": metadata,
+        },
+        queue="ats",
+    )
+    logger.info(f"Submitted deep ATS analysis for job {job_id}")
+    return job_id
+
+
+def submit_embed_resume(
+    resume_id: str,
+    latex_content: str,
+    user_id: Optional[str] = None,
+) -> None:
+    """Enqueue embed_resume_task (Celery) or Modal. Fire-and-forget."""
+    import os
+    if os.environ.get("DEPLOY_TARGET") == "modal":
+        from ..core.modal_dispatch import spawn
+        spawn("run_embed_resume_task", {
+            "resume_id": resume_id,
+            "latex_content": latex_content,
+            "user_id": user_id,
+        })
+        return
+
+    embed_resume_task.apply_async(
+        kwargs={"resume_id": resume_id, "latex_content": latex_content, "user_id": user_id},
+        queue="ats",
+        priority=1,
+    )
