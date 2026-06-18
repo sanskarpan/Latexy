@@ -1533,6 +1533,9 @@ export default function ResumeEditPage() {
       const msg = error instanceof Error ? error.message : 'Deep analysis failed'
       setDeepAnalysisError(msg)
       toast.error(msg)
+      if (msg.startsWith('HTTP 402:')) {
+        setDeepAnalysisUsesRemaining(0)
+      }
     } finally {
       setIsDeepRunning(false)
     }
