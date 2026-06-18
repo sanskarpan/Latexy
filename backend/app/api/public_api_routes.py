@@ -225,8 +225,27 @@ async def download_job_pdf_v1(
     job_id: str,
     api_key: DeveloperAPIKey = Depends(get_developer_api_key_required),
 ):
+    import base64 as _base64
+
+    from fastapi.responses import Response as _Response
+
     validate_job_id(job_id)
     await _assert_job_owner(job_id, api_key)
+
+    # Primary: Redis cache (works in serverless / multi-container envs).
+    try:
+        r = await get_redis_client()
+        pdf_b64 = await r.get(f"latexy:job:{job_id}:pdf")
+        if pdf_b64:
+            return _Response(
+                content=_base64.b64decode(pdf_b64),
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="latexy-{job_id[:8]}.pdf"'},
+            )
+    except Exception:
+        pass
+
+    # Fallback: local filesystem.
     job_dir, pdf_file, _ = get_job_files(job_id)
     del job_dir
     if not pdf_file.exists():
