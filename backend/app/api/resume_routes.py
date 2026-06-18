@@ -1684,12 +1684,26 @@ async def create_share_link(
         compilation = comp_result.scalar_one_or_none()
 
         if compilation and not compilation.pdf_path:
+            # Try local filesystem first, then Redis (Modal / serverless deployments).
             temp_pdf = Path(settings.TEMP_DIR) / compilation.job_id / "resume.pdf"
+            pdf_bytes_for_share: bytes | None = None
             if temp_pdf.exists():
+                pdf_bytes_for_share = temp_pdf.read_bytes()
+            else:
+                import base64 as _b64
+                try:
+                    from ..core.redis import get_redis_client as _get_rc
+                    _r = await _get_rc()
+                    _b64_val = await _r.get(f"latexy:job:{compilation.job_id}:pdf")
+                    if _b64_val:
+                        pdf_bytes_for_share = _b64.b64decode(_b64_val)
+                except Exception as _re:
+                    logger.warning(f"Redis PDF lookup failed for share {resume_id}: {_re}")
+            if pdf_bytes_for_share:
                 try:
                     from ..services.storage_service import upload_bytes
                     share_key = f"shares/{resume_id}/resume.pdf"
-                    upload_bytes(share_key, temp_pdf.read_bytes(), "application/pdf")
+                    upload_bytes(share_key, pdf_bytes_for_share, "application/pdf")
                     compilation.pdf_path = share_key
                     logger.info(f"Uploaded PDF to MinIO for resume {resume_id} at {share_key}")
                 except Exception as exc:
