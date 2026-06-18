@@ -6,6 +6,7 @@ them all at once.  Uses subprocess.Popen for line-by-line stdout
 streaming.  Zero asyncio — all Redis I/O goes through event_publisher.
 """
 
+import base64
 import re
 import shutil
 import subprocess
@@ -20,7 +21,13 @@ from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import get_compile_timeout, resolve_plan_family, settings
 from ..core.logging import get_logger
 from ..services.latex_service import latex_service
-from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
+from ..workers.event_publisher import (
+    _DEFAULT_TTL,
+    get_worker_redis,
+    is_cancelled,
+    publish_event,
+    publish_job_result,
+)
 
 logger = get_logger(__name__)
 
@@ -377,6 +384,18 @@ def compile_latex_task(
 
             # ── PDF text extraction for ATS pre-flight ───────────────
             extracted_text = _extract_pdf_text(pdf_file, job_id)
+
+            # Store PDF bytes in Redis so the download endpoint can serve them
+            # from a different container (Modal serverless — no shared filesystem).
+            try:
+                pdf_bytes = pdf_file.read_bytes()
+                get_worker_redis().setex(
+                    f"latexy:job:{job_id}:pdf",
+                    _DEFAULT_TTL,
+                    base64.b64encode(pdf_bytes).decode(),
+                )
+            except Exception as _redis_exc:
+                logger.warning(f"Failed to cache PDF in Redis for job {job_id}: {_redis_exc}")
 
             # For Beamer, slide_count == page_count (one PDF page per slide)
             slide_count = page_count if is_beamer else None
