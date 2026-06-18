@@ -311,11 +311,28 @@ async def compile_latex_endpoint(
 @router.get("/download/{job_id}")
 async def download_pdf(job_id: str):
     """Download compiled PDF."""
+    import base64 as _base64
+
+    from ..core.redis import get_redis_client
 
     validate_job_id(job_id)
 
-    job_dir, pdf_file, _ = get_job_files(job_id)
+    # Primary path: PDF bytes cached in Redis (works in serverless/multi-container envs).
+    try:
+        r = await get_redis_client()
+        pdf_b64 = await r.get(f"latexy:job:{job_id}:pdf")
+        if pdf_b64:
+            pdf_bytes = _base64.b64decode(pdf_b64)
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="resume_{job_id[:8]}.pdf"'},
+            )
+    except Exception as e:
+        logger.warning(f"Redis PDF lookup failed for job {job_id}: {e}")
 
+    # Fallback: local filesystem (works in single-process / Docker dev deployments).
+    job_dir, pdf_file, _ = get_job_files(job_id)
     if not pdf_file.exists():
         raise HTTPException(
             status_code=404,
@@ -323,13 +340,11 @@ async def download_pdf(job_id: str):
         )
 
     try:
-        # Return PDF file
         return FileResponse(
             path=pdf_file,
-            media_type='application/pdf',
-            filename=f"resume_{job_id[:8]}.pdf"
+            media_type="application/pdf",
+            filename=f"resume_{job_id[:8]}.pdf",
         )
-
     except Exception as e:
         logger.error(f"Error serving PDF for job {job_id}: {e}")
         raise HTTPException(status_code=500, detail="Error serving PDF file")
