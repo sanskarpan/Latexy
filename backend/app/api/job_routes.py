@@ -26,6 +26,7 @@ from ..core.config import resolve_plan_family, settings
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client, redis_manager
 from ..database.connection import get_db
+from ..utils.file_utils import validate_job_id
 from ..database.models import Compilation, Resume, User
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from ..services.optimization_personas import VALID_PERSONA_KEYS
