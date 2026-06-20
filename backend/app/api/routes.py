@@ -380,11 +380,21 @@ async def download_synctex(job_id: str):
 @router.get("/logs/{job_id}", response_model=LogsResponse)
 async def get_compilation_logs(job_id: str):
     """Get compilation logs for debugging."""
+    from ..core.redis import get_redis_client
 
     validate_job_id(job_id)
 
-    _, _, log_file = get_job_files(job_id)
+    # Primary: Redis cache (works in serverless/multi-container envs).
+    try:
+        r = await get_redis_client()
+        log_text = await r.get(f"latexy:job:{job_id}:log")
+        if log_text:
+            return LogsResponse(job_id=job_id, logs=log_text)
+    except Exception as e:
+        logger.warning(f"Redis log lookup failed for job {job_id}: {e}")
 
+    # Fallback: local filesystem (Docker / single-process dev).
+    _, _, log_file = get_job_files(job_id)
     if not log_file.exists():
         raise HTTPException(status_code=404, detail="Log file not found")
 
