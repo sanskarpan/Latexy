@@ -723,6 +723,61 @@ async def get_job_result(
 
 
 # ------------------------------------------------------------------ #
+#  Redis Stream replay                                                 #
+# ------------------------------------------------------------------ #
+
+@router.get("/{job_id}/stream")
+async def get_job_stream(
+    job_id: str,
+    from_id: str = "0",
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
+    """
+    Replay all Redis Stream events for a job (HTTP fallback for WebSocket reconnects).
+
+    Returns the ordered list of events stored in latexy:stream:{job_id}.
+    Clients that missed events while disconnected can catch up by hitting this
+    endpoint and then re-subscribing to the WebSocket.
+
+    Query param:
+      from_id — Stream entry ID to start from (default "0" = beginning).
+                Pass the last seen stream_id to get only new events.
+    """
+    validate_job_id(job_id)
+    try:
+        r = await get_redis_client()
+
+        meta_raw = await r.get(f"latexy:job:{job_id}:meta")
+        if not meta_raw:
+            raise HTTPException(status_code=404, detail="Job not found")
+        meta = json.loads(meta_raw)
+        job_owner = meta.get("user_id")
+        if user_id is not None and job_owner is not None and job_owner != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        stream_key = f"latexy:stream:{job_id}"
+        # xrange returns [(entry_id, {field: value}), ...]
+        entries = await r.xrange(stream_key, min=from_id, max="+")
+        events = []
+        for entry_id, fields in entries:
+            raw_payload = fields.get("payload") or fields.get(b"payload")
+            if raw_payload:
+                try:
+                    evt = json.loads(raw_payload)
+                    evt["_stream_id"] = entry_id if isinstance(entry_id, str) else entry_id.decode()
+                    events.append(evt)
+                except Exception:
+                    pass
+
+        return {"job_id": job_id, "events": events, "count": len(events)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error reading stream for job {job_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ------------------------------------------------------------------ #
 #  Job cancellation                                                    #
 # ------------------------------------------------------------------ #
 
