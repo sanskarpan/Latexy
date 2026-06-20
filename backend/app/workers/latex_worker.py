@@ -370,6 +370,16 @@ def compile_latex_task(
         proc.wait()
         compilation_time = time.time() - start_time
 
+        # Store full log in Redis so /logs/{job_id} can serve it from any container.
+        try:
+            get_worker_redis().setex(
+                f"latexy:job:{job_id}:log",
+                _DEFAULT_TTL,
+                "\n".join(all_output_lines),
+            )
+        except Exception as _log_exc:
+            logger.warning(f"Failed to cache logs in Redis for job {job_id}: {_log_exc}")
+
         publish_event(job_id, "job.progress", {
             "percent": 90,
             "stage": "latex_compilation",
