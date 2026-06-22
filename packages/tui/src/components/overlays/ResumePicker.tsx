@@ -28,7 +28,7 @@ export function ResumePicker(): React.ReactElement {
 
   useEffect(() => {
     const client = getApiClient()
-    client.get<ResumeListResponse>('/api/resumes?limit=50')
+    client.get<ResumeListResponse>('/resumes?limit=50')
       .then(res => {
         setResumes(res.resumes)
         setLoading(false)
@@ -42,6 +42,11 @@ export function ResumePicker(): React.ReactElement {
   const filtered = filter
     ? resumes.filter(r => r.title.toLowerCase().includes(filter.toLowerCase()))
     : resumes
+
+  // Reset cursor when filter narrows the list
+  useEffect(() => {
+    setCursor(0)
+  }, [filter])
 
   const select = useCallback((resume: Resume) => {
     void writeConfig({ defaultResumeId: resume.id })
