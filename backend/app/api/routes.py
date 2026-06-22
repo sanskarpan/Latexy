@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
@@ -15,8 +16,9 @@ from ..core.logging import get_logger
 from ..core.observability import metrics_content_type, metrics_payload
 from ..core.redis import redis_manager as _redis_manager
 from ..database.connection import get_async_db_session, get_db
-from ..database.models import Compilation, Resume
-from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required as _require_user
+from ..database.models import Compilation, Resume, User
+from ..middleware.auth_middleware import get_current_user_optional
+from ..middleware.auth_middleware import get_current_user_required as _require_user
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
 from ..services.feature_flag_service import feature_flag_service
@@ -222,9 +224,6 @@ async def get_me(
     user_id: str = Depends(_require_user),
 ):
     """Return the authenticated user's id, email, and subscription plan."""
-    from sqlalchemy import select
-    from ..database.models import User
-
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
