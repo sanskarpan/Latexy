@@ -41,8 +41,8 @@ describe('LatexyWSClient', () => {
   it('buffers events before drain()', () => {
     const received: unknown[] = []
     client.on('event', e => received.push(e))
-    const ev = { type: 'log.line', job_id: 'j1', event_id: 'e1', sequence: 1, timestamp: 1, line: 'hello', level: 'info' }
-    mockWSInstance.emit('message', Buffer.from(JSON.stringify(ev)))
+    const inner = { type: 'log.line', job_id: 'j1', event_id: 'e1', sequence: 1, timestamp: 1, line: 'hello', level: 'info' }
+    mockWSInstance.emit('message', Buffer.from(JSON.stringify({ type: 'event', event: inner })))
     expect(received).toHaveLength(0)
     client.drain()
     expect(received).toHaveLength(1)
@@ -52,8 +52,8 @@ describe('LatexyWSClient', () => {
     client.drain()
     const received: unknown[] = []
     client.on('event', e => received.push(e))
-    const ev = { type: 'log.line', job_id: 'j1', event_id: 'e2', sequence: 2, timestamp: 2, line: 'world', level: 'info' }
-    mockWSInstance.emit('message', Buffer.from(JSON.stringify(ev)))
+    const inner = { type: 'log.line', job_id: 'j1', event_id: 'e2', sequence: 2, timestamp: 2, line: 'world', level: 'info' }
+    mockWSInstance.emit('message', Buffer.from(JSON.stringify({ type: 'event', event: inner })))
     expect(received).toHaveLength(1)
   })
 
