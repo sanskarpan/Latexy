@@ -99,28 +99,29 @@ def _init_worker_redis() -> None:
     image=latex_image,
     secrets=_secrets,
     timeout=300,
-    retries=modal.Retries(max_retries=1, backoff_coefficient=2.0),
     scaledown_window=60,
 )
 def run_latex_task(payload: dict) -> None:
     """Compile LaTeX to PDF (texlive installed in image; no Docker needed)."""
     _init_worker_redis()
     from app.workers.latex_worker import compile_latex_task
-    compile_latex_task.apply(kwargs=payload)
+    # throw=False: prevents Celery's self.retry() Retry exception from propagating
+    # to Modal (which would cause a double-execution via Modal's retry mechanism).
+    # The Celery task publishes its own error events; Modal must not independently retry.
+    compile_latex_task.apply(kwargs=payload, throw=False)
 
 
 @app.function(
     image=worker_image,
     secrets=_secrets,
     timeout=600,
-    retries=modal.Retries(max_retries=1, backoff_coefficient=2.0),
     scaledown_window=60,
 )
 def run_orchestrator_task(payload: dict) -> None:
     """Combined LLM optimisation → LaTeX compilation → ATS scoring pipeline."""
     _init_worker_redis()
     from app.workers.orchestrator import optimize_and_compile_task
-    optimize_and_compile_task.apply(kwargs=payload)
+    optimize_and_compile_task.apply(kwargs=payload, throw=False)
 
 
 @app.function(
@@ -133,7 +134,7 @@ def run_llm_task(payload: dict) -> None:
     """LLM resume optimisation (streaming tokens published via Redis)."""
     _init_worker_redis()
     from app.workers.llm_worker import optimize_resume_task
-    optimize_resume_task.apply(kwargs=payload)
+    optimize_resume_task.apply(kwargs=payload, throw=False)
 
 
 @app.function(
@@ -146,7 +147,7 @@ def run_ats_task(payload: dict) -> None:
     """ATS resume scoring."""
     _init_worker_redis()
     from app.workers.ats_worker import score_resume_ats_task
-    score_resume_ats_task.apply(kwargs=payload)
+    score_resume_ats_task.apply(kwargs=payload, throw=False)
 
 
 @app.function(
@@ -159,7 +160,7 @@ def run_jd_analysis_task(payload: dict) -> None:
     """Job-description keyword analysis."""
     _init_worker_redis()
     from app.workers.ats_worker import analyze_job_description_ats_task
-    analyze_job_description_ats_task.apply(kwargs=payload)
+    analyze_job_description_ats_task.apply(kwargs=payload, throw=False)
 
 
 @app.function(
@@ -172,7 +173,7 @@ def run_deep_analyze_task(payload: dict) -> None:
     """Deep LLM-powered ATS analysis."""
     _init_worker_redis()
     from app.workers.ats_worker import deep_analyze_ats_task
-    deep_analyze_ats_task.apply(kwargs=payload)
+    deep_analyze_ats_task.apply(kwargs=payload, throw=False)
 
 
 @app.function(
@@ -184,7 +185,7 @@ def run_deep_analyze_task(payload: dict) -> None:
 def run_embed_resume_task(payload: dict) -> None:
     """Compute and store resume embedding (low-priority background task)."""
     from app.workers.ats_worker import embed_resume_task
-    embed_resume_task.apply(kwargs=payload)
+    embed_resume_task.apply(kwargs=payload, throw=False)
 
 
 @app.function(
@@ -198,10 +199,10 @@ def run_cleanup_task(payload: dict) -> None:
     task_type = payload.pop("task_type", "temp_files")
     if task_type == "expired_jobs":
         from app.workers.cleanup_worker import cleanup_expired_jobs_task
-        cleanup_expired_jobs_task.apply(kwargs=payload)
+        cleanup_expired_jobs_task.apply(kwargs=payload, throw=False)
     else:
         from app.workers.cleanup_worker import cleanup_temp_files_task
-        cleanup_temp_files_task.apply(kwargs=payload)
+        cleanup_temp_files_task.apply(kwargs=payload, throw=False)
 
 
 # ---------------------------------------------------------------------------
