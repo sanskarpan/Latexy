@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = Field(
         default=[
+            # Local development
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://localhost:5180",
@@ -70,6 +71,11 @@ class Settings(BaseSettings):
             "http://127.0.0.1:5182",
             "http://localhost:5183",
             "http://127.0.0.1:5183",
+            # Production
+            "https://latexy.com",
+            "https://www.latexy.com",
+            "https://app.latexy.com",
+            "https://latexy.vercel.app",
         ]
     )
 
