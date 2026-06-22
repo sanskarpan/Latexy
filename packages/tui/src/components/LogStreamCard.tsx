@@ -6,6 +6,7 @@ interface Props {
   lines: string[]
   maxVisible?: number
   percent?: number
+  isActive?: boolean
 }
 
 function classifyLine(line: string): 'error' | 'warning' | 'success' | 'info' {
@@ -16,14 +17,14 @@ function classifyLine(line: string): 'error' | 'warning' | 'success' | 'info' {
   return 'info'
 }
 
-export function LogStreamCard({ lines, maxVisible = 25, percent }: Props): React.ReactElement {
+export function LogStreamCard({ lines, maxVisible = 25, percent, isActive = false }: Props): React.ReactElement {
   const [collapsed, setCollapsed] = useState(false)
 
   useInput((_input, key) => {
     if (key.return) {
       setCollapsed(c => !c)
     }
-  })
+  }, { isActive })
 
   const visible = useMemo(
     () => (lines.length > maxVisible ? lines.slice(-maxVisible) : lines),
