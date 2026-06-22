@@ -62,19 +62,10 @@ def mock_jsm():
     mock_r.delete.return_value = 1
     mock_r.ping.return_value = True
 
-    with patch("app.workers.cleanup_worker.job_status_manager") as m, \
-         patch("app.workers.cleanup_worker.publish_event") as mock_pub, \
+    m = MagicMock()
+    with patch("app.workers.cleanup_worker.publish_event") as mock_pub, \
          patch("app.workers.cleanup_worker.publish_job_result") as mock_res, \
          patch("app.workers.cleanup_worker.get_worker_redis", return_value=mock_r):
-        m.set_job_status = AsyncMock(return_value=True)
-        m.set_job_progress = AsyncMock(return_value=True)
-        m.set_job_result = AsyncMock(return_value=True)
-        m.get_active_jobs = AsyncMock(return_value=[])
-        m.get_job_status = AsyncMock(return_value=None)
-        m.delete_job_data = AsyncMock(return_value=True)
-        m.get_active_jobs_sync = MagicMock(side_effect=lambda: _resolve(m.get_active_jobs))
-        m.get_job_status_sync = MagicMock(side_effect=lambda job_id: _resolve(m.get_job_status, job_id))
-        m.delete_job_data_sync = MagicMock(side_effect=lambda job_id: _resolve(m.delete_job_data, job_id))
         mock_pub.return_value = None
         mock_res.return_value = None
         # Expose on mock_jsm for test assertions
@@ -287,8 +278,7 @@ class TestCleanupTempFilesTask:
 
         mock_r2 = MagicMock()
         mock_r2.keys.return_value = []
-        with patch("app.workers.cleanup_worker.job_status_manager"), \
-             patch("app.workers.cleanup_worker.publish_event", side_effect=_side_effect), \
+        with patch("app.workers.cleanup_worker.publish_event", side_effect=_side_effect), \
              patch("app.workers.cleanup_worker.publish_job_result"), \
              patch("app.workers.cleanup_worker.get_worker_redis", return_value=mock_r2):
             result = cleanup_temp_files_task.apply(
@@ -468,8 +458,7 @@ class TestHealthCheckTask:
 
     def _run(self, mock_jsm, mock_rm, *, free_gb=10.0, total_gb=100.0, active_jobs=None):
         du = _disk_usage(free_gb, total_gb)
-        mock_jsm.get_active_jobs = AsyncMock(return_value=active_jobs or [])
-        mock_jsm.get_active_jobs_sync = MagicMock(return_value=active_jobs or [])
+        mock_jsm._mock_redis.keys.return_value = active_jobs or []
         with patch("shutil.disk_usage", return_value=du):
             return health_check_task.apply(kwargs={}).result
 
