@@ -48,7 +48,9 @@ export async function writeConfig(patch: Partial<LatexyConfig>): Promise<void> {
   await mkdir(configDir(), { recursive: true })
   const current = await readConfig()
   const next = { ...current, ...patch }
-  const toml = TOML.stringify(next as TOML.JsonMap)
+  // @iarna/toml does not support null — strip null fields before serialising
+  const toWrite = Object.fromEntries(Object.entries(next).filter(([, v]) => v !== null))
+  const toml = TOML.stringify(toWrite as TOML.JsonMap)
   await writeFile(configPath(), toml, { encoding: 'utf-8', mode: 0o600 })
   await chmod(configPath(), 0o600)
 }
