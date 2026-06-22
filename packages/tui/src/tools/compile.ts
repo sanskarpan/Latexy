@@ -49,7 +49,7 @@ export async function runCompile(parsed: ParsedCommand): Promise<void> {
       form.append('file', new Blob([fileBytes], { type: 'application/octet-stream' }), basename(filePath))
       form.append('compiler', compiler)
 
-      const res = await client.postForm<JobSubmitResponse>('/api/compile', form)
+      const res = await client.postForm<JobSubmitResponse>('/compile', form)
       const jobId = res.job_id
 
       $activeJobId.set(jobId)
@@ -72,7 +72,7 @@ export async function runCompile(parsed: ParsedCommand): Promise<void> {
   if (!actualResumeId) {
     // No resume specified — fetch first resume
     try {
-      const list = await client.get<ResumeListResponse>('/api/resumes?limit=1')
+      const list = await client.get<ResumeListResponse>('/resumes?limit=1')
       actualResumeId = list.resumes[0]?.id
       if (!actualResumeId) {
         addMessage({ role: 'error', content: 'No resumes found. Create one first with /new.' })
@@ -93,10 +93,11 @@ export async function runCompile(parsed: ParsedCommand): Promise<void> {
   })
 
   try {
-    const res = await client.post<JobSubmitResponse>('/api/jobs/submit', {
+    const resume = await client.get<{ latex_content: string }>(`/resumes/${actualResumeId}`)
+    const res = await client.post<JobSubmitResponse>('/jobs/submit', {
       job_type: 'latex_compilation',
-      resume_id: actualResumeId,
-      settings: { compiler },
+      latex_content: resume.latex_content,
+      compiler,
     })
     const jobId = res.job_id
 
