@@ -39,8 +39,14 @@ export class LatexyWSClient extends EventEmitter {
 
     this.ws.on('message', (data: Buffer) => {
       try {
-        const ev = JSON.parse(data.toString()) as AnyEvent
-        this.publish(ev)
+        const outer = JSON.parse(data.toString()) as Record<string, unknown>
+        if (outer['type'] === 'event' && outer['event']) {
+          // Unwrap the server's envelope: {type:"event", event:{...}} → emit inner event
+          this.publish(outer['event'] as AnyEvent)
+        } else if (outer['type'] === 'subscribed') {
+          this.emit('subscribed', outer)
+        }
+        // Other outer types (heartbeat, error) are intentionally ignored
       } catch {}
     })
 
