@@ -44,8 +44,15 @@ export interface JobProgressEvent extends BaseEvent {
 
 export interface JobCompletedEvent extends BaseEvent {
   type: 'job.completed'
-  result: Record<string, unknown>
-  final_status: string
+  pdf_job_id?: string
+  page_count?: number | null
+  ats_score?: number | null
+  compilation_time?: number | null
+  optimization_time?: number | null
+  compiler?: string
+  is_beamer?: boolean
+  // Legacy / fallback: some paths wrap fields under result
+  result?: Record<string, unknown>
 }
 
 export interface JobFailedEvent extends BaseEvent {
