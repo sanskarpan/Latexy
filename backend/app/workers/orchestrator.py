@@ -226,6 +226,7 @@ def optimize_and_compile_task(
 
         publish_job_result(job_id, result)
         publish_event(job_id, "job.completed", {
+            "percent": 100,
             "pdf_job_id": job_id,
             "ats_score": ats_score,
             "ats_details": ats_details,
