@@ -24,7 +24,7 @@ from typing import Any, Dict, Optional
 from ..core.celery_app import celery_app
 from ..core.config import settings
 from ..core.logging import get_logger
-from ..core.redis import job_status_manager, redis_manager
+from ..core.redis import redis_manager
 from ..workers.event_publisher import get_worker_redis, publish_event, publish_job_result
 
 logger = get_logger(__name__)
