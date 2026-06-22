@@ -73,7 +73,7 @@ const API_HANDLERS: Record<string, (parsed: NonNullable<ReturnType<typeof parseS
     }
     const { getApiClient } = await import('../lib/api-client.js')
     try {
-      await getApiClient().post(`/api/jobs/${jobId}/cancel`)
+      await getApiClient().delete(`/jobs/${jobId}`)
       addMessage({ role: 'system', content: `Job ${jobId} cancellation requested.` })
     } catch (err) {
       addMessage({ role: 'error', content: `Cancel failed: ${String(err)}` })
