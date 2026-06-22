@@ -5,8 +5,8 @@ import { $messages } from '../stores/messages.js'
 import { MessageRow } from './MessageRow.js'
 import type { Message } from '../stores/messages.js'
 
-// Import version from package.json
-const VERSION = '1.0.0'
+declare const __LATEXY_VERSION__: string
+const VERSION: string = __LATEXY_VERSION__
 
 function WelcomeBanner(): React.ReactElement {
   return (
