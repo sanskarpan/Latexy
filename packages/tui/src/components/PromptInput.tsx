@@ -44,7 +44,13 @@ export function PromptInput({ onSubmit }: Props): React.ReactElement {
 
   return (
     <Box flexDirection="column">
-      {isSlash && value.length > 1 && <SlashSuggestions query={slashQuery} />}
+      {isSlash && value.length > 1 && (
+        <SlashSuggestions
+          query={slashQuery}
+          isActive={!isBlocked}
+          onComplete={(name) => { setValue(`/${name} `) }}
+        />
+      )}
       <Box gap={1} paddingX={1} borderStyle="single" borderColor="cyan">
         <Text bold color={promptColor}>{promptGlyph}</Text>
         {activeJobId != null

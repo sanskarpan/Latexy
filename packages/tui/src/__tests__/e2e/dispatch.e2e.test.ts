@@ -140,26 +140,26 @@ describe('dispatch — API_HANDLERS', () => {
     expect(err?.content).toContain('No active job')
   })
 
-  it('/cancel with active job calls POST /api/jobs/:id/cancel', async () => {
+  it('/cancel with active job calls DELETE /jobs/:id', async () => {
     $activeJobId.set('job-abc')
     const { getApiClient } = await import('../../lib/api-client.js')
-    const mockPost = vi.fn().mockResolvedValue({})
-    vi.mocked(getApiClient).mockReturnValue({ get: vi.fn(), post: mockPost } as never)
+    const mockDelete = vi.fn().mockResolvedValue({})
+    vi.mocked(getApiClient).mockReturnValue({ get: vi.fn(), post: vi.fn(), delete: mockDelete } as never)
 
     const { dispatch } = await import('../../commands/dispatch.js')
     await dispatch('/cancel')
 
-    expect(mockPost).toHaveBeenCalledWith('/api/jobs/job-abc/cancel')
+    expect(mockDelete).toHaveBeenCalledWith('/jobs/job-abc')
   })
 
   it('/cancel with explicit job-id uses that id', async () => {
     const { getApiClient } = await import('../../lib/api-client.js')
-    const mockPost = vi.fn().mockResolvedValue({})
-    vi.mocked(getApiClient).mockReturnValue({ get: vi.fn(), post: mockPost } as never)
+    const mockDelete = vi.fn().mockResolvedValue({})
+    vi.mocked(getApiClient).mockReturnValue({ get: vi.fn(), post: vi.fn(), delete: mockDelete } as never)
 
     const { dispatch } = await import('../../commands/dispatch.js')
     await dispatch('/cancel explicit-job-id')
 
-    expect(mockPost).toHaveBeenCalledWith('/api/jobs/explicit-job-id/cancel')
+    expect(mockDelete).toHaveBeenCalledWith('/jobs/explicit-job-id')
   })
 })

@@ -8,9 +8,10 @@ interface Props {
   compilationTimeMs: number
   pdfUrl: string | null
   atsScore: number | null
+  compiler?: string
 }
 
-export function CompileResultCard({ pages, sizeBytes, compilationTimeMs, pdfUrl, atsScore }: Props): React.ReactElement {
+export function CompileResultCard({ pages, sizeBytes, compilationTimeMs, pdfUrl, atsScore, compiler = 'pdflatex' }: Props): React.ReactElement {
   const sizeStr = sizeBytes != null ? `${(sizeBytes / 1024).toFixed(1)} KB` : null
   const timeStr = compilationTimeMs.toLocaleString() + ' ms'
 
@@ -47,7 +48,7 @@ export function CompileResultCard({ pages, sizeBytes, compilationTimeMs, pdfUrl,
         )}
         <Box flexDirection="column">
           <Text dimColor>Compiler</Text>
-          <Text bold>pdflatex</Text>
+          <Text bold>{compiler}</Text>
         </Box>
         <Box flexDirection="column">
           <Text dimColor>Time</Text>

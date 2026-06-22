@@ -14,6 +14,8 @@ export function App(): React.ReactElement {
   const _overlay = useStore($overlay)
 
   useEffect(() => {
+    let healthInterval: ReturnType<typeof setInterval> | null = null
+
     const init = async (): Promise<void> => {
       const cfg = await readConfig()
 
@@ -34,18 +36,18 @@ export function App(): React.ReactElement {
 
       if (cfg.token) {
         wsClient.connect(wsUrl, cfg.token)
-        wsClient.on('connected', () => {
+        wsClient.once('connected', () => {
           $ui.set({ ...$ui.get(), wsConnected: true })
           wsClient.drain()
         })
-        wsClient.on('disconnected', () => {
+        wsClient.once('disconnected', () => {
           $ui.set({ ...$ui.get(), wsConnected: false })
         })
 
         // Validate token + get user info
         const { getApiClient } = await import('./lib/api-client.js')
         try {
-          const me = await getApiClient().get<{ id: string; email: string; plan?: string }>('/api/me')
+          const me = await getApiClient().get<{ id: string; email: string; plan?: string }>('/me')
           $session.set({
             ...$session.get(),
             userId: me.id,
@@ -70,7 +72,7 @@ export function App(): React.ReactElement {
           }
         }
         await poll()
-        setInterval(() => { void poll() }, 30_000)
+        healthInterval = setInterval(() => { void poll() }, 30_000)
       } else {
         const { LoginOverlay } = await import('./components/overlays/LoginOverlay.js')
         openOverlay(React.createElement(LoginOverlay))
@@ -80,6 +82,11 @@ export function App(): React.ReactElement {
     init().catch(err => {
       addMessage({ role: 'error', content: `Startup error: ${String(err)}` })
     })
+
+    return () => {
+      if (healthInterval != null) clearInterval(healthInterval)
+      wsClient.destroy()
+    }
   }, [])
 
   return <AppShell />

@@ -9,7 +9,7 @@ const useJson = process.argv.includes('--json')
 
 function out(obj: unknown): void {
   if (useJson) process.stdout.write(JSON.stringify(obj) + '\n')
-  else process.stderr.write(JSON.stringify(obj, null, 2) + '\n')
+  else process.stdout.write(JSON.stringify(obj, null, 2) + '\n')
 }
 
 function log(msg: string): void {
@@ -61,25 +61,27 @@ async function headlessCompile(args: string[]): Promise<number> {
 
   if (resumeId) {
     log(`Compiling resume ${resumeId}…`)
-    const res = await client.post<{ job_id: string }>('/api/jobs/submit', {
+    const resume = await client.get<{ latex_content: string }>(`/resumes/${resumeId}`)
+    const res = await client.post<{ job_id: string }>('/jobs/submit', {
       job_type: 'latex_compilation',
-      resume_id: resumeId,
-      settings: { compiler },
+      latex_content: resume.latex_content,
+      compiler,
     })
     jobId = res.job_id
   } else {
-    // Local file upload
+    // Local file path: read content and submit via the job queue (same as --resume-id)
     const filePath = args.find(a => !a.startsWith('-') && a !== 'compile')
     if (!filePath) {
       out({ success: false, error: 'Provide a .tex file path or --resume-id <uuid>' })
       return 3
     }
-    log(`Uploading ${basename(filePath)}…`)
-    const bytes = await readFile(filePath)
-    const form = new FormData()
-    form.append('file', new Blob([bytes], { type: 'application/octet-stream' }), basename(filePath))
-    form.append('compiler', compiler)
-    const res = await client.postForm<{ job_id: string }>('/api/compile', form)
+    log(`Compiling ${basename(filePath)}…`)
+    const latex_content = await readFile(filePath, 'utf-8')
+    const res = await client.post<{ job_id: string }>('/jobs/submit', {
+      job_type: 'latex_compilation',
+      latex_content,
+      compiler,
+    })
     jobId = res.job_id
   }
 
@@ -87,9 +89,8 @@ async function headlessCompile(args: string[]): Promise<number> {
   const ev = await waitForJob(jobId, cfg.token, wsUrl)
 
   if (ev.type === 'job.completed') {
-    const result = ev.result as Record<string, unknown>
-    if (outputPath && result['pdf_url']) {
-      const pdfRes = await fetch(cfg.backendUrl + (result['pdf_url'] as string), {
+    if (outputPath) {
+      const pdfRes = await fetch(`${cfg.backendUrl}/download/${jobId}`, {
         headers: { Authorization: `Bearer ${cfg.token}` },
       })
       const buf = await pdfRes.arrayBuffer()
@@ -99,11 +100,12 @@ async function headlessCompile(args: string[]): Promise<number> {
     out({
       success: true,
       job_id: jobId,
-      pages: result['pages'] ?? null,
-      size_bytes: result['size_bytes'] ?? null,
-      ats_score: result['ats_score'] ?? null,
-      pdf_url: result['pdf_url'] ?? null,
-      compilation_time_ms: result['compilation_time_ms'] ?? null,
+      pages: ev.page_count ?? null,
+      ats_score: ev.ats_score ?? null,
+      compilation_time_ms: ev.compilation_time != null
+        ? Math.round(ev.compilation_time * 1000)
+        : null,
+      compiler: ev.compiler ?? null,
     })
     return 0
   } else {

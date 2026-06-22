@@ -65,7 +65,7 @@ export function LoginOverlay(): React.ReactElement {
       })
 
       wsClient.connect(wsUrl, token)
-      wsClient.on('connected', () => {
+      wsClient.once('connected', () => {
         $ui.set({ ...$ui.get(), wsConnected: true })
         wsClient.drain()
       })

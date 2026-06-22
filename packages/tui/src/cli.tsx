@@ -22,8 +22,7 @@ if (isCI || hasJsonFlag) {
   })
 } else {
   const { unmount } = render(React.createElement(App), { patchConsole: false })
-  process.on('SIGTERM', () => {
-    unmount()
-    process.exit(0)
-  })
+  const shutdown = () => { unmount(); process.exit(0) }
+  process.on('SIGTERM', shutdown)
+  process.on('SIGINT', shutdown)
 }
