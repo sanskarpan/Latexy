@@ -431,6 +431,7 @@ def compile_latex_task(
                 })
 
             publish_event(job_id, "job.completed", {
+                "percent": 100,
                 "pdf_job_id": job_id,
                 "ats_score": 0.0,
                 "ats_details": {},
