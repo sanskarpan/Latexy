@@ -521,8 +521,8 @@ def health_check_task(
             "message": "Checking active jobs",
         })
 
-        active_jobs = job_status_manager.get_active_jobs_sync()
-        active_jobs_count = len(active_jobs)
+        _r = get_worker_redis()
+        active_jobs_count = len(_r.keys("latexy:job:*:state"))
 
         # Determine overall health
         health_issues = []
