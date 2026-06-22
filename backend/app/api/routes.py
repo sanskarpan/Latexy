@@ -16,7 +16,7 @@ from ..core.observability import metrics_content_type, metrics_payload
 from ..core.redis import redis_manager as _redis_manager
 from ..database.connection import get_async_db_session, get_db
 from ..database.models import Compilation, Resume
-from ..middleware.auth_middleware import get_current_user_optional
+from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required as _require_user
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
 from ..services.feature_flag_service import feature_flag_service
@@ -208,6 +208,28 @@ def _check_cors_origins_on_startup() -> None:
                 " (entries: %s)",
                 localhost_origins,
             )
+
+
+class MeResponse(BaseModel):
+    id: str
+    email: str
+    plan: str
+
+
+@router.get("/me", response_model=MeResponse)
+async def get_me(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(_require_user),
+):
+    """Return the authenticated user's id, email, and subscription plan."""
+    from sqlalchemy import select
+    from ..database.models import User
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return MeResponse(id=user.id, email=user.email, plan=user.subscription_plan)
 
 
 @router.get("/health", response_model=HealthResponse)
