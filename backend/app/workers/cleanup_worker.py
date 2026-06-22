@@ -24,7 +24,7 @@ from typing import Any, Dict, Optional
 from ..core.celery_app import celery_app
 from ..core.config import settings
 from ..core.logging import get_logger
-from ..core.redis import job_status_manager, redis_manager
+from ..core.redis import redis_manager
 from ..workers.event_publisher import get_worker_redis, publish_event, publish_job_result
 
 logger = get_logger(__name__)
@@ -521,8 +521,8 @@ def health_check_task(
             "message": "Checking active jobs",
         })
 
-        active_jobs = job_status_manager.get_active_jobs_sync()
-        active_jobs_count = len(active_jobs)
+        _r = get_worker_redis()
+        active_jobs_count = len(_r.keys("latexy:job:*:state"))
 
         # Determine overall health
         health_issues = []

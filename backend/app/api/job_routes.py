@@ -282,9 +282,9 @@ async def submit_job(
                 logger.debug(f"Could not fetch resume compile settings: {exc}")
 
         if request.job_type == "latex_compilation":
-            if not request.latex_content:
+            if not request.latex_content or not request.latex_content.strip():
                 raise HTTPException(
-                    status_code=400,
+                    status_code=422,
                     detail="latex_content is required for latex_compilation jobs",
                 )
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
@@ -300,9 +300,9 @@ async def submit_job(
             )
 
         elif request.job_type == "llm_optimization":
-            if not request.latex_content:
+            if not request.latex_content or not request.latex_content.strip():
                 raise HTTPException(
-                    status_code=400,
+                    status_code=422,
                     detail="latex_content is required for llm_optimization jobs",
                 )
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
@@ -318,9 +318,9 @@ async def submit_job(
             )
 
         elif request.job_type == "combined":
-            if not request.latex_content:
+            if not request.latex_content or not request.latex_content.strip():
                 raise HTTPException(
-                    status_code=400,
+                    status_code=422,
                     detail="latex_content is required for combined jobs",
                 )
             if request.persona and request.persona not in VALID_PERSONA_KEYS:
@@ -346,9 +346,9 @@ async def submit_job(
             )
 
         elif request.job_type == "ats_scoring":
-            if not request.latex_content:
+            if not request.latex_content or not request.latex_content.strip():
                 raise HTTPException(
-                    status_code=400,
+                    status_code=422,
                     detail="latex_content is required for ats_scoring jobs",
                 )
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
@@ -635,6 +635,7 @@ async def get_job_state(
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Get current job state snapshot (for REST polling fallback)."""
+    validate_job_id(job_id)
     try:
         r = await get_redis_client()
 
@@ -665,6 +666,7 @@ async def get_job_result(
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Fetch the final job result (available after job.completed event)."""
+    validate_job_id(job_id)
     try:
         r = await get_redis_client()
 

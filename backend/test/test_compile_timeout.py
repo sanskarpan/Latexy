@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+import itertools
 from unittest.mock import MagicMock, patch
 
 from app.core.config import get_compile_timeout, settings
@@ -95,9 +96,9 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            # logger.info() creates a LogRecord which calls time.time() before start_time does;
-            # first 0.0 is consumed by the logger, second 0.0 is start_time, 999.0 trips timeout
-            patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [999.0] * 20),
+            # Each call advances 100s, so elapsed always exceeds any timeout regardless of
+            # how many extra time.time() calls Celery's task machinery makes beforehand.
+            patch("app.workers.latex_worker.time.time", side_effect=itertools.count(100, 100)),
         ):
             mock_proc = MagicMock()
             mock_proc.stdout = _one_log_line()
@@ -133,7 +134,7 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [9999.0] * 20),
+            patch("app.workers.latex_worker.time.time", side_effect=itertools.count(100, 100)),
         ):
             mock_proc = MagicMock()
             mock_proc.stdout = iter(["log line\n"])
@@ -207,8 +208,7 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.publish_event") as mock_publish,
             patch("app.workers.latex_worker.publish_job_result"),
             patch("app.workers.latex_worker.is_cancelled", return_value=False),
-            # logger.info() consumes first time.time(); start_time=0.0, check=200.0 > 60 → timeout
-            patch("app.workers.latex_worker.time.time", side_effect=[0.0, 0.0] + [200.0] * 20),
+            patch("app.workers.latex_worker.time.time", side_effect=itertools.count(100, 100)),
         ):
             mock_proc = MagicMock()
             mock_proc.stdout = iter(["line\n"])

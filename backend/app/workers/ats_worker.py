@@ -132,6 +132,7 @@ def score_resume_ats_task(
 
         publish_job_result(job_id, result)
         publish_event(job_id, "job.completed", {
+            "percent": 100,
             "pdf_job_id": job_id,
             "ats_score": scoring_result.overall_score,
             "ats_details": {
@@ -284,6 +285,7 @@ def analyze_job_description_ats_task(
 
         publish_job_result(job_id, result)
         publish_event(job_id, "job.completed", {
+            "percent": 100,
             "pdf_job_id": job_id,
             "ats_score": 0.0,
             "ats_details": {"detected_industry": detected_industry},
@@ -616,6 +618,7 @@ async def _async_deep_analyze(
     })
 
     publish_event(job_id, "job.completed", {
+        "percent": 100,
         "pdf_job_id": job_id,
         "ats_score": float(result.get("overall_score", 0)),
         "ats_details": {
