@@ -6,9 +6,10 @@ interface Props {
   query: string
   maxItems?: number
   onComplete?: (name: string) => void
+  isActive?: boolean
 }
 
-export function SlashSuggestions({ query, maxItems = 7, onComplete }: Props): React.ReactElement | null {
+export function SlashSuggestions({ query, maxItems = 7, onComplete, isActive = true }: Props): React.ReactElement | null {
   const [selectedIndex, setSelectedIndex] = useState(0)
 
   const matches = useMemo(() => {
@@ -40,7 +41,7 @@ export function SlashSuggestions({ query, maxItems = 7, onComplete }: Props): Re
     } else if (key.tab) {
       handleComplete()
     }
-  })
+  }, { isActive })
 
   if (matches.length === 0) return null
 
