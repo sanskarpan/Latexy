@@ -253,6 +253,9 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
     if (!autoRefresh) return
 
     const refresh = async () => {
+      // Skip background polling when the tab is hidden to avoid needless
+      // backend load; a visibilitychange listener catches up on return.
+      if (typeof document !== 'undefined' && document.hidden) return
       await Promise.all([
         refreshJobs(),
         refreshHealth(),
@@ -265,9 +268,20 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
     // Set up interval
     refreshIntervalRef.current = setInterval(refresh, refreshInterval)
 
+    // Refresh immediately when the tab becomes visible again.
+    const handleVisibility = () => {
+      if (typeof document !== 'undefined' && !document.hidden) refresh()
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibility)
+    }
+
     return () => {
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current)
+      }
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibility)
       }
     }
   }, [autoRefresh, refreshInterval, refreshJobs, refreshHealth])
