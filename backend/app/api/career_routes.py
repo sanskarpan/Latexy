@@ -152,8 +152,11 @@ async def analyze_career_path(
             db=db,
         )
     except Exception as exc:
-        logger.error(f"Career analysis failed: {exc}")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {exc}")
+        logger.error(f"Career analysis failed: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Career analysis failed, please try again.",
+        )
 
     # Resolve path roles for response — single bulk query instead of N+1
     path_roles: list[CareerRole] = []
@@ -230,6 +233,11 @@ async def search_career_roles(
     db: AsyncSession = Depends(get_db),
 ) -> list[dict]:
     """Search career roles for autocomplete (no auth required)."""
+    # Require a minimum query length and short-circuit empty/whitespace queries
+    # so an empty `q` cannot trigger an unbounded `ilike('%%')` scan.
+    q = q.strip()
+    if len(q) < 2:
+        return []
     roles = await career_path_service.search_roles(q, db, limit=15)
     return [
         {
@@ -256,8 +264,9 @@ async def seed_career_graph(
     """
     from ..data.career_graph_seed import ROLES, TRANSITIONS
 
-    # Upsert roles
+    # Upsert roles — insert new roles and update mutable fields on existing ones.
     roles_created = 0
+    roles_updated = 0
     title_to_id: dict[str, str] = {}
 
     for role_data in ROLES:
@@ -280,6 +289,13 @@ async def seed_career_graph(
             db.add(role)
             await db.flush()
             roles_created += 1
+        else:
+            # Update mutable attributes so re-seeding applies data corrections.
+            role.level = role_data["level"]
+            role.required_skills = role_data["required_skills"]
+            role.typical_yoe_min = role_data.get("yoe_min")
+            role.typical_yoe_max = role_data.get("yoe_max")
+            roles_updated += 1
         title_to_id[role_data["title"]] = role.id
 
     # Upsert transitions
@@ -299,7 +315,8 @@ async def seed_career_graph(
                 CareerTransition.to_role_id == to_id,
             )
         )
-        if not existing_t.scalar_one_or_none():
+        existing_transition = existing_t.scalar_one_or_none()
+        if not existing_transition:
             transition = CareerTransition(
                 from_role_id=from_id,
                 to_role_id=to_id,
@@ -308,6 +325,10 @@ async def seed_career_graph(
             )
             db.add(transition)
             transitions_created += 1
+        else:
+            # Update mutable transition attributes on re-seed.
+            existing_transition.avg_years = avg_years
+            existing_transition.difficulty = difficulty
 
     await db.commit()
 
@@ -315,7 +336,7 @@ async def seed_career_graph(
         roles_created=roles_created,
         transitions_created=transitions_created,
         message=(
-            f"Seeded {roles_created} new role(s) and {transitions_created} new transition(s). "
-            "Existing records were skipped."
+            f"Seeded {roles_created} new role(s) (updated {roles_updated} existing) "
+            f"and {transitions_created} new transition(s). Existing rows were upserted."
         ),
     )
