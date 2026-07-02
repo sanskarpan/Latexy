@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8030';
+import { BACKEND_URL, authHeaders } from '../_forward';
 
 export async function GET(request: NextRequest) {
   try {
     const response = await fetch(`${BACKEND_URL}/byok/providers`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: authHeaders(request),
     });
 
     if (!response.ok) {
