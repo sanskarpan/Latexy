@@ -14,6 +14,7 @@ from jinja2 import FileSystemLoader as _JinjaFSL
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from ..core.config import settings
 from ..core.logging import get_logger
@@ -31,22 +32,42 @@ router = APIRouter(prefix="/resumes", tags=["resumes"])
 
 # --- Schemas ---
 
+ALLOWED_DOCUMENT_TYPES = frozenset({"resume", "presentation", "academic_cv", "cover_letter"})
+MAX_LATEX_CONTENT_LEN = 1_000_000  # ~1MB cap to prevent unbounded storage/DoS
+
+
+def _validate_document_type(v: Optional[str]) -> Optional[str]:
+    if v is not None and v not in ALLOWED_DOCUMENT_TYPES:
+        raise ValueError(f"document_type must be one of {sorted(ALLOWED_DOCUMENT_TYPES)}")
+    return v
+
+
 class ResumeBase(BaseModel):
-    title: str
-    latex_content: str
+    title: str = Field(..., min_length=1, max_length=255)
+    latex_content: str = Field(..., max_length=MAX_LATEX_CONTENT_LEN)
     is_template: bool = False
     tags: Optional[List[str]] = None
     document_type: str = "resume"
 
 class ResumeCreate(ResumeBase):
-    pass
+    # document_type validation is enforced on input only (not on ResumeResponse,
+    # which inherits ResumeBase and must faithfully echo stored values).
+    @field_validator("document_type")
+    @classmethod
+    def _check_document_type(cls, v: str) -> str:
+        return _validate_document_type(v)
 
 class ResumeUpdate(BaseModel):
-    title: Optional[str] = None
-    latex_content: Optional[str] = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    latex_content: Optional[str] = Field(default=None, max_length=MAX_LATEX_CONTENT_LEN)
     is_template: Optional[bool] = None
     tags: Optional[List[str]] = None
     document_type: Optional[str] = None
+
+    @field_validator("document_type")
+    @classmethod
+    def _check_document_type(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_document_type(v)
 
 class ResumeResponse(ResumeBase):
     id: str
@@ -792,6 +813,16 @@ async def update_resume(
     if latex_changed and resume.selected_template_id and resume.structured_content:
         resume.builder_status = "detached"
         resume.content_source = "manual_latex"
+
+    # Content changed → invalidate the cached anonymous (redacted) share PDF so the
+    # next create_share_link call regenerates it from the updated content.
+    if latex_changed:
+        meta = dict(resume.resume_settings or {})
+        if meta.pop("share_anonymous_job_id", None) is not None or meta.pop(
+            "share_anonymous_pending", None
+        ) is not None:
+            resume.resume_settings = meta
+            flag_modified(resume, "resume_settings")
 
     resume.updated_at = datetime.now(timezone.utc)
     await db.commit()
@@ -1727,12 +1758,18 @@ async def create_share_link(
                 metadata={"anonymous_share": True, "resume_id": resume_id},
             )
             current_meta["share_anonymous_job_id"] = anon_job_id
-            resume.resume_settings = current_meta
+            # Reassign a fresh dict AND flag_modified so SQLAlchemy persists the
+            # change even after an earlier autoflush (triggered by the Compilation
+            # lookup above) committed `current_meta` — a plain JSONB column does not
+            # track in-place mutations.
+            resume.resume_settings = dict(current_meta)
+            flag_modified(resume, "resume_settings")
             logger.info(f"Submitted anonymous compile job {anon_job_id} for resume {resume_id}")
         except Exception as exc:
             logger.error(f"Could not submit anonymous compile job for resume {resume_id}: {exc}")
             current_meta["share_anonymous_pending"] = True
-            resume.resume_settings = current_meta
+            resume.resume_settings = dict(current_meta)
+            flag_modified(resume, "resume_settings")
 
     await db.commit()
     await db.refresh(resume)
@@ -2011,9 +2048,20 @@ async def bulk_export(
 _VALID_ROLES = {"editor", "commenter", "viewer"}
 
 
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
 class CollaboratorInviteRequest(BaseModel):
     email: str = Field(..., min_length=3, max_length=255)
     role: str = Field(default="editor")
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        v = v.strip()
+        if not _EMAIL_RE.match(v):
+            raise ValueError("Invalid email address")
+        return v.lower()
 
     @field_validator("role")
     @classmethod
