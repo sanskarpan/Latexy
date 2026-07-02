@@ -484,3 +484,85 @@ class TestATSSupportedIndustries:
         """Supported industries endpoint is public."""
         resp = await client.get("/ats/supported-industries")
         assert resp.status_code == 200
+
+
+# ── Security & validation: server-derived plan, payload caps ─────────────────
+
+@pytest.mark.asyncio
+class TestATSScorePlanAndLimits:
+
+    async def test_client_user_plan_is_ignored_for_queue_priority(
+        self, client: AsyncClient
+    ):
+        """Anonymous caller sending user_plan='pro' must be forced to 'free'
+        server-side (no queue-priority privilege escalation)."""
+        with patch("app.api.ats_routes.submit_ats_scoring") as mock_submit:
+            mock_submit.return_value = str(uuid.uuid4())
+            resp = await client.post(
+                "/ats/score",
+                json={
+                    "latex_content": VALID_LATEX,
+                    "user_plan": "pro",  # attacker-supplied — must be ignored
+                    "async_processing": True,
+                },
+            )
+        assert resp.status_code == 200
+        assert mock_submit.call_args.kwargs["user_plan"] == "free"
+
+    async def test_analyze_client_user_plan_ignored(self, client: AsyncClient):
+        """analyze-job-description must also derive plan server-side."""
+        with patch("app.api.ats_routes.submit_job_description_analysis") as mock_submit:
+            mock_submit.return_value = str(uuid.uuid4())
+            resp = await client.post(
+                "/ats/analyze-job-description",
+                json={
+                    "job_description": JOB_DESCRIPTION,
+                    "user_plan": "team",  # ignored
+                    "async_processing": True,
+                },
+            )
+        assert resp.status_code == 200
+        assert mock_submit.call_args.kwargs["user_plan"] == "free"
+
+    async def test_score_rejects_oversized_latex(self, client: AsyncClient):
+        """latex_content over 200_000 chars → 422."""
+        resp = await client.post(
+            "/ats/score",
+            json={"latex_content": "a" * 200_001, "async_processing": False},
+        )
+        assert resp.status_code == 422
+
+    async def test_score_rejects_oversized_job_description(self, client: AsyncClient):
+        """job_description over 20_000 chars → 422."""
+        resp = await client.post(
+            "/ats/score",
+            json={
+                "latex_content": VALID_LATEX,
+                "job_description": "x" * 20_001,
+                "async_processing": False,
+            },
+        )
+        assert resp.status_code == 422
+
+    async def test_analyze_rejects_oversized_job_description(self, client: AsyncClient):
+        """analyze-job-description job_description over 20_000 chars → 422."""
+        resp = await client.post(
+            "/ats/analyze-job-description",
+            json={"job_description": "x" * 20_001, "async_processing": False},
+        )
+        assert resp.status_code == 422
+
+    async def test_industry_override_takes_effect_sync(self, client: AsyncClient):
+        """industry_override must actually change the resolved industry_key
+        (previously silently ignored by score_resume)."""
+        resp = await client.post(
+            "/ats/score",
+            json={
+                "latex_content": VALID_LATEX,
+                "job_description": JOB_DESCRIPTION,  # would auto-detect tech
+                "industry_override": "finance_banking",
+                "async_processing": False,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["industry_key"] == "finance_banking"
