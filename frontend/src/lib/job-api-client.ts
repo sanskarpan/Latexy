@@ -106,12 +106,14 @@ export interface JobSubmissionResponse {
 
 export interface JobInfo {
   job_id: string
+  job_type?: string
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
   stage?: string
   progress?: number
   message?: string
   created_at?: string
   updated_at?: string
+  last_updated?: number
   metadata?: Record<string, string>
 }
 
@@ -184,7 +186,14 @@ class JobApiClient {
 
   async getSupportedIndustries(): Promise<SupportedIndustriesResponse> {
     const res = await apiClient.getSupportedIndustries()
-    return { success: res.success, industries: res.industries }
+    // The backend returns industries as {key, label} objects; older/synchronous
+    // paths may return bare strings. Normalize to the string keys the UI and
+    // SupportedIndustriesResponse type expect (so `industries.includes(key)`
+    // in useATSScoring works instead of comparing against objects).
+    const industries = (res.industries as Array<string | { key: string; label?: string }>).map(
+      (item) => (typeof item === 'string' ? item : item.key),
+    )
+    return { success: res.success, industries }
   }
 
   async submitJob(req: JobSubmissionRequest): Promise<JobSubmissionResponse> {
@@ -201,16 +210,28 @@ class JobApiClient {
   }
 
   async listJobs(
-    _status?: string,
+    status?: string,
     limit = 100,
-    _offset = 0
+    offset = 0
   ): Promise<JobListResponse> {
+    // NOTE: the backend /jobs endpoint is not yet paginated, so filtering,
+    // limit and offset are applied client-side here. Full field mapping is
+    // preserved (stage/progress/timestamps) rather than dropping to id+status.
     const res = await apiClient.listJobs()
-    const jobs = res.jobs.map((j) => ({
-      job_id: (j as { job_id?: string; status: string }).job_id ?? '',
-      status: j.status as JobInfo['status'],
+    let jobs: JobInfo[] = res.jobs.map((j) => ({
+      job_id: j.job_id ?? '',
+      job_type: j.job_type,
+      // Backend uses 'queued'; JobInfo/UI use 'pending'.
+      status: (j.status === 'queued' ? 'pending' : j.status) as JobInfo['status'],
+      stage: j.stage,
+      progress: j.percent,
+      last_updated: j.last_updated,
     }))
-    return { jobs: jobs.slice(0, limit), total: jobs.length }
+    if (status) {
+      jobs = jobs.filter((job) => job.status === status)
+    }
+    const total = jobs.length
+    return { jobs: jobs.slice(offset, offset + limit), total, total_count: total }
   }
 
   async getSystemHealth(): Promise<SystemHealthResponse> {
