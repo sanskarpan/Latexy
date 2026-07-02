@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from app.core.config import settings
@@ -193,3 +194,96 @@ class TestDropboxEndpoints:
             assert mock_db.execute.call_count >= 2
         finally:
             app.dependency_overrides.pop(get_db, None)
+
+
+# ── Lazy token refresh + retry (Feature 77 hardening) ─────────────────────────
+
+
+def _http_status_error(code: int) -> httpx.HTTPStatusError:
+    resp = MagicMock()
+    resp.status_code = code
+    return httpx.HTTPStatusError(str(code), request=MagicMock(), response=resp)
+
+
+@pytest.mark.asyncio
+class TestDropboxTokenRetry:
+    def _user(self):
+        from app.services.encryption_service import encryption_service
+        user = MagicMock()
+        user.id = "user-1"
+        user.dropbox_access_token = encryption_service.encrypt("old-access")
+        user.dropbox_refresh_token = encryption_service.encrypt("refresh-tok")
+        return user
+
+    async def test_no_refresh_on_success(self):
+        """When the op succeeds, the token is never refreshed (no extra round-trip)."""
+        from app.api import dropbox_routes
+
+        user = self._user()
+        db = AsyncMock()
+        op = AsyncMock(return_value="ok")
+
+        with patch.object(
+            dropbox_routes.dropbox_sync_service, "refresh_access_token", new=AsyncMock()
+        ) as refresh:
+            result = await dropbox_routes._run_with_dropbox_token(user, db, op)
+
+        assert result == "ok"
+        op.assert_awaited_once()
+        refresh.assert_not_awaited()
+
+    async def test_refreshes_and_retries_on_401(self):
+        """A 401 triggers a single refresh + persist + retry."""
+        from app.api import dropbox_routes
+
+        user = self._user()
+        db = AsyncMock()
+        op = AsyncMock(side_effect=[_http_status_error(401), "ok-after-refresh"])
+
+        with patch.object(
+            dropbox_routes.dropbox_sync_service,
+            "refresh_access_token",
+            new=AsyncMock(return_value="new-access"),
+        ):
+            result = await dropbox_routes._run_with_dropbox_token(user, db, op)
+
+        assert result == "ok-after-refresh"
+        assert op.await_count == 2
+        # New access token persisted back to the user row.
+        db.execute.assert_awaited()
+        db.commit.assert_awaited()
+        # Second op call used the freshly refreshed token.
+        second_token = op.await_args_list[1].args[0]
+        assert second_token == "new-access"
+
+    async def test_non_401_error_not_retried(self):
+        """A non-401 (e.g. 409 path-not-found) propagates without a refresh."""
+        from app.api import dropbox_routes
+
+        user = self._user()
+        db = AsyncMock()
+        op = AsyncMock(side_effect=_http_status_error(409))
+
+        with patch.object(
+            dropbox_routes.dropbox_sync_service, "refresh_access_token", new=AsyncMock()
+        ) as refresh:
+            with pytest.raises(httpx.HTTPStatusError):
+                await dropbox_routes._run_with_dropbox_token(user, db, op)
+
+        op.assert_awaited_once()
+        refresh.assert_not_awaited()
+
+    async def test_refresh_without_refresh_token_raises_401(self):
+        """A 401 with no stored refresh token surfaces a reconnect (401)."""
+        from fastapi import HTTPException
+
+        from app.api import dropbox_routes
+
+        user = self._user()
+        user.dropbox_refresh_token = None
+        db = AsyncMock()
+        op = AsyncMock(side_effect=_http_status_error(401))
+
+        with pytest.raises(HTTPException) as exc:
+            await dropbox_routes._run_with_dropbox_token(user, db, op)
+        assert exc.value.status_code == 401
