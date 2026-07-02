@@ -88,6 +88,11 @@ async def _authorize(
     plan_id = await _get_plan_id(db, api_key.user_id)
     meter = await developer_key_service.consume_rate_limit(api_key.user_id, plan_id)
     if not meter["allowed"]:
+        if meter.get("unavailable"):
+            raise HTTPException(
+                status_code=503,
+                detail="Rate limiter temporarily unavailable, please retry shortly",
+            )
         raise HTTPException(
             status_code=429,
             detail=f"Developer API daily limit exceeded ({meter['limit']} requests/day)",
@@ -228,6 +233,9 @@ async def download_job_pdf_v1(
     import base64 as _base64
 
     from fastapi.responses import Response as _Response
+
+    if "export" not in set(api_key.scopes or []):
+        raise HTTPException(status_code=403, detail="API key lacks 'export' scope")
 
     validate_job_id(job_id)
     await _assert_job_owner(job_id, api_key)
