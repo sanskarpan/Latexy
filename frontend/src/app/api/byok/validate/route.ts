@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8030';
+import { BACKEND_URL, authHeaders } from '../_forward';
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,9 +8,7 @@ export async function POST(request: NextRequest) {
     
     const response = await fetch(`${BACKEND_URL}/byok/validate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: authHeaders(request),
       body: JSON.stringify(body),
     });
 
