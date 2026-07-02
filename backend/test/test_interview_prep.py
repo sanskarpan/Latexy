@@ -64,6 +64,32 @@ async def test_generate_creates_record(client: AsyncClient, auth_headers: dict, 
 
 
 @pytest.mark.asyncio
+async def test_generate_enqueue_failure_does_not_orphan_row(
+    client: AsyncClient, auth_headers: dict, resume_id: str
+):
+    """If the broker enqueue fails, the endpoint returns 503 and no prep row is left behind."""
+    from unittest.mock import patch
+
+    with patch(
+        "app.api.interview_routes.submit_interview_prep_generation",
+        side_effect=RuntimeError("broker down"),
+    ):
+        resp = await client.post(
+            "/interview-prep/generate",
+            json={"resume_id": resume_id, "job_description": "Backend role"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 503
+
+    # No orphaned prep row should exist for this resume.
+    list_resp = await client.get(
+        f"/resumes/{resume_id}/interview-prep", headers=auth_headers
+    )
+    assert list_resp.status_code == 200
+    assert list_resp.json() == []
+
+
+@pytest.mark.asyncio
 async def test_generate_requires_auth(client: AsyncClient, resume_id: str):
     resp = await client.post(
         "/interview-prep/generate",
