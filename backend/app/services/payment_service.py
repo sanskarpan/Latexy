@@ -207,24 +207,14 @@ class PaymentService:
             user_id = payload["user_id"]
 
             if not self.client:
-                await db.execute(
-                    update(User).where(User.id == user_id).values(
-                        subscription_plan="student",
-                        subscription_status="active",
-                    )
+                # Never grant a paid/Pro-equivalent plan (student resolves to the
+                # Pro family) without a completed payment. When Razorpay is not
+                # configured, fail verification rather than activating the plan.
+                logger.warning(
+                    "Student verification attempted while billing is unavailable; "
+                    "refusing to grant plan without payment"
                 )
-                db.add(
-                    Subscription(
-                        user_id=user_id,
-                        plan_id="student",
-                        status="active",
-                        current_period_start=datetime.utcnow(),
-                        current_period_end=datetime.utcnow() + timedelta(days=30),
-                    )
-                )
-                await db.commit()
-                await redis.delete(f"student_plan_verify:{token}")
-                return {"success": True, "message": "Student plan activated"}
+                return {"success": False, "error": self._base_status["message"]}
 
             result = await self._create_paid_subscription(
                 db=db,
@@ -339,9 +329,12 @@ class PaymentService:
                 current_period_end=current_period_end,
             )
         )
+        # NOTE: do NOT grant the paid plan here. The Razorpay subscription is still
+        # in "created" state (unpaid); User.subscription_plan is what gates paid
+        # features, so upgrading it now would grant the plan before any payment.
+        # The plan is applied in _handle_subscription_activated after payment.
         await db.execute(
             update(User).where(User.id == user_id).values(
-                subscription_plan=concrete_plan_id,
                 subscription_status="created",
                 subscription_id=subscription["id"],
             )
@@ -435,7 +428,10 @@ class PaymentService:
                         update(CouponCode)
                         .where(
                             CouponCode.id == coupon_id,
-                            CouponCode.used_count < CouponCode.max_uses,
+                            # max_uses NULL == unlimited; `used_count < NULL` is
+                            # NULL (never true), so guard the NULL case explicitly.
+                            (CouponCode.max_uses.is_(None))
+                            | (CouponCode.used_count < CouponCode.max_uses),
                         )
                         .values(used_count=CouponCode.used_count + 1)
                         .returning(CouponCode.id)
@@ -525,38 +521,55 @@ class PaymentService:
             # Parse webhook data
             event_data = json.loads(payload.decode('utf-8'))
             event_type = event_data.get("event")
-            entity = event_data.get("payload", {}).get("subscription", {})
+            event_payload = event_data.get("payload", {})
+            entity = event_payload.get("subscription", {})
 
-            # PAYMENT-001: idempotency — skip already-processed events
+            # PAYMENT-001: idempotency — atomic set-if-absent per event id.
+            # A single SET key NX EX avoids the check-then-act race of
+            # SISMEMBER + SADD (two concurrent deliveries could both pass the
+            # SISMEMBER before either SADDs). A per-event key also stops the
+            # shared-set TTL from being reset on every delivery.
             event_id = event_data.get("id")
+            processed_key = None
+            redis = None
             if event_id:
                 redis = await get_redis_cache_client()
-                _redis_key = "latexy:webhook:processed"
-                if await redis.sismember(_redis_key, event_id):
+                processed_key = f"latexy:webhook:processed:{event_id}"
+                was_new = await redis.set(processed_key, "1", nx=True, ex=86400)
+                if not was_new:
                     logger.info(f"Duplicate webhook event skipped: {event_id}")
                     return {"success": True, "message": "Event already processed"}
-            else:
-                redis = None  # no event_id; can't do idempotency check
 
             logger.info(f"Processing webhook event: {event_type}")
 
-            if event_type == "subscription.activated":
-                result = await self._handle_subscription_activated(db, entity)
-            elif event_type == "subscription.charged":
-                result = await self._handle_subscription_charged(db, entity)
-            elif event_type == "subscription.cancelled":
-                result = await self._handle_subscription_cancelled(db, entity)
-            elif event_type == "subscription.paused":
-                result = await self._handle_subscription_paused(db, entity)
-            else:
-                logger.info(f"Unhandled webhook event: {event_type}")
-                result = {"success": True, "message": "Event ignored"}
+            try:
+                if event_type == "subscription.activated":
+                    result = await self._handle_subscription_activated(db, entity)
+                elif event_type == "subscription.charged":
+                    result = await self._handle_subscription_charged(db, event_payload)
+                elif event_type == "subscription.cancelled":
+                    result = await self._handle_subscription_cancelled(db, entity)
+                elif event_type == "subscription.paused":
+                    result = await self._handle_subscription_paused(db, entity)
+                elif event_type in ("subscription.halted", "subscription.completed"):
+                    result = await self._handle_subscription_ended(
+                        db, entity, event_type.split(".", 1)[1]
+                    )
+                elif event_type == "subscription.pending":
+                    result = await self._handle_subscription_pending(db, entity)
+                else:
+                    logger.info(f"Unhandled webhook event: {event_type}")
+                    result = {"success": True, "message": "Event ignored"}
+            except Exception:
+                # Release the idempotency key so a retry can reprocess this event.
+                if processed_key is not None and redis is not None:
+                    await redis.delete(processed_key)
+                raise
 
-            # PAYMENT-001: mark event as processed after successful handling
-            if event_id and redis is not None and result.get("success"):
-                _redis_key = "latexy:webhook:processed"
-                await redis.sadd(_redis_key, event_id)
-                await redis.expire(_redis_key, 86400)
+            # If handling failed (transient/retryable), release the idempotency
+            # key so Razorpay's retry can reprocess the event.
+            if processed_key is not None and redis is not None and not result.get("success"):
+                await redis.delete(processed_key)
 
             return result
 
@@ -566,6 +579,11 @@ class PaymentService:
                 "success": False,
                 "error": "Webhook processing failed"
             }
+
+    def _period_delta_for_plan(self, plan_id: Optional[str]) -> timedelta:
+        """Return the billing period length derived from the plan's interval."""
+        plan_config = get_plan_config(plan_id) or {}
+        return timedelta(days=365) if plan_config.get("interval") == "year" else timedelta(days=30)
 
     def _verify_webhook_signature(self, payload: bytes, signature: str) -> bool:
         """Verify Razorpay webhook signature."""
@@ -600,14 +618,15 @@ class PaymentService:
             async with db.begin():
                 # Fetch user_id first so we can update User without a second SELECT
                 sub_result = await db.execute(
-                    select(Subscription.user_id).where(
+                    select(Subscription.user_id, Subscription.plan_id).where(
                         Subscription.razorpay_subscription_id == subscription_id
                     )
                 )
-                user_id_row = sub_result.scalar_one_or_none()
-                if user_id_row is None:
+                sub_row = sub_result.one_or_none()
+                if sub_row is None:
                     logger.warning(f"Subscription not found: {subscription_id}")
                     return {"success": False, "error": "Subscription not found"}
+                user_id_row, plan_id = sub_row
 
                 await db.execute(
                     update(Subscription).where(
@@ -615,12 +634,16 @@ class PaymentService:
                     ).values(
                         status="active",
                         current_period_start=datetime.utcnow(),
-                        current_period_end=datetime.utcnow() + timedelta(days=30),
+                        # Derive period length from the plan interval so annual
+                        # plans do not get a 30-day period.
+                        current_period_end=datetime.utcnow() + self._period_delta_for_plan(plan_id),
                     )
                 )
+                # Grant the paid plan now that payment is confirmed (post-activation).
                 await db.execute(
                     update(User).where(User.id == user_id_row).values(
-                        subscription_status="active"
+                        subscription_plan=plan_id,
+                        subscription_status="active",
                     )
                 )
             # db.begin() context manager commits on exit
@@ -633,27 +656,88 @@ class PaymentService:
             await db.rollback()
             return {"success": False, "error": "Failed to activate subscription"}
 
+    @staticmethod
+    def _unwrap_entity(wrapper: Dict[str, Any]) -> Dict[str, Any]:
+        """Return the Razorpay ``entity`` sub-object if present, else the dict.
+
+        Razorpay nests the real object under ``payload.<type>.entity``; some
+        callers/tests pass the flattened dict directly.
+        """
+        inner = wrapper.get("entity")
+        return inner if isinstance(inner, dict) else wrapper
+
     async def _handle_subscription_charged(
         self,
         db: AsyncSession,
-        entity: Dict[str, Any]
+        event_payload: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Handle subscription charged event."""
+        """Handle subscription charged event (initial charge and renewals)."""
         try:
-            subscription_id = entity.get("id")
-            payment_data = entity.get("latest_invoice", {})
+            sub_entity = self._unwrap_entity(event_payload.get("subscription") or {})
+            payment_entity = self._unwrap_entity(event_payload.get("payment") or {})
+            subscription_id = sub_entity.get("id")
 
-            # Create payment record
-            payment = Payment(
-                subscription_id=subscription_id,
-                razorpay_payment_id=payment_data.get("payment_id"),
-                amount=payment_data.get("amount", 0),
-                currency=payment_data.get("currency", "INR"),
-                status="paid",
-                payment_method=payment_data.get("method")
-            )
-            db.add(payment)
-            await db.commit()
+            if not subscription_id:
+                return {"success": False, "error": "No subscription ID"}
+
+            async with db.begin():
+                sub_result = await db.execute(
+                    select(
+                        Subscription.id, Subscription.user_id, Subscription.plan_id
+                    ).where(Subscription.razorpay_subscription_id == subscription_id)
+                )
+                sub_row = sub_result.one_or_none()
+                if sub_row is None:
+                    logger.warning(f"Subscription not found for charge: {subscription_id}")
+                    return {"success": False, "error": "Subscription not found"}
+                local_sub_id, user_id_row, plan_id = sub_row
+
+                # The payment lives under payload.payment.entity for charged
+                # events (NOT subscription.latest_invoice).
+                razorpay_payment_id = payment_entity.get("id")
+
+                # Dedupe on the real Razorpay payment id — retries/races must not
+                # create duplicate payment rows.
+                if razorpay_payment_id:
+                    existing = await db.execute(
+                        select(Payment.id).where(
+                            Payment.razorpay_payment_id == razorpay_payment_id
+                        )
+                    )
+                    if existing.scalar_one_or_none() is not None:
+                        logger.info(f"Payment already recorded: {razorpay_payment_id}")
+                        return {"success": True, "message": "Payment already recorded"}
+
+                db.add(
+                    Payment(
+                        user_id=user_id_row,
+                        subscription_id=local_sub_id,
+                        razorpay_payment_id=razorpay_payment_id,
+                        amount=int(payment_entity.get("amount") or 0),
+                        currency=payment_entity.get("currency") or "INR",
+                        status="paid",
+                        payment_method=payment_entity.get("method"),
+                    )
+                )
+
+                # Advance the billing period and re-affirm active status so
+                # renewals extend the stored period instead of letting it lapse.
+                now = datetime.utcnow()
+                await db.execute(
+                    update(Subscription).where(
+                        Subscription.razorpay_subscription_id == subscription_id
+                    ).values(
+                        status="active",
+                        current_period_start=now,
+                        current_period_end=now + self._period_delta_for_plan(plan_id),
+                    )
+                )
+                await db.execute(
+                    update(User).where(User.id == user_id_row).values(
+                        subscription_plan=plan_id,
+                        subscription_status="active",
+                    )
+                )
 
             logger.info(f"Payment recorded for subscription: {subscription_id}")
             return {"success": True, "message": "Payment recorded"}
@@ -662,6 +746,92 @@ class PaymentService:
             logger.error(f"Error handling subscription charge: {e}")
             await db.rollback()
             return {"success": False, "error": "Failed to record payment"}
+
+    async def _handle_subscription_ended(
+        self,
+        db: AsyncSession,
+        entity: Dict[str, Any],
+        sub_status: str,
+    ) -> Dict[str, Any]:
+        """Downgrade a user to free when a subscription halts or completes.
+
+        Razorpay emits subscription.halted after repeated renewal failures and
+        subscription.completed once the final cycle is billed; in both cases the
+        subscription is no longer paying, so the user must lose paid features.
+        """
+        try:
+            subscription_id = entity.get("id")
+
+            async with db.begin():
+                sub_result = await db.execute(
+                    select(Subscription.user_id).where(
+                        Subscription.razorpay_subscription_id == subscription_id
+                    )
+                )
+                user_id_row = sub_result.scalar_one_or_none()
+                if user_id_row is None:
+                    logger.warning(
+                        f"Subscription not found for {sub_status}: {subscription_id}"
+                    )
+                    return {"success": False, "error": "Subscription not found"}
+
+                await db.execute(
+                    update(Subscription).where(
+                        Subscription.razorpay_subscription_id == subscription_id
+                    ).values(status=sub_status)
+                )
+                await db.execute(
+                    update(User).where(User.id == user_id_row).values(
+                        subscription_plan="free",
+                        subscription_status=sub_status,
+                    )
+                )
+
+            logger.info(f"Subscription {sub_status}: {subscription_id}")
+            return {"success": True, "message": f"Subscription {sub_status}"}
+
+        except Exception as e:
+            logger.error(f"Error handling subscription {sub_status}: {e}")
+            await db.rollback()
+            return {"success": False, "error": f"Failed to handle {sub_status}"}
+
+    async def _handle_subscription_pending(
+        self,
+        db: AsyncSession,
+        entity: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Mark a subscription pending (renewal failed, awaiting retry)."""
+        try:
+            subscription_id = entity.get("id")
+
+            async with db.begin():
+                sub_result = await db.execute(
+                    select(Subscription.user_id).where(
+                        Subscription.razorpay_subscription_id == subscription_id
+                    )
+                )
+                user_id_row = sub_result.scalar_one_or_none()
+
+                await db.execute(
+                    update(Subscription).where(
+                        Subscription.razorpay_subscription_id == subscription_id
+                    ).values(status="pending")
+                )
+
+                if user_id_row:
+                    await db.execute(
+                        update(User).where(User.id == user_id_row).values(
+                            subscription_status="pending"
+                        )
+                    )
+
+            logger.info(f"Subscription pending: {subscription_id}")
+            return {"success": True, "message": "Subscription pending"}
+
+        except Exception as e:
+            logger.error(f"Error handling subscription pending: {e}")
+            await db.rollback()
+            return {"success": False, "error": "Failed to handle pending"}
 
     async def _handle_subscription_cancelled(
         self,
