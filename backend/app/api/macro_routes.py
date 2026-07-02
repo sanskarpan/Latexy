@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.connection import get_db
-from ..database.models import User, UserMacro
+from ..database.models import UserMacro
 from ..middleware.auth_middleware import get_current_user_required as get_current_user
 
 router = APIRouter(prefix='/macros', tags=['macros'])
@@ -66,11 +66,11 @@ def _to_response(macro: UserMacro) -> MacroResponse:
 @router.get('', response_model=list[MacroResponse])
 async def list_macros(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ) -> list[MacroResponse]:
     result = await db.execute(
         select(UserMacro)
-        .where(UserMacro.user_id == current_user.id)
+        .where(UserMacro.user_id == user_id)
         .order_by(UserMacro.created_at.desc())
     )
     return [_to_response(m) for m in result.scalars().all()]
@@ -80,10 +80,10 @@ async def list_macros(
 async def create_macro(
     body: MacroCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ) -> MacroResponse:
     macro = UserMacro(
-        user_id=current_user.id,
+        user_id=user_id,
         name=body.name,
         description=body.description,
         shortcut=body.shortcut,
@@ -100,13 +100,13 @@ async def update_macro(
     macro_id: str,
     body: MacroUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ) -> MacroResponse:
     result = await db.execute(select(UserMacro).where(UserMacro.id == macro_id))
     macro = result.scalar_one_or_none()
     if not macro:
         raise HTTPException(status_code=404, detail='Macro not found')
-    if macro.user_id != current_user.id:
+    if macro.user_id != user_id:
         raise HTTPException(status_code=403, detail='Access denied')
     for field, val in body.model_dump(exclude_unset=True).items():
         setattr(macro, field, val)
@@ -119,13 +119,13 @@ async def update_macro(
 async def delete_macro(
     macro_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ) -> None:
     result = await db.execute(select(UserMacro).where(UserMacro.id == macro_id))
     macro = result.scalar_one_or_none()
     if not macro:
         raise HTTPException(status_code=404, detail='Macro not found')
-    if macro.user_id != current_user.id:
+    if macro.user_id != user_id:
         raise HTTPException(status_code=403, detail='Access denied')
     await db.delete(macro)
     await db.commit()
