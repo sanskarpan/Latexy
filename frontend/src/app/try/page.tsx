@@ -135,10 +135,10 @@ export default function TryPage() {
   const runCompile = async (mode: 'compile' | 'combined') => {
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) { toast.error('LaTeX content is required'); return }
-    if (!session && !effectiveCanRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
+    if (!resolvedSession && !effectiveCanRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
     setIsSubmitting(true)
     try {
-      if (!session) await apiClient.trackUsage(trialStatus.fingerprint, mode)
+      if (!resolvedSession) await apiClient.trackUsage(trialStatus.fingerprint, mode)
       const response =
         mode === 'compile'
           ? await apiClient.compileLatex({ latex_content: currentContent, device_fingerprint: trialStatus.fingerprint })
@@ -150,7 +150,7 @@ export default function TryPage() {
             })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to submit job')
       setActiveJobId(response.job_id)
-      if (!session) trialStatus.incrementUsage()
+      if (!resolvedSession) trialStatus.incrementUsage()
       toast.success('Job submitted. Streaming updates live.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Submission failed')
@@ -169,7 +169,10 @@ export default function TryPage() {
       a.href = url
       a.download = 'latexy_resume.pdf'
       a.click()
-      URL.revokeObjectURL(url)
+      // Defer revocation so the browser has started the download before the
+      // blob URL is invalidated (immediate revoke races the download in
+      // Firefox / some Chromium builds).
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
       toast.success('PDF downloaded')
     } catch {
       toast.error('Download failed')
@@ -178,20 +181,20 @@ export default function TryPage() {
 
   const handleAutoCompile = useCallback(async (content: string) => {
     if (isProcessing || isSubmitting) return
-    if (!session && !effectiveCanRun) return
+    if (!resolvedSession && !effectiveCanRun) return
     setIsSubmitting(true)
     try {
-      if (!session) await apiClient.trackUsage(trialStatus.fingerprint, 'compile')
+      if (!resolvedSession) await apiClient.trackUsage(trialStatus.fingerprint, 'compile')
       const response = await apiClient.compileLatex({ latex_content: content, device_fingerprint: trialStatus.fingerprint })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
       setActiveJobId(response.job_id)
-      if (!session) trialStatus.incrementUsage()
+      if (!resolvedSession) trialStatus.incrementUsage()
     } catch {
       // Silent fail for auto-compile
     } finally {
       setIsSubmitting(false)
     }
-  }, [isProcessing, isSubmitting, session, trialStatus, effectiveCanRun])
+  }, [isProcessing, isSubmitting, resolvedSession, trialStatus, effectiveCanRun])
 
   const handleExplainError = useCallback(async (error: { line: number; message: string; surroundingLatex: string }) => {
     setExplainerLine(error.line)
@@ -249,10 +252,10 @@ export default function TryPage() {
   const handleTrimToOnePage = useCallback(async () => {
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) return
-    if (!session && !effectiveCanRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
+    if (!resolvedSession && !effectiveCanRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
     setIsSubmitting(true)
     try {
-      if (!session) await apiClient.trackUsage(trialStatus.fingerprint, 'combined')
+      if (!resolvedSession) await apiClient.trackUsage(trialStatus.fingerprint, 'combined')
       const response = await apiClient.optimizeAndCompile({
         latex_content: currentContent,
         job_description: jobDescription,
@@ -262,14 +265,14 @@ export default function TryPage() {
       })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to start trim')
       setActiveJobId(response.job_id)
-      if (!session) trialStatus.incrementUsage()
+      if (!resolvedSession) trialStatus.incrementUsage()
       toast.success('Trimming to 1 page…')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Trim failed')
     } finally {
       setIsSubmitting(false)
     }
-  }, [latexContent, jobDescription, session, trialStatus, TRIM_INSTRUCTION, effectiveCanRun])
+  }, [latexContent, jobDescription, resolvedSession, trialStatus, TRIM_INSTRUCTION, effectiveCanRun])
 
   const statusTone = useMemo(() => {
     if (stream.status === 'completed') return 'text-emerald-300'
