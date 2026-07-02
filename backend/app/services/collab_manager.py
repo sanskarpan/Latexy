@@ -44,6 +44,10 @@ MSG_UPDATE = 2
 # Redis TTL for collaboration document state (24 h)
 _COLLAB_TTL = 86_400
 
+# Maximum accepted size of a single collaboration frame (256 KiB). Oversized
+# frames are dropped to bound Redis writes and broadcast amplification.
+MAX_COLLAB_MESSAGE_BYTES = 256 * 1024
+
 
 # ── lib0 variable-length uint helpers ────────────────────────────────────────
 
@@ -212,6 +216,16 @@ async def handle_collab_message(
     * MSG_AWARENESS / MSG_QUERY_AWARENESS → relay to peers (no persistence)
     """
     if not data:
+        return
+
+    # Bound per-frame size to prevent a single peer from flooding Redis / peers
+    # with arbitrarily large binary frames.
+    if len(data) > MAX_COLLAB_MESSAGE_BYTES:
+        logger.warning(
+            "Collab: dropping oversized frame (%d bytes) from %s",
+            len(data),
+            client_id[:8],
+        )
         return
 
     try:
