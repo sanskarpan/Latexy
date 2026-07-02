@@ -266,7 +266,10 @@ class TrialService:
                 trial.session_id = session_id or trial.session_id
                 trial.ip_address = ip_address or trial.ip_address
 
-                if trial.usage_count >= TRIAL_LIMIT:
+                # Block against the effective `limit` (not the hardcoded default)
+                # so elevated test-user quotas are honoured and enforcement stays
+                # consistent with get_trial_status.
+                if trial.usage_count >= limit:
                     trial.blocked = True
 
                 # Analytics record inside the same savepoint
