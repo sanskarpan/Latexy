@@ -38,12 +38,18 @@ VALID_LATEX = r"""
 
 JOB_DESC = "Software Engineer at Google requiring Python, Docker"
 
-VALID_JSON_RESPONSE = json.dumps({
-    "optimized_latex": r"\documentclass{article}\begin{document}OPTIMIZED\end{document}",
-    "changes": [
-        {"section": "summary", "change_type": "modified", "reason": "Added keywords"},
-    ],
-})
+def _delim(latex: str, changes: list | None = None) -> str:
+    """Build a delimiter-formatted LLM response matching _create_optimization_prompt."""
+    return (
+        "<<<LATEX>>>\n" + latex + "\n<<<END_LATEX>>>\n"
+        "<<<CHANGES>>>\n" + json.dumps(changes or []) + "\n<<<END_CHANGES>>>"
+    )
+
+
+VALID_DELIM_RESPONSE = _delim(
+    r"\documentclass{article}\begin{document}OPTIMIZED\end{document}",
+    [{"section": "summary", "change_type": "modified", "reason": "Added keywords"}],
+)
 
 
 def _make_openai_stream(tokens: list, tokens_total: int = 100) -> Iterator:
@@ -179,7 +185,7 @@ class TestLLMWorkerSuccess:
         mock_client = MagicMock()
         mock_openai.return_value = mock_client
         mock_client.chat.completions.create.return_value = _make_openai_stream(
-            list(VALID_JSON_RESPONSE), tokens_total=150
+            list(VALID_DELIM_RESPONSE), tokens_total=150
         )
         job_id = str(uuid.uuid4())
         with patch("app.workers.llm_worker.settings") as ms:
@@ -251,24 +257,18 @@ class TestLLMWorkerJsonParse:
 
     def test_valid_json_extracts_optimized_latex(self, mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc):
         optimized = r"\documentclass{article}\begin{document}OPTIMIZED\end{document}"
-        content = json.dumps({"optimized_latex": optimized, "changes": []})
+        content = _delim(optimized, [])
         result = self._run(mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc, content)
         assert result["optimized_latex"] == optimized
 
     def test_valid_json_extracts_changes(self, mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc):
-        content = json.dumps({
-            "optimized_latex": VALID_LATEX,
-            "changes": [{"section": "skills", "change_type": "added", "reason": "kw"}],
-        })
+        content = _delim(VALID_LATEX, [{"section": "skills", "change_type": "added", "reason": "kw"}])
         result = self._run(mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc, content)
         assert len(result["changes_made"]) == 1
         assert result["changes_made"][0]["section"] == "skills"
 
     def test_changes_without_dict_items_filtered(self, mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc):
-        content = json.dumps({
-            "optimized_latex": VALID_LATEX,
-            "changes": ["not_a_dict", 42],
-        })
+        content = _delim(VALID_LATEX, ["not_a_dict", 42])
         result = self._run(mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc, content)
         assert result["changes_made"] == []
 
