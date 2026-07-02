@@ -9,7 +9,6 @@ from typing import Dict, List, Optional
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.models import UserAPIKey
 from .encryption_service import EncryptionService
@@ -28,19 +27,14 @@ class APIKeyEncryption:
     """
     Thin wrapper around EncryptionService for BYOK key storage.
 
-    Maintains strict validation: raises ValueError if API_KEY_ENCRYPTION_KEY
-    is not set, since missing the key would make all stored BYOK keys unreadable.
+    Delegates key-strategy to EncryptionService, which enforces a hard
+    requirement for API_KEY_ENCRYPTION_KEY only in staging/production and uses a
+    development-only fallback otherwise. This avoids crashing import (and thus the
+    whole API) in dev/CI when the env var is unset, while keeping production strict.
     """
 
     def __init__(self, encryption_key: Optional[str] = None):
-        key = encryption_key or settings.API_KEY_ENCRYPTION_KEY
-        if not key:
-            raise ValueError(
-                "API_KEY_ENCRYPTION_KEY is not set. "
-                "All stored BYOK keys would become unreadable after a restart. "
-                "Set this environment variable to a valid Fernet key."
-            )
-        self._svc = EncryptionService(key)
+        self._svc = EncryptionService(encryption_key)
 
     def encrypt(self, api_key: str) -> str:
         """Encrypt an API key."""
@@ -91,15 +85,17 @@ class APIKeyService:
                         "validation_details": validation_result
                     }
 
-            # Check if user already has a key for this provider
+            # Check if user already has a key for this provider.
+            # Use ordered .first() (not scalar_one_or_none) so a pre-existing
+            # duplicate-active-row state can't raise MultipleResultsFound here.
             existing_key = await db.execute(
                 select(UserAPIKey).where(
                     UserAPIKey.user_id == user_id,
                     UserAPIKey.provider == provider,
                     UserAPIKey.is_active
-                )
+                ).order_by(UserAPIKey.created_at.desc())
             )
-            existing = existing_key.scalar_one_or_none()
+            existing = existing_key.scalars().first()
 
             if existing:
                 # Update existing key
@@ -268,14 +264,16 @@ class APIKeyService:
     async def get_user_provider(self, db: AsyncSession, user_id: str, provider: str) -> Optional[str]:
         """Get decrypted API key for a user's provider"""
         try:
+            # Ordered .first() (not scalar_one_or_none) so a duplicate-active-row
+            # state degrades gracefully to the newest key instead of a 500.
             result = await db.execute(
                 select(UserAPIKey).where(
                     UserAPIKey.user_id == user_id,
                     UserAPIKey.provider == provider,
                     UserAPIKey.is_active
-                )
+                ).order_by(UserAPIKey.created_at.desc())
             )
-            key = result.scalar_one_or_none()
+            key = result.scalars().first()
 
             if key:
                 return self.encryption.decrypt(key.encrypted_key)
