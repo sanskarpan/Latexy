@@ -197,6 +197,12 @@ start_app() {
 
   # ── Shared env vars ───────────────────────────────────────────────────────
   local DB_URL="postgresql+asyncpg://latexy:latexy_password@localhost:5434/latexy"
+  # Plain (non-asyncpg) URL for the Next.js Better Auth pg pool.
+  local FRONTEND_DB_URL="postgresql://latexy:latexy_password@localhost:5434/latexy"
+  # Better Auth signing secret — shared by backend + frontend. Sourced from the
+  # root .env so the frontend (which signs sessions) is not left without a secret.
+  local BETTER_AUTH_SECRET
+  BETTER_AUTH_SECRET="$(grep -E '^BETTER_AUTH_SECRET=' "$PROJECT_ROOT/.env" 2>/dev/null | head -1 | cut -d= -f2-)"
   local REDIS="redis://localhost:6379/0"
   local REDIS_CACHE="redis://localhost:6379/1"
   local MINIO="http://localhost:9000"
@@ -264,6 +270,9 @@ start_app() {
   NEXT_PUBLIC_WS_URL="ws://localhost:${BACKEND_PORT}" \
   NEXT_PUBLIC_APP_URL="http://localhost:${FRONTEND_PORT}" \
   BETTER_AUTH_URL="http://localhost:${FRONTEND_PORT}" \
+  BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET}" \
+  DATABASE_URL="${FRONTEND_DB_URL}" \
+  BACKEND_URL="http://localhost:${BACKEND_PORT}" \
   PORT="${FRONTEND_PORT}" \
   pnpm dev 2>&1 | sed "s/^/[frontend] /" &
   echo $! >> "$PID_FILE"
