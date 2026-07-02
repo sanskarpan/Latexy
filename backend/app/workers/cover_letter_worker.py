@@ -16,6 +16,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..services.document_converter_service import document_converter_service
 from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
 
 logger = get_logger(__name__)
@@ -198,11 +199,40 @@ def generate_cover_letter_task(
 
         generation_time = time.time() - start_time
 
-        # Extract LaTeX from delimiters
-        cover_letter_latex = accumulated
+        # Extract LaTeX from delimiters. Require the delimiters to be present so
+        # we never persist raw prose-polluted output as the cover letter body.
         match = _LATEX_RE.search(accumulated)
-        if match:
-            cover_letter_latex = match.group(1).strip()
+        if not match:
+            logger.warning(f"Cover letter job {job_id}: LLM output missing <<<LATEX>>> delimiters")
+            retryable = self.request.retries < self.max_retries
+            publish_event(job_id, "job.failed", {
+                "stage": "cover_letter_generation",
+                "error_code": "invalid_latex",
+                "error_message": "Generated output did not contain a LaTeX document.",
+                "retryable": retryable,
+            })
+            if retryable:
+                raise self.retry(countdown=15)
+            return {"success": False, "job_id": job_id, "error": "Missing LaTeX delimiters"}
+
+        cover_letter_latex = match.group(1).strip()
+
+        # Validate the extracted content is a compilable LaTeX document before saving.
+        is_valid, validation_error = document_converter_service.validate_latex_output(
+            cover_letter_latex
+        )
+        if not is_valid:
+            logger.warning(f"Cover letter job {job_id}: invalid LaTeX — {validation_error}")
+            retryable = self.request.retries < self.max_retries
+            publish_event(job_id, "job.failed", {
+                "stage": "cover_letter_generation",
+                "error_code": "invalid_latex",
+                "error_message": f"Generated LaTeX is invalid: {validation_error}",
+                "retryable": retryable,
+            })
+            if retryable:
+                raise self.retry(countdown=15)
+            return {"success": False, "job_id": job_id, "error": validation_error}
 
         # Publish llm.complete with the extracted LaTeX
         publish_event(job_id, "llm.complete", {
@@ -246,6 +276,11 @@ def generate_cover_letter_task(
         return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
 
     except Exception as exc:
+        # Re-raise Celery's own Retry sentinel so it isn't swallowed as an
+        # "internal" failure and double-published as job.failed.
+        from celery.exceptions import Retry
+        if isinstance(exc, Retry):
+            raise
         logger.error(f"Cover letter task {task_id} raised: {exc}")
         is_rate_limit = "rate limit" in str(exc).lower()
         has_retries_left = self.request.retries < self.max_retries
