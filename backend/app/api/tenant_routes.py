@@ -14,6 +14,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.connection import get_db
@@ -26,6 +27,13 @@ router = APIRouter(prefix="/tenants", tags=["tenants"])
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _SLUG_RE = re.compile(r"^[a-z0-9-]{3,40}$")
+
+# Allowed white-label plans and their server-side seat caps. The client-supplied
+# plan_id is validated against this map and max_members is ALWAYS derived
+# server-side — never trusted from the request or left to the DB default.
+_TENANT_PLANS: dict[str, int] = {"agency": 50, "university": 200}
+# Cap the number of tenants a single user may provision to curb abuse.
+_MAX_TENANTS_PER_USER = 10
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
@@ -160,6 +168,21 @@ async def create_tenant(
     user_id: str = Depends(get_current_user_required),
 ) -> TenantResponse:
     """Create a new tenant. The caller becomes the owner."""
+    # Validate the requested plan against the server-side whitelist and derive
+    # the seat cap from it (never trust a client-supplied max_members / plan).
+    plan_id = body.plan_id if body.plan_id in _TENANT_PLANS else "agency"
+    max_members = _TENANT_PLANS[plan_id]
+
+    # Enforce a per-user tenant creation limit to prevent resource abuse.
+    owned_count = await db.execute(
+        select(func.count()).select_from(Tenant).where(Tenant.owner_id == user_id)
+    )
+    if int(owned_count.scalar() or 0) >= _MAX_TENANTS_PER_USER:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Tenant creation limit reached ({_MAX_TENANTS_PER_USER} per user)",
+        )
+
     # Check slug uniqueness
     existing = await db.execute(select(Tenant).where(Tenant.slug == body.slug))
     if existing.scalar_one_or_none():
@@ -171,7 +194,8 @@ async def create_tenant(
         logo_url=body.logo_url,
         primary_color=body.primary_color,
         owner_id=user_id,
-        plan_id=body.plan_id,
+        plan_id=plan_id,
+        max_members=max_members,
     )
     db.add(tenant)
     await db.flush()
@@ -223,10 +247,30 @@ async def update_tenant(
     """Update tenant branding. Only owner or admin can update."""
     tenant = await _require_tenant_owner_or_admin(tenant_id, user_id, db)
 
-    for field, value in body.model_dump(exclude_unset=True).items():
+    update_data = body.model_dump(exclude_unset=True)
+
+    # custom_domain is UNIQUE — pre-check to return a clean 409 instead of a 500
+    # when another tenant already claims the domain.
+    new_domain = update_data.get("custom_domain")
+    if new_domain and new_domain != tenant.custom_domain:
+        clash = await db.execute(
+            select(Tenant).where(
+                Tenant.custom_domain == new_domain, Tenant.id != tenant_id
+            )
+        )
+        if clash.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409, detail=f"Domain '{new_domain}' is already claimed by another tenant"
+            )
+
+    for field, value in update_data.items():
         setattr(tenant, field, value)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Domain or slug already in use")
     await db.refresh(tenant)
     return _tenant_response(tenant)
 
@@ -282,19 +326,22 @@ async def invite_member(
     """Invite a user by email to the tenant."""
     tenant = await _require_tenant_owner_or_admin(tenant_id, user_id, db)
 
-    # Find invitee
-    invitee_result = await db.execute(select(User).where(User.email == body.email))
+    # Find invitee (case-insensitive — emails are normalized to lowercase on signup)
+    email = body.email.strip().lower()
+    invitee_result = await db.execute(
+        select(User).where(func.lower(User.email) == email)
+    )
     invitee = invitee_result.scalar_one_or_none()
     if not invitee:
         raise HTTPException(status_code=404, detail=f"No user found with email '{body.email}'")
 
-    # Check member count limit
+    # Check member count limit — 409 (capacity), not 429 (rate limiting)
     count_result = await db.execute(
         select(func.count()).where(TenantMember.tenant_id == tenant_id)
     )
     if count_result.scalar() >= tenant.max_members:
         raise HTTPException(
-            status_code=429, detail=f"Member limit ({tenant.max_members}) reached"
+            status_code=409, detail=f"Member limit ({tenant.max_members}) reached"
         )
 
     # Idempotent — don't add twice
@@ -308,7 +355,12 @@ async def invite_member(
 
     member = TenantMember(tenant_id=tenant_id, user_id=invitee.id, role=body.role)
     db.add(member)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Concurrent invite for the same user raced us to the unique PK.
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="User is already a member")
     await db.refresh(member)
 
     return MemberResponse(
@@ -328,7 +380,12 @@ async def remove_member(
     user_id: str = Depends(get_current_user_required),
 ) -> None:
     """Remove a member from the tenant."""
-    await _require_tenant_owner_or_admin(tenant_id, user_id, db)
+    tenant = await _require_tenant_owner_or_admin(tenant_id, user_id, db)
+
+    # The owner's membership row must never be removed — it would desync
+    # owner_id from the member roster.
+    if target_user_id == tenant.owner_id:
+        raise HTTPException(status_code=403, detail="The tenant owner cannot be removed")
 
     member_result = await db.execute(
         select(TenantMember).where(
@@ -339,6 +396,10 @@ async def remove_member(
     member = member_result.scalar_one_or_none()
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    # Only the owner may remove an admin (an admin cannot strip co-admins).
+    if member.role == "admin" and user_id != tenant.owner_id:
+        raise HTTPException(status_code=403, detail="Only the owner can remove an admin")
 
     await db.delete(member)
     await db.commit()
