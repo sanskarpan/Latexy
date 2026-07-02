@@ -7,6 +7,7 @@ LaTeX bibliography entries inside a \\section{Publications} block.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -19,6 +20,33 @@ logger = get_logger(__name__)
 ORCID_API_BASE = "https://pub.orcid.org/v3.0"
 
 _KNOWN_PUB_TYPES = {"journal", "conference", "preprint", "book_chapter"}
+
+# TeX special characters that must be escaped when interpolating third-party
+# (ORCID/Crossref) text into a LaTeX document.
+_LATEX_SPECIAL = {
+    "\\": r"\textbackslash{}",
+    "&": r"\&",
+    "%": r"\%",
+    "$": r"\$",
+    "#": r"\#",
+    "_": r"\_",
+    "{": r"\{",
+    "}": r"\}",
+    "~": r"\textasciitilde{}",
+    "^": r"\textasciicircum{}",
+}
+
+# Single-pass matcher so replacements (which themselves contain braces) are not
+# re-processed by later substitutions.
+_LATEX_RE = re.compile("|".join(re.escape(c) for c in _LATEX_SPECIAL))
+
+
+def latex_escape(text: str) -> str:
+    """Escape TeX-special characters so untrusted text cannot break or inject
+    LaTeX when the generated document is later compiled."""
+    if not text:
+        return ""
+    return _LATEX_RE.sub(lambda m: _LATEX_SPECIAL[m.group(0)], text)
 
 
 @dataclass
@@ -157,26 +185,34 @@ class PublicationsService:
 
     @staticmethod
     def _format_entry(pub: Publication) -> str:
-        """Format a single publication as a LaTeX \\item string."""
+        """Format a single publication as a LaTeX \\item string.
+
+        All free-text fields (title/venue/authors/DOI) come from third-party
+        metadata and are escaped to avoid broken compiles or LaTeX injection.
+        """
         # Authors
         if pub.authors:
-            authors_str = ", ".join(pub.authors) + "."
+            authors_str = ", ".join(latex_escape(a) for a in pub.authors) + "."
         else:
             authors_str = ""
 
         # Title in double-quotes
-        title_str = f"``{pub.title}.''"
+        title_str = f"``{latex_escape(pub.title)}.''"
 
         # Venue in italics
-        venue_str = f"\\textit{{{pub.venue}}}" if pub.venue else ""
+        venue_str = f"\\textit{{{latex_escape(pub.venue)}}}" if pub.venue else ""
 
         # Year
         year_str = str(pub.year) if pub.year else ""
 
-        # DOI hyperlink
+        # DOI hyperlink — the display text is escaped; the URL target is wrapped
+        # in \detokenize so special characters cannot terminate the argument.
         doi_str = ""
         if pub.doi:
-            doi_str = f" \\href{{https://doi.org/{pub.doi}}}{{{pub.doi}}}"
+            doi_str = (
+                f" \\href{{https://doi.org/{pub.doi}}}"
+                f"{{\\detokenize{{{pub.doi}}}}}"
+            )
 
         parts = [p for p in [authors_str, title_str, venue_str, year_str] if p]
         entry = " ".join(parts)
