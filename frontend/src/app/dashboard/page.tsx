@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -32,6 +32,7 @@ export default function DashboardPage() {
   const [clStats, setClStats] = useState<CoverLetterStatsResponse | null>(null)
   const [recentJobs, setRecentJobs] = useState<JobStateResponse[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!sessionLoading && !session) {
@@ -39,36 +40,37 @@ export default function DashboardPage() {
     }
   }, [session, sessionLoading, router])
 
-  useEffect(() => {
+  const fetchDashboardData = useCallback(async () => {
     if (!session) return
+    setLoading(true)
+    setError(null)
+    try {
+      const [analyticsData, timeseriesData, statsData, jobsData, clStatsData] = await Promise.all([
+        apiClient.getMyAnalytics(selectedRange),
+        apiClient.getMyAnalyticsTimeseries(selectedRange),
+        apiClient.getResumeStats(),
+        apiClient.listJobs(),
+        apiClient.getCoverLetterStats().catch(() => ({ total: 0 })),
+      ])
 
-    const fetchDashboardData = async () => {
-      setLoading(true)
-      try {
-        const [analyticsData, timeseriesData, statsData, jobsData, clStatsData] = await Promise.all([
-          apiClient.getMyAnalytics(selectedRange),
-          apiClient.getMyAnalyticsTimeseries(selectedRange),
-          apiClient.getResumeStats(),
-          apiClient.listJobs(),
-          apiClient.getCoverLetterStats().catch(() => ({ total: 0 })),
-        ])
-
-        setAnalytics(analyticsData)
-        setTimeseries(timeseriesData)
-        setStats(statsData)
-        setClStats(clStatsData)
-        setRecentJobs([...(jobsData.jobs || [])].sort((a, b) => b.last_updated - a.last_updated).slice(0, 10))
-      } catch (error) {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('Failed to fetch dashboard data', error)
-        }
-      } finally {
-        setLoading(false)
+      setAnalytics(analyticsData)
+      setTimeseries(timeseriesData)
+      setStats(statsData)
+      setClStats(clStatsData)
+      setRecentJobs([...(jobsData.jobs || [])].sort((a, b) => b.last_updated - a.last_updated).slice(0, 10))
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to fetch dashboard data', err)
       }
+      setError(err instanceof Error ? err.message : 'Failed to load dashboard data')
+    } finally {
+      setLoading(false)
     }
-
-    fetchDashboardData()
   }, [session, selectedRange])
+
+  useEffect(() => {
+    fetchDashboardData()
+  }, [fetchDashboardData])
 
   const dailySeries = useMemo(() => {
     if (timeseries?.activity_series?.length) {
@@ -191,6 +193,21 @@ export default function DashboardPage() {
           </Link>
         </div>
       </section>
+
+      {error && !loading && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-rose-200">Couldn&apos;t load dashboard data</p>
+            <p className="text-xs text-rose-300/80">{error}</p>
+          </div>
+          <button
+            onClick={fetchDashboardData}
+            className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-4 py-1.5 text-xs font-semibold text-rose-100 transition hover:bg-rose-500/20"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {loading
