@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import re
+import socket
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Optional
@@ -29,6 +31,66 @@ from ..core.logging import get_logger
 from ..core.redis import cache_manager
 
 logger = get_logger(__name__)
+
+
+# ── SSRF protection ────────────────────────────────────────────────────────────
+# The scrape endpoint accepts arbitrary user-supplied URLs, so the fetcher must
+# refuse to connect to internal/private/link-local addresses (cloud metadata at
+# 169.254.169.254, localhost, RFC1918, etc.). The guard is enforced at the httpx
+# transport layer so it also covers every redirect hop, not just the first URL.
+
+class SSRFError(Exception):
+    """Raised when a requested URL resolves to a non-public address."""
+
+
+def _ip_is_public(ip_str: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+def _host_is_public(host: str) -> bool:
+    """Resolve host and require every resolved address to be public."""
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (socket.gaierror, UnicodeError, OSError):
+        return False
+    addrs = {info[4][0] for info in infos}
+    return bool(addrs) and all(_ip_is_public(a) for a in addrs)
+
+
+def _assert_public_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise SSRFError(f"Blocked non-http(s) URL scheme: {parsed.scheme!r}")
+    if not _host_is_public(parsed.hostname or ""):
+        raise SSRFError(f"Blocked request to non-public host: {parsed.hostname!r}")
+
+
+class _SSRFGuardTransport(httpx.AsyncHTTPTransport):
+    """httpx transport that validates the target host of every request (incl. redirects)."""
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        if request.url.scheme not in ("http", "https"):
+            raise httpx.UnsupportedProtocol(
+                f"Blocked non-http(s) scheme: {request.url.scheme!r}", request=request
+            )
+        if not _host_is_public(request.url.host):
+            raise httpx.ConnectError(
+                f"Blocked request to non-public host: {request.url.host!r}", request=request
+            )
+        return await super().handle_async_request(request)
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -818,6 +880,12 @@ async def _fetch_html(url: str, client: httpx.AsyncClient, retries: int = 2) -> 
 class JobScraperService:
     async def scrape(self, url: str) -> JobScraperResult:
         url = _normalize_url(url)
+        # SSRF guard: reject internal/private/link-local targets before any fetch.
+        try:
+            _assert_public_url(url)
+        except SSRFError as exc:
+            logger.warning("Blocked SSRF scrape attempt: %s", exc)
+            return JobScraperResult(url=url, error="Invalid or disallowed URL")
         cache_key = f"job_scrape:{hashlib.md5(url.encode()).hexdigest()}"
 
         cached = await cache_manager.get(cache_key)
@@ -844,6 +912,7 @@ class JobScraperService:
             headers=_BROWSER_HEADERS,
             follow_redirects=True,
             timeout=_TIMEOUT,
+            transport=_SSRFGuardTransport(),
         ) as client:
 
             # ── Stage 1: Platform-native JSON API ────────────────────────────
