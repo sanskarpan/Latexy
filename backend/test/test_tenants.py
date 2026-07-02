@@ -112,10 +112,10 @@ class TestCreateTenant:
         body = TenantCreate(name='Acme Recruiting', slug='acme-recruiting')
 
         db = _mock_db()
-        # first execute → slug uniqueness check (None = not taken)
-        no_result = MagicMock()
-        no_result.scalar_one_or_none = MagicMock(return_value=None)
-        db.execute = AsyncMock(return_value=no_result)
+        # 1) per-user tenant count (0 owned), 2) slug uniqueness check (None = not taken)
+        count_result = MagicMock(scalar=MagicMock(return_value=0))
+        no_result = MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+        db.execute = AsyncMock(side_effect=[count_result, no_result])
 
         # db.refresh populates the id that the DB would normally assign
         async def mock_refresh(obj):
@@ -132,6 +132,79 @@ class TestCreateTenant:
         assert result.slug == 'acme-recruiting'
         assert result.owner_id == owner_id
         db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_max_members_derived_from_plan_not_client(self):
+        """max_members is derived server-side from plan_id, ignoring the DB default."""
+        owner_id = _uid()
+        body = TenantCreate(name='Uni Careers', slug='uni-careers', plan_id='university')
+
+        db = _mock_db()
+        count_result = MagicMock(scalar=MagicMock(return_value=0))
+        no_result = MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+        db.execute = AsyncMock(side_effect=[count_result, no_result])
+
+        # db.refresh populates the DB-assigned fields the response serializer needs,
+        # without clobbering the server-derived plan_id / max_members.
+        async def mock_refresh(obj):
+            if hasattr(obj, 'slug'):
+                obj.id = _uid()
+                obj.created_at = datetime.now(timezone.utc)
+                obj.active = True
+        db.refresh = AsyncMock(side_effect=mock_refresh)
+
+        captured = {}
+
+        def capture_add(obj):
+            if hasattr(obj, 'slug'):
+                captured['tenant'] = obj
+        db.add = MagicMock(side_effect=capture_add)
+
+        await create_tenant(body=body, db=db, user_id=owner_id)
+        assert captured['tenant'].plan_id == 'university'
+        assert captured['tenant'].max_members == 200
+
+    @pytest.mark.asyncio
+    async def test_unknown_plan_falls_back_to_agency(self):
+        """A client-supplied plan_id outside the whitelist falls back to 'agency'."""
+        owner_id = _uid()
+        body = TenantCreate(name='Sneaky', slug='sneaky-org', plan_id='enterprise-unlimited')
+
+        db = _mock_db()
+        count_result = MagicMock(scalar=MagicMock(return_value=0))
+        no_result = MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+        db.execute = AsyncMock(side_effect=[count_result, no_result])
+
+        # db.refresh populates the DB-assigned fields the response serializer needs.
+        async def mock_refresh(obj):
+            if hasattr(obj, 'slug'):
+                obj.id = _uid()
+                obj.created_at = datetime.now(timezone.utc)
+                obj.active = True
+        db.refresh = AsyncMock(side_effect=mock_refresh)
+
+        captured = {}
+        db.add = MagicMock(side_effect=lambda obj: captured.__setitem__('t', obj) if hasattr(obj, 'slug') else None)
+
+        await create_tenant(body=body, db=db, user_id=owner_id)
+        assert captured['t'].plan_id == 'agency'
+        assert captured['t'].max_members == 50
+
+    @pytest.mark.asyncio
+    async def test_per_user_tenant_limit_enforced(self):
+        """Creating more than the per-user tenant cap → 403."""
+        from app.api.tenant_routes import _MAX_TENANTS_PER_USER
+
+        owner_id = _uid()
+        body = TenantCreate(name='Too Many', slug='too-many')
+
+        db = _mock_db()
+        count_result = MagicMock(scalar=MagicMock(return_value=_MAX_TENANTS_PER_USER))
+        db.execute = AsyncMock(side_effect=[count_result])
+
+        with pytest.raises(HTTPException) as exc:
+            await create_tenant(body=body, db=db, user_id=owner_id)
+        assert exc.value.status_code == 403
 
     @pytest.mark.asyncio
     async def test_duplicate_slug_raises_409(self):
@@ -329,6 +402,104 @@ class TestRemoveMember:
                 await remove_member(tenant_id=tenant.id, target_user_id=_uid(), db=db, user_id=owner_id)
         assert exc.value.status_code == 404
 
+    @pytest.mark.asyncio
+    async def test_cannot_remove_owner(self):
+        """Removing the tenant owner's own membership → 403."""
+        owner_id = _uid()
+        tenant = make_tenant(owner_id)
+
+        db = _mock_db()
+        with patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)):
+            with pytest.raises(HTTPException) as exc:
+                await remove_member(tenant_id=tenant.id, target_user_id=owner_id, db=db, user_id=owner_id)
+        assert exc.value.status_code == 403
+        db.delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_admin_cannot_remove_another_admin(self):
+        """A non-owner admin cannot remove another admin → 403."""
+        owner_id = _uid()
+        admin_caller = _uid()
+        target_admin = _uid()
+        tenant = make_tenant(owner_id)
+        target_row = make_member(tenant.id, target_admin, role='admin')
+
+        db = _mock_db()
+        member_result = MagicMock(scalar_one_or_none=MagicMock(return_value=target_row))
+        db.execute = AsyncMock(return_value=member_result)
+
+        with patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)):
+            with pytest.raises(HTTPException) as exc:
+                await remove_member(
+                    tenant_id=tenant.id, target_user_id=target_admin, db=db, user_id=admin_caller
+                )
+        assert exc.value.status_code == 403
+        db.delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_owner_can_remove_admin(self):
+        """The owner can remove an admin member → 204."""
+        owner_id = _uid()
+        target_admin = _uid()
+        tenant = make_tenant(owner_id)
+        target_row = make_member(tenant.id, target_admin, role='admin')
+
+        db = _mock_db()
+        member_result = MagicMock(scalar_one_or_none=MagicMock(return_value=target_row))
+        db.execute = AsyncMock(return_value=member_result)
+
+        with patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)):
+            await remove_member(
+                tenant_id=tenant.id, target_user_id=target_admin, db=db, user_id=owner_id
+            )
+        db.delete.assert_called_once_with(target_row)
+
+
+# ── Member-limit and domain-uniqueness edge cases ─────────────────────────────
+
+
+class TestInviteMemberLimit:
+    @pytest.mark.asyncio
+    async def test_member_limit_returns_409(self):
+        """Reaching max_members returns 409 (capacity), not 429 (rate limit)."""
+        owner_id = _uid()
+        invitee = make_user()
+        tenant = make_tenant(owner_id)
+        tenant.max_members = 2
+
+        body = InviteRequest(email=invitee.email, role='member')
+
+        db = _mock_db()
+        user_result = MagicMock(scalar_one_or_none=MagicMock(return_value=invitee))
+        count_result = MagicMock(scalar=MagicMock(return_value=2))
+        db.execute = AsyncMock(side_effect=[user_result, count_result])
+
+        with patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)):
+            with pytest.raises(HTTPException) as exc:
+                await invite_member(tenant_id=tenant.id, body=body, db=db, user_id=owner_id)
+        assert exc.value.status_code == 409
+
+
+class TestCustomDomainUniqueness:
+    @pytest.mark.asyncio
+    async def test_domain_clash_returns_409(self):
+        """PATCH custom_domain already claimed by another tenant → 409."""
+        owner_id = _uid()
+        tenant = make_tenant(owner_id, custom_domain=None)
+        other = make_tenant(_uid(), slug='other', custom_domain='resumes.acme.com')
+
+        body = TenantUpdate(custom_domain='resumes.acme.com')
+
+        db = _mock_db()
+        clash_result = MagicMock(scalar_one_or_none=MagicMock(return_value=other))
+        db.execute = AsyncMock(return_value=clash_result)
+
+        with patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)):
+            with pytest.raises(HTTPException) as exc:
+                await update_tenant(tenant_id=tenant.id, body=body, db=db, user_id=owner_id)
+        assert exc.value.status_code == 409
+        db.commit.assert_not_called()
+
 
 # ── 85T-07  Stats returns correct member count ────────────────────────────────
 
@@ -370,6 +541,9 @@ class TestCustomDomain:
         body = TenantUpdate(custom_domain='resumes.acme.com')
 
         db = _mock_db()
+        # Domain-uniqueness pre-check returns no clashing tenant
+        no_clash = MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+        db.execute = AsyncMock(return_value=no_clash)
         db.refresh = AsyncMock(side_effect=lambda obj: None)
 
         with patch('app.api.tenant_routes._require_tenant_owner_or_admin', new=AsyncMock(return_value=tenant)):
