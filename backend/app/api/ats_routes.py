@@ -17,9 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
-from ..core.redis import cache_manager, get_redis_client
+from ..core.redis import get_redis_client
 from ..database.connection import get_db
-from ..database.models import DeepAnalysisTrial, Resume, ResumeJobMatch
+from ..database.models import DeepAnalysisTrial, Resume, ResumeJobMatch, User
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from ..services.api_key_service import api_key_service
 from ..services.ats_quick_scorer import quick_score_latex
@@ -33,13 +33,76 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/ats", tags=["ats-scoring"])
 
 
+# ── Rate-limit constants (per-IP / global) ────────────────────────────────────
+# Anonymous rule-based endpoints (quick-score, simulate, keyword-density).
+_RULE_ENDPOINT_IP_LIMIT = 60          # requests
+_RULE_ENDPOINT_IP_WINDOW = 60         # per 60s
+# Anonymous LLM-backed deep analysis (burns the platform OpenAI key).
+_ANON_DEEP_IP_LIMIT = 10              # requests per IP
+_ANON_DEEP_IP_WINDOW = 3600          # per hour
+_ANON_DEEP_GLOBAL_LIMIT = 500        # platform-wide requests
+_ANON_DEEP_GLOBAL_WINDOW = 3600      # per hour
+# Authenticated benchmark endpoint.
+_BENCHMARK_LIMIT = 10                 # requests per user
+_BENCHMARK_WINDOW = 3600             # per hour
+
+# Atomic fixed-window limiter: INCR then EXPIRE only on first increment.
+_LUA_INCR_EXPIRE = """
+local n = redis.call('INCR', KEYS[1])
+if n == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return n
+"""
+
+
+def _client_ip(http_request: Request) -> str:
+    """Best-effort client IP, honouring X-Forwarded-For when present."""
+    forwarded = http_request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return http_request.client.host if http_request.client else "unknown"
+
+
+async def _rate_limit_ok(key: str, limit: int, window: int) -> bool:
+    """
+    Atomic fixed-window rate limiter. Returns True if the call is within the
+    limit (allowed), False if it should be rejected. Fails open (returns True)
+    when Redis is unavailable so a cache outage never blocks traffic.
+    """
+    try:
+        r = await get_redis_client()
+        count = await r.eval(_LUA_INCR_EXPIRE, 1, key, window)
+        return int(count) <= limit
+    except Exception:
+        return True
+
+
+async def _derive_user_plan(db: AsyncSession, user_id: Optional[str]) -> str:
+    """
+    Server-derived subscription plan used for Celery queue priority.
+
+    NEVER trust a client-supplied plan: anonymous callers are always 'free' and
+    authenticated callers get their real ``users.subscription_plan``.
+    """
+    if not user_id:
+        return "free"
+    try:
+        result = await db.execute(
+            select(User.subscription_plan).where(User.id == user_id)
+        )
+        plan = result.scalar_one_or_none()
+        return plan or "free"
+    except Exception:
+        return "free"
+
+
 # Pydantic models for ATS scoring
 class ATSScoreRequest(BaseModel):
-    latex_content: str = Field(..., description="LaTeX resume content")
-    job_description: Optional[str] = Field(None, description="Job description for keyword matching")
+    latex_content: str = Field(..., max_length=200_000, description="LaTeX resume content")
+    job_description: Optional[str] = Field(None, max_length=20_000, description="Job description for keyword matching")
     industry: Optional[str] = Field(None, description="Industry for specialized scoring")
     industry_override: Optional[str] = Field(None, description="Override auto-detected industry profile key")
-    user_plan: str = Field("free", description="User subscription plan")
     device_fingerprint: Optional[str] = Field(None, description="Device fingerprint for anonymous users")
     async_processing: bool = Field(True, description="Whether to process asynchronously")
     metadata: Optional[Dict] = Field(None, description="Additional metadata")
@@ -62,8 +125,7 @@ class ATSScoreResponse(BaseModel):
 
 
 class JobDescriptionAnalysisRequest(BaseModel):
-    job_description: str = Field(..., description="Job description to analyze")
-    user_plan: str = Field("free", description="User subscription plan")
+    job_description: str = Field(..., max_length=20_000, description="Job description to analyze")
     async_processing: bool = Field(True, description="Whether to process asynchronously")
     metadata: Optional[Dict] = Field(None, description="Additional metadata")
 
@@ -144,6 +206,8 @@ async def score_resume_ats(
         if request.async_processing:
             # Generate job_id here (submission helper requires it as positional arg)
             job_id = str(uuid.uuid4())
+            # Queue priority must be derived server-side, never from the client body.
+            user_plan = await _derive_user_plan(db, user_id)
             submit_ats_scoring(
                 latex_content=request.latex_content,
                 job_id=job_id,
@@ -151,7 +215,7 @@ async def score_resume_ats(
                 industry=request.industry,
                 industry_profile_key=async_profile_key,
                 user_id=user_id,
-                user_plan=request.user_plan,
+                user_plan=user_plan,
                 device_fingerprint=request.device_fingerprint,
                 metadata=metadata,
             )
@@ -223,11 +287,13 @@ async def analyze_job_description_ats(
         if request.async_processing:
             # Generate job_id here (submission helper requires it as positional arg)
             job_id = str(uuid.uuid4())
+            # Queue priority must be derived server-side, never from the client body.
+            user_plan = await _derive_user_plan(db, user_id)
             submit_job_description_analysis(
                 job_description=request.job_description,
                 job_id=job_id,
                 user_id=user_id,
-                user_plan=request.user_plan,
+                user_plan=user_plan,
                 metadata=metadata,
             )
 
@@ -459,12 +525,18 @@ class QuickScoreResponse(BaseModel):
 
 
 @router.post("/quick-score", response_model=QuickScoreResponse)
-async def quick_score_ats(request: QuickScoreRequest):
+async def quick_score_ats(request: QuickScoreRequest, http_request: Request):
     """
     Lightweight ATS quick-score — pure Python, no LLM, no DB writes.
     Returns score 0-100 with grade and section analysis.
     No auth required (works for /try anonymous users).
     """
+    if not await _rate_limit_ok(
+        f"ratelimit:ats-rule:quick-score:{_client_ip(http_request)}",
+        _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
+    ):
+        raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
+
     if not request.latex_content.strip():
         raise HTTPException(status_code=400, detail="LaTeX content is required")
 
@@ -482,8 +554,8 @@ _JOB_TTL = 86400
 
 
 class DeepAnalyzeRequest(BaseModel):
-    latex_content: str = Field(..., min_length=1)
-    job_description: Optional[str] = None
+    latex_content: str = Field(..., min_length=1, max_length=200_000)
+    job_description: Optional[str] = Field(None, max_length=20_000)
     device_fingerprint: Optional[str] = None  # required if unauthenticated
     industry_override: Optional[str] = None   # explicit profile key, e.g. "tech_saas"
 
@@ -563,6 +635,7 @@ async def _write_deep_analysis_redis_state(
 @router.post("/deep-analyze", response_model=DeepAnalyzeResponse)
 async def deep_analyze_resume(
     request: DeepAnalyzeRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
@@ -575,7 +648,27 @@ async def deep_analyze_resume(
     uses_remaining: Optional[int] = None
 
     if user_id is None:
-        # Anonymous — check deep_analysis_trial feature flag first
+        # Anonymous callers drive spend on the platform OpenAI key. Enforce an
+        # IP-based + global rate limit independent of the trial feature flag and
+        # of the attacker-controlled device_fingerprint, so rotating fingerprints
+        # cannot bypass it.
+        ip = _client_ip(http_request)
+        if not await _rate_limit_ok(
+            f"ratelimit:deepanalyze:ip:{ip}", _ANON_DEEP_IP_LIMIT, _ANON_DEEP_IP_WINDOW
+        ):
+            raise HTTPException(
+                status_code=429,
+                detail="Too many anonymous deep-analysis requests. Please sign in for higher limits.",
+            )
+        if not await _rate_limit_ok(
+            "ratelimit:deepanalyze:global", _ANON_DEEP_GLOBAL_LIMIT, _ANON_DEEP_GLOBAL_WINDOW
+        ):
+            raise HTTPException(
+                status_code=429,
+                detail="Deep analysis is temporarily at capacity. Please try again later.",
+            )
+
+        # Anonymous — check deep_analysis_trial feature flag next
         from ..services.feature_flag_service import feature_flag_service
         deep_trial_enabled = await feature_flag_service.get_flag("deep_analysis_trial", db)
 
@@ -643,14 +736,29 @@ async def deep_analyze_resume(
     except Exception as e:
         logger.warning(f"Redis state write failed for job {job_id}: {e} — proceeding without state")
 
-    submit_deep_analyze_ats(
-        latex_content=request.latex_content,
-        job_id=job_id,
-        job_description=request.job_description,
-        api_key=api_key,
-        industry_override=request.industry_override,
-        metadata={"user_id": user_id},
-    )
+    try:
+        submit_deep_analyze_ats(
+            latex_content=request.latex_content,
+            job_id=job_id,
+            job_description=request.job_description,
+            api_key=api_key,
+            industry_override=request.industry_override,
+            metadata={"user_id": user_id},
+        )
+    except Exception as e:
+        logger.error(f"Failed to enqueue deep analysis job {job_id}: {e}")
+        # Refund the trial use charged before dispatch so a broker outage does
+        # not silently consume the caller's free credit.
+        if user_id is None and deep_trial_enabled and trial is not None:
+            try:
+                trial.usage_count = max(0, trial.usage_count - 1)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Deep analysis service temporarily unavailable. Please try again.",
+        )
 
     return DeepAnalyzeResponse(
         success=True,
@@ -685,49 +793,63 @@ async def semantic_match_resumes(
     if not resumes:
         return SemanticMatchResponse(success=True, results=[], message="No resumes found")
 
-    # Hash the JD for cache keying (SHA-256 hex, 64 chars)
-    jd_hash = hashlib.sha256(request.job_description.encode()).hexdigest()
-
-    # Embed JD once (needed only for resumes that miss a cached result)
-    jd_emb = None
-
     jd_text = request.job_description
+
+    # Per-resume cache key = hash(JD + resume content). Including the resume's
+    # LaTeX (from which the embedding is derived) means editing a resume yields a
+    # new key, so a stale ResumeJobMatch row is never returned after an edit.
+    def _match_hash(latex_content: Optional[str]) -> str:
+        payload = f"{request.job_description}\x00{latex_content or ''}"
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    # Split into resumes that can be matched now vs. those still awaiting an embedding.
+    ready_resumes = [r for r in resumes if r.content_embedding]
+    resume_match_hash = {str(r.id): _match_hash(r.latex_content) for r in ready_resumes}
+
     match_results: List[SemanticMatchResultItem] = []
 
+    # Resumes without an embedding: report + fire a background embed task.
     for resume in resumes:
-        resume_emb = resume.content_embedding
-        if not resume_emb:
-            # Skip resumes without embeddings — embed_resume_task will compute them
-            match_results.append(SemanticMatchResultItem(
-                resume_id=str(resume.id),
-                resume_title=resume.title or "Untitled",
-                similarity_score=None,
-                matched_keywords=[],
-                missing_keywords=[],
-                semantic_gaps={},
-                note="Embedding not yet computed. Please try again in a moment.",
-            ))
-            # Fire background embed task so it's ready next time
-            if settings.OPENAI_API_KEY:
-                try:
-                    from ..workers.ats_worker import submit_embed_resume
-                    submit_embed_resume(str(resume.id), resume.latex_content or "")
-                except Exception:
-                    pass
+        if resume.content_embedding:
             continue
+        match_results.append(SemanticMatchResultItem(
+            resume_id=str(resume.id),
+            resume_title=resume.title or "Untitled",
+            similarity_score=None,
+            matched_keywords=[],
+            missing_keywords=[],
+            semantic_gaps={},
+            note="Embedding not yet computed. Please try again in a moment.",
+        ))
+        if settings.OPENAI_API_KEY:
+            try:
+                from ..workers.ats_worker import submit_embed_resume
+                submit_embed_resume(str(resume.id), resume.latex_content or "")
+            except Exception:
+                pass
 
-        # --- Cache lookup ---
-        cached_result = await db.execute(
+    # --- Batched cache lookup (single query for all ready resumes) ---
+    cache_by_key: Dict[tuple, ResumeJobMatch] = {}
+    if ready_resumes:
+        cached_rows = await db.execute(
             select(ResumeJobMatch).where(
-                ResumeJobMatch.resume_id == str(resume.id),
-                ResumeJobMatch.jd_hash == jd_hash,
+                ResumeJobMatch.resume_id.in_(list(resume_match_hash.keys()))
             )
         )
-        cached_row = cached_result.scalar_one_or_none()
+        for row in cached_rows.scalars().all():
+            cache_by_key[(row.resume_id, row.jd_hash)] = row
+
+    jd_emb = None  # embed JD lazily, only on the first cache miss
+    new_cache_rows: List[ResumeJobMatch] = []
+
+    for resume in ready_resumes:
+        rid = str(resume.id)
+        match_key = resume_match_hash[rid]
+        cached_row = cache_by_key.get((rid, match_key))
 
         if cached_row is not None:
             match_results.append(SemanticMatchResultItem(
-                resume_id=str(resume.id),
+                resume_id=rid,
                 resume_title=resume.title or "Untitled",
                 similarity_score=cached_row.similarity_score,
                 matched_keywords=cached_row.matched_keywords or [],
@@ -746,27 +868,21 @@ async def semantic_match_resumes(
 
         resume_text = ats_scoring_service._extract_text_from_latex(resume.latex_content)
         match = await embedding_service.semantic_keyword_match(
-            resume_emb, jd_emb, jd_text, resume_text
+            resume.content_embedding, jd_emb, jd_text, resume_text
         )
 
-        # --- Cache write ---
-        try:
-            db.add(ResumeJobMatch(
-                user_id=user_id,
-                resume_id=str(resume.id),
-                jd_hash=jd_hash,
-                similarity_score=match["similarity_score"],
-                matched_keywords=match["matched_keywords"],
-                missing_keywords=match["missing_keywords"],
-                semantic_gaps=match["semantic_gaps"],
-            ))
-            await db.commit()
-        except Exception as cache_err:
-            logger.warning(f"Cache write failed for resume {resume.id}: {cache_err}")
-            await db.rollback()
+        new_cache_rows.append(ResumeJobMatch(
+            user_id=user_id,
+            resume_id=rid,
+            jd_hash=match_key,
+            similarity_score=match["similarity_score"],
+            matched_keywords=match["matched_keywords"],
+            missing_keywords=match["missing_keywords"],
+            semantic_gaps=match["semantic_gaps"],
+        ))
 
         match_results.append(SemanticMatchResultItem(
-            resume_id=str(resume.id),
+            resume_id=rid,
             resume_title=resume.title or "Untitled",
             similarity_score=match["similarity_score"],
             matched_keywords=match["matched_keywords"],
@@ -774,12 +890,22 @@ async def semantic_match_resumes(
             semantic_gaps=match["semantic_gaps"],
         ))
 
+    # --- Single deferred cache write for all misses ---
+    if new_cache_rows:
+        try:
+            db.add_all(new_cache_rows)
+            await db.commit()
+        except Exception as cache_err:
+            logger.warning(f"Cache write failed for semantic match: {cache_err}")
+            await db.rollback()
+
     match_results.sort(key=lambda x: x.similarity_score if x.similarity_score is not None else -1, reverse=True)
 
+    returned = match_results[:10]
     return SemanticMatchResponse(
         success=True,
-        results=match_results[:10],
-        message=f"Ranked {len(match_results)} resumes by JD similarity",
+        results=returned,
+        message=f"Ranked {len(returned)} of {len(match_results)} resumes by JD similarity",
     )
 
 
@@ -866,6 +992,7 @@ async def list_ats_profiles() -> dict:
 @router.post("/simulate", response_model=AtsSimulateResponse)
 async def simulate_ats(
     request: AtsSimulateRequest,
+    http_request: Request,
     user_id: Optional[str] = Depends(get_current_user_optional),
 ) -> AtsSimulateResponse:
     """
@@ -875,6 +1002,12 @@ async def simulate_ats(
     issues with severity ratings, a 0–100 score, and actionable recommendations.
     Responses are cached by content+ATS hash for 30 minutes.
     """
+    if not await _rate_limit_ok(
+        f"ratelimit:ats-rule:simulate:{_client_ip(http_request)}",
+        _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
+    ):
+        raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
+
     if request.ats_name not in ATS_PROFILES:
         valid = sorted(ATS_PROFILES.keys())
         raise HTTPException(
@@ -987,6 +1120,7 @@ def _keyword_density_cache_key(resume_latex: str, job_description: str) -> str:
 @router.post("/keyword-density", response_model=KeywordDensityResponse)
 async def keyword_density(
     request: KeywordDensityRequest,
+    http_request: Request,
     user_id: Optional[str] = Depends(get_current_user_optional),
 ) -> KeywordDensityResponse:
     """
@@ -996,6 +1130,12 @@ async def keyword_density(
     partial (stemmed match), or missing, plus a suggested insertion
     location and overall coverage score.
     """
+    if not await _rate_limit_ok(
+        f"ratelimit:ats-rule:keyword-density:{_client_ip(http_request)}",
+        _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
+    ):
+        raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
+
     # Redis cache (best-effort)
     cache_key = _keyword_density_cache_key(request.resume_latex, request.job_description)
     try:
@@ -1096,23 +1236,13 @@ async def get_ats_benchmark(
     if ats_score < 0 or ats_score > 100:
         raise HTTPException(status_code=422, detail="ats_score must be between 0 and 100")
 
-    # ── Rate limit: 10 calls per user per hour ─────────────────────────────
+    # ── Rate limit: 10 calls per user per hour (atomic INCR, TTL set once) ──
     rate_key = f"ratelimit:benchmark:{user_id}"
-    try:
-        count = await cache_manager.get(rate_key)
-        if count is None:
-            await cache_manager.set(rate_key, 1, ttl=3600)
-        elif int(count) >= 10:
-            raise HTTPException(
-                status_code=429,
-                detail="Rate limit exceeded: 10 benchmark requests per hour",
-            )
-        else:
-            await cache_manager.set(rate_key, int(count) + 1, ttl=3600)
-    except HTTPException:
-        raise
-    except Exception:
-        pass  # Redis unavailable — allow the request
+    if not await _rate_limit_ok(rate_key, _BENCHMARK_LIMIT, _BENCHMARK_WINDOW):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded: 10 benchmark requests per hour",
+        )
 
     # ── Compute percentile ─────────────────────────────────────────────────
     from ..services.benchmarking_service import benchmarking_service
