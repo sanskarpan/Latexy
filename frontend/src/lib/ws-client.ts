@@ -43,6 +43,10 @@ class WSClient {
   private _heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private _manuallyDisconnected = false
 
+  /** Better Auth session token, forwarded as ?token= so the backend can
+   *  authorize access to the user's own (owner-scoped) jobs. Null = anonymous. */
+  private _token: string | null = null
+
   /**
    * job_id → last received stream entry ID (for replay on reconnect).
    * undefined means "subscribe from now" (no replay).
@@ -62,6 +66,18 @@ class WSClient {
 
     this._manuallyDisconnected = false
     this._openSocket()
+  }
+
+  /** Set (or clear) the auth token used for the WS handshake. Reconnects if the
+   *  token changed while connected so the new identity takes effect. */
+  setToken(token: string | null): void {
+    if (this._token === token) return
+    this._token = token
+    if (this._ws && this._ws.readyState === WebSocket.OPEN) {
+      this._ws.close(1000, 'Reconnect with updated auth')
+      this._ws = null
+      if (!this._manuallyDisconnected) this._openSocket()
+    }
   }
 
   disconnect(): void {
@@ -126,6 +142,9 @@ class WSClient {
       }
       if (traceHeaders['X-Request-ID']) {
         url.searchParams.set('request_id', traceHeaders['X-Request-ID'])
+      }
+      if (this._token) {
+        url.searchParams.set('token', this._token)
       }
       const ws = new WebSocket(url.toString())
       this._ws = ws
