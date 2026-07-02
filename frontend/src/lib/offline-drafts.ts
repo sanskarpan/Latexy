@@ -71,6 +71,15 @@ export async function deleteDraft(resumeId: string): Promise<void> {
   await db.delete('drafts', resumeId)
 }
 
+/**
+ * Delete every locally stored draft. Called on sign-out so a subsequent user
+ * on a shared device cannot load the previous user's offline drafts.
+ */
+export async function clearAllDrafts(): Promise<void> {
+  const db = await getDb()
+  await db.clear('drafts')
+}
+
 /** Count pending (unsynced) drafts — used for badge display. */
 export async function pendingDraftCount(): Promise<number> {
   const pending = await getPendingDrafts()
