@@ -291,14 +291,23 @@ def optimize_and_compile_task(
 
     except Exception as exc:
         logger.error(f"Orchestrator task {task_id} raised: {exc}", exc_info=True)
+        if self.request.retries < self.max_retries:
+            # A retry is scheduled — emit a transient 'retrying' event instead of a
+            # terminal job.failed so the client doesn't surface a spurious failure for a
+            # job that may still succeed on retry.
+            publish_event(job_id, "job.retrying", {
+                "stage": current_stage,
+                "worker_id": worker_id,
+                "attempt": self.request.retries + 2,
+                "error_message": str(exc),
+            })
+            raise self.retry(countdown=min(60 * (2 ** self.request.retries), 600), exc=exc)
         publish_event(job_id, "job.failed", {
             "stage": current_stage,
             "error_code": "internal",
             "error_message": str(exc),
-            "retryable": self.request.retries < self.max_retries,
+            "retryable": False,
         })
-        if self.request.retries < self.max_retries:
-            raise self.retry(countdown=min(60 * (2 ** self.request.retries), 600), exc=exc)
         return {"success": False, "job_id": job_id, "error": str(exc)}
 
 
