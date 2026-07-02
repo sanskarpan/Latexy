@@ -27,7 +27,11 @@ from ..core.logging import get_logger
 from ..core.redis import get_redis_client, redis_manager
 from ..database.connection import get_db
 from ..database.models import Compilation, Resume, User
-from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
+from ..middleware.auth_middleware import (
+    get_current_user_optional,
+    get_current_user_required,
+    require_admin,
+)
 from ..services.optimization_personas import VALID_PERSONA_KEYS
 from ..utils.file_utils import validate_job_id
 from ..workers.ats_worker import submit_ats_scoring
@@ -166,6 +170,13 @@ async def _write_initial_redis_state(
         "submitted_at": time.time(),
     }
     await r.setex(f"latexy:job:{job_id}:meta", _JOB_TTL, json.dumps(meta))
+
+    # Index the job under the owning user so GET /jobs/ can list it.
+    # (Owner-less / anonymous jobs are intentionally not indexed.)
+    if user_id:
+        user_zset = f"latexy:user:{user_id}:jobs"
+        await r.zadd(user_zset, {job_id: time.time()})
+        await r.expire(user_zset, _JOB_TTL)
 
     # job.queued event — persisted to stream + published to Pub/Sub
     event_id = str(uuid.uuid4())
@@ -525,14 +536,40 @@ async def create_batch_tailor(
         logger.error(f"Batch tailor DB phase failed: {exc}")
         raise HTTPException(status_code=500, detail="Failed to create batch tailor jobs")
 
-    # Phase 2 — submit Celery jobs (outside DB transaction, forks already committed).
+    # Phase 2 — pre-assign job IDs and persist batch metadata BEFORE submitting any
+    # Celery jobs. If a later submit raises mid-loop, the batch record already lists all
+    # planned job_ids so the user can still track/cancel via GET /jobs/batch/{batch_id}
+    # instead of ending up with untracked, uncancellable running jobs.
     batch_id = str(uuid.uuid4())
-    job_entries: List[Dict] = []
-    job_ids: List[str] = []
     estimated_time = 84 if resolve_plan_family(user_plan) in {"pro", "byok", "team"} else 120  # mirrors submit_job logic
 
+    job_plan: List[tuple] = []  # (job_id, fork, item)
+    job_entries: List[Dict] = []
+    job_ids: List[str] = []
     for fork, item in forks:
         job_id = str(uuid.uuid4())
+        job_plan.append((job_id, fork, item))
+        job_ids.append(job_id)
+        job_entries.append(
+            {
+                "job_id": job_id,
+                "company_name": item.company_name,
+                "role_title": item.role_title,
+                "variant_resume_id": str(fork.id),
+                "job_url": item.job_url,
+            }
+        )
+
+    r = await get_redis_client()
+    batch_meta = {
+        "batch_id": batch_id,
+        "user_id": user_id,
+        "created_at": time.time(),
+        "jobs": job_entries,
+    }
+    await r.setex(f"latexy:batch:{batch_id}", _BATCH_TTL, json.dumps(batch_meta))
+
+    for job_id, fork, item in job_plan:
         await _write_initial_redis_state(job_id, "combined", user_id, estimated_time)
         submit_optimize_and_compile(
             latex_content=fork.latex_content,
@@ -548,26 +585,6 @@ async def create_batch_tailor(
             ),
             resume_id=str(fork.id),
         )
-        job_ids.append(job_id)
-        job_entries.append(
-            {
-                "job_id": job_id,
-                "company_name": item.company_name,
-                "role_title": item.role_title,
-                "variant_resume_id": str(fork.id),
-                "job_url": item.job_url,
-            }
-        )
-
-    # Persist batch metadata in Redis
-    r = await get_redis_client()
-    batch_meta = {
-        "batch_id": batch_id,
-        "user_id": user_id,
-        "created_at": time.time(),
-        "jobs": job_entries,
-    }
-    await r.setex(f"latexy:batch:{batch_id}", _BATCH_TTL, json.dumps(batch_meta))
 
     return BatchTailorResponse(batch_id=batch_id, job_ids=job_ids)
 
@@ -645,7 +662,7 @@ async def get_job_state(
             raise HTTPException(status_code=404, detail="Job not found")
         meta = json.loads(meta_raw)
         job_owner = meta.get("user_id")
-        if user_id is not None and job_owner is not None and job_owner != user_id:
+        if job_owner is not None and job_owner != user_id:
             raise HTTPException(status_code=403, detail="Access denied")
 
         raw = await r.get(f"latexy:job:{job_id}:state")
@@ -675,7 +692,7 @@ async def get_job_result(
         if meta_raw:
             meta = json.loads(meta_raw)
             job_owner = meta.get("user_id")
-            if user_id is not None and job_owner is not None and job_owner != user_id:
+            if job_owner is not None and job_owner != user_id:
                 raise HTTPException(status_code=403, detail="Access denied")
 
         raw = await r.get(f"latexy:job:{job_id}:result")
@@ -697,9 +714,15 @@ async def get_job_result(
             # over the generic "pdflatex exited with code 1" message.
             latex_error_line = result_data.get("latex_error_line")
             stored_error = (latex_error_line or error_msg or "")[:500] or None
+            # Guard on the current status so the reconciliation runs at most once
+            # (the row is created with status="processing"). This makes repeated
+            # GETs idempotent and avoids DB write amplification / tampering.
             await db.execute(
                 update(Compilation)
-                .where(Compilation.job_id == job_id)
+                .where(
+                    Compilation.job_id == job_id,
+                    Compilation.status == "processing",
+                )
                 .values(
                     status=final_status,
                     compilation_time=compilation_time,
@@ -755,12 +778,16 @@ async def get_job_stream(
             raise HTTPException(status_code=404, detail="Job not found")
         meta = json.loads(meta_raw)
         job_owner = meta.get("user_id")
-        if user_id is not None and job_owner is not None and job_owner != user_id:
+        if job_owner is not None and job_owner != user_id:
             raise HTTPException(status_code=403, detail="Access denied")
 
         stream_key = f"latexy:stream:{job_id}"
+        # XRANGE min is inclusive. When the caller passes a last-seen stream_id we must
+        # use Redis exclusive-interval syntax ("(<id>") so that entry is not re-delivered
+        # on each catch-up poll. from_id="0" means "from the beginning" (inclusive).
+        range_min = from_id if from_id in ("0", "-") else f"({from_id}"
         # xrange returns [(entry_id, {field: value}), ...]
-        entries = await r.xrange(stream_key, min=from_id, max="+")
+        entries = await r.xrange(stream_key, min=range_min, max="+")
         events = []
         for entry_id, fields in entries:
             raw_payload = fields.get("payload") or fields.get(b"payload")
@@ -804,7 +831,7 @@ async def cancel_job(
         if meta_raw:
             meta = json.loads(meta_raw)
             job_owner = meta.get("user_id")
-            if user_id is not None and job_owner is not None and job_owner != user_id:
+            if job_owner is not None and job_owner != user_id:
                 raise HTTPException(status_code=403, detail="Access denied")
 
         await r.setex(f"latexy:job:{job_id}:cancel", 3600, "1")
@@ -914,9 +941,13 @@ async def jobs_health():
 async def trigger_cleanup(
     cleanup_type: str = "temp_files",
     max_age_hours: int = 24,
+    _admin: str = Depends(require_admin),
 ):
-    """Trigger a background cleanup task."""
+    """Trigger a background cleanup task (admin only)."""
     try:
+        # Clamp to a sane minimum so a caller cannot purge in-flight jobs/temp files
+        # with max_age_hours=0.
+        max_age_hours = max(int(max_age_hours), 1)
         if cleanup_type == "temp_files":
             job_id = submit_temp_files_cleanup(max_age_hours=max_age_hours)
         elif cleanup_type == "expired_jobs":
