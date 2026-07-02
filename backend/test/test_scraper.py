@@ -506,6 +506,7 @@ class TestJobScraperService:
         with (
             patch("app.services.job_scraper_service.cache_manager.get", new_callable=AsyncMock, return_value=None),
             patch("app.services.job_scraper_service.cache_manager.set", new_callable=AsyncMock),
+            patch("app.services.job_scraper_service._host_is_public", return_value=True),
             patch("httpx.AsyncClient") as mock_cls,
         ):
             mock_client = AsyncMock()
@@ -630,3 +631,74 @@ class TestScrapeJobEndpoint:
 
         data = resp.json()
         assert data["source"] in ("api", "json_ld", "html", "og_tags")
+
+
+# ---------------------------------------------------------------------------
+# Unit: rate limiter (atomic INCR, XFF-aware, fail-open)
+# ---------------------------------------------------------------------------
+
+
+class _FakeRequest:
+    def __init__(self, headers: dict | None = None, host: str | None = "1.2.3.4"):
+        self.headers = headers or {}
+        self.client = MagicMock(host=host) if host else None
+
+
+class TestClientIp:
+    def test_prefers_xff_first_hop(self):
+        from app.api.scraper_routes import _client_ip
+        req = _FakeRequest(headers={"x-forwarded-for": "9.9.9.9, 10.0.0.1"}, host="10.0.0.1")
+        assert _client_ip(req) == "9.9.9.9"
+
+    def test_falls_back_to_client_host(self):
+        from app.api.scraper_routes import _client_ip
+        req = _FakeRequest(headers={}, host="5.6.7.8")
+        assert _client_ip(req) == "5.6.7.8"
+
+    def test_unknown_when_no_client(self):
+        from app.api.scraper_routes import _client_ip
+        req = _FakeRequest(headers={}, host=None)
+        assert _client_ip(req) == "unknown"
+
+
+@pytest.mark.asyncio
+class TestRateLimiter:
+    async def test_allows_under_limit(self):
+        from app.api.scraper_routes import _check_rate_limit
+        fake_redis = AsyncMock()
+        fake_redis.incr = AsyncMock(return_value=1)
+        fake_redis.expire = AsyncMock()
+        with patch("app.api.scraper_routes.get_redis_cache_client", new=AsyncMock(return_value=fake_redis)):
+            await _check_rate_limit(_FakeRequest())  # no raise
+        fake_redis.incr.assert_awaited_once()
+        fake_redis.expire.assert_awaited_once()  # TTL set on first hit
+
+    async def test_no_expire_after_first_hit(self):
+        from app.api.scraper_routes import _check_rate_limit
+        fake_redis = AsyncMock()
+        fake_redis.incr = AsyncMock(return_value=3)
+        fake_redis.expire = AsyncMock()
+        with patch("app.api.scraper_routes.get_redis_cache_client", new=AsyncMock(return_value=fake_redis)):
+            await _check_rate_limit(_FakeRequest())
+        fake_redis.expire.assert_not_awaited()
+
+    async def test_blocks_over_limit(self):
+        from fastapi import HTTPException
+
+        from app.api.scraper_routes import _check_rate_limit
+        fake_redis = AsyncMock()
+        fake_redis.incr = AsyncMock(return_value=11)
+        fake_redis.expire = AsyncMock()
+        with patch("app.api.scraper_routes.get_redis_cache_client", new=AsyncMock(return_value=fake_redis)):
+            with pytest.raises(HTTPException) as exc:
+                await _check_rate_limit(_FakeRequest())
+        assert exc.value.status_code == 429
+
+    async def test_fails_open_on_cache_error(self):
+        from app.api.scraper_routes import _check_rate_limit
+        with patch(
+            "app.api.scraper_routes.get_redis_cache_client",
+            new=AsyncMock(side_effect=RuntimeError("redis down")),
+        ):
+            # Must not raise — degrade gracefully rather than 500
+            await _check_rate_limit(_FakeRequest())
