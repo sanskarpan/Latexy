@@ -178,11 +178,10 @@ class FormatDetectionService:
                     continue
                 return fmt
 
-        # Fallback to filename detection
-        if filename:
-            return self.detect_format_from_filename(filename)
-
-        # Try to detect text-based formats by content analysis
+        # Try to detect text-based formats by CONTENT signatures BEFORE falling
+        # back to the (spoofable) filename extension. This ensures a LaTeX/HTML/JSON
+        # body saved under a generic extension (e.g. resume.txt containing
+        # \documentclass) is classified by its true content, not its extension.
         try:
             text_content = content.decode('utf-8', errors='ignore')[:1000]
 
@@ -214,13 +213,23 @@ class FormatDetectionService:
         except Exception as e:
             logger.warning(f"Error in content-based detection: {e}")
 
+        # Fallback to filename detection only after content signatures fail.
+        if filename:
+            return self.detect_format_from_filename(filename)
+
         return ResumeFormat.UNKNOWN
 
     def detect_format(self, filename: str, mime_type: Optional[str] = None,
                      content: Optional[bytes] = None) -> ResumeFormat:
         """
         Detect format using multiple detection methods.
-        Priority: magic bytes > MIME type > file extension > content analysis
+
+        Priority (highest first):
+          1. Magic bytes / content signatures (\\documentclass, <html>, {…}, …)
+          2. File extension (only when content signatures are inconclusive)
+          3. MIME type
+        Content is preferred over the client-supplied MIME type and filename,
+        both of which are spoofable.
         """
         # Try content-based detection first (most reliable)
         if content:
