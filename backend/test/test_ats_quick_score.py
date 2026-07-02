@@ -159,6 +159,27 @@ Python
         # Without JD, keyword score = 15 (baseline), keyword_match_percent = None
         assert result.keyword_match_percent is None
 
+    def test_keyword_extraction_shared_with_full_scorer(self, monkeypatch):
+        """quick-score must reuse ATSScoringService's keyword extractor so the
+        instant and async ATS surfaces agree on which keywords matter."""
+        from app.services.ats_scoring_service import ats_scoring_service
+
+        called = {"hit": False}
+        orig = ats_scoring_service._extract_keywords_from_job_description
+
+        def spy(jd):
+            called["hit"] = True
+            return orig(jd)
+
+        monkeypatch.setattr(
+            ats_scoring_service, "_extract_keywords_from_job_description", spy
+        )
+        quick_score_latex(
+            r"\section{Skills} Python Django AWS",
+            "Python Django developer role with cloud experience",
+        )
+        assert called["hit"] is True
+
     def test_optional_sections_detected(self):
         latex = r"""
 \documentclass{article}
