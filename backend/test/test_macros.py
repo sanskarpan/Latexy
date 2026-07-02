@@ -78,7 +78,7 @@ class TestCreateMacro:
                 return created
 
             mp.setattr(routes, 'UserMacro', patched_cls)
-            result = await create_macro(body=body, db=mock_db, current_user=user)
+            result = await create_macro(body=body, db=mock_db, user_id=user.id)
 
         assert result.name == 'Bold Wrapper'
         assert result.actions == actions
@@ -99,7 +99,7 @@ class TestCreateMacro:
         with pytest.MonkeyPatch.context() as mp:
             import app.api.macro_routes as routes
             mp.setattr(routes, 'UserMacro', lambda **kwargs: created)
-            result = await create_macro(body=body, db=mock_db, current_user=user)
+            result = await create_macro(body=body, db=mock_db, user_id=user.id)
 
         assert result.shortcut == raw_shortcut
 
@@ -118,7 +118,7 @@ class TestListMacros:
         mock_db = AsyncMock()
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        result = await list_macros(db=mock_db, current_user=user)
+        result = await list_macros(db=mock_db, user_id=user.id)
 
         assert len(result) == 3
         assert all(r.name.startswith('Macro') for r in result)
@@ -132,7 +132,7 @@ class TestListMacros:
         mock_db = AsyncMock()
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        result = await list_macros(db=mock_db, current_user=user)
+        result = await list_macros(db=mock_db, user_id=user.id)
         assert result == []
 
 
@@ -152,7 +152,7 @@ class TestDeleteMacro:
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         with pytest.raises(HTTPException) as exc_info:
-            await delete_macro(macro_id=macro.id, db=mock_db, current_user=attacker)
+            await delete_macro(macro_id=macro.id, db=mock_db, user_id=attacker.id)
         assert exc_info.value.status_code == 403
 
     @pytest.mark.asyncio
@@ -165,7 +165,7 @@ class TestDeleteMacro:
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         with pytest.raises(HTTPException) as exc_info:
-            await delete_macro(macro_id=str(uuid.uuid4()), db=mock_db, current_user=user)
+            await delete_macro(macro_id=str(uuid.uuid4()), db=mock_db, user_id=user.id)
         assert exc_info.value.status_code == 404
 
 
@@ -190,7 +190,7 @@ class TestUpdateMacro:
             object.__setattr__(obj, key, val) if not isinstance(obj, MagicMock) else None
 
         body = MacroUpdate(name='New Name')
-        result = await update_macro(macro_id=macro.id, body=body, db=mock_db, current_user=user)
+        result = await update_macro(macro_id=macro.id, body=body, db=mock_db, user_id=user.id)
 
         # Verify setattr was called via model_dump
         mock_db.commit.assert_awaited_once()
