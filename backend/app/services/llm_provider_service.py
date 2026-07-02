@@ -69,6 +69,11 @@ class LLMResponse:
 class BaseLLMProvider(ABC):
     """Base class for all LLM providers"""
 
+    # Per-model pricing in USD per 1K tokens as (input, output). Ordered
+    # most-specific-prefix first for correct prefix matching. Overridden per
+    # provider; falls back to get_capabilities() defaults when a model is absent.
+    MODEL_PRICING: Dict[str, tuple] = {}
+
     def __init__(self, api_key: str, provider_config: Optional[Dict] = None):
         self.api_key = api_key
         self.provider_config = provider_config or {}
@@ -94,20 +99,42 @@ class BaseLLMProvider(ABC):
         """Get list of available models"""
         pass
 
+    def get_model_pricing(self, model: str) -> tuple:
+        """Return (input_per_1k, output_per_1k) USD pricing for a model.
+
+        Uses the provider's per-model table (exact then prefix match) and falls
+        back to the provider's default capabilities pricing for unknown models.
+        """
+        if model:
+            for prefix, price in self.MODEL_PRICING.items():
+                if model == prefix or model.startswith(prefix):
+                    return price
+        caps = self.get_capabilities()
+        return (caps.cost_per_1k_input_tokens, caps.cost_per_1k_output_tokens)
+
     def calculate_cost(self, usage: Dict[str, int], model: str) -> float:
-        """Calculate cost based on usage"""
-        capabilities = self.get_capabilities()
+        """Calculate cost based on usage and the specific model used"""
+        input_per_1k, output_per_1k = self.get_model_pricing(model)
         input_tokens = usage.get('prompt_tokens', 0)
         output_tokens = usage.get('completion_tokens', 0)
 
-        input_cost = (input_tokens / 1000) * capabilities.cost_per_1k_input_tokens
-        output_cost = (output_tokens / 1000) * capabilities.cost_per_1k_output_tokens
+        input_cost = (input_tokens / 1000) * input_per_1k
+        output_cost = (output_tokens / 1000) * output_per_1k
 
         return input_cost + output_cost
 
 
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI provider implementation"""
+
+    # USD per 1K tokens (input, output). Most-specific prefixes first.
+    MODEL_PRICING = {
+        "gpt-4o-mini": (0.00015, 0.0006),
+        "gpt-4o": (0.005, 0.015),
+        "gpt-4-turbo": (0.01, 0.03),
+        "gpt-4": (0.03, 0.06),
+        "gpt-3.5-turbo": (0.0005, 0.0015),
+    }
 
     def __init__(self, api_key: str, provider_config: Optional[Dict] = None):
         super().__init__(api_key, provider_config)
@@ -166,12 +193,10 @@ class OpenAIProvider(BaseLLMProvider):
 
     async def validate_api_key(self) -> bool:
         try:
-            # Test with a minimal request
-            await self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": "test"}],
-                max_tokens=1
-            )
+            # Validate via the auth-only /models endpoint rather than a chat
+            # completion against a hardcoded model — a key scoped to only newer
+            # models (no gpt-3.5 access) is still valid.
+            await self.client.models.list()
             return True
         except Exception as e:
             logger.error(f"OpenAI API key validation failed: {e}")
@@ -201,6 +226,15 @@ class OpenAIProvider(BaseLLMProvider):
 
 class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude provider implementation"""
+
+    # USD per 1K tokens (input, output). Most-specific prefixes first.
+    MODEL_PRICING = {
+        "claude-3-5-sonnet": (0.003, 0.015),
+        "claude-3-5-haiku": (0.0008, 0.004),
+        "claude-3-opus": (0.015, 0.075),
+        "claude-3-sonnet": (0.003, 0.015),
+        "claude-3-haiku": (0.00025, 0.00125),
+    }
 
     def __init__(self, api_key: str, provider_config: Optional[Dict] = None):
         super().__init__(api_key, provider_config)
@@ -368,11 +402,9 @@ class OpenRouterProvider(BaseLLMProvider):
 
     async def validate_api_key(self) -> bool:
         try:
-            await self.client.chat.completions.create(
-                model="openai/gpt-3.5-turbo",
-                messages=[{"role": "user", "content": "test"}],
-                max_tokens=1
-            )
+            # Auth-only /models check — avoids rejecting keys that lack access to
+            # a specific hardcoded model.
+            await self.client.models.list()
             return True
         except Exception as e:
             logger.error(f"OpenRouter API key validation failed: {e}")
@@ -433,6 +465,9 @@ class MultiProviderLLMService:
         """Remove a provider from the service"""
         if provider_name in self.providers:
             del self.providers[provider_name]
+            # Drop stale usage/cost stats so deleted keys stop showing in
+            # usage-stats / system-health totals.
+            self.usage_stats.pop(provider_name, None)
             if self.default_provider == provider_name:
                 self.default_provider = next(iter(self.providers.keys())) if self.providers else None
             logger.info(f"Removed LLM provider: {provider_name}")
@@ -447,8 +482,13 @@ class MultiProviderLLMService:
 
         return self.providers[provider_name]
 
-    async def generate(self, request: LLMRequest, provider_name: Optional[str] = None, fallback: bool = True) -> LLMResponse:
-        """Generate response with optional fallback to other providers"""
+    async def generate(self, request: LLMRequest, provider_name: Optional[str] = None, fallback: bool = False) -> LLMResponse:
+        """Generate response with optional fallback to other providers.
+
+        Fallback is OFF by default and, when enabled, is scoped to the SAME user's
+        providers only (names ending in ``_{request.user_id}``). This prevents
+        serving/billing a request on another tenant's API key or the platform key.
+        """
         provider_name = provider_name or self.default_provider
 
         if not provider_name:
@@ -470,10 +510,12 @@ class MultiProviderLLMService:
             if provider_name in self.usage_stats:
                 self.usage_stats[provider_name]["errors"] += 1
 
-            # Try fallback if enabled
-            if fallback and len(self.providers) > 1:
+            # Try fallback if enabled — but ONLY to the same user's other providers,
+            # never to a different tenant's key or the shared platform key.
+            if fallback and request.user_id:
+                suffix = f"_{request.user_id}"
                 for fallback_provider in self.providers.keys():
-                    if fallback_provider != provider_name:
+                    if fallback_provider != provider_name and fallback_provider.endswith(suffix):
                         try:
                             logger.info(f"Falling back to provider: {fallback_provider}")
                             provider = self.get_provider(fallback_provider)
