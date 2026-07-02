@@ -8,6 +8,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
@@ -21,6 +22,23 @@ router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
 _USERNAME_RE = re.compile(r"^[a-z0-9_-]{3,30}$")
 _VALID_THEMES = frozenset({"minimal", "dark", "professional"})
+
+# Hostname a custom domain must be pointed at (via CNAME) to be verified.
+_PORTFOLIO_APP_HOSTNAME = "latexy.io"
+
+
+def _resolve_ips(hostname: str) -> set[str]:
+    """Resolve a hostname to the set of IP addresses it points to.
+
+    Following a CNAME transparently returns the target's A/AAAA records, so a
+    domain that is CNAMEd to the app host will resolve to the same IPs as the
+    app host — which is what proves ownership/configuration.
+    """
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+        return {info[4][0] for info in infos}
+    except Exception:
+        return set()
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -118,7 +136,13 @@ async def setup_portfolio(
     user.portfolio_enabled = body.portfolio_enabled
     user.portfolio_theme = body.theme
     user.portfolio_tagline = body.tagline
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Another concurrent request claimed the same username between the
+        # pre-check and the commit — the unique constraint is the source of truth.
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Username already taken")
     await db.refresh(user)
 
     return PortfolioSetupResponse(
@@ -173,20 +197,37 @@ async def verify_domain(
     if collision.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Domain already registered by another user")
 
-    # Attempt a DNS lookup for CNAME record pointing to latexy.io
+    # Verify the domain actually points at our host. A CNAME to the app host
+    # resolves to the same IP(s) as the app host, so a non-empty intersection of
+    # resolved addresses is proof the owner configured the domain to point at us.
+    # (socket.getfqdn's forward lookup was NOT proof of anything and is removed.)
     verified = False
-    message = "CNAME record not found"
+    message = (
+        f"Domain does not point to {_PORTFOLIO_APP_HOSTNAME}. "
+        f"Add a CNAME record for {domain} → {_PORTFOLIO_APP_HOSTNAME} and retry."
+    )
     try:
-        cname_target = socket.getfqdn(domain)
-        if "latexy.io" in cname_target or cname_target != domain:
+        domain_ips = _resolve_ips(domain)
+        app_ips = _resolve_ips(_PORTFOLIO_APP_HOSTNAME)
+        if not domain_ips:
+            message = f"Could not resolve {domain}"
+        elif not app_ips:
+            message = "DNS verification temporarily unavailable — please retry later."
+        elif domain_ips & app_ips:
             verified = True
-            message = f"CNAME verified: {domain} → {cname_target}"
+            message = f"Domain verified: {domain} points to {_PORTFOLIO_APP_HOSTNAME}"
     except Exception as exc:
         message = f"DNS lookup failed: {exc}"
 
     if verified:
         user.portfolio_custom_domain = domain
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            raise HTTPException(
+                status_code=409, detail="Domain already registered by another user"
+            )
 
     return DomainVerifyResponse(domain=domain, verified=verified, message=message)
 
