@@ -360,6 +360,81 @@ class TestPortfolioEndpoints:
         assert resp.json()["username"] is None
 
 
+# ── Custom domain verification (audit fix) ─────────────────────────────────────
+
+
+class TestVerifyDomain:
+    """verify-domain requires a real DNS pointing (shared IPs), not a bare lookup."""
+
+    async def test_verify_domain_matching_ips_verified(
+        self,
+        client: AsyncClient,
+        portfolio_auth_headers: dict[str, str],
+    ) -> None:
+        """Domain resolving to the same IP(s) as the app host → verified=True."""
+        domain = f"verify{uuid.uuid4().hex[:6]}.example.com"
+        with patch(
+            "app.api.portfolio_routes._resolve_ips",
+            return_value={"203.0.113.10"},
+        ):
+            resp = await client.post(
+                f"/portfolio/verify-domain?domain={domain}",
+                headers=portfolio_auth_headers,
+            )
+        assert resp.status_code == 200
+        assert resp.json()["verified"] is True
+
+    async def test_verify_domain_mismatched_ips_not_verified(
+        self,
+        client: AsyncClient,
+        portfolio_auth_headers: dict[str, str],
+    ) -> None:
+        """Domain that does NOT point at the app host → verified=False (no squatting)."""
+        domain = f"squat{uuid.uuid4().hex[:6]}.example.com"
+
+        def fake_resolve(host: str) -> set[str]:
+            # Domain points somewhere else; app host has different IPs.
+            return {"198.51.100.7"} if host == domain else {"203.0.113.10"}
+
+        with patch(
+            "app.api.portfolio_routes._resolve_ips",
+            side_effect=fake_resolve,
+        ):
+            resp = await client.post(
+                f"/portfolio/verify-domain?domain={domain}",
+                headers=portfolio_auth_headers,
+            )
+        assert resp.status_code == 200
+        assert resp.json()["verified"] is False
+
+    async def test_verify_domain_unresolvable_not_verified(
+        self,
+        client: AsyncClient,
+        portfolio_auth_headers: dict[str, str],
+    ) -> None:
+        """A domain that does not resolve at all → verified=False."""
+        domain = f"nope{uuid.uuid4().hex[:6]}.invalid"
+
+        def fake_resolve(host: str) -> set[str]:
+            return set() if host == domain else {"203.0.113.10"}
+
+        with patch(
+            "app.api.portfolio_routes._resolve_ips",
+            side_effect=fake_resolve,
+        ):
+            resp = await client.post(
+                f"/portfolio/verify-domain?domain={domain}",
+                headers=portfolio_auth_headers,
+            )
+        assert resp.status_code == 200
+        assert resp.json()["verified"] is False
+
+    async def test_verify_domain_requires_auth(self, client: AsyncClient) -> None:
+        """POST /portfolio/verify-domain without auth → 401."""
+        resp = await client.post("/portfolio/verify-domain?domain=example.com")
+        assert resp.status_code == 401
+
+
 # ── Portfolio generator endpoint ──────────────────────────────────────────────
 
 
