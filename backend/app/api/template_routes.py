@@ -15,6 +15,7 @@ Endpoints:
   DELETE /templates/{id}           — admin; delete template
 """
 
+import hmac
 import uuid as _uuid
 from typing import List, Optional
 
@@ -130,7 +131,7 @@ async def require_template_admin(
 ):
     if not settings.ADMIN_SECRET_KEY:
         raise HTTPException(status_code=503, detail="Admin template management is not configured")
-    if admin_secret != settings.ADMIN_SECRET_KEY:
+    if not hmac.compare_digest(admin_secret or "", settings.ADMIN_SECRET_KEY):
         raise HTTPException(status_code=403, detail="Invalid admin secret")
 
 
