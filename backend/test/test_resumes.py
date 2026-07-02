@@ -102,6 +102,39 @@ class TestResumeCRUD:
         resp = await client.get("/resumes/")
         assert resp.status_code == 401
 
+    async def test_create_oversized_title_returns_422(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """Title longer than 255 chars is a clean 422, not a DB 500."""
+        resp = await client.post(
+            "/resumes/",
+            headers=auth_headers,
+            json={"title": "x" * 256, "latex_content": "hi"},
+        )
+        assert resp.status_code == 422
+
+    async def test_create_invalid_document_type_returns_422(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """Unknown document_type is rejected at validation time."""
+        resp = await client.post(
+            "/resumes/",
+            headers=auth_headers,
+            json={"title": "Doc", "latex_content": "hi", "document_type": "bogus"},
+        )
+        assert resp.status_code == 422
+
+    async def test_create_oversized_latex_returns_422(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """LaTeX content beyond the size cap is rejected."""
+        resp = await client.post(
+            "/resumes/",
+            headers=auth_headers,
+            json={"title": "Big", "latex_content": "a" * 1_000_001},
+        )
+        assert resp.status_code == 422
+
     async def test_cannot_access_others_resume(
         self, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
     ):
