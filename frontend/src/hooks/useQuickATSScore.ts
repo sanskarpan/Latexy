@@ -14,7 +14,25 @@ export function useQuickATSScore(
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  // Monotonic request token: only the most recent request may commit state.
+  // Guards against out-of-order resolution and setState after unmount.
+  const requestIdRef = useRef(0)
+  const mountedRef = useRef(true)
+
+  const runScore = useCallback(async () => {
+    const reqId = ++requestIdRef.current
+    const isCurrent = () => mountedRef.current && reqId === requestIdRef.current
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiClient.quickScoreATS(latexContent, jobDescription)
+      if (isCurrent()) setResult(res)
+    } catch {
+      if (isCurrent()) setError('Quick score failed')
+    } finally {
+      if (isCurrent()) setLoading(false)
+    }
+  }, [latexContent, jobDescription])
 
   // Debounced auto-score on content change
   useEffect(() => {
@@ -22,47 +40,29 @@ export function useQuickATSScore(
 
     if (timerRef.current) clearTimeout(timerRef.current)
 
-    timerRef.current = setTimeout(async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await apiClient.quickScoreATS(latexContent, jobDescription)
-        setResult(res)
-      } catch {
-        setError('Quick score failed')
-      } finally {
-        setLoading(false)
-      }
+    timerRef.current = setTimeout(() => {
+      runScore()
     }, DEBOUNCE_MS)
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
     }
-  }, [latexContent, jobDescription])
+  }, [latexContent, jobDescription, runScore])
 
   // Immediate refetch (e.g. after compile completes)
   const refetch = useCallback(async () => {
     if (!latexContent || latexContent.length < MIN_CONTENT_LEN) return
     if (timerRef.current) clearTimeout(timerRef.current)
+    await runScore()
+  }, [latexContent, runScore])
 
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await apiClient.quickScoreATS(latexContent, jobDescription)
-      setResult(res)
-    } catch {
-      setError('Quick score failed')
-    } finally {
-      setLoading(false)
-    }
-  }, [latexContent, jobDescription])
-
-  // Cleanup on unmount
+  // Cleanup on unmount — invalidate any in-flight request.
   useEffect(() => {
-    const abortController = abortRef.current
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
+      requestIdRef.current += 1
       if (timerRef.current) clearTimeout(timerRef.current)
-      abortController?.abort()
     }
   }, [])
 
