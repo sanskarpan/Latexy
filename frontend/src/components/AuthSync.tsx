@@ -12,6 +12,7 @@
 import { useEffect } from 'react'
 import { useSession } from '@/lib/auth-client'
 import { apiClient } from '@/lib/api-client'
+import { wsClient } from '@/lib/ws-client'
 
 export function AuthSync() {
   const { data: session } = useSession()
@@ -21,6 +22,9 @@ export function AuthSync() {
     // in the `session` table. FastAPI validates it by querying that table.
     const token = session?.session?.token ?? null
     apiClient.setAuthToken(token)
+    // Forward the same token to the WS handshake so the backend authorizes
+    // access to this user's own (owner-scoped) job streams.
+    wsClient.setToken(token)
   }, [session])
 
   return null
