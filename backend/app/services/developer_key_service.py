@@ -69,8 +69,10 @@ class DeveloperKeyService:
                 await redis.expire(key, 86400)
             return {"allowed": count <= limit, "count": int(count), "limit": limit}
         except Exception as exc:
-            logger.warning(f"Developer API rate-limit fallback (Redis unavailable): {exc}")
-            return {"allowed": True, "count": 0, "limit": limit}
+            # Fail CLOSED: if we cannot account for usage (Redis down), deny the
+            # request rather than granting unmetered access to metered endpoints.
+            logger.error(f"Developer API rate-limit unavailable (Redis error), failing closed: {exc}")
+            return {"allowed": False, "count": limit, "limit": limit, "unavailable": True}
 
     async def get_usage_history(self, user_id: str, days: int = 7) -> list[Dict[str, Any]]:
         """Return daily public API request counts for the most recent N days."""
