@@ -3,6 +3,7 @@
 import base64
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from app.core.config import settings
@@ -54,6 +55,59 @@ class TestGitHubSyncService:
         mock_client.post.assert_called_once()
         call_kwargs = mock_client.post.call_args
         assert call_kwargs[1]["json"]["private"] is True
+
+    @pytest.mark.asyncio
+    async def test_ensure_repo_422_name_exists_is_success(self, service):
+        """A 422 whose body says the name already exists is treated as success."""
+        mock_resp_get = MagicMock(status_code=404)
+        mock_resp_post = MagicMock(status_code=422)
+        mock_resp_post.json.return_value = {
+            "message": "Repository creation failed.",
+            "errors": [
+                {"resource": "Repository", "field": "name",
+                 "message": "name already exists on this account"}
+            ],
+        }
+        mock_resp_post.raise_for_status = MagicMock(
+            side_effect=AssertionError("raise_for_status must not be called for name-exists")
+        )
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp_get
+        mock_client.post.return_value = mock_resp_post
+
+        with patch("app.services.github_sync_service.httpx.AsyncClient") as MockClient:
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            # Should not raise
+            await service.ensure_repo("tok", "user", "latexy-resumes")
+
+    @pytest.mark.asyncio
+    async def test_ensure_repo_422_other_reason_raises(self, service):
+        """A 422 for a non-collision reason (e.g. invalid name) is a real failure."""
+        mock_resp_get = MagicMock(status_code=404)
+        mock_resp_post = MagicMock(status_code=422)
+        mock_resp_post.json.return_value = {
+            "message": "Repository creation failed.",
+            "errors": [
+                {"resource": "Repository", "field": "name", "message": "is invalid"}
+            ],
+        }
+        mock_resp_post.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError("422", request=MagicMock(), response=mock_resp_post)
+        )
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp_get
+        mock_client.post.return_value = mock_resp_post
+
+        with patch("app.services.github_sync_service.httpx.AsyncClient") as MockClient:
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with pytest.raises(httpx.HTTPStatusError):
+                await service.ensure_repo("tok", "user", "bad name!")
 
     @pytest.mark.asyncio
     async def test_push_file_creates_new(self, service):
@@ -209,6 +263,69 @@ class TestGitHubEndpoints:
             )
             assert resp.status_code == 400
             assert "not connected" in resp.json()["detail"].lower()
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    def test_callback_empty_username_redirects_with_error(self, authed_client):
+        """A profile with no login must not connect; redirect to settings with an error."""
+        from app.database.connection import get_db
+        from app.main import app
+
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=MagicMock())
+        mock_db.commit = AsyncMock()
+
+        token_resp = MagicMock()
+        token_resp.raise_for_status = MagicMock()
+        token_resp.json.return_value = {"access_token": "gho_abc"}
+
+        mock_http = AsyncMock()
+        mock_http.post = AsyncMock(return_value=token_resp)
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+        try:
+            with (
+                patch("app.api.github_routes.cache_manager") as mock_cache,
+                patch("httpx.AsyncClient") as MockClient,
+                patch(
+                    "app.api.github_routes.github_sync_service.get_github_user",
+                    new=AsyncMock(return_value={"login": ""}),
+                ),
+            ):
+                mock_cache.get = AsyncMock(return_value="test-user-id")
+                mock_cache.delete = AsyncMock()
+                MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+                MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+
+                resp = authed_client.get(
+                    "/github/callback?code=abc&state=xyz", follow_redirects=False
+                )
+
+            assert resp.status_code in (302, 307)
+            location = resp.headers.get("location", "")
+            assert "github=error" in location
+            assert "no_username" in location
+            # Token must NOT be persisted
+            mock_db.commit.assert_not_called()
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    def test_callback_invalid_state_redirects_with_error(self, authed_client):
+        """An expired/invalid state redirects to settings instead of raising JSON 400."""
+        from app.database.connection import get_db
+        from app.main import app
+
+        mock_db = AsyncMock()
+        app.dependency_overrides[get_db] = lambda: mock_db
+        try:
+            with patch("app.api.github_routes.cache_manager") as mock_cache:
+                mock_cache.get = AsyncMock(return_value=None)
+                resp = authed_client.get(
+                    "/github/callback?code=abc&state=stale", follow_redirects=False
+                )
+            assert resp.status_code in (302, 307)
+            assert "github=error" in resp.headers.get("location", "")
+            assert "invalid_state" in resp.headers.get("location", "")
         finally:
             app.dependency_overrides.pop(get_db, None)
 
