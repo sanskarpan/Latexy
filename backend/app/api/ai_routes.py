@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import httpx
 import openai
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +33,71 @@ from ..services.publications_service import publications_service
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/ai", tags=["ai-tools"])
+
+
+# ── Shared API-key resolution + platform-key abuse protection ────────────────
+#
+# These AI endpoints allow anonymous access (used from the public /try editor).
+# When the caller has no BYOK key we fall back to the shared platform OpenAI key
+# — which an anonymous/scripted caller could otherwise exploit to drive unbounded
+# spend (financial DoS), since the content-hash cache is trivially defeated by
+# varying the input. We therefore METER the platform-key fallback per identity
+# (user id, else client IP). BYOK callers use their own key and are never limited.
+
+# Max platform-key LLM calls per identity per minute.
+_SYSTEM_KEY_LLM_LIMIT_PER_MIN = 20
+
+
+async def _system_key_rate_limited(identity: str) -> bool:
+    """Return True if this identity has exhausted its platform-key LLM budget.
+
+    Gated by settings.RATE_LIMIT_ENABLED (off in tests). Fails OPEN if Redis is
+    unavailable so a cache outage never hard-breaks AI features for real users.
+    """
+    # Only active when rate limiting is explicitly enabled via a real bool flag;
+    # inert when disabled or when settings is a test double.
+    if not isinstance(settings.RATE_LIMIT_ENABLED, bool) or not settings.RATE_LIMIT_ENABLED:
+        return False
+    try:
+        from ..core.redis import get_redis_cache_client
+        redis = await get_redis_cache_client()
+        window = int(time.time() // 60)
+        key = f"ai:syskey:{identity}:{window}"
+        count = await redis.incr(key)
+        if count == 1:
+            await redis.expire(key, 60)
+        return count > _SYSTEM_KEY_LLM_LIMIT_PER_MIN
+    except Exception:
+        return False
+
+
+async def _resolve_ai_api_key(
+    db: AsyncSession,
+    user_id: Optional[str],
+    client_ip: str = "unknown",
+) -> Optional[str]:
+    """Resolve the LLM API key for an AI endpoint.
+
+    Prefers the caller's own BYOK key (never rate limited — they pay for it).
+    Otherwise falls back to the shared platform key, but that fallback is metered
+    per identity (user id, else client IP) to prevent cost/DoS abuse. Returns None
+    when no key may be used (none configured, or the platform-key budget is spent).
+    """
+    if user_id:
+        try:
+            from ..services.api_key_service import api_key_service
+            byok = await api_key_service.get_user_provider(db, user_id, "openai")
+            if byok:
+                return byok
+        except Exception:
+            pass
+    if settings.OPENAI_API_KEY:
+        identity = user_id or f"ip:{client_ip}"
+        if await _system_key_rate_limited(identity):
+            logger.warning("AI platform-key rate limit exceeded for %s", identity)
+            return None
+        return settings.OPENAI_API_KEY
+    return None
 
 
 # ── Request / Response schemas ──────────────────────────────────────────────
@@ -130,6 +195,7 @@ def _bullet_cache_key(
 @router.post("/generate-bullets", response_model=GenerateBulletsResponse)
 async def generate_bullets(
     request: GenerateBulletsRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
@@ -150,16 +216,9 @@ async def generate_bullets(
     except Exception:
         pass
 
-    # Resolve API key
-    api_key: Optional[str] = None
-    if user_id:
-        try:
-            from ..services.api_key_service import api_key_service
-            api_key = await api_key_service.get_user_provider(db, user_id, "openai")
-        except Exception:
-            pass
-    if not api_key and settings.OPENAI_API_KEY:
-        api_key = settings.OPENAI_API_KEY
+    # Resolve API key (BYOK first; platform-key fallback is rate limited)
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    api_key = await _resolve_ai_api_key(db, user_id, client_ip)
 
     if not api_key:
         logger.warning("generate-bullets: no API key available")
@@ -235,6 +294,7 @@ def _summary_cache_key(
 @router.post("/generate-summary", response_model=GenerateSummaryResponse)
 async def generate_summary(
     request: GenerateSummaryRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
@@ -254,15 +314,8 @@ async def generate_summary(
     except Exception:
         pass
 
-    api_key: Optional[str] = None
-    if user_id:
-        try:
-            from ..services.api_key_service import api_key_service
-            api_key = await api_key_service.get_user_provider(db, user_id, "openai")
-        except Exception:
-            pass
-    if not api_key and settings.OPENAI_API_KEY:
-        api_key = settings.OPENAI_API_KEY
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    api_key = await _resolve_ai_api_key(db, user_id, client_ip)
 
     if not api_key:
         logger.warning("generate-summary: no API key available")
@@ -428,6 +481,7 @@ def _rewrite_cache_key(action: str, selected_text: str, tone: Optional[str], con
 @router.post("/rewrite", response_model=RewriteResponse)
 async def rewrite_text(
     request: RewriteRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
@@ -444,16 +498,9 @@ async def rewrite_text(
     except Exception:
         pass
 
-    # Resolve API key
-    api_key: Optional[str] = None
-    if user_id:
-        try:
-            from ..services.api_key_service import api_key_service
-            api_key = await api_key_service.get_user_provider(db, user_id, "openai")
-        except Exception:
-            pass
-    if not api_key and settings.OPENAI_API_KEY:
-        api_key = settings.OPENAI_API_KEY
+    # Resolve API key (BYOK first; platform-key fallback is rate limited)
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    api_key = await _resolve_ai_api_key(db, user_id, client_ip)
 
     if not api_key:
         logger.warning("rewrite: no API key available")
@@ -875,6 +922,7 @@ def _salary_cache_key(resume_latex: str, target_role: str, location: str) -> str
 @router.post("/salary-estimate", response_model=SalaryEstimateResponse)
 async def salary_estimate(
     request: SalaryEstimateRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
@@ -889,16 +937,9 @@ async def salary_estimate(
     except Exception:
         pass
 
-    # Resolve API key
-    api_key: Optional[str] = None
-    if user_id:
-        try:
-            from ..services.api_key_service import api_key_service
-            api_key = await api_key_service.get_user_provider(db, user_id, "openai")
-        except Exception:
-            pass
-    if not api_key and settings.OPENAI_API_KEY:
-        api_key = settings.OPENAI_API_KEY
+    # Resolve API key (BYOK first; platform-key fallback is rate limited)
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    api_key = await _resolve_ai_api_key(db, user_id, client_ip)
 
     if not api_key:
         logger.warning("salary-estimate: no API key available")
@@ -1415,6 +1456,7 @@ def _reorder_cache_key(current_order: list[str], jd: str, career_stage: str) -> 
 @router.post("/reorder-sections", response_model=ReorderSectionsResponse)
 async def reorder_sections_endpoint(
     request: ReorderSectionsRequest,
+    http_request: Request,
     user_id: Optional[str] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db),
 ) -> ReorderSectionsResponse:
@@ -1469,16 +1511,9 @@ async def reorder_sections_endpoint(
             cached=True,
         )
 
-    # Resolve API key (BYOK → system default)
-    api_key: Optional[str] = None
-    if user_id:
-        try:
-            from ..services.api_key_service import api_key_service  # noqa: PLC0415
-            api_key = await api_key_service.get_user_provider(db, user_id, "openai")
-        except Exception:
-            pass
-    if not api_key and settings.OPENAI_API_KEY:
-        api_key = settings.OPENAI_API_KEY
+    # Resolve API key (BYOK first; platform-key fallback is rate limited)
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    api_key = await _resolve_ai_api_key(db, user_id, client_ip)
 
     if not api_key:
         logger.warning("reorder-sections: no API key available")
