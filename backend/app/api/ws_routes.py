@@ -63,6 +63,11 @@ async def jobs_websocket(websocket: WebSocket) -> None:
     connection_id = str(uuid.uuid4())
     logger.info("WebSocket connection accepted")
 
+    # Optional auth: authenticated clients pass ?token=<better-auth session token>.
+    # Anonymous connections are allowed (trial compiles), but per-job ownership is
+    # enforced on subscribe/cancel so a client can only touch owner-less jobs or its own.
+    ws_user_id: Optional[str] = await _resolve_ws_user(websocket)
+
     # Track which jobs this connection is subscribed to (for cleanup)
     subscribed_jobs: set[str] = set()
 
@@ -99,6 +104,10 @@ async def jobs_websocket(websocket: WebSocket) -> None:
                     await _send_error(websocket, "invalid_request", "job_id is required")
                     continue
 
+                if not await _job_ws_access_ok(job_id, ws_user_id):
+                    await _send_error(websocket, "forbidden", "Access denied for this job")
+                    continue
+
                 replayed = await event_bus.subscribe(job_id, websocket, last_event_id)
                 subscribed_jobs.add(job_id)
 
@@ -119,6 +128,9 @@ async def jobs_websocket(websocket: WebSocket) -> None:
                 job_id = data.get("job_id")
                 if not job_id:
                     await _send_error(websocket, "invalid_request", "job_id is required")
+                    continue
+                if not await _job_ws_access_ok(job_id, ws_user_id):
+                    await _send_error(websocket, "forbidden", "Access denied for this job")
                     continue
                 await _request_cancellation(job_id)
 
@@ -153,6 +165,40 @@ async def jobs_websocket(websocket: WebSocket) -> None:
 # ------------------------------------------------------------------ #
 #  Helpers                                                             #
 # ------------------------------------------------------------------ #
+
+async def _resolve_ws_user(websocket: WebSocket) -> Optional[str]:
+    """Validate the optional ?token= query param and return the user_id, or None."""
+    token = websocket.query_params.get("token")
+    if not token:
+        return None
+    try:
+        from ..database.connection import get_async_db_session
+        from ..middleware.auth_middleware import _validate_better_auth_session
+        async with get_async_db_session() as db:
+            return await _validate_better_auth_session(token, db)
+    except Exception as exc:  # pragma: no cover - transient
+        logger.debug(f"WS token validation failed: {exc}")
+        return None
+
+
+async def _job_ws_access_ok(job_id: str, user_id: Optional[str]) -> bool:
+    """Return True if this connection may read/cancel the job.
+
+    Owned jobs (meta.user_id set) require the matching authenticated user; owner-less
+    (anonymous/trial) jobs are accessible to anyone. Missing meta → allow (trial jobs,
+    or expired meta whose event stream has also expired).
+    """
+    try:
+        r = await get_redis_client()
+        meta_raw = await r.get(f"latexy:job:{job_id}:meta")
+    except Exception as exc:  # pragma: no cover - transient
+        logger.debug(f"WS ownership lookup failed for job {job_id}: {exc}")
+        return True
+    if not meta_raw:
+        return True
+    job_owner = json.loads(meta_raw).get("user_id")
+    return job_owner is None or job_owner == user_id
+
 
 async def _send_error(websocket: WebSocket, code: str, message: str) -> None:
     try:
@@ -319,22 +365,47 @@ async def _request_cancellation(job_id: str) -> None:
     Set the cancellation flag in Redis.  Workers poll is_cancelled()
     and will stop gracefully.  Also publish a provisional cancelled
     event so the client gets immediate feedback.
+
+    Mirrors the REST cancel_job path: the event is assigned a monotonic
+    sequence and written to the Redis Stream (for replay on reconnect)
+    in addition to being published to the live Pub/Sub channel.
     """
+    _JOB_TTL = 86400
     try:
         r = await get_redis_client()
         await r.setex(f"latexy:job:{job_id}:cancel", 3600, "1")
 
-        # Publish provisional cancellation event to Pub/Sub channel
+        event_id = str(uuid.uuid4())
+        seq_key = f"latexy:job:{job_id}:seq"
+        seq = await r.incr(seq_key)
+        await r.expire(seq_key, _JOB_TTL)
+
         cancel_event = {
-            "event_id": str(uuid.uuid4()),
+            "event_id": event_id,
             "job_id": job_id,
             "timestamp": time.time(),
-            "sequence": 0,
+            "sequence": seq,
             "type": "job.cancelled",
         }
+        payload_json = json.dumps(cancel_event)
+
+        stream_key = f"latexy:stream:{job_id}"
+        entry_id = await r.xadd(
+            stream_key,
+            {
+                "payload": payload_json,
+                "type": "job.cancelled",
+                "sequence": str(seq),
+                "event_id": event_id,
+            },
+            maxlen=10000,
+            approximate=True,
+        )
+        await r.expire(stream_key, _JOB_TTL)
+
         await r.publish(
             f"latexy:events:{job_id}",
-            json.dumps({"type": "event", "event": cancel_event}),
+            json.dumps({"type": "event", "event": cancel_event, "stream_id": entry_id}),
         )
         logger.info(f"Cancellation requested for job {job_id}")
     except Exception as exc:
