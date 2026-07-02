@@ -8,6 +8,8 @@ import { Download } from 'lucide-react'
 import { signOut, useSession } from '@/lib/auth-client'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import { usePWAInstall } from '@/hooks/usePWAInstall'
+import { clearAllDrafts } from '@/lib/offline-drafts'
+import { clearCompileQueue } from '@/lib/compile-queue'
 
 const guestNav = [
   { label: 'Platform', href: '/platform' },
@@ -53,7 +55,24 @@ export default function GlobalHeader() {
   const activeNav = isAuthenticated ? appNav : effectiveGuestNav
   const firstName = resolvedUser?.name?.trim().split(' ')[0] || 'Account'
 
+  // Admin is gated server-side by ADMIN_EMAIL; only surface the link to the
+  // configured admin address(es) so it is not advertised to every user.
+  const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean)
+  const isAdmin = Boolean(
+    resolvedUser?.email && adminEmails.includes(resolvedUser.email.toLowerCase()),
+  )
+
   const handleSignOut = async () => {
+    // Clear device-local offline data so the next user on a shared device can't
+    // load the previous user's drafts / queued compiles (cross-user leakage).
+    try {
+      await Promise.all([clearAllDrafts(), clearCompileQueue()])
+    } catch {
+      // Non-critical — proceed with sign out regardless.
+    }
     await signOut()
     window.location.href = '/'
   }
@@ -152,13 +171,15 @@ export default function GlobalHeader() {
                       >
                         Settings
                       </Link>
-                      <Link
-                        href="/admin"
-                        className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        Admin
-                      </Link>
+                      {isAdmin && (
+                        <Link
+                          href="/admin"
+                          className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          Admin
+                        </Link>
+                      )}
                       <div className="my-1 h-px bg-white/10" />
                       <button
                         onClick={handleSignOut}
