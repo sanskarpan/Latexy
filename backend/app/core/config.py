@@ -185,6 +185,14 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = Field(default="", description="JWT secret key for token signing")
     JWT_ALGORITHM: str = Field(default="HS256", description="JWT algorithm")
     JWT_EXPIRATION_HOURS: int = Field(default=24, description="JWT token expiration in hours")
+    LEGACY_JWT_ENABLED: bool = Field(
+        default=False,
+        description="Enable the stateless legacy HS256 JWT auth fallback (migration only; off by default)",
+    )
+    TRUST_PROXY_HEADERS: bool = Field(
+        default=False,
+        description="Trust X-Forwarded-For for client IP (enable ONLY behind a trusted reverse proxy)",
+    )
 
     # Razorpay Configuration
     RAZORPAY_KEY_ID: str = Field(default="", description="Razorpay API Key ID")
@@ -431,6 +439,23 @@ class Settings(BaseSettings):
         """Return whether the app is running in a production-like environment."""
         return self.normalized_environment in {"production", "staging"}
 
+    def effective_cors_origins(self) -> List[str]:
+        """Return the CORS origins that should actually be allowed.
+
+        CONFIG-002: In production-like environments, localhost/127.0.0.1 origins
+        must not be part of the credentialed allow-list (they would let any local
+        page make credentialed cross-origin calls). They are stripped here while
+        dev behavior is left unchanged.
+        """
+        origins = list(self.CORS_ORIGINS or [])
+        if self.is_production_like():
+            origins = [
+                o
+                for o in origins
+                if "localhost" not in o and "127.0.0.1" not in o
+            ]
+        return origins
+
     def billing_credentials_configured(self) -> bool:
         """Return whether the full Razorpay credential set is present."""
         return all(
@@ -465,6 +490,25 @@ class Settings(BaseSettings):
                 f"Missing required environment variables: {', '.join(missing)}. "
                 f"Copy backend/.env.example to backend/.env and fill in the values."
             )
+
+        # Reject placeholder / weak secrets in production-like environments so a
+        # copied-but-unedited .env.example never ships with a known signing secret.
+        if self.is_production_like():
+            insecure = []
+            for name, value in (
+                ("BETTER_AUTH_SECRET", self.BETTER_AUTH_SECRET),
+                ("JWT_SECRET_KEY", self.JWT_SECRET_KEY),
+            ):
+                if "change-me" in value.lower() or "your-" in value.lower():
+                    insecure.append(f"{name} is a placeholder value")
+                elif len(value) < 32:
+                    insecure.append(f"{name} is too short (<32 chars)")
+            if insecure:
+                raise ValueError(
+                    "Insecure secrets in production: "
+                    + "; ".join(insecure)
+                    + ". Generate strong secrets with: openssl rand -hex 32"
+                )
 
         if self.API_KEY_ENCRYPTION_KEY:
             try:
