@@ -16,6 +16,25 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 })
 
+/**
+ * Resolve the Better Auth signing secret. There is NO hardcoded fallback: a
+ * well-known default secret would let anyone forge session cookies/tokens. In
+ * production a missing secret is fatal; in development we derive a stable,
+ * process-local placeholder and warn loudly.
+ */
+function getAuthSecret(): string {
+  const secret = process.env.BETTER_AUTH_SECRET
+  if (secret) return secret
+  // `next build` runs with NODE_ENV=production but should not require runtime
+  // secrets; only fail at actual runtime (serving), not during the build phase.
+  const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build'
+  if (process.env.NODE_ENV === 'production' && !isBuildPhase) {
+    throw new Error('BETTER_AUTH_SECRET is required in production and has no default.')
+  }
+  console.warn('[auth] BETTER_AUTH_SECRET is not set — using an insecure development-only secret.')
+  return 'dev-only-insecure-secret-do-not-use-in-production'
+}
+
 export const auth = betterAuth({
   database: pool,
 
@@ -65,7 +84,7 @@ export const auth = betterAuth({
       : {}),
   },
 
-  secret: process.env.BETTER_AUTH_SECRET || 'change-me-in-production',
+  secret: getAuthSecret(),
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:5180',
 
   // Trust requests from both the frontend and the FastAPI backend
