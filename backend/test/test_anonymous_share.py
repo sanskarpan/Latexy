@@ -146,3 +146,48 @@ class TestAnonymousShareEndpoint:
         assert get_resp.status_code == 200
         # Original LaTeX must be preserved
         assert get_resp.json()["latex_content"] == original_latex
+
+    async def test_editing_content_clears_stale_anonymous_share(
+        self, client, auth_headers: dict
+    ):
+        """Editing latex_content must invalidate the cached anonymous redaction job
+        so create_share_link regenerates a fresh redacted PDF."""
+        create_resp = await client.post(
+            "/resumes/",
+            headers=auth_headers,
+            json={
+                "title": "Stale Anon Resume",
+                "latex_content": r"\documentclass{article}\begin{document}old@example.com\end{document}",
+            },
+        )
+        resume_id = create_resp.json()["id"]
+
+        share_resp = await client.post(
+            f"/resumes/{resume_id}/share",
+            headers=auth_headers,
+            json={"anonymous": True},
+        )
+        assert share_resp.status_code == 200
+
+        before = (
+            await client.get(f"/resumes/{resume_id}", headers=auth_headers)
+        ).json().get("metadata") or {}
+        # Anonymous share stores either a submitted job id or a pending marker.
+        assert (
+            "share_anonymous_job_id" in before or "share_anonymous_pending" in before
+        )
+
+        upd = await client.put(
+            f"/resumes/{resume_id}",
+            headers=auth_headers,
+            json={
+                "latex_content": r"\documentclass{article}\begin{document}new@example.com\end{document}"
+            },
+        )
+        assert upd.status_code == 200
+
+        after = (
+            await client.get(f"/resumes/{resume_id}", headers=auth_headers)
+        ).json().get("metadata") or {}
+        assert "share_anonymous_job_id" not in after
+        assert "share_anonymous_pending" not in after
