@@ -371,9 +371,10 @@ async def apply_greenhouse(
         sub.status = "failed"
         sub.error_message = f"Greenhouse API error {exc.response.status_code}"
         logger.error(f"Greenhouse HTTP error for user {user_id}: {exc}")
-    except Exception as exc:
+    except Exception:
         sub.status = "failed"
-        sub.error_message = f"Unexpected error: {exc}"
+        # Do not leak internal exception text to the client — log it server-side only.
+        sub.error_message = "An unexpected error occurred while submitting the application"
         logger.exception(f"Greenhouse unexpected error for user {user_id}")
 
     await db.commit()
@@ -474,9 +475,10 @@ async def apply_lever(
         sub.status = "failed"
         sub.error_message = f"Lever API error {exc.response.status_code}"
         logger.error(f"Lever HTTP error for user {user_id}: {exc}")
-    except Exception as exc:
+    except Exception:
         sub.status = "failed"
-        sub.error_message = f"Unexpected error: {exc}"
+        # Do not leak internal exception text to the client — log it server-side only.
+        sub.error_message = "An unexpected error occurred while submitting the application"
         logger.exception(f"Lever unexpected error for user {user_id}")
 
     await db.commit()
