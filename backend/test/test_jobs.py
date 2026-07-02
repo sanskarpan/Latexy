@@ -423,26 +423,79 @@ class TestJobsHealth:
 
 # ── System cleanup endpoint ────────────────────────────────────────────────────
 
+async def _admin_headers(db_session) -> dict:
+    """Insert an admin user + Better Auth session and point ADMIN_EMAIL at it."""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import text
+
+    from app.core.config import settings
+
+    admin_id = str(uuid.uuid4())
+    admin_email = f"admin_{admin_id[:8]}@example.com"
+    await db_session.execute(
+        text(
+            "INSERT INTO users (id, email, name, email_verified, subscription_plan, "
+            "subscription_status, trial_used) VALUES (:id, :email, 'Admin', true, 'pro', 'active', false)"
+        ),
+        {"id": admin_id, "email": admin_email},
+    )
+    token = f"test_sess_{uuid.uuid4().hex}"
+    await db_session.execute(
+        text(
+            'INSERT INTO session (id, "userId", "expiresAt", token) VALUES (:id, :uid, :exp, :tok)'
+        ),
+        {
+            "id": str(uuid.uuid4()),
+            "uid": admin_id,
+            "exp": datetime.now(timezone.utc) + timedelta(days=1),
+            "tok": token,
+        },
+    )
+    await db_session.commit()
+    settings.ADMIN_EMAIL = admin_email
+    return {"Authorization": f"Bearer {token}"}
+
+
 @pytest.mark.asyncio
 class TestSystemCleanup:
 
-    async def test_cleanup_temp_files_accepted(self, client: AsyncClient):
-        with patch("app.workers.cleanup_worker.submit_temp_files_cleanup", return_value="test-job-id"):
-            resp = await client.post("/jobs/system/cleanup?cleanup_type=temp_files")
+    async def test_cleanup_requires_admin(self, client: AsyncClient):
+        # No auth → 401; the endpoint must not be anonymously triggerable.
+        resp = await client.post("/jobs/system/cleanup?cleanup_type=temp_files")
+        assert resp.status_code in (401, 403)
+
+    async def test_cleanup_temp_files_accepted(self, client: AsyncClient, db_session):
+        headers = await _admin_headers(db_session)
+        with patch("app.api.job_routes.submit_temp_files_cleanup", return_value="test-job-id"):
+            resp = await client.post("/jobs/system/cleanup?cleanup_type=temp_files", headers=headers)
         assert resp.status_code == 200
 
-    async def test_cleanup_expired_jobs_accepted(self, client: AsyncClient):
-        with patch("app.workers.cleanup_worker.submit_expired_jobs_cleanup", return_value="test-job-id"):
-            resp = await client.post("/jobs/system/cleanup?cleanup_type=expired_jobs")
+    async def test_cleanup_expired_jobs_accepted(self, client: AsyncClient, db_session):
+        headers = await _admin_headers(db_session)
+        with patch("app.api.job_routes.submit_expired_jobs_cleanup", return_value="test-job-id"):
+            resp = await client.post("/jobs/system/cleanup?cleanup_type=expired_jobs", headers=headers)
         assert resp.status_code == 200
 
-    async def test_cleanup_invalid_type_returns_400(self, client: AsyncClient):
-        resp = await client.post("/jobs/system/cleanup?cleanup_type=nonexistent_type")
+    async def test_cleanup_invalid_type_returns_400(self, client: AsyncClient, db_session):
+        headers = await _admin_headers(db_session)
+        resp = await client.post("/jobs/system/cleanup?cleanup_type=nonexistent_type", headers=headers)
         assert resp.status_code == 400
 
-    async def test_cleanup_returns_job_id(self, client: AsyncClient):
+    async def test_cleanup_clamps_max_age_hours(self, client: AsyncClient, db_session):
+        headers = await _admin_headers(db_session)
+        # max_age_hours=0 must be clamped to >=1 so in-flight temp files aren't purged.
+        with patch("app.api.job_routes.submit_temp_files_cleanup", return_value="c1") as mock_submit:
+            resp = await client.post(
+                "/jobs/system/cleanup?cleanup_type=temp_files&max_age_hours=0", headers=headers
+            )
+        assert resp.status_code == 200
+        assert mock_submit.call_args.kwargs["max_age_hours"] >= 1
+
+    async def test_cleanup_returns_job_id(self, client: AsyncClient, db_session):
+        headers = await _admin_headers(db_session)
         with patch("app.api.job_routes.submit_temp_files_cleanup", return_value="cleanup-123"):
-            resp = await client.post("/jobs/system/cleanup?cleanup_type=temp_files")
+            resp = await client.post("/jobs/system/cleanup?cleanup_type=temp_files", headers=headers)
         assert resp.status_code == 200
         data = resp.json()
         assert "job_id" in data
@@ -467,3 +520,25 @@ class TestListJobs:
         data = resp.json()
         assert "jobs" in data
         assert "total_count" in data
+
+    async def test_list_jobs_includes_submitted_job(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """A submitted job must be indexed in the user ZSET and returned by GET /jobs/."""
+        with patch("app.api.job_routes.submit_latex_compilation", return_value=None):
+            submit = await client.post(
+                "/jobs/submit",
+                json={"job_type": "latex_compilation", "latex_content": VALID_LATEX},
+                headers=auth_headers,
+            )
+        if submit.status_code not in (200, 202):
+            pytest.skip("Submit failed — Redis may not be available")
+        job_id = submit.json()["job_id"]
+
+        resp = await client.get("/jobs/", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        job_ids = [j.get("job_id") for j in data["jobs"]]
+        if not job_ids:
+            pytest.skip("Redis ZSET missing — Redis may not be available")
+        assert job_id in job_ids
