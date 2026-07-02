@@ -201,3 +201,72 @@ class TestDeepAnalyzeAuthenticated:
             headers=auth_headers,
         )
         assert response.status_code == 200
+
+
+class TestDeepAnalyzeLimitsAndFailure:
+    """Payload caps, anonymous IP rate limiting, and trial-charge rollback."""
+
+    @pytest.mark.asyncio
+    async def test_oversized_latex_returns_422(self, client: AsyncClient):
+        """latex_content over 200_000 chars is rejected by validation."""
+        response = await _post_deep_analyze(client, {
+            "latex_content": "a" * 200_001,
+            "device_fingerprint": "fp_big",
+        })
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_oversized_job_description_returns_422(self, client: AsyncClient):
+        """job_description over 20_000 chars is rejected by validation."""
+        response = await _post_deep_analyze(client, {
+            "latex_content": SAMPLE_LATEX,
+            "job_description": "x" * 20_001,
+            "device_fingerprint": "fp_jd_big",
+        })
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_anonymous_ip_rate_limit_returns_429(
+        self, client: AsyncClient, mock_celery_task, mock_redis
+    ):
+        """Anonymous deep-analysis is IP rate-limited regardless of the trial flag."""
+        with patch(
+            "app.api.ats_routes._rate_limit_ok",
+            new=AsyncMock(return_value=False),
+        ):
+            response = await _post_deep_analyze(client, {
+                "latex_content": SAMPLE_LATEX,
+                "device_fingerprint": f"fp_{uuid.uuid4().hex[:12]}",
+            })
+        assert response.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_enqueue_failure_refunds_trial(
+        self, client: AsyncClient, mock_redis, db_session
+    ):
+        """If task dispatch fails, the trial use charged before dispatch is refunded."""
+        from sqlalchemy import select
+
+        from app.database.models import DeepAnalysisTrial
+
+        fp = f"fp_{uuid.uuid4().hex[:12]}"
+
+        with patch(
+            "app.api.ats_routes.submit_deep_analyze_ats",
+            new=MagicMock(side_effect=RuntimeError("broker down")),
+        ):
+            response = await _post_deep_analyze(client, {
+                "latex_content": SAMPLE_LATEX,
+                "device_fingerprint": fp,
+            })
+        assert response.status_code == 503
+
+        # Trial use should have been rolled back to 0 (charged then refunded)
+        result = await db_session.execute(
+            select(DeepAnalysisTrial).where(
+                DeepAnalysisTrial.device_fingerprint == fp
+            )
+        )
+        trial = result.scalar_one_or_none()
+        assert trial is not None
+        assert trial.usage_count == 0
