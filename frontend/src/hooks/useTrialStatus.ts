@@ -40,19 +40,24 @@ export function useTrialStatus() {
       })
       // Cache for offline/immediate checks (include total so test users retain correct limit)
       localStorage.setItem('trial_usage', JSON.stringify({ used, total }))
-    } catch (err) {
-      // Fallback to cache
+    } catch {
+      // Fallback to cache — guard against corrupted/truncated JSON.
       const cached = localStorage.getItem('trial_usage')
       if (cached) {
-        const { used, total = DEFAULT_TOTAL } = JSON.parse(cached)
-        setStatus((prev) => ({
-          ...prev,
-          used,
-          total,
-          remaining: Math.max(0, total - used),
-          canRun: used < total,
-          fingerprint: fp,
-        }))
+        try {
+          const { used, total = DEFAULT_TOTAL } = JSON.parse(cached)
+          setStatus((prev) => ({
+            ...prev,
+            used,
+            total,
+            remaining: Math.max(0, total - used),
+            canRun: used < total,
+            fingerprint: fp,
+          }))
+        } catch {
+          // Corrupted cache — drop it and keep defaults.
+          localStorage.removeItem('trial_usage')
+        }
       }
     } finally {
       setLoading(false)
