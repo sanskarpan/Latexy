@@ -21,7 +21,7 @@ class TestMVPCoreFeatures:
     """Test MVP core functionality requirements."""
 
     @pytest.mark.asyncio
-    async def test_latex_compilation_to_pdf(self, client: AsyncClient):
+    async def test_latex_compilation_to_pdf(self, client: AsyncClient, auth_headers: dict):
         """Test LaTeX resume compilation to PDF endpoint exists and validates input."""
         valid_latex = (
             r"\documentclass{article}"
@@ -30,10 +30,12 @@ class TestMVPCoreFeatures:
             r"\end{document}"
         )
 
-        # /compile uses multipart form data
+        # /compile uses multipart form data and now requires authentication
+        # (anonymous/trial compiles go through /public/compile).
         response = await client.post(
             "/compile",
             data={"latex_content": valid_latex},
+            headers=auth_headers,
         )
 
         # 200 means compile attempted (success/fail depending on pdflatex availability)
@@ -258,17 +260,26 @@ class TestUserExperience:
         assert "status" in data
 
     @pytest.mark.asyncio
-    async def test_file_upload_functionality(self, client: AsyncClient):
-        """Test file upload via /compile endpoint."""
+    async def test_file_upload_functionality(self, client: AsyncClient, auth_headers: dict):
+        """Test file upload via /compile endpoint (auth required)."""
         test_file_content = (
             b"\\documentclass{article}\\begin{document}Test\\end{document}"
         )
 
         files = {"file": ("test.tex", test_file_content, "text/plain")}
-        response = await client.post("/compile", files=files)
+        response = await client.post("/compile", files=files, headers=auth_headers)
 
         # 200 = accepted (compiled or failed), 400 = validation, 500 = server error
         assert response.status_code in [200, 400, 413, 500]
+
+    @pytest.mark.asyncio
+    async def test_compile_requires_authentication(self, client: AsyncClient):
+        """Unauthenticated /compile must be rejected (open-endpoint trial bypass)."""
+        valid_latex = (
+            r"\documentclass{article}\begin{document}Test\end{document}"
+        )
+        response = await client.post("/compile", data={"latex_content": valid_latex})
+        assert response.status_code in [401, 403]
 
     @pytest.mark.asyncio
     async def test_real_time_notifications(self, client: AsyncClient):
@@ -281,7 +292,7 @@ class TestSecurityAndCompliance:
     """Test security and compliance requirements."""
 
     @pytest.mark.asyncio
-    async def test_input_validation(self, client: AsyncClient):
+    async def test_input_validation(self, client: AsyncClient, auth_headers: dict):
         """Test input validation and sanitization."""
         # Input without proper document structure should be rejected
         invalid_latex = "just some text without documentclass"
@@ -289,6 +300,7 @@ class TestSecurityAndCompliance:
         response = await client.post(
             "/compile",
             data={"latex_content": invalid_latex},
+            headers=auth_headers,
         )
 
         # Should reject invalid LaTeX (missing \documentclass/\begin{document})
@@ -447,12 +459,13 @@ class TestIntegrationScenarios:
         assert trial_status["remainingUses"] == TRIAL_LIMIT - 1
 
     @pytest.mark.asyncio
-    async def test_error_handling_and_recovery(self, client: AsyncClient):
+    async def test_error_handling_and_recovery(self, client: AsyncClient, auth_headers: dict):
         """Test error handling and graceful recovery."""
         # Test invalid LaTeX — missing document structure
         response = await client.post(
             "/compile",
             data={"latex_content": "this is not valid latex"},
+            headers=auth_headers,
         )
 
         # Should handle gracefully — 400 for validation failure
