@@ -411,3 +411,31 @@ class TestDetectReferencesEndpoint:
         )
         assert resp.status_code == 200
         assert resp.json()["count"] == 0
+
+
+# ── Audit fix: ORCID-built BibTeX escapes TeX specials ─────────────────────────
+
+
+class TestOrcidBibtexEscaping:
+    """_bibtex_from_orcid_work escapes attacker-controlled ORCID metadata."""
+
+    def test_special_chars_in_title_and_journal_are_escaped(self):
+        from app.api.reference_routes import _bibtex_from_orcid_work
+
+        work = {
+            "work_type": "journalarticle",
+            "title": "Attacks & Defenses in ML_systems",
+            "journal": "Proc. of C&C",
+            "year": 2024,
+        }
+        bibtex, cite_key = _bibtex_from_orcid_work(work, 0)
+        assert r"\&" in bibtex
+        assert r"\_" in bibtex
+        assert cite_key.startswith("attacks2024")
+
+    def test_latex_injection_in_title_neutralized(self):
+        from app.api.reference_routes import _bibtex_from_orcid_work
+
+        work = {"work_type": "misc", "title": r"}\input{/etc/passwd}", "year": 2024}
+        bibtex, _ = _bibtex_from_orcid_work(work, 0)
+        assert r"\input{/etc/passwd}" not in bibtex
