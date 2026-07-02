@@ -18,6 +18,17 @@ from ..services.feature_flag_service import feature_flag_service
 
 router = APIRouter()
 
+# Flags that are safe to expose to unauthenticated clients. Everything else is
+# admin-only, so unreleased/internal flag names are not disclosed publicly.
+PUBLIC_FLAG_KEYS = frozenset({
+    "trial_limits",
+    "deep_analysis_trial",
+    "compile_timeouts",
+    "task_priority",
+    "billing",
+    "upgrade_ctas",
+})
+
 
 class FlagDetail(BaseModel):
     key: str
@@ -37,9 +48,13 @@ class FlagUpdateRequest(BaseModel):
 
 @router.get("/config/feature-flags", response_model=Dict[str, bool])
 async def get_public_feature_flags(db: AsyncSession = Depends(get_db)):
-    """Return a flat {key: bool} map of all feature flags. No auth required."""
+    """Return a flat {key: bool} map of client-facing feature flags. No auth required.
+
+    Only flags in PUBLIC_FLAG_KEYS are exposed; internal/unreleased flags stay
+    admin-only to avoid leaking their names and rollout state.
+    """
     flags = await feature_flag_service.get_all_flags(db)
-    return {f.key: f.enabled for f in flags}
+    return {f.key: f.enabled for f in flags if f.key in PUBLIC_FLAG_KEYS}
 
 
 # ------------------------------------------------------------------ #
