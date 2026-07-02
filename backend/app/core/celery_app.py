@@ -235,6 +235,22 @@ def _extract_job_id(args, kwargs) -> str | None:
     return None
 
 
+def _safe_payload_repr(value, max_len: int = 256) -> str:
+    """Return a length-bounded repr of task args/kwargs for logging.
+
+    Task payloads can contain full resume content, prompts, or credentials/tokens.
+    We must not persist those verbatim to logs or the Redis DLQ, so we truncate
+    to a short prefix and note how many characters were omitted.
+    """
+    try:
+        text = repr(value)
+    except Exception:
+        return "<unreprable>"
+    if len(text) <= max_len:
+        return text
+    return f"{text[:max_len]}...<+{len(text) - max_len} chars truncated>"
+
+
 def _extract_queue_name(task) -> str:
     delivery_info = getattr(task.request, "delivery_info", {}) or {}
     return delivery_info.get("routing_key") or delivery_info.get("exchange") or "default"
@@ -368,9 +384,10 @@ def on_task_failure(
                 "task_id": str(task_id),
                 "exception_type": type(exception).__name__,
                 "exception": str(exception),
-                # args/kwargs may contain the raw payload — log for triage
-                "task_args": repr(args),
-                "task_kwargs": repr(kwargs),
+                # args/kwargs may contain resume content / tokens — truncate
+                # for triage without persisting the full sensitive payload.
+                "task_args": _safe_payload_repr(args),
+                "task_kwargs": _safe_payload_repr(kwargs),
             },
             exc_info=(type(exception), exception, traceback) if exception and traceback else None,
         )
@@ -435,8 +452,10 @@ def on_task_failure(
                     "max_retries": max_retries,
                     "error": error_str,
                     "exception_type": type(exception).__name__ if exception else None,
-                    "args": repr(args),
-                    "kwargs": repr(kwargs),
+                    # Truncated — DLQ entries persist for 7 days and must not
+                    # retain full resume content / tokens verbatim.
+                    "args": _safe_payload_repr(args),
+                    "kwargs": _safe_payload_repr(kwargs),
                     "timestamp": __import__("time").time(),
                 }
             )
