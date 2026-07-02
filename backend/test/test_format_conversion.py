@@ -525,6 +525,22 @@ class TestFormatDetection:
         result = format_detection_service.detect_format("file.xyz", None, b"random bytes")
         assert result == ResumeFormat.UNKNOWN
 
+    def test_content_signature_beats_extension(self):
+        """A .txt body containing LaTeX must be detected as LaTeX, not TEXT."""
+        from app.services.format_detection import ResumeFormat, format_detection_service
+        result = format_detection_service.detect_format(
+            "resume.txt", "text/plain", b"\\documentclass{article}\n\\begin{document}"
+        )
+        assert result == ResumeFormat.LATEX
+
+    def test_plain_txt_still_detected_as_text(self):
+        """Plain text with no signature falls back to the extension."""
+        from app.services.format_detection import ResumeFormat, format_detection_service
+        result = format_detection_service.detect_format(
+            "resume.txt", "text/plain", b"Just some plain resume text"
+        )
+        assert result == ResumeFormat.TEXT
+
 
 # ── POST /formats/upload endpoint tests ───────────────────────────────────────
 
@@ -569,26 +585,34 @@ class TestUploadForConversion:
         assert data["format"] == "markdown"
 
     async def test_upload_text_queues_job(
-        self, client: AsyncClient
+        self, client: AsyncClient, auth_headers: dict
     ):
-        """Plain text files queue a conversion job."""
+        """Plain text files queue a conversion job (requires auth)."""
         with patch("app.workers.converter_worker.submit_document_conversion", return_value=None), \
              patch("app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock):
             files = {"file": ("resume.txt", SAMPLE_TEXT.encode(), "text/plain")}
-            resp = await client.post("/formats/upload", files=files)
+            resp = await client.post("/formats/upload", files=files, headers=auth_headers)
 
         assert resp.status_code == 200
         data = resp.json()
         assert data["is_direct"] is False
         assert data["job_id"] is not None
 
-    async def test_upload_json_resume_schema_queues_job(self, client: AsyncClient):
+    async def test_upload_llm_conversion_requires_auth(self, client: AsyncClient):
+        """Anonymous LLM conversions are rejected (no platform-key abuse)."""
+        files = {"file": ("resume.txt", SAMPLE_TEXT.encode(), "text/plain")}
+        resp = await client.post("/formats/upload", files=files)
+        assert resp.status_code == 401
+
+    async def test_upload_json_resume_schema_queues_job(
+        self, client: AsyncClient, auth_headers: dict
+    ):
         """JSON files queue a conversion job (LLM converts to LaTeX)."""
         with patch("app.workers.converter_worker.submit_document_conversion", return_value=None), \
              patch("app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock):
             content = json.dumps(SAMPLE_JSON_RESUME).encode()
             files = {"file": ("resume.json", content, "application/json")}
-            resp = await client.post("/formats/upload", files=files)
+            resp = await client.post("/formats/upload", files=files, headers=auth_headers)
 
         assert resp.status_code == 200
         data = resp.json()
@@ -601,12 +625,12 @@ class TestUploadForConversion:
         resp = await client.post("/formats/upload", files=files)
         assert resp.status_code == 415
 
-    async def test_upload_html_queues_job(self, client: AsyncClient):
+    async def test_upload_html_queues_job(self, client: AsyncClient, auth_headers: dict):
         """HTML files queue a conversion job."""
         with patch("app.workers.converter_worker.submit_document_conversion", return_value=None), \
              patch("app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock):
             files = {"file": ("resume.html", SAMPLE_HTML.encode(), "text/html")}
-            resp = await client.post("/formats/upload", files=files)
+            resp = await client.post("/formats/upload", files=files, headers=auth_headers)
 
         assert resp.status_code == 200
         data = resp.json()
@@ -621,23 +645,23 @@ class TestUploadForConversion:
         assert resp.status_code == 200
         assert resp.json()["filename"] == "my_resume.tex"
 
-    async def test_upload_queued_job_id_is_uuid(self, client: AsyncClient):
+    async def test_upload_queued_job_id_is_uuid(self, client: AsyncClient, auth_headers: dict):
         """Queued job_id must be a valid UUID."""
         import uuid
         with patch("app.workers.converter_worker.submit_document_conversion", return_value=None), \
              patch("app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock):
             files = {"file": ("resume.txt", SAMPLE_TEXT.encode(), "text/plain")}
-            resp = await client.post("/formats/upload", files=files)
+            resp = await client.post("/formats/upload", files=files, headers=auth_headers)
         assert resp.status_code == 200
         job_id = resp.json()["job_id"]
         uuid.UUID(job_id)  # Raises if not a valid UUID
 
-    async def test_upload_yaml_queues_job(self, client: AsyncClient):
+    async def test_upload_yaml_queues_job(self, client: AsyncClient, auth_headers: dict):
         """YAML files queue a conversion job."""
         with patch("app.workers.converter_worker.submit_document_conversion", return_value=None), \
              patch("app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock):
             files = {"file": ("resume.yaml", SAMPLE_YAML_RESUME.encode(), "text/yaml")}
-            resp = await client.post("/formats/upload", files=files)
+            resp = await client.post("/formats/upload", files=files, headers=auth_headers)
 
         assert resp.status_code == 200
         data = resp.json()
