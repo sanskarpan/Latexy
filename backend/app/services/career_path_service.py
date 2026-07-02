@@ -25,6 +25,14 @@ from ..database.models import CareerAnalysis, CareerRole, CareerTransition
 logger = get_logger(__name__)
 
 
+def _escape_like(term: str) -> str:
+    r"""Escape LIKE/ILIKE metacharacters so user input is treated literally.
+
+    Escapes the backslash first, then % and _ which are LIKE wildcards.
+    """
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class CareerPathService:
     """Service for career path visualization and skills gap analysis."""
 
@@ -102,13 +110,17 @@ class CareerPathService:
         except Exception:
             pass  # pg_trgm not installed — fall through to ILIKE
 
-        # ILIKE fallback: check if any word in the title appears
+        # ILIKE fallback: check if any word in the title appears. Escape LIKE
+        # metacharacters so words like '%' don't act as wildcards, and order
+        # deterministically by title so the match is stable across calls.
         words = [w for w in title.split() if len(w) > 3]
         for word in words:
+            pattern = f"%{_escape_like(word)}%"
             result = await db.execute(
-                select(CareerRole).where(
-                    CareerRole.title.ilike(f"%{word}%")
-                ).limit(1)
+                select(CareerRole)
+                .where(CareerRole.title.ilike(pattern, escape="\\"))
+                .order_by(CareerRole.title)
+                .limit(1)
             )
             role = result.scalar_one_or_none()
             if role:
@@ -120,9 +132,10 @@ class CareerPathService:
         self, query: str, db: AsyncSession, limit: int = 10
     ) -> list[CareerRole]:
         """Search career roles by partial title match for autocomplete."""
+        pattern = f"%{_escape_like(query)}%"
         result = await db.execute(
             select(CareerRole)
-            .where(CareerRole.title.ilike(f"%{query}%"))
+            .where(CareerRole.title.ilike(pattern, escape="\\"))
             .order_by(CareerRole.title)
             .limit(limit)
         )
@@ -159,21 +172,26 @@ class CareerPathService:
             for neighbor in adjacency.get(node, []):
                 if neighbor == to_role_id:
                     role_ids = path + [to_role_id]
-                    # Resolve role objects
-                    roles = []
-                    for rid in role_ids:
-                        role = await db.get(CareerRole, rid)
-                        if role:
-                            roles.append(role)
-                    return roles
+                    return await self._resolve_roles_ordered(role_ids, db)
                 if neighbor not in visited:
                     visited.add(neighbor)
                     queue.append(path + [neighbor])
 
         # No BFS path found — return just the two endpoints
-        from_role = await db.get(CareerRole, from_role_id)
-        to_role = await db.get(CareerRole, to_role_id)
-        return [r for r in [from_role, to_role] if r]
+        return await self._resolve_roles_ordered([from_role_id, to_role_id], db)
+
+    @staticmethod
+    async def _resolve_roles_ordered(
+        role_ids: list[str], db: AsyncSession
+    ) -> list[CareerRole]:
+        """Bulk-fetch roles by id in a single query, preserving input order."""
+        if not role_ids:
+            return []
+        result = await db.execute(
+            select(CareerRole).where(CareerRole.id.in_(role_ids))
+        )
+        role_map = {r.id: r for r in result.scalars().all()}
+        return [role_map[rid] for rid in role_ids if rid in role_map]
 
     # ── Gap analysis ──────────────────────────────────────────────────────────
 
@@ -306,11 +324,51 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
             # Extract JSON array from response
             m = re.search(r'\[.*?\]', result, re.DOTALL)
             if m:
-                return json.loads(m.group(0))
+                parsed = json.loads(m.group(0))
+                # Validate shape: keep only non-empty strings, cap the count.
+                if isinstance(parsed, list):
+                    skills = [
+                        s.strip()
+                        for s in parsed
+                        if isinstance(s, str) and s.strip()
+                    ][:40]
+                    if skills:
+                        return skills
         except Exception as exc:
             logger.warning(f"LLM skill extraction failed: {exc}")
 
         return self._heuristic_extract_skills(latex_content)
+
+    async def infer_required_skills(self, role_title: str) -> list[str]:
+        """LLM: infer the core required skills for a free-text target role title.
+
+        Used when the target role is not present in the seed career graph, so that
+        gap analysis does not fall back to an empty requirement set (which would
+        incorrectly report the user as 'already qualified'). Returns [] on failure.
+        """
+        try:
+            result = await self._llm_complete(
+                system="You are a career expert. Return only a JSON array of strings.",
+                user=(
+                    f"List the 8-15 most important technical and professional skills "
+                    f"typically required for the role '{role_title}'. "
+                    "Return a JSON array of skill strings only, no explanation."
+                ),
+                max_tokens=200,
+            )
+            import json
+            m = re.search(r'\[.*?\]', result, re.DOTALL)
+            if m:
+                parsed = json.loads(m.group(0))
+                if isinstance(parsed, list):
+                    return [
+                        s.strip()
+                        for s in parsed
+                        if isinstance(s, str) and s.strip()
+                    ][:20]
+        except Exception as exc:
+            logger.warning(f"LLM required-skill inference failed for '{role_title}': {exc}")
+        return []
 
     def _heuristic_extract_skills(self, latex_content: str) -> list[str]:
         """Extract skills by scanning Skills/Technologies sections."""
@@ -363,13 +421,15 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
             target_role_id = target_role.id
         else:
             target_role_freetext = target_role_title
-            # Create a synthetic target role for gap analysis
+            # Target not in the seed graph: infer required skills via LLM so gap
+            # analysis is meaningful instead of reporting 'already qualified'.
+            inferred_skills = await self.infer_required_skills(target_role_title)
             target_role = CareerRole(
                 id=str(uuid4()),
                 title=target_role_title,
                 level="senior",
                 industry="software_engineering",
-                required_skills=[],
+                required_skills=inferred_skills,
             )
 
         # 3. Find path
