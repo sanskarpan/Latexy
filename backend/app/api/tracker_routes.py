@@ -161,6 +161,8 @@ async def create_application(
 async def list_applications(
     status_filter: Optional[str] = Query(None, alias="status"),
     flat: bool = Query(False),
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     user_id: str = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
@@ -171,6 +173,8 @@ async def list_applications(
     )
     if status_filter:
         stmt = stmt.where(JobApplication.status == status_filter)
+
+    stmt = stmt.offset(offset).limit(limit)
 
     result = await db.execute(stmt)
     apps = result.scalars().all()
