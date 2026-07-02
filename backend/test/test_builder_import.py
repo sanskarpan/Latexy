@@ -12,6 +12,7 @@ Covers:
 """
 
 import json
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -187,23 +188,33 @@ class TestBuilderImportEndpoints:
         )
         assert resp.status_code == 422
 
-    async def test_upload_accepts_known_source_platform(self, client: AsyncClient):
+    async def test_upload_accepts_known_source_platform(
+        self, client: AsyncClient, auth_headers: dict
+    ):
         """/formats/upload accepts source_platform=kickresume without error."""
-        resp = await client.post(
-            "/formats/upload?source_platform=kickresume",
-            files={"file": ("resume.json", _KICKRESUME_JSON.encode(), "application/json")},
-        )
+        with patch("app.workers.converter_worker.submit_document_conversion", return_value=None), \
+             patch("app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock):
+            resp = await client.post(
+                "/formats/upload?source_platform=kickresume",
+                files={"file": ("resume.json", _KICKRESUME_JSON.encode(), "application/json")},
+                headers=auth_headers,
+            )
         # Should succeed — returns direct or queued job
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
 
-    async def test_upload_unknown_source_platform_falls_back_to_generic(self, client: AsyncClient):
+    async def test_upload_unknown_source_platform_falls_back_to_generic(
+        self, client: AsyncClient, auth_headers: dict
+    ):
         """Unknown source_platform is silently ignored — no error raised."""
-        resp = await client.post(
-            "/formats/upload?source_platform=some_unknown_builder",
-            files={"file": ("resume.json", _GENERIC_JSON.encode(), "application/json")},
-        )
+        with patch("app.workers.converter_worker.submit_document_conversion", return_value=None), \
+             patch("app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock):
+            resp = await client.post(
+                "/formats/upload?source_platform=some_unknown_builder",
+                files={"file": ("resume.json", _GENERIC_JSON.encode(), "application/json")},
+                headers=auth_headers,
+            )
         assert resp.status_code == 200
         data = resp.json()
         assert data["success"] is True
