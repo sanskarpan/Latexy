@@ -28,7 +28,19 @@ JOB_DESCRIPTION = (
     "Senior Python engineer with FastAPI, PostgreSQL, and Docker experience. "
     "Must have 5+ years building distributed systems."
 )
-JD_HASH = hashlib.sha256(JOB_DESCRIPTION.encode()).hexdigest()
+
+# The LaTeX content _create_test_resume() inserts. The cache key is derived from
+# BOTH the JD and this content so that editing the resume invalidates the cache.
+RESUME_LATEX = r"\documentclass{article}\begin{document}Python engineer.\end{document}"
+
+
+def _match_hash(job_description: str, latex_content: str) -> str:
+    """Mirror app.api.ats_routes._match_hash: sha256(JD + NUL + resume latex)."""
+    payload = f"{job_description}\x00{latex_content}"
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+JD_HASH = _match_hash(JOB_DESCRIPTION, RESUME_LATEX)
 
 FAKE_RESUME_EMBEDDING = [0.1] * 1536  # 1536-dim vector, same shape as OpenAI embeddings
 FAKE_JD_EMBEDDING = [0.2] * 1536
@@ -68,7 +80,7 @@ async def _create_test_resume(db: AsyncSession, user_id: str, with_embedding: bo
             "id": resume_id,
             "uid": user_id,
             "title": "Test Resume",
-            "content": r"\documentclass{article}\begin{document}Python engineer.\end{document}",
+            "content": RESUME_LATEX,
             "emb": embedding,
         },
     )
@@ -211,7 +223,7 @@ class TestSemanticMatchCaching:
         await db_session.commit()
 
         different_jd = "Data engineer with Spark, Hadoop, and SQL skills required."
-        different_hash = hashlib.sha256(different_jd.encode()).hexdigest()
+        different_hash = _match_hash(different_jd, RESUME_LATEX)
         assert different_hash != JD_HASH
 
         new_match = {**FAKE_MATCH_RESULT, "similarity_score": 0.30, "matched_keywords": ["SQL"]}
@@ -378,15 +390,30 @@ class TestEncryptionConsolidation:
         assert svc2.decrypt(ct) == "pbkdf2-roundtrip", \
             "PBKDF2 path: two instances with same password must cross-decrypt"
 
-    def test_api_key_encryption_raises_if_no_key(self, monkeypatch):
-        """APIKeyEncryption must raise ValueError when API_KEY_ENCRYPTION_KEY is absent."""
+    def test_api_key_encryption_raises_if_no_key_in_production(self, monkeypatch):
+        """APIKeyEncryption raises when API_KEY_ENCRYPTION_KEY is absent in production.
+
+        In production/staging a missing key must hard-fail (stored BYOK keys would
+        be unreadable). It must NOT crash import in dev/test — those use the
+        EncryptionService dev fallback instead (finding: module-level import crash).
+        """
         import app.core.config as cfg
+        from app.services.api_key_service import APIKeyEncryption
+
         original = cfg.settings.API_KEY_ENCRYPTION_KEY
         try:
             cfg.settings.API_KEY_ENCRYPTION_KEY = None
-            from app.services.api_key_service import APIKeyEncryption
+
+            # Production-like: must raise.
+            monkeypatch.setattr(cfg.settings, "ENVIRONMENT", "production")
             with pytest.raises(ValueError, match="API_KEY_ENCRYPTION_KEY"):
                 APIKeyEncryption()
+
+            # Dev/test: must NOT raise — falls back to dev encryption.
+            monkeypatch.setattr(cfg.settings, "ENVIRONMENT", "development")
+            enc = APIKeyEncryption()
+            ct = enc.encrypt("sk-dev-fallback")
+            assert enc.decrypt(ct) == "sk-dev-fallback"
         finally:
             cfg.settings.API_KEY_ENCRYPTION_KEY = original
 
