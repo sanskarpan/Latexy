@@ -278,6 +278,25 @@ class TestHandleCollabMessage:
         ws_b.send_bytes.assert_called_once_with(msg)
 
     @pytest.mark.asyncio
+    async def test_oversized_frame_dropped(self) -> None:
+        """A frame larger than MAX_COLLAB_MESSAGE_BYTES is dropped (not stored/relayed)."""
+        from app.services.collab_manager import MAX_COLLAB_MESSAGE_BYTES
+
+        room = CollabRoom("r1")
+        ws_a = AsyncMock()
+        ws_b = AsyncMock()
+        await room.add("ca", ws_a, {})
+        await room.add("cb", ws_b, {})
+
+        oversized = _make_sync_update(b"\x00" * (MAX_COLLAB_MESSAGE_BYTES + 1))
+        mock_redis = AsyncMock()
+        with patch("app.services.collab_manager.get_redis_client", return_value=mock_redis):
+            await handle_collab_message("r1", "ca", oversized, room)
+
+        mock_redis.rpush.assert_not_called()
+        ws_b.send_bytes.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_malformed_message_does_not_raise(self) -> None:
         """Garbage bytes are silently dropped."""
         room = CollabRoom("r1")
@@ -353,6 +372,13 @@ class TestCollaboratorEndpoints:
         resp = authed_client.post(
             "/resumes/r1/collaborators",
             json={"role": "editor"},
+        )
+        assert resp.status_code == 422
+
+    def test_invite_with_malformed_email_returns_422(self, authed_client) -> None:
+        resp = authed_client.post(
+            "/resumes/r1/collaborators",
+            json={"email": "not-an-email", "role": "editor"},
         )
         assert resp.status_code == 422
 
