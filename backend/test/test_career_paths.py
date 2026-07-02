@@ -161,10 +161,12 @@ class TestFindPath:
         t = make_transition("r1", "r2", avg_years=2.5)
 
         mock_db = AsyncMock()
-        mock_db.execute = AsyncMock(return_value=_make_scalars_result([t]))
-        mock_db.get = AsyncMock(side_effect=lambda cls, rid: {
-            "r1": r_junior, "r2": r_mid
-        }.get(rid))
+        # find_path now bulk-fetches path roles via a single execute() rather
+        # than per-node db.get(): 1st execute = transitions, 2nd = roles.
+        mock_db.execute = AsyncMock(side_effect=[
+            _make_scalars_result([t]),
+            _make_scalars_result([r_junior, r_mid]),
+        ])
 
         path = await svc.find_path("r1", "r2", mock_db)
         assert len(path) == 2
@@ -185,10 +187,10 @@ class TestFindPath:
         ]
 
         mock_db = AsyncMock()
-        mock_db.execute = AsyncMock(return_value=_make_scalars_result(transitions))
-        mock_db.get = AsyncMock(side_effect=lambda cls, rid: {
-            "r1": r1, "r2": r2, "r3": r3
-        }.get(rid))
+        mock_db.execute = AsyncMock(side_effect=[
+            _make_scalars_result(transitions),
+            _make_scalars_result([r1, r2, r3]),
+        ])
 
         path = await svc.find_path("r1", "r3", mock_db)
         assert len(path) == 3
@@ -202,10 +204,11 @@ class TestFindPath:
         r2 = make_role("CMO", role_id="r2")
 
         mock_db = AsyncMock()
-        mock_db.execute = AsyncMock(return_value=_make_scalars_result([]))
-        mock_db.get = AsyncMock(side_effect=lambda cls, rid: {
-            "r1": r1, "r2": r2
-        }.get(rid))
+        # No transitions → endpoints resolved via a single bulk role fetch.
+        mock_db.execute = AsyncMock(side_effect=[
+            _make_scalars_result([]),
+            _make_scalars_result([r1, r2]),
+        ])
 
         path = await svc.find_path("r1", "r2", mock_db)
         assert len(path) == 2
@@ -287,6 +290,17 @@ class TestCareerAPIRoutes:
         assert isinstance(resp.json(), list)
 
     @pytest.mark.asyncio
+    async def test_get_roles_empty_query_short_circuits(self, client):
+        """Empty / too-short q returns [] without an unbounded ilike('%%') scan."""
+        resp = await client.get("/career/roles?q=%20%20")  # whitespace only
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+        resp2 = await client.get("/career/roles?q=a")  # single char < min length
+        assert resp2.status_code == 200
+        assert resp2.json() == []
+
+    @pytest.mark.asyncio
     async def test_analyze_requires_auth(self, client):
         resp = await client.post(
             "/career/analyze",
@@ -347,6 +361,89 @@ class TestCareerGraphSeedRequiresAdmin:
         deps = [p.default.dependency for p in sig.parameters.values()
                 if hasattr(p.default, 'dependency')]
         assert require_admin in deps, 'seed_career_graph must depend on require_admin'
+
+
+# ── Audit fixes: LIKE escaping, skill validation, free-text targets ───────────
+
+
+class TestLikeEscaping:
+    """_escape_like neutralizes LIKE wildcards so user input is literal."""
+
+    def test_escape_like_escapes_wildcards(self):
+        from app.services.career_path_service import _escape_like
+
+        assert _escape_like("50%") == "50\\%"
+        assert _escape_like("a_b") == "a\\_b"
+        # Backslash is escaped first so it doesn't double-escape the others.
+        assert _escape_like("a\\b") == "a\\\\b"
+
+    @pytest.mark.asyncio
+    async def test_match_role_escapes_like_metachars(self):
+        """A title of only wildcards must not match everything via ILIKE."""
+        svc = CareerPathService()
+        mock_db = AsyncMock()
+        # trigram raises → ILIKE fallback; capture the bound pattern.
+        mock_db.execute = AsyncMock(side_effect=[
+            Exception("pg_trgm not available"),
+            _make_scalar_result(None),
+        ])
+        # "%%%%" splits into one word > 3 chars; it must be escaped, not raw.
+        result = await svc.match_career_role("%%%%", mock_db)
+        assert result is None
+
+
+class TestSkillExtractionValidation:
+    """extract_current_skills coerces/validates LLM output."""
+
+    @pytest.mark.asyncio
+    async def test_non_string_items_fall_back_to_heuristic(self):
+        svc = CareerPathService()
+        latex = r"""
+\section{Skills}
+\item Python
+\item Kubernetes
+"""
+        # LLM returns a JSON array of objects (wrong shape) → heuristic fallback.
+        with patch.object(
+            svc, "_llm_complete", new_callable=AsyncMock,
+            return_value='[{"name": "Python"}, 42, ["nested"]]',
+        ):
+            skills = await svc.extract_current_skills(latex)
+        assert all(isinstance(s, str) for s in skills)
+        assert "Python" in skills  # from heuristic scan
+
+    @pytest.mark.asyncio
+    async def test_valid_string_array_is_used(self):
+        svc = CareerPathService()
+        with patch.object(
+            svc, "_llm_complete", new_callable=AsyncMock,
+            return_value='["Python", "  Go  ", "", 5, "Rust"]',
+        ):
+            skills = await svc.extract_current_skills("irrelevant")
+        assert skills == ["Python", "Go", "Rust"]
+
+
+class TestFreeTextTargetSkills:
+    """Free-text target roles infer required skills instead of empty gap."""
+
+    @pytest.mark.asyncio
+    async def test_infer_required_skills_parses_json(self):
+        svc = CareerPathService()
+        with patch.object(
+            svc, "_llm_complete", new_callable=AsyncMock,
+            return_value='["System Design", "Kafka", 7, "Go"]',
+        ):
+            skills = await svc.infer_required_skills("Staff Engineer")
+        assert skills == ["System Design", "Kafka", "Go"]
+
+    @pytest.mark.asyncio
+    async def test_infer_required_skills_empty_on_failure(self):
+        svc = CareerPathService()
+        with patch.object(
+            svc, "_llm_complete", new_callable=AsyncMock,
+            side_effect=RuntimeError("no key"),
+        ):
+            assert await svc.infer_required_skills("Astronaut") == []
 
 
 # ── Mock helpers ──────────────────────────────────────────────────────────────
