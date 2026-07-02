@@ -286,9 +286,15 @@ async def metrics():
 @router.post("/compile", response_model=CompilationResponse)
 async def compile_latex_endpoint(
     latex_content: Optional[str] = Form(None),
-    file: Optional[UploadFile] = File(None)
+    file: Optional[UploadFile] = File(None),
+    user_id: str = Depends(_require_user),
 ):
-    """Compile LaTeX content to PDF."""
+    """Compile LaTeX content to PDF.
+
+    Authenticated only. Anonymous/trial compiles must use /public/compile,
+    which enforces the device trial limit and rate limiting; this endpoint
+    must never be an open, unmetered pdflatex execution path.
+    """
 
     try:
         # Get LaTeX content from either form data or file upload
@@ -329,14 +335,42 @@ async def compile_latex_endpoint(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+async def _assert_job_download_access(job_id: str, user_id: Optional[str]) -> None:
+    """Enforce ownership before serving a compiled PDF/SyncTeX (contains PII).
+
+    Owned jobs (meta.user_id set) are only accessible to their owner; anonymous/
+    trial jobs (no owner) remain downloadable by job_id. If meta is absent (expired),
+    the caller falls through to the endpoint's own 404.
+    """
+    import json as _json
+
+    from ..core.redis import get_redis_client
+
+    try:
+        r = await get_redis_client()
+        meta_raw = await r.get(f"latexy:job:{job_id}:meta")
+    except Exception as exc:  # pragma: no cover - redis transient
+        logger.warning(f"Ownership meta lookup failed for job {job_id}: {exc}")
+        return
+    if not meta_raw:
+        return
+    job_owner = _json.loads(meta_raw).get("user_id")
+    if job_owner is not None and job_owner != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+
 @router.get("/download/{job_id}")
-async def download_pdf(job_id: str):
+async def download_pdf(
+    job_id: str,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
     """Download compiled PDF."""
     import base64 as _base64
 
     from ..core.redis import get_redis_client
 
     validate_job_id(job_id)
+    await _assert_job_download_access(job_id, user_id)
 
     # Primary path: PDF bytes cached in Redis (works in serverless/multi-container envs).
     try:
@@ -372,13 +406,32 @@ async def download_pdf(job_id: str):
 
 
 @router.get("/download/{job_id}/synctex")
-async def download_synctex(job_id: str):
+async def download_synctex(
+    job_id: str,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
     """Serve decompressed SyncTeX data for bidirectional editor↔PDF sync."""
     import gzip
 
     from fastapi.responses import Response
 
+    from ..core.redis import get_redis_client
+
     validate_job_id(job_id)
+    await _assert_job_download_access(job_id, user_id)
+
+    # Primary: SyncTeX text cached in Redis by the worker (the on-disk job_dir is
+    # rmtree'd immediately after compilation, so the filesystem copy no longer exists
+    # in the Celery/Modal deployment).
+    try:
+        r = await get_redis_client()
+        synctex_cached = await r.get(f"latexy:job:{job_id}:synctex")
+        if synctex_cached:
+            return Response(content=synctex_cached, media_type="text/plain")
+    except Exception as e:
+        logger.warning(f"Redis synctex lookup failed for job {job_id}: {e}")
+
+    # Fallback: local filesystem (single-process / Docker dev deployments).
     job_dir, _, _ = get_job_files(job_id)
     synctex_gz = job_dir / "resume.synctex.gz"
     synctex_plain = job_dir / "resume.synctex"
@@ -399,11 +452,16 @@ async def download_synctex(job_id: str):
 
 
 @router.get("/logs/{job_id}", response_model=LogsResponse)
-async def get_compilation_logs(job_id: str):
+async def get_compilation_logs(
+    job_id: str,
+    user_id: Optional[str] = Depends(get_current_user_optional),
+):
     """Get compilation logs for debugging."""
     from ..core.redis import get_redis_client
 
     validate_job_id(job_id)
+    # Logs can contain absolute paths and resume content — enforce ownership.
+    await _assert_job_download_access(job_id, user_id)
 
     # Primary: Redis cache (works in serverless/multi-container envs).
     try:
