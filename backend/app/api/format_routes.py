@@ -7,16 +7,49 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.celery_app import get_task_priority
 from ..core.logging import get_logger
+from ..database.connection import get_db
+from ..database.models import User
 from ..middleware.auth_middleware import get_current_user_optional
 from ..parsers.parser_factory import parser_factory
+from ..services.api_key_service import api_key_service
 from ..services.document_converter_service import ALLOWED_SOURCE_PLATFORMS
 from ..services.format_detection import ResumeFormat, format_detection_service
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/formats", tags=["formats"])
+
+# Hard upper bound on any uploaded file, enforced BEFORE buffering the whole body
+# into memory. Matches the largest per-format limit (PDF/image = 10 MB) so a single
+# oversized upload to an unauthenticated endpoint cannot exhaust worker memory.
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+async def _read_upload_capped(file: UploadFile, max_bytes: int = _MAX_UPLOAD_BYTES) -> bytes:
+    """Read an UploadFile in chunks, aborting once max_bytes is exceeded.
+
+    Prevents multi-GB uploads from being fully buffered into memory before the
+    per-format size check runs. Returns the file bytes (<= max_bytes).
+    """
+    chunks: List[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(65536)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large (max {max_bytes // (1024 * 1024)} MB)",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 class FormatInfo(BaseModel):
@@ -71,8 +104,8 @@ async def detect_file_format(file: UploadFile = File(...)):
     This endpoint doesn't parse the file, just detects its format.
     """
     try:
-        # Read file content
-        content = await file.read()
+        # Read file content (capped to prevent OOM on unauthenticated endpoint)
+        content = await _read_upload_capped(file)
 
         # Detect format
         detected_format = format_detection_service.detect_format(
@@ -104,15 +137,13 @@ async def detect_file_format(file: UploadFile = File(...)):
             error=size_error if not is_valid_size else None
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
+        # Log the detailed exception server-side only; return a generic 500 so we
+        # neither leak internals nor signal HTTP 200 on failure.
         logger.error(f"Error detecting format: {e}")
-        return DetectFormatResponse(
-            success=False,
-            detected_format="unknown",
-            confidence="none",
-            is_supported=False,
-            error=str(e)
-        )
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/info/{format_name}", response_model=FormatInfo)
@@ -156,8 +187,8 @@ async def validate_file_format(file: UploadFile = File(...)):
     Returns detailed validation information.
     """
     try:
-        # Read file content
-        content = await file.read()
+        # Read file content (capped to prevent OOM on unauthenticated endpoint)
+        content = await _read_upload_capped(file)
 
         # Detect format
         detected_format = format_detection_service.detect_format(
@@ -222,6 +253,8 @@ async def validate_file_format(file: UploadFile = File(...)):
             }
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error validating file: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -257,7 +290,7 @@ async def parse_for_preview(file: UploadFile = File(...)):
     No LLM conversion — used by the import wizard to confirm content before converting.
     """
     try:
-        content = await file.read()
+        content = await _read_upload_capped(file)
         filename = file.filename or "upload"
 
         detected_format = format_detection_service.detect_format(
@@ -304,13 +337,14 @@ async def upload_for_conversion(
     source_hint: Optional[str] = Form(default=None),
     source_platform: Optional[str] = Query(default=None),
     user_id: Optional[str] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Upload a resume file in any supported format.
 
-    - LaTeX files (.tex/.latex/.ltx): returned directly (no conversion)
-    - JSON/YAML with JSON Resume schema: returned directly (no conversion)
-    - All other formats: queued as LLM conversion job, returns job_id
+    - LaTeX files (.tex/.latex/.ltx): returned directly (no conversion, no auth)
+    - All other formats: queued as an LLM conversion job (requires authentication;
+      the paid conversion is billed to the user's BYOK key when available).
     """
     try:
         # Validate source_platform early — unknown values are silently ignored (fall back to generic)
@@ -318,7 +352,7 @@ async def upload_for_conversion(
             logger.warning(f"Unknown source_platform '{source_platform}'; ignoring")
             source_platform = None
 
-        content = await file.read()
+        content = await _read_upload_capped(file)
         filename = file.filename or "upload"
 
         # Detect format
@@ -365,6 +399,31 @@ async def upload_for_conversion(
                 latex_content=parsed.raw_text,
             )
 
+        # Everything below consumes an LLM call — require authentication so
+        # anonymous clients cannot force unlimited conversions billed to the
+        # platform OpenAI key.
+        if not user_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required to convert this file format.",
+            )
+
+        # Resolve the user's plan (for queue priority) and BYOK key (so the
+        # conversion is billed to the user's key when they have one).
+        user_plan = "free"
+        plan_result = await db.execute(
+            select(User.subscription_plan).where(User.id == user_id)
+        )
+        stored_plan = plan_result.scalar_one_or_none()
+        if isinstance(stored_plan, str) and stored_plan:
+            user_plan = stored_plan
+
+        user_api_key = None
+        try:
+            user_api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+        except Exception:
+            user_api_key = None
+
         # Queue LLM conversion job
         from ..api.job_routes import _write_initial_redis_state
         from ..workers.converter_worker import submit_document_conversion
@@ -378,8 +437,10 @@ async def upload_for_conversion(
             source_format=detected_format.value,
             job_id=job_id,
             user_id=user_id,
+            user_api_key=user_api_key,
             source_hint=source_hint,
             source_platform=source_platform,
+            priority=get_task_priority(user_plan),
         )
 
         logger.info(f"Queued document conversion job {job_id} for {filename} ({detected_format.value})")
