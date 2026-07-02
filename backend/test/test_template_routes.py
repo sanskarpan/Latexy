@@ -362,6 +362,25 @@ class TestTemplateAdminEndpoints:
             settings.ADMIN_SECRET_KEY = previous_secret
         assert resp.status_code == 403
 
+    async def test_create_template_rejects_wrong_admin_secret(self, client: AsyncClient):
+        """A non-empty but incorrect secret is rejected (constant-time compare)."""
+        previous_secret = settings.ADMIN_SECRET_KEY
+        settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
+        try:
+            resp = await client.post(
+                "/templates",
+                headers={"X-Admin-Secret": "wrong-secret"},
+                json={
+                    "name": "Bad Secret Template",
+                    "category": "finance",
+                    "tags": ["finance"],
+                    "latex_content": _VALID_LATEX,
+                },
+            )
+        finally:
+            settings.ADMIN_SECRET_KEY = previous_secret
+        assert resp.status_code == 403
+
     async def test_create_update_activate_deactivate_and_delete_template(self, client: AsyncClient, db_session):
         previous_secret = settings.ADMIN_SECRET_KEY
         settings.ADMIN_SECRET_KEY = "test-template-admin-secret"
