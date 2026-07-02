@@ -153,7 +153,7 @@ async def list_snippets(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ) -> list[SnippetResponse]:
     stmt = select(Snippet)
     if category:
@@ -174,7 +174,6 @@ async def list_snippets(
 
     result = await db.execute(stmt)
     snippets = result.scalars().all()
-    user_id = current_user.id if current_user else None
     return [await _build_response(s, user_id, db) for s in snippets]
 
 
@@ -182,13 +181,12 @@ async def list_snippets(
 async def get_snippet(
     snippet_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ) -> SnippetResponse:
     result = await db.execute(select(Snippet).where(Snippet.id == snippet_id))
     snippet = result.scalar_one_or_none()
     if not snippet:
         raise HTTPException(status_code=404, detail='Snippet not found')
-    user_id = current_user.id if current_user else None
     return await _build_response(snippet, user_id, db)
 
 
@@ -196,11 +194,11 @@ async def get_snippet(
 async def create_snippet(
     body: SnippetCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ) -> SnippetResponse:
     _check_content_safety(body.content)
     snippet = Snippet(
-        author_id=current_user.id,
+        author_id=user_id,
         title=body.title,
         description=body.description,
         content=body.content,
@@ -211,7 +209,7 @@ async def create_snippet(
     db.add(snippet)
     await db.commit()
     await db.refresh(snippet)
-    return await _build_response(snippet, current_user.id, db)
+    return await _build_response(snippet, user_id, db)
 
 
 @router.patch('/{snippet_id}', response_model=SnippetResponse)
@@ -219,13 +217,13 @@ async def update_snippet(
     snippet_id: str,
     body: SnippetUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ) -> SnippetResponse:
     result = await db.execute(select(Snippet).where(Snippet.id == snippet_id))
     snippet = result.scalar_one_or_none()
     if not snippet:
         raise HTTPException(status_code=404, detail='Snippet not found')
-    if snippet.author_id != current_user.id:
+    if snippet.author_id != user_id:
         raise HTTPException(status_code=403, detail='Only the author can update this snippet')
     if body.content:
         _check_content_safety(body.content)
@@ -233,20 +231,20 @@ async def update_snippet(
         setattr(snippet, field, val)
     await db.commit()
     await db.refresh(snippet)
-    return await _build_response(snippet, current_user.id, db)
+    return await _build_response(snippet, user_id, db)
 
 
 @router.delete('/{snippet_id}', status_code=204)
 async def delete_snippet(
     snippet_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ) -> None:
     result = await db.execute(select(Snippet).where(Snippet.id == snippet_id))
     snippet = result.scalar_one_or_none()
     if not snippet:
         raise HTTPException(status_code=404, detail='Snippet not found')
-    if snippet.author_id != current_user.id:
+    if snippet.author_id != user_id:
         raise HTTPException(status_code=403, detail='Only the author can delete this snippet')
     await db.delete(snippet)
     await db.commit()
@@ -256,7 +254,7 @@ async def delete_snippet(
 async def install_snippet(
     snippet_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ) -> None:
     result = await db.execute(select(Snippet).where(Snippet.id == snippet_id))
     snippet = result.scalar_one_or_none()
@@ -267,11 +265,11 @@ async def install_snippet(
     existing = await db.execute(
         select(SnippetInstall).where(
             SnippetInstall.snippet_id == snippet_id,
-            SnippetInstall.user_id == current_user.id,
+            SnippetInstall.user_id == user_id,
         )
     )
     if existing.scalar_one_or_none() is None:
-        db.add(SnippetInstall(snippet_id=snippet_id, user_id=current_user.id))
+        db.add(SnippetInstall(snippet_id=snippet_id, user_id=user_id))
         snippet.installs_count = (snippet.installs_count or 0) + 1
         await db.commit()
 
@@ -280,7 +278,7 @@ async def install_snippet(
 async def uninstall_snippet(
     snippet_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ) -> None:
     result = await db.execute(select(Snippet).where(Snippet.id == snippet_id))
     snippet = result.scalar_one_or_none()
@@ -290,7 +288,7 @@ async def uninstall_snippet(
     existing = await db.execute(
         select(SnippetInstall).where(
             SnippetInstall.snippet_id == snippet_id,
-            SnippetInstall.user_id == current_user.id,
+            SnippetInstall.user_id == user_id,
         )
     )
     install = existing.scalar_one_or_none()
@@ -304,7 +302,7 @@ async def uninstall_snippet(
 async def toggle_upvote(
     snippet_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
 ) -> None:
     result = await db.execute(select(Snippet).where(Snippet.id == snippet_id))
     snippet = result.scalar_one_or_none()
@@ -314,7 +312,7 @@ async def toggle_upvote(
     existing = await db.execute(
         select(SnippetUpvote).where(
             SnippetUpvote.snippet_id == snippet_id,
-            SnippetUpvote.user_id == current_user.id,
+            SnippetUpvote.user_id == user_id,
         )
     )
     upvote = existing.scalar_one_or_none()
@@ -324,7 +322,7 @@ async def toggle_upvote(
         snippet.upvotes_count = max(0, (snippet.upvotes_count or 1) - 1)
     else:
         # Toggle on
-        db.add(SnippetUpvote(snippet_id=snippet_id, user_id=current_user.id))
+        db.add(SnippetUpvote(snippet_id=snippet_id, user_id=user_id))
         snippet.upvotes_count = (snippet.upvotes_count or 0) + 1
     await db.commit()
 
