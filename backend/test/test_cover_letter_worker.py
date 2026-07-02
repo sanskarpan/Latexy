@@ -236,9 +236,12 @@ class TestCoverLetterTask:
         assert result["success"] is False
         assert result.get("cancelled") is True
 
-    def test_no_delimiters_uses_full_text(
+    def test_no_delimiters_fails(
         self, mock_publish, mock_job_result, mock_cancelled, mock_save, mock_openai
     ):
+        """Missing <<<LATEX>>> delimiters must fail (not save raw prose-polluted output)."""
+        from celery.exceptions import Retry
+
         raw_text = r"\documentclass{article}\begin{document}No delimiters\end{document}"
         with patch("app.workers.cover_letter_worker.settings") as ms:
             _mock_settings(ms)
@@ -246,14 +249,44 @@ class TestCoverLetterTask:
                 _make_stream(raw_text)
             )
 
-            result = clw.generate_cover_letter_task(
-                RESUME_LATEX, JOB_DESC,
-                job_id="test-job",
-                cover_letter_id="test-cl",
+            # Invalid output triggers a retry; on exhaustion it returns a failure
+            # dict. Either way it must never save content or emit llm.complete.
+            with pytest.raises(Retry):
+                clw.generate_cover_letter_task(
+                    RESUME_LATEX, JOB_DESC,
+                    job_id="test-job",
+                    cover_letter_id="test-cl",
+                )
+
+        mock_save.assert_not_called()
+        types = [c.args[1] for c in mock_publish.call_args_list]
+        assert "job.failed" in types
+        assert "llm.complete" not in types
+
+    def test_invalid_latex_fails(
+        self, mock_publish, mock_job_result, mock_cancelled, mock_save, mock_openai
+    ):
+        """Delimited content that is not a compilable document must fail validation."""
+        from celery.exceptions import Retry
+
+        prose = "<<<LATEX>>>Dear Manager, I would love this job.<<<END_LATEX>>>"
+        with patch("app.workers.cover_letter_worker.settings") as ms:
+            _mock_settings(ms)
+            mock_openai.return_value.chat.completions.create.return_value = (
+                _make_stream(prose)
             )
 
-        assert result["success"] is True
-        mock_save.assert_called_once_with("test-cl", raw_text)
+            with pytest.raises(Retry):
+                clw.generate_cover_letter_task(
+                    RESUME_LATEX, JOB_DESC,
+                    job_id="test-job",
+                    cover_letter_id="test-cl",
+                )
+
+        mock_save.assert_not_called()
+        types = [c.args[1] for c in mock_publish.call_args_list]
+        assert "job.failed" in types
+        assert "llm.complete" not in types
 
     def test_completed_event_has_null_pdf_job_id(
         self, mock_publish, mock_job_result, mock_cancelled, mock_save, mock_openai
