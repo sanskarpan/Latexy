@@ -17,6 +17,7 @@ from .core.tracing import instrument_fastapi, setup_telemetry
 from .database.connection import close_db, init_db
 from .middleware.rate_limiting import APIKeyRateLimitMiddleware, RateLimitMiddleware
 from .middleware.request_context import RequestContextMiddleware
+from .middleware.security_headers import SecurityHeadersMiddleware
 from .middleware.tenant_middleware import TenantMiddleware
 from .services.latex_compiler import latex_compiler
 
@@ -90,23 +91,38 @@ async def lifespan(app: FastAPI):
     await redis_manager.close_redis()
 
 
+# Interactive API docs are disabled in production-like environments so the
+# schema/endpoints are not publicly enumerable; kept enabled in dev.
+_docs_enabled = not settings.is_production_like()
+
 # Initialize FastAPI app
 app = FastAPI(
     title=settings.APP_NAME,
     description=settings.APP_DESCRIPTION,
     version=settings.APP_VERSION,
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
 )
 instrument_fastapi(app)
 
-# Configure CORS
+# Configure CORS.
+# effective_cors_origins() strips localhost/127.0.0.1 in production-like envs so
+# credentialed requests are only allowed from real deployed origins (CONFIG-002).
+_cors_origins = settings.effective_cors_origins()
+# allow_credentials=True must never be paired with a wildcard origin.
+_allow_credentials = "*" not in _cors_origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-Device-Fingerprint", "X-Tenant-Slug", "traceparent", "tracestate"],
 )
+
+# Baseline security headers on every response (does not affect CORS/JSON).
+app.add_middleware(SecurityHeadersMiddleware)
 
 if settings.RATE_LIMIT_ENABLED:
     app.add_middleware(
