@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8030';
+import { BACKEND_URL, authHeaders } from '../../_forward';
 
 export async function DELETE(
   request: NextRequest,
@@ -11,9 +11,7 @@ export async function DELETE(
     
     const response = await fetch(`${BACKEND_URL}/byok/api-keys/${keyId}`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: authHeaders(request),
     });
 
     if (!response.ok) {
@@ -52,9 +50,7 @@ export async function PUT(
     
     const response = await fetch(`${BACKEND_URL}/byok/api-keys/${keyId}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: authHeaders(request),
       body: JSON.stringify(body),
     });
 
