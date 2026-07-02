@@ -587,7 +587,8 @@ async def _async_deep_analyze(
         scoring_result = await ats_scoring_service.score_resume(
             latex_content=latex_content,
             job_description=job_description,
-            industry=industry_override,  # override key used as legacy fallback; auto-detect if None
+            # Explicit profile key when provided; None → "generic" → auto-detect from JD
+            industry_profile_key=industry_override or "generic",
         )
         multi_dim_scores = scoring_result.multi_dim_scores or {}
         industry_key = scoring_result.industry_key

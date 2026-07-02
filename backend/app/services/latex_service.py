@@ -3,6 +3,7 @@ LaTeX compilation service.
 """
 
 import asyncio
+import re
 import shutil
 import subprocess
 import time
@@ -17,6 +18,24 @@ from ..core.logging import get_logger
 from ..models.schemas import CompilationResponse
 
 logger = get_logger(__name__)
+
+# ── LaTeX injection guards ──────────────────────────────────────────────────
+# \write18 and \openout enable shell-escape / arbitrary file writes and have no
+# legitimate use in a resume — reject outright regardless of argument.
+_SHELL_ESCAPE_RE = re.compile(r"\\(?:write18|openout|openin|input18)\b")
+
+# File-reading primitives (\input, \include, \InputIfFileExists, \lstinputlisting,
+# \verbatiminput, …) can slurp arbitrary host files into the rendered PDF. Relative
+# includes are legitimate for multi-file resumes, so only reject arguments that
+# reference an ABSOLUTE path or a parent-directory traversal. Whitespace between the
+# command and its argument (with or without a brace) is tolerated by TeX, so we match
+# it here too. Home-dir (~) and Windows drive (C:) prefixes are also blocked.
+_ABS_FILE_READ_RE = re.compile(
+    r"\\(?:input|include|subfile|subfileinclude|InputIfFileExists|"
+    r"lstinputlisting|verbatiminput|import|subimport)\b"
+    r"\s*(?:\[[^\]]*\])?\s*\{?\s*"
+    r"(?:/|~|\.\.[\\/]|[A-Za-z]:[\\/])"
+)
 
 
 class LaTeXService:
@@ -40,18 +59,17 @@ class LaTeXService:
         if not (has_document_class and has_begin_document and has_end_document):
             return False
 
-        # Reject known shell-escape / file-write attack vectors regardless of
-        # whether --shell-escape is active.  These directives have no legitimate
-        # use in a resume template and are the primary LaTeX code-execution paths.
-        _DANGEROUS_PATTERNS = [
-            r"\write18",
-            r"\input{/",
-            r"\openout",
-            r"\openin{/",
-        ]
-        for pattern in _DANGEROUS_PATTERNS:
-            if pattern in content:
-                return False
+        # Reject shell-escape / file-write attack vectors regardless of whether
+        # --shell-escape is active. These directives have no legitimate use in a
+        # resume template and are the primary LaTeX code-execution paths.
+        if _SHELL_ESCAPE_RE.search(content):
+            return False
+
+        # Reject file-read primitives that target an absolute path or traversal
+        # (e.g. \input{/etc/passwd}, \input {/etc/passwd}, \include{../../secret}).
+        # Relative includes for multi-file resumes remain allowed.
+        if _ABS_FILE_READ_RE.search(content):
+            return False
 
         return True
 

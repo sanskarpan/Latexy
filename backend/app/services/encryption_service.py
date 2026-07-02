@@ -39,6 +39,21 @@ class EncryptionService:
                 Fernet(key_bytes)  # raises if not a valid Fernet key
                 self._fernet = Fernet(key_bytes)
             except Exception:
+                # A passphrase-derived key uses the module-constant salt and gives
+                # no per-deployment key separation — permitted only in dev/test.
+                if settings.is_production_like():
+                    raise ValueError(
+                        "API_KEY_ENCRYPTION_KEY must be a valid Fernet key "
+                        "(generate with Fernet.generate_key()) when ENVIRONMENT "
+                        "is staging or production; passphrase-derived keys are "
+                        "not allowed."
+                    )
+                logger.warning(
+                    "API_KEY_ENCRYPTION_KEY is not a valid Fernet key in %s — "
+                    "deriving one via PBKDF2 (development-only). Never use this "
+                    "mode in staging or production.",
+                    settings.normalized_environment,
+                )
                 self._fernet = Fernet(self._derive_key(key_bytes))
         else:
             if settings.is_production_like():

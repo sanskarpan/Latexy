@@ -407,6 +407,26 @@ def compile_latex_task(
             except Exception as _redis_exc:
                 logger.warning(f"Failed to cache PDF in Redis for job {job_id}: {_redis_exc}")
 
+            # Cache SyncTeX data to Redis so GET /download/{job_id}/synctex works after
+            # job_dir is rmtree'd (bidirectional editor↔PDF sync in serverless/Docker).
+            try:
+                import gzip as _gzip
+                synctex_gz = job_dir / "resume.synctex.gz"
+                synctex_plain = job_dir / "resume.synctex"
+                synctex_text: Optional[str] = None
+                if synctex_gz.exists():
+                    synctex_text = _gzip.decompress(synctex_gz.read_bytes()).decode(
+                        "utf-8", errors="replace"
+                    )
+                elif synctex_plain.exists():
+                    synctex_text = synctex_plain.read_text(encoding="utf-8", errors="replace")
+                if synctex_text:
+                    get_worker_redis().setex(
+                        f"latexy:job:{job_id}:synctex", _DEFAULT_TTL, synctex_text
+                    )
+            except Exception as _sx_exc:
+                logger.warning(f"Failed to cache SyncTeX in Redis for job {job_id}: {_sx_exc}")
+
             # For Beamer, slide_count == page_count (one PDF page per slide)
             slide_count = page_count if is_beamer else None
 
@@ -511,14 +531,23 @@ def compile_latex_task(
     except Exception as exc:
         logger.error(f"LaTeX task {task_id} raised: {exc}", exc_info=True)
         retryable = self.request.retries < self.max_retries
+        if retryable:
+            # A retry is scheduled — surface a transient 'retrying' event rather than a
+            # terminal job.failed, so the client doesn't flip to a failure state for a job
+            # that may still succeed. job.failed is reserved for the terminal case below.
+            publish_event(job_id, "job.retrying", {
+                "stage": "latex_compilation",
+                "worker_id": worker_id,
+                "attempt": self.request.retries + 2,
+                "error_message": str(exc),
+            })
+            raise self.retry(countdown=min(60 * (2 ** self.request.retries), 600), exc=exc)
         publish_event(job_id, "job.failed", {
             "stage": "latex_compilation",
             "error_code": "internal",
             "error_message": str(exc),
-            "retryable": retryable,
+            "retryable": False,
         })
-        if retryable:
-            raise self.retry(countdown=min(60 * (2 ** self.request.retries), 600), exc=exc)
         result = {"success": False, "job_id": job_id, "error": str(exc)}
         publish_job_result(job_id, result)
         return result

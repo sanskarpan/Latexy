@@ -210,14 +210,20 @@ def generate_interview_prep_task(
         return {"success": False, "job_id": job_id, "error": str(exc)}
 
 
-def _save_questions(prep_id: str, questions: List[Dict]) -> None:
-    """Save generated questions to interview_prep table (sync DB call from worker)."""
+def _save_questions(prep_id: str, questions: List[Dict]) -> int:
+    """Save generated questions to interview_prep table (sync DB call from worker).
+
+    Returns the number of rows updated (0 if the prep row no longer exists).
+    """
     import asyncio
-    asyncio.run(_async_save_questions(prep_id, questions))
+    return asyncio.run(_async_save_questions(prep_id, questions))
 
 
-async def _async_save_questions(prep_id: str, questions: List[Dict]) -> None:
-    """Async helper to update interview_prep record with generated questions."""
+async def _async_save_questions(prep_id: str, questions: List[Dict]) -> int:
+    """Async helper to update interview_prep record with generated questions.
+
+    Returns the affected rowcount so callers can detect a deleted/missing row.
+    """
     import os
 
     from sqlalchemy import text
@@ -228,20 +234,27 @@ async def _async_save_questions(prep_id: str, questions: List[Dict]) -> None:
     raw_url = os.environ.get("DATABASE_URL", "")
     if not raw_url:
         logger.warning("DATABASE_URL not set — cannot save interview questions")
-        return
+        return 0
 
     db_url = normalize_database_url(raw_url)
     engine = create_async_engine(db_url, echo=False)
     try:
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         async with session_factory() as session:
-            await session.execute(
+            result = await session.execute(
                 text(
                     "UPDATE interview_prep SET questions = :questions, updated_at = NOW() WHERE id = :id"
                 ),
                 {"questions": json.dumps(questions), "id": prep_id},
             )
             await session.commit()
+            rowcount = result.rowcount or 0
+            if rowcount == 0:
+                logger.warning(
+                    f"Interview prep {prep_id} not found when saving questions "
+                    "(row deleted before generation completed)"
+                )
+            return rowcount
     finally:
         await engine.dispose()
 

@@ -46,9 +46,32 @@ class GitHubSyncService:
                     "auto_init": True,
                 },
             )
-            if resp.status_code not in (201, 422):
-                # 422 = already exists (race), treat as success
-                resp.raise_for_status()
+            if resp.status_code == 201:
+                return
+            if resp.status_code == 422:
+                # GitHub returns 422 for many validation failures. Only treat it
+                # as success when the specific reason is a name collision (the
+                # repo already exists — e.g. a create/create race). Any other
+                # 422 (invalid name, org limits, …) is a real failure.
+                if self._is_name_already_exists(resp):
+                    return
+                logger.error(f"GitHub repo creation rejected (422): {resp.text[:300]}")
+            resp.raise_for_status()
+
+    @staticmethod
+    def _is_name_already_exists(resp: httpx.Response) -> bool:
+        """True when a 422 body indicates the repo name is already taken."""
+        try:
+            errors = resp.json().get("errors", [])
+        except Exception:
+            return False
+        for err in errors:
+            if not isinstance(err, dict):
+                continue
+            message = (err.get("message") or "").lower()
+            if err.get("field") == "name" and "already exists" in message:
+                return True
+        return False
 
     # ── Push (create or update) ──────────────────────────────────────────
 

@@ -187,6 +187,40 @@ class TestRequireAdmin:
         resp = await client.get("/admin/feature-flags")
         assert resp.status_code == 401
 
+    # ── Extra: DB failure during email lookup returns 503, not 403 ───────────
+
+    async def test_email_lookup_db_failure_returns_503(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """
+        A transient DB error while checking the admin email must surface as 503,
+        not masquerade as a 403 'Admin privileges required'.
+        """
+        user_id, _ = await _create_user(db_session)
+        token = await _create_session(db_session, user_id)
+
+        real_execute = AsyncSession.execute
+
+        async def _flaky_execute(self, statement, *args, **kwargs):
+            # Fail only the admin email lookup; let session validation succeed.
+            if "email_verified FROM users" in str(statement):
+                raise RuntimeError("simulated DB outage")
+            return await real_execute(self, statement, *args, **kwargs)
+
+        with patch("app.middleware.auth_middleware.settings") as mock_settings, patch.object(
+            AsyncSession, "execute", _flaky_execute
+        ):
+            mock_settings.ADMIN_EMAIL = "admin@latexy.com"
+            mock_settings.JWT_SECRET_KEY = _JWT_SECRET
+            mock_settings.BETTER_AUTH_SECRET = "test_secret_key_32chars_minimum_!"
+
+            resp = await client.get(
+                "/admin/feature-flags",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert resp.status_code == 503
+
     # ── Extra: JWT with role=admin does NOT bypass ADMIN_EMAIL gate ──────────
 
     async def test_jwt_role_admin_does_not_bypass_gate(
@@ -273,8 +307,10 @@ class TestOptionalVsRequiredAuth:
         )
         assert resp.status_code == 200
 
-    async def test_required_auth_valid_jwt_returns_200(self, client: AsyncClient):
-        """A valid legacy JWT token also satisfies required auth on the resumes endpoint."""
+    async def test_required_auth_valid_jwt_returns_200(self, client: AsyncClient, monkeypatch):
+        """A valid legacy JWT satisfies required auth ONLY when the migration flag is on."""
+        import app.middleware.auth_middleware as am
+        monkeypatch.setattr(am.settings, "LEGACY_JWT_ENABLED", True, raising=False)
         user_id = str(uuid.uuid4())
         jwt_token = _make_jwt(user_id)
 
@@ -283,3 +319,12 @@ class TestOptionalVsRequiredAuth:
             headers={"Authorization": f"Bearer {jwt_token}"},
         )
         assert resp.status_code == 200
+
+    async def test_legacy_jwt_rejected_when_flag_disabled(self, client: AsyncClient):
+        """With the migration flag off (default), a legacy JWT must NOT authenticate."""
+        jwt_token = _make_jwt(str(uuid.uuid4()))
+        resp = await client.get(
+            "/resumes/",
+            headers={"Authorization": f"Bearer {jwt_token}"},
+        )
+        assert resp.status_code == 401

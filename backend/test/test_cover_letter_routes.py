@@ -99,6 +99,11 @@ class TestGenerateCoverLetter:
         assert "job_id" in data
         assert "cover_letter_id" in data
         mock_submit.assert_called_once()
+        # Plan-derived priority (test user is on 'pro') and BYOK key must be threaded
+        # through instead of a hardcoded free tier.
+        kwargs = mock_submit.call_args.kwargs
+        assert kwargs["user_plan"] == "pro"
+        assert "user_api_key" in kwargs
 
     async def test_generate_requires_auth(self, client: AsyncClient, test_user_with_resume):
         _, resume_id, _ = test_user_with_resume
@@ -184,6 +189,33 @@ class TestGenerateCoverLetter:
         assert cl.length_preference == "4_paragraphs"
         assert cl.company_name == "GoLang Inc"
         assert cl.latex_content is None  # Not yet generated
+
+    @patch("app.api.cover_letter_routes.submit_cover_letter_generation")
+    async def test_generate_rolls_back_row_on_submit_failure(
+        self, mock_submit, client: AsyncClient, db_session: AsyncSession, test_user_with_resume
+    ):
+        """If task submission fails, the CoverLetter row must not be left orphaned."""
+        _, resume_id, headers = test_user_with_resume
+        mock_submit.side_effect = RuntimeError("broker down")
+
+        response = await client.post(
+            "/cover-letters/generate",
+            json={
+                "resume_id": resume_id,
+                "job_description": "Backend engineer with Rust experience",
+                "tone": "formal",
+                "length_preference": "3_paragraphs",
+            },
+            headers=headers,
+        )
+
+        assert response.status_code == 503
+
+        # No orphaned rows should remain for this resume
+        result = await db_session.execute(
+            select(CoverLetter).where(CoverLetter.resume_id == resume_id)
+        )
+        assert result.scalars().first() is None
 
 
 # ── GET /cover-letters/{id} ──────────────────────────────────────────────

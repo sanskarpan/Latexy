@@ -49,17 +49,21 @@ class BenchmarkingService:
         db: AsyncSession,
     ) -> BenchmarkResult:
         """
-        Return the percentile rank of `ats_score` within the global cohort.
+        Return the percentile rank of `ats_score` within the GLOBAL cohort.
 
-        `industry` is used as a label (and Redis cache key) but does not
-        filter the query — industry data is not stored per-optimization in the
-        current schema.  When sufficient per-industry data is available in a
-        future migration, the WHERE clause can be narrowed.
+        NOTE: the percentile is computed over the entire optimizations table and
+        is NOT filtered by industry — industry data is not stored per-optimization
+        in the current schema. The `industry` argument is echoed back on the
+        result purely for request/response correlation; it does not change the
+        cohort. A single 'all' cache key is used so identical global stats are not
+        duplicated across N industry keys. When per-industry data becomes
+        available in a future migration, add a WHERE clause and key per industry.
 
         Returns BenchmarkResult with sufficient_data=False when the cohort is
         too small (< MIN_SAMPLE_SIZE) to produce meaningful percentile stats.
         """
-        cache_key = f"benchmark:cohort:v1:{industry or 'all'}"
+        # Global cohort — single cache key (percentile is not industry-specific).
+        cache_key = "benchmark:cohort:v1:all"
 
         # ── Try Redis cache first ──────────────────────────────────────────
         try:
@@ -107,7 +111,7 @@ class BenchmarkingService:
                 cohort_p75=None,
                 industry=industry,
                 sufficient_data=False,
-                message=f"Not enough data yet for {industry} benchmarking",
+                message="Not enough data yet for benchmarking (global cohort)",
             )
 
         stats = {
@@ -147,7 +151,7 @@ class BenchmarkingService:
                 cohort_p75=p75,
                 industry=industry,
                 sufficient_data=False,
-                message=f"Not enough data yet for {industry} benchmarking",
+                message="Not enough data yet for benchmarking (global cohort)",
             )
 
         percentile = self._interpolate_percentile(

@@ -74,7 +74,13 @@ class _LegacyJWTValidator:
 
     def decode(self, token: str) -> Optional[Dict[str, Any]]:
         try:
-            return jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
+            # Require an exp claim so forged tokens cannot be non-expiring.
+            return jwt.decode(
+                token,
+                self.secret_key,
+                algorithms=[self.algorithm],
+                options={"require": ["exp"], "verify_exp": True},
+            )
         except jwt.ExpiredSignatureError:
             logger.debug("Legacy JWT expired")
         except jwt.InvalidTokenError:
@@ -110,11 +116,20 @@ def _extract_token(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials],
 ) -> Optional[str]:
-    """Return the raw token string from Bearer header or session cookie."""
+    """Return the raw token string from Bearer header or session cookie.
+
+    The Bearer token (set by AuthSync from session.session.token) is the raw
+    DB token. Better Auth cookies instead hold "<token>.<signature>" and, over
+    HTTPS, are prefixed with "__Secure-". Strip the signature and honour the
+    prefixed name so cookie-based auth actually matches the session table.
+    """
     if credentials and credentials.credentials:
         return credentials.credentials
-    # Cookie fallback for same-origin requests
-    return request.cookies.get("better-auth.session_token")
+    for name in ("better-auth.session_token", "__Secure-better-auth.session_token"):
+        raw = request.cookies.get(name)
+        if raw:
+            return raw.split(".", 1)[0]
+    return None
 
 
 # ------------------------------------------------------------------ #
@@ -140,8 +155,12 @@ async def get_current_user_optional(
     if user_id:
         return user_id
 
-    # 2. Legacy JWT fallback
-    return _jwt_validator.user_id(token)
+    # 2. Legacy JWT fallback — OFF by default. Better Auth is the sole token
+    # issuer; this stateless path is only enabled for an explicit migration
+    # window (settings.LEGACY_JWT_ENABLED) to avoid a standing forgery surface.
+    if getattr(settings, "LEGACY_JWT_ENABLED", False):
+        return _jwt_validator.user_id(token)
+    return None
 
 
 async def get_current_user_required(
@@ -246,14 +265,24 @@ async def require_admin(
     try:
         from sqlalchemy import text as _text
         result = await db.execute(
-            _text('SELECT email FROM users WHERE id = :uid'),
+            _text('SELECT email, email_verified FROM users WHERE id = :uid'),
             {"uid": user_id},
         )
         row = result.fetchone()
-        if row and row[0].lower() == settings.ADMIN_EMAIL.lower():
-            return user_id
     except Exception as exc:
-        logger.debug(f"require_admin email lookup failed: {exc}")
+        # A DB failure is not an authorization decision. Surface it as a 503 so a
+        # transient outage does not masquerade as "Admin privileges required",
+        # and log at error level so the real cause is diagnosable.
+        logger.error(f"require_admin email lookup failed: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin authorization check temporarily unavailable",
+        ) from exc
+
+    # Require a verified email so an attacker cannot claim admin by simply
+    # signing up with ADMIN_EMAIL (email verification is otherwise optional).
+    if row and row[0].lower() == settings.ADMIN_EMAIL.lower() and bool(row[1]):
+        return user_id
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,

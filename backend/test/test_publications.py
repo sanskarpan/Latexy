@@ -305,6 +305,41 @@ class TestPublicationsServiceUnit:
         result = PublicationsService().format_as_latex([pub])
         assert r"\textit{}" not in result
 
+    # 58U-13 — audit fix: TeX specials in third-party metadata are escaped ──────
+    def test_latex_escape_helper(self) -> None:
+        from app.services.publications_service import latex_escape
+
+        assert latex_escape("A & B") == r"A \& B"
+        assert latex_escape("50%") == r"50\%"
+        assert latex_escape("a_b#c$d") == r"a\_b\#c\$d"
+        # Backslash is neutralized so it cannot start a control sequence.
+        assert "\\textbackslash{}" in latex_escape("a\\b")
+        assert latex_escape("") == ""
+
+    def test_format_entry_escapes_special_chars(self) -> None:
+        r"""Title/venue with & and _ are escaped so compilation isn't broken."""
+        pub = Publication(
+            "Attacks & Defenses in ML_systems",
+            ["A_B Author"],
+            "Proc. of C&C",
+            2024, None, None, "journal",
+        )
+        result = PublicationsService().format_as_latex([pub])
+        assert r"\&" in result
+        assert r"\_" in result
+        # No raw unescaped ampersand should survive in the output.
+        assert "& " not in result.replace(r"\&", "")
+
+    def test_format_entry_neutralizes_injection(self) -> None:
+        r"""A crafted title cannot inject a raw \input command."""
+        pub = Publication(
+            r"}\input{/etc/passwd}",
+            [], "Venue", 2024, None, None, "journal",
+        )
+        result = PublicationsService().format_as_latex([pub])
+        assert r"\input{/etc/passwd}" not in result
+        assert r"\input" not in result.replace(r"\textbackslash{}input", "")
+
 
 # ── HTTP integration tests ─────────────────────────────────────────────────────
 

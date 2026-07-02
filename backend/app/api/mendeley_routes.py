@@ -27,6 +27,10 @@ _MENDELEY_AUTH_URL = "https://api.mendeley.com/oauth/authorize"
 _MENDELEY_TOKEN_URL = "https://api.mendeley.com/oauth/token"
 _MENDELEY_DOCS_URL = "https://api.mendeley.com/documents"
 
+# Import safety caps — protect the JSON column / response size from huge libraries.
+_MAX_IMPORT_BYTES = 5_000_000  # 5 MB of concatenated BibTeX
+_MAX_IMPORT_PAGES = 200        # hard guard on the pagination loop
+
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
 
@@ -74,6 +78,13 @@ async def mendeley_connect(
     return RedirectResponse(f"{_MENDELEY_AUTH_URL}?{params}")
 
 
+def _mendeley_error_redirect(reason: str) -> RedirectResponse:
+    """Send the browser back to the settings page with a friendly error flag."""
+    return RedirectResponse(
+        f"{settings.FRONTEND_URL}/settings?mendeley=error&reason={urllib.parse.quote(reason)}"
+    )
+
+
 @router.get("/callback")
 async def mendeley_callback(
     code: str = Query(...),
@@ -82,11 +93,11 @@ async def mendeley_callback(
 ):
     """Exchange code for access token and store on user."""
     if not state:
-        raise HTTPException(status_code=400, detail="Missing state parameter")
+        return _mendeley_error_redirect("missing_state")
 
     user_id = await cache_manager.get(f"mendeley:state:{state}")
     if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid or expired Mendeley OAuth state")
+        return _mendeley_error_redirect("invalid_state")
     await cache_manager.delete(f"mendeley:state:{state}")
 
     async with httpx.AsyncClient(timeout=15) as client:
@@ -104,17 +115,17 @@ async def mendeley_callback(
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
             logger.error(f"Mendeley token exchange error: {exc.response.text}")
-            raise HTTPException(status_code=502, detail="Failed to exchange Mendeley access token")
+            return _mendeley_error_redirect("token_exchange_failed")
         except httpx.RequestError as exc:
             logger.error(f"Mendeley connection error: {exc}")
-            raise HTTPException(status_code=502, detail="Mendeley is unavailable")
+            return _mendeley_error_redirect("mendeley_unavailable")
 
     token_data = resp.json()
     access_token = token_data.get("access_token", "")
     refresh_token = token_data.get("refresh_token", "")
 
     if not access_token:
-        raise HTTPException(status_code=502, detail="Invalid Mendeley token response")
+        return _mendeley_error_redirect("invalid_token_response")
 
     # Get user profile for display name
     display_name = ""
@@ -134,7 +145,7 @@ async def mendeley_callback(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        return _mendeley_error_redirect("user_not_found")
 
     meta = dict(user.user_metadata or {})
     meta["mendeley_token"] = encryption_service.encrypt(access_token)
@@ -185,71 +196,69 @@ async def mendeley_disconnect(
     return {"success": True, "message": "Mendeley disconnected"}
 
 
-async def _get_mendeley_token(user: User, db: AsyncSession) -> str:
-    """Return a valid access token, refreshing if needed."""
+def _get_mendeley_token(user: User) -> str:
+    """Return the decrypted stored access token (no upstream probe).
+
+    Validity is checked lazily by the actual API call, which refreshes on a 401
+    via :func:`_refresh_mendeley_token`. This avoids an extra round-trip to
+    Mendeley on every import.
+    """
     meta = dict(user.user_metadata or {})
     encrypted = meta.get("mendeley_token")
     if not encrypted:
         raise HTTPException(status_code=401, detail="Mendeley not connected")
-
     try:
-        token = encryption_service.decrypt(encrypted)
+        return encryption_service.decrypt(encrypted)
     except Exception:
         raise HTTPException(status_code=401, detail="Mendeley token is corrupted. Please reconnect in Settings.")
 
-    # Try a lightweight call to see if token is valid
-    async with httpx.AsyncClient(timeout=10) as client:
-        probe = await client.get(
-            "https://api.mendeley.com/profiles/me",
-            headers={"Authorization": f"Bearer {token}"},
-        )
 
-    if probe.status_code == 401:
-        # Attempt refresh
-        encrypted_refresh = meta.get("mendeley_refresh_token")
-        if not encrypted_refresh:
+async def _refresh_mendeley_token(user: User, db: AsyncSession) -> str:
+    """Refresh the access token using the stored refresh token and persist it."""
+    meta = dict(user.user_metadata or {})
+    encrypted_refresh = meta.get("mendeley_refresh_token")
+    if not encrypted_refresh:
+        raise HTTPException(
+            status_code=401,
+            detail="Mendeley token expired. Please reconnect in Settings.",
+        )
+    try:
+        refresh_token = encryption_service.decrypt(encrypted_refresh)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Mendeley token is corrupted. Please reconnect in Settings.")
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        try:
+            resp = await client.post(
+                _MENDELEY_TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                },
+                auth=(settings.MENDELEY_CLIENT_ID, settings.MENDELEY_CLIENT_SECRET),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            resp.raise_for_status()
+        except httpx.HTTPStatusError:
             raise HTTPException(
                 status_code=401,
-                detail="Mendeley token expired. Please reconnect in Settings.",
+                detail="Mendeley token expired and refresh failed. Please reconnect in Settings.",
             )
-        try:
-            refresh_token = encryption_service.decrypt(encrypted_refresh)
-        except Exception:
-            raise HTTPException(status_code=401, detail="Mendeley token is corrupted. Please reconnect in Settings.")
-        async with httpx.AsyncClient(timeout=15) as client:
-            try:
-                resp = await client.post(
-                    _MENDELEY_TOKEN_URL,
-                    data={
-                        "grant_type": "refresh_token",
-                        "refresh_token": refresh_token,
-                    },
-                    auth=(settings.MENDELEY_CLIENT_ID, settings.MENDELEY_CLIENT_SECRET),
-                    headers={"Content-Type": "application/x-www-form-urlencoded"},
-                )
-                resp.raise_for_status()
-            except httpx.HTTPStatusError:
-                raise HTTPException(
-                    status_code=401,
-                    detail="Mendeley token expired and refresh failed. Please reconnect in Settings.",
-                )
-            except httpx.RequestError as exc:
-                logger.error(f"Mendeley connection error during token refresh: {exc}")
-                raise HTTPException(status_code=502, detail="Mendeley is unavailable, please try again")
+        except httpx.RequestError as exc:
+            logger.error(f"Mendeley connection error during token refresh: {exc}")
+            raise HTTPException(status_code=502, detail="Mendeley is unavailable, please try again")
 
-        data = resp.json()
-        new_token = data.get("access_token", "")
-        new_refresh = data.get("refresh_token", refresh_token)
-        if not new_token:
-            raise HTTPException(status_code=502, detail="Mendeley refresh returned no token")
+    data = resp.json()
+    new_token = data.get("access_token", "")
+    new_refresh = data.get("refresh_token", refresh_token)
+    if not new_token:
+        raise HTTPException(status_code=502, detail="Mendeley refresh returned no token")
 
-        meta["mendeley_token"] = encryption_service.encrypt(new_token)
-        meta["mendeley_refresh_token"] = encryption_service.encrypt(new_refresh)
-        user.user_metadata = meta
-        await db.commit()
-        token = new_token
-
-    return token
+    meta["mendeley_token"] = encryption_service.encrypt(new_token)
+    meta["mendeley_refresh_token"] = encryption_service.encrypt(new_refresh)
+    user.user_metadata = meta
+    await db.commit()
+    return new_token
 
 
 @router.post("/import", response_model=MendeleyImportResponse)
@@ -264,7 +273,7 @@ async def mendeley_import(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    token = await _get_mendeley_token(user, db)
+    token = _get_mendeley_token(user)
 
     # Verify resume ownership
     resume_result = await db.execute(
@@ -280,6 +289,10 @@ async def mendeley_import(
         params["group_id"] = body.group_id
 
     bibtex_entries: list[str] = []
+    total_bytes = 0
+    truncated = False
+    pages_fetched = 0
+    refreshed = False
 
     async with httpx.AsyncClient(timeout=30) as client:
         url: Optional[str] = _MENDELEY_DOCS_URL
@@ -293,7 +306,12 @@ async def mendeley_import(
                         "Accept": "application/x-bibtex",
                     },
                 )
-                if resp.status_code == 403:
+                if resp.status_code == 401 and not refreshed:
+                    # Token expired — refresh once and retry the same page.
+                    token = await _refresh_mendeley_token(user, db)
+                    refreshed = True
+                    continue
+                if resp.status_code in (401, 403):
                     raise HTTPException(
                         status_code=401,
                         detail="Mendeley token invalid. Please reconnect in Settings.",
@@ -314,6 +332,15 @@ async def mendeley_import(
             page_bibtex = resp.text.strip()
             if page_bibtex:
                 bibtex_entries.append(page_bibtex)
+                total_bytes += len(page_bibtex.encode("utf-8"))
+                if total_bytes >= _MAX_IMPORT_BYTES:
+                    truncated = True
+                    break
+
+            pages_fetched += 1
+            if pages_fetched >= _MAX_IMPORT_PAGES:
+                truncated = True
+                break
 
             # Mendeley pagination via Link header
             link_header = resp.headers.get("Link", "")
@@ -332,9 +359,13 @@ async def mendeley_import(
     resume.resume_settings = rm
     await db.commit()
 
+    message = f"Imported {entry_count} BibTeX entries from Mendeley"
+    if truncated:
+        message += " (truncated — library exceeds the import size limit)"
+
     return MendeleyImportResponse(
         success=True,
         entries_count=entry_count,
         bibtex=bibtex,
-        message=f"Imported {entry_count} BibTeX entries from Mendeley",
+        message=message,
     )

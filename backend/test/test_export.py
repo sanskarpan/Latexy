@@ -113,6 +113,18 @@ class TestDocumentExportService:
         result = document_export_service.to_html(VALID_LATEX)
         assert 'charset' in result.lower() or 'UTF-8' in result
 
+    def test_to_html_escapes_raw_html(self):
+        """Attacker-controlled raw HTML in LaTeX text must be escaped, not passed through."""
+        from app.services.document_export_service import document_export_service
+        malicious = (
+            r"\documentclass{article}\begin{document}"
+            r"\section{Bio} <script>alert('xss')</script>"
+            r"\end{document}"
+        )
+        result = document_export_service.to_html(malicious)
+        assert "<script>alert" not in result
+        assert "&lt;script&gt;" in result
+
     def test_to_json_returns_dict(self):
         from app.services.document_export_service import document_export_service
         result = document_export_service.to_json(VALID_LATEX)

@@ -113,7 +113,9 @@ class TestLinkedInPromptSelection:
 
 @pytest.mark.asyncio
 class TestUploadWithSourceHint:
-    async def test_upload_with_linkedin_hint_queues_job(self, client: AsyncClient):
+    async def test_upload_with_linkedin_hint_queues_job(
+        self, client: AsyncClient, auth_headers: dict
+    ):
         """source_hint=linkedin for a text file queues a job (not direct)."""
         with patch(
             "app.workers.converter_worker.submit_document_conversion", return_value=None
@@ -124,6 +126,7 @@ class TestUploadWithSourceHint:
                 "/formats/upload",
                 files={"file": ("profile.txt", SAMPLE_TEXT, "text/plain")},
                 data={"source_hint": "linkedin"},
+                headers=auth_headers,
             )
 
         assert resp.status_code == 200
@@ -136,7 +139,9 @@ class TestUploadWithSourceHint:
         call_kwargs = mock_submit.call_args.kwargs
         assert call_kwargs.get("source_hint") == "linkedin"
 
-    async def test_upload_without_hint_passes_none_to_worker(self, client: AsyncClient):
+    async def test_upload_without_hint_passes_none_to_worker(
+        self, client: AsyncClient, auth_headers: dict
+    ):
         """Omitting source_hint should pass None to submit_document_conversion."""
         with patch(
             "app.workers.converter_worker.submit_document_conversion", return_value=None
@@ -146,13 +151,16 @@ class TestUploadWithSourceHint:
             resp = await client.post(
                 "/formats/upload",
                 files={"file": ("resume.txt", SAMPLE_TEXT, "text/plain")},
+                headers=auth_headers,
             )
 
         assert resp.status_code == 200
         call_kwargs = mock_submit.call_args.kwargs
         assert call_kwargs.get("source_hint") is None
 
-    async def test_upload_with_resume_hint_passes_through(self, client: AsyncClient):
+    async def test_upload_with_resume_hint_passes_through(
+        self, client: AsyncClient, auth_headers: dict
+    ):
         """source_hint='resume' should be forwarded to the worker as-is."""
         with patch(
             "app.workers.converter_worker.submit_document_conversion", return_value=None
@@ -163,6 +171,7 @@ class TestUploadWithSourceHint:
                 "/formats/upload",
                 files={"file": ("resume.txt", SAMPLE_TEXT, "text/plain")},
                 data={"source_hint": "resume"},
+                headers=auth_headers,
             )
 
         assert resp.status_code == 200

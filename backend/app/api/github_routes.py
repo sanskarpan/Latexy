@@ -79,6 +79,13 @@ async def github_connect(
     return RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
 
 
+def _github_error_redirect(reason: str) -> RedirectResponse:
+    """Send the browser back to the settings page with a friendly error flag."""
+    return RedirectResponse(
+        f"{settings.FRONTEND_URL}/settings?github=error&reason={urllib.parse.quote(reason)}"
+    )
+
+
 @router.get("/callback")
 async def github_callback(
     code: str = Query(...),
@@ -87,37 +94,58 @@ async def github_callback(
 ):
     """Exchange code for access token and store it on the user."""
     if not state:
-        raise HTTPException(status_code=400, detail="Missing state parameter")
+        return _github_error_redirect("missing_state")
 
     # Validate the nonce — prevents CSRF account-binding attacks
     user_id = await cache_manager.get(f"gh:oauth:{state}")
     if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+        return _github_error_redirect("invalid_state")
     await cache_manager.delete(f"gh:oauth:{state}")
 
     # Exchange code for token
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.post(
-            "https://github.com/login/oauth/access_token",
-            json={
-                "client_id": settings.GITHUB_CLIENT_ID,
-                "client_secret": settings.GITHUB_CLIENT_SECRET,
-                "code": code,
-                "redirect_uri": settings.GITHUB_OAUTH_REDIRECT_URI,
-            },
-            headers={"Accept": "application/json"},
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://github.com/login/oauth/access_token",
+                json={
+                    "client_id": settings.GITHUB_CLIENT_ID,
+                    "client_secret": settings.GITHUB_CLIENT_SECRET,
+                    "code": code,
+                    "redirect_uri": settings.GITHUB_OAUTH_REDIRECT_URI,
+                },
+                headers={"Accept": "application/json"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        logger.error(f"GitHub token exchange failed: {exc.response.status_code}")
+        return _github_error_redirect("token_exchange_failed")
+    except httpx.RequestError as exc:
+        logger.error(f"GitHub connection error during token exchange: {exc}")
+        return _github_error_redirect("github_unavailable")
 
     access_token = data.get("access_token")
     if not access_token:
-        error = data.get("error_description", data.get("error", "Unknown error"))
-        raise HTTPException(status_code=400, detail=f"GitHub OAuth failed: {error}")
+        error = data.get("error", "token_exchange_failed")
+        logger.error(f"GitHub OAuth returned no access token: {error}")
+        return _github_error_redirect(str(error))
 
     # Get GitHub username
-    gh_user = await github_sync_service.get_github_user(access_token)
-    username = gh_user.get("login", "")
+    try:
+        gh_user = await github_sync_service.get_github_user(access_token)
+    except httpx.HTTPStatusError as exc:
+        logger.error(f"GitHub profile fetch failed: {exc.response.status_code}")
+        return _github_error_redirect("profile_fetch_failed")
+    except httpx.RequestError as exc:
+        logger.error(f"GitHub connection error during profile fetch: {exc}")
+        return _github_error_redirect("github_unavailable")
+
+    username = (gh_user.get("login") or "").strip()
+    if not username:
+        # Without a login every later push/pull would build an invalid URL and
+        # 404; refuse to persist a half-connected account.
+        logger.error("GitHub profile returned no login; aborting connect")
+        return _github_error_redirect("no_username")
 
     # Encrypt token before storing
     encrypted_token = encryption_service.encrypt(access_token)

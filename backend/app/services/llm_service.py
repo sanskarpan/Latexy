@@ -22,6 +22,36 @@ from ..models.llm_schemas import (
 
 logger = get_logger(__name__)
 
+# Delimiter format emitted by _create_optimization_prompt. The LLM wraps the
+# optimized document in <<<LATEX>>>...<<<END_LATEX>>> and the change list in
+# <<<CHANGES>>>...<<<END_CHANGES>>>. Kept in sync with the orchestrator and
+# cover-letter worker, which stream the same format.
+_OPT_LATEX_RE = re.compile(r"<<<LATEX>>>(.*?)<<<END_LATEX>>>", re.DOTALL)
+_OPT_CHANGES_RE = re.compile(r"<<<CHANGES>>>(.*?)<<<END_CHANGES>>>", re.DOTALL)
+
+
+def parse_delimited_optimization(text: str, fallback_latex: str) -> tuple[str, list[dict]]:
+    """Extract optimized LaTeX and the changes list from delimiter-formatted LLM output.
+
+    Returns (optimized_latex, changes). Falls back to ``fallback_latex`` and an empty
+    change list when the markers are absent, so a malformed response never silently
+    returns the *unmodified* input as if it were optimized without a warning upstream.
+    """
+    latex_match = _OPT_LATEX_RE.search(text or "")
+    optimized_latex = latex_match.group(1).strip() if latex_match else fallback_latex
+
+    changes: list[dict] = []
+    changes_match = _OPT_CHANGES_RE.search(text or "")
+    if changes_match:
+        raw = changes_match.group(1).strip()
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                changes = [c for c in parsed if isinstance(c, dict)]
+        except (json.JSONDecodeError, ValueError):
+            changes = []
+    return optimized_latex, changes
+
 
 class LLMService:
     """Service for LLM-powered resume optimization."""
@@ -194,15 +224,15 @@ class LLMService:
                 ],
                 max_tokens=settings.OPENAI_MAX_TOKENS,
                 temperature=settings.OPENAI_TEMPERATURE,
-                response_format={"type": "json_object"}
             )
 
-            # Parse response
-            result = json.loads(response.choices[0].message.content)
-
-            # Extract optimized LaTeX
-            optimized_latex = result.get('optimized_latex', request.latex_content)
-            changes_made = self._parse_changes(result.get('changes', []))
+            # Parse the delimiter-formatted response (matches _create_optimization_prompt).
+            raw_content = response.choices[0].message.content or ""
+            optimized_latex, raw_changes = parse_delimited_optimization(
+                raw_content, request.latex_content
+            )
+            changes_made = self._parse_changes(raw_changes)
+            result = {}
 
             # Recalculate ATS score for optimized version
             optimized_keyword_matches = self.analyze_keyword_matches(optimized_latex, keywords)

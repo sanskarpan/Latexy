@@ -6,7 +6,6 @@ from uuid import uuid4
 
 from sqlalchemy import (
     ARRAY,
-    JSON,
     Boolean,
     DateTime,
     Float,
@@ -160,6 +159,14 @@ class Resume(Base):
     __table_args__ = (
         # DB-015: composite index supports ORDER BY updated_at queries scoped to a user
         Index("idx_resumes_user_updated", "user_id", "updated_at"),
+        # DB-009: matches the partial unique index created in migration 0008
+        # (a plain unique=True on the column would drift from the DB definition).
+        Index(
+            "idx_resumes_share_token",
+            "share_token",
+            unique=True,
+            postgresql_where=text("share_token IS NOT NULL"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
@@ -175,14 +182,15 @@ class Resume(Base):
     # Per-resume settings (compiler preference, custom flags, etc.)
     # Note: "metadata" is reserved by SQLAlchemy's Declarative API, so we use
     # resume_settings as the Python attribute name while keeping the DB column "metadata".
-    resume_settings: Mapped[Optional[Dict]] = mapped_column("metadata", JSONB, nullable=True, default={})
+    resume_settings: Mapped[Optional[Dict]] = mapped_column("metadata", JSONB, nullable=True, default=dict)
     selected_template_id: Mapped[Optional[str]] = mapped_column(
         UUID(as_uuid=False), ForeignKey("resume_templates.id", ondelete="SET NULL"), nullable=True, index=True
     )
     content_source: Mapped[str] = mapped_column(Text, nullable=False, server_default="manual_latex", default="manual_latex")
     builder_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="detached", default="detached")
     # Shareable link token (null = not shared)
-    share_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True, unique=True, index=False)
+    # Uniqueness is enforced by the partial index idx_resumes_share_token (see __table_args__).
+    share_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     share_token_created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     # Variant / fork system: self-referential parent link
     parent_resume_id: Mapped[Optional[str]] = mapped_column(
@@ -271,7 +279,7 @@ class Optimization(Base):
     tokens_used: Mapped[Optional[int]] = mapped_column(Integer)
     optimization_time: Mapped[Optional[float]] = mapped_column(Float)
     ats_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    changes_made: Mapped[Optional[dict]] = mapped_column(JSON)
+    changes_made: Mapped[Optional[dict]] = mapped_column(JSONB)
     # Layer 3: embedding of the job description used for this optimization
     job_desc_embedding: Mapped[Optional[List[float]]] = mapped_column(ARRAY(Float), nullable=True)
     # Version history / checkpoint fields
@@ -303,6 +311,12 @@ class ResumeJobMatch(Base):
     semantic_gaps: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    # One cache row per (resume, jd_hash); prevents duplicate rows that would make
+    # the .scalar_one_or_none() cache lookup raise MultipleResultsFound.
+    __table_args__ = (
+        UniqueConstraint("resume_id", "jd_hash", name="uq_resume_job_matches_resume_jd"),
+    )
+
     # Relationships
     user: Mapped[Optional["User"]] = relationship("User", back_populates="resume_job_matches")
 
@@ -315,7 +329,7 @@ class UsageAnalytics(Base):
     device_fingerprint: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     resource_type: Mapped[Optional[str]] = mapped_column(String(50))
-    event_metadata: Mapped[Optional[dict]] = mapped_column(JSON)
+    event_metadata: Mapped[Optional[dict]] = mapped_column(JSONB)
     ip_address: Mapped[Optional[str]] = mapped_column(INET)
     user_agent: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
@@ -348,7 +362,11 @@ class Payment(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    subscription_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("subscriptions.id"))
+    # DB-006: SET NULL preserves payment history when a subscription row is deleted;
+    # index backs per-subscription payment lookups.
+    subscription_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("subscriptions.id", ondelete="SET NULL"), index=True
+    )
     # DB-018: nullable=True with unique=True is intentional — payments in progress have
     # no Razorpay payment ID yet; PostgreSQL unique constraints allow multiple NULL rows.
     razorpay_payment_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
@@ -376,7 +394,7 @@ class TeamSeat(Base):
     )
     member_email: Mapped[str] = mapped_column(Text, nullable=False)
     member_user_id: Mapped[Optional[str]] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     status: Mapped[str] = mapped_column(Text, nullable=False, default="invited", server_default="invited")
     invited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -404,6 +422,12 @@ class CouponCode(Base):
 class CouponRedemption(Base):
     """Audit trail for coupon redemptions."""
     __tablename__ = "coupon_redemptions"
+    # DB-005: one redemption per (coupon, user); backs the app-level already-redeemed
+    # check with a DB guarantee and prevents duplicate redemptions under a race.
+    # The composite index also covers coupon_id lookups.
+    __table_args__ = (
+        UniqueConstraint("coupon_id", "user_id", name="uq_coupon_redemptions_coupon_user"),
+    )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     coupon_id: Mapped[Optional[str]] = mapped_column(
@@ -458,7 +482,7 @@ class JobApplication(Base):
     role_title: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="applied")
     resume_id: Mapped[Optional[str]] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
     )
     ats_score_at_submission: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     job_description_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -480,8 +504,8 @@ class ApplicationSubmission(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    resume_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True)
-    job_tracker_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("job_applications.id", ondelete="SET NULL"), nullable=True)
+    resume_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True)
+    job_tracker_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("job_applications.id", ondelete="SET NULL"), nullable=True, index=True)
     platform: Mapped[str] = mapped_column(Text, nullable=False)           # 'greenhouse' | 'lever' | 'manual'
     platform_job_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     application_url: Mapped[str] = mapped_column(Text, nullable=False)
@@ -558,6 +582,7 @@ class ResumeCollaborator(Base):
         UUID(as_uuid=False),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     # 'editor' | 'commenter' | 'viewer'
     role: Mapped[str] = mapped_column(String(20), nullable=False, server_default="editor")
@@ -565,6 +590,7 @@ class ResumeCollaborator(Base):
         UUID(as_uuid=False),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     joined_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
@@ -697,7 +723,7 @@ class RecruiterNote(Base):
         UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     author_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -725,7 +751,7 @@ class ResumeComment(Base):
         UUID(as_uuid=False), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
     )
     author_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     line_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -763,7 +789,7 @@ class CareerTransition(Base):
     __tablename__ = "career_transitions"
 
     from_role_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("career_roles.id", ondelete="CASCADE"), nullable=False)
-    to_role_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("career_roles.id", ondelete="CASCADE"), nullable=False)
+    to_role_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("career_roles.id", ondelete="CASCADE"), nullable=False, index=True)
     avg_years: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     difficulty: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # easy|moderate|hard
 
@@ -777,7 +803,7 @@ class CareerAnalysis(Base):
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     resume_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False, index=True)
-    target_role_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("career_roles.id", ondelete="SET NULL"), nullable=True)
+    target_role_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey("career_roles.id", ondelete="SET NULL"), nullable=True, index=True)
     target_role_freetext: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     current_skills: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
     gap_skills: Mapped[List[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
@@ -797,7 +823,7 @@ class Snippet(Base):
     __tablename__ = 'snippets'
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, server_default=text('gen_random_uuid()'))
-    author_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    author_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
@@ -842,7 +868,7 @@ class UserMacro(Base):
     __tablename__ = 'user_macros'
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, server_default=text('gen_random_uuid()'))
-    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     shortcut: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

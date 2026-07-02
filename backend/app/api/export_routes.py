@@ -128,10 +128,19 @@ async def export_canva(
         raise HTTPException(status_code=403, detail="Access denied")
     if not (resume.latex_content or "").strip():
         raise HTTPException(status_code=400, detail="Resume has no content to export")
+    if len(resume.latex_content.encode("utf-8")) > MAX_EXPORT_CONTENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Content too large (max {MAX_EXPORT_CONTENT_BYTES // 1024} KB)",
+        )
 
-    data = document_export_service.to_canva(resume.latex_content)
-    elements = [CanvaElement(**e) for e in data["elements"]]
-    return CanvaResumeExport(elements=elements)
+    try:
+        data = document_export_service.to_canva(resume.latex_content)
+        elements = [CanvaElement(**e) for e in data["elements"]]
+        return CanvaResumeExport(elements=elements)
+    except Exception as exc:
+        logger.error(f"Error exporting resume {resume_id} to Canva: {exc}")
+        raise HTTPException(status_code=500, detail="Export failed")
 
 
 @router.get("/{resume_id}/figma", response_model=FigmaResumeExport)
@@ -152,16 +161,25 @@ async def export_figma(
         raise HTTPException(status_code=403, detail="Access denied")
     if not (resume.latex_content or "").strip():
         raise HTTPException(status_code=400, detail="Resume has no content to export")
-
-    data = document_export_service.to_figma(resume.latex_content)
-    sections = [
-        FigmaSection(
-            title=s["title"],
-            entries=[FigmaEntry(**e) for e in s["entries"]],
+    if len(resume.latex_content.encode("utf-8")) > MAX_EXPORT_CONTENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Content too large (max {MAX_EXPORT_CONTENT_BYTES // 1024} KB)",
         )
-        for s in data["sections"]
-    ]
-    return FigmaResumeExport(sections=sections)
+
+    try:
+        data = document_export_service.to_figma(resume.latex_content)
+        sections = [
+            FigmaSection(
+                title=s["title"],
+                entries=[FigmaEntry(**e) for e in s["entries"]],
+            )
+            for s in data["sections"]
+        ]
+        return FigmaResumeExport(sections=sections)
+    except Exception as exc:
+        logger.error(f"Error exporting resume {resume_id} to Figma: {exc}")
+        raise HTTPException(status_code=500, detail="Export failed")
 
 
 @router.get("/{resume_id}/{fmt}")

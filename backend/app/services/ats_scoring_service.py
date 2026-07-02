@@ -75,7 +75,7 @@ class ATSScoringService:
     TECH_KEYWORDS: List[str] = [
         # Languages
         "python", "javascript", "typescript", "java", "go", "rust",
-        "c\\+\\+", "c#", "ruby", "swift", "kotlin", "scala", "r",
+        "c++", "c#", "ruby", "swift", "kotlin", "scala", "r",
         # Frontend
         "react", "vue", "angular", "nextjs", "node", "html", "css",
         # Backend
@@ -224,7 +224,15 @@ class ATSScoringService:
 
     def _score_bullet_clarity(self, text: str) -> float:
         """Score clarity and impact of bullet points (text = raw latex_content)."""
-        bullet_lines = re.findall(r'\\item\s+(.+?)(?=\\item|\\end\{)', text, re.DOTALL)
+        # Split on \item for linear-time parsing; each fragment up to the next
+        # \item, \end{...}, or end-of-string is one bullet. This also captures a
+        # trailing \item not followed by \end{...} (which a lookahead would drop).
+        raw_bullets = re.split(r'\\item\b', text)[1:]  # discard preamble before first \item
+        bullet_lines: List[str] = []
+        for frag in raw_bullets:
+            # Stop the bullet at the first environment terminator, if present
+            frag = re.split(r'\\end\{', frag, maxsplit=1)[0]
+            bullet_lines.append(frag)
         if not bullet_lines:
             return 0.0
         action_verbs_lower = {v.lower() for v in self.ACTION_VERBS}
@@ -311,9 +319,17 @@ class ATSScoringService:
             text_content = self._extract_text_from_latex(latex_content)
 
             # ── Industry calibration ──────────────────────────────────────
-            # Resolve industry key: explicit > auto-detect from JD > generic
+            # Resolve industry key with precedence:
+            #   explicit profile key > `industry` arg > auto-detect from JD > generic
             industry_key: str = "generic"
-            if industry and industry in INDUSTRY_PROFILES:
+            if (
+                industry_profile_key
+                and industry_profile_key != "generic"
+                and industry_profile_key in INDUSTRY_PROFILES
+            ):
+                # Explicit, non-generic override always wins
+                industry_key = industry_profile_key
+            elif industry and industry in INDUSTRY_PROFILES:
                 industry_key = industry
             elif industry:
                 _legacy_map = {
@@ -369,23 +385,6 @@ class ATSScoringService:
                 "keywords": 0.20,
                 "readability": 0.10,
             }
-            section_weight_map = {
-                "experience": "content",   # experience → content category
-                "skills": "keywords",      # skills → keywords category
-                "education": "structure",  # education → structure category
-            }
-            profile_section_weights = profile.get("section_weights", {})
-            weights = dict(base_weights)
-            for prof_key, multiplier in profile_section_weights.items():
-                cat = section_weight_map.get(prof_key)
-                if cat and cat in weights:
-                    weights[cat] = weights[cat] * multiplier
-
-            # Re-normalise so weights still sum to 1.0
-            weight_sum = sum(weights.values())
-            if weight_sum > 0:
-                weights = {k: v / weight_sum for k, v in weights.items()}
-
             # Apply profile section_weights as multipliers on base category weights
             # Mapping: experience → content, skills → keywords, education → structure
             section_to_category = {
@@ -454,18 +453,10 @@ class ATSScoringService:
             return result
 
         except Exception as e:
-            self.logger.error(f"ATS scoring failed: {e}")
-            processing_time = asyncio.get_event_loop().time() - start_time
-            return ATSScoreResult(
-                overall_score=0.0,
-                category_scores={},
-                recommendations=[f"Error during scoring: {str(e)}"],
-                warnings=["Scoring failed - please check resume format"],
-                strengths=[],
-                detailed_analysis={"error": str(e)},
-                processing_time=processing_time,
-                timestamp=datetime.utcnow().isoformat(),
-            )
+            # Log full detail server-side, but never present an internal failure as a
+            # successful 0/100 score or leak the raw exception text to the caller.
+            self.logger.error(f"ATS scoring failed: {e}", exc_info=True)
+            raise
 
     # ------------------------------------------------------------------ #
     #  Formatting score                                                   #
@@ -749,6 +740,19 @@ class ATSScoringService:
     #  Keyword score (expanded corpus)                                   #
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _keyword_in_text(keyword: str, text: str) -> bool:
+        """
+        Case-insensitive keyword match that tolerates non-word characters.
+
+        Using ``\\b`` fails for tokens like 'c#', 'c++' or 'ci/cd' because a word
+        boundary cannot exist next to a non-word char, so those keywords could
+        never match. Alphanumeric-neighbour lookarounds match such tokens while
+        still preventing partial matches (e.g. 'java' must not match 'javascript').
+        """
+        pattern = rf'(?<![A-Za-z0-9]){re.escape(keyword)}(?![A-Za-z0-9])'
+        return re.search(pattern, text, re.IGNORECASE) is not None
+
     async def _score_keywords(
         self,
         text_content: str,
@@ -826,7 +830,7 @@ class ATSScoringService:
         if industry_key in _TECH_PROFILES:
             tech_found = [
                 kw for kw in self.TECH_KEYWORDS
-                if re.search(rf'\b{kw}\b', text_content, re.IGNORECASE)
+                if self._keyword_in_text(kw, text_content)
             ]
             if len(tech_found) >= 8:
                 strengths.append("Rich technical keyword presence")

@@ -75,6 +75,21 @@ async def _create_key(client: AsyncClient, session_token: str, name: str = "My A
     return response.json()
 
 
+class TestRateLimitFailClosed:
+    async def test_consume_rate_limit_fails_closed_on_redis_error(self):
+        """When Redis is unavailable, the limiter denies (fails closed), not open."""
+        from app.services.developer_key_service import developer_key_service
+
+        with patch(
+            "app.services.developer_key_service.get_redis_cache_client",
+            new=AsyncMock(side_effect=RuntimeError("redis down")),
+        ):
+            result = await developer_key_service.consume_rate_limit("user-1", "free")
+
+        assert result["allowed"] is False
+        assert result.get("unavailable") is True
+
+
 class TestDeveloperAPI:
     async def test_create_key_returns_full_key_once_and_stores_only_hash(
         self,

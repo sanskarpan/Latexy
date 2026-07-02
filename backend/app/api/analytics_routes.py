@@ -2,29 +2,67 @@
 Analytics API routes for tracking and retrieving usage data.
 """
 
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..middleware.auth_middleware import get_current_user_required, require_admin
+from ..middleware.auth_middleware import (
+    get_current_user_optional,
+    get_current_user_required,
+    require_admin,
+)
 from ..services.analytics_service import analytics_service
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
+# Limits for untrusted, client-supplied event metadata (SEC/DoS guard).
+_MAX_METADATA_BYTES = 4096
+_MAX_METADATA_DEPTH = 5
+
+
+def _payload_depth(obj: Any, depth: int = 1) -> int:
+    """Return the maximum nesting depth of a JSON-like structure."""
+    if isinstance(obj, dict):
+        if not obj:
+            return depth
+        return max(_payload_depth(v, depth + 1) for v in obj.values())
+    if isinstance(obj, list):
+        if not obj:
+            return depth
+        return max(_payload_depth(v, depth + 1) for v in obj)
+    return depth
+
+
 # Pydantic models for request/response
 class EventTrackingRequest(BaseModel):
     event_type: str = Field(..., description="Type of event to track")
-    user_id: Optional[UUID] = Field(None, description="User ID (if authenticated)")
     device_fingerprint: Optional[str] = Field(None, description="Device fingerprint for anonymous users")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional event metadata")
+
+    @field_validator("metadata")
+    @classmethod
+    def _validate_metadata(cls, value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Reject oversized / deeply-nested metadata to prevent storage DoS."""
+        if value is None:
+            return value
+        try:
+            serialized = json.dumps(value, default=str)
+        except (TypeError, ValueError):
+            raise ValueError("metadata must be JSON-serializable")
+        if len(serialized.encode("utf-8")) > _MAX_METADATA_BYTES:
+            raise ValueError(f"metadata exceeds maximum allowed size of {_MAX_METADATA_BYTES} bytes")
+        if _payload_depth(value) > _MAX_METADATA_DEPTH:
+            raise ValueError(f"metadata nesting exceeds maximum depth of {_MAX_METADATA_DEPTH}")
+        return value
 
 class UserAnalyticsResponse(BaseModel):
     user_id: str
@@ -96,9 +134,14 @@ class UserAnalyticsTimeseriesResponse(BaseModel):
 async def track_event(
     request: EventTrackingRequest,
     http_request: Request,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
-    """Track a user event for analytics."""
+    """Track a user event for analytics.
+
+    The attributed user is derived from the authenticated session; any
+    client-supplied user_id is ignored to prevent analytics spoofing.
+    """
     try:
         # Get IP address and user agent from request
         ip_address = http_request.client.host if http_request.client else None
@@ -107,7 +150,7 @@ async def track_event(
         success = await analytics_service.track_event(
             db=db,
             event_type=request.event_type,
-            user_id=request.user_id,
+            user_id=user_id,
             device_fingerprint=request.device_fingerprint,
             metadata=request.metadata,
             ip_address=ip_address,
@@ -137,10 +180,10 @@ async def get_my_analytics(
 ):
     """Get analytics data for the current authenticated user."""
     try:
-        from uuid import UUID
+        # user_id is an opaque auth id (UUID(as_uuid=False) column) — pass as-is.
         analytics_data = await analytics_service.get_user_analytics(
             db=db,
-            user_id=UUID(user_id),
+            user_id=user_id,
             days=days
         )
 
@@ -177,7 +220,7 @@ async def get_my_analytics_timeseries(
     try:
         timeseries = await analytics_service.get_user_analytics_timeseries(
             db=db,
-            user_id=UUID(user_id),
+            user_id=user_id,
             days=days
         )
 
@@ -282,32 +325,40 @@ async def get_conversion_funnel(
             detail="Internal server error"
         )
 
-@router.post("/track/compilation")
+@router.post("/track/compilation", status_code=status.HTTP_201_CREATED)
 async def track_compilation(
     compilation_id: str,
-    status: str,
-    user_id: Optional[UUID] = None,
+    compilation_status: str = Query(..., alias="status"),
     device_fingerprint: Optional[str] = None,
     compilation_time: Optional[float] = None,
     http_request: Request = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
-    """Track compilation-specific events."""
+    """Track compilation-specific events. Attribution comes from the session."""
     try:
         ip_address = http_request.client.host if http_request and http_request.client else None
 
-        await analytics_service.track_compilation_event(
+        tracked = await analytics_service.track_compilation_event(
             db=db,
             user_id=user_id,
             device_fingerprint=device_fingerprint,
             compilation_id=compilation_id,
-            status=status,
+            status=compilation_status,
             compilation_time=compilation_time,
             ip_address=ip_address
         )
 
+        if not tracked:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to track compilation event"
+            )
+
         return {"message": "Compilation event tracked successfully"}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error tracking compilation event: {e}")
         raise HTTPException(
@@ -315,21 +366,21 @@ async def track_compilation(
             detail="Internal server error"
         )
 
-@router.post("/track/optimization")
+@router.post("/track/optimization", status_code=status.HTTP_201_CREATED)
 async def track_optimization(
     optimization_id: str,
     provider: str,
     model: str,
-    user_id: Optional[UUID] = None,
     tokens_used: Optional[int] = None,
     http_request: Request = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
-    """Track optimization-specific events."""
+    """Track optimization-specific events. Attribution comes from the session."""
     try:
         ip_address = http_request.client.host if http_request and http_request.client else None
 
-        await analytics_service.track_optimization_event(
+        tracked = await analytics_service.track_optimization_event(
             db=db,
             user_id=user_id,
             optimization_id=optimization_id,
@@ -339,8 +390,16 @@ async def track_optimization(
             ip_address=ip_address
         )
 
+        if not tracked:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to track optimization event"
+            )
+
         return {"message": "Optimization event tracked successfully"}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error tracking optimization event: {e}")
         raise HTTPException(
@@ -348,20 +407,20 @@ async def track_optimization(
             detail="Internal server error"
         )
 
-@router.post("/track/page-view")
+@router.post("/track/page-view", status_code=status.HTTP_201_CREATED)
 async def track_page_view(
     page: str,
-    user_id: Optional[UUID] = None,
     device_fingerprint: Optional[str] = None,
     http_request: Request = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
-    """Track page view events."""
+    """Track page view events. Attribution comes from the session."""
     try:
         ip_address = http_request.client.host if http_request and http_request.client else None
         user_agent = http_request.headers.get("user-agent") if http_request else None
 
-        await analytics_service.track_user_journey_event(
+        tracked = await analytics_service.track_user_journey_event(
             db=db,
             event_type="page_view",
             user_id=user_id,
@@ -371,8 +430,16 @@ async def track_page_view(
             user_agent=user_agent
         )
 
+        if not tracked:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to track page view"
+            )
+
         return {"message": "Page view tracked successfully"}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error tracking page view: {e}")
         raise HTTPException(
@@ -380,20 +447,20 @@ async def track_page_view(
             detail="Internal server error"
         )
 
-@router.post("/track/feature-usage")
+@router.post("/track/feature-usage", status_code=status.HTTP_201_CREATED)
 async def track_feature_usage(
     feature: str,
-    user_id: Optional[UUID] = None,
     device_fingerprint: Optional[str] = None,
     http_request: Request = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
-    """Track feature usage events."""
+    """Track feature usage events. Attribution comes from the session."""
     try:
         ip_address = http_request.client.host if http_request and http_request.client else None
         user_agent = http_request.headers.get("user-agent") if http_request else None
 
-        await analytics_service.track_user_journey_event(
+        tracked = await analytics_service.track_user_journey_event(
             db=db,
             event_type="feature_usage",
             user_id=user_id,
@@ -403,8 +470,16 @@ async def track_feature_usage(
             user_agent=user_agent
         )
 
+        if not tracked:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to track feature usage"
+            )
+
         return {"message": "Feature usage tracked successfully"}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error tracking feature usage: {e}")
         raise HTTPException(

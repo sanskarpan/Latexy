@@ -139,6 +139,32 @@ class TestGenerateKey:
         assert len(keys) == 5
 
 
+class TestProductionKeyEnforcement:
+    """A passphrase-derived (non-Fernet) key must be rejected in prod-like envs."""
+
+    def test_non_fernet_key_rejected_in_production(self, monkeypatch):
+        from app.core.config import settings
+
+        monkeypatch.setattr(type(settings), "is_production_like", lambda self: True)
+        with pytest.raises(ValueError, match="valid Fernet key"):
+            EncryptionService(encryption_key="not-a-valid-fernet-key")
+
+    def test_valid_fernet_key_accepted_in_production(self, monkeypatch):
+        from app.core.config import settings
+
+        monkeypatch.setattr(type(settings), "is_production_like", lambda self: True)
+        key = Fernet.generate_key().decode()
+        svc = EncryptionService(encryption_key=key)
+        assert svc.decrypt(svc.encrypt("prod-secret")) == "prod-secret"
+
+    def test_non_fernet_key_allowed_in_development(self, monkeypatch):
+        from app.core.config import settings
+
+        monkeypatch.setattr(type(settings), "is_production_like", lambda self: False)
+        svc = EncryptionService(encryption_key="dev-passphrase-key")
+        assert svc.decrypt(svc.encrypt("dev-secret")) == "dev-secret"
+
+
 class TestModuleLevelHelpers:
     def test_encrypt_data_decrypt_data(self):
         plaintext = "helper-function-test"

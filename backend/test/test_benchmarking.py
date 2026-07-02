@@ -90,6 +90,20 @@ class TestBenchmarkEndpoint:
         resp = await client.get("/ats/benchmark?ats_score=75.0")
         assert resp.status_code == 401
 
+    async def test_rate_limit_exceeded_returns_429(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """When the atomic limiter reports the window is exhausted → 429."""
+        with patch(
+            "app.api.ats_routes._rate_limit_ok",
+            new=AsyncMock(return_value=False),
+        ):
+            resp = await client.get(
+                "/ats/benchmark?ats_score=70.0",
+                headers=auth_headers,
+            )
+        assert resp.status_code == 429
+
     async def test_score_at_p50_returns_approximately_50(
         self, client: AsyncClient, auth_headers: dict
     ):

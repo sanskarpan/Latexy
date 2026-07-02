@@ -64,24 +64,58 @@ def _resume_status(resume: Resume) -> DropboxResumeStatus:
     )
 
 
-async def _get_decrypted_token(user: User) -> str:
-    """Return the decrypted Dropbox access token, refreshing it if needed."""
+def _decrypt_access_token(user: User) -> str:
+    """Return the decrypted stored Dropbox access token."""
     if not user.dropbox_access_token:
         raise HTTPException(
             status_code=400,
             detail="Dropbox not connected. Go to Settings → Dropbox Integration to connect.",
         )
-    # Try the stored access token first; if the refresh token is present we
-    # proactively refresh to avoid 401s mid-request.  (Dropbox access tokens
-    # last 4 hours when issued with token_access_type=offline.)
-    if user.dropbox_refresh_token:
-        try:
-            refresh_tok = encryption_service.decrypt(user.dropbox_refresh_token)
-            new_access = await dropbox_sync_service.refresh_access_token(refresh_tok)
-            return new_access
-        except Exception as exc:
-            logger.warning(f"Dropbox token refresh failed, falling back to stored token: {exc}")
     return encryption_service.decrypt(user.dropbox_access_token)
+
+
+async def _refresh_dropbox_token(user: User, db: AsyncSession) -> str:
+    """Refresh the Dropbox access token and persist it back to the user row.
+
+    Called lazily only when the stored access token is rejected (401), so the
+    common path pays no extra round-trip and the new token is reused next time.
+    """
+    if not user.dropbox_refresh_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Dropbox session expired. Please reconnect in Settings → Dropbox Integration.",
+        )
+    try:
+        refresh_tok = encryption_service.decrypt(user.dropbox_refresh_token)
+        new_access = await dropbox_sync_service.refresh_access_token(refresh_tok)
+    except httpx.HTTPStatusError:
+        raise HTTPException(
+            status_code=401,
+            detail="Dropbox session expired. Please reconnect in Settings → Dropbox Integration.",
+        )
+    except httpx.RequestError as exc:
+        logger.error(f"Dropbox connection error during token refresh: {exc}")
+        raise HTTPException(status_code=502, detail="Dropbox is unavailable, please try again")
+
+    await db.execute(
+        update(User)
+        .where(User.id == user.id)
+        .values(dropbox_access_token=encryption_service.encrypt(new_access))
+    )
+    await db.commit()
+    return new_access
+
+
+async def _run_with_dropbox_token(user: User, db: AsyncSession, op):
+    """Run ``op(token)``; on a 401 refresh the token once and retry."""
+    token = _decrypt_access_token(user)
+    try:
+        return await op(token)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 401:
+            raise
+        token = await _refresh_dropbox_token(user, db)
+        return await op(token)
 
 
 # ── OAuth flow ────────────────────────────────────────────────────────────────
@@ -112,6 +146,13 @@ async def dropbox_connect(
     return RedirectResponse(f"https://www.dropbox.com/oauth2/authorize?{params}")
 
 
+def _dropbox_error_redirect(reason: str) -> RedirectResponse:
+    """Send the browser back to the settings page with a friendly error flag."""
+    return RedirectResponse(
+        f"{settings.FRONTEND_URL}/settings?dropbox=error&reason={urllib.parse.quote(reason)}"
+    )
+
+
 @router.get("/callback")
 async def dropbox_callback(
     code: str = Query(...),
@@ -120,56 +161,73 @@ async def dropbox_callback(
 ):
     """Exchange the authorization code for access + refresh tokens."""
     if not state:
-        raise HTTPException(status_code=400, detail="Missing state parameter")
+        return _dropbox_error_redirect("missing_state")
 
     # Validate CSRF nonce
     user_id = await cache_manager.get(f"dbx:oauth:{state}")
     if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+        return _dropbox_error_redirect("invalid_state")
     await cache_manager.delete(f"dbx:oauth:{state}")
 
     # Exchange code for tokens
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.post(
-            "https://api.dropboxapi.com/oauth2/token",
-            data={
-                "code": code,
-                "grant_type": "authorization_code",
-                "redirect_uri": settings.DROPBOX_REDIRECT_URI,
-                "client_id": settings.DROPBOX_APP_KEY,
-                "client_secret": settings.DROPBOX_APP_SECRET,
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://api.dropboxapi.com/oauth2/token",
+                data={
+                    "code": code,
+                    "grant_type": "authorization_code",
+                    "redirect_uri": settings.DROPBOX_REDIRECT_URI,
+                    "client_id": settings.DROPBOX_APP_KEY,
+                    "client_secret": settings.DROPBOX_APP_SECRET,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        logger.error(f"Dropbox token exchange failed: {exc.response.status_code}")
+        return _dropbox_error_redirect("token_exchange_failed")
+    except httpx.RequestError as exc:
+        logger.error(f"Dropbox connection error during token exchange: {exc}")
+        return _dropbox_error_redirect("dropbox_unavailable")
 
     access_token = data.get("access_token")
     refresh_token = data.get("refresh_token")
     if not access_token:
-        error = data.get("error_description", data.get("error", "Unknown error"))
-        raise HTTPException(status_code=400, detail=f"Dropbox OAuth failed: {error}")
+        error = data.get("error", "token_exchange_failed")
+        logger.error(f"Dropbox OAuth returned no access token: {error}")
+        return _dropbox_error_redirect(str(error))
 
-    # Fetch account info
+    # Fetch account info (for a human-readable display name)
+    account_id = ""
+    display_name = ""
     try:
         account = await dropbox_sync_service.get_account(access_token)
         account_id = account.get("account_id", "")
+        display_name = (account.get("name") or {}).get("display_name", "")
     except Exception as exc:
         logger.error(f"Failed to fetch Dropbox account info: {exc}")
-        account_id = ""
 
     # Encrypt tokens before storing
     encrypted_access = encryption_service.encrypt(access_token)
     encrypted_refresh = encryption_service.encrypt(refresh_token) if refresh_token else None
 
-    await db.execute(
-        update(User)
-        .where(User.id == user_id)
-        .values(
-            dropbox_access_token=encrypted_access,
-            dropbox_refresh_token=encrypted_refresh,
-            dropbox_account_id=account_id,
-        )
-    )
+    # Persist the display name in user_metadata (no dedicated column exists) so
+    # the status endpoint can show a real name instead of the opaque account id.
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        return _dropbox_error_redirect("user_not_found")
+
+    user.dropbox_access_token = encrypted_access
+    user.dropbox_refresh_token = encrypted_refresh
+    user.dropbox_account_id = account_id
+    meta = dict(user.user_metadata or {})
+    if display_name:
+        meta["dropbox_display_name"] = display_name
+    else:
+        meta.pop("dropbox_display_name", None)
+    user.user_metadata = meta
     await db.commit()
 
     logger.info(f"Dropbox connected for user {user_id} (account: {account_id})")
@@ -189,9 +247,12 @@ async def dropbox_status(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    meta = user.user_metadata or {}
     return DropboxStatusResponse(
         connected=bool(user.dropbox_access_token),
-        display_name=user.dropbox_account_id,   # we store account_id; display_name is derived at connect
+        # Prefer the human-readable display name captured at connect time; fall
+        # back to the account id for accounts connected before that was stored.
+        display_name=meta.get("dropbox_display_name") or user.dropbox_account_id,
         account_id=user.dropbox_account_id,
     )
 
@@ -202,15 +263,15 @@ async def dropbox_disconnect(
     user_id: str = Depends(get_current_user_required),
 ):
     """Clear Dropbox tokens and disable sync on all resumes."""
-    await db.execute(
-        update(User)
-        .where(User.id == user_id)
-        .values(
-            dropbox_access_token=None,
-            dropbox_refresh_token=None,
-            dropbox_account_id=None,
-        )
-    )
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user:
+        user.dropbox_access_token = None
+        user.dropbox_refresh_token = None
+        user.dropbox_account_id = None
+        meta = dict(user.user_metadata or {})
+        meta.pop("dropbox_display_name", None)
+        user.user_metadata = meta
     await db.execute(
         update(Resume)
         .where(Resume.user_id == user_id)
@@ -247,10 +308,12 @@ async def enable_dropbox_sync(
 
     # Build deterministic path — use resume ID so renames don't break sync
     folder_path = f"/Latexy/{resume.id}.tex"
-    token = await _get_decrypted_token(user)
 
     try:
-        await dropbox_sync_service.upload_file(token, folder_path, resume.latex_content)
+        await _run_with_dropbox_token(
+            user, db,
+            lambda t: dropbox_sync_service.upload_file(t, folder_path, resume.latex_content),
+        )
     except httpx.HTTPStatusError as exc:
         logger.error(f"Dropbox initial push failed: {exc}")
         raise HTTPException(
@@ -312,10 +375,11 @@ async def push_to_dropbox(
     if not resume.dropbox_sync_enabled or not resume.dropbox_folder_path:
         raise HTTPException(status_code=400, detail="Dropbox sync is not enabled for this resume")
 
-    token = await _get_decrypted_token(user)
-
     try:
-        await dropbox_sync_service.upload_file(token, resume.dropbox_folder_path, resume.latex_content)
+        await _run_with_dropbox_token(
+            user, db,
+            lambda t: dropbox_sync_service.upload_file(t, resume.dropbox_folder_path, resume.latex_content),
+        )
     except httpx.HTTPStatusError as exc:
         logger.error(f"Dropbox push failed: {exc}")
         raise HTTPException(
@@ -358,10 +422,11 @@ async def pull_from_dropbox(
     if not resume.dropbox_sync_enabled or not resume.dropbox_folder_path:
         raise HTTPException(status_code=400, detail="Dropbox sync is not enabled for this resume")
 
-    token = await _get_decrypted_token(user)
-
     try:
-        content = await dropbox_sync_service.download_file(token, resume.dropbox_folder_path)
+        content = await _run_with_dropbox_token(
+            user, db,
+            lambda t: dropbox_sync_service.download_file(t, resume.dropbox_folder_path),
+        )
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 409:
             # Dropbox returns 409 when path is not found (path_not_found error)

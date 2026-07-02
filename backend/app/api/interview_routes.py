@@ -113,16 +113,28 @@ async def generate_interview_prep(
     db.add(prep)
     await db.commit()
 
-    submit_interview_prep_generation(
-        resume_latex=resume.latex_content,
-        prep_id=prep_id,
-        job_id=job_id,
-        user_id=user_id,
-        resume_id=body.resume_id,
-        job_description=body.job_description,
-        company_name=body.company_name,
-        role_title=body.role_title,
-    )
+    # Enqueue the generation task. If the broker is unavailable the committed
+    # row would otherwise be orphaned forever with questions=[]; delete it and
+    # surface the failure to the caller.
+    try:
+        submit_interview_prep_generation(
+            resume_latex=resume.latex_content,
+            prep_id=prep_id,
+            job_id=job_id,
+            user_id=user_id,
+            resume_id=body.resume_id,
+            job_description=body.job_description,
+            company_name=body.company_name,
+            role_title=body.role_title,
+        )
+    except Exception as exc:
+        logger.error(f"Failed to enqueue interview prep {prep_id}: {exc}")
+        await db.delete(prep)
+        await db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail="Interview prep generation is temporarily unavailable. Please try again.",
+        )
 
     return GenerateInterviewPrepResponse(
         success=True,

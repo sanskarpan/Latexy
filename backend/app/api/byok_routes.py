@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.auth_middleware import get_current_user_required, require_admin
 from ..services.api_key_service import api_key_service
 from ..services.llm_provider_service import LLMRequest, multi_provider_service
 
@@ -216,8 +216,12 @@ async def get_supported_providers():
 
 
 @router.post("/validate", response_model=ValidateAPIKeyResponse)
-async def validate_api_key(request: ValidateAPIKeyRequest):
-    """Validate an API key with its provider."""
+async def validate_api_key(
+    request: ValidateAPIKeyRequest,
+    user_id: str = Depends(get_current_user_required),
+):
+    """Validate an API key with its provider. Requires auth to avoid acting as an
+    open key-checking oracle / provider relay for anonymous callers."""
     try:
         result = await api_key_service.validate_api_key(request.provider, request.api_key)
 
@@ -287,6 +291,14 @@ async def generate_with_provider(
     user_id: str = Depends(get_current_user_required)
 ):
     """Generate content using a specific provider."""
+    # This endpoint returns a single JSON body; true token streaming is not
+    # implemented here (and providers handle the flag inconsistently), so reject
+    # stream=true explicitly rather than 500-ing or silently ignoring it.
+    if request.stream:
+        raise HTTPException(
+            status_code=400,
+            detail="stream=true is not supported on this endpoint; it returns a single JSON response.",
+        )
     try:
         # Load user providers
         await api_key_service.load_user_providers(db, user_id)
@@ -331,17 +343,34 @@ async def generate_with_provider(
 
 # System Health and Monitoring
 @router.get("/system/health")
-async def get_system_health():
-    """Get health status of the multi-provider system."""
+async def get_system_health(
+    _admin_id: str = Depends(require_admin),
+):
+    """Get health status of the multi-provider system. Admin-only: exposes
+    platform-wide request volume and spend. Provider names are aggregated by
+    provider TYPE so per-user identifiers are never leaked in the response."""
     try:
         provider_health = multi_provider_service.get_provider_health()
         usage_stats = multi_provider_service.get_usage_stats()
 
+        # Aggregate by provider type ("openai_<uuid>" -> "openai") so raw
+        # user-id-bearing provider names are not exposed.
+        health_by_type: Dict[str, Dict[str, Any]] = {}
+        for name, health in provider_health.items():
+            ptype = name.split("_", 1)[0]
+            bucket = health_by_type.setdefault(
+                ptype, {"providers": 0, "requests": 0, "total_cost": 0.0, "degraded": 0}
+            )
+            bucket["providers"] += 1
+            bucket["requests"] += health.get("requests", 0)
+            bucket["total_cost"] += health.get("total_cost", 0.0)
+            if health.get("status") != "healthy":
+                bucket["degraded"] += 1
+
         return {
             "success": True,
-            "provider_health": provider_health,
+            "provider_health": health_by_type,
             "total_providers": len(multi_provider_service.providers),
-            "default_provider": multi_provider_service.default_provider,
             "total_requests": sum(stats.get("requests", 0) for stats in usage_stats.values()),
             "total_cost": sum(stats.get("cost", 0.0) for stats in usage_stats.values()),
             "timestamp": datetime.now(timezone.utc).isoformat()

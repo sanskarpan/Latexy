@@ -49,8 +49,48 @@ def _make_payload(event_type: str, subscription_id: str, event_id: str | None = 
     return json.dumps(data).encode("utf-8")
 
 
+def _make_charged_payload(
+    subscription_id: str,
+    payment_id: str,
+    amount: int,
+    currency: str = "INR",
+    method: str = "card",
+    event_id: str | None = None,
+) -> bytes:
+    """Build a subscription.charged payload with a payment entity."""
+    data: dict = {
+        "event": "subscription.charged",
+        "payload": {
+            "subscription": {"entity": {"id": subscription_id}},
+            "payment": {
+                "entity": {
+                    "id": payment_id,
+                    "amount": amount,
+                    "currency": currency,
+                    "method": method,
+                }
+            },
+        },
+    }
+    if event_id is not None:
+        data["id"] = event_id
+    return json.dumps(data).encode("utf-8")
+
+
 def _make_signature(payload: bytes, secret: str = _WEBHOOK_SECRET) -> str:
     return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def _fresh_redis():
+    """A fake redis whose SET NX reports the key as newly-set (not a duplicate)."""
+    fake_redis = AsyncMock()
+    fake_redis.set = AsyncMock(return_value=True)
+    fake_redis.delete = AsyncMock()
+    # Legacy set-based methods kept for any older assertions.
+    fake_redis.sismember = AsyncMock(return_value=False)
+    fake_redis.sadd = AsyncMock()
+    fake_redis.expire = AsyncMock()
+    return fake_redis
 
 
 async def _create_user_with_subscription(
@@ -135,10 +175,7 @@ class TestWebhookSecurity:
         sig = _make_signature(payload)
 
         # Patch settings.RAZORPAY_WEBHOOK_SECRET and Redis
-        fake_redis = AsyncMock()
-        fake_redis.sismember = AsyncMock(return_value=False)
-        fake_redis.sadd = AsyncMock()
-        fake_redis.expire = AsyncMock()
+        fake_redis = _fresh_redis()
 
         with (
             patch("app.services.payment_service.settings") as mock_settings,
@@ -197,9 +234,9 @@ class TestWebhookSecurity:
         payload = _make_payload("subscription.charged", "sub_replay", event_id=event_id)
         sig = _make_signature(payload)
 
-        # Redis reports this event_id as already processed
-        fake_redis = AsyncMock()
-        fake_redis.sismember = AsyncMock(return_value=True)  # ← already in set
+        # Redis SET NX reports the key already exists → duplicate delivery
+        fake_redis = _fresh_redis()
+        fake_redis.set = AsyncMock(return_value=None)  # ← key already present
 
         with (
             patch("app.services.payment_service.settings") as mock_settings,
@@ -228,10 +265,7 @@ class TestWebhookSecurity:
         payload = _make_payload("subscription.activated", razorpay_sub_id, event_id=event_id)
         sig = _make_signature(payload)
 
-        fake_redis = AsyncMock()
-        fake_redis.sismember = AsyncMock(return_value=False)
-        fake_redis.sadd = AsyncMock()
-        fake_redis.expire = AsyncMock()
+        fake_redis = _fresh_redis()
 
         with (
             patch("app.services.payment_service.settings") as mock_settings,
@@ -269,10 +303,7 @@ class TestWebhookSecurity:
         payload = _make_payload("subscription.cancelled", razorpay_sub_id, event_id=event_id)
         sig = _make_signature(payload)
 
-        fake_redis = AsyncMock()
-        fake_redis.sismember = AsyncMock(return_value=False)
-        fake_redis.sadd = AsyncMock()
-        fake_redis.expire = AsyncMock()
+        fake_redis = _fresh_redis()
 
         with (
             patch("app.services.payment_service.settings") as mock_settings,
@@ -328,10 +359,7 @@ class TestWebhookSecurity:
         payload = _make_payload("subscription.paused", razorpay_sub_id, event_id=event_id)
         sig = _make_signature(payload)
 
-        fake_redis = AsyncMock()
-        fake_redis.sismember = AsyncMock(return_value=False)
-        fake_redis.sadd = AsyncMock()
-        fake_redis.expire = AsyncMock()
+        fake_redis = _fresh_redis()
 
         with (
             patch("app.services.payment_service.settings") as mock_settings,
@@ -345,6 +373,109 @@ class TestWebhookSecurity:
             result = await svc_available.handle_webhook(db_session, payload, sig)
 
         assert result["success"] is True
-        fake_redis.sadd.assert_awaited_once()
-        call_args = fake_redis.sadd.call_args[0]
-        assert event_id in call_args
+        # Idempotency now uses an atomic SET key NX EX per event.
+        fake_redis.set.assert_awaited_once()
+        set_args, set_kwargs = fake_redis.set.call_args
+        assert event_id in set_args[0]
+        assert set_kwargs.get("nx") is True
+        assert set_kwargs.get("ex") == 86400
+        # Successful handling must NOT release the idempotency key.
+        fake_redis.delete.assert_not_awaited()
+
+    # ── subscription.charged records the real payment entity ─────────────────
+
+    async def test_subscription_charged_records_payment_amount(
+        self, svc_available: PaymentService, db_session: AsyncSession
+    ):
+        """charged must persist amount/id/method from payload.payment.entity."""
+        user_id, razorpay_sub_id = await _create_user_with_subscription(
+            db_session, plan="pro"
+        )
+        payment_id = f"pay_{uuid.uuid4().hex[:14]}"
+        event_id = f"evt_chg_{uuid.uuid4().hex}"
+        payload = _make_charged_payload(
+            razorpay_sub_id, payment_id, amount=29900, method="upi", event_id=event_id
+        )
+        sig = _make_signature(payload)
+        fake_redis = _fresh_redis()
+
+        with (
+            patch("app.services.payment_service.settings") as mock_settings,
+            patch(
+                "app.services.payment_service.get_redis_cache_client",
+                new=AsyncMock(return_value=fake_redis),
+            ),
+        ):
+            mock_settings.RAZORPAY_WEBHOOK_SECRET = _WEBHOOK_SECRET
+
+            result = await svc_available.handle_webhook(db_session, payload, sig)
+
+        assert result["success"] is True, result
+
+        row = (
+            await db_session.execute(
+                text(
+                    "SELECT amount, currency, razorpay_payment_id, payment_method, "
+                    "user_id FROM payments WHERE razorpay_payment_id = :pid"
+                ),
+                {"pid": payment_id},
+            )
+        ).fetchone()
+        assert row is not None, "payment row was not recorded"
+        amount, currency, rp_id, method, p_user_id = row
+        assert amount == 29900
+        assert currency == "INR"
+        assert rp_id == payment_id
+        assert method == "upi"
+        assert str(p_user_id) == user_id
+
+        # Renewal must advance the period and keep the subscription active.
+        sub_row = (
+            await db_session.execute(
+                text(
+                    "SELECT status, current_period_end FROM subscriptions "
+                    "WHERE razorpay_subscription_id = :sid"
+                ),
+                {"sid": razorpay_sub_id},
+            )
+        ).fetchone()
+        assert sub_row is not None
+        assert sub_row[0] == "active"
+        assert sub_row[1] is not None
+
+    async def test_subscription_charged_dedupes_payment_id(
+        self, svc_available: PaymentService, db_session: AsyncSession
+    ):
+        """A duplicate payment id (new event id) must not create a second row."""
+        _user_id, razorpay_sub_id = await _create_user_with_subscription(
+            db_session, plan="basic"
+        )
+        payment_id = f"pay_{uuid.uuid4().hex[:14]}"
+
+        for _ in range(2):
+            event_id = f"evt_dup_{uuid.uuid4().hex}"
+            payload = _make_charged_payload(
+                razorpay_sub_id, payment_id, amount=9900, event_id=event_id
+            )
+            sig = _make_signature(payload)
+            fake_redis = _fresh_redis()
+            with (
+                patch("app.services.payment_service.settings") as mock_settings,
+                patch(
+                    "app.services.payment_service.get_redis_cache_client",
+                    new=AsyncMock(return_value=fake_redis),
+                ),
+            ):
+                mock_settings.RAZORPAY_WEBHOOK_SECRET = _WEBHOOK_SECRET
+                result = await svc_available.handle_webhook(db_session, payload, sig)
+            assert result["success"] is True, result
+
+        count = (
+            await db_session.execute(
+                text(
+                    "SELECT COUNT(*) FROM payments WHERE razorpay_payment_id = :pid"
+                ),
+                {"pid": payment_id},
+            )
+        ).scalar_one()
+        assert count == 1

@@ -155,7 +155,13 @@ async def invite_team_member(
     )
 
     payload = _seat_to_response(seat).model_dump()
-    preview_url = invite_url if not settings.EMAIL_ENABLED else None
+    # Only ever surface the raw token URL outside production. In production the
+    # token must reach the invitee via email only, never in the API response.
+    preview_url = (
+        invite_url
+        if (not settings.EMAIL_ENABLED and not settings.is_production_like())
+        else None
+    )
     return TeamInviteResponse(
         **payload,
         invite_preview_url=preview_url,

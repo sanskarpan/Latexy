@@ -281,3 +281,101 @@ class TestWeightedAverageConsistency:
         assert abs(result.overall_score - round(expected, 1)) < 0.1, (
             f"overall_score {result.overall_score} does not match weighted avg {expected:.1f}"
         )
+
+
+# ── Bug fixes: industry override, error propagation, keyword matching ─────────
+
+@pytest.mark.asyncio
+class TestIndustryProfileKeyOverride:
+    """industry_profile_key must be honored by score_resume (was silently ignored)."""
+
+    async def test_explicit_profile_key_sets_industry_key(
+        self, service: ATSScoringService
+    ):
+        result = await service.score_resume(
+            FULL_RESUME_LATEX, industry_profile_key="finance_banking"
+        )
+        assert result.industry_key == "finance_banking"
+        assert result.industry_label is not None
+
+    async def test_explicit_profile_key_overrides_jd_detection(
+        self, service: ATSScoringService
+    ):
+        # JD would auto-detect tech, but explicit override must win
+        result = await service.score_resume(
+            FULL_RESUME_LATEX,
+            job_description=TECH_JOB_DESCRIPTION,
+            industry_profile_key="healthcare",
+        )
+        assert result.industry_key == "healthcare"
+
+    async def test_generic_profile_key_falls_back_to_jd_detection(
+        self, service: ATSScoringService
+    ):
+        # Default "generic" must NOT short-circuit JD auto-detection
+        result = await service.score_resume(
+            FULL_RESUME_LATEX,
+            job_description=TECH_JOB_DESCRIPTION,
+            industry_profile_key="generic",
+        )
+        assert result.industry_key == "tech_saas"
+
+
+@pytest.mark.asyncio
+class TestScoreResumeErrorPropagation:
+    """score_resume must raise on internal failure, not return a fake 0-score."""
+
+    async def test_scoring_failure_raises(self, service: ATSScoringService, monkeypatch):
+        def boom(*_a, **_k):
+            raise RuntimeError("simulated internal failure")
+
+        monkeypatch.setattr(service, "_extract_text_from_latex", boom)
+        with pytest.raises(RuntimeError):
+            await service.score_resume(FULL_RESUME_LATEX)
+
+
+class TestKeywordMatching:
+    """Tech keywords with non-word chars (c#, ci/cd, c++) must be matchable."""
+
+    def test_c_sharp_matches(self, service: ATSScoringService):
+        assert service._keyword_in_text("c#", "Proficient in C# and .NET")
+
+    def test_ci_cd_matches(self, service: ATSScoringService):
+        assert service._keyword_in_text("ci/cd", "Built CI/CD pipelines")
+
+    def test_cpp_matches(self, service: ATSScoringService):
+        assert service._keyword_in_text("c++", "Systems work in C++ and Rust")
+
+    def test_partial_alnum_does_not_match(self, service: ATSScoringService):
+        # 'java' must not match inside 'javascript'
+        assert not service._keyword_in_text("java", "Expert in JavaScript frameworks")
+
+    async def test_c_sharp_counted_in_tech_keywords(self, service: ATSScoringService):
+        result = await service._score_keywords("Experienced C# developer using CI/CD")
+        found = result["details"]["tech_keywords_found"]
+        assert "c#" in found
+        assert "ci/cd" in found
+
+
+class TestBulletClarityFinalBullet:
+    """_score_bullet_clarity must include a trailing \\item with no \\end{}."""
+
+    def test_final_bullet_without_end_is_scored(self, service: ATSScoringService):
+        latex = (
+            r"\begin{itemize}"
+            r"\item Managed a team of 10 engineers delivering 5 features"
+            r"\item Increased revenue by 30% through optimization initiatives"
+        )  # note: no \end{itemize}
+        # Should not raise and should score > 0 (final bullet captured)
+        score = service._score_bullet_clarity(latex)
+        assert score > 0.0
+
+    def test_all_bullets_counted(self, service: ATSScoringService):
+        latex = (
+            r"\begin{itemize}"
+            r"\item Led development of scalable microservices for 1M users"
+            r"\item Reduced costs by 40% with caching and query optimization"
+            r"\end{itemize}"
+        )
+        score = service._score_bullet_clarity(latex)
+        assert score > 0.0

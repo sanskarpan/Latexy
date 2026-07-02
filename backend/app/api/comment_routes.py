@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
 from ..database.connection import get_db
-from ..database.models import Resume, ResumeComment, User, WorkspaceMember
+from ..database.models import Resume, ResumeComment, User, WorkspaceMember, WorkspaceResume
 from ..middleware.auth_middleware import get_current_user_required
 
 logger = get_logger(__name__)
@@ -68,12 +68,34 @@ async def _check_workspace_membership(workspace_id: str, user_id: str, db: Async
         raise HTTPException(status_code=403, detail="You are not a member of this workspace")
 
 
+async def _assert_resume_in_workspace(
+    resume_id: str, workspace_id: str, db: AsyncSession
+) -> None:
+    """Raise 404 if the resume is not shared into the given workspace."""
+    result = await db.execute(
+        select(WorkspaceResume).where(
+            WorkspaceResume.workspace_id == workspace_id,
+            WorkspaceResume.resume_id == resume_id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Resume is not shared into this workspace")
+
+
+async def _assert_workspace_access(
+    resume_id: str, workspace_id: str, user_id: str, db: AsyncSession
+) -> None:
+    """Caller must be a workspace member AND the resume must be shared into that workspace."""
+    await _check_workspace_membership(workspace_id, user_id, db)
+    await _assert_resume_in_workspace(resume_id, workspace_id, db)
+
+
 async def _assert_can_comment(
     resume: Resume, workspace_id: Optional[str], user_id: str, db: AsyncSession
 ) -> None:
-    """Commenter must own the resume (personal) or be a workspace member (workspace-scoped)."""
+    """Commenter must own the resume (personal) or be a workspace member with the resume shared in."""
     if workspace_id:
-        await _check_workspace_membership(workspace_id, user_id, db)
+        await _assert_workspace_access(resume.id, workspace_id, user_id, db)
     elif resume.user_id != user_id:
         raise HTTPException(status_code=403, detail="You do not have access to this resume")
 
@@ -138,7 +160,7 @@ async def list_comments(
 
     # Access check
     if workspace_id:
-        await _check_workspace_membership(workspace_id, user_id, db)
+        await _assert_workspace_access(resume_id, workspace_id, user_id, db)
     elif resume.user_id != user_id:
         raise HTTPException(status_code=403, detail="You do not have access to this resume")
 

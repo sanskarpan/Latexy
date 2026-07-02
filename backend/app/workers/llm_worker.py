@@ -6,8 +6,6 @@ stream=True so each token is published immediately as an llm.token
 event.  Zero asyncio — all Redis I/O goes through event_publisher.
 """
 
-import json
-import re
 import time
 import uuid
 from typing import Any, Dict, Optional
@@ -18,7 +16,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
-from ..services.llm_service import llm_service
+from ..services.llm_service import llm_service, parse_delimited_optimization
 from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
 
 logger = get_logger(__name__)
@@ -155,39 +153,22 @@ def optimize_resume_task(
         if tokens_total == 0:
             tokens_total = llm_service.count_tokens(accumulated)
 
-        # ── Parse accumulated JSON FIRST ─────────────────────────────
-        # Must parse before publishing llm.complete so full_content
-        # contains the actual LaTeX (not the raw JSON wrapper string).
-        optimized_latex = latex_content  # safe fallback
-        changes_made: list[Dict] = []
-
-        try:
-            parsed = json.loads(accumulated)
-            optimized_latex = parsed.get("optimized_latex", latex_content)
-            raw_changes = parsed.get("changes", [])
-            changes_made = [
-                {
-                    "section": c.get("section", ""),
-                    "change_type": c.get("change_type", "modified"),
-                    "reason": c.get("reason", ""),
-                }
-                for c in raw_changes
-                if isinstance(c, dict)
-            ]
-        except Exception as parse_err:
-            logger.warning(f"[{job_id}] Could not parse LLM JSON: {parse_err}")
-            # Attempt regex extraction of the LaTeX block as fallback
-            match = re.search(
-                r'"optimized_latex"\s*:\s*"(.*?)"(?=\s*[,}])',
-                accumulated,
-                re.DOTALL,
-            )
-            if match:
-                optimized_latex = (
-                    match.group(1)
-                    .replace("\\n", "\n")
-                    .replace('\\"', '"')
-                )
+        # ── Parse accumulated delimiter output FIRST ─────────────────
+        # The prompt (_create_optimization_prompt) asks the model to wrap the
+        # result in <<<LATEX>>>...<<<END_LATEX>>> / <<<CHANGES>>>...<<<END_CHANGES>>>.
+        # Parse before publishing llm.complete so full_content contains the actual
+        # LaTeX (not the raw delimited wrapper string).
+        optimized_latex, raw_changes = parse_delimited_optimization(accumulated, latex_content)
+        changes_made: list[Dict] = [
+            {
+                "section": c.get("section", ""),
+                "change_type": c.get("change_type", "modified"),
+                "reason": c.get("reason", ""),
+            }
+            for c in raw_changes
+        ]
+        if optimized_latex == latex_content and "<<<LATEX>>>" not in accumulated:
+            logger.warning(f"[{job_id}] LLM output missing <<<LATEX>>> markers; returning original resume")
 
         # Publish llm.complete with parsed LaTeX (not the raw JSON string)
         publish_event(job_id, "llm.complete", {

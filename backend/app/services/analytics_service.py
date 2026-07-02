@@ -70,13 +70,13 @@ class AnalyticsService:
                 return
 
             # Daily event counter
-            today = datetime.now().strftime("%Y-%m-%d")
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             daily_key = f"{self.redis_key_prefix}daily:{today}:{event_type}"
             await redis_manager.redis_client.incr(daily_key)
             await redis_manager.redis_client.expire(daily_key, 86400 * 7)  # 7 days
 
             # Hourly event counter
-            hour = datetime.now().strftime("%Y-%m-%d:%H")
+            hour = datetime.now(timezone.utc).strftime("%Y-%m-%d:%H")
             hourly_key = f"{self.redis_key_prefix}hourly:{hour}:{event_type}"
             await redis_manager.redis_client.incr(hourly_key)
             await redis_manager.redis_client.expire(hourly_key, 86400)  # 24 hours
@@ -107,7 +107,7 @@ class AnalyticsService:
             except Exception:
                 pass  # Redis unavailable — fall through to DB
 
-            start_date = datetime.now() - timedelta(days=days)
+            start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
             # PERF-001: SQL aggregations instead of fetching all rows into Python
             # Compilation counts and timing via a single SQL query
@@ -187,8 +187,10 @@ class AnalyticsService:
             return result
 
         except Exception as e:
+            # Do NOT mask infra failures as "no data" — let the route return 500
+            # rather than a misleading empty/404 result.
             logger.error(f"Error getting user analytics: {e}")
-            return {}
+            raise
 
     async def get_user_analytics_timeseries(
         self,
@@ -414,7 +416,7 @@ class AnalyticsService:
     ) -> Dict[str, Any]:
         """Get system-wide analytics."""
         try:
-            start_date = datetime.now() - timedelta(days=days)
+            start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
             # Total users
             users_query = select(func.count(User.id))
@@ -459,11 +461,10 @@ class AnalyticsService:
             active_subs_result = await db.execute(active_subs_query)
             active_subscriptions = active_subs_result.scalar()
 
-            # Revenue (last 30 days)
-            revenue_start = datetime.now() - timedelta(days=30)
+            # Revenue over the requested period (matches period_days in the response)
             revenue_query = select(func.sum(Payment.amount)).where(
                 and_(
-                    Payment.created_at >= revenue_start,
+                    Payment.created_at >= start_date,
                     Payment.status == 'captured'
                 )
             )
@@ -491,13 +492,17 @@ class AnalyticsService:
                 "active_subscriptions": active_subscriptions,
                 "total_revenue_inr": total_revenue / 100,  # Convert from paise to rupees
                 "trial_users": trial_users,
-                "conversion_rate": (new_users / trial_users * 100) if trial_users > 0 else 0,
+                # Clamp to [0, 100]: new_users and trial_users are distinct cohorts,
+                # so the raw ratio can otherwise exceed 100%.
+                "conversion_rate": min((new_users / trial_users * 100), 100.0) if trial_users > 0 else 0,
                 "real_time_metrics": real_time_metrics
             }
 
         except Exception as e:
+            # Surface infra failures instead of returning {} (which would 500 via
+            # Pydantic validation with no diagnostic).
             logger.error(f"Error getting system analytics: {e}")
-            return {}
+            raise
 
     async def _get_real_time_metrics(self) -> Dict[str, Any]:
         """Get real-time metrics from Redis."""
@@ -505,8 +510,8 @@ class AnalyticsService:
             if not redis_manager.redis_client:
                 return {}
 
-            today = datetime.now().strftime("%Y-%m-%d")
-            hour = datetime.now().strftime("%Y-%m-%d:%H")
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            hour = datetime.now(timezone.utc).strftime("%Y-%m-%d:%H")
 
             # Get today's events
             daily_keys = [
@@ -569,7 +574,7 @@ class AnalyticsService:
             except Exception:
                 pass  # Redis unavailable — fall through to DB
 
-            start_date = datetime.now() - timedelta(days=days)
+            start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
             # PERF-002: replace Python-side JSON filter with SQL JSON path operator
             # .as_string() generates the ->> operator (text extraction, no JSON quoting)
@@ -637,8 +642,9 @@ class AnalyticsService:
             return funnel_result
 
         except Exception as e:
+            # Surface infra failures instead of returning {}.
             logger.error(f"Error getting conversion funnel: {e}")
-            return {}
+            raise
 
     async def track_compilation_event(
         self,
@@ -649,15 +655,15 @@ class AnalyticsService:
         status: str,
         compilation_time: Optional[float] = None,
         ip_address: Optional[str] = None
-    ):
-        """Track compilation-specific events."""
+    ) -> bool:
+        """Track compilation-specific events. Returns True on success."""
         metadata = {
             "compilation_id": compilation_id,
             "status": status,
             "compilation_time": compilation_time
         }
 
-        await self.track_event(
+        return await self.track_event(
             db=db,
             event_type="compile",
             user_id=user_id,
@@ -675,8 +681,8 @@ class AnalyticsService:
         model: str,
         tokens_used: Optional[int] = None,
         ip_address: Optional[str] = None
-    ):
-        """Track optimization-specific events."""
+    ) -> bool:
+        """Track optimization-specific events. Returns True on success."""
         metadata = {
             "optimization_id": optimization_id,
             "provider": provider,
@@ -684,7 +690,7 @@ class AnalyticsService:
             "tokens_used": tokens_used
         }
 
-        await self.track_event(
+        return await self.track_event(
             db=db,
             event_type="optimize",
             user_id=user_id,
@@ -702,15 +708,15 @@ class AnalyticsService:
         feature: Optional[str] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
-    ):
-        """Track user journey events (page views, feature usage, etc.)."""
+    ) -> bool:
+        """Track user journey events (page views, feature usage, etc.). Returns True on success."""
         metadata = {}
         if page:
             metadata["page"] = page
         if feature:
             metadata["feature"] = feature
 
-        await self.track_event(
+        return await self.track_event(
             db=db,
             event_type=event_type,
             user_id=user_id,

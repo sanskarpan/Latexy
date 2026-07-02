@@ -139,7 +139,7 @@ class TestSnippetCreate:
         mock_db = AsyncMock()
 
         with pytest.raises(HTTPException) as exc_info:
-            await create_snippet(body=body, db=mock_db, current_user=user)
+            await create_snippet(body=body, db=mock_db, user_id=user.id)
         assert exc_info.value.status_code == 422
 
 
@@ -262,7 +262,7 @@ class TestSnippetAuthorization:
             await delete_snippet(
                 snippet_id=snippet.id,
                 db=mock_db,
-                current_user=non_owner,
+                user_id=non_owner.id,
             )
         assert exc_info.value.status_code == 403
 
@@ -281,7 +281,7 @@ class TestSnippetAuthorization:
 
         from app.api.snippet_routes import delete_snippet
 
-        await delete_snippet(snippet_id=snippet.id, db=mock_db, current_user=owner)
+        await delete_snippet(snippet_id=snippet.id, db=mock_db, user_id=owner.id)
         mock_db.delete.assert_called_once_with(snippet)
 
 

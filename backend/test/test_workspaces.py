@@ -96,6 +96,23 @@ class TestListWorkspaces:
         ids = [w["id"] for w in resp.json()]
         assert ws["id"] not in ids
 
+    async def test_list_reports_member_and_resume_counts(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """list_workspaces must report real member/resume counts, not always 0."""
+        ws = await _create_workspace(client, auth_headers, name="Counts WS")
+        resume = await _create_resume(client, auth_headers, title="Shared")
+        share = await client.post(
+            f"/workspaces/{ws['id']}/resumes/{resume['id']}", headers=auth_headers
+        )
+        assert share.status_code == 201, share.text
+
+        resp = await client.get("/workspaces", headers=auth_headers)
+        assert resp.status_code == 200
+        entry = next(w for w in resp.json() if w["id"] == ws["id"])
+        assert entry["member_count"] == 1  # owner
+        assert entry["resume_count"] == 1
+
 
 # ── access control ────────────────────────────────────────────────────────────
 
@@ -221,6 +238,17 @@ class TestMemberManagement:
             f"/workspaces/{ws['id']}/members/invite",
             headers=auth_headers,
             json={"email": "someone@example.com", "role": "superadmin"},
+        )
+        assert resp.status_code == 422
+
+    async def test_invite_malformed_email_returns_422(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        ws = await _create_workspace(client, auth_headers)
+        resp = await client.post(
+            f"/workspaces/{ws['id']}/members/invite",
+            headers=auth_headers,
+            json={"email": "not-an-email", "role": "editor"},
         )
         assert resp.status_code == 422
 

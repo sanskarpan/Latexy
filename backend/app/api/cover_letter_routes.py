@@ -17,8 +17,9 @@ from sqlalchemy.orm import joinedload
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client
 from ..database.connection import get_db
-from ..database.models import CoverLetter, Resume
+from ..database.models import CoverLetter, Resume, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..services.api_key_service import api_key_service
 from ..workers.cover_letter_worker import submit_cover_letter_generation
 
 logger = get_logger(__name__)
@@ -284,24 +285,50 @@ async def generate_cover_letter(
     db.add(cl)
     await db.commit()
 
-    # Write initial Redis state for WebSocket streaming
-    await _write_initial_redis_state(
-        job_id, "cover_letter_generation", user_id, estimated_seconds=60
+    # Resolve the user's subscription plan (for queue priority) and BYOK key
+    # (so paid conversions spend the user's key, not the platform key).
+    user_plan = "free"
+    plan_result = await db.execute(
+        select(User.subscription_plan).where(User.id == user_id)
     )
+    stored_plan = plan_result.scalar_one_or_none()
+    if isinstance(stored_plan, str) and stored_plan:
+        user_plan = stored_plan
 
-    # Submit Celery task
-    submit_cover_letter_generation(
-        resume_latex=resume.latex_content,
-        job_description=request.job_description,
-        job_id=job_id,
-        user_id=user_id,
-        cover_letter_id=cover_letter_id,
-        company_name=request.company_name,
-        role_title=request.role_title,
-        tone=request.tone,
-        length_preference=request.length_preference,
-        user_plan="free",
-    )
+    user_api_key = None
+    try:
+        user_api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+    except Exception:
+        user_api_key = None
+
+    # Write initial Redis state for WebSocket streaming, then enqueue the task.
+    # If either step fails, roll back the CoverLetter row so we don't leave an
+    # orphaned, permanently-empty "generating" record behind.
+    try:
+        await _write_initial_redis_state(
+            job_id, "cover_letter_generation", user_id, estimated_seconds=60
+        )
+        submit_cover_letter_generation(
+            resume_latex=resume.latex_content,
+            job_description=request.job_description,
+            job_id=job_id,
+            user_id=user_id,
+            cover_letter_id=cover_letter_id,
+            company_name=request.company_name,
+            role_title=request.role_title,
+            tone=request.tone,
+            length_preference=request.length_preference,
+            user_api_key=user_api_key,
+            user_plan=user_plan,
+        )
+    except Exception as exc:
+        logger.error(f"Failed to submit cover letter job {job_id}: {exc}")
+        await db.delete(cl)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to start cover letter generation. Please try again.",
+        )
 
     return GenerateCoverLetterResponse(
         success=True,

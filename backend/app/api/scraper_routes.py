@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
-from ..core.redis import cache_manager
+from ..core.redis import get_redis_cache_client
 from ..database.connection import get_db
 from ..middleware.auth_middleware import get_current_user_optional
 from ..services.job_scraper_service import job_scraper_service
@@ -45,17 +45,42 @@ class ScrapeJobResponse(BaseModel):
     error: Optional[str] = None
 
 
+_RATE_LIMIT = 10
+_RATE_WINDOW = 60
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP.
+
+    Behind a reverse proxy ``request.client.host`` is the proxy address, which
+    would collapse every user into one bucket, so prefer the first hop of the
+    ``X-Forwarded-For`` chain (the original client) when present.
+    """
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        first = xff.split(",")[0].strip()
+        if first:
+            return first
+    return (request.client.host if request.client else None) or "unknown"
+
+
 async def _check_rate_limit(request: Request) -> None:
-    """10 scrape requests per IP per minute (Redis counter)."""
-    ip = (request.client.host if request.client else None) or "unknown"
-    key = f"ratelimit:scrape:{ip}"
-    count = await cache_manager.get(key)
-    if count is None:
-        await cache_manager.set(key, 1, ttl=60)
-    elif int(count) >= 10:
+    """10 scrape requests per IP per minute via an atomic Redis INCR counter."""
+    ip = _client_ip(request)
+    key = f"cache:ratelimit:scrape:{ip}"
+    try:
+        client = await get_redis_cache_client()
+        # INCR is atomic, so concurrent requests can't race past the limit.
+        count = await client.incr(key)
+        if count == 1:
+            await client.expire(key, _RATE_WINDOW)
+    except Exception as exc:
+        # Fail open on a cache outage rather than 500ing every scrape request.
+        logger.warning(f"Scrape rate-limit check skipped (cache error): {exc}")
+        return
+
+    if count > _RATE_LIMIT:
         raise HTTPException(status_code=429, detail="Rate limit exceeded: 10 scrapes per minute")
-    else:
-        await cache_manager.set(key, int(count) + 1, ttl=60)
 
 
 @router.post("/scrape-job-description", response_model=ScrapeJobResponse)

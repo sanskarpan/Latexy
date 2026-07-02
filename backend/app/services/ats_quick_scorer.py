@@ -52,15 +52,6 @@ ACTION_VERBS = {
     "modernized", "scaled", "expanded", "drove", "pioneered",
 }
 
-STOPWORDS = {
-    "the", "and", "for", "are", "but", "not", "you", "all", "can", "had",
-    "her", "was", "one", "our", "out", "get", "has", "him", "his", "how",
-    "its", "may", "new", "now", "old", "see", "two", "who", "did", "she",
-    "use", "way", "many", "will", "with", "that", "this", "from", "have",
-    "they", "been", "work", "your", "more", "also", "able", "each",
-    "what", "when", "which", "where", "there", "their", "about", "would",
-}
-
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 _PHONE_RE = re.compile(r"[\+\(]?[1-9][0-9 .\-\(\)]{8,}[0-9]")
 _QUANT_RE = re.compile(r"\d+\s*%|\$\s*[\d,.]+|\d+\s*(?:million|thousand|k\b)", re.IGNORECASE)
@@ -178,21 +169,17 @@ def _score_quality(plain_text: str) -> int:
 def _score_keywords(plain_text: str, job_description: Optional[str]) -> tuple[int, Optional[float]]:
     """
     KEYWORD SCORE — 30 pts max.
-    If JD provided: tokenize, remove stopwords, match top 30 JD keywords.
+    If JD provided: extract keywords via the shared full-score extractor (same
+    implementation and stopword list as ATSScoringService) so the instant
+    quick-score and the async full score agree on which keywords matter.
     If no JD: award 15 pts baseline.
     """
     if not job_description:
         return 15, None
 
-    # Tokenize JD
-    jd_words = re.findall(r"[a-zA-Z]{3,}", job_description.lower())
-    jd_words = [w for w in jd_words if w not in STOPWORDS]
-
-    # Frequency count → top 30
-    freq: Dict[str, int] = {}
-    for w in jd_words:
-        freq[w] = freq.get(w, 0) + 1
-    top_keywords = sorted(freq, key=freq.get, reverse=True)[:30]  # type: ignore[arg-type]
+    # Reuse the canonical keyword extractor so both ATS surfaces stay consistent.
+    from .ats_scoring_service import ats_scoring_service
+    top_keywords = ats_scoring_service._extract_keywords_from_job_description(job_description)
 
     if not top_keywords:
         return 15, None

@@ -11,6 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import Compilation, Optimization, Resume, UsageAnalytics, User
 
 
+@pytest.fixture(autouse=True)
+def _enable_legacy_jwt(monkeypatch):
+    """These tests authenticate via legacy JWT, which is now opt-in (off by default)."""
+    import app.middleware.auth_middleware as am
+    monkeypatch.setattr(am.settings, "LEGACY_JWT_ENABLED", True, raising=False)
+
+
 def make_jwt(user_id: str, is_admin: bool = False) -> str:
     payload = {
         'sub': user_id,
