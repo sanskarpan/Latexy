@@ -17,6 +17,19 @@ import {
 
 type BillingPeriod = 'monthly' | 'annual'
 
+/**
+ * Navigate a pre-opened tab to `url`. The tab must be opened synchronously
+ * within the click gesture (see callers) to avoid popup blocking. Falls back
+ * to a fresh window.open when the pre-opened tab is unavailable.
+ */
+function openInTab(tab: Window | null, url: string): void {
+  if (tab) {
+    tab.location.href = url
+  } else {
+    window.open(url, '_blank')
+  }
+}
+
 interface PricingPlan {
   id: string
   name: string
@@ -187,6 +200,10 @@ function BillingPageContent() {
     }
 
     setActivePlan(planId)
+    // Open the target tab synchronously within the click gesture; navigating it
+    // after the await avoids the browser popup blocker that fires when
+    // window.open is called outside a user gesture.
+    const checkoutTab = window.open('', '_blank')
     const result = await apiClient.createSubscription(
       planId,
       sessionUser.email,
@@ -199,12 +216,13 @@ function BillingPageContent() {
     setActivePlan(null)
 
     if (!result.success || !result.data) {
+      checkoutTab?.close()
       toast.error(result.error || 'Failed to create subscription')
       return
     }
 
     if (result.data.shortUrl) {
-      window.open(result.data.shortUrl, '_blank')
+      openInTab(checkoutTab, result.data.shortUrl)
       toast.success('Payment link opened in a new tab.')
       return
     }
@@ -212,17 +230,22 @@ function BillingPageContent() {
     if (result.data.verificationRequired) {
       toast.success(result.data.message || 'Verification email sent')
       if (result.data.verificationPreviewUrl) {
-        window.open(result.data.verificationPreviewUrl, '_blank')
+        openInTab(checkoutTab, result.data.verificationPreviewUrl)
+      } else {
+        checkoutTab?.close()
       }
       return
     }
 
+    checkoutTab?.close()
     toast.success(result.data.message || 'Subscription initialized successfully.')
   }
 
   const handleStudentCheckout = async () => {
     if (!studentCheckoutPlan || !sessionUser?.email) return
     setActivePlan(studentCheckoutPlan)
+    // Pre-open synchronously within the click gesture to avoid popup blocking.
+    const previewTab = window.open('', '_blank')
     const result = await apiClient.createSubscription(
       studentCheckoutPlan,
       sessionUser.email,
@@ -236,13 +259,16 @@ function BillingPageContent() {
     setActivePlan(null)
 
     if (!result.success || !result.data) {
+      previewTab?.close()
       toast.error(result.error || 'Failed to start student verification')
       return
     }
 
     toast.success(result.data.message || 'Verification email sent')
     if (result.data.verificationPreviewUrl) {
-      window.open(result.data.verificationPreviewUrl, '_blank')
+      openInTab(previewTab, result.data.verificationPreviewUrl)
+    } else {
+      previewTab?.close()
     }
     setStudentCheckoutPlan(null)
     setStudentEmail('')
@@ -251,15 +277,20 @@ function BillingPageContent() {
   const handleInviteSeat = async () => {
     if (!inviteEmail.trim()) return
     setTeamLoading(true)
+    // Pre-open synchronously within the click gesture to avoid popup blocking.
+    const previewTab = window.open('', '_blank')
     const result = await apiClient.inviteTeamSeat(inviteEmail.trim())
     setTeamLoading(false)
     if (!result.success || !result.data) {
+      previewTab?.close()
       toast.error(result.error || 'Failed to invite teammate')
       return
     }
     toast.success(result.data.message)
     if (result.data.invite_preview_url) {
-      window.open(result.data.invite_preview_url, '_blank')
+      openInTab(previewTab, result.data.invite_preview_url)
+    } else {
+      previewTab?.close()
     }
     setInviteEmail('')
     refreshTeamSeats()
