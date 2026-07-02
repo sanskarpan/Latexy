@@ -165,6 +165,42 @@ class TestAddComment:
         )
         assert resp.status_code == 403
 
+    async def test_member_cannot_comment_on_unshared_resume(
+        self, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
+    ):
+        """IDOR guard: a workspace member cannot attach a comment to a resume that
+        was never shared into that workspace (even though they belong to it)."""
+        ws = await _create_workspace(client, auth_headers)
+        # Resume is NOT shared into the workspace.
+        resume = await _create_resume(client, auth_headers)
+
+        _, token = await _create_member(db_session, client, auth_headers, ws["id"])
+        member_headers = {"Authorization": f"Bearer {token}"}
+
+        resp = await client.post(
+            f"/resumes/{resume['id']}/comments",
+            headers=member_headers,
+            json={"content": "Hidden comment", "workspace_id": ws["id"]},
+        )
+        assert resp.status_code == 404
+
+    async def test_member_cannot_list_comments_on_unshared_resume(
+        self, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
+    ):
+        """IDOR guard: workspace-scoped comment listing is blocked for resumes
+        not shared into that workspace."""
+        ws = await _create_workspace(client, auth_headers)
+        resume = await _create_resume(client, auth_headers)  # not shared
+
+        _, token = await _create_member(db_session, client, auth_headers, ws["id"])
+        member_headers = {"Authorization": f"Bearer {token}"}
+
+        resp = await client.get(
+            f"/resumes/{resume['id']}/comments?workspace_id={ws['id']}",
+            headers=member_headers,
+        )
+        assert resp.status_code == 404
+
 
 # ── Edit comment ──────────────────────────────────────────────────────────────
 
