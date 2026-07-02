@@ -7,18 +7,21 @@ import re
 import time
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
-from ..database.connection import get_db
-from ..middleware.auth_middleware import get_current_user_optional
+from ..services.publications_service import latex_escape
 from ..services.reference_service import reference_service
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/references", tags=["references"])
+
+# Global cap on concurrent outbound reference fetches across all requests.
+# These endpoints are effectively public, so this bounds the amplification of
+# outbound traffic to Crossref/arXiv/ORCID and protects the httpx pool.
+_OUTBOUND_FETCH_SEMAPHORE = asyncio.Semaphore(20)
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -82,10 +85,11 @@ async def _fetch_one(identifier: str) -> BibTeXEntry:
         )
 
     try:
-        if id_type == "doi":
-            result = await reference_service.fetch_doi(normalized)
-        else:
-            result = await reference_service.fetch_arxiv(normalized)
+        async with _OUTBOUND_FETCH_SEMAPHORE:
+            if id_type == "doi":
+                result = await reference_service.fetch_doi(normalized)
+            else:
+                result = await reference_service.fetch_arxiv(normalized)
 
         return BibTeXEntry(
             identifier=identifier,
@@ -121,8 +125,6 @@ async def _fetch_one(identifier: str) -> BibTeXEntry:
 @router.post("/fetch", response_model=FetchReferencesResponse)
 async def fetch_references(
     request: FetchReferencesRequest,
-    db: AsyncSession = Depends(get_db),
-    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Fetch BibTeX for a list of DOI or arXiv identifiers (max 20, concurrent)."""
     start = time.monotonic()
@@ -203,13 +205,18 @@ def _bibtex_from_orcid_work(work: dict, idx: int) -> tuple[str, str]:
     first_word = re.sub(r"[^a-zA-Z]", "", title.split()[0]).lower() if title else "work"
     cite_key = f"{first_word}{year or 'nd'}_{idx + 1}"
 
+    # Escape TeX-special characters in third-party (ORCID) metadata so the
+    # generated BibTeX cannot break compilation or inject LaTeX commands.
+    safe_title = latex_escape(title)
+    safe_journal = latex_escape(journal)
+
     lines = [f"@{bib_type}{{{cite_key},"]
-    lines.append(f"  title = {{{{{title}}}}},")
+    lines.append(f"  title = {{{{{safe_title}}}}},")
     if year:
         lines.append(f"  year = {{{year}}},")
     if journal:
         field = "journal" if bib_type == "article" else "booktitle"
-        lines.append(f"  {field} = {{{{{journal}}}}},")
+        lines.append(f"  {field} = {{{{{safe_journal}}}}},")
     if url:
         lines.append(f"  url = {{{url}}},")
     lines.append("  note = {Via ORCID},")
@@ -228,7 +235,6 @@ class FetchOrcidRequest(BaseModel):
 @router.post("/fetch-orcid", response_model=FetchReferencesResponse)
 async def fetch_orcid_publications(
     request: FetchOrcidRequest,
-    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """
     Fetch publications from a public ORCID profile.
@@ -327,15 +333,15 @@ async def detect_references(request: DetectReferencesRequest):
     detected: list[DetectIdentifierResult] = []
     seen: set[str] = set()
 
-    # DOI in URL
-    for m in re.finditer(r"https?://(?:dx\.)?doi\.org/(10\.\d{4,}/\S+)", request.text, re.I):
+    # DOI in URL — quantifiers are upper-bounded to avoid pathological backtracking.
+    for m in re.finditer(r"https?://(?:dx\.)?doi\.org/(10\.\d{4,9}/\S{1,256})", request.text, re.I):
         doi = m.group(1).rstrip(".,;)")
         if doi not in seen:
             seen.add(doi)
             detected.append(DetectIdentifierResult(raw=m.group(0), normalized=doi, type="doi"))
 
     # Bare DOI
-    for m in re.finditer(r"\b(10\.\d{4,}/\S+)", request.text):
+    for m in re.finditer(r"\b(10\.\d{4,9}/\S{1,256})", request.text):
         doi = m.group(1).rstrip(".,;)")
         if doi not in seen:
             seen.add(doi)
@@ -343,7 +349,7 @@ async def detect_references(request: DetectReferencesRequest):
 
     # arXiv in URL (new-style and old-style)
     for m in re.finditer(
-        r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,}(?:v\d+)?|[a-z][\w.-]*/\d{7}(?:v\d+)?)",
+        r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,10}(?:v\d{1,4})?|[a-z][\w.-]{0,64}/\d{7}(?:v\d{1,4})?)",
         request.text,
         re.I,
     ):
@@ -353,14 +359,14 @@ async def detect_references(request: DetectReferencesRequest):
             detected.append(DetectIdentifierResult(raw=m.group(0), normalized=arxiv_id, type="arxiv"))
 
     # Bare arXiv new-style
-    for m in re.finditer(r"\b(\d{4}\.\d{4,})(?:v\d+)?\b", request.text):
+    for m in re.finditer(r"\b(\d{4}\.\d{4,10})(?:v\d{1,4})?\b", request.text):
         arxiv_id = m.group(1)
         if arxiv_id not in seen:
             seen.add(arxiv_id)
             detected.append(DetectIdentifierResult(raw=m.group(0), normalized=arxiv_id, type="arxiv"))
 
     # Bare arXiv old-style (e.g. solv-int/9901001v2)
-    for m in re.finditer(r"\b([a-z][\w.-]*/\d{7})(?:v\d+)?\b", request.text, re.I):
+    for m in re.finditer(r"\b([a-z][\w.-]{0,64}/\d{7})(?:v\d{1,4})?\b", request.text, re.I):
         arxiv_id = m.group(1)
         if arxiv_id not in seen:
             seen.add(arxiv_id)
