@@ -1,11 +1,12 @@
 """Team workspace routes (Feature 66)."""
 
+import re
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from sqlalchemy import select
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
@@ -54,9 +55,20 @@ class WorkspaceDetailResponse(WorkspaceResponse):
     members: List[MemberResponse] = []
 
 
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
 class InviteRequest(BaseModel):
     email: str = Field(..., max_length=255)
     role: str = Field(default="editor")
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        v = v.strip()
+        if not _EMAIL_RE.match(v):
+            raise ValueError("Invalid email address")
+        return v.lower()
 
 
 class RoleUpdateRequest(BaseModel):
@@ -176,7 +188,32 @@ async def list_workspaces(
         return []
 
     ws_result = await db.execute(select(Workspace).where(Workspace.id.in_(ws_ids)))
-    return [_ws_to_response(ws) for ws in ws_result.scalars().all()]
+    workspaces = ws_result.scalars().all()
+
+    # Batch member counts keyed by workspace_id
+    mc_result = await db.execute(
+        select(WorkspaceMember.workspace_id, func.count())
+        .where(WorkspaceMember.workspace_id.in_(ws_ids))
+        .group_by(WorkspaceMember.workspace_id)
+    )
+    member_counts = {row[0]: row[1] for row in mc_result.all()}
+
+    # Batch resume counts keyed by workspace_id
+    rc_result = await db.execute(
+        select(WorkspaceResume.workspace_id, func.count())
+        .where(WorkspaceResume.workspace_id.in_(ws_ids))
+        .group_by(WorkspaceResume.workspace_id)
+    )
+    resume_counts = {row[0]: row[1] for row in rc_result.all()}
+
+    return [
+        _ws_to_response(
+            ws,
+            member_count=member_counts.get(ws.id, 0),
+            resume_count=resume_counts.get(ws.id, 0),
+        )
+        for ws in workspaces
+    ]
 
 
 @router.get("/{workspace_id}", response_model=WorkspaceDetailResponse)
@@ -207,9 +244,9 @@ async def get_workspace(
     ]
 
     wr_result = await db.execute(
-        select(WorkspaceResume).where(WorkspaceResume.workspace_id == workspace_id)
+        select(func.count()).where(WorkspaceResume.workspace_id == workspace_id)
     )
-    resume_count = len(wr_result.scalars().all())
+    resume_count = wr_result.scalar_one()
 
     return WorkspaceDetailResponse(
         id=ws.id,
@@ -267,11 +304,16 @@ async def invite_member(
     ws = await _get_workspace_or_404(workspace_id, db)
     await _require_owner(ws, user_id)
 
+    # Lock the workspace row to serialize concurrent invites (prevents TOCTOU on max_members)
+    await db.execute(
+        select(Workspace.id).where(Workspace.id == workspace_id).with_for_update()
+    )
+
     # Enforce max_members limit
     count_result = await db.execute(
-        select(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id)
+        select(func.count()).where(WorkspaceMember.workspace_id == workspace_id)
     )
-    if len(count_result.scalars().all()) >= ws.max_members:
+    if count_result.scalar_one() >= ws.max_members:
         raise HTTPException(
             status_code=422,
             detail=f"Workspace has reached the member limit ({ws.max_members})",
