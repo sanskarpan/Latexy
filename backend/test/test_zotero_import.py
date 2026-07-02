@@ -438,6 +438,22 @@ class TestZoteroImport:
         )
         assert resp.status_code == 422
 
+    async def test_collection_key_bad_chars_returns_422(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """A collection_key with path/query characters is rejected (422), not
+        interpolated into the Zotero API URL."""
+        for bad in ("ABCD/123", "abcd1234", "AB?C#123", "ABC12345X"):
+            resp = await client.post(
+                "/zotero/import",
+                json={
+                    "resume_id": "00000000-0000-0000-0000-000000000000",
+                    "collection_key": bad,
+                },
+                headers=auth_headers,
+            )
+            assert resp.status_code == 422, f"{bad!r} should be rejected"
+
 
 # ---------------------------------------------------------------------------
 # Zotero disconnect
@@ -699,6 +715,62 @@ class TestMendeleyImport:
             )
 
         assert resp.status_code == 502
+
+    async def test_mendeley_refreshes_on_401_and_retries(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        db_session: AsyncSession,
+    ):
+        """Expired access token + refresh token → refresh once, then succeed."""
+        from app.services.encryption_service import encryption_service
+
+        user = await _get_user(db_session, auth_headers)
+        user.user_metadata = {
+            "mendeley_token": encryption_service.encrypt("expired"),
+            "mendeley_refresh_token": encryption_service.encrypt("refreshtok"),
+        }
+        await db_session.commit()
+
+        resume = await _create_resume(client, auth_headers)
+
+        unauthorized = MagicMock()
+        unauthorized.status_code = 401
+        unauthorized.raise_for_status = MagicMock()
+
+        bibtex_resp = MagicMock()
+        bibtex_resp.text = SAMPLE_BIBTEX
+        bibtex_resp.status_code = 200
+        bibtex_resp.raise_for_status = MagicMock()
+        bibtex_resp.headers = {}
+
+        refresh_resp = MagicMock()
+        refresh_resp.status_code = 200
+        refresh_resp.raise_for_status = MagicMock()
+        refresh_resp.json = MagicMock(
+            return_value={"access_token": "fresh", "refresh_token": "newref"}
+        )
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_instance = AsyncMock()
+            mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
+            mock_instance.__aexit__ = AsyncMock(return_value=False)
+            # First documents call 401, then success after refresh.
+            mock_instance.get = AsyncMock(side_effect=[unauthorized, bibtex_resp])
+            mock_instance.post = AsyncMock(return_value=refresh_resp)
+            mock_client_cls.return_value = mock_instance
+
+            resp = await client.post(
+                "/mendeley/import",
+                json={"resume_id": resume["id"]},
+                headers=auth_headers,
+            )
+
+        assert resp.status_code == 200, resp.text
+        assert "@article" in resp.json()["bibtex"]
+        # The refreshed access token must be persisted.
+        await db_session.refresh(user)
+        assert encryption_service.decrypt(user.user_metadata["mendeley_token"]) == "fresh"
 
     async def test_mendeley_expired_token_without_refresh_returns_401(
         self,
