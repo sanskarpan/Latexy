@@ -2,6 +2,7 @@
 Rate limiting middleware for API endpoints.
 """
 
+import hashlib
 import time
 from typing import Optional
 
@@ -9,10 +10,33 @@ from fastapi import HTTPException, Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+from ..core.config import settings
 from ..core.logging import get_logger
 from ..core.redis import redis_manager
 
 logger = get_logger(__name__)
+
+# Throttle the fail-open "Redis unavailable" warning so a sustained Redis outage
+# does not flood the logs (one line per interval instead of one per request).
+_FAIL_OPEN_WARN_INTERVAL = 60.0
+_last_fail_open_warn = 0.0
+
+
+def _warn_fail_open(context: str) -> None:
+    """Log a rate-limited WARNING that rate limiting is failing OPEN.
+
+    Behavior is intentionally fail-OPEN (requests are allowed) so a Redis blip
+    never takes the whole API down; we just make that explicit and visible.
+    """
+    global _last_fail_open_warn
+    now = time.monotonic()
+    if now - _last_fail_open_warn >= _FAIL_OPEN_WARN_INTERVAL:
+        _last_fail_open_warn = now
+        logger.warning(
+            "Redis unavailable for %s — failing OPEN (requests allowed, not rate limited)",
+            context,
+        )
+
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Rate limiting middleware using Redis for storage."""
@@ -47,17 +71,35 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return response
 
     def get_client_id(self, request: Request) -> str:
-        """Get client identifier for rate limiting."""
-        # Try to get user ID from headers (in production, this would come from JWT)
-        user_id = request.headers.get("X-User-ID")
-        if user_id:
-            return f"user:{user_id}"
+        """Get a spoofing-resistant client identifier for rate limiting.
 
-        # Fall back to IP address
+        Keys on the caller's OWN credential (session token / bearer) when present —
+        an attacker cannot forge another user's token, unlike a plain X-User-ID
+        header (which was previously trusted and let anyone evade limits). Falls back
+        to the peer IP; X-Forwarded-For is only honoured when TRUST_PROXY_HEADERS is
+        set (i.e. we are deployed behind a trusted reverse proxy), otherwise it is
+        attacker-controlled and spoofable.
+        """
+        token: Optional[str] = None
+        auth = request.headers.get("Authorization")
+        if auth and auth.lower().startswith("bearer "):
+            token = auth[7:].strip()
+        if not token:
+            cookie_tok = (
+                request.cookies.get("better-auth.session_token")
+                or request.cookies.get("__Secure-better-auth.session_token")
+            )
+            if cookie_tok:
+                token = cookie_tok.split(".", 1)[0]
+        if token:
+            return "user:" + hashlib.sha256(token.encode()).hexdigest()[:32]
+
+        # Fall back to IP address.
         client_ip = request.client.host if request.client else "unknown"
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            client_ip = forwarded_for.split(",")[0].strip()
+        if getattr(settings, "TRUST_PROXY_HEADERS", False):
+            forwarded_for = request.headers.get("X-Forwarded-For")
+            if forwarded_for:
+                client_ip = forwarded_for.split(",")[0].strip()
 
         return f"ip:{client_ip}"
 
@@ -73,8 +115,8 @@ return n
     async def check_rate_limit(self, client_id: str, endpoint: str):
         """Check if client has exceeded rate limits using atomic Lua script."""
         if not redis_manager.redis_client:
-            # If Redis is not available, allow the request
-            logger.warning("Redis not available for rate limiting")
+            # If Redis is not available, allow the request (fail-open).
+            _warn_fail_open("rate limiting")
             return
 
         current_time = int(time.time())
@@ -178,7 +220,8 @@ class APIKeyRateLimitMiddleware(BaseHTTPMiddleware):
     async def check_operation_limit(self, client_id: str, operation: str):
         """Check operation-specific rate limits."""
         if not redis_manager.redis_client:
-            logger.warning("Redis not available for operation rate limiting")
+            # Fail-open when Redis is down (availability over strict limiting).
+            _warn_fail_open("operation rate limiting")
             return
 
         limit_config = self.byok_limits[operation]
