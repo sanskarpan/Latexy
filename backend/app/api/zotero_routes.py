@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import hmac
+import re
 import secrets
 import time
 import urllib.parse
@@ -11,7 +12,7 @@ from typing import Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +32,10 @@ _ZOTERO_REQUEST_TOKEN_URL = "https://www.zotero.org/oauth/request"
 _ZOTERO_AUTHORIZE_URL = "https://www.zotero.org/oauth/authorize"
 _ZOTERO_ACCESS_TOKEN_URL = "https://www.zotero.org/oauth/access"
 _ZOTERO_API_BASE = "https://api.zotero.org"
+
+# Import safety caps — protect the JSON column / response size from huge libraries.
+_MAX_IMPORT_BYTES = 5_000_000  # 5 MB of concatenated BibTeX
+_MAX_IMPORT_PAGES = 200        # hard guard on the pagination loop
 
 # ── OAuth 1.0a helpers ───────────────────────────────────────────────────────
 
@@ -102,6 +107,18 @@ class ZoteroStatusResponse(BaseModel):
 class ZoteroImportRequest(BaseModel):
     resume_id: str
     collection_key: Optional[str] = Field(None, max_length=20)
+
+    @field_validator("collection_key")
+    @classmethod
+    def validate_collection_key(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        # Zotero collection keys are 8-char uppercase alphanumerics. Reject
+        # anything else so the value can't alter the API path/query when
+        # interpolated into the request URL.
+        if not re.fullmatch(r"[A-Z0-9]{8}", v):
+            raise ValueError("Invalid Zotero collection key")
+        return v
 
 
 class ZoteroImportResponse(BaseModel):
@@ -181,6 +198,13 @@ async def zotero_connect(
     )
 
 
+def _zotero_error_redirect(reason: str) -> RedirectResponse:
+    """Send the browser back to the settings page with a friendly error flag."""
+    return RedirectResponse(
+        f"{settings.FRONTEND_URL}/settings?zotero=error&reason={urllib.parse.quote(reason)}"
+    )
+
+
 @router.get("/callback")
 async def zotero_callback(
     oauth_token: str = Query(...),
@@ -190,9 +214,7 @@ async def zotero_callback(
     """Step 2: Exchange verifier for access token, store on user."""
     cached = await cache_manager.get(f"zotero:reqsecret:{oauth_token}")
     if not cached:
-        raise HTTPException(
-            status_code=400, detail="Invalid or expired Zotero OAuth state"
-        )
+        return _zotero_error_redirect("invalid_state")
     await cache_manager.delete(f"zotero:reqsecret:{oauth_token}")
 
     user_id, request_token_secret = cached.split(":", 1)
@@ -219,12 +241,10 @@ async def zotero_callback(
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
             logger.error(f"Zotero access token error: {exc.response.text}")
-            raise HTTPException(
-                status_code=502, detail="Failed to exchange Zotero access token"
-            )
+            return _zotero_error_redirect("token_exchange_failed")
         except httpx.RequestError as exc:
             logger.error(f"Zotero connection error during token exchange: {exc}")
-            raise HTTPException(status_code=502, detail="Zotero is unavailable, please try again")
+            return _zotero_error_redirect("zotero_unavailable")
 
     params = dict(urllib.parse.parse_qsl(resp.text))
     access_token = params.get("oauth_token", "")
@@ -233,14 +253,14 @@ async def zotero_callback(
     zotero_username = params.get("username", "")
 
     if not access_token or not zotero_user_id:
-        raise HTTPException(status_code=502, detail="Invalid Zotero access token response")
+        return _zotero_error_redirect("invalid_token_response")
 
     # Encrypt and store in user.user_metadata
     encrypted_token = encryption_service.encrypt(access_token)
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        return _zotero_error_redirect("user_not_found")
 
     meta = dict(user.user_metadata or {})
     meta["zotero_token"] = encrypted_token
@@ -377,8 +397,11 @@ async def zotero_import(
         else f"/users/{zotero_user_id}/items"
     )
     bibtex_pages: list[str] = []
+    total_bytes = 0
+    truncated = False
     start = 0
     limit = 100
+    pages_fetched = 0
 
     async with httpx.AsyncClient(timeout=30) as client:
         while True:
@@ -408,9 +431,16 @@ async def zotero_import(
             page_text = resp.text.strip()
             if page_text:
                 bibtex_pages.append(page_text)
+                total_bytes += len(page_text.encode("utf-8"))
+                if total_bytes >= _MAX_IMPORT_BYTES:
+                    truncated = True
+                    break
+            pages_fetched += 1
             total = int(resp.headers.get("Total-Results", len(bibtex_pages) * limit))
             start += limit
-            if start >= total:
+            if start >= total or pages_fetched >= _MAX_IMPORT_PAGES:
+                if pages_fetched >= _MAX_IMPORT_PAGES and start < total:
+                    truncated = True
                 break
 
     bibtex = "\n\n".join(bibtex_pages)
@@ -423,11 +453,15 @@ async def zotero_import(
     resume.resume_settings = rm
     await db.commit()
 
+    message = f"Imported {entry_count} BibTeX entries from Zotero"
+    if truncated:
+        message += " (truncated — library exceeds the import size limit)"
+
     return ZoteroImportResponse(
         success=True,
         entries_count=entry_count,
         bibtex=bibtex,
-        message=f"Imported {entry_count} BibTeX entries from Zotero",
+        message=message,
     )
 
 
