@@ -229,7 +229,12 @@ class DocumentExportService:
         try:
             import mistune
             md_content = self.to_markdown(latex_content)
-            body = mistune.html(md_content)
+            # escape=True renders any raw HTML in the (LaTeX-derived, potentially
+            # attacker-controlled) markdown as escaped text instead of passing it
+            # through verbatim — preventing stored/reflected XSS via <script>/
+            # <img onerror> payloads. Matches the ImportError fallback's guarantee.
+            markdown = mistune.create_markdown(escape=True)
+            body = markdown(md_content)
         except ImportError:
             # Fallback: basic HTML from text — escape to prevent XSS
             import html as _html
