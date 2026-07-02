@@ -93,11 +93,11 @@ class RedisManager:
 
         try:
             if redis_client:
-                await redis_client.close()
+                await redis_client.aclose()
                 redis_client = None
 
             if redis_cache_client:
-                await redis_cache_client.close()
+                await redis_cache_client.aclose()
                 redis_cache_client = None
 
             if sync_redis_client:
@@ -383,6 +383,12 @@ class CacheManager:
         return await redis_cache_client.exists(cache_key) > 0
 
 
+# Cached fallback sync client used before redis_manager.init_redis() has run
+# (e.g. early Celery task execution). Reused across calls so we do not create a
+# brand-new connection pool on every pre-init invocation.
+_fallback_sync_redis_client: Optional[redis.Redis] = None
+
+
 # Global instances
 redis_manager = RedisManager()
 job_status_manager = JobStatusManager()
@@ -406,15 +412,20 @@ async def get_redis_cache_client() -> aioredis.Redis:
 
 def get_sync_redis_client() -> redis.Redis:
     """Get sync Redis client for Celery."""
-    if not sync_redis_client:
-        # For sync client, we need to initialize synchronously
-        import redis as sync_redis
-        client = sync_redis.from_url(
+    global _fallback_sync_redis_client
+
+    # Prefer the fully-initialized client once init_redis() has run.
+    if sync_redis_client:
+        return sync_redis_client
+
+    # Pre-init fallback: build the client (and its connection pool) once and
+    # reuse it, rather than creating a new pool on every call.
+    if _fallback_sync_redis_client is None:
+        _fallback_sync_redis_client = redis.from_url(
             settings.REDIS_URL,
             password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
             max_connections=settings.REDIS_MAX_CONNECTIONS,
             decode_responses=True,
-            retry_on_timeout=True
+            retry_on_timeout=True,
         )
-        return client
-    return sync_redis_client
+    return _fallback_sync_redis_client
