@@ -10,7 +10,8 @@ no-op and current_trace_context() returns an empty dict.
 from __future__ import annotations
 
 import logging
-from typing import Dict
+from contextlib import contextmanager
+from typing import Any, Dict
 
 try:
     from opentelemetry import trace
@@ -36,6 +37,7 @@ _provider_initialized = False
 _fastapi_instrumented = False
 _celery_instrumented = False
 _redis_instrumented = False
+_httpx_instrumented = False
 _sqlalchemy_instrumented_engines: set[int] = set()
 
 
@@ -96,6 +98,18 @@ def setup_telemetry(component: str) -> None:
         RedisInstrumentor().instrument()
         _redis_instrumented = True
 
+    # Outbound HTTP (LLM providers, scraper, embeddings) — optional package, so
+    # guard independently: a missing instrumentor must not disable all tracing.
+    global _httpx_instrumented
+    if not _httpx_instrumented:
+        try:
+            from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
+            HTTPXClientInstrumentor().instrument()
+            _httpx_instrumented = True
+        except Exception as exc:  # pragma: no cover - optional dep
+            logger.debug("httpx instrumentation unavailable: %s", exc)
+
     _provider_initialized = True
     logger.info(
         "telemetry_initialized",
@@ -148,3 +162,63 @@ def current_trace_context() -> dict[str, str]:
         "trace_id": format_trace_id(context.trace_id),
         "span_id": format_span_id(context.span_id),
     }
+
+
+@contextmanager
+def traced(name: str, **attributes: Any):
+    """Context manager creating a custom span (no-op when OTEL is disabled).
+
+    Usage:
+        with traced("llm.optimize", model="gpt-4o-mini"):
+            ...
+    """
+    if not HAS_OTEL or not settings.OTEL_ENABLED:
+        yield None
+        return
+    tracer = trace.get_tracer("latexy")
+    with tracer.start_as_current_span(name) as span:
+        for key, value in attributes.items():
+            if value is not None:
+                try:
+                    span.set_attribute(key, value)
+                except Exception:  # pragma: no cover - defensive
+                    pass
+        yield span
+
+
+def set_span_attributes(**attributes: Any) -> None:
+    """Attach attributes to the current span (no-op when OTEL is disabled)."""
+    if not HAS_OTEL or not settings.OTEL_ENABLED:
+        return
+    span = trace.get_current_span()
+    for key, value in attributes.items():
+        if value is not None:
+            try:
+                span.set_attribute(key, value)
+            except Exception:  # pragma: no cover - defensive
+                pass
+
+
+def inject_trace_context(carrier: dict) -> dict:
+    """Inject the current trace context into a carrier dict (for Modal .spawn payloads)."""
+    if not HAS_OTEL or not settings.OTEL_ENABLED:
+        return carrier
+    try:
+        from opentelemetry.propagate import inject
+
+        inject(carrier)
+    except Exception:  # pragma: no cover - defensive
+        pass
+    return carrier
+
+
+def extract_trace_context(carrier: dict):
+    """Extract a trace context from a carrier dict (for Modal worker entrypoints)."""
+    if not HAS_OTEL or not settings.OTEL_ENABLED:
+        return None
+    try:
+        from opentelemetry.propagate import extract
+
+        return extract(carrier or {})
+    except Exception:  # pragma: no cover - defensive
+        return None
