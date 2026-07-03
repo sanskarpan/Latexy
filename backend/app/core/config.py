@@ -193,6 +193,13 @@ class Settings(BaseSettings):
         default=False,
         description="Trust X-Forwarded-For for client IP (enable ONLY behind a trusted reverse proxy)",
     )
+    # Request limits / performance
+    MAX_REQUEST_BODY_BYTES: int = Field(default=12 * 1024 * 1024, description="Global request body size ceiling (413 above this)")
+    REQUEST_TIMEOUT_SECONDS: float = Field(default=120.0, description="Per-request wall-clock timeout (504 above this)")
+    GZIP_MIN_SIZE: int = Field(default=1000, description="Minimum response size in bytes before gzip compression kicks in")
+    DB_POOL_SIZE: int = Field(default=10, description="SQLAlchemy async pool size")
+    DB_MAX_OVERFLOW: int = Field(default=20, description="SQLAlchemy async pool max overflow")
+    DB_POOL_TIMEOUT: int = Field(default=30, description="Seconds to wait for a pooled DB connection before erroring")
 
     # Razorpay Configuration
     RAZORPAY_KEY_ID: str = Field(default="", description="Razorpay API Key ID")
