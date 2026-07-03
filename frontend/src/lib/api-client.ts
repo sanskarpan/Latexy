@@ -975,7 +975,20 @@ class ApiClient {
   }
 
   async getJobResult(jobId: string): Promise<JobResultResponse> {
-    return this.request<JobResultResponse>(`/jobs/${encodeURIComponent(jobId)}/result`)
+    // Backend shape is { success, job_id, result: {...}, error }. Unwrap `result`
+    // into the flat JobResultResponse the rest of the app expects.
+    const raw = await this.request<{
+      success: boolean
+      job_id: string
+      result?: Record<string, unknown>
+      error?: string
+    }>(`/jobs/${encodeURIComponent(jobId)}/result`)
+    return {
+      success: raw.success,
+      job_id: raw.job_id,
+      error: raw.error,
+      ...(raw.result || {}),
+    } as JobResultResponse
   }
 
   async listJobs(): Promise<{ jobs: JobStateResponse[] }> {
