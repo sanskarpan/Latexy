@@ -138,7 +138,7 @@ export default function TryPage() {
     if (!resolvedSession && !effectiveCanRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
     setIsSubmitting(true)
     try {
-      if (!resolvedSession) await apiClient.trackUsage(trialStatus.fingerprint, mode)
+      // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
       const response =
         mode === 'compile'
           ? await apiClient.compileLatex({ latex_content: currentContent, device_fingerprint: trialStatus.fingerprint })
@@ -184,7 +184,7 @@ export default function TryPage() {
     if (!resolvedSession && !effectiveCanRun) return
     setIsSubmitting(true)
     try {
-      if (!resolvedSession) await apiClient.trackUsage(trialStatus.fingerprint, 'compile')
+      // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
       const response = await apiClient.compileLatex({ latex_content: content, device_fingerprint: trialStatus.fingerprint })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
       setActiveJobId(response.job_id)
@@ -255,7 +255,7 @@ export default function TryPage() {
     if (!resolvedSession && !effectiveCanRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
     setIsSubmitting(true)
     try {
-      if (!resolvedSession) await apiClient.trackUsage(trialStatus.fingerprint, 'combined')
+      // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
       const response = await apiClient.optimizeAndCompile({
         latex_content: currentContent,
         job_description: jobDescription,
