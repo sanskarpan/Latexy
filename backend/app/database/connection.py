@@ -42,6 +42,9 @@ async def init_db():
         echo=settings.SQL_ECHO,
         pool_pre_ping=True,
         pool_recycle=300,
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_timeout=settings.DB_POOL_TIMEOUT,
     )
     instrument_sqlalchemy(engine.sync_engine)
 
