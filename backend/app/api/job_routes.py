@@ -18,12 +18,13 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import resolve_plan_family, settings
 from ..core.logging import get_logger
+from ..core.observability import record_job_submitted
 from ..core.redis import get_redis_client, redis_manager
 from ..database.connection import get_db
 from ..database.models import Compilation, Resume, User
@@ -451,6 +452,8 @@ async def submit_job(
             except Exception as e:
                 logger.warning(f"Failed to create compilation record: {e}")
                 await db.rollback()
+
+        record_job_submitted(request.job_type, authenticated=user_id is not None)
 
         return JobSubmissionResponse(
             success=True,
@@ -946,7 +949,7 @@ async def cancel_job(
 @router.get("/", response_model=JobListResponse)
 async def list_jobs(
     user_id: Optional[str] = Depends(get_current_user_optional),
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200),
 ):
     """
     List recent jobs for the authenticated user (reads from user ZSET).
