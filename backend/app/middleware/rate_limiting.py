@@ -22,6 +22,35 @@ _FAIL_OPEN_WARN_INTERVAL = 60.0
 _last_fail_open_warn = 0.0
 
 
+def _spoof_resistant_client_id(request: Request) -> str:
+    """Shared, spoofing-resistant client identifier used by all rate limiters.
+
+    Keys on the caller's own credential (session token / bearer) when present —
+    unforgeable, unlike a plain X-User-ID header. Falls back to the peer IP;
+    X-Forwarded-For is only honoured behind a trusted proxy (TRUST_PROXY_HEADERS).
+    """
+    token: Optional[str] = None
+    auth = request.headers.get("Authorization")
+    if auth and auth.lower().startswith("bearer "):
+        token = auth[7:].strip()
+    if not token:
+        cookie_tok = (
+            request.cookies.get("better-auth.session_token")
+            or request.cookies.get("__Secure-better-auth.session_token")
+        )
+        if cookie_tok:
+            token = cookie_tok.split(".", 1)[0]
+    if token:
+        return "user:" + hashlib.sha256(token.encode()).hexdigest()[:32]
+
+    client_ip = request.client.host if request.client else "unknown"
+    if getattr(settings, "TRUST_PROXY_HEADERS", False):
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+    return f"ip:{client_ip}"
+
+
 def _warn_fail_open(context: str) -> None:
     """Log a rate-limited WARNING that rate limiting is failing OPEN.
 
@@ -71,37 +100,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return response
 
     def get_client_id(self, request: Request) -> str:
-        """Get a spoofing-resistant client identifier for rate limiting.
-
-        Keys on the caller's OWN credential (session token / bearer) when present —
-        an attacker cannot forge another user's token, unlike a plain X-User-ID
-        header (which was previously trusted and let anyone evade limits). Falls back
-        to the peer IP; X-Forwarded-For is only honoured when TRUST_PROXY_HEADERS is
-        set (i.e. we are deployed behind a trusted reverse proxy), otherwise it is
-        attacker-controlled and spoofable.
-        """
-        token: Optional[str] = None
-        auth = request.headers.get("Authorization")
-        if auth and auth.lower().startswith("bearer "):
-            token = auth[7:].strip()
-        if not token:
-            cookie_tok = (
-                request.cookies.get("better-auth.session_token")
-                or request.cookies.get("__Secure-better-auth.session_token")
-            )
-            if cookie_tok:
-                token = cookie_tok.split(".", 1)[0]
-        if token:
-            return "user:" + hashlib.sha256(token.encode()).hexdigest()[:32]
-
-        # Fall back to IP address.
-        client_ip = request.client.host if request.client else "unknown"
-        if getattr(settings, "TRUST_PROXY_HEADERS", False):
-            forwarded_for = request.headers.get("X-Forwarded-For")
-            if forwarded_for:
-                client_ip = forwarded_for.split(",")[0].strip()
-
-        return f"ip:{client_ip}"
+        """Get a spoofing-resistant client identifier for rate limiting."""
+        return _spoof_resistant_client_id(request)
 
     # Lua script: atomic INCR + EXPIRE for new keys (prevents GET-then-INCR race)
     _LUA_INCR_EXPIRE = """
@@ -205,17 +205,8 @@ class APIKeyRateLimitMiddleware(BaseHTTPMiddleware):
         return None
 
     def get_client_id(self, request: Request) -> str:
-        """Get client identifier for rate limiting."""
-        user_id = request.headers.get("X-User-ID")
-        if user_id:
-            return f"user:{user_id}"
-
-        client_ip = request.client.host if request.client else "unknown"
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            client_ip = forwarded_for.split(",")[0].strip()
-
-        return f"ip:{client_ip}"
+        """Get a spoofing-resistant client identifier (shared with the main limiter)."""
+        return _spoof_resistant_client_id(request)
 
     async def check_operation_limit(self, client_id: str, operation: str):
         """Check operation-specific rate limits."""

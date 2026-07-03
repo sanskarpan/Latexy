@@ -121,8 +121,8 @@ class TrialService:
             trial = result.scalar_one_or_none()
 
             if trial:
-                # Check cooldown period
-                if trial.last_used:
+                # Check cooldown period (never on the first use — see check_and_track_usage)
+                if trial.usage_count > 0 and trial.last_used:
                     time_since_last = (now - trial.last_used).total_seconds()
                     if time_since_last < COOLDOWN_PERIOD:
                         return {
@@ -233,8 +233,11 @@ class TrialService:
                     # savepoint before we check the count below.
                     await db.flush()
 
-                # Check cooldown
-                if trial.last_used:
+                # Check cooldown — but never on the first use. A freshly-created
+                # row has last_used defaulted to now (server_default), so applying
+                # cooldown when usage_count == 0 would wrongly block a device's
+                # very first trial.
+                if trial.usage_count > 0 and trial.last_used:
                     time_since_last = (now - trial.last_used).total_seconds()
                     if time_since_last < COOLDOWN_PERIOD:
                         return {
@@ -259,6 +262,14 @@ class TrialService:
                         "error": "trial_limit_exceeded",
                         "waitTime": None,
                     }
+
+                # NOTE: device-fingerprint rotation (a fresh fingerprint grants a
+                # new 3-use trial) is an inherent limitation of anonymous trials.
+                # A hard per-IP daily cap was considered but rejected: it blocks
+                # legitimate shared-IP users (offices / CGNAT / mobile) far more
+                # than it stops bounded abuse. Real enforcement is signup. Defense
+                # in depth remains: per-device 3-use limit, 5-min cooldown, and the
+                # per-IP request rate limit on the submit endpoints.
 
                 # Safe to increment
                 trial.usage_count += 1

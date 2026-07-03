@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -73,6 +74,7 @@ class TestPersonaJobSubmission:
                 json={
                     "job_type": "combined",
                     "latex_content": r"\documentclass{article}\begin{document}Hello\end{document}",
+                    "device_fingerprint": uuid.uuid4().hex,
                     "persona": "startup",
                 },
             )
@@ -90,6 +92,7 @@ class TestPersonaJobSubmission:
                 json={
                     "job_type": "combined",
                     "latex_content": r"\documentclass{article}\begin{document}Hello\end{document}",
+                    "device_fingerprint": uuid.uuid4().hex,
                     "persona": "not_a_real_persona",
                 },
             )
@@ -103,6 +106,7 @@ class TestPersonaJobSubmission:
                 json={
                     "job_type": "combined",
                     "latex_content": r"\documentclass{article}\begin{document}Hello\end{document}",
+                    "device_fingerprint": uuid.uuid4().hex,
                 },
             )
 

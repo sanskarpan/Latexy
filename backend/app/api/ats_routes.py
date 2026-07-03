@@ -169,6 +169,14 @@ async def score_resume_ats(
 ):
     """Score a resume for ATS compatibility."""
     try:
+        # Per-IP rate limit (mirrors the sibling rule-based ATS endpoints) so an
+        # anonymous caller cannot flood the ats Celery queue / CPU-bound scoring.
+        if not await _rate_limit_ok(
+            f"ratelimit:ats-rule:score:{_client_ip(http_request)}",
+            _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
+        ):
+            raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
+
         # Extract user information
         ip_address = http_request.client.host if http_request.client else None
 
@@ -269,6 +277,13 @@ async def analyze_job_description_ats(
 ):
     """Analyze job description for ATS optimization insights."""
     try:
+        # Per-IP rate limit (mirrors the sibling rule-based ATS endpoints).
+        if not await _rate_limit_ok(
+            f"ratelimit:ats-rule:analyze-jd:{_client_ip(http_request)}",
+            _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
+        ):
+            raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
+
         # Extract user information
         ip_address = http_request.client.host if http_request.client else None
 

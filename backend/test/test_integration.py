@@ -52,7 +52,7 @@ async def _submit_latex_job(client: AsyncClient) -> dict | None:
     with patch("app.workers.latex_worker.submit_latex_compilation", return_value=None):
         resp = await client.post(
             "/jobs/submit",
-            json={"job_type": "latex_compilation", "latex_content": _VALID_LATEX},
+            json={"job_type": "latex_compilation", "latex_content": _VALID_LATEX, "device_fingerprint": uuid.uuid4().hex},
         )
     if resp.status_code not in (200, 202):
         return None
@@ -424,6 +424,7 @@ class TestJobTypeRouting:
                     "job_type": "combined",
                     "latex_content": _VALID_LATEX,
                     "job_description": _JOB_DESCRIPTION,
+                    "device_fingerprint": uuid.uuid4().hex,
                 },
             )
         assert resp.status_code in (200, 202)
@@ -453,6 +454,7 @@ class TestJobTypeRouting:
                     "job_type": "combined",
                     "latex_content": _VALID_LATEX,
                     "job_description": _JOB_DESCRIPTION,
+                    "device_fingerprint": uuid.uuid4().hex,
                 },
             )
         if resp.status_code not in (200, 202):
@@ -495,6 +497,7 @@ class TestJobResultWhenAvailable:
             "tokens_used": 320,
         })
         await r.setex(f"latexy:job:{job_id}:result", 3600, result_payload)
+        await r.setex(f"latexy:job:{job_id}:meta", 3600, json.dumps({"job_id": job_id, "user_id": None}))
 
         resp = await client.get(f"/jobs/{job_id}/result")
         assert resp.status_code == 200
@@ -504,6 +507,7 @@ class TestJobResultWhenAvailable:
         r = await get_redis_client()
         result_payload = json.dumps({"success": True, "job_id": job_id})
         await r.setex(f"latexy:job:{job_id}:result", 3600, result_payload)
+        await r.setex(f"latexy:job:{job_id}:meta", 3600, json.dumps({"job_id": job_id, "user_id": None}))
 
         resp = await client.get(f"/jobs/{job_id}/result")
         assert resp.json()["success"] is True
@@ -513,6 +517,7 @@ class TestJobResultWhenAvailable:
         r = await get_redis_client()
         result_payload = json.dumps({"success": True, "job_id": job_id})
         await r.setex(f"latexy:job:{job_id}:result", 3600, result_payload)
+        await r.setex(f"latexy:job:{job_id}:meta", 3600, json.dumps({"job_id": job_id, "user_id": None}))
 
         resp = await client.get(f"/jobs/{job_id}/result")
         assert resp.json()["job_id"] == job_id
@@ -527,6 +532,7 @@ class TestJobResultWhenAvailable:
             "error": "pdflatex exited with code 1",
         })
         await r.setex(f"latexy:job:{job_id}:result", 3600, result_payload)
+        await r.setex(f"latexy:job:{job_id}:meta", 3600, json.dumps({"job_id": job_id, "user_id": None}))
 
         resp = await client.get(f"/jobs/{job_id}/result")
         assert resp.status_code == 200
@@ -611,3 +617,36 @@ class TestRedisKeyTTLs:
         r = await get_redis_client()
         ttl = await r.ttl(f"latexy:stream:{job_id}")
         assert ttl > 0
+
+
+# ---------------------------------------------------------------------------
+# Anonymous trial enforcement on /jobs/submit (bypass regression guard)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestAnonymousTrialEnforcement:
+    """Anonymous trial-eligible jobs must carry a device_fingerprint so the 3-use
+    trial cannot be bypassed by calling /jobs/submit directly."""
+
+    async def test_anon_compile_without_fingerprint_rejected(self, client: AsyncClient):
+        with patch("app.workers.latex_worker.submit_latex_compilation", return_value=None):
+            resp = await client.post(
+                "/jobs/submit",
+                json={"job_type": "latex_compilation", "latex_content": _VALID_LATEX},
+            )
+        assert resp.status_code == 400, resp.text
+        assert "device_fingerprint" in resp.text
+
+    async def test_anon_compile_with_fresh_fingerprint_accepted(self, client: AsyncClient):
+        with patch("app.workers.latex_worker.submit_latex_compilation", return_value=None):
+            resp = await client.post(
+                "/jobs/submit",
+                json={
+                    "job_type": "latex_compilation",
+                    "latex_content": _VALID_LATEX,
+                    "device_fingerprint": uuid.uuid4().hex,
+                },
+            )
+        assert resp.status_code in (200, 202), resp.text
+        assert resp.json().get("job_id")
