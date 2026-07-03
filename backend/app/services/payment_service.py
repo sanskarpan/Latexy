@@ -22,6 +22,7 @@ from ..core.config import (
     settings,
 )
 from ..core.logging import get_logger
+from ..core.observability import record_business_event
 from ..core.redis import get_redis_cache_client
 from ..database import models as db_models
 from .email_service import email_service
@@ -341,6 +342,8 @@ class PaymentService:
         )
         await db.commit()
 
+        record_business_event("subscription", "created")
+
         return {
             "success": True,
             "subscription_id": subscription["id"],
@@ -648,6 +651,7 @@ class PaymentService:
                 )
             # db.begin() context manager commits on exit
 
+            record_business_event("subscription", "activated")
             logger.info(f"Subscription activated: {subscription_id}")
             return {"success": True, "message": "Subscription activated"}
 
@@ -739,6 +743,7 @@ class PaymentService:
                     )
                 )
 
+            record_business_event("payment", "success")
             logger.info(f"Payment recorded for subscription: {subscription_id}")
             return {"success": True, "message": "Payment recorded"}
 
@@ -869,6 +874,7 @@ class PaymentService:
                     )
                 )
 
+            record_business_event("subscription", "cancelled")
             logger.info(f"Subscription cancelled: {subscription_id}")
             return {"success": True, "message": "Subscription cancelled"}
 
