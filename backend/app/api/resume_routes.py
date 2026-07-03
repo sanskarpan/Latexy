@@ -532,8 +532,8 @@ def _variant_count_subquery():
 
 @router.get("/")
 async def list_resumes(
-    page: int = 1,
-    limit: int = 20,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
     parent_id: Optional[str] = Query(None),
     archived: bool = Query(False),
     document_type: Optional[str] = Query(None),

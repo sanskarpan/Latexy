@@ -12,7 +12,12 @@ from celery.signals import task_failure, task_postrun, task_prerun, worker_proce
 
 from ..core.config import settings
 from ..core.logging import get_logger
-from ..core.observability import record_celery_task, reset_context, set_task_context
+from ..core.observability import (
+    record_celery_task,
+    reset_context,
+    set_queue_depth,
+    set_task_context,
+)
 from ..core.tracing import instrument_celery, setup_telemetry
 
 setup_telemetry("worker")
@@ -101,6 +106,13 @@ celery_app.conf.update(
             "task": "app.workers.email_worker.send_weekly_digest_to_all",
             "schedule": crontab(hour=9, minute=0, day_of_week="monday"),
         },
+        # Observability — sample pending Celery queue depths every 20s.
+        # Routed to the cleanup queue since a worker always consumes it.
+        "sample-queue-depths": {
+            "task": "app.core.celery_app.sample_queue_depths",
+            "schedule": 20.0,
+            "options": {"queue": "cleanup"},
+        },
     },
     beat_schedule_filename="celerybeat-schedule",
 
@@ -186,6 +198,59 @@ def debug_task(self):
     """Debug task for testing Celery setup."""
     logger.info(f"Request: {self.request!r}")
     return "Celery is working!"
+
+
+# ------------------------------------------------------------------ #
+#  Queue-depth sampler (observability)                                #
+# ------------------------------------------------------------------ #
+
+# Celery's Redis broker stores each queue as a Redis list keyed by the queue
+# name, so LLEN <queue> yields the number of pending (not-yet-delivered)
+# messages. These are the queues this deployment actually uses.
+_SAMPLED_QUEUES = ("latex", "llm", "combined", "ats", "cleanup", "email")
+
+_broker_redis_client = None
+
+
+def _get_broker_redis():
+    """Lazily build (and reuse) a sync Redis client pointed at the broker."""
+    global _broker_redis_client
+    if _broker_redis_client is None:
+        import redis  # local import — only needed by the sampler
+
+        _broker_redis_client = redis.from_url(
+            settings.CELERY_BROKER_URL,
+            password=settings.REDIS_PASSWORD or None,
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=10,
+            retry_on_timeout=True,
+        )
+    return _broker_redis_client
+
+
+@celery_app.task(name="app.core.celery_app.sample_queue_depths")
+def sample_queue_depths():
+    """Sample pending depth of each Celery queue and export it as a gauge.
+
+    Runs periodically via the beat schedule. Defensive: a Redis hiccup on any
+    single queue is logged and skipped rather than crashing the beat/worker.
+    """
+    sampled: dict[str, int] = {}
+    try:
+        r = _get_broker_redis()
+    except Exception as exc:  # noqa: BLE001 — never crash the scheduler
+        logger.warning(f"queue-depth sampler: broker Redis unavailable: {exc}")
+        return sampled
+
+    for queue in _SAMPLED_QUEUES:
+        try:
+            depth = int(r.llen(queue))
+            set_queue_depth(queue, depth)
+            sampled[queue] = depth
+        except Exception as exc:  # noqa: BLE001 — per-queue best effort
+            logger.warning(f"queue-depth sampler: LLEN {queue} failed: {exc}")
+    return sampled
 
 
 # ------------------------------------------------------------------ #

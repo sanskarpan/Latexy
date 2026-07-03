@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
+from ..core.observability import record_trial_use
 from ..database.models import DeviceTrial, UsageAnalytics
 
 logger = get_logger(__name__)
@@ -240,6 +241,7 @@ class TrialService:
                 if trial.usage_count > 0 and trial.last_used:
                     time_since_last = (now - trial.last_used).total_seconds()
                     if time_since_last < COOLDOWN_PERIOD:
+                        record_trial_use("cooldown")
                         return {
                             "success": False,
                             "error": "cooldown",
@@ -248,6 +250,7 @@ class TrialService:
 
                 # Check blocked flag
                 if trial.blocked:
+                    record_trial_use("blocked")
                     return {
                         "success": False,
                         "error": "blocked",
@@ -257,6 +260,7 @@ class TrialService:
                 # Atomic limit check — no other transaction can have incremented
                 # between our SELECT FOR UPDATE and this point
                 if trial.usage_count >= limit:
+                    record_trial_use("limit_exceeded")
                     return {
                         "success": False,
                         "error": "trial_limit_exceeded",
@@ -297,6 +301,7 @@ class TrialService:
             # Outer commit (caller's transaction boundary)
             await db.commit()
 
+            record_trial_use("allowed")
             return {
                 "success": True,
                 "usageCount": trial.usage_count,
@@ -307,6 +312,7 @@ class TrialService:
         except Exception as e:
             logger.error(f"Error in check_and_track_usage: {e}")
             await db.rollback()
+            record_trial_use("blocked")
             return {
                 "success": False,
                 "error": "tracking_failed",

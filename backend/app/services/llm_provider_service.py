@@ -15,6 +15,8 @@ from openai import AsyncOpenAI
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.observability import record_llm_call
+from ..core.tracing import traced
 
 logger = get_logger(__name__)
 
@@ -496,7 +498,8 @@ class MultiProviderLLMService:
 
         try:
             provider = self.get_provider(provider_name)
-            response = await provider.generate(request)
+            with traced("llm.provider_call", provider=provider.provider_name, model=request.model):
+                response = await provider.generate(request)
 
             # Update usage stats
             self.update_usage_stats(provider_name, response)
@@ -537,6 +540,22 @@ class MultiProviderLLMService:
             stats["tokens"] += response.usage.get("total_tokens", 0)
             stats["cost"] += response.cost
             stats["last_used"] = datetime.now().isoformat()
+
+        # Single central point where every successful multi-provider call's tokens
+        # and cost are known. This BYOK path is distinct from llm_worker /
+        # llm_service (which record their own calls), so recording here does not
+        # double-count. Label by provider TYPE + model (never per-key name).
+        record_llm_call(
+            response.provider,
+            response.model,
+            "success",
+            total_seconds=response.latency,
+            provider_call_seconds=response.latency,
+            prompt_tokens=response.usage.get("prompt_tokens") or None,
+            completion_tokens=response.usage.get("completion_tokens") or None,
+            total_tokens=response.usage.get("total_tokens") or None,
+            cost_usd=response.cost or None,
+        )
 
     async def validate_provider(self, provider_name: str) -> bool:
         """Validate a provider's API key"""

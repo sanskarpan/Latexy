@@ -5,11 +5,14 @@ Layer 1: Rule-based (accurate LaTeX extraction + expanded corpus)
 
 import asyncio
 import re
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ..core.logging import get_logger
+from ..core.observability import record_ats_score
+from ..core.tracing import traced
 from .industry_ats_profiles import INDUSTRY_PROFILES, detect_industry, get_profile
 
 logger = get_logger(__name__)
@@ -314,147 +317,152 @@ class ATSScoringService:
     ) -> ATSScoreResult:
         """Score a resume for ATS compatibility."""
         start_time = asyncio.get_event_loop().time()
+        perf_start = time.perf_counter()
 
         try:
-            text_content = self._extract_text_from_latex(latex_content)
+            with traced("ats.score", scorer="comprehensive"):
+                text_content = self._extract_text_from_latex(latex_content)
 
-            # ── Industry calibration ──────────────────────────────────────
-            # Resolve industry key with precedence:
-            #   explicit profile key > `industry` arg > auto-detect from JD > generic
-            industry_key: str = "generic"
-            if (
-                industry_profile_key
-                and industry_profile_key != "generic"
-                and industry_profile_key in INDUSTRY_PROFILES
-            ):
-                # Explicit, non-generic override always wins
-                industry_key = industry_profile_key
-            elif industry and industry in INDUSTRY_PROFILES:
-                industry_key = industry
-            elif industry:
-                _legacy_map = {
-                    "technology": "tech_saas",
-                    "finance": "finance_banking",
-                    "healthcare": "healthcare",
-                    "consulting": "consulting",
+                # ── Industry calibration ──────────────────────────────────────
+                # Resolve industry key with precedence:
+                #   explicit profile key > `industry` arg > auto-detect from JD > generic
+                industry_key: str = "generic"
+                if (
+                    industry_profile_key
+                    and industry_profile_key != "generic"
+                    and industry_profile_key in INDUSTRY_PROFILES
+                ):
+                    # Explicit, non-generic override always wins
+                    industry_key = industry_profile_key
+                elif industry and industry in INDUSTRY_PROFILES:
+                    industry_key = industry
+                elif industry:
+                    _legacy_map = {
+                        "technology": "tech_saas",
+                        "finance": "finance_banking",
+                        "healthcare": "healthcare",
+                        "consulting": "consulting",
+                    }
+                    industry_key = _legacy_map.get(industry.lower(), "generic")
+                elif job_description:
+                    industry_key = detect_industry(job_description)
+
+                profile = get_profile(industry_key)
+                is_generic = industry_key == "generic"
+                industry_label: Optional[str] = profile["label"] if not is_generic else None
+
+                formatting_score = await self._score_formatting(latex_content)
+                # Pass raw latex_content so contact detection can find emails in \href
+                structure_score = await self._score_structure(text_content, latex_content)
+                content_score = await self._score_content(
+                    text_content, job_description, industry,
+                    industry_profile=None if is_generic else profile,
+                )
+                keyword_score = await self._score_keywords(text_content, job_description, industry, industry_key)
+                readability_score = await self._score_readability(text_content)
+
+                # Multi-dimensional scores (rule-based, fast)
+                multi_dim_scores: Dict[str, float] = {
+                    "grammar": round(self._score_grammar(text_content), 1),
+                    "bullet_clarity": round(self._score_bullet_clarity(latex_content), 1),
+                    "section_completeness": round(
+                        self._score_section_completeness(latex_content), 1
+                    ),
+                    "page_density": round(self._score_page_density(latex_content), 1),
+                    "keyword_density": round(
+                        self._score_keyword_density(text_content, job_description), 1
+                    ),
                 }
-                industry_key = _legacy_map.get(industry.lower(), "generic")
-            elif job_description:
-                industry_key = detect_industry(job_description)
 
-            profile = get_profile(industry_key)
-            is_generic = industry_key == "generic"
-            industry_label: Optional[str] = profile["label"] if not is_generic else None
+                category_scores = {
+                    "formatting": formatting_score["score"],
+                    "structure": structure_score["score"],
+                    "content": content_score["score"],
+                    "keywords": keyword_score["score"],
+                    "readability": readability_score["score"],
+                }
 
-            formatting_score = await self._score_formatting(latex_content)
-            # Pass raw latex_content so contact detection can find emails in \href
-            structure_score = await self._score_structure(text_content, latex_content)
-            content_score = await self._score_content(
-                text_content, job_description, industry,
-                industry_profile=None if is_generic else profile,
-            )
-            keyword_score = await self._score_keywords(text_content, job_description, industry, industry_key)
-            readability_score = await self._score_readability(text_content)
+                # Base weights — adjusted by profile's section_weights multipliers
+                base_weights = {
+                    "formatting": 0.25,
+                    "structure": 0.20,
+                    "content": 0.25,
+                    "keywords": 0.20,
+                    "readability": 0.10,
+                }
+                # Apply profile section_weights as multipliers on base category weights
+                # Mapping: experience → content, skills → keywords, education → structure
+                section_to_category = {
+                    "experience": "content",
+                    "skills": "keywords",
+                    "education": "structure",
+                }
+                effective_weights = dict(base_weights)
+                for section_key, cat_key in section_to_category.items():
+                    multiplier = profile.get("section_weights", {}).get(section_key, 1.0)
+                    effective_weights[cat_key] *= multiplier
+                # Re-normalise so they sum to 1
+                total_w = sum(effective_weights.values())
+                weights = {k: v / total_w for k, v in effective_weights.items()}
 
-            # Multi-dimensional scores (rule-based, fast)
-            multi_dim_scores: Dict[str, float] = {
-                "grammar": round(self._score_grammar(text_content), 1),
-                "bullet_clarity": round(self._score_bullet_clarity(latex_content), 1),
-                "section_completeness": round(
-                    self._score_section_completeness(latex_content), 1
-                ),
-                "page_density": round(self._score_page_density(latex_content), 1),
-                "keyword_density": round(
-                    self._score_keyword_density(text_content, job_description), 1
-                ),
-            }
+                overall_score = sum(
+                    category_scores[cat] * weights[cat] for cat in category_scores
+                )
 
-            category_scores = {
-                "formatting": formatting_score["score"],
-                "structure": structure_score["score"],
-                "content": content_score["score"],
-                "keywords": keyword_score["score"],
-                "readability": readability_score["score"],
-            }
+                recommendations: List[str] = []
+                warnings: List[str] = []
+                strengths: List[str] = []
 
-            # Base weights — adjusted by profile's section_weights multipliers
-            base_weights = {
-                "formatting": 0.25,
-                "structure": 0.20,
-                "content": 0.25,
-                "keywords": 0.20,
-                "readability": 0.10,
-            }
-            # Apply profile section_weights as multipliers on base category weights
-            # Mapping: experience → content, skills → keywords, education → structure
-            section_to_category = {
-                "experience": "content",
-                "skills": "keywords",
-                "education": "structure",
-            }
-            effective_weights = dict(base_weights)
-            for section_key, cat_key in section_to_category.items():
-                multiplier = profile.get("section_weights", {}).get(section_key, 1.0)
-                effective_weights[cat_key] *= multiplier
-            # Re-normalise so they sum to 1
-            total_w = sum(effective_weights.values())
-            weights = {k: v / total_w for k, v in effective_weights.items()}
+                for analysis in [formatting_score, structure_score, content_score,
+                                  keyword_score, readability_score]:
+                    recommendations.extend(analysis.get("recommendations", []))
+                    warnings.extend(analysis.get("warnings", []))
+                    strengths.extend(analysis.get("strengths", []))
 
-            overall_score = sum(
-                category_scores[cat] * weights[cat] for cat in category_scores
-            )
+                detailed_analysis = {
+                    "formatting_analysis": formatting_score,
+                    "structure_analysis": structure_score,
+                    "content_analysis": content_score,
+                    "keyword_analysis": keyword_score,
+                    "readability_analysis": readability_score,
+                    "section_breakdown": await self._analyze_sections(text_content, latex_content),
+                    "ats_compatibility": self._check_ats_compatibility(latex_content),
+                    "improvement_priority": self._prioritize_improvements(category_scores),
+                    "industry_calibration": {
+                        "industry_key": industry_key,
+                        "industry_label": industry_label,
+                        "profile_applied": industry_key != "generic",
+                    },
+                }
 
-            recommendations: List[str] = []
-            warnings: List[str] = []
-            strengths: List[str] = []
+                processing_time = asyncio.get_event_loop().time() - start_time
 
-            for analysis in [formatting_score, structure_score, content_score,
-                              keyword_score, readability_score]:
-                recommendations.extend(analysis.get("recommendations", []))
-                warnings.extend(analysis.get("warnings", []))
-                strengths.extend(analysis.get("strengths", []))
+                result = ATSScoreResult(
+                    overall_score=round(overall_score, 1),
+                    category_scores=category_scores,
+                    recommendations=recommendations[:10],
+                    warnings=warnings[:5],
+                    strengths=strengths[:5],
+                    detailed_analysis=detailed_analysis,
+                    processing_time=processing_time,
+                    timestamp=datetime.utcnow().isoformat(),
+                    multi_dim_scores=multi_dim_scores,
+                    industry_key=industry_key,
+                    industry_label=industry_label,
+                )
 
-            detailed_analysis = {
-                "formatting_analysis": formatting_score,
-                "structure_analysis": structure_score,
-                "content_analysis": content_score,
-                "keyword_analysis": keyword_score,
-                "readability_analysis": readability_score,
-                "section_breakdown": await self._analyze_sections(text_content, latex_content),
-                "ats_compatibility": self._check_ats_compatibility(latex_content),
-                "improvement_priority": self._prioritize_improvements(category_scores),
-                "industry_calibration": {
-                    "industry_key": industry_key,
-                    "industry_label": industry_label,
-                    "profile_applied": industry_key != "generic",
-                },
-            }
+                self.logger.info(
+                    f"ATS scoring completed: {overall_score:.1f}/100 "
+                    f"(industry={industry_key}) in {processing_time:.2f}s"
+                )
 
-            processing_time = asyncio.get_event_loop().time() - start_time
-
-            result = ATSScoreResult(
-                overall_score=round(overall_score, 1),
-                category_scores=category_scores,
-                recommendations=recommendations[:10],
-                warnings=warnings[:5],
-                strengths=strengths[:5],
-                detailed_analysis=detailed_analysis,
-                processing_time=processing_time,
-                timestamp=datetime.utcnow().isoformat(),
-                multi_dim_scores=multi_dim_scores,
-                industry_key=industry_key,
-                industry_label=industry_label,
-            )
-
-            self.logger.info(
-                f"ATS scoring completed: {overall_score:.1f}/100 "
-                f"(industry={industry_key}) in {processing_time:.2f}s"
-            )
+            record_ats_score("comprehensive", "success", time.perf_counter() - perf_start)
             return result
 
         except Exception as e:
             # Log full detail server-side, but never present an internal failure as a
             # successful 0/100 score or leak the raw exception text to the caller.
+            record_ats_score("comprehensive", "error", time.perf_counter() - perf_start)
             self.logger.error(f"ATS scoring failed: {e}", exc_info=True)
             raise
 

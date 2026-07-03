@@ -16,6 +16,8 @@ from celery.exceptions import SoftTimeLimitExceeded
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.observability import record_llm_call
+from ..core.tracing import traced
 from ..services.llm_service import llm_service, parse_delimited_optimization
 from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
 
@@ -82,6 +84,15 @@ def optimize_resume_task(
         "stage": "llm_optimization",
     })
 
+    # Provider TYPE + model for metrics/spans. This worker talks to the OpenAI
+    # streaming client directly (BYOK provider routing lives elsewhere).
+    provider = "openai"
+    model_name = model or settings.OPENAI_MODEL
+
+    prompt_build_seconds: float | None = None
+    provider_call_seconds: float | None = None
+    total_start = time.perf_counter()
+
     start_time = time.time()
     try:
         publish_event(job_id, "job.progress", {
@@ -91,10 +102,13 @@ def optimize_resume_task(
         })
 
         # Build prompt via llm_service helper (pure Python, no I/O)
-        keywords = llm_service.extract_keywords_from_job_description(job_description)
-        prompt = llm_service._create_optimization_prompt(  # noqa: SLF001
-            latex_content, job_description, keywords, optimization_level
-        )
+        prompt_build_start = time.perf_counter()
+        with traced("llm.prompt_build", provider=provider, model=model_name):
+            keywords = llm_service.extract_keywords_from_job_description(job_description)
+            prompt = llm_service._create_optimization_prompt(  # noqa: SLF001
+                latex_content, job_description, keywords, optimization_level
+            )
+        prompt_build_seconds = time.perf_counter() - prompt_build_start
 
         publish_event(job_id, "job.progress", {
             "percent": 10,
@@ -102,51 +116,59 @@ def optimize_resume_task(
             "message": "Streaming LLM response",
         })
 
-        client = openai.OpenAI(api_key=api_key)
-        start_time = time.time()
         accumulated = ""
         token_count = 0
-
-        stream = client.chat.completions.create(
-            model=model or settings.OPENAI_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an expert resume optimizer specializing in ATS-friendly "
-                        "LaTeX resumes. You help job seekers optimize their resumes for "
-                        "specific job descriptions while maintaining professional formatting."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=settings.OPENAI_MAX_TOKENS,
-            temperature=settings.OPENAI_TEMPERATURE,
-            stream=True,
-            stream_options={"include_usage": True},
-        )
-
+        prompt_tokens = 0
+        completion_tokens = 0
         tokens_total = 0
-        for chunk in stream:
-            # Final chunk may carry usage info when stream_options include_usage=True
-            if hasattr(chunk, "usage") and chunk.usage is not None:
-                tokens_total = chunk.usage.total_tokens
-                continue
 
-            if not chunk.choices:
-                continue
+        provider_call_start = time.perf_counter()
+        start_time = time.time()
+        with traced("llm.provider_call", provider=provider, model=model_name):
+            client = openai.OpenAI(api_key=api_key)
 
-            delta = chunk.choices[0].delta.content
-            if delta:
-                accumulated += delta
-                token_count += 1
-                publish_event(job_id, "llm.token", {"token": delta})
+            stream = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an expert resume optimizer specializing in ATS-friendly "
+                            "LaTeX resumes. You help job seekers optimize their resumes for "
+                            "specific job descriptions while maintaining professional formatting."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=settings.OPENAI_MAX_TOKENS,
+                temperature=settings.OPENAI_TEMPERATURE,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
 
-                # Check cancellation every 20 tokens to avoid hammering Redis
-                if token_count % 20 == 0 and is_cancelled(job_id):
-                    publish_event(job_id, "job.cancelled", {})
-                    return {"success": False, "job_id": job_id, "cancelled": True}
+            for chunk in stream:
+                # Final chunk may carry usage info when stream_options include_usage=True
+                if hasattr(chunk, "usage") and chunk.usage is not None:
+                    tokens_total = chunk.usage.total_tokens
+                    prompt_tokens = getattr(chunk.usage, "prompt_tokens", 0) or 0
+                    completion_tokens = getattr(chunk.usage, "completion_tokens", 0) or 0
+                    continue
 
+                if not chunk.choices:
+                    continue
+
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    accumulated += delta
+                    token_count += 1
+                    publish_event(job_id, "llm.token", {"token": delta})
+
+                    # Check cancellation every 20 tokens to avoid hammering Redis
+                    if token_count % 20 == 0 and is_cancelled(job_id):
+                        publish_event(job_id, "job.cancelled", {})
+                        return {"success": False, "job_id": job_id, "cancelled": True}
+
+        provider_call_seconds = time.perf_counter() - provider_call_start
         optimization_time = time.time() - start_time
 
         # Fall back to tiktoken estimate if API didn't return usage
@@ -185,6 +207,18 @@ def optimize_resume_task(
             "tokens_used": tokens_total,
         }
 
+        record_llm_call(
+            provider,
+            model_name,
+            "success",
+            total_seconds=time.perf_counter() - total_start,
+            prompt_build_seconds=prompt_build_seconds,
+            provider_call_seconds=provider_call_seconds,
+            prompt_tokens=prompt_tokens or None,
+            completion_tokens=completion_tokens or None,
+            total_tokens=tokens_total or None,
+        )
+
         publish_job_result(job_id, result)
         publish_event(job_id, "job.completed", {
             "percent": 100,
@@ -203,6 +237,7 @@ def optimize_resume_task(
 
     except SoftTimeLimitExceeded:
         elapsed = time.time() - start_time
+        record_llm_call(provider, model_name, "error", total_seconds=time.perf_counter() - total_start)
         logger.error(f"LLM task {task_id} exceeded soft time limit for job {job_id}", exc_info=True)
         logger.warning(
             "llm_timeout",
@@ -218,6 +253,7 @@ def optimize_resume_task(
         return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
 
     except Exception as exc:
+        record_llm_call(provider, model_name, "error", total_seconds=time.perf_counter() - total_start)
         logger.error(f"LLM task {task_id} raised: {exc}", exc_info=True)
         is_rate_limit = "rate limit" in str(exc).lower()
         has_retries_left = self.request.retries < self.max_retries
