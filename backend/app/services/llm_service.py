@@ -12,6 +12,8 @@ from openai import AsyncOpenAI
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.observability import record_llm_call
+from ..core.tracing import traced
 from ..models.llm_schemas import (
     ATSScore,
     KeywordMatch,
@@ -198,33 +200,38 @@ class LLMService:
             # Calculate initial ATS score
             self.calculate_ats_score(request.latex_content, keyword_matches)
 
-            # Create optimization prompt
-            prompt = self._create_optimization_prompt(
-                request.latex_content,
-                request.job_description,
-                keywords,
-                request.optimization_level
-            )
-
-            # Count tokens
-            self.count_tokens(prompt)
+            # Create optimization prompt (timed separately so slow-prompt vs
+            # slow-provider is distinguishable in metrics/traces).
+            _t_prompt = time.perf_counter()
+            with traced("llm.prompt_build", model=settings.OPENAI_MODEL):
+                prompt = self._create_optimization_prompt(
+                    request.latex_content,
+                    request.job_description,
+                    keywords,
+                    request.optimization_level
+                )
+                self.count_tokens(prompt)
+            prompt_build_seconds = time.perf_counter() - _t_prompt
 
             # Call OpenAI API
-            response = await self.client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert resume optimizer specializing in ATS-friendly LaTeX resumes. You help job seekers optimize their resumes for specific job descriptions while maintaining professional formatting."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                max_tokens=settings.OPENAI_MAX_TOKENS,
-                temperature=settings.OPENAI_TEMPERATURE,
-            )
+            _t_call = time.perf_counter()
+            with traced("llm.provider_call", model=settings.OPENAI_MODEL, provider="openai"):
+                response = await self.client.chat.completions.create(
+                    model=settings.OPENAI_MODEL,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert resume optimizer specializing in ATS-friendly LaTeX resumes. You help job seekers optimize their resumes for specific job descriptions while maintaining professional formatting."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=settings.OPENAI_MAX_TOKENS,
+                    temperature=settings.OPENAI_TEMPERATURE,
+                )
+            provider_call_seconds = time.perf_counter() - _t_call
 
             # Parse the delimiter-formatted response (matches _create_optimization_prompt).
             raw_content = response.choices[0].message.content or ""
@@ -240,9 +247,19 @@ class LLMService:
 
             # Calculate usage
             total_tokens = response.usage.total_tokens
+            _usage = getattr(response, "usage", None)
 
             optimization_time = time.time() - start_time
 
+            record_llm_call(
+                "openai", settings.OPENAI_MODEL, "success",
+                total_seconds=optimization_time,
+                prompt_build_seconds=prompt_build_seconds,
+                provider_call_seconds=provider_call_seconds,
+                prompt_tokens=getattr(_usage, "prompt_tokens", None),
+                completion_tokens=getattr(_usage, "completion_tokens", None),
+                total_tokens=total_tokens,
+            )
             logger.info(f"Resume optimization completed in {optimization_time:.2f}s using {total_tokens} tokens")
 
             return OptimizationResponse(
@@ -260,6 +277,7 @@ class LLMService:
             )
 
         except Exception as e:
+            record_llm_call("openai", settings.OPENAI_MODEL, "error", total_seconds=time.time() - start_time)
             logger.error(f"Error during resume optimization: {e}")
             return OptimizationResponse(
                 success=False,
