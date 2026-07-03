@@ -106,6 +106,11 @@ async def create_developer_key(
     user_id: str = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
+    # NOTE: developer API access is intentionally available on all plans (free
+    # included) with per-plan daily limits (get_developer_api_daily_limit). The
+    # plan config's apiAccess flag is a UI hint, not a hard backend gate; making
+    # it a gate here would break the tested free-tier developer API. Restricting
+    # the API to paid plans is a product decision, not a bug fix.
     count_result = await db.execute(
         select(func.count())
         .select_from(DeveloperAPIKey)
