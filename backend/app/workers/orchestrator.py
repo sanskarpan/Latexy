@@ -38,6 +38,8 @@ from celery.exceptions import SoftTimeLimitExceeded
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import get_compile_timeout, resolve_plan_family, settings
 from ..core.logging import get_logger
+from ..core.observability import record_compile
+from ..core.tracing import traced
 from ..services.ats_scoring_service import ats_scoring_service
 from ..services.llm_service import llm_service
 from ..services.optimization_personas import PERSONAS
@@ -566,57 +568,72 @@ def _run_latex_stage(
             cwd = str(job_dir)
 
         timeout = float(timeout_seconds) if timeout_seconds else float(settings.COMPILE_TIMEOUT)
-        start_time = time.time()
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            cwd=cwd,
-        )
+        _perf_start = time.perf_counter()
+        with traced("latex.compile", compiler=compiler, docker=(cmd[0] == "docker")):
+            start_time = time.time()
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                cwd=cwd,
+            )
 
-        page_count: Optional[int] = None
-        try:
-            for line in proc.stdout:
-                stripped = line.rstrip()
-                if stripped:
-                    # Extract page count from pdflatex summary line
-                    m = _PAGE_COUNT_RE.search(stripped)
-                    if m:
-                        page_count = int(m.group(1))
-
-                    is_error = "error" in stripped.lower() or stripped.startswith("!")
-                    if "fatal" in stripped.lower():
-                        is_error = True
-                    publish_event(job_id, "log.line", {
-                        "line": stripped,
-                        "source": compiler,
-                        "is_error": is_error,
-                    })
-
-                if is_cancelled(job_id):
-                    proc.kill()
-                    return False, time.time() - start_time, "cancelled", None
-
-                if time.time() - start_time > timeout:
-                    proc.kill()
-                    return False, time.time() - start_time, f"Compilation timed out after {int(timeout)}s", None
-        except SoftTimeLimitExceeded:
-            # Kill the subprocess before the exception propagates to the task handler
+            page_count: Optional[int] = None
             try:
-                proc.kill()
-                proc.wait()
-            except Exception:
-                pass
-            raise
+                for line in proc.stdout:
+                    stripped = line.rstrip()
+                    if stripped:
+                        # Extract page count from pdflatex summary line
+                        m = _PAGE_COUNT_RE.search(stripped)
+                        if m:
+                            page_count = int(m.group(1))
 
-        proc.wait()
-        compilation_time = time.time() - start_time
+                        is_error = "error" in stripped.lower() or stripped.startswith("!")
+                        if "fatal" in stripped.lower():
+                            is_error = True
+                        publish_event(job_id, "log.line", {
+                            "line": stripped,
+                            "source": compiler,
+                            "is_error": is_error,
+                        })
+
+                    if is_cancelled(job_id):
+                        proc.kill()
+                        return False, time.time() - start_time, "cancelled", None
+
+                    if time.time() - start_time > timeout:
+                        proc.kill()
+                        record_compile("error", duration_seconds=time.perf_counter() - _perf_start)
+                        return False, time.time() - start_time, f"Compilation timed out after {int(timeout)}s", None
+            except SoftTimeLimitExceeded:
+                # Kill the subprocess before the exception propagates to the task handler
+                try:
+                    proc.kill()
+                    proc.wait()
+                except Exception:
+                    pass
+                raise
+
+            proc.wait()
+            compilation_time = time.time() - start_time
+        _compile_duration = time.perf_counter() - _perf_start
 
         pdf_file = job_dir / "resume.pdf"
         if proc.returncode == 0 and pdf_file.exists():
+            try:
+                _pdf_bytes = pdf_file.stat().st_size
+            except OSError:
+                _pdf_bytes = None
+            record_compile(
+                "success",
+                duration_seconds=_compile_duration,
+                pdf_bytes=_pdf_bytes,
+                pages=page_count,
+            )
             return True, compilation_time, "", page_count
 
+        record_compile("error", duration_seconds=_compile_duration)
         return False, compilation_time, f"{compiler} exited with code {proc.returncode}", None
     finally:
         shutil.rmtree(job_dir, ignore_errors=True)
