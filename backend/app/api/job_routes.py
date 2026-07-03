@@ -33,6 +33,7 @@ from ..middleware.auth_middleware import (
     require_admin,
 )
 from ..services.optimization_personas import VALID_PERSONA_KEYS
+from ..services.trial_service import trial_service
 from ..utils.file_utils import validate_job_id
 from ..workers.ats_worker import submit_ats_scoring
 from ..workers.cleanup_worker import submit_expired_jobs_cleanup, submit_temp_files_cleanup
@@ -41,6 +42,23 @@ from ..workers.llm_worker import submit_resume_optimization
 from ..workers.orchestrator import submit_optimize_and_compile
 
 logger = get_logger(__name__)
+
+# Anonymous, resource-consuming job types that count against the device trial.
+_TRIAL_JOB_TYPES = {"latex_compilation", "combined", "llm_optimization"}
+
+
+async def _resolve_user_plan(db: AsyncSession, user_id: Optional[str]) -> str:
+    """Server-derived subscription plan. NEVER trust a client-supplied plan — it
+    governs paid queue priority and compile timeout. Anonymous callers are 'free';
+    authenticated callers get their real users.subscription_plan."""
+    if not user_id:
+        return "free"
+    from sqlalchemy import select as sa_select
+    try:
+        row = await db.execute(sa_select(User.subscription_plan).where(User.id == user_id))
+        return row.scalar_one_or_none() or "free"
+    except Exception:
+        return "free"
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -232,6 +250,43 @@ async def submit_job(
         ip_address = http_request.client.host if http_request.client else None
         job_id = str(uuid.uuid4())
 
+        # Plan is server-derived (never trust request.user_plan — it governs paid
+        # queue priority + compile timeout). Client-chosen model is only honoured
+        # for paid/BYOK plans, else the default model runs on the platform key.
+        resolved_plan = await _resolve_user_plan(db, user_id)
+        safe_model = request.model if resolve_plan_family(resolved_plan) in {"pro", "byok", "team"} else None
+
+        # Server-side trial enforcement for ANONYMOUS resource-consuming jobs.
+        # This is the single source of truth: authenticated users are governed by
+        # their plan, but anonymous callers must pass the device trial here so the
+        # 3-use limit cannot be bypassed by calling /jobs/submit directly (skipping
+        # the frontend's separate track-usage call).
+        if user_id is None and request.job_type in _TRIAL_JOB_TYPES:
+            if not request.device_fingerprint:
+                raise HTTPException(
+                    status_code=400,
+                    detail="device_fingerprint is required for anonymous jobs.",
+                )
+            usage = await trial_service.check_and_track_usage(
+                db=db,
+                device_fingerprint=request.device_fingerprint,
+                action="optimize" if request.job_type in {"combined", "llm_optimization"} else "compile",
+                ip_address=ip_address,
+                user_agent=http_request.headers.get("user-agent"),
+                resource_type="resume",
+            )
+            if not usage.get("success"):
+                _trial_errors = {
+                    "trial_limit_exceeded": "Free trial limit reached. Please sign up to continue.",
+                    "cooldown": f"Please wait {int(usage.get('waitTime') or 0)} seconds before trying again.",
+                    "blocked": "Device blocked due to abuse. Please contact support.",
+                    "daily_limit_exceeded": "Daily request limit exceeded. Please try again tomorrow.",
+                }
+                raise HTTPException(
+                    status_code=429,
+                    detail=_trial_errors.get(usage.get("error", ""), "Trial limit reached."),
+                )
+
         estimated_times = {
             "latex_compilation": 30,
             "llm_optimization": 60,
@@ -241,7 +296,7 @@ async def submit_job(
             "cover_letter_generation": 60,
         }
         estimated_time = estimated_times.get(request.job_type, 60)
-        if resolve_plan_family(request.user_plan) in {"pro", "byok", "team"}:
+        if resolve_plan_family(resolved_plan) in {"pro", "byok", "team"}:
             estimated_time = int(estimated_time * 0.7)
 
         # Sanitise caller-supplied metadata: cap at 10 keys, 256 chars per value.
@@ -303,7 +358,7 @@ async def submit_job(
                 latex_content=request.latex_content,
                 job_id=job_id,
                 user_id=user_id,
-                user_plan=request.user_plan,
+                user_plan=resolved_plan,
                 device_fingerprint=request.device_fingerprint,
                 metadata=extra_meta,
                 compiler=compiler,
@@ -322,9 +377,9 @@ async def submit_job(
                 job_description=request.job_description,
                 job_id=job_id,
                 user_id=user_id,
-                user_plan=request.user_plan,
+                user_plan=resolved_plan,
                 optimization_level=request.optimization_level,
-                model=request.model,
+                model=safe_model,
                 metadata=extra_meta,
             )
 
@@ -345,12 +400,12 @@ async def submit_job(
                 job_description=request.job_description,
                 job_id=job_id,
                 user_id=user_id,
-                user_plan=request.user_plan,
+                user_plan=resolved_plan,
                 optimization_level=request.optimization_level,
                 device_fingerprint=request.device_fingerprint,
                 target_sections=request.target_sections,
                 custom_instructions=request.custom_instructions,
-                model=request.model,
+                model=safe_model,
                 metadata=extra_meta,
                 compiler=compiler,
                 persona=request.persona,
@@ -369,7 +424,7 @@ async def submit_job(
                 job_description=request.job_description,
                 industry=request.industry,
                 user_id=user_id,
-                user_plan=request.user_plan,
+                user_plan=resolved_plan,
                 device_fingerprint=request.device_fingerprint,
                 metadata=extra_meta,
             )
@@ -419,6 +474,7 @@ async def submit_job(
 async def compile_watermarked(
     request: WatermarkCompileRequest,
     http_request: Request,
+    db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """
@@ -455,7 +511,8 @@ async def compile_watermarked(
     try:
         job_id = str(uuid.uuid4())
         ip_address = http_request.client.host if http_request.client else None
-        estimated_time = 30 if resolve_plan_family(request.user_plan) in {"pro", "byok", "team"} else 45
+        resolved_plan = await _resolve_user_plan(db, user_id)
+        estimated_time = 30 if resolve_plan_family(resolved_plan) in {"pro", "byok", "team"} else 45
 
         await _write_initial_redis_state(job_id, "latex_compilation", user_id, estimated_time)
 
@@ -463,7 +520,7 @@ async def compile_watermarked(
             latex_content=request.latex_content,
             job_id=job_id,
             user_id=user_id,
-            user_plan=request.user_plan,
+            user_plan=resolved_plan,
             device_fingerprint=request.device_fingerprint,
             metadata={"ip_address": ip_address, "submitted_via": "watermark"},
             compiler=compiler,
@@ -687,13 +744,16 @@ async def get_job_result(
     try:
         r = await get_redis_client()
 
-        # Ownership check via meta (meta may have expired before result TTL)
+        # Ownership check via meta. Meta and result share the same TTL, so a
+        # missing meta means the job is gone — deny rather than serve the result
+        # without an ownership check (closes a TTL-window IDOR).
         meta_raw = await r.get(f"latexy:job:{job_id}:meta")
-        if meta_raw:
-            meta = json.loads(meta_raw)
-            job_owner = meta.get("user_id")
-            if job_owner is not None and job_owner != user_id:
-                raise HTTPException(status_code=403, detail="Access denied")
+        if not meta_raw:
+            raise HTTPException(status_code=404, detail="Job not found")
+        meta = json.loads(meta_raw)
+        job_owner = meta.get("user_id")
+        if job_owner is not None and job_owner != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
 
         raw = await r.get(f"latexy:job:{job_id}:result")
         if not raw:
@@ -907,6 +967,12 @@ async def list_jobs(
             if raw:
                 state = json.loads(raw)
                 state["job_id"] = jid
+                # Merge job_type/submitted_at from meta so the list UI isn't blank.
+                meta_raw = await r.get(f"latexy:job:{jid}:meta")
+                if meta_raw:
+                    meta = json.loads(meta_raw)
+                    state["job_type"] = meta.get("job_type")
+                    state["created_at"] = meta.get("submitted_at")
                 jobs.append(state)
 
         return JobListResponse(jobs=jobs, total_count=len(jobs))
