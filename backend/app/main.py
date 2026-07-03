@@ -7,14 +7,17 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from .api.routes import _check_cors_origins_on_startup, router
 from .core.config import settings
+from .core.errors import register_exception_handlers
 from .core.event_bus import event_bus
 from .core.logging import get_logger, setup_logging
 from .core.redis import get_redis_client, redis_manager
 from .core.tracing import instrument_fastapi, setup_telemetry
 from .database.connection import close_db, init_db
+from .middleware.limits import BodySizeLimitMiddleware, TimeoutMiddleware
 from .middleware.rate_limiting import APIKeyRateLimitMiddleware, RateLimitMiddleware
 from .middleware.request_context import RequestContextMiddleware
 from .middleware.security_headers import SecurityHeadersMiddleware
@@ -106,6 +109,7 @@ app = FastAPI(
     openapi_url="/openapi.json" if _docs_enabled else None,
 )
 instrument_fastapi(app)
+register_exception_handlers(app)
 
 # Configure CORS.
 # effective_cors_origins() strips localhost/127.0.0.1 in production-like envs so
@@ -121,8 +125,15 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-Device-Fingerprint", "X-Tenant-Slug", "traceparent", "tracestate"],
 )
 
+# Compress large JSON/PDF responses (added early so it wraps the response last).
+app.add_middleware(GZipMiddleware, minimum_size=settings.GZIP_MIN_SIZE)
+
 # Baseline security headers on every response (does not affect CORS/JSON).
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Reject oversized bodies (413) and time out slow requests (504).
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.MAX_REQUEST_BODY_BYTES)
+app.add_middleware(TimeoutMiddleware, timeout_seconds=settings.REQUEST_TIMEOUT_SECONDS)
 
 if settings.RATE_LIMIT_ENABLED:
     app.add_middleware(
