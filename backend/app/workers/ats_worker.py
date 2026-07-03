@@ -19,6 +19,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.tracing import traced
 from ..services.ats_scoring_service import ats_scoring_service
 from ..services.industry_ats_profiles import detect_industry
 from ..workers.event_publisher import publish_event, publish_job_result
@@ -93,15 +94,18 @@ def score_resume_ats_task(
             effective_profile_key = "generic"
 
         # score_resume is async but pure-Python — safe to call once with asyncio.run()
+        # The comprehensive service is already instrumented (records the metric); wrap
+        # only in a span here to avoid double-counting the ATS score.
         start_time = time.time()
-        scoring_result = asyncio.run(
-            ats_scoring_service.score_resume(
-                latex_content=latex_content,
-                job_description=job_description,
-                industry=industry,
-                industry_profile_key=effective_profile_key,
+        with traced("ats.score", scorer="comprehensive", job_id=job_id):
+            scoring_result = asyncio.run(
+                ats_scoring_service.score_resume(
+                    latex_content=latex_content,
+                    job_description=job_description,
+                    industry=industry,
+                    industry_profile_key=effective_profile_key,
+                )
             )
-        )
         scoring_time = time.time() - start_time
 
         publish_event(job_id, "job.progress", {
