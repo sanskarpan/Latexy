@@ -383,25 +383,17 @@ async def proofread_resume(request: ProofreadRequest) -> ProofreadResponse:
 @router.post("/explain-error", response_model=ExplainErrorResponse)
 async def explain_latex_error(
     request: ExplainErrorRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Explain a LaTeX compilation error using pattern matching or LLM."""
     try:
-        # Resolve API key: BYOK first, then system default
-        api_key: str | None = None
-        if user_id:
-            try:
-                from ..services.api_key_service import api_key_service
-
-                api_key = await api_key_service.get_user_provider(
-                    db, user_id, "openai"
-                )
-            except Exception:
-                pass
-
-        if not api_key and settings.OPENAI_API_KEY:
-            api_key = settings.OPENAI_API_KEY
+        # Resolve API key via the shared helper: BYOK first, then a platform-key
+        # fallback that is rate limited per identity — same metering as every other
+        # AI endpoint, so this path can't be used to drain the platform key.
+        client_ip = http_request.client.host if http_request.client else "unknown"
+        api_key = await _resolve_ai_api_key(db, user_id, client_ip)
 
         result = await error_explainer_service.explain(
             error_message=request.error_message,
