@@ -4,8 +4,12 @@ No network calls, no DB writes, no Celery. Used by POST /ats/quick-score.
 """
 
 import re
+import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
+
+from ..core.observability import record_ats_score
+from ..core.tracing import traced
 
 
 @dataclass
@@ -216,20 +220,29 @@ def quick_score_latex(
     Pure Python, no I/O, target < 50ms.
     Returns QuickScoreResult dataclass.
     """
-    plain_text = _extract_text(latex_content)
+    perf_start = time.perf_counter()
+    try:
+        with traced("ats.score", scorer="quick"):
+            plain_text = _extract_text(latex_content)
 
-    section_score, sections_found, missing_sections = _score_sections(latex_content, plain_text)
-    contact_score = _score_contact(latex_content)
-    quality_score = _score_quality(plain_text)
-    keyword_score, keyword_match_pct = _score_keywords(plain_text, job_description)
+            section_score, sections_found, missing_sections = _score_sections(latex_content, plain_text)
+            contact_score = _score_contact(latex_content)
+            quality_score = _score_quality(plain_text)
+            keyword_score, keyword_match_pct = _score_keywords(plain_text, job_description)
 
-    total = min(100, section_score + contact_score + quality_score + keyword_score)
-    grade = _compute_grade(total)
+            total = min(100, section_score + contact_score + quality_score + keyword_score)
+            grade = _compute_grade(total)
 
-    return QuickScoreResult(
-        score=total,
-        grade=grade,
-        sections_found=sections_found,
-        missing_sections=missing_sections,
-        keyword_match_percent=keyword_match_pct,
-    )
+            result = QuickScoreResult(
+                score=total,
+                grade=grade,
+                sections_found=sections_found,
+                missing_sections=missing_sections,
+                keyword_match_percent=keyword_match_pct,
+            )
+
+        record_ats_score("quick", "success", time.perf_counter() - perf_start)
+        return result
+    except Exception:
+        record_ats_score("quick", "error", time.perf_counter() - perf_start)
+        raise
