@@ -277,9 +277,57 @@ async def health_check():
     )
 
 
+@router.get("/livez", include_in_schema=False)
+async def livez():
+    """Liveness probe — always 200 if the process is running (no dependency checks)."""
+    return {"status": "alive"}
+
+
+@router.get("/readyz", include_in_schema=False)
+async def readyz():
+    """Readiness probe — 503 when a critical dependency (DB/Redis) is down.
+
+    Orchestrators gate traffic on this; unlike /health it returns a non-200
+    status when the service cannot serve requests.
+    """
+    from fastapi.responses import JSONResponse
+    checks = {"database": "ok", "redis": "ok"}
+    try:
+        from sqlalchemy import text
+        async with get_async_db_session() as session:
+            await session.execute(text("SELECT 1"))
+    except Exception:
+        checks["database"] = "unavailable"
+    try:
+        rc = _redis_manager.redis_client
+        if rc is not None:
+            await rc.ping()
+        else:
+            checks["redis"] = "unavailable"
+    except Exception:
+        checks["redis"] = "unavailable"
+    ready = all(v == "ok" for v in checks.values())
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={"status": "ready" if ready else "not_ready", "checks": checks},
+    )
+
+
 @router.get("/metrics", include_in_schema=False)
 async def metrics():
     """Prometheus scrape endpoint for backend metrics."""
+    # Sample live DB connection-pool saturation at scrape time.
+    try:
+        from ..core.observability import set_db_pool_stats
+        from ..database.connection import engine as _engine
+        pool = _engine.pool
+        set_db_pool_stats(
+            size=getattr(pool, "size", lambda: 0)(),
+            checked_out=getattr(pool, "checkedout", lambda: 0)(),
+            overflow=getattr(pool, "overflow", lambda: 0)(),
+        )
+    except Exception:
+        pass
     return Response(content=metrics_payload(), media_type=metrics_content_type())
 
 
