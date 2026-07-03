@@ -354,7 +354,9 @@ class TestListSubmissions:
         mock_result.scalars.return_value.all.return_value = [user_sub]
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        result = await list_submissions(user_id="user-A", db=mock_db)
+        # Pass explicit pagination — calling the route fn directly bypasses
+        # FastAPI's Query() default resolution.
+        result = await list_submissions(user_id="user-A", db=mock_db, limit=50, offset=0)
 
         assert len(result) == 1
         assert result[0]["user_id"] == "user-A"
