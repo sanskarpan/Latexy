@@ -36,7 +36,7 @@ class TestAuthProtection:
             json={
                 "job_type": "latex_compilation",
                 "latex_content": r"\documentclass{article}\begin{document}Hi\end{document}",
-                "device_fingerprint": "test_fp_anonymous",
+                "device_fingerprint": uuid.uuid4().hex,
             },
         )
         # 200 = queued, 400 = trial exhausted, 422 = validation error
