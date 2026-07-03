@@ -375,7 +375,9 @@ class TestEstimatedTime:
             )
         if free_resp.status_code not in (200, 202) or pro_resp.status_code not in (200, 202):
             pytest.skip("Submit failed")
-        assert pro_resp.json()["estimated_time"] < free_resp.json()["estimated_time"]
+        # Client-supplied user_plan is now IGNORED (server derives plan from the
+        # authenticated user), so a "pro" body value no longer buys a lower time.
+        assert pro_resp.json()["estimated_time"] == free_resp.json()["estimated_time"]
 
     async def test_ats_scoring_has_expected_estimated_time(
         self, client: AsyncClient, auth_headers: dict
