@@ -18,8 +18,14 @@ from typing import Any, Dict, List, Optional
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.redis import cache_manager
 
 logger = get_logger(__name__)
+
+# Embedding cache: identical texts reuse the stored vector for 7 days so we do
+# not re-hit the embedding provider. Key namespace is separate from other caches.
+_EMBEDDING_CACHE_TTL = 604800  # 7 days
+_EMBEDDING_MODEL = "text-embedding-3-small"
 
 # Stopwords for keyword extraction
 _STOPWORDS = {
@@ -58,15 +64,39 @@ class EmbeddingService:
     # ------------------------------------------------------------------ #
 
     async def embed_text(self, text: str) -> List[float]:
-        """Embed a text string using text-embedding-3-small (1536 dims)."""
-        client = self._get_client()
+        """Embed a text string using text-embedding-3-small (1536 dims).
+
+        Results are cached in Redis keyed on a sha256 of the (truncated) input
+        text plus model name, so identical texts do not re-hit the provider.
+        Cache errors never break the embedding path.
+        """
         # Truncate to ~32K chars to stay within model limits
         truncated = text[:32000]
+
+        text_hash = hashlib.sha256(truncated.encode("utf-8")).hexdigest()
+        cache_key = f"latexy:embcache:{_EMBEDDING_MODEL}:{text_hash}"
+
+        # Cache lookup — fall back to computing on any error / cold cache.
+        try:
+            cached = await cache_manager.get(cache_key)
+            if cached:
+                return cached
+        except Exception as exc:  # noqa: BLE001 — caching must never break embedding
+            logger.debug(f"Embedding cache get failed: {exc}")
+
+        client = self._get_client()
         response = await client.embeddings.create(
-            model="text-embedding-3-small",
+            model=_EMBEDDING_MODEL,
             input=truncated,
         )
-        return response.data[0].embedding
+        embedding = response.data[0].embedding
+
+        try:
+            await cache_manager.set(cache_key, embedding, ttl=_EMBEDDING_CACHE_TTL)
+        except Exception as exc:  # noqa: BLE001 — caching must never break embedding
+            logger.debug(f"Embedding cache set failed: {exc}")
+
+        return embedding
 
     async def embed_resume(
         self, resume_id: str, latex_content: str, db
