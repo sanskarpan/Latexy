@@ -20,6 +20,8 @@ from celery.exceptions import SoftTimeLimitExceeded
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.config import get_compile_timeout, resolve_plan_family, settings
 from ..core.logging import get_logger
+from ..core.observability import record_compile
+from ..core.tracing import traced
 from ..services.latex_service import latex_service
 from ..workers.event_publisher import (
     _DEFAULT_TTL,
@@ -297,78 +299,82 @@ def compile_latex_task(
             ]
             compile_cwd = str(job_dir)
 
-        start_time = time.time()
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            cwd=compile_cwd,
-        )
-
-        # ── Detect Beamer presentation ───────────────────────────────
-        is_beamer = bool(BEAMER_RE.search(latex_content))
-
-        # ── Stream log lines ─────────────────────────────────────────
-        page_count: Optional[int] = None
-        first_latex_error: Optional[str] = None  # first "! ..." line from pdflatex
-        all_output_lines: list = []  # accumulated for stderr tail on failure
-        for line in proc.stdout:
-            stripped = line.rstrip()
-            if not stripped:
-                continue
-
-            all_output_lines.append(stripped)
-
-            # Extract page count from pdflatex summary line
-            m = PAGE_COUNT_RE.search(stripped)
-            if m:
-                page_count = int(m.group(1))
-
-            # Capture the first "! <error type>" line for persistent storage
-            if first_latex_error is None and stripped.startswith("!"):
-                first_latex_error = stripped[:250]
-
-            is_error_line = (
-                "error" in stripped.lower()
-                or stripped.startswith("!")
-                or "fatal" in stripped.lower()
+        _perf_start = time.perf_counter()
+        with traced("latex.compile", compiler=compiler, docker=_use_docker):
+            start_time = time.time()
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                cwd=compile_cwd,
             )
-            publish_event(job_id, "log.line", {
-                "line": stripped,
-                "source": compiler,
-                "is_error": is_error_line,
-            })
 
-            # ── Cancellation check ───────────────────────────────────
-            if is_cancelled(job_id):
-                proc.kill()
-                publish_event(job_id, "job.cancelled", {})
-                result = {"success": False, "job_id": job_id, "cancelled": True}
-                publish_job_result(job_id, result)
-                return result
+            # ── Detect Beamer presentation ───────────────────────────────
+            is_beamer = bool(BEAMER_RE.search(latex_content))
 
-            # ── Timeout check ────────────────────────────────────────
-            if time.time() - start_time > timeout:
-                proc.kill()
-                upgrade_msg = (
-                    "Upgrade to Pro for a 4-minute compile timeout"
-                    if resolve_plan_family(user_plan) in {"free", "basic"} else None
+            # ── Stream log lines ─────────────────────────────────────────
+            page_count: Optional[int] = None
+            first_latex_error: Optional[str] = None  # first "! ..." line from pdflatex
+            all_output_lines: list = []  # accumulated for stderr tail on failure
+            for line in proc.stdout:
+                stripped = line.rstrip()
+                if not stripped:
+                    continue
+
+                all_output_lines.append(stripped)
+
+                # Extract page count from pdflatex summary line
+                m = PAGE_COUNT_RE.search(stripped)
+                if m:
+                    page_count = int(m.group(1))
+
+                # Capture the first "! <error type>" line for persistent storage
+                if first_latex_error is None and stripped.startswith("!"):
+                    first_latex_error = stripped[:250]
+
+                is_error_line = (
+                    "error" in stripped.lower()
+                    or stripped.startswith("!")
+                    or "fatal" in stripped.lower()
                 )
-                publish_event(job_id, "job.failed", {
-                    "stage": "latex_compilation",
-                    "error_code": "compile_timeout",
-                    "error_message": f"Compilation timed out after {int(timeout)}s ({user_plan} plan limit)",
-                    "upgrade_message": upgrade_msg,
-                    "user_plan": user_plan,
-                    "retryable": False,
+                publish_event(job_id, "log.line", {
+                    "line": stripped,
+                    "source": compiler,
+                    "is_error": is_error_line,
                 })
-                result = {"success": False, "job_id": job_id, "error": "compile_timeout"}
-                publish_job_result(job_id, result)
-                return result
 
-        proc.wait()
-        compilation_time = time.time() - start_time
+                # ── Cancellation check ───────────────────────────────────
+                if is_cancelled(job_id):
+                    proc.kill()
+                    publish_event(job_id, "job.cancelled", {})
+                    result = {"success": False, "job_id": job_id, "cancelled": True}
+                    publish_job_result(job_id, result)
+                    return result
+
+                # ── Timeout check ────────────────────────────────────────
+                if time.time() - start_time > timeout:
+                    proc.kill()
+                    record_compile("error", duration_seconds=time.perf_counter() - _perf_start)
+                    upgrade_msg = (
+                        "Upgrade to Pro for a 4-minute compile timeout"
+                        if resolve_plan_family(user_plan) in {"free", "basic"} else None
+                    )
+                    publish_event(job_id, "job.failed", {
+                        "stage": "latex_compilation",
+                        "error_code": "compile_timeout",
+                        "error_message": f"Compilation timed out after {int(timeout)}s ({user_plan} plan limit)",
+                        "upgrade_message": upgrade_msg,
+                        "user_plan": user_plan,
+                        "retryable": False,
+                    })
+                    result = {"success": False, "job_id": job_id, "error": "compile_timeout"}
+                    publish_job_result(job_id, result)
+                    return result
+
+            proc.wait()
+            compilation_time = time.time() - start_time
+        _compile_duration = time.perf_counter() - _perf_start
 
         # Store full log in Redis so /logs/{job_id} can serve it from any container.
         try:
@@ -391,6 +397,12 @@ def compile_latex_task(
 
         if proc.returncode == 0 and pdf_file.exists():
             pdf_size = pdf_file.stat().st_size
+            record_compile(
+                "success",
+                duration_seconds=_compile_duration,
+                pdf_bytes=pdf_size,
+                pages=page_count,
+            )
 
             # ── PDF text extraction for ATS pre-flight ───────────────
             extracted_text = _extract_pdf_text(pdf_file, job_id)
@@ -482,6 +494,7 @@ def compile_latex_task(
 
             return result
 
+        record_compile("error", duration_seconds=_compile_duration)
         error_msg = f"{compiler} exited with code {proc.returncode}"
         stderr = "\n".join(all_output_lines)
         logger.error(
