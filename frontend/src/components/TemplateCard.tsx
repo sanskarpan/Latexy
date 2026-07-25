@@ -43,8 +43,8 @@ export default function TemplateCard({ template, onSelect, onPreview, disabled }
   return (
     <div className="group relative flex flex-col rounded-xl border border-white/8 bg-white/[0.02] transition hover:border-white/15 hover:bg-white/[0.04]">
 
-      {/* Thumbnail area */}
-      <div className="relative h-44 w-full overflow-hidden rounded-t-xl bg-zinc-900/60 border-b border-white/8 flex items-center justify-center">
+      {/* Thumbnail area — aspect-ratio locked so it can never balloon in any grid/flex context */}
+      <div className="relative aspect-[4/3] max-h-56 w-full shrink-0 overflow-hidden rounded-t-xl bg-zinc-900/60 border-b border-white/8 flex items-center justify-center">
         {template.thumbnail_url && !imgFailed ? (
           <img
             src={template.thumbnail_url}
