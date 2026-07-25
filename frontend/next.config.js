@@ -18,6 +18,13 @@ const nextConfig = {
       process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030',
     NEXT_PUBLIC_WS_URL:
       process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8030',
+    // OAuth button visibility — set to 'true' only when the matching provider
+    // is configured server-side (GOOGLE_CLIENT_ID / GITHUB_CLIENT_ID). Default
+    // '' → buttons hidden, so no dead OAuth buttons are shown.
+    NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED:
+      process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED || '',
+    NEXT_PUBLIC_OAUTH_GITHUB_ENABLED:
+      process.env.NEXT_PUBLIC_OAUTH_GITHUB_ENABLED || '',
   },
 }
 
