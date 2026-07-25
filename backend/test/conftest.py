@@ -152,6 +152,7 @@ async def test_engine():
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
     async with engine.begin() as conn:
         required_columns = {
+            ("users", "role"),
             ("users", "github_access_token"),
             ("users", "dropbox_access_token"),
             ("resumes", "archived_at"),
