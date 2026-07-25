@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..middleware.auth_middleware import get_current_user_required, require_admin
+from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
 from ..services.llm_provider_service import LLMRequest, multi_provider_service
 
@@ -131,7 +132,11 @@ class GenerateWithProviderResponse(BaseModel):
 
 
 # API Key Management Endpoints
-@router.post("/api-keys", response_model=AddAPIKeyResponse)
+@router.post(
+    "/api-keys",
+    response_model=AddAPIKeyResponse,
+    dependencies=[Depends(require_feature("byok"))],
+)
 async def add_api_key(
     request: AddAPIKeyRequest,
     db: AsyncSession = Depends(get_db),
@@ -239,7 +244,11 @@ async def validate_api_key(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/test/{provider}", response_model=TestProviderResponse)
+@router.post(
+    "/test/{provider}",
+    response_model=TestProviderResponse,
+    dependencies=[Depends(require_feature("byok"))],
+)
 async def test_provider_connection(
     provider: str,
     db: AsyncSession = Depends(get_db),
@@ -284,7 +293,11 @@ async def get_usage_stats(
 
 
 # LLM Generation Endpoints
-@router.post("/generate", response_model=GenerateWithProviderResponse)
+@router.post(
+    "/generate",
+    response_model=GenerateWithProviderResponse,
+    dependencies=[Depends(require_feature("byok"))],
+)
 async def generate_with_provider(
     request: GenerateWithProviderRequest,
     db: AsyncSession = Depends(get_db),
@@ -382,7 +395,10 @@ async def get_system_health(
 
 
 # Provider Configuration Management
-@router.post("/load-providers")
+@router.post(
+    "/load-providers",
+    dependencies=[Depends(require_feature("byok"))],
+)
 async def load_user_providers(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required)
