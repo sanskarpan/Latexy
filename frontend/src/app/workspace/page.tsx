@@ -513,17 +513,17 @@ export default function WorkspacePage() {
           Cover Letter
         </Link>
       </div>
-      <div className="mt-2 flex gap-2">
+      <div className="mt-2 flex flex-wrap gap-2">
         <button
           onClick={() => openForkModal(resume.id, resume.title)}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200"
         >
           <GitFork size={11} />
           Fork
         </button>
         <button
           onClick={() => { setTranslateModalResumeId(resume.id); setTranslateSelectedLang('fr') }}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
           title="Translate to another language"
         >
           <Globe size={11} />
@@ -532,7 +532,7 @@ export default function WorkspacePage() {
         <button
           onClick={() => handleGeneratePortfolio(resume.id)}
           disabled={isGeneratingPortfolio === resume.id}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.06] px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:opacity-50"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.06] px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:opacity-50"
           title="Generate portfolio site"
         >
           {isGeneratingPortfolio === resume.id
@@ -544,7 +544,7 @@ export default function WorkspacePage() {
         </button>
         <button
           onClick={() => setShareModalResumeId(resume.id)}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+          className={`flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
             resume.share_token
               ? 'border-sky-400/25 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20'
               : 'border-white/10 bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200'
@@ -556,20 +556,20 @@ export default function WorkspacePage() {
         {isVariant && resume.parent_resume_id && (
           <button
             onClick={() => handleCompareWithParent(resume.id)}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-violet-400/20 bg-violet-500/[0.06] px-3 py-2 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/10"
+            className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-violet-400/20 bg-violet-500/[0.06] px-3 py-2 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/10"
           >
             Compare
           </button>
         )}
         <button
           onClick={() => setTrackerModalResumeId(resume.id)}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
         >
           Track
         </button>
         <button
           onClick={() => setApplyModalResume(resume)}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-orange-400/20 bg-orange-500/[0.06] px-3 py-2 text-xs font-semibold text-orange-300 transition hover:bg-orange-500/10"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-orange-400/20 bg-orange-500/[0.06] px-3 py-2 text-xs font-semibold text-orange-300 transition hover:bg-orange-500/10"
           title="Apply to a job with this resume"
         >
           <Send size={11} />
