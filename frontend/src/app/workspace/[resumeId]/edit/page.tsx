@@ -1803,22 +1803,22 @@ export default function ResumeEditPage() {
     <div className="flex h-screen flex-col overflow-hidden bg-[#0d0d0d]">
 
       {/* ── TOP HEADER ── */}
-      <header className="flex h-11 shrink-0 items-center justify-between border-b border-white/[0.07] bg-[#111] px-4">
-        <div className="flex min-w-0 items-center gap-1.5 text-xs">
-          <Link href="/workspace" className="shrink-0 text-zinc-600 transition hover:text-zinc-300">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-white/[0.07] bg-[#111] px-4">
+        <div className="flex min-w-0 shrink items-center gap-1.5 text-xs">
+          <Link href="/workspace" className="hidden shrink-0 text-zinc-600 transition hover:text-zinc-300 sm:inline">
             Workspace
           </Link>
-          <ChevronRight size={12} className="shrink-0 text-zinc-800" />
+          <ChevronRight size={12} className="hidden shrink-0 text-zinc-800 sm:block" />
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="min-w-0 max-w-[280px] bg-transparent text-sm font-medium text-zinc-300 outline-none transition placeholder:text-zinc-700 hover:text-white focus:text-white"
+            className="w-[120px] min-w-0 max-w-[280px] bg-transparent text-sm font-medium text-zinc-300 outline-none transition placeholder:text-zinc-700 hover:text-white focus:text-white sm:w-auto"
             placeholder="Untitled"
           />
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto whitespace-nowrap scrollbar-none sm:justify-end">
           <button
             onClick={() => setShowImportModal(true)}
             className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
@@ -2155,11 +2155,11 @@ export default function ResumeEditPage() {
       )}
 
       {/* ── MAIN BODY ── */}
-      <main className="flex min-h-0 flex-1 overflow-hidden">
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
 
-        {/* ── Left: Outline sidebar (collapsible) ── */}
+        {/* ── Left: Outline sidebar (collapsible) — hidden on mobile ── */}
         <aside
-          className={`flex shrink-0 flex-col border-r border-white/[0.05] bg-[#0a0a0a] transition-all duration-200 ${
+          className={`hidden shrink-0 flex-col border-r border-white/[0.05] bg-[#0a0a0a] transition-all duration-200 md:flex ${
             showOutline ? 'w-48' : 'w-8'
           }`}
         >
@@ -2188,7 +2188,7 @@ export default function ResumeEditPage() {
         </aside>
 
         {/* ── Editor ── */}
-        <section className="flex min-h-0 min-w-0 flex-col" style={{ flex: '3 1 0%' }}>
+        <section className="flex min-h-[55vh] w-full min-w-0 flex-col md:min-h-0 md:w-auto" style={{ flex: '3 1 0%' }}>
           <div className="flex h-8 shrink-0 items-center gap-2 border-b border-white/[0.05] bg-[#0a0a0a] px-3">
             <div className="flex items-center gap-1.5 rounded-md bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-400">
               <FileText size={11} className="text-zinc-600" />
@@ -2386,9 +2386,9 @@ export default function ResumeEditPage() {
           </div>
         </section>
 
-        {/* ── Resize handle ── */}
+        {/* ── Resize handle — desktop only ── */}
         <div
-          className="group relative flex w-[5px] shrink-0 cursor-col-resize items-center justify-center"
+          className="group relative hidden w-[5px] shrink-0 cursor-col-resize items-center justify-center md:flex"
           onMouseDown={startResize}
         >
           <div className="h-full w-px bg-white/[0.05] transition-colors group-hover:bg-orange-400/30 group-active:bg-orange-400/60" />
@@ -2397,15 +2397,17 @@ export default function ResumeEditPage() {
         {/* ── Right panel ── */}
         <aside
           ref={rightPanelRef}
-          className="flex flex-col border-l border-white/[0.05] bg-[#0e0e0e]"
+          className="flex min-h-[60vh] w-full min-w-0 flex-col border-t border-white/[0.05] bg-[#0e0e0e] md:min-h-0 md:w-auto md:border-l md:border-t-0"
           style={
-            rightWidth === null
+            isMobile
+              ? undefined
+              : rightWidth === null
               ? { flex: '2 1 0%', minWidth: 340 }
               : { width: `${rightWidth}px`, minWidth: `${rightWidth}px`, maxWidth: `${rightWidth}px`, flexShrink: 0 }
           }
         >
           {/* Tab bar */}
-          <div className="flex h-9 shrink-0 items-center border-b border-white/[0.05] bg-black/20 px-1">
+          <div className="flex h-9 shrink-0 items-center overflow-x-auto whitespace-nowrap border-b border-white/[0.05] bg-black/20 px-1 scrollbar-none">
             {(
               [
                 { id: 'preview', label: 'Preview', icon: Eye },
@@ -2430,7 +2432,7 @@ export default function ResumeEditPage() {
               <button
                 key={id}
                 onClick={() => setRightTab(id)}
-                className={`relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition ${
+                className={`relative flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition ${
                   rightTab === id ? 'text-zinc-100' : 'text-zinc-600 hover:text-zinc-300'
                 }`}
               >
@@ -2458,13 +2460,13 @@ export default function ResumeEditPage() {
               </button>
             ))}
 
-            <div className="flex-1" />
+            <div className="min-w-[8px] flex-1" />
 
             {pdfUrl && (
               <>
                 <button
                   onClick={handleDownload}
-                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-600 transition hover:text-zinc-300"
+                  className="flex shrink-0 items-center gap-1 px-2 py-1 text-[10px] text-zinc-600 transition hover:text-zinc-300"
                 >
                   <Download size={11} />
                   PDF

@@ -432,7 +432,7 @@ export default function TryPage() {
                   <label className="block text-xs uppercase tracking-[0.22em] text-slate-400">Job Description</label>
                   <span className="text-[10px] text-slate-600">optional</span>
                 </div>
-                <div className="mb-1.5 flex gap-2">
+                <div className="mb-1.5 flex flex-col gap-2 sm:flex-row">
                   <input
                     type="url"
                     value={jobUrl}
@@ -440,13 +440,13 @@ export default function TryPage() {
                     onKeyDown={(e) => { if (e.key === 'Enter') handleScrapeUrl() }}
                     placeholder="Paste job URL (Greenhouse, Lever, Workday, Indeed…)"
                     disabled={isProcessing || isScraping}
-                    className="flex-1 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-1.5 text-xs text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-orange-300/40 disabled:opacity-50"
+                    className="w-full min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-xs text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-orange-300/40 disabled:opacity-50 sm:py-1.5"
                   />
                   <button
                     onClick={handleScrapeUrl}
                     disabled={!jobUrl.trim() || isProcessing || isScraping}
                     title="Import job description from URL"
-                    className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:py-1.5"
                   >
                     {isScraping ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />}
                     {isScraping ? 'Importing…' : 'Import'}

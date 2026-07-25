@@ -49,12 +49,12 @@ export default function LaTeXSearchPanel({ presets, onPresetSelect, isOpen, onTo
         }`}
       >
         <Search size={11} />
-        <span>LaTeX Presets</span>
+        <span className="hidden sm:inline">LaTeX Presets</span>
         <ChevronDown size={10} className={`transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-72 overflow-hidden rounded-lg border border-white/10 bg-zinc-900 shadow-2xl">
+        <div className="absolute right-0 top-full mt-1 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-white/10 bg-zinc-900 shadow-2xl">
           <div className="flex items-center justify-between border-b border-white/5 px-3 py-2">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
               LaTeX Patterns
