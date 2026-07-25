@@ -30,6 +30,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import Resume, ResumeTemplate
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 from ..services import storage_service
 
 logger = get_logger(__name__)
@@ -299,7 +300,10 @@ async def get_template(template_id: str, request: Request, db: AsyncSession = De
     return _to_detail(t, request)
 
 
-@router.post("/{template_id}/use")
+@router.post(
+    "/{template_id}/use",
+    dependencies=[Depends(require_feature("templates"))],
+)
 async def use_template(
     template_id: str,
     body: UseTemplateRequest,
