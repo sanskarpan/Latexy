@@ -18,6 +18,7 @@ from ..core.redis import cache_manager
 from ..database.connection import get_db
 from ..database.models import Resume, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 from ..services.dropbox_sync_service import dropbox_sync_service
 from ..services.encryption_service import encryption_service
 
@@ -121,7 +122,7 @@ async def _run_with_dropbox_token(user: User, db: AsyncSession, op):
 # ── OAuth flow ────────────────────────────────────────────────────────────────
 
 
-@router.get("/connect")
+@router.get("/connect", dependencies=[Depends(require_feature("integration_dropbox"))])
 async def dropbox_connect(
     user_id: str = Depends(get_current_user_required),
 ):
