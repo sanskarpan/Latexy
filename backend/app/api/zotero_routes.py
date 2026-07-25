@@ -22,6 +22,7 @@ from ..core.redis import cache_manager
 from ..database.connection import get_db
 from ..database.models import Resume, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 from ..services.encryption_service import encryption_service
 
 logger = get_logger(__name__)
@@ -135,7 +136,7 @@ class ZoteroCollectionsResponse(BaseModel):
 # ── OAuth flow ───────────────────────────────────────────────────────────────
 
 
-@router.get("/connect")
+@router.get("/connect", dependencies=[Depends(require_feature("integration_zotero"))])
 async def zotero_connect(
     user_id: str = Depends(get_current_user_required),
 ):
