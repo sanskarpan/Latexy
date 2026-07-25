@@ -62,6 +62,24 @@ async def _http_handler(request: Request, exc: StarletteHTTPException) -> JSONRe
     # HTTPException.detail is developer-authored (safe to surface). Preserve any
     # headers (e.g. WWW-Authenticate, Retry-After) the raising code attached.
     detail = exc.detail if isinstance(exc.detail, (str, list, dict)) else str(exc.detail)
+
+    # If the raiser already built an error envelope via error_body() — e.g.
+    # require_feature() raising {"error": {"code": "feature_disabled", ...}} —
+    # pass it through as the top-level envelope instead of double-wrapping it
+    # under a generic "http_error". This preserves the specific error code the
+    # client (and frontend gating) keys on.
+    if isinstance(detail, dict) and isinstance(detail.get("error"), dict):
+        body = dict(detail)
+        inner = dict(body["error"])
+        if not inner.get("request_id"):
+            inner["request_id"] = _request_id(request)
+        body["error"] = inner
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=body,
+            headers=getattr(exc, "headers", None),
+        )
+
     message = detail if isinstance(detail, str) else "Request failed."
     return JSONResponse(
         status_code=exc.status_code,
