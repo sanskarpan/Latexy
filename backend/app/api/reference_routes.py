@@ -7,10 +7,11 @@ import re
 import time
 from typing import List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from ..core.logging import get_logger
+from ..middleware.entitlements import require_feature_optional
 from ..services.publications_service import latex_escape
 from ..services.reference_service import reference_service
 
@@ -122,7 +123,11 @@ async def _fetch_one(identifier: str) -> BibTeXEntry:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
-@router.post("/fetch", response_model=FetchReferencesResponse)
+@router.post(
+    "/fetch",
+    response_model=FetchReferencesResponse,
+    dependencies=[Depends(require_feature_optional("references"))],
+)
 async def fetch_references(
     request: FetchReferencesRequest,
 ):
@@ -232,7 +237,11 @@ class FetchOrcidRequest(BaseModel):
     max_results: int = Field(default=20, ge=1, le=50)
 
 
-@router.post("/fetch-orcid", response_model=FetchReferencesResponse)
+@router.post(
+    "/fetch-orcid",
+    response_model=FetchReferencesResponse,
+    dependencies=[Depends(require_feature_optional("references"))],
+)
 async def fetch_orcid_publications(
     request: FetchOrcidRequest,
 ):
