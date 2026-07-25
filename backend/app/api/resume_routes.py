@@ -21,6 +21,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import Optimization, Resume, ResumeCollaborator, ResumeTemplate, UsageAnalytics, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 from ..parsers.parser_factory import parser_factory
 from ..services.academic_cv_service import academic_cv_service
 from ..services.format_detection import ResumeFormat, format_detection_service
@@ -414,7 +415,12 @@ async def seed_builder_from_upload(
     )
 
 
-@router.post("/builder", response_model=BuilderResumeResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/builder",
+    response_model=BuilderResumeResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("resume_builder"))],
+)
 async def create_builder_resume(
     body: BuilderResumeCreateRequest,
     db: AsyncSession = Depends(get_db),
