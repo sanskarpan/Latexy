@@ -13,6 +13,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import InterviewPrep, Resume
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 from ..workers.interview_prep_worker import submit_interview_prep_generation
 
 logger = get_logger(__name__)
@@ -79,7 +80,11 @@ def _serialize(prep: InterviewPrep) -> dict:
 # ------------------------------------------------------------------ #
 
 
-@router.post("/generate", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/generate",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("interview_prep"))],
+)
 async def generate_interview_prep(
     body: GenerateInterviewPrepRequest,
     user_id: str = Depends(get_current_user_required),
