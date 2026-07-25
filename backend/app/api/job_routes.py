@@ -33,6 +33,7 @@ from ..middleware.auth_middleware import (
     get_current_user_required,
     require_admin,
 )
+from ..middleware.entitlements import require_feature
 from ..services.optimization_personas import VALID_PERSONA_KEYS
 from ..services.trial_service import trial_service
 from ..utils.file_utils import validate_job_id
@@ -548,7 +549,12 @@ async def compile_watermarked(
 #  Batch tailor (Feature 75)                                           #
 # ------------------------------------------------------------------ #
 
-@router.post("/batch", response_model=BatchTailorResponse, status_code=201)
+@router.post(
+    "/batch",
+    response_model=BatchTailorResponse,
+    status_code=201,
+    dependencies=[Depends(require_feature("batch_tailor"))],
+)
 async def create_batch_tailor(
     body: BatchTailorRequest,
     db: AsyncSession = Depends(get_db),

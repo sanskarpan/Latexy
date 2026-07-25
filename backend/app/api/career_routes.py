@@ -23,6 +23,7 @@ from ..database.connection import get_db
 from ..database.models import CareerAnalysis, CareerRole, Resume
 from ..middleware.auth_middleware import get_current_user_required as get_current_user
 from ..middleware.auth_middleware import require_admin
+from ..middleware.entitlements import require_feature
 from ..services.career_path_service import career_path_service
 
 logger = get_logger(__name__)
@@ -112,7 +113,7 @@ def _analysis_to_schema(
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.post("/analyze")
+@router.post("/analyze", dependencies=[Depends(require_feature("career_paths"))])
 async def analyze_career_path(
     body: AnalyzeRequest,
     db: AsyncSession = Depends(get_db),

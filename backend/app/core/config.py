@@ -173,6 +173,7 @@ class Settings(BaseSettings):
 
     # Admin email — user with this email can access /admin/* endpoints
     ADMIN_EMAIL: str = Field(default="", description="Email of the admin user for /admin/* access")
+    ADMIN_EMAILS: str = Field(default="", description="Comma-separated list of admin emails for /admin/* access")
     ADMIN_SECRET_KEY: str = Field(default="", description="Shared secret for template/admin utility endpoints")
 
     # Comma-separated list of emails that get TEST_TRIAL_LIMIT instead of TRIAL_LIMIT
@@ -568,6 +569,19 @@ class Settings(BaseSettings):
                 "REDIS_URL is %s — using a localhost Redis in production is likely misconfigured",
                 repr(self.REDIS_URL) if self.REDIS_URL else "empty",
             )
+
+    def admin_email_set(self) -> set[str]:
+        """Return the union of ADMIN_EMAIL + ADMIN_EMAILS, lowercased and stripped.
+
+        Empty entries are dropped. Backward-compatible: ADMIN_EMAIL alone still
+        works.
+        """
+        emails: set[str] = set()
+        for raw in [self.ADMIN_EMAIL, *self.ADMIN_EMAILS.split(",")]:
+            cleaned = (raw or "").strip().lower()
+            if cleaned:
+                emails.add(cleaned)
+        return emails
 
 
 # Global settings instance

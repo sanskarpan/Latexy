@@ -11,6 +11,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import Resume, ResumeComment, User, WorkspaceMember, WorkspaceResume
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 
 logger = get_logger(__name__)
 
@@ -120,7 +121,12 @@ def _comment_to_response(comment: ResumeComment, author: Optional[User] = None) 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
-@router.post("", response_model=CommentResponse, status_code=201)
+@router.post(
+    "",
+    response_model=CommentResponse,
+    status_code=201,
+    dependencies=[Depends(require_feature("collaboration"))],
+)
 async def add_comment(
     resume_id: str,
     body: CommentCreate,

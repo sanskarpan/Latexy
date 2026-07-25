@@ -19,6 +19,7 @@ from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import CoverLetter, Resume, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
 from ..workers.cover_letter_worker import submit_cover_letter_generation
 
@@ -258,7 +259,11 @@ async def get_cover_letter_stats(
     return CoverLetterStatsResponse(total=total)
 
 
-@router.post("/generate", response_model=GenerateCoverLetterResponse)
+@router.post(
+    "/generate",
+    response_model=GenerateCoverLetterResponse,
+    dependencies=[Depends(require_feature("cover_letters"))],
+)
 async def generate_cover_letter(
     request: GenerateCoverLetterRequest,
     db: AsyncSession = Depends(get_db),

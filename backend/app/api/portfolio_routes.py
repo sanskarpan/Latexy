@@ -15,6 +15,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import Resume, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 
 logger = get_logger(__name__)
 
@@ -110,7 +111,11 @@ class ResolveDomainResponse(BaseModel):
 # ── Fixed-path endpoints MUST come before the {username} wildcard ─────────────
 
 
-@router.post("/setup", response_model=PortfolioSetupResponse)
+@router.post(
+    "/setup",
+    response_model=PortfolioSetupResponse,
+    dependencies=[Depends(require_feature("portfolio"))],
+)
 async def setup_portfolio(
     body: PortfolioSetupRequest,
     user_id: str = Depends(get_current_user_required),

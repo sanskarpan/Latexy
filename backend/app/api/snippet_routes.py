@@ -23,6 +23,7 @@ from ..middleware.auth_middleware import (
 from ..middleware.auth_middleware import (
     get_current_user_required as get_current_user,
 )
+from ..middleware.entitlements import require_feature
 
 router = APIRouter(prefix='/snippets', tags=['snippets'])
 admin_router = APIRouter(prefix='/admin', tags=['admin'])
@@ -190,7 +191,12 @@ async def get_snippet(
     return await _build_response(snippet, user_id, db)
 
 
-@router.post('', response_model=SnippetResponse, status_code=201)
+@router.post(
+    '',
+    response_model=SnippetResponse,
+    status_code=201,
+    dependencies=[Depends(require_feature("snippets"))],
+)
 async def create_snippet(
     body: SnippetCreate,
     db: AsyncSession = Depends(get_db),

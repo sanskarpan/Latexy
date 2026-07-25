@@ -19,6 +19,7 @@ from ..database.connection import get_async_db_session, get_db
 from ..database.models import Compilation, Resume, User
 from ..middleware.auth_middleware import get_current_user_optional
 from ..middleware.auth_middleware import get_current_user_required as _require_user
+from ..middleware.entitlements import require_feature_optional
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
 from ..services.feature_flag_service import feature_flag_service
@@ -229,6 +230,21 @@ async def get_me(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return MeResponse(id=user.id, email=user.email, plan=user.subscription_plan)
+
+
+@router.get("/config/entitlements")
+async def get_entitlements_for_user(
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
+) -> dict:
+    """Return the effective per-feature allow map for the current user.
+
+    Anonymous callers get the free-plan family map. Drives frontend gating.
+    """
+    from ..services.entitlement_service import entitlement_service
+
+    features = await entitlement_service.effective_features(user_id, db)
+    return {"features": features}
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -533,7 +549,11 @@ async def get_compilation_logs(
         raise HTTPException(status_code=500, detail="Error reading log file")
 
 
-@router.post("/optimize", response_model=OptimizationResponse)
+@router.post(
+    "/optimize",
+    response_model=OptimizationResponse,
+    dependencies=[Depends(require_feature_optional("llm_optimize"))],
+)
 async def optimize_resume(request: OptimizationRequest):
     """Optimize resume using LLM for better ATS compatibility."""
 
@@ -570,7 +590,11 @@ async def optimize_resume(request: OptimizationRequest):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/optimize-and-compile", response_model=dict)
+@router.post(
+    "/optimize-and-compile",
+    response_model=dict,
+    dependencies=[Depends(require_feature_optional("llm_optimize"))],
+)
 async def optimize_and_compile_resume(request: OptimizationRequest):
     """Optimize resume and compile to PDF in one step."""
 
