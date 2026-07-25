@@ -155,17 +155,14 @@ function MatrixTab() {
   }, [])
 
   useEffect(() => {
+    // Do NOT guard these on mounted.current: the initial data load must always
+    // resolve the loading state. (React 18 makes setState after unmount a safe
+    // no-op.) The mounted ref is only used to skip stale per-cell toggle writes.
     apiClient
       .getAdminEntitlements()
-      .then((data) => {
-        if (mounted.current) setState(data)
-      })
-      .catch((err: unknown) => {
-        if (mounted.current) setError(err instanceof Error ? err.message : String(err))
-      })
-      .finally(() => {
-        if (mounted.current) setLoading(false)
-      })
+      .then((data) => setState(data))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoading(false))
   }, [])
 
   const markBusy = useCallback((cellId: string) => {
