@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.connection import get_db
 from ..database.models import UserMacro
 from ..middleware.auth_middleware import get_current_user_required as get_current_user
+from ..middleware.entitlements import require_feature
 
 router = APIRouter(prefix='/macros', tags=['macros'])
 
@@ -76,7 +77,12 @@ async def list_macros(
     return [_to_response(m) for m in result.scalars().all()]
 
 
-@router.post('', response_model=MacroResponse, status_code=201)
+@router.post(
+    '',
+    response_model=MacroResponse,
+    status_code=201,
+    dependencies=[Depends(require_feature("macros"))],
+)
 async def create_macro(
     body: MacroCreate,
     db: AsyncSession = Depends(get_db),
