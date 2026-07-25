@@ -42,6 +42,12 @@ def _build_app() -> FastAPI:
     async def validate(payload: dict):
         return payload
 
+    @app.get("/gated")
+    async def gated():
+        # Mimics require_feature(): raises an HTTPException whose detail is
+        # already an error envelope built via error_body().
+        raise HTTPException(status_code=403, detail=error_body("feature_disabled", "The 'x' feature is not available on your plan.", None))
+
     return app
 
 
@@ -52,6 +58,23 @@ async def _client(app: FastAPI) -> AsyncClient:
         transport=ASGITransport(app=app, raise_app_exceptions=False),
         base_url="http://test",
     )
+
+
+async def test_preformed_error_envelope_passes_through_without_double_wrap():
+    """An HTTPException whose detail is already an error_body() envelope is
+    surfaced as the top-level envelope (specific code preserved, not wrapped
+    under a generic http_error)."""
+    app = _build_app()
+    async with await _client(app) as ac:
+        resp = await ac.get("/gated")
+    assert resp.status_code == 403
+    body = resp.json()
+    err = body["error"]
+    assert err["code"] == "feature_disabled"
+    assert "not available on your plan" in err["message"]
+    assert "request_id" in err  # present (value depends on request-context middleware)
+    # not double-wrapped under a nested detail.error envelope
+    assert not isinstance(body.get("detail"), dict)
 
 
 async def test_unhandled_exception_returns_generic_500_envelope():
