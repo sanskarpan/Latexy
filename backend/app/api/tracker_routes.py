@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.connection import get_db
 from ..database.models import JobApplication, Optimization, Resume
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 
 router = APIRouter(prefix="/tracker", tags=["tracker"])
 
@@ -114,7 +115,11 @@ async def _get_latest_ats_score(resume_id: str, db: AsyncSession) -> Optional[fl
 # ------------------------------------------------------------------ #
 
 
-@router.post("/applications", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/applications",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("application_tracker"))],
+)
 async def create_application(
     body: CreateApplicationRequest,
     user_id: str = Depends(get_current_user_required),
