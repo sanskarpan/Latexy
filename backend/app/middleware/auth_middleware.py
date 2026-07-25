@@ -223,6 +223,24 @@ async def get_api_key_user(
     return record.user_id if record else None
 
 
+def _admin_emails(settings_obj) -> set[str]:
+    """Collect the configured admin emails from ADMIN_EMAIL + ADMIN_EMAILS.
+
+    Defensive: only treats string attributes as configured values, so it works
+    both with the real Settings and with a mock ``settings`` object in tests
+    (where unset attributes are Mocks, not strings).
+    """
+    emails: set[str] = set()
+    for attr in ("ADMIN_EMAIL", "ADMIN_EMAILS"):
+        val = getattr(settings_obj, attr, "")
+        if isinstance(val, str):
+            for part in val.split(","):
+                cleaned = part.strip().lower()
+                if cleaned:
+                    emails.add(cleaned)
+    return emails
+
+
 async def require_admin(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
@@ -231,12 +249,17 @@ async def require_admin(
     """
     Return the current user_id if the user has admin privileges, else raise.
 
-    Admin access is granted exclusively by matching the authenticated user's
-    email against the ADMIN_EMAIL setting.  If ADMIN_EMAIL is not configured,
-    all requests are rejected with HTTP 403.
+    Admin access is granted when EITHER:
+      - the user's RBAC role is ``admin`` (role column on ``users``), OR
+      - the user's email is in ``settings.admin_email_set()`` (ADMIN_EMAIL +
+        ADMIN_EMAILS), and the email is verified.
+
+    A verified email is still required for the email-match path so an attacker
+    cannot claim admin by signing up with an admin email (email verification is
+    otherwise optional).
 
     The legacy JWT is_admin claim is intentionally NOT accepted here — a JWT
-    with is_admin=true must NOT bypass the ADMIN_EMAIL gate (AUTH-001).
+    with is_admin=true must NOT bypass the RBAC/ADMIN_EMAIL gate (AUTH-001).
     """
     token = _extract_token(request, credentials)
     if not token:
@@ -254,18 +277,13 @@ async def require_admin(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # ADMIN_EMAIL must be configured; absence means no admin access is possible.
-    if not settings.ADMIN_EMAIL:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin privileges required",
-        )
-
-    # Compare the authenticated user's email to the configured ADMIN_EMAIL.
+    # Load the user's role + email so we can evaluate both admin paths.
+    # email_verified is kept LAST in the column list so failure-injection tests
+    # keying on the "email_verified FROM users" lookup continue to match.
     try:
         from sqlalchemy import text as _text
         result = await db.execute(
-            _text('SELECT email, email_verified FROM users WHERE id = :uid'),
+            _text('SELECT email, role, email_verified FROM users WHERE id = :uid'),
             {"uid": user_id},
         )
         row = result.fetchone()
@@ -279,15 +297,60 @@ async def require_admin(
             detail="Admin authorization check temporarily unavailable",
         ) from exc
 
-    # Require a verified email so an attacker cannot claim admin by simply
-    # signing up with ADMIN_EMAIL (email verification is otherwise optional).
-    if row and row[0].lower() == settings.ADMIN_EMAIL.lower() and bool(row[1]):
-        return user_id
+    if row:
+        email, role, email_verified = row[0], row[1], bool(row[2])
+        # RBAC role path — the role column is the primary admin grant.
+        if role == "admin":
+            return user_id
+        # Email-match path — requires a verified email.
+        if email and email.lower() in _admin_emails(settings) and email_verified:
+            return user_id
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Admin privileges required",
     )
+
+
+def require_role(*roles: str):
+    """Return a FastAPI dependency requiring the user's role ∈ ``roles``.
+
+    Raises 401 if unauthenticated, 403 if the user's role is not permitted.
+    Returns the user_id on success.
+    """
+    allowed = set(roles)
+
+    async def _dep(
+        request: Request,
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+        db: AsyncSession = Depends(get_db),
+    ) -> str:
+        user_id = await get_current_user_required(request, credentials, db)
+
+        try:
+            from sqlalchemy import text as _text
+            result = await db.execute(
+                _text('SELECT role FROM users WHERE id = :uid'),
+                {"uid": user_id},
+            )
+            row = result.fetchone()
+        except Exception as exc:
+            logger.error(f"require_role lookup failed: {exc}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authorization check temporarily unavailable",
+            ) from exc
+
+        role = row[0] if row else None
+        if role in allowed:
+            return user_id
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient privileges",
+        )
+
+    return _dep
 
 
 # ------------------------------------------------------------------ #
