@@ -27,6 +27,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import ApplicationSubmission, Compilation, JobApplication, Resume
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 from ..services.greenhouse_service import ApplicantData as GHApplicant
 from ..services.greenhouse_service import greenhouse_service
 from ..services.lever_service import ApplicantData as LeverApplicant
@@ -287,7 +288,12 @@ async def preview_lever_job(
     }
 
 
-@router.post("/greenhouse", status_code=201, response_model=SubmissionResponse)
+@router.post(
+    "/greenhouse",
+    status_code=201,
+    response_model=SubmissionResponse,
+    dependencies=[Depends(require_feature("one_click_apply"))],
+)
 async def apply_greenhouse(
     body: GreenhouseApplyRequest,
     user_id: str = Depends(get_current_user_required),
@@ -393,7 +399,12 @@ async def apply_greenhouse(
     return _serialize_submission(sub)
 
 
-@router.post("/lever", status_code=201, response_model=SubmissionResponse)
+@router.post(
+    "/lever",
+    status_code=201,
+    response_model=SubmissionResponse,
+    dependencies=[Depends(require_feature("one_click_apply"))],
+)
 async def apply_lever(
     body: LeverApplyRequest,
     user_id: str = Depends(get_current_user_required),
