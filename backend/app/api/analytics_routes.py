@@ -18,6 +18,7 @@ from ..middleware.auth_middleware import (
     get_current_user_required,
     require_admin,
 )
+from ..middleware.entitlements import require_feature
 from ..services.analytics_service import analytics_service
 
 logger = get_logger(__name__)
@@ -172,7 +173,11 @@ async def track_event(
             detail="Internal server error"
         )
 
-@router.get("/me", response_model=UserAnalyticsResponse)
+@router.get(
+    "/me",
+    response_model=UserAnalyticsResponse,
+    dependencies=[Depends(require_feature("analytics"))],
+)
 async def get_my_analytics(
     days: int = Query(default=30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
