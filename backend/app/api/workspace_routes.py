@@ -13,6 +13,7 @@ from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import RecruiterNote, Resume, User, Workspace, WorkspaceMember, WorkspaceResume
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 
 logger = get_logger(__name__)
 
@@ -151,7 +152,12 @@ def _ws_to_response(
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 
-@router.post("", response_model=WorkspaceResponse, status_code=201)
+@router.post(
+    "",
+    response_model=WorkspaceResponse,
+    status_code=201,
+    dependencies=[Depends(require_feature("team_workspaces"))],
+)
 async def create_workspace(
     body: WorkspaceCreate,
     user_id: str = Depends(get_current_user_required),
