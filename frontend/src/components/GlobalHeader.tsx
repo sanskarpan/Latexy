@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Download } from 'lucide-react'
 import { signOut, useSession } from '@/lib/auth-client'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
+import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { usePWAInstall } from '@/hooks/usePWAInstall'
 import { clearAllDrafts } from '@/lib/offline-drafts'
 import { clearCompileQueue } from '@/lib/compile-queue'
@@ -19,11 +20,13 @@ const guestNav = [
   { label: 'FAQ', href: '/faq' },
 ]
 
-const appNav = [
+// `feature` (optional) gates a nav item behind an entitlement key. Core
+// entry points (Dashboard, Workspace, Studio) are intentionally ungated.
+const appNav: Array<{ label: string; href: string; feature?: string }> = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Workspace', href: '/workspace' },
-  { label: 'Tracker', href: '/tracker' },
-  { label: 'Templates', href: '/templates' },
+  { label: 'Tracker', href: '/tracker', feature: 'application_tracker' },
+  { label: 'Templates', href: '/templates', feature: 'templates' },
   { label: 'Studio', href: '/try' },
 ]
 
@@ -33,6 +36,7 @@ export default function GlobalHeader() {
   const pathname = usePathname()
   const { data: session } = useSession()
   const flags = useFeatureFlags()
+  const { can } = useEntitlements()
   const [hydrated, setHydrated] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
@@ -41,6 +45,16 @@ export default function GlobalHeader() {
   useEffect(() => {
     setHydrated(true)
   }, [])
+
+  // Close the account menu on Escape for keyboard accessibility.
+  useEffect(() => {
+    if (!isUserMenuOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsUserMenuOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isUserMenuOpen])
 
   if (fullscreenPatterns.some((pattern) => pattern.test(pathname))) {
     return null
@@ -52,7 +66,10 @@ export default function GlobalHeader() {
   const effectiveGuestNav = flags.billing
     ? guestNav
     : guestNav.filter((item) => item.href !== '/billing')
-  const activeNav = isAuthenticated ? appNav : effectiveGuestNav
+  // Gate feature-specific app nav items behind entitlements (fail-open via
+  // can()). Core items without a `feature` key always show.
+  const effectiveAppNav = appNav.filter((item) => !item.feature || can(item.feature))
+  const activeNav = isAuthenticated ? effectiveAppNav : effectiveGuestNav
   const firstName = resolvedUser?.name?.trim().split(' ')[0] || 'Account'
 
   // Admin is gated server-side by ADMIN_EMAIL; only surface the link to the
@@ -116,8 +133,15 @@ export default function GlobalHeader() {
                 onClick={() => setIsUserMenuOpen((open) => !open)}
                 aria-label={isUserMenuOpen ? 'Close account menu' : 'Open account menu'}
                 aria-expanded={isUserMenuOpen}
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:bg-white/10 hover:text-white"
+                aria-haspopup="menu"
+                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 py-1 pl-1 pr-3 text-xs font-semibold text-zinc-300 transition hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/60"
               >
+                <span
+                  aria-hidden
+                  className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-300 text-[11px] font-bold text-slate-950"
+                >
+                  {firstName.charAt(0).toUpperCase()}
+                </span>
                 {firstName}
               </button>
 
@@ -134,6 +158,8 @@ export default function GlobalHeader() {
                       initial={{ opacity: 0, y: 8, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      role="menu"
+                      aria-label="Account menu"
                       className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-white/10 bg-zinc-900 p-2 shadow-2xl"
                     >
                       <div className="px-3 py-2">
