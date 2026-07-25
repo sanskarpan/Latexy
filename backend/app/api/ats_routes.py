@@ -21,6 +21,7 @@ from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import DeepAnalysisTrial, Resume, ResumeJobMatch, User
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
+from ..middleware.entitlements import require_feature, require_feature_optional
 from ..services.api_key_service import api_key_service
 from ..services.ats_quick_scorer import quick_score_latex
 from ..services.ats_scoring_service import ats_scoring_service
@@ -160,7 +161,11 @@ class ATSRecommendationsResponse(BaseModel):
 
 
 # ATS Scoring endpoints
-@router.post("/score", response_model=ATSScoreResponse)
+@router.post(
+    "/score",
+    response_model=ATSScoreResponse,
+    dependencies=[Depends(require_feature_optional("ats_score"))],
+)
 async def score_resume_ats(
     request: ATSScoreRequest,
     http_request: Request,
@@ -539,7 +544,11 @@ class QuickScoreResponse(BaseModel):
     keyword_match_percent: Optional[float]
 
 
-@router.post("/quick-score", response_model=QuickScoreResponse)
+@router.post(
+    "/quick-score",
+    response_model=QuickScoreResponse,
+    dependencies=[Depends(require_feature_optional("ats_score"))],
+)
 async def quick_score_ats(request: QuickScoreRequest, http_request: Request):
     """
     Lightweight ATS quick-score — pure Python, no LLM, no DB writes.
@@ -647,7 +656,11 @@ async def _write_deep_analysis_redis_state(
     await r.publish(f"latexy:events:{job_id}", json.dumps({"type": "event", "event": event}))
 
 
-@router.post("/deep-analyze", response_model=DeepAnalyzeResponse)
+@router.post(
+    "/deep-analyze",
+    response_model=DeepAnalyzeResponse,
+    dependencies=[Depends(require_feature_optional("ats_deep"))],
+)
 async def deep_analyze_resume(
     request: DeepAnalyzeRequest,
     http_request: Request,
@@ -783,7 +796,11 @@ async def deep_analyze_resume(
     )
 
 
-@router.post("/semantic-match", response_model=SemanticMatchResponse)
+@router.post(
+    "/semantic-match",
+    response_model=SemanticMatchResponse,
+    dependencies=[Depends(require_feature("ats_deep"))],
+)
 async def semantic_match_resumes(
     request: SemanticMatchRequest,
     db: AsyncSession = Depends(get_db),
