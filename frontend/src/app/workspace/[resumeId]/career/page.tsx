@@ -154,7 +154,7 @@ export default function CareerPathPage() {
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-sm text-zinc-300">
+    <div className="bg-[#09090b] text-sm text-zinc-300">
       {/* Header */}
       <header className="flex h-12 items-center gap-3 border-b border-white/[0.05] bg-[#0a0a0a] px-4">
         <Link
