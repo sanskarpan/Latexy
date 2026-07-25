@@ -200,7 +200,7 @@ interface ColumnProps {
 
 function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete, onEdit }: ColumnProps) {
   return (
-    <div className={`flex min-h-[200px] w-[260px] flex-shrink-0 flex-col rounded-xl border border-white/10 bg-zinc-950 border-t-2 ${colorClass}`}>
+    <div className={`flex min-h-[200px] w-[80vw] max-w-[300px] flex-shrink-0 flex-col rounded-xl border border-white/10 bg-zinc-950 border-t-2 sm:w-[260px] ${colorClass}`}>
       <div className="flex items-center gap-2 px-3.5 py-3">
         <span className="text-xs font-semibold text-zinc-300">{label}</span>
         <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${badgeClass}`}>
@@ -445,8 +445,8 @@ export default function TrackerPage() {
       {/* Stats */}
       <StatsBar stats={stats} />
 
-      {/* Kanban board */}
-      <div className="overflow-x-auto pb-4">
+      {/* Kanban board — horizontally scrollable, contained to viewport width */}
+      <div className="max-w-full overflow-x-auto pb-4">
         <DndContext
           sensors={sensors}
           onDragStart={handleDragStart}
