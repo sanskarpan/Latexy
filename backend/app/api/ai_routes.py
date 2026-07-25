@@ -24,6 +24,7 @@ from ..core.redis import cache_manager
 from ..database.connection import get_db
 from ..database.models import Resume
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
+from ..middleware.entitlements import require_feature, require_feature_optional
 from ..services.error_explainer_service import error_explainer_service
 from ..services.latex_text_extractor import extract_prose, offset_to_latex_position
 from ..services.optimization_personas import PERSONAS
@@ -192,7 +193,11 @@ def _bullet_cache_key(
     return "ai:bullets:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-@router.post("/generate-bullets", response_model=GenerateBulletsResponse)
+@router.post(
+    "/generate-bullets",
+    response_model=GenerateBulletsResponse,
+    dependencies=[Depends(require_feature_optional("ai_writing"))],
+)
 async def generate_bullets(
     request: GenerateBulletsRequest,
     http_request: Request,
@@ -291,7 +296,11 @@ def _summary_cache_key(
     return "ai:summary:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-@router.post("/generate-summary", response_model=GenerateSummaryResponse)
+@router.post(
+    "/generate-summary",
+    response_model=GenerateSummaryResponse,
+    dependencies=[Depends(require_feature_optional("ai_writing"))],
+)
 async def generate_summary(
     request: GenerateSummaryRequest,
     http_request: Request,
@@ -374,7 +383,11 @@ class ProofreadRequest(BaseModel):
     latex_content: str = Field(..., max_length=200_000)
 
 
-@router.post("/proofread", response_model=ProofreadResponse)
+@router.post(
+    "/proofread",
+    response_model=ProofreadResponse,
+    dependencies=[Depends(require_feature_optional("ai_writing"))],
+)
 async def proofread_resume(request: ProofreadRequest) -> ProofreadResponse:
     """Proofread resume for writing quality issues. Rule-based, no LLM required."""
     return proofread_latex(request.latex_content)
@@ -470,7 +483,11 @@ def _rewrite_cache_key(action: str, selected_text: str, tone: Optional[str], con
     return "ai:rewrite:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-@router.post("/rewrite", response_model=RewriteResponse)
+@router.post(
+    "/rewrite",
+    response_model=RewriteResponse,
+    dependencies=[Depends(require_feature_optional("ai_writing"))],
+)
 async def rewrite_text(
     request: RewriteRequest,
     http_request: Request,
@@ -1305,7 +1322,11 @@ STRICT RULES:
 """
 
 
-@router.post("/translate", response_model=TranslateResponse)
+@router.post(
+    "/translate",
+    response_model=TranslateResponse,
+    dependencies=[Depends(require_feature("ai_writing"))],
+)
 async def translate_resume(
     request: TranslateRequest,
     db: AsyncSession = Depends(get_db),
