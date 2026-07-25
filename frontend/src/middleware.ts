@@ -26,8 +26,15 @@ export async function middleware(request: NextRequest) {
   // Strip port for local dev
   const hostname = host.replace(/:\d+$/, '')
 
-  // Known Latexy domains → skip
-  if (LATEXY_DOMAINS.has(hostname)) {
+  // Known Latexy domains, the app's own Vercel deployment domains, and the
+  // primary marketing domain → skip (these are NOT custom portfolio domains,
+  // so we must not do a per-request resolve-domain lookup or rewrite them).
+  if (
+    LATEXY_DOMAINS.has(hostname) ||
+    hostname.endsWith('.vercel.app') ||
+    hostname === 'latexy.com' ||
+    hostname === 'www.latexy.com'
+  ) {
     return NextResponse.next()
   }
 
