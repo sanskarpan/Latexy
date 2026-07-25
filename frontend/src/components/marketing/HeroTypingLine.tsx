@@ -44,7 +44,7 @@ export default function HeroTypingLine() {
   }, [typedText, isDeleting, phraseIndex])
 
   return (
-    <span className="block min-h-[1.1em] whitespace-nowrap">
+    <span className="block min-h-[1.1em] break-words">
       {typedText}
       <span className="ml-1 inline-block h-[0.85em] w-[0.08em] bg-white/90 align-[-0.05em] animate-pulse" />
     </span>
