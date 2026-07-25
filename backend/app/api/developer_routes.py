@@ -13,6 +13,7 @@ from ..core.config import get_developer_api_daily_limit
 from ..database.connection import get_db
 from ..database.models import DeveloperAPIKey, User
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 from ..services.developer_key_service import developer_key_service
 
 router = APIRouter(prefix="/developer", tags=["developer"])
@@ -100,7 +101,12 @@ async def get_developer_usage(
     )
 
 
-@router.post("/keys", response_model=DeveloperKeyCreateResponse, status_code=201)
+@router.post(
+    "/keys",
+    response_model=DeveloperKeyCreateResponse,
+    status_code=201,
+    dependencies=[Depends(require_feature("developer_api"))],
+)
 async def create_developer_key(
     body: DeveloperKeyCreateRequest,
     user_id: str = Depends(get_current_user_required),
