@@ -513,6 +513,49 @@ export interface UserAnalyticsTimeseriesResponse {
 }
 
 // ------------------------------------------------------------------ //
+//  Entitlements / Admin Control Plane                                 //
+// ------------------------------------------------------------------ //
+
+/** Per-user effective feature map from GET /config/entitlements. */
+export interface EntitlementsResponse {
+  features: Record<string, boolean>
+}
+
+/** A single toggleable product feature from the code-defined registry. */
+export interface EntitlementFeatureDef {
+  key: string
+  label: string
+  category: string
+  gateable: boolean
+  description?: string | null
+}
+
+/** Full admin entitlements state from GET /admin/entitlements. */
+export interface AdminEntitlementsState {
+  registry: EntitlementFeatureDef[]
+  kill_switches: Record<string, boolean>
+  matrix: Record<string, Record<string, boolean>>
+  plan_families: string[]
+}
+
+export type UserRole = 'user' | 'support' | 'admin'
+
+export interface AdminUser {
+  id: string
+  email: string
+  name: string | null
+  role: UserRole
+  subscription_plan: string | null
+  email_verified: boolean
+  created_at: string
+}
+
+export interface AdminUsersResponse {
+  users: AdminUser[]
+  total: number
+}
+
+// ------------------------------------------------------------------ //
 //  API client class                                                   //
 // ------------------------------------------------------------------ //
 
@@ -2226,6 +2269,68 @@ class ApiClient {
     return this.request(`/admin/feature-flags/${encodeURIComponent(key)}`, {
       method: 'PATCH',
       body: JSON.stringify({ enabled }),
+    })
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Entitlements — Admin Control Plane                              //
+  // ---------------------------------------------------------------- //
+
+  /** Per-user effective feature map (auth optional; anonymous → free map). */
+  async getEntitlements(): Promise<EntitlementsResponse> {
+    return this.request<EntitlementsResponse>('/config/entitlements')
+  }
+
+  /** Full admin entitlements state: registry, kill-switches, matrix, plan families. */
+  async getAdminEntitlements(): Promise<AdminEntitlementsState> {
+    return this.request<AdminEntitlementsState>('/admin/entitlements')
+  }
+
+  /** Toggle a feature's global kill-switch. Returns fresh state. */
+  async updateKillSwitch(key: string, enabled: boolean): Promise<AdminEntitlementsState> {
+    return this.request<AdminEntitlementsState>(
+      `/admin/entitlements/kill-switch/${encodeURIComponent(key)}`,
+      { method: 'PATCH', body: JSON.stringify({ enabled }) },
+    )
+  }
+
+  /** Toggle a single feature × plan-family matrix cell. Returns fresh state. */
+  async updateMatrixCell(
+    planFamily: string,
+    featureKey: string,
+    enabled: boolean,
+  ): Promise<AdminEntitlementsState> {
+    return this.request<AdminEntitlementsState>('/admin/entitlements/matrix', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        plan_family: planFamily,
+        feature_key: featureKey,
+        enabled,
+      }),
+    })
+  }
+
+  async getAdminUsers(params?: {
+    q?: string
+    limit?: number
+    offset?: number
+  }): Promise<AdminUsersResponse> {
+    const qs = new URLSearchParams()
+    if (params?.q) qs.set('q', params.q)
+    if (params?.limit != null) qs.set('limit', String(params.limit))
+    if (params?.offset != null) qs.set('offset', String(params.offset))
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return this.request<AdminUsersResponse>(`/admin/users${suffix}`)
+  }
+
+  /**
+   * Update a user's role. Throws on 409 (last_admin guard) — the thrown
+   * Error message contains "409" and the "last_admin" code for callers.
+   */
+  async updateUserRole(id: string, role: UserRole): Promise<AdminUser> {
+    return this.request<AdminUser>(`/admin/users/${encodeURIComponent(id)}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
     })
   }
 
