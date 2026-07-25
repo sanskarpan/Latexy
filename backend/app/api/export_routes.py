@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.connection import get_db
 from ..database.models import Resume
 from ..middleware.auth_middleware import get_current_user_required
+from ..middleware.entitlements import require_feature
 from ..services.document_export_service import document_export_service
 
 logger = logging.getLogger(__name__)
@@ -182,7 +183,10 @@ async def export_figma(
         raise HTTPException(status_code=500, detail="Export failed")
 
 
-@router.get("/{resume_id}/{fmt}")
+@router.get(
+    "/{resume_id}/{fmt}",
+    dependencies=[Depends(require_feature("exports"))],
+)
 async def export_resume(
     resume_id: str,
     fmt: str,
