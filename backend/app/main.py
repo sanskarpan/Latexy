@@ -44,6 +44,32 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize database: {e}")
         raise
 
+    # Reconcile admin roles from ADMIN_EMAIL(S). Any user whose email is in the
+    # configured admin set but whose role != 'admin' is promoted. Best-effort:
+    # a failure here must never crash startup.
+    admin_emails = settings.admin_email_set()
+    if admin_emails:
+        try:
+            from sqlalchemy import text as _text
+
+            from .database.connection import get_async_db_session
+            async with get_async_db_session() as session:
+                result = await session.execute(
+                    _text(
+                        "UPDATE users SET role = 'admin' "
+                        "WHERE lower(email) = ANY(:emails) AND role != 'admin'"
+                    ),
+                    {"emails": list(admin_emails)},
+                )
+                await session.commit()
+                logger.info(
+                    "Admin role reconcile: promoted %s user(s) from %d configured admin email(s)",
+                    result.rowcount if result.rowcount is not None else "?",
+                    len(admin_emails),
+                )
+        except Exception as e:
+            logger.error(f"Admin role reconcile failed (non-fatal): {e}")
+
     # Validate Redis URL before connecting (OBS-004)
     if not settings.REDIS_URL or "localhost" in settings.REDIS_URL.lower():
         if settings.ENVIRONMENT in ("production", "staging"):
