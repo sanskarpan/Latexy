@@ -35,6 +35,8 @@ class User(Base):
     subscription_plan: Mapped[str] = mapped_column(String(50), default="free")
     subscription_status: Mapped[str] = mapped_column(String(50), default="inactive")
     subscription_id: Mapped[Optional[str]] = mapped_column(String(255))
+    # RBAC role (Admin Control Plane) — values: user | support | admin
+    role: Mapped[str] = mapped_column(String(20), default="user", nullable=False, server_default="user")
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     trial_used: Mapped[bool] = mapped_column(Boolean, default=False)
     email_notifications: Mapped[Optional[Dict]] = mapped_column(
@@ -469,6 +471,16 @@ class FeatureFlag(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class PlanFeature(Base):
+    """Per-plan feature matrix (Admin Control Plane) — feature access on/off per pricing plan."""
+    __tablename__ = "plan_features"
+
+    plan_family: Mapped[str] = mapped_column(String(20), primary_key=True)
+    feature_key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
