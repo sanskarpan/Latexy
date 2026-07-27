@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 from fastapi import Request
 from sqlalchemy import select
@@ -30,7 +31,30 @@ logger = logging.getLogger(__name__)
 
 # Hostname suffix used to detect slug-based subdomains
 LATEXY_DOMAIN_SUFFIX = ".latexy.io"
-CACHE_TTL = 300  # 5 minutes
+CACHE_TTL = 300  # 5 minutes (Redis)
+
+# First-party hosts that can never be white-label tenant domains. Resolving these
+# would cost a ~100ms Upstash round-trip on EVERY request for nothing, so we
+# short-circuit to "no tenant" without touching Redis/DB.
+_FIRST_PARTY_EXACT = frozenset({
+    "latexy.xyz", "www.latexy.xyz",
+    "latexy.com", "www.latexy.com", "app.latexy.com",
+    "localhost", "127.0.0.1", "",
+})
+_FIRST_PARTY_SUFFIX = (".vercel.app", ".modal.run")
+
+
+def _is_first_party(host: str) -> bool:
+    if host in _FIRST_PARTY_EXACT:
+        return True
+    return any(host.endswith(s) for s in _FIRST_PARTY_SUFFIX)
+
+
+# Process-local cache in front of Redis so repeated tenant lookups within a warm
+# container don't each pay the Upstash round-trip. Shorter TTL than Redis so a
+# tenant change still propagates within a minute.
+_INPROC_TTL = 60.0
+_INPROC_CACHE: dict[str, tuple[object, float]] = {}
 
 
 class TenantMiddleware(BaseHTTPMiddleware):
@@ -62,7 +86,9 @@ class TenantMiddleware(BaseHTTPMiddleware):
         try:
             if slug:
                 request.state.tenant = await self._resolve_by_slug(slug)
-            elif host:
+            elif host and not _is_first_party(host):
+                # First-party hosts (latexy.xyz, *.vercel.app, *.modal.run, …)
+                # are never tenants — skip the Redis/DB lookup entirely.
                 request.state.tenant = await self._resolve_by_domain(host)
         except Exception as exc:
             logger.debug("Tenant resolution error: %s", exc)
@@ -109,22 +135,33 @@ class TenantMiddleware(BaseHTTPMiddleware):
 # ── Cache helpers ─────────────────────────────────────────────────────────────
 
 async def _cache_get(key: str) -> dict | None:
-    """Return cached dict, or None if miss (including negative 'no tenant' cache)."""
+    """Return cached dict, or None if miss (including negative 'no tenant' cache).
+
+    Checks the process-local cache first (no network) before Redis.
+    """
+    hit = _INPROC_CACHE.get(key)
+    if hit is not None:
+        value, expiry = hit
+        if expiry > time.monotonic():
+            return value if isinstance(value, dict) else None
+        _INPROC_CACHE.pop(key, None)
     try:
         raw = await cache_manager.get(key)
         if raw is None:
             return None
         # Negative cache: store empty string to mean "no tenant found"
         if raw == "":
+            _INPROC_CACHE[key] = (None, time.monotonic() + _INPROC_TTL)
             return None
-        if isinstance(raw, dict):
-            return raw
-        return json.loads(raw) if isinstance(raw, str) else None
+        data = raw if isinstance(raw, dict) else (json.loads(raw) if isinstance(raw, str) else None)
+        _INPROC_CACHE[key] = (data, time.monotonic() + _INPROC_TTL)
+        return data
     except Exception:
         return None
 
 
 async def _cache_set(key: str, data: dict | None) -> None:
+    _INPROC_CACHE[key] = (data, time.monotonic() + _INPROC_TTL)
     try:
         value = data if data is not None else ""
         await cache_manager.set(key, value, ttl=CACHE_TTL)
