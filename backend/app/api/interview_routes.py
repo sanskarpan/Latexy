@@ -156,6 +156,12 @@ async def get_interview_prep(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific interview prep session."""
+    # prep_id is UUID-typed; a non-UUID literal (e.g. "my") falling through to
+    # this catch-all route would raise asyncpg DataError -> 500. Return 404.
+    try:
+        uuid.UUID(str(prep_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=404, detail="Interview prep not found")
     result = await db.execute(
         select(InterviewPrep).where(
             InterviewPrep.id == prep_id,
