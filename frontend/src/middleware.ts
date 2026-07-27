@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 const LATEXY_DOMAINS = new Set([
+  'latexy.xyz',
+  'www.latexy.xyz',
   'latexy.io',
   'www.latexy.io',
   'localhost',
