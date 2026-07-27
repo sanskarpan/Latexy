@@ -112,7 +112,10 @@ def run_latex_task(payload: dict) -> None:
 
 
 @app.function(
-    image=worker_image,
+    # latex_image (not worker_image): the orchestrator compiles LaTeX in-process
+    # during its pipeline, so it needs the full texlive toolchain — otherwise the
+    # compile stage fails (no pdflatex) and the combined job retries/stalls.
+    image=latex_image,
     secrets=_secrets,
     timeout=600,
     scaledown_window=60,
