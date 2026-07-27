@@ -63,12 +63,19 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
   useEffect(() => {
     if (!jobId) return
     let stopped = false
+    let attempts = 0
+    const MAX_POLLS = 150 // ~10 min at 4s — cap so a wedged job can't poll forever
     let timer: ReturnType<typeof setTimeout> | null = null
 
     const poll = async () => {
+      attempts += 1
       try {
         const snap = await apiClient.getJobState(jobId)
         if (stopped) return
+        if (snap?.status === 'cancelled') {
+          dispatch({ type: 'job.cancelled', job_id: jobId } as unknown as AnyEvent)
+          return // terminal → stop polling
+        }
         if (snap?.status === 'completed') {
           let result: Record<string, unknown> = {}
           try {
@@ -93,17 +100,21 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
           return // terminal → stop polling
         }
         if (snap?.status === 'failed') {
+          // Reducer reads error_message/error_code/retryable/stage (not `error`).
           dispatch({
             type: 'job.failed',
             job_id: jobId,
-            error: (snap as unknown as Record<string, unknown>)?.error ?? 'Job failed',
+            error_message: 'Job failed',
+            error_code: 'unknown',
+            retryable: false,
+            stage: '',
           } as unknown as AnyEvent)
           return
         }
       } catch {
         /* transient — keep polling */
       }
-      if (!stopped) timer = setTimeout(poll, 4000)
+      if (!stopped && attempts < MAX_POLLS) timer = setTimeout(poll, 4000)
     }
 
     // Delay the first poll so a healthy WS stream gets the first chance.
