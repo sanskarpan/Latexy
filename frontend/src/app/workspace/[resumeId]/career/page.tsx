@@ -203,7 +203,7 @@ export default function CareerPathPage() {
                 />
                 {/* Autocomplete dropdown */}
                 {showSuggestions && suggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-white/[0.06] bg-[#111] shadow-xl">
+                  <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-white/[0.06] bg-[#111] shadow-xl">
                     {suggestions.map((role) => (
                       <button
                         key={role.id}

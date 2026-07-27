@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Search, X } from 'lucide-react'
 import type { LatexSearchPreset } from '@/data/latex-search-presets'
 
@@ -14,6 +14,17 @@ interface Props {
 
 export default function LaTeXSearchPanel({ presets, onPresetSelect, isOpen, onToggle, onClose }: Props) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [flipUp, setFlipUp] = useState(false)
+
+  // Decide flip direction whenever the panel opens
+  useEffect(() => {
+    if (!isOpen || !triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    setFlipUp(spaceBelow < 360 && spaceAbove > spaceBelow)
+  }, [isOpen])
 
   // Close on click outside
   useEffect(() => {
@@ -38,8 +49,9 @@ export default function LaTeXSearchPanel({ presets, onPresetSelect, isOpen, onTo
   }, [isOpen, onClose])
 
   return (
-    <div ref={panelRef} className="absolute right-3 top-2 z-30">
+    <div ref={panelRef} className="absolute right-3 top-2 z-50">
       <button
+        ref={triggerRef}
         onClick={onToggle}
         title="LaTeX search presets (⌘⇧H)"
         className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition ${
@@ -54,8 +66,10 @@ export default function LaTeXSearchPanel({ presets, onPresetSelect, isOpen, onTo
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-white/10 bg-zinc-900 shadow-2xl">
-          <div className="flex items-center justify-between border-b border-white/5 px-3 py-2">
+        <div className={`absolute right-0 flex max-h-[min(24rem,calc(100vh-6rem))] w-[min(18rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-white/10 bg-zinc-900 shadow-2xl ${
+          flipUp ? 'bottom-full mb-1' : 'top-full mt-1'
+        }`}>
+          <div className="flex shrink-0 items-center justify-between border-b border-white/5 px-3 py-2">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
               LaTeX Patterns
             </span>
@@ -63,7 +77,7 @@ export default function LaTeXSearchPanel({ presets, onPresetSelect, isOpen, onTo
               <X size={12} />
             </button>
           </div>
-          <div className="py-1">
+          <div className="overflow-y-auto py-1">
             {presets.map((preset) => (
               <button
                 key={preset.label}
@@ -80,7 +94,7 @@ export default function LaTeXSearchPanel({ presets, onPresetSelect, isOpen, onTo
               </button>
             ))}
           </div>
-          <div className="border-t border-white/5 px-3 py-1.5">
+          <div className="shrink-0 border-t border-white/5 px-3 py-1.5">
             <p className="text-[9px] text-zinc-700">Tip: use capture groups (…) for replace-all</p>
           </div>
         </div>

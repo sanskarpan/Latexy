@@ -63,7 +63,12 @@ export default function ExportDropdown({
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState<ExportFormatKey | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number } | null>(null)
+  const [dropdownPos, setDropdownPos] = useState<{
+    top?: number
+    bottom?: number
+    right: number
+    maxHeight: number
+  } | null>(null)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
@@ -74,10 +79,26 @@ export default function ExportDropdown({
     if (isExporting) return
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect()
-      setDropdownPos({
-        top: rect.bottom + 6,
-        right: window.innerWidth - rect.right,
-      })
+      const margin = 12
+      const right = Math.max(margin, window.innerWidth - rect.right)
+      const spaceBelow = window.innerHeight - rect.bottom - margin
+      const spaceAbove = rect.top - margin
+      // Open upward when there isn't enough room below and there's more room above.
+      // Always cap max-height to the available space + scroll, so the menu can never
+      // be clipped off-screen regardless of where the trigger sits.
+      if (spaceBelow < 320 && spaceAbove > spaceBelow) {
+        setDropdownPos({
+          bottom: window.innerHeight - rect.top + 6,
+          right,
+          maxHeight: spaceAbove,
+        })
+      } else {
+        setDropdownPos({
+          top: rect.bottom + 6,
+          right,
+          maxHeight: spaceBelow,
+        })
+      }
     }
     setIsOpen(true)
   }
@@ -200,10 +221,16 @@ export default function ExportDropdown({
             className="fixed inset-0 z-[200]"
             onClick={() => setIsOpen(false)}
           />
-          {/* Dropdown panel — fixed positioning so it's never clipped */}
+          {/* Dropdown panel — fixed positioning + capped height so it's never clipped */}
           <div
-            className="z-[201] w-56 overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-2xl shadow-black/60"
-            style={{ position: 'fixed', top: dropdownPos.top, right: dropdownPos.right }}
+            className="z-[201] w-56 overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-zinc-900 shadow-2xl shadow-black/60"
+            style={{
+              position: 'fixed',
+              top: dropdownPos.top,
+              bottom: dropdownPos.bottom,
+              right: dropdownPos.right,
+              maxHeight: dropdownPos.maxHeight,
+            }}
           >
             <div className="px-3 pt-2.5 pb-1.5">
               <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 font-medium">

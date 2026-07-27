@@ -5,7 +5,7 @@ import secrets
 import zipfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -778,6 +778,13 @@ async def get_resume(
     user_id: str = Depends(get_current_user_required)
 ):
     """Get a specific resume by ID."""
+    # resume_id is UUID-typed in the DB; a non-UUID path segment (e.g. an
+    # unmatched literal like "dashboard" falling through to this catch-all route)
+    # would otherwise raise asyncpg DataError -> 500. Treat it as 404.
+    try:
+        UUID(str(resume_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=404, detail="Resume not found")
     variant_count_sq = _variant_count_subquery()
     result = await db.execute(
         select(Resume, variant_count_sq)

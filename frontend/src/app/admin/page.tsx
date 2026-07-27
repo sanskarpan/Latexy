@@ -539,7 +539,7 @@ function UsersTab() {
             <table className="w-full min-w-[560px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-white/[0.07] text-[11px] uppercase tracking-wider text-zinc-500">
-                  <th className="min-w-[220px] px-4 py-3 text-left font-semibold">User</th>
+                  <th className="sticky left-0 z-10 min-w-[220px] bg-zinc-950 px-4 py-3 text-left font-semibold">User</th>
                   <th className="min-w-[90px] px-4 py-3 text-left font-semibold">Plan</th>
                   <th className="min-w-[130px] px-4 py-3 text-left font-semibold">Role</th>
                 </tr>
@@ -548,9 +548,9 @@ function UsersTab() {
                 {users.map((u, idx) => (
                   <tr
                     key={u.id}
-                    className={`border-t border-white/[0.04] ${idx % 2 === 1 ? 'bg-white/[0.012]' : ''}`}
+                    className={`group border-t border-white/[0.04] ${idx % 2 === 1 ? 'bg-white/[0.012]' : ''}`}
                   >
-                    <td className="px-4 py-3">
+                    <td className="sticky left-0 z-10 min-w-[220px] bg-zinc-950 px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-medium text-zinc-100">{u.email}</span>
                         {u.email_verified && (

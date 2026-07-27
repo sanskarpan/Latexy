@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
@@ -748,6 +749,12 @@ export default function ResumeEditPage() {
 
   // Layout
   const [rightTab, setRightTab] = useState<RightTab>('preview')
+  const rightTabBarRef = useRef<HTMLDivElement>(null)
+  const activeRightTabRef = useRef<HTMLButtonElement>(null)
+  // Keep the active right-panel tab scrolled into view within the horizontal scroller
+  useEffect(() => {
+    activeRightTabRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [rightTab])
   const [rightWidth, setRightWidth] = useState<number | null>(null)
   const [showOutline, setShowOutline] = useState(false)
   const [isDraggingResize, setIsDraggingResize] = useState(false)
@@ -823,6 +830,19 @@ export default function ResumeEditPage() {
   const [forkPopoverOpen, setForkPopoverOpen] = useState(false)
   const [forkTitleInput, setForkTitleInput] = useState('')
   const [isForkingResume, setIsForkingResume] = useState(false)
+  const forkTriggerRef = useRef<HTMLButtonElement>(null)
+  const [forkPopoverPos, setForkPopoverPos] = useState<{ top: number; right: number } | null>(null)
+  const openForkPopover = useCallback(() => {
+    const rect = forkTriggerRef.current?.getBoundingClientRect()
+    if (rect) {
+      setForkPopoverPos({
+        top: rect.bottom + 6,
+        right: Math.max(12, window.innerWidth - rect.right),
+      })
+    }
+    setForkTitleInput(`${title} — Variant`)
+    setForkPopoverOpen(true)
+  }, [title])
   const [academicReport, setAcademicReport] = useState<AcademicCVReport | null>(null)
   const [academicConvertOpen, setAcademicConvertOpen] = useState(false)
   const [academicTargetIndustry, setAcademicTargetIndustry] = useState<'tech' | 'data_science' | 'finance' | 'consulting' | 'product' | 'other'>('tech')
@@ -1915,30 +1935,40 @@ export default function ResumeEditPage() {
           {/* Create Variant button */}
           <div className="relative">
             <button
-              onClick={() => { setForkPopoverOpen(v => !v); setForkTitleInput(`${title} — Variant`) }}
+              ref={forkTriggerRef}
+              onClick={() => { if (forkPopoverOpen) { setForkPopoverOpen(false) } else { openForkPopover() } }}
               className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
             >
               <GitFork size={12} />
               Variant
             </button>
-            {forkPopoverOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-white/10 bg-zinc-950 p-3 shadow-xl">
-                <input
-                  type="text"
-                  value={forkTitleInput}
-                  onChange={e => setForkTitleInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleCreateVariant(); if (e.key === 'Escape') setForkPopoverOpen(false) }}
-                  placeholder="Variant title"
-                  autoFocus
-                  className="w-full rounded-md border border-white/10 bg-black/40 px-2 py-1.5 text-xs text-zinc-100 outline-none focus:border-orange-300/40 mb-2"
-                />
-                <div className="flex gap-2 justify-end">
-                  <button onClick={() => setForkPopoverOpen(false)} className="px-2 py-1 text-[10px] text-zinc-500 hover:text-zinc-300">Cancel</button>
-                  <button onClick={handleCreateVariant} disabled={isForkingResume} className="rounded-md bg-orange-500/20 px-3 py-1 text-[10px] font-semibold text-orange-200 ring-1 ring-orange-400/20 hover:bg-orange-500/30 disabled:opacity-50">
-                    {isForkingResume ? 'Creating...' : 'Create'}
-                  </button>
+            {forkPopoverOpen && forkPopoverPos && createPortal(
+              <>
+                {/* Backdrop */}
+                <div className="fixed inset-0 z-[200]" onClick={() => setForkPopoverOpen(false)} />
+                {/* Popover — fixed positioning from trigger rect so the scrolling toolbar can't clip it */}
+                <div
+                  className="z-[201] w-64 rounded-lg border border-white/10 bg-zinc-950 p-3 shadow-xl"
+                  style={{ position: 'fixed', top: forkPopoverPos.top, right: forkPopoverPos.right }}
+                >
+                  <input
+                    type="text"
+                    value={forkTitleInput}
+                    onChange={e => setForkTitleInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleCreateVariant(); if (e.key === 'Escape') setForkPopoverOpen(false) }}
+                    placeholder="Variant title"
+                    autoFocus
+                    className="w-full rounded-md border border-white/10 bg-black/40 px-2 py-1.5 text-xs text-zinc-100 outline-none focus:border-orange-300/40 mb-2"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setForkPopoverOpen(false)} className="px-2 py-1 text-[10px] text-zinc-500 hover:text-zinc-300">Cancel</button>
+                    <button onClick={handleCreateVariant} disabled={isForkingResume} className="rounded-md bg-orange-500/20 px-3 py-1 text-[10px] font-semibold text-orange-200 ring-1 ring-orange-400/20 hover:bg-orange-500/30 disabled:opacity-50">
+                      {isForkingResume ? 'Creating...' : 'Create'}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </>,
+              document.body
             )}
           </div>
 
@@ -2407,7 +2437,11 @@ export default function ResumeEditPage() {
           }
         >
           {/* Tab bar */}
-          <div className="flex h-9 shrink-0 items-center overflow-x-auto whitespace-nowrap border-b border-white/[0.05] bg-black/20 px-1 scrollbar-none">
+          <div
+            ref={rightTabBarRef}
+            className="flex h-9 shrink-0 snap-x items-center overflow-x-auto whitespace-nowrap border-b border-white/[0.05] bg-black/20 px-1 pr-3 scrollbar-none"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
             {(
               [
                 { id: 'preview', label: 'Preview', icon: Eye },
@@ -2431,8 +2465,9 @@ export default function ResumeEditPage() {
             ).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
+                ref={rightTab === id ? activeRightTabRef : undefined}
                 onClick={() => setRightTab(id)}
-                className={`relative flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition ${
+                className={`relative flex shrink-0 snap-start items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition ${
                   rightTab === id ? 'text-zinc-100' : 'text-zinc-600 hover:text-zinc-300'
                 }`}
               >

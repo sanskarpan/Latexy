@@ -44,7 +44,9 @@ export default function CompilerSelector({
 }: CompilerSelectorProps) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [flipUp, setFlipUp] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   const currentOption = COMPILER_OPTIONS.find((o) => o.id === current) ?? COMPILER_OPTIONS[0]
 
@@ -75,10 +77,23 @@ export default function CompilerSelector({
     }
   }
 
+  const toggleOpen = () => {
+    if (disabled || saving) return
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+      // Flip up when there isn't enough room below and there's more room above.
+      setFlipUp(spaceBelow < 260 && spaceAbove > spaceBelow)
+    }
+    setOpen((v) => !v)
+  }
+
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => !disabled && !saving && setOpen((v) => !v)}
+        ref={triggerRef}
+        onClick={toggleOpen}
         disabled={disabled || saving}
         title="LaTeX compiler engine"
         className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
@@ -95,7 +110,9 @@ export default function CompilerSelector({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-white/10 bg-zinc-950 py-1 shadow-xl">
+        <div className={`absolute right-0 z-50 max-h-[min(20rem,calc(100vh-6rem))] w-56 overflow-y-auto rounded-lg border border-white/10 bg-zinc-950 py-1 shadow-xl ${
+          flipUp ? 'bottom-full mb-1' : 'top-full mt-1'
+        }`}>
           {COMPILER_OPTIONS.map((option) => (
             <button
               key={option.id}
