@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { BookUser, GitFork, GitMerge, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate, Globe, Send } from 'lucide-react'
@@ -63,6 +63,8 @@ export default function WorkspacePage() {
   const [atsStats, setAtsStats] = useState<ResumeStats | null>(null)
   const [staleBannerDismissed, setStaleBannerDismissed] = useState(false)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const [exportMenuFlipUp, setExportMenuFlipUp] = useState(false)
+  const exportMenuTriggerRef = useRef<HTMLButtonElement>(null)
   const [exportLoading, setExportLoading] = useState(false)
 
   // Onboarding for new users
@@ -679,7 +681,16 @@ export default function WorkspacePage() {
           {/* Export All dropdown (Feature 49) */}
           <div className="relative">
             <button
-              onClick={() => setExportMenuOpen(o => !o)}
+              ref={exportMenuTriggerRef}
+              onClick={() => {
+                if (!exportMenuOpen && exportMenuTriggerRef.current) {
+                  const rect = exportMenuTriggerRef.current.getBoundingClientRect()
+                  const spaceBelow = window.innerHeight - rect.bottom
+                  const spaceAbove = rect.top
+                  setExportMenuFlipUp(spaceBelow < 220 && spaceAbove > spaceBelow)
+                }
+                setExportMenuOpen(o => !o)
+              }}
               disabled={exportLoading}
               className="btn-ghost flex items-center gap-1.5 px-3 py-2 text-xs"
             >
@@ -692,7 +703,9 @@ export default function WorkspacePage() {
               <ChevronDown size={11} />
             </button>
             {exportMenuOpen && (
-              <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-white/[0.08] bg-[#111] py-1 shadow-xl">
+              <div className={`absolute right-0 z-50 max-h-[min(20rem,calc(100vh-6rem))] w-44 overflow-y-auto rounded-lg border border-white/[0.08] bg-[#111] py-1 shadow-xl ${
+                exportMenuFlipUp ? 'bottom-full mb-1' : 'top-full mt-1'
+              }`}>
                 {([
                   { format: 'tex', label: 'LaTeX Source (.zip)' },
                   { format: 'pdf', label: 'PDF Files (.zip)' },
