@@ -25,6 +25,10 @@ instrument_celery()
 logger = get_logger(__name__)
 _task_start_times: dict[str, float] = {}
 
+# On Modal, worker tasks execute in-process (`.apply()`) and results are never
+# read from the Celery backend, so we disable eager-result storage there.
+_IS_MODAL = (settings.DEPLOY_TARGET or "").lower() == "modal"
+
 # Create Celery instance
 celery_app = Celery(
     "latexy",
@@ -69,8 +73,14 @@ celery_app.conf.update(
     # Task configuration
     task_always_eager=False,
     task_eager_propagates=True,
-    task_ignore_result=False,
-    task_store_eager_result=True,
+    # On Modal, tasks run in-process via `.apply()` and job state/results are
+    # published to Redis directly by the event_publisher — we never read the
+    # Celery result backend. Storing eager results there makes Celery connect to
+    # CELERY_RESULT_BACKEND (localhost by default on Modal), which raises
+    # ConnectionError on every task and *fails* cold-start compiles. Disable
+    # result storage on Modal to avoid the wasted round-trip and the failures.
+    task_ignore_result=_IS_MODAL,
+    task_store_eager_result=not _IS_MODAL,
 
     # Result backend configuration
     result_expires=settings.JOB_RESULT_TTL,
