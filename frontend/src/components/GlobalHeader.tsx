@@ -160,7 +160,7 @@ export default function GlobalHeader() {
                       exit={{ opacity: 0, y: 8, scale: 0.98 }}
                       role="menu"
                       aria-label="Account menu"
-                      className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-white/10 bg-zinc-900 p-2 shadow-2xl"
+                      className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-white/10 bg-zinc-900 p-2 shadow-2xl"
                     >
                       <div className="px-3 py-2">
                         <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Account</p>
