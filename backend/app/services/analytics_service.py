@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.redis import cache_manager, redis_manager
@@ -157,7 +157,9 @@ class AnalyticsService:
                     UsageAnalytics.user_id == user_id,
                     UsageAnalytics.created_at >= start_date,
                 )
-            ).group_by(func.date_trunc("day", UsageAnalytics.created_at))
+            ).group_by(text("1"))  # GROUP BY the 1st SELECT expr (date_trunc);
+            # avoids SQLAlchemy binding the 'day' literal twice ($1 vs $N), which
+            # Postgres rejects with "must appear in GROUP BY" (GroupingError).
             daily_rows = (await db.execute(daily_agg_query)).all()
             daily_activity = {
                 row.day.strftime("%Y-%m-%d"): row.cnt
