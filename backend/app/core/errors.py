@@ -17,6 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .config import settings
 from .logging import get_logger
 from .observability import get_log_context
 
@@ -28,6 +29,38 @@ def _request_id(request: Request) -> str | None:
     if rid:
         return rid
     return get_log_context().get("request_id")
+
+
+def _cors_headers(request: Request) -> dict[str, str]:
+    """CORS headers for error responses.
+
+    Exception handlers return a JSONResponse directly, which bypasses
+    CORSMiddleware (a Starlette ASGI-ordering limitation). Without this, every
+    5xx / cold-start error reaches the browser WITHOUT an
+    Access-Control-Allow-Origin header, so the browser reports a misleading
+    "blocked by CORS policy" / net::ERR_FAILED instead of the real error. Echo
+    the request Origin when it is allowed so errors surface truthfully.
+    """
+    origin = request.headers.get("origin")
+    if not origin:
+        return {}
+    try:
+        allowed = settings.effective_cors_origins()
+    except Exception:
+        allowed = settings.CORS_ORIGINS or []
+    if origin in allowed or "*" in allowed:
+        return {
+            "access-control-allow-origin": origin,
+            "access-control-allow-credentials": "true",
+            "vary": "Origin",
+        }
+    return {}
+
+
+def _merge_headers(request: Request, headers: dict | None) -> dict:
+    merged = dict(headers or {})
+    merged.update(_cors_headers(request))
+    return merged
 
 
 def error_body(code: str, message: str, request_id: str | None, details: Any = None, *, detail_compat: Any = None) -> dict:
@@ -55,6 +88,7 @@ async def _validation_handler(request: Request, exc: RequestValidationError) -> 
             "validation_error", "Request validation failed.", _request_id(request),
             details=details, detail_compat=details,
         ),
+        headers=_merge_headers(request, None),
     )
 
 
@@ -77,14 +111,14 @@ async def _http_handler(request: Request, exc: StarletteHTTPException) -> JSONRe
         return JSONResponse(
             status_code=exc.status_code,
             content=body,
-            headers=getattr(exc, "headers", None),
+            headers=_merge_headers(request, getattr(exc, "headers", None)),
         )
 
     message = detail if isinstance(detail, str) else "Request failed."
     return JSONResponse(
         status_code=exc.status_code,
         content=error_body("http_error", message, _request_id(request), detail_compat=detail),
-        headers=getattr(exc, "headers", None),
+        headers=_merge_headers(request, getattr(exc, "headers", None)),
     )
 
 
@@ -99,6 +133,7 @@ async def _unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(
         status_code=500,
         content=error_body("internal_error", "An internal error occurred.", rid, detail_compat="Internal Server Error"),
+        headers=_merge_headers(request, None),
     )
 
 
