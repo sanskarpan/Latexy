@@ -439,7 +439,7 @@ export default function PDFPreview({
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-orange-400" />
               </div>
             }
-            className="flex flex-col items-center gap-5 py-6"
+            className="flex min-w-max flex-col items-center gap-5 px-4 py-6"
           >
             {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
               <div
