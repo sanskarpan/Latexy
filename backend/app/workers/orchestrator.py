@@ -625,6 +625,21 @@ def _run_latex_stage(
                 _pdf_bytes = pdf_file.stat().st_size
             except OSError:
                 _pdf_bytes = None
+            # Cache the PDF bytes in Redis so GET /download/{job_id} can serve
+            # them from the API container. On Modal the orchestrator worker's
+            # filesystem is NOT shared with the API, and job_dir is rmtree'd in
+            # the finally below — without this the combined-job PDF is lost.
+            try:
+                import base64 as _b64
+
+                from ..workers.event_publisher import get_worker_redis
+                get_worker_redis().setex(
+                    f"latexy:job:{job_id}:pdf",
+                    settings.JOB_RESULT_TTL,
+                    _b64.b64encode(pdf_file.read_bytes()).decode(),
+                )
+            except Exception as _redis_exc:
+                logger.warning(f"Failed to cache orchestrator PDF in Redis for job {job_id}: {_redis_exc}")
             record_compile(
                 "success",
                 duration_seconds=_compile_duration,
