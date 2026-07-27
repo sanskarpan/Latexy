@@ -73,10 +73,27 @@ class WSClient {
   setToken(token: string | null): void {
     if (this._token === token) return
     this._token = token
-    if (this._ws && this._ws.readyState === WebSocket.OPEN) {
-      this._ws.close(1000, 'Reconnect with updated auth')
+    // The existing socket was opened with the OLD token in its ?token= handshake
+    // query. Refresh it whenever a socket exists — including while it is still
+    // CONNECTING (a common race: the Better Auth session resolves just after the
+    // WS starts connecting, so the first socket is anonymous and, without this,
+    // would never pick up the token → the backend denies the user's own jobs).
+    if (this._ws && !this._manuallyDisconnected) {
+      const old = this._ws
       this._ws = null
-      if (!this._manuallyDisconnected) this._openSocket()
+      // Detach handlers so the old socket's onclose does not fire the backoff
+      // reconnect (which would race with the immediate reopen below).
+      old.onopen = null
+      old.onmessage = null
+      old.onclose = null
+      old.onerror = null
+      try {
+        old.close(1000, 'Reconnect with updated auth')
+      } catch {
+        /* closing a CONNECTING socket can throw in some engines — ignore */
+      }
+      this._stopHeartbeat()
+      this._openSocket()
     }
   }
 
