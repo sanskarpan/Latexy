@@ -37,8 +37,15 @@ export default function SignInForm() {
     setSocialLoading(provider)
     setError('')
     try {
-      if (provider === 'google') await signInWithGoogle()
-      else await signInWithGithub()
+      const result = provider === 'google' ? await signInWithGoogle() : await signInWithGithub()
+      // The client resolves with an `error` instead of throwing, and only sends
+      // the browser away once it has an authorization URL. Any other outcome
+      // has to release the form — otherwise a failed handshake leaves every
+      // button disabled with no way back short of a page reload.
+      if (result?.error || !result?.data?.url) {
+        setError(result?.error?.message || `${provider} sign-in is unavailable right now`)
+        setSocialLoading(null)
+      }
     } catch {
       setError(`${provider} sign-in failed`)
       setSocialLoading(null)
