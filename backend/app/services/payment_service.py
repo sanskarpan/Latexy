@@ -7,7 +7,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import case, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 try:
@@ -17,6 +17,7 @@ except (ImportError, ModuleNotFoundError):
 
 from ..core.config import (
     get_plan_config,
+    get_razorpay_offer_id,
     get_razorpay_plan_id,
     resolve_plan_family,
     settings,
@@ -31,9 +32,29 @@ logger = get_logger(__name__)
 
 Payment = db_models.Payment
 Subscription = db_models.Subscription
+TeamSeat = db_models.TeamSeat
 User = db_models.User
 CouponCode = getattr(db_models, "CouponCode", None)
 CouponRedemption = getattr(db_models, "CouponRedemption", None)
+
+# Statuses a Razorpay subscription can hold while it is still live, most
+# authoritative first. Used both to pick the "current" subscription when a user
+# has several rows and to refuse creating a second live subscription.
+LIVE_SUBSCRIPTION_STATUSES = ("active", "authenticated", "created", "pending", "paused")
+
+# Live statuses where nothing has been charged yet, so the subscription can be
+# abandoned/replaced without a refund.
+UNPAID_SUBSCRIPTION_STATUSES = ("created", "authenticated")
+
+# Live statuses that can actually take money from the customer. Only these
+# justify refusing a downgrade — an abandoned checkout bills nobody.
+BILLING_SUBSCRIPTION_STATUSES = tuple(
+    status for status in LIVE_SUBSCRIPTION_STATUSES if status not in UNPAID_SUBSCRIPTION_STATUSES
+)
+
+# Provider statuses where the subscription is finished: it cannot charge again
+# and there is nothing left to cancel.
+TERMINAL_PROVIDER_STATUSES = ("cancelled", "completed", "expired")
 
 class PaymentService:
     """Service for handling payments and subscriptions via Razorpay."""
@@ -276,13 +297,285 @@ class PaymentService:
             )
             already_redeemed = redemption.scalar_one_or_none() is not None
 
+        discount_percent = int(coupon.discount_percent)
+        offer_id = get_razorpay_offer_id(normalized_code)
+        if discount_percent > 0 and not offer_id:
+            # Razorpay discounts subscriptions through an offer_id; without one
+            # the discount cannot reach checkout. Refuse here so the UI never
+            # shows "Coupon applied" for something the Subscribe button will
+            # then reject.
+            logger.error(
+                f"Coupon {normalized_code} has a {discount_percent}% discount but no "
+                "Razorpay offer is mapped in RAZORPAY_COUPON_OFFERS; refusing it"
+            )
+            return {
+                "valid": False,
+                "message": "Coupon codes cannot be applied at checkout right now.",
+            }
+
         return {
             "valid": True,
             "code": normalized_code,
-            "discount_percent": int(coupon.discount_percent),
+            "discount_percent": discount_percent,
+            "offer_id": offer_id,
             "message": "Coupon applied",
             "already_redeemed": already_redeemed,
         }
+
+    async def _get_current_subscription(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        razorpay_subscription_id: Optional[str] = None,
+    ) -> Optional[Any]:
+        """Return the single subscription row that represents the user "now".
+
+        A user legitimately accumulates rows (retried checkout, free -> paid
+        upgrade), so this picks one deterministically instead of assuming there
+        is at most one: the row Razorpay currently points at, then the most
+        authoritative live status, then the newest row.
+        """
+        status_rank = case(
+            {status: rank for rank, status in enumerate(LIVE_SUBSCRIPTION_STATUSES)},
+            value=Subscription.status,
+            else_=len(LIVE_SUBSCRIPTION_STATUSES),
+        )
+
+        stmt = select(Subscription).where(Subscription.user_id == user_id)
+        if razorpay_subscription_id:
+            # CASE rather than a bare boolean: free rows carry a NULL provider id,
+            # and "NULL = 'sub_x' DESC" sorts NULLS FIRST in Postgres.
+            stmt = stmt.order_by(
+                case(
+                    (Subscription.razorpay_subscription_id == razorpay_subscription_id, 0),
+                    else_=1,
+                ).asc()
+            )
+        stmt = stmt.order_by(status_rank.asc(), Subscription.created_at.desc()).limit(1)
+
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    async def _get_live_provider_subscription(
+        self,
+        db: AsyncSession,
+        user_id: str,
+    ) -> Optional[Any]:
+        """Return the user's live Razorpay-backed subscription, if any.
+
+        Free-plan rows are ignored (they carry no razorpay_subscription_id) —
+        only provider-backed subscriptions can double-bill.
+        """
+        status_rank = case(
+            {status: rank for rank, status in enumerate(LIVE_SUBSCRIPTION_STATUSES)},
+            value=Subscription.status,
+            else_=len(LIVE_SUBSCRIPTION_STATUSES),
+        )
+        result = await db.execute(
+            select(Subscription)
+            .where(
+                Subscription.user_id == user_id,
+                Subscription.razorpay_subscription_id.is_not(None),
+                Subscription.status.in_(LIVE_SUBSCRIPTION_STATUSES),
+            )
+            .order_by(status_rank.asc(), Subscription.created_at.desc())
+            .limit(1)
+        )
+        return result.scalars().first()
+
+    async def _acquire_checkout_lock(self, user_id: str) -> bool:
+        """Take a short per-user lock so a double-click cannot create two subs."""
+        redis = await get_redis_cache_client()
+        return bool(await redis.set(f"latexy:subscription:checkout:{user_id}", "1", nx=True, ex=120))
+
+    async def _release_checkout_lock(self, user_id: str) -> None:
+        redis = await get_redis_cache_client()
+        await redis.delete(f"latexy:subscription:checkout:{user_id}")
+
+    def _fetch_provider_subscription(self, subscription_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a subscription from Razorpay; None when it cannot be read."""
+        try:
+            return self.client.subscription.fetch(subscription_id)
+        except Exception as e:
+            logger.error(f"Error fetching Razorpay subscription {subscription_id}: {e}")
+            return None
+
+    async def _resolve_existing_subscription(
+        self,
+        db: AsyncSession,
+        existing: Any,
+        concrete_plan_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Decide what to do about a user's existing live subscription.
+
+        Returns the response to send back to the caller, or None when the
+        existing subscription was retired and a new one may be created.
+        """
+        is_unpaid = existing.status in UNPAID_SUBSCRIPTION_STATUSES
+
+        if existing.plan_id == concrete_plan_id:
+            if is_unpaid:
+                # Same plan, never paid: this is a double-click or an abandoned
+                # checkout. Hand back the original payment link instead of
+                # creating a second subscription.
+                provider = self._fetch_provider_subscription(existing.razorpay_subscription_id)
+                return {
+                    "success": True,
+                    "subscription_id": existing.razorpay_subscription_id,
+                    "short_url": (provider or {}).get("short_url"),
+                    "message": "A checkout for this plan is already open.",
+                }
+            return {
+                "success": False,
+                "error": "You are already subscribed to this plan.",
+            }
+
+        if not is_unpaid:
+            # A paying subscription must be cancelled explicitly; switching
+            # silently would leave two live subscriptions billing the customer.
+            plan_name = (get_plan_config(existing.plan_id) or {}).get("name", existing.plan_id)
+            return {
+                "success": False,
+                "error": (
+                    f"You already have an active {plan_name} subscription. "
+                    "Cancel it before switching to a different plan."
+                ),
+            }
+
+        # Unpaid subscription for a different plan: retire it (at the provider
+        # and locally) so the user is left with exactly one live subscription.
+        if not await self._retire_unpaid_subscription(db, existing, reason=concrete_plan_id):
+            return {
+                "success": False,
+                "error": "Could not close your pending checkout. Please try again in a moment.",
+            }
+        return None
+
+    async def _retire_unpaid_subscription(
+        self,
+        db: AsyncSession,
+        existing: Any,
+        reason: str,
+        require_provider_confirmation: bool = True,
+    ) -> bool:
+        """Cancel an unpaid subscription at Razorpay and locally.
+
+        Returns False when the provider could not be told, so the caller can
+        refuse instead of leaving an orphaned live subscription behind.
+        """
+        settled = False
+        if not self.client:
+            logger.error(
+                "Cannot retire subscription "
+                f"{existing.razorpay_subscription_id}: billing client unavailable"
+            )
+        else:
+            try:
+                self.client.subscription.cancel(
+                    existing.razorpay_subscription_id, {"cancel_at_cycle_end": 0}
+                )
+                settled = True
+            except Exception as e:
+                logger.error(
+                    "Error cancelling pending subscription "
+                    f"{existing.razorpay_subscription_id}: {e}"
+                )
+                settled = self._provider_cancel_is_moot(existing.razorpay_subscription_id)
+
+        if not settled:
+            # A 'created' subscription has no authorised mandate, so Razorpay
+            # cannot charge it on its own: a caller that only needs the row out
+            # of the way (the free downgrade) may proceed. 'authenticated' will
+            # be charged at the cycle start and must be confirmed cancelled.
+            if require_provider_confirmation or existing.status != "created":
+                return False
+            logger.warning(
+                f"Retiring unconfirmed checkout {existing.razorpay_subscription_id} locally; "
+                "the provider could not be reached and it cannot charge on its own"
+            )
+
+        await db.execute(
+            update(Subscription)
+            .where(Subscription.id == existing.id)
+            .values(status="cancelled", cancelled_at=datetime.utcnow())
+        )
+        await db.commit()
+        logger.info(
+            f"Retired pending subscription {existing.razorpay_subscription_id} "
+            f"before switching to {reason}"
+        )
+        return True
+
+    def _provider_cancel_is_moot(self, subscription_id: str) -> bool:
+        """True when Razorpay rejected a cancel because nothing is left to cancel.
+
+        Razorpay answers BAD_REQUEST_ERROR both for "already cancelled/completed/
+        expired" and for ids it does not know, so read the subscription back
+        rather than pattern-matching the message. A terminal (or missing)
+        subscription cannot charge anyone, and refusing the local cleanup in
+        that case would strand the user on a plan they can never leave.
+        """
+        if not self.client:
+            return False
+
+        try:
+            provider = self.client.subscription.fetch(subscription_id)
+        except Exception as exc:
+            not_found = _razorpay_module is not None and isinstance(
+                exc, _razorpay_module.errors.BadRequestError
+            )
+            if not_found:
+                logger.warning(
+                    f"Razorpay does not know subscription {subscription_id} ({exc}); "
+                    "treating it as already cancelled"
+                )
+                return True
+            logger.error(f"Could not read back Razorpay subscription {subscription_id}: {exc}")
+            return False
+
+        status = str((provider or {}).get("status") or "").lower()
+        if status in TERMINAL_PROVIDER_STATUSES:
+            logger.warning(
+                f"Razorpay subscription {subscription_id} is already '{status}'; "
+                "treating the cancel as complete"
+            )
+            return True
+        return False
+
+    async def _revoke_team_seats(self, db: AsyncSession, owner_user_id: str) -> int:
+        """Release every seat owned by a user whose team subscription ended.
+
+        Mirrors DELETE /team/seats/{id}: the seat is marked removed and any
+        member still riding on the owner's plan drops back to free.
+        """
+        seat_result = await db.execute(
+            select(TeamSeat.id, TeamSeat.member_user_id).where(
+                TeamSeat.owner_user_id == owner_user_id,
+                TeamSeat.status != "removed",
+            )
+        )
+        seats = seat_result.all()
+        if not seats:
+            return 0
+
+        member_ids = [member_id for _seat_id, member_id in seats if member_id]
+        if member_ids:
+            await db.execute(
+                update(User)
+                .where(User.id.in_(member_ids), User.subscription_plan == "team_member")
+                .values(subscription_plan="free", subscription_status="inactive")
+            )
+
+        await db.execute(
+            update(TeamSeat)
+            .where(
+                TeamSeat.owner_user_id == owner_user_id,
+                TeamSeat.status != "removed",
+            )
+            .values(status="removed")
+        )
+        logger.info(f"Revoked {len(seats)} team seat(s) for owner {owner_user_id}")
+        return len(seats)
 
     async def _create_paid_subscription(
         self,
@@ -292,6 +585,7 @@ class PaymentService:
         customer_email: str,
         customer_name: str,
         coupon_code: Optional[str] = None,
+        offer_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not self.client:
             return {"success": False, "error": self._base_status["message"]}
@@ -313,6 +607,8 @@ class PaymentService:
             "customer_id": customer["id"],
             "total_count": 1 if interval == "year" else 12,
             "quantity": 1,
+            # Razorpay applies a coupon discount through the mapped offer.
+            **({"offer_id": offer_id} if offer_id else {}),
             "notes": {
                 "user_id": user_id,
                 "plan_id": concrete_plan_id,
@@ -374,6 +670,33 @@ class PaymentService:
 
             # Handle free plan
             if plan_config["price"] == 0:
+                live = await self._get_live_provider_subscription(db, user_id)
+                if live is not None and live.status in BILLING_SUBSCRIPTION_STATUSES:
+                    # Downgrading here would clear User.subscription_id and orphan
+                    # a subscription that keeps charging with no way to cancel it.
+                    return {
+                        "success": False,
+                        "error": (
+                            "Cancel your paid subscription before switching to the free plan."
+                        ),
+                    }
+                if live is not None:
+                    # Unpaid ('created'/'authenticated') row — an abandoned
+                    # checkout that bills nobody. Close it at the provider
+                    # instead of blocking the free plan behind it.
+                    if not await self._retire_unpaid_subscription(
+                        db,
+                        live,
+                        reason=concrete_plan_id,
+                        require_provider_confirmation=False,
+                    ):
+                        return {
+                            "success": False,
+                            "error": (
+                                "Could not close your pending checkout. "
+                                "Please try again in a moment."
+                            ),
+                        }
                 return await self._create_free_subscription(db, user_id, concrete_plan_id)
 
             if concrete_plan_id == "student":
@@ -396,20 +719,56 @@ class PaymentService:
                 if not coupon_result["valid"]:
                     return {"success": False, "error": coupon_result["message"]}
 
+                if int(coupon_result.get("discount_percent") or 0) > 0 and not coupon_result.get(
+                    "offer_id"
+                ):
+                    # Belt and braces: validate_coupon already refuses a discount
+                    # with no Razorpay offer behind it. Never charge full price
+                    # while burning the user's one-time redemption.
+                    logger.error(
+                        f"Coupon {coupon_result['code']} has a "
+                        f"{coupon_result['discount_percent']}% discount but no Razorpay "
+                        "offer is configured; refusing to charge full price"
+                    )
+                    return {
+                        "success": False,
+                        "error": "Coupon codes cannot be applied at checkout right now.",
+                    }
+
             if not self.client:
                 return {
                     "success": False,
                     "error": self._base_status["message"],
                 }
 
-            result = await self._create_paid_subscription(
-                db=db,
-                user_id=user_id,
-                concrete_plan_id=concrete_plan_id,
-                customer_email=customer_email,
-                customer_name=customer_name,
-                coupon_code=(coupon_result or {}).get("code"),
-            )
+            # BILLING: serialise checkout per user. Without this, two concurrent
+            # clicks both see "no live subscription" and create two subscriptions.
+            if not await self._acquire_checkout_lock(user_id):
+                return {
+                    "success": False,
+                    "error": "A checkout is already in progress for this account.",
+                }
+
+            try:
+                existing = await self._get_live_provider_subscription(db, user_id)
+                if existing is not None:
+                    resolved = await self._resolve_existing_subscription(
+                        db, existing, concrete_plan_id
+                    )
+                    if resolved is not None:
+                        return resolved
+
+                result = await self._create_paid_subscription(
+                    db=db,
+                    user_id=user_id,
+                    concrete_plan_id=concrete_plan_id,
+                    customer_email=customer_email,
+                    customer_name=customer_name,
+                    coupon_code=(coupon_result or {}).get("code"),
+                    offer_id=(coupon_result or {}).get("offer_id"),
+                )
+            finally:
+                await self._release_checkout_lock(user_id)
 
             if (
                 result.get("success")
@@ -503,9 +862,14 @@ class PaymentService:
         self,
         db: AsyncSession,
         payload: bytes,
-        signature: str
+        signature: str,
+        event_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Handle Razorpay webhook events."""
+        """Handle Razorpay webhook events.
+
+        ``event_id`` is the ``x-razorpay-event-id`` delivery header when the
+        caller has it; replay protection falls back to the signed body itself.
+        """
         try:
             if not self.is_available():
                 return {
@@ -525,23 +889,20 @@ class PaymentService:
             event_data = json.loads(payload.decode('utf-8'))
             event_type = event_data.get("event")
             event_payload = event_data.get("payload", {})
-            entity = event_payload.get("subscription", {})
+            # Razorpay nests the object under payload.subscription.entity.
+            entity = self._unwrap_entity(event_payload.get("subscription") or {})
 
-            # PAYMENT-001: idempotency — atomic set-if-absent per event id.
+            # PAYMENT-001: idempotency — atomic set-if-absent per delivery.
             # A single SET key NX EX avoids the check-then-act race of
             # SISMEMBER + SADD (two concurrent deliveries could both pass the
             # SISMEMBER before either SADDs). A per-event key also stops the
             # shared-set TTL from being reset on every delivery.
-            event_id = event_data.get("id")
-            processed_key = None
-            redis = None
-            if event_id:
-                redis = await get_redis_cache_client()
-                processed_key = f"latexy:webhook:processed:{event_id}"
-                was_new = await redis.set(processed_key, "1", nx=True, ex=86400)
-                if not was_new:
-                    logger.info(f"Duplicate webhook event skipped: {event_id}")
-                    return {"success": True, "message": "Event already processed"}
+            processed_key = self._webhook_idempotency_key(payload, event_data, event_id)
+            redis = await get_redis_cache_client()
+            was_new = await redis.set(processed_key, "1", nx=True, ex=86400)
+            if not was_new:
+                logger.info(f"Duplicate webhook delivery skipped: {processed_key}")
+                return {"success": True, "message": "Event already processed"}
 
             logger.info(f"Processing webhook event: {event_type}")
 
@@ -565,13 +926,12 @@ class PaymentService:
                     result = {"success": True, "message": "Event ignored"}
             except Exception:
                 # Release the idempotency key so a retry can reprocess this event.
-                if processed_key is not None and redis is not None:
-                    await redis.delete(processed_key)
+                await redis.delete(processed_key)
                 raise
 
             # If handling failed (transient/retryable), release the idempotency
             # key so Razorpay's retry can reprocess the event.
-            if processed_key is not None and redis is not None and not result.get("success"):
+            if not result.get("success"):
                 await redis.delete(processed_key)
 
             return result
@@ -588,10 +948,31 @@ class PaymentService:
         plan_config = get_plan_config(plan_id) or {}
         return timedelta(days=365) if plan_config.get("interval") == "year" else timedelta(days=30)
 
+    def _webhook_idempotency_key(
+        self,
+        payload: bytes,
+        event_data: Dict[str, Any],
+        event_id: Optional[str],
+    ) -> str:
+        """Return the replay-protection key for one webhook delivery.
+
+        Razorpay does not put a delivery id in the webhook body — it ships in
+        the ``x-razorpay-event-id`` header. When that header is unavailable we
+        key off a digest of the signed body, which is byte-identical across
+        Razorpay's retries of an event and different for every distinct event.
+        """
+        delivery_id = (event_id or event_data.get("id") or "").strip()
+        if delivery_id:
+            return f"latexy:webhook:processed:{delivery_id}"
+        return f"latexy:webhook:processed:sha256:{hashlib.sha256(payload).hexdigest()}"
+
     def _verify_webhook_signature(self, payload: bytes, signature: str) -> bool:
         """Verify Razorpay webhook signature."""
         if not settings.RAZORPAY_WEBHOOK_SECRET:
             logger.error("Webhook secret not configured")
+            return False
+
+        if not signature:
             return False
 
         try:
@@ -601,7 +982,13 @@ class PaymentService:
                 hashlib.sha256
             ).hexdigest()
 
-            return hmac.compare_digest(signature, expected_signature)
+            # Compare as bytes: compare_digest rejects non-ASCII str inputs, and
+            # an attacker controls the header value. Encoding keeps the compare
+            # constant-time for any header content.
+            return hmac.compare_digest(
+                signature.strip().encode("utf-8"),
+                expected_signature.encode("utf-8"),
+            )
         except Exception as e:
             logger.error(f"Error verifying webhook signature: {e}")
             return False
@@ -766,19 +1153,22 @@ class PaymentService:
         """
         try:
             subscription_id = entity.get("id")
+            if not subscription_id:
+                return {"success": False, "error": "No subscription ID"}
 
             async with db.begin():
                 sub_result = await db.execute(
-                    select(Subscription.user_id).where(
+                    select(Subscription.user_id, Subscription.plan_id).where(
                         Subscription.razorpay_subscription_id == subscription_id
                     )
                 )
-                user_id_row = sub_result.scalar_one_or_none()
-                if user_id_row is None:
+                sub_row = sub_result.first()
+                if sub_row is None:
                     logger.warning(
                         f"Subscription not found for {sub_status}: {subscription_id}"
                     )
                     return {"success": False, "error": "Subscription not found"}
+                user_id_row, plan_id = sub_row
 
                 await db.execute(
                     update(Subscription).where(
@@ -791,6 +1181,9 @@ class PaymentService:
                         subscription_status=sub_status,
                     )
                 )
+
+                if resolve_plan_family(plan_id) == "team":
+                    await self._revoke_team_seats(db, user_id_row)
 
             logger.info(f"Subscription {sub_status}: {subscription_id}")
             return {"success": True, "message": f"Subscription {sub_status}"}
@@ -808,6 +1201,8 @@ class PaymentService:
         """Mark a subscription pending (renewal failed, awaiting retry)."""
         try:
             subscription_id = entity.get("id")
+            if not subscription_id:
+                return {"success": False, "error": "No subscription ID"}
 
             async with db.begin():
                 sub_result = await db.execute(
@@ -846,18 +1241,21 @@ class PaymentService:
         """Handle subscription cancelled event."""
         try:
             subscription_id = entity.get("id")
+            if not subscription_id:
+                return {"success": False, "error": "No subscription ID"}
 
             # DB-012: explicit transaction; resolve user_id before updating to avoid extra SELECT
             async with db.begin():
                 sub_result = await db.execute(
-                    select(Subscription.user_id).where(
+                    select(Subscription.user_id, Subscription.plan_id).where(
                         Subscription.razorpay_subscription_id == subscription_id
                     )
                 )
-                user_id_row = sub_result.scalar_one_or_none()
-                if user_id_row is None:
+                sub_row = sub_result.first()
+                if sub_row is None:
                     logger.warning(f"Subscription not found for cancel: {subscription_id}")
                     return {"success": False, "error": "Subscription not found"}
+                user_id_row, plan_id = sub_row
 
                 await db.execute(
                     update(Subscription).where(
@@ -873,6 +1271,11 @@ class PaymentService:
                         subscription_status="cancelled",
                     )
                 )
+
+                # A team owner losing their subscription must lose their seats;
+                # otherwise members keep team entitlements forever.
+                if resolve_plan_family(plan_id) == "team":
+                    await self._revoke_team_seats(db, user_id_row)
 
             record_business_event("subscription", "cancelled")
             logger.info(f"Subscription cancelled: {subscription_id}")
@@ -891,6 +1294,8 @@ class PaymentService:
         """Handle subscription paused event."""
         try:
             subscription_id = entity.get("id")
+            if not subscription_id:
+                return {"success": False, "error": "No subscription ID"}
 
             # DB-012: explicit transaction; resolve user_id upfront to avoid extra SELECT
             async with db.begin():
@@ -936,12 +1341,12 @@ class PaymentService:
             if not user:
                 return None
 
-            # Get subscription details
-            subscription_result = await db.execute(
-                select(Subscription).where(Subscription.user_id == user_id)
-                .order_by(Subscription.created_at.desc())
+            # Get subscription details. A user can hold several rows (retried
+            # checkout, free -> paid upgrade), so pick the current one instead
+            # of blowing up on more than one match.
+            subscription = await self._get_current_subscription(
+                db, user_id, razorpay_subscription_id=user.subscription_id
             )
-            subscription = subscription_result.scalar_one_or_none()
 
             plan_config = get_plan_config(user.subscription_plan)
 
@@ -976,34 +1381,71 @@ class PaymentService:
                     "error": "No active subscription found"
                 }
 
-            if user.subscription_plan not in {"free", "student", "team_member"} and not self.is_available():
+            # BILLING: whether Razorpay has to be told is decided by the
+            # subscription row, not by user.subscription_plan. An abandoned
+            # checkout deliberately leaves the plan at 'free' while a live
+            # provider subscription exists, and that one must still be cancelled.
+            live = await self._get_live_provider_subscription(db, user_id)
+            provider_subscription_id = live.razorpay_subscription_id if live is not None else None
+            if not provider_subscription_id and str(user.subscription_id or "").startswith("sub_"):
+                # Local rows can drift from the provider; a Razorpay id parked on
+                # the user is still worth cancelling.
+                provider_subscription_id = user.subscription_id
+
+            if provider_subscription_id and not self.is_available():
                 return {
                     "success": False,
                     "error": self._base_status["message"],
                 }
 
-            # Cancel in Razorpay if not free plan
-            if user.subscription_plan not in {"free", "student", "team_member"} and self.client and user.subscription_id:
+            # An unpaid subscription has no billing cycle to run out, so it is
+            # cancelled immediately; a paying one runs to cycle end.
+            unpaid_checkout = live is not None and live.status in UNPAID_SUBSCRIPTION_STATUSES
+
+            if provider_subscription_id and self.client:
+                cancel_at_cycle_end = 0 if unpaid_checkout else 1
                 try:
-                    self.client.subscription.cancel(user.subscription_id, {"cancel_at_cycle_end": 1})
+                    self.client.subscription.cancel(
+                        provider_subscription_id, {"cancel_at_cycle_end": cancel_at_cycle_end}
+                    )
                 except Exception as e:
                     logger.error(f"Error cancelling Razorpay subscription: {e}")
+                    # Razorpay also rejects cancels for subscriptions that are
+                    # already cancelled/completed/expired. Those have nothing
+                    # left to charge, so refusing the local cleanup there would
+                    # lock the user out of cancelling forever. Only a genuinely
+                    # transient failure leaves the subscription live.
+                    if not self._provider_cancel_is_moot(provider_subscription_id):
+                        return {
+                            "success": False,
+                            "error": (
+                                "We could not cancel your subscription with the payment "
+                                "provider. Please try again or contact support."
+                            ),
+                        }
 
-            # Update local records
+            # Update local records for the live subscriptions only; already
+            # cancelled/completed history keeps its original status.
             await db.execute(
                 update(Subscription).where(
-                    Subscription.user_id == user_id
+                    Subscription.user_id == user_id,
+                    Subscription.status.in_(LIVE_SUBSCRIPTION_STATUSES),
                 ).values(
                     status="cancelled",
                     cancelled_at=datetime.utcnow()
                 )
             )
 
-            await db.execute(
-                update(User).where(User.id == user_id).values(
-                    subscription_status="cancelled"
-                )
-            )
+            user_values: Dict[str, Any] = {"subscription_status": "cancelled"}
+            if unpaid_checkout:
+                # The checkout died immediately, so nothing points at it any
+                # more; a paying subscription keeps its id until the cycle ends.
+                user_values["subscription_id"] = None
+            await db.execute(update(User).where(User.id == user_id).values(**user_values))
+
+            # Team owners lose their seats with their subscription.
+            if resolve_plan_family(user.subscription_plan) == "team":
+                await self._revoke_team_seats(db, user_id)
 
             await db.commit()
             return {"success": True, "message": "Subscription cancelled"}

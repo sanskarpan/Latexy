@@ -109,14 +109,30 @@ class TestAdvancedSubscriptions:
         )
         await db_session.commit()
 
+        # A percentage discount is only usable when it is mapped to a Razorpay
+        # offer; otherwise checkout would refuse what the UI just accepted.
+        with patch(
+            "app.core.config.settings.RAZORPAY_COUPON_OFFERS",
+            '{"SAVE20": "offer_test"}',
+        ):
+            response = await client.post(
+                "/billing/validate-coupon",
+                json={"code": "SAVE20", "planId": "pro", "billingPeriod": "monthly"},
+            )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["valid"] is True
+        assert payload["discountPercent"] == 20
+
+        # Unmapped: refuse at the apply step rather than at Subscribe.
         response = await client.post(
             "/billing/validate-coupon",
             json={"code": "SAVE20", "planId": "pro", "billingPeriod": "monthly"},
         )
         assert response.status_code == 200
-        payload = response.json()
-        assert payload["valid"] is True
-        assert payload["discountPercent"] == 20
+        unmapped = response.json()
+        assert unmapped["valid"] is False
+        assert "cannot be applied" in unmapped["message"]
 
     async def test_validate_coupon_rejects_expired_code(
         self,

@@ -81,9 +81,9 @@ function BillingPageContent() {
   const [handledStudentToken, setHandledStudentToken] = useState<string | null>(null)
   const [handledTeamToken, setHandledTeamToken] = useState<string | null>(null)
 
-  useEffect(() => {
-    apiClient.setAuthToken(sessionToken)
-  }, [sessionToken])
+  // Note: the Bearer token is published to apiClient by <AuthSync /> in the root
+  // layout — it is the single source of truth. Mirroring it from here would race
+  // AuthSync (child effects run first) and could publish a null token.
 
   useEffect(() => {
     const fetchPlans = async () => {
@@ -221,6 +221,16 @@ function BillingPageContent() {
       return
     }
 
+    // The endpoint answers 200 with success:false for refusals the user must
+    // act on (already subscribed, checkout in flight, coupon unusable).
+    // SubscriptionCreateResponse does not model those envelope fields.
+    const created = result.data as typeof result.data & { success?: boolean; error?: string }
+    if (created.success === false) {
+      checkoutTab?.close()
+      toast.error(created.error || 'Failed to create subscription')
+      return
+    }
+
     if (result.data.shortUrl) {
       openInTab(checkoutTab, result.data.shortUrl)
       toast.success('Payment link opened in a new tab.')
@@ -261,6 +271,13 @@ function BillingPageContent() {
     if (!result.success || !result.data) {
       previewTab?.close()
       toast.error(result.error || 'Failed to start student verification')
+      return
+    }
+
+    const requested = result.data as typeof result.data & { success?: boolean; error?: string }
+    if (requested.success === false) {
+      previewTab?.close()
+      toast.error(requested.error || 'Failed to start student verification')
       return
     }
 
