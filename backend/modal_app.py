@@ -99,7 +99,12 @@ def _init_worker_redis() -> None:
     image=latex_image,
     secrets=_secrets,
     timeout=300,
-    scaledown_window=60,
+    # Keep one worker warm at all times. The texlive image cold-starts in ~40-45s,
+    # which dominated compile latency (warm compile work is only ~3.5s). min_containers=1
+    # eliminates the cold start for the common single-compile path. scaledown_window keeps
+    # extra burst containers around briefly so bursts stay warm too.
+    min_containers=1,
+    scaledown_window=120,
 )
 def run_latex_task(payload: dict) -> None:
     """Compile LaTeX to PDF (texlive installed in image; no Docker needed)."""
@@ -112,10 +117,16 @@ def run_latex_task(payload: dict) -> None:
 
 
 @app.function(
-    image=worker_image,
+    # latex_image (not worker_image): the orchestrator compiles LaTeX in-process
+    # during its pipeline, so it needs the full texlive toolchain — otherwise the
+    # compile stage fails (no pdflatex) and the combined job retries/stalls.
+    image=latex_image,
     secrets=_secrets,
     timeout=600,
-    scaledown_window=60,
+    # No min_containers here (cost): combined jobs are LLM-dominated (~40s), so a cold
+    # start is proportionally smaller. A longer scaledown_window keeps back-to-back
+    # optimize runs on a warm container. Bump to min_containers=1 if optimize latency matters.
+    scaledown_window=180,
 )
 def run_orchestrator_task(payload: dict) -> None:
     """Combined LLM optimisation → LaTeX compilation → ATS scoring pipeline."""

@@ -4,6 +4,7 @@
 
 import { useEffect, useReducer, useCallback } from 'react'
 import { wsClient } from '@/lib/ws-client'
+import { apiClient } from '@/lib/api-client'
 import type { AnyEvent } from '@/lib/event-types'
 import {
   jobStreamReducer,
@@ -129,6 +130,78 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
       wsClient.off('event', handleEvent)
       wsClient.off('error', handleServerError)
       wsClient.unsubscribe(jobId)
+    }
+  }, [jobId])
+
+  // REST polling fallback: real-time job events are delivered via Redis Pub/Sub
+  // from the worker to the API process. When that fanout does not reach this
+  // client (e.g. cross-container Pub/Sub on serverless Redis in production), the
+  // WS subscribes but never receives a terminal event, so the PDF never loads.
+  // Poll the authoritative job state/result and synthesize the terminal event.
+  // The reducer ignores post-terminal transitions, so this never conflicts with
+  // a WS event that arrives first.
+  useEffect(() => {
+    if (!jobId) return
+    let stopped = false
+    let attempts = 0
+    const MAX_POLLS = 150 // ~10 min at 4s — cap so a wedged job can't poll forever
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const poll = async () => {
+      attempts += 1
+      try {
+        const snap = await apiClient.getJobState(jobId)
+        if (stopped) return
+        if (snap?.status === 'cancelled') {
+          dispatch({ type: 'job.cancelled', job_id: jobId } as unknown as AnyEvent)
+          return // terminal → stop polling
+        }
+        if (snap?.status === 'completed') {
+          let result: Record<string, unknown> = {}
+          try {
+            const res = (await apiClient.getJobResult(jobId)) as unknown as Record<string, unknown>
+            result = (res?.result as Record<string, unknown>) ?? res ?? {}
+          } catch {
+            /* result fetch best-effort */
+          }
+          if (stopped) return
+          dispatch({
+            type: 'job.completed',
+            job_id: jobId,
+            pdf_job_id: (result.pdf_job_id as string) ?? jobId,
+            ats_score: result.ats_score,
+            ats_details: result.ats_details,
+            changes_made: result.changes_made,
+            compilation_time: result.compilation_time,
+            optimization_time: result.optimization_time,
+            tokens_used: result.tokens_used,
+            page_count: result.page_count,
+          } as unknown as AnyEvent)
+          return // terminal → stop polling
+        }
+        if (snap?.status === 'failed') {
+          // Reducer reads error_message/error_code/retryable/stage (not `error`).
+          dispatch({
+            type: 'job.failed',
+            job_id: jobId,
+            error_message: 'Job failed',
+            error_code: 'unknown',
+            retryable: false,
+            stage: '',
+          } as unknown as AnyEvent)
+          return
+        }
+      } catch {
+        /* transient — keep polling */
+      }
+      if (!stopped && attempts < MAX_POLLS) timer = setTimeout(poll, 4000)
+    }
+
+    // Delay the first poll so a healthy WS stream gets the first chance.
+    timer = setTimeout(poll, 4000)
+    return () => {
+      stopped = true
+      if (timer) clearTimeout(timer)
     }
   }, [jobId])
 

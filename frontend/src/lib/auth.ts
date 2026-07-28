@@ -171,10 +171,15 @@ export const auth = betterAuth({
   secret: getAuthSecret(),
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:5180',
 
-  // Trust requests from both the frontend and the FastAPI backend
+  // Trust requests from both the frontend and the FastAPI backend.
+  // Includes the custom domain + the Vercel deployment URL so auth keeps
+  // working during/after the domain cutover regardless of BETTER_AUTH_URL.
   trustedOrigins: [
     process.env.BETTER_AUTH_URL || 'http://localhost:5180',
     process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030',
+    'https://latexy.xyz',
+    'https://www.latexy.xyz',
+    'https://latexy-frontend-tau.vercel.app',
   ],
 
   // Session configuration

@@ -17,8 +17,20 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    // Backend already returns { success, api_keys: [...], total_count } — pass through
-    return NextResponse.json(data);
+
+    // The backend already returns { success, api_keys: [...], total_count }.
+    // Older code assumed a bare array (data.length / api_keys: data), which put
+    // the whole object into api_keys and crashed the client's .map(). Normalise
+    // defensively for both shapes.
+    const list = Array.isArray(data)
+      ? data
+      : (Array.isArray(data?.api_keys) ? data.api_keys : []);
+
+    return NextResponse.json({
+      success: true,
+      total_count: list.length,
+      api_keys: list,
+    });
   } catch (error) {
     console.error('Error fetching API keys:', error);
     return NextResponse.json(

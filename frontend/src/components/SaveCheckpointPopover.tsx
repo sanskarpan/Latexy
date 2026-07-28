@@ -78,7 +78,7 @@ export default function SaveCheckpointPopover({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1.5 w-64 rounded-xl border border-white/10 bg-zinc-900 p-3 shadow-xl">
+        <div className="absolute right-0 top-full z-50 mt-1.5 w-64 rounded-xl border border-white/10 bg-zinc-900 p-3 shadow-xl">
           <p className="mb-2 text-[11px] font-medium text-zinc-400">
             Name this checkpoint
           </p>

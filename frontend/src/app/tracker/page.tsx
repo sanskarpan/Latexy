@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Plus, MoreHorizontal, ExternalLink, Trash2, Pencil, X } from 'lucide-react'
@@ -96,6 +97,28 @@ function ApplicationCard({ app, onDelete, onEdit, isDragging = false }: Applicat
   const { attributes, listeners, setNodeRef, transform, transition, isDragging: sortableDragging } =
     useSortable({ id: app.id })
   const [menuOpen, setMenuOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const menuTriggerRef = useRef<HTMLButtonElement>(null)
+  const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null)
+
+  useEffect(() => { setMounted(true) }, [])
+
+  function openMenu() {
+    if (menuTriggerRef.current) {
+      const rect = menuTriggerRef.current.getBoundingClientRect()
+      const margin = 8
+      const menuHeight = 88 // approx height of 2-item menu
+      const right = Math.max(margin, window.innerWidth - rect.right)
+      const spaceBelow = window.innerHeight - rect.bottom - margin
+      // Flip upward when there isn't enough room below the trigger.
+      if (spaceBelow < menuHeight) {
+        setMenuPos({ bottom: window.innerHeight - rect.top + 4, right })
+      } else {
+        setMenuPos({ top: rect.bottom + 4, right })
+      }
+    }
+    setMenuOpen(true)
+  }
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -146,22 +169,34 @@ function ApplicationCard({ app, onDelete, onEdit, isDragging = false }: Applicat
       {/* Overflow menu */}
       <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition">
         <button
+          ref={menuTriggerRef}
           type="button"
-          onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v) }}
+          onClick={(e) => { e.stopPropagation(); menuOpen ? setMenuOpen(false) : openMenu() }}
           className="rounded p-1 text-zinc-600 transition hover:bg-white/5 hover:text-zinc-300"
         >
           <MoreHorizontal size={14} />
         </button>
-        {menuOpen && (
+        {/* Rendered via portal to document.body with fixed positioning so the
+            menu escapes the column's overflow-y-auto and the board's
+            overflow-x-auto clipping. */}
+        {mounted && menuOpen && menuPos && createPortal(
           <>
             <button
               type="button"
-              className="fixed inset-0 z-10"
+              className="fixed inset-0 z-[200]"
               onClick={() => setMenuOpen(false)}
               aria-label="Close menu"
               tabIndex={-1}
             />
-            <div className="absolute right-0 top-6 z-20 w-36 rounded-xl border border-white/10 bg-zinc-900 p-1 shadow-xl">
+            <div
+              className="z-[201] w-36 rounded-xl border border-white/10 bg-zinc-900 p-1 shadow-xl"
+              style={{
+                position: 'fixed',
+                top: menuPos.top,
+                bottom: menuPos.bottom,
+                right: menuPos.right,
+              }}
+            >
               <button
                 type="button"
                 onClick={() => { setMenuOpen(false); onEdit(app) }}
@@ -177,7 +212,8 @@ function ApplicationCard({ app, onDelete, onEdit, isDragging = false }: Applicat
                 <Trash2 size={12} /> Delete
               </button>
             </div>
-          </>
+          </>,
+          document.body
         )}
       </div>
     </div>
@@ -200,7 +236,7 @@ interface ColumnProps {
 
 function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete, onEdit }: ColumnProps) {
   return (
-    <div className={`flex min-h-[200px] w-[260px] flex-shrink-0 flex-col rounded-xl border border-white/10 bg-zinc-950 border-t-2 ${colorClass}`}>
+    <div className={`flex min-h-[200px] w-[80vw] max-w-[300px] flex-shrink-0 flex-col rounded-xl border border-white/10 bg-zinc-950 border-t-2 sm:w-[260px] ${colorClass}`}>
       <div className="flex items-center gap-2 px-3.5 py-3">
         <span className="text-xs font-semibold text-zinc-300">{label}</span>
         <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${badgeClass}`}>
@@ -445,8 +481,8 @@ export default function TrackerPage() {
       {/* Stats */}
       <StatsBar stats={stats} />
 
-      {/* Kanban board */}
-      <div className="overflow-x-auto pb-4">
+      {/* Kanban board — horizontally scrollable, contained to viewport width */}
+      <div className="max-w-full overflow-x-auto pb-4">
         <DndContext
           sensors={sensors}
           onDragStart={handleDragStart}

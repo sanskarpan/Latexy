@@ -248,7 +248,7 @@ function SettingsContent() {
   }
 
   return (
-    <div className="min-h-screen bg-[#080808] px-4 py-10">
+    <div className="min-h-screen overflow-x-hidden bg-[#080808] px-4 py-10">
       <div className="mx-auto max-w-xl space-y-8">
         {/* Header */}
         <div>
@@ -278,13 +278,13 @@ function SettingsContent() {
             </div>
           ) : ghStatus.connected ? (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
                     <CheckCircle size={14} className="text-emerald-400" />
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-zinc-200">Connected as <span className="text-emerald-300">{ghStatus.username}</span></p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-zinc-200 break-words">Connected as <span className="text-emerald-300">{ghStatus.username}</span></p>
                     <p className="text-[11px] text-zinc-500">
                       Resume sync enabled. Toggle per-resume in the editor.
                     </p>
@@ -292,7 +292,7 @@ function SettingsContent() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
+              <div className="flex flex-wrap items-center gap-2 pt-1">
                 <a
                   href={`https://github.com/${ghStatus.username}`}
                   target="_blank"
@@ -357,13 +357,13 @@ function SettingsContent() {
             </div>
           ) : zotStatus.connected ? (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
                     <CheckCircle size={14} className="text-emerald-400" />
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-zinc-200">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-zinc-200 break-words">
                       Connected as <span className="text-emerald-300">@{zotStatus.username}</span>
                     </p>
                     <p className="text-[11px] text-zinc-500">
@@ -425,13 +425,13 @@ function SettingsContent() {
             </div>
           ) : menStatus.connected ? (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
                     <CheckCircle size={14} className="text-emerald-400" />
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-zinc-200">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-zinc-200 break-words">
                       Connected as <span className="text-emerald-300">{menStatus.name ?? 'Mendeley User'}</span>
                     </p>
                     <p className="text-[11px] text-zinc-500">
@@ -493,11 +493,11 @@ function SettingsContent() {
             </div>
           ) : dbxStatus.connected ? (
             <div className="space-y-4">
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
                   <CheckCircle size={14} className="text-emerald-400" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium text-zinc-200">Dropbox connected</p>
                   <p className="text-[11px] text-zinc-500">
                     Sync is enabled. Toggle per-resume sync from the editor toolbar.

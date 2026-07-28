@@ -121,6 +121,45 @@ async def test_me_timeseries_returns_series_data(client: AsyncClient, db_session
     assert any(point['count'] >= 1 for point in body['feature_series'])
 
 
+async def test_me_daily_analytics_groups_by_day(client: AsyncClient, db_session: AsyncSession):
+    """GET /analytics/me must aggregate daily activity without a Postgres
+    GroupingError (regression: date_trunc('day', ...) was bound twice, so PG
+    rejected the GROUP BY). Uses usage rows across multiple days."""
+    user_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+
+    db_session.add(
+        User(
+            id=user_id,
+            email=f'test_{user_id[:8]}@example.com',
+            name='Daily Analytics User',
+            email_verified=True,
+            subscription_plan='free',
+            subscription_status='active',
+            trial_used=False,
+        )
+    )
+    db_session.add_all([
+        UsageAnalytics(
+            user_id=user_id, device_fingerprint=None, action='compile',
+            resource_type='resume', event_metadata={'feature': 'compile'},
+            created_at=now - timedelta(days=d),
+        )
+        for d in (0, 0, 1, 3)
+    ])
+    await db_session.commit()
+
+    token = make_jwt(user_id)
+    response = await client.get('/analytics/me?days=30', headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body['user_id'] == user_id
+    # daily_activity is a {date: count} map aggregated in SQL by day
+    assert isinstance(body['daily_activity'], dict)
+    assert sum(body['daily_activity'].values()) >= 4
+
+
 @pytest.mark.asyncio
 async def test_admin_analytics_routes_require_admin(client: AsyncClient, db_session: AsyncSession):
     no_auth = await client.get('/analytics/system?days=7')

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { BookUser, GitFork, GitMerge, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate, Globe, Send } from 'lucide-react'
@@ -63,6 +63,8 @@ export default function WorkspacePage() {
   const [atsStats, setAtsStats] = useState<ResumeStats | null>(null)
   const [staleBannerDismissed, setStaleBannerDismissed] = useState(false)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const [exportMenuFlipUp, setExportMenuFlipUp] = useState(false)
+  const exportMenuTriggerRef = useRef<HTMLButtonElement>(null)
   const [exportLoading, setExportLoading] = useState(false)
 
   // Onboarding for new users
@@ -513,17 +515,17 @@ export default function WorkspacePage() {
           Cover Letter
         </Link>
       </div>
-      <div className="mt-2 flex gap-2">
+      <div className="mt-2 flex flex-wrap gap-2">
         <button
           onClick={() => openForkModal(resume.id, resume.title)}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200"
         >
           <GitFork size={11} />
           Fork
         </button>
         <button
           onClick={() => { setTranslateModalResumeId(resume.id); setTranslateSelectedLang('fr') }}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
           title="Translate to another language"
         >
           <Globe size={11} />
@@ -532,7 +534,7 @@ export default function WorkspacePage() {
         <button
           onClick={() => handleGeneratePortfolio(resume.id)}
           disabled={isGeneratingPortfolio === resume.id}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.06] px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:opacity-50"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.06] px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:opacity-50"
           title="Generate portfolio site"
         >
           {isGeneratingPortfolio === resume.id
@@ -544,7 +546,7 @@ export default function WorkspacePage() {
         </button>
         <button
           onClick={() => setShareModalResumeId(resume.id)}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+          className={`flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
             resume.share_token
               ? 'border-sky-400/25 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20'
               : 'border-white/10 bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200'
@@ -556,20 +558,20 @@ export default function WorkspacePage() {
         {isVariant && resume.parent_resume_id && (
           <button
             onClick={() => handleCompareWithParent(resume.id)}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-violet-400/20 bg-violet-500/[0.06] px-3 py-2 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/10"
+            className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-violet-400/20 bg-violet-500/[0.06] px-3 py-2 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/10"
           >
             Compare
           </button>
         )}
         <button
           onClick={() => setTrackerModalResumeId(resume.id)}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
         >
           Track
         </button>
         <button
           onClick={() => setApplyModalResume(resume)}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-orange-400/20 bg-orange-500/[0.06] px-3 py-2 text-xs font-semibold text-orange-300 transition hover:bg-orange-500/10"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-orange-400/20 bg-orange-500/[0.06] px-3 py-2 text-xs font-semibold text-orange-300 transition hover:bg-orange-500/10"
           title="Apply to a job with this resume"
         >
           <Send size={11} />
@@ -679,7 +681,16 @@ export default function WorkspacePage() {
           {/* Export All dropdown (Feature 49) */}
           <div className="relative">
             <button
-              onClick={() => setExportMenuOpen(o => !o)}
+              ref={exportMenuTriggerRef}
+              onClick={() => {
+                if (!exportMenuOpen && exportMenuTriggerRef.current) {
+                  const rect = exportMenuTriggerRef.current.getBoundingClientRect()
+                  const spaceBelow = window.innerHeight - rect.bottom
+                  const spaceAbove = rect.top
+                  setExportMenuFlipUp(spaceBelow < 220 && spaceAbove > spaceBelow)
+                }
+                setExportMenuOpen(o => !o)
+              }}
               disabled={exportLoading}
               className="btn-ghost flex items-center gap-1.5 px-3 py-2 text-xs"
             >
@@ -692,7 +703,9 @@ export default function WorkspacePage() {
               <ChevronDown size={11} />
             </button>
             {exportMenuOpen && (
-              <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-white/[0.08] bg-[#111] py-1 shadow-xl">
+              <div className={`absolute right-0 z-50 max-h-[min(20rem,calc(100vh-6rem))] w-44 overflow-y-auto rounded-lg border border-white/[0.08] bg-[#111] py-1 shadow-xl ${
+                exportMenuFlipUp ? 'bottom-full mb-1' : 'top-full mt-1'
+              }`}>
                 {([
                   { format: 'tex', label: 'LaTeX Source (.zip)' },
                   { format: 'pdf', label: 'PDF Files (.zip)' },

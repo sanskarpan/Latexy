@@ -234,7 +234,7 @@ console.log(payload);`,
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
-          <div className="surface-panel edge-highlight p-5 sm:p-6">
+          <div className="surface-panel edge-highlight min-w-0 p-5 sm:p-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-white">Usage</h2>
@@ -263,7 +263,7 @@ console.log(payload);`,
             </div>
           </div>
 
-          <div className="surface-panel edge-highlight p-5 sm:p-6">
+          <div className="surface-panel edge-highlight min-w-0 p-5 sm:p-6">
             <h2 className="text-lg font-semibold text-white">Documentation</h2>
             <div className="mt-4 inline-flex rounded-xl border border-white/10 bg-slate-950/70 p-1">
               {(['curl', 'python', 'node'] as ExampleTab[]).map((tab) => (
@@ -276,12 +276,12 @@ console.log(payload);`,
                 </button>
               ))}
             </div>
-            <pre className="mt-4 overflow-x-auto rounded-xl border border-white/10 bg-black/50 p-4 text-xs text-slate-200">
+            <pre className="mt-4 max-w-full overflow-x-auto rounded-xl border border-white/10 bg-black/50 p-4 text-xs text-slate-200">
               {codeExamples[activeTab]}
             </pre>
             <div className="mt-4 space-y-2 text-sm text-slate-300">
-              <p>Available endpoints: `POST /api/v1/compile`, `POST /api/v1/optimize`, `POST /api/v1/ats/score`, `GET /api/v1/jobs/{'{job_id}'}`.</p>
-              <p>Interactive backend docs: {(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030')}/docs</p>
+              <p className="break-words">Available endpoints: `POST /api/v1/compile`, `POST /api/v1/optimize`, `POST /api/v1/ats/score`, `GET /api/v1/jobs/{'{job_id}'}`.</p>
+              <p className="break-words">Interactive backend docs: {(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030')}/docs</p>
             </div>
           </div>
         </section>

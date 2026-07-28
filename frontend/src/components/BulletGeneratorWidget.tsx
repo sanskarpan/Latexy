@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Check, Loader2, RefreshCw, Sparkles, X } from 'lucide-react'
 import { apiClient, type GenerateBulletsRequest } from '@/lib/api-client'
 
@@ -36,6 +36,12 @@ export default function BulletGeneratorWidget({
   const [insertedIdx, setInsertedIdx]     = useState<number | null>(null)
   const [generationAttempted, setAttempted] = useState(false)
   const containerRef                      = useRef<HTMLDivElement>(null)
+  // Flip/clamp so the panel is never clipped when opened low in the editor.
+  const [placement, setPlacement] = useState<{
+    top?: number
+    bottom?: number
+    maxHeight: number
+  } | null>(null)
 
   // Close on Escape
   useEffect(() => {
@@ -76,10 +82,39 @@ export default function BulletGeneratorWidget({
     setTimeout(onClose, 300)
   }
 
-  if (!isOpen) return null
+  // Anchor position within the positioned editor container.
+  const anchorTop = Math.max(8, top - 4)
 
-  // Clamp to keep widget visible (approximate widget height 380px)
-  const clampedTop = Math.max(8, top - 4)
+  // Measure the panel against the viewport and decide direction + maxHeight.
+  // Runs after the panel mounts at `anchorTop`, then flips upward if there's
+  // more room above, and always caps height so content scrolls inside.
+  useLayoutEffect(() => {
+    if (!isOpen) return
+    const el = containerRef.current
+    if (!el) return
+    const margin = 12
+    // Derive the anchor's viewport position from the positioned parent so the
+    // measurement is stable across re-measures (independent of any flip already
+    // applied to the panel itself).
+    const parent = el.offsetParent as HTMLElement | null
+    const parentRect = parent?.getBoundingClientRect()
+    const parentTop = parentRect?.top ?? 0
+    const parentBottom = parentRect?.bottom ?? window.innerHeight
+    const anchorViewportTop = parentTop + anchorTop
+    const spaceBelow = window.innerHeight - anchorViewportTop - margin
+    const spaceAbove = anchorViewportTop - margin
+    if (spaceBelow < 320 && spaceAbove > spaceBelow) {
+      // Open upward: pin the panel's bottom to the anchor line.
+      setPlacement({
+        bottom: parentBottom - anchorViewportTop,
+        maxHeight: spaceAbove,
+      })
+    } else {
+      setPlacement({ top: anchorTop, maxHeight: Math.max(120, spaceBelow) })
+    }
+  }, [isOpen, top, anchorTop, bullets])
+
+  if (!isOpen) return null
 
   return (
     <>
@@ -93,8 +128,12 @@ export default function BulletGeneratorWidget({
       {/* Widget panel */}
       <div
         ref={containerRef}
-        className="absolute left-4 z-50 w-80 rounded-xl border border-white/[0.1] bg-zinc-950 shadow-2xl shadow-black/60 ring-1 ring-white/[0.06]"
-        style={{ top: clampedTop }}
+        className="absolute left-4 z-50 w-80 overflow-y-auto overscroll-contain rounded-xl border border-white/[0.1] bg-zinc-950 shadow-2xl shadow-black/60 ring-1 ring-white/[0.06]"
+        style={{
+          top: placement?.top ?? (placement?.bottom !== undefined ? undefined : anchorTop),
+          bottom: placement?.bottom,
+          maxHeight: placement?.maxHeight,
+        }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

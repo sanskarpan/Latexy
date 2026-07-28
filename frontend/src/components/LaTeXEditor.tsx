@@ -1713,7 +1713,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         )}
 
         {/* Status bar */}
-        <div className="flex items-center justify-between border-t border-white/[0.05] bg-[#07090f] px-3 py-1 text-[10px] uppercase tracking-[0.12em]">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-white/[0.05] bg-[#07090f] px-3 py-1 text-[10px] uppercase tracking-[0.12em]">
           <span className="text-zinc-700">
             {readOnly
               ? 'Read-only — job running'
@@ -1721,7 +1721,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 ? 'Read-only — no edit access'
                 : 'LaTeX editor'}
           </span>
-          <div className="flex items-center gap-3 text-zinc-700">
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-zinc-700">
             {onAutoCompile && (
               <span className="flex items-center gap-1 text-[10px] text-orange-400/70">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400/70" />
@@ -1812,7 +1812,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               ) : null
             )}
             <span>{value.length.toLocaleString()} chars</span>
-            <span className="text-zinc-800">
+            <span className="hidden text-zinc-800 sm:inline">
               {[onSave && '⌘S save', onCompile && '⌘↵ compile', '⌘⇧H presets'].filter(Boolean).join(' · ')}
             </span>
           </div>

@@ -387,13 +387,13 @@ export default function OptimizationSuitePage() {
 
   return (
     <div className="content-shell min-h-screen space-y-6 pb-12">
-      <header className="flex items-end justify-between gap-4">
-        <div>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <p className="overline">Optimization</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">Targeted Optimization</h1>
           <p className="mt-1 text-sm text-zinc-400">Optimize "{resume?.title}" — add a job description to tailor it to a specific role, or leave blank for general improvements.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:shrink-0">
           <div className="relative">
             <button
               onClick={() => { setForkPopoverOpen(v => !v); setForkTitleInput(`${resume?.title ?? ''} — Variant`) }}
@@ -452,8 +452,8 @@ export default function OptimizationSuitePage() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        <aside className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
+        <aside className="min-w-0 space-y-6">
           {/* ── Persona selector (Feature 56) ── */}
           <section className="surface-panel edge-highlight p-5">
             <div className="flex items-center justify-between">
@@ -616,12 +616,12 @@ export default function OptimizationSuitePage() {
           </section>
         </aside>
 
-        <main className="space-y-6">
+        <main className="min-w-0 space-y-6">
           <div className="grid gap-6 xl:grid-cols-2">
-            <section className="surface-panel edge-highlight flex h-[620px] flex-col overflow-hidden">
-              <div className="flex h-11 items-center justify-between border-b border-white/10 bg-white/[0.03] px-4">
-                <div className="flex items-center gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">LaTeX Source</p>
+            <section className="surface-panel edge-highlight flex h-[620px] min-w-0 flex-col overflow-hidden">
+              <div className="flex h-11 items-center justify-between gap-2 border-b border-white/10 bg-white/[0.03] px-4">
+                <div className="flex min-w-0 items-center gap-3 overflow-x-auto">
+                  <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">LaTeX Source</p>
                   <button
                     onClick={toggleAutoCompile}
                     title="Auto-compile on change (2s debounce)"
@@ -642,7 +642,7 @@ export default function OptimizationSuitePage() {
                     disabled={isProcessing || isSubmitting}
                   />
                 </div>
-                <button onClick={restoreOriginal} className="text-xs font-semibold text-zinc-300 transition hover:text-white">
+                <button onClick={restoreOriginal} className="shrink-0 text-xs font-semibold text-zinc-300 transition hover:text-white">
                   Restore Original
                 </button>
               </div>
@@ -660,7 +660,7 @@ export default function OptimizationSuitePage() {
                   </button>
                 </div>
               )}
-              <div className="relative min-h-0 flex-1 bg-black/20">
+              <div className="relative min-h-0 min-w-0 flex-1 overflow-x-auto bg-black/20">
                 <LaTeXEditor
                   ref={editorRef}
                   value={resume?.latex_content || ''}
@@ -686,9 +686,9 @@ export default function OptimizationSuitePage() {
               </div>
             </section>
 
-            <section className="surface-panel edge-highlight flex h-[620px] flex-col overflow-hidden">
-              <div className="flex h-11 items-center justify-between border-b border-white/10 bg-white/[0.03] px-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Output Preview</p>
+            <section className="surface-panel edge-highlight flex h-[620px] min-w-0 flex-col overflow-hidden">
+              <div className="flex h-11 items-center justify-between gap-2 border-b border-white/10 bg-white/[0.03] px-4">
+                <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Output Preview</p>
                 <div className="flex items-center gap-3">
                   {compareAfterLatex !== null && compareOriginalLatex !== null && (
                     <button
@@ -713,12 +713,12 @@ export default function OptimizationSuitePage() {
 
           <section className="surface-panel edge-highlight overflow-hidden">
             {/* Tab bar */}
-            <div className="flex border-b border-white/10">
+            <div className="flex overflow-x-auto border-b border-white/10">
               {(['ATS Simulator', 'Keywords', 'Publications'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveToolTab(tab)}
-                  className={`px-5 py-3 text-xs font-semibold uppercase tracking-[0.14em] transition ${
+                  className={`shrink-0 px-5 py-3 text-xs font-semibold uppercase tracking-[0.14em] transition ${
                     activeToolTab === tab
                       ? 'border-b-2 border-orange-400 text-orange-300'
                       : 'text-zinc-500 hover:text-zinc-300'

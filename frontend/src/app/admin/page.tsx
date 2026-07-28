@@ -155,17 +155,14 @@ function MatrixTab() {
   }, [])
 
   useEffect(() => {
+    // Do NOT guard these on mounted.current: the initial data load must always
+    // resolve the loading state. (React 18 makes setState after unmount a safe
+    // no-op.) The mounted ref is only used to skip stale per-cell toggle writes.
     apiClient
       .getAdminEntitlements()
-      .then((data) => {
-        if (mounted.current) setState(data)
-      })
-      .catch((err: unknown) => {
-        if (mounted.current) setError(err instanceof Error ? err.message : String(err))
-      })
-      .finally(() => {
-        if (mounted.current) setLoading(false)
-      })
+      .then((data) => setState(data))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoading(false))
   }, [])
 
   const markBusy = useCallback((cellId: string) => {
@@ -287,19 +284,19 @@ function MatrixTab() {
   return (
     <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-zinc-900/40">
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
+        <table className="w-full min-w-[640px] border-collapse text-sm">
           <thead>
             <tr className="sticky top-0 z-20 bg-zinc-950/95 backdrop-blur">
-              <th className="sticky left-0 z-30 bg-zinc-950/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+              <th className="sticky left-0 z-30 w-[160px] min-w-[160px] bg-zinc-950/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
                 Feature
               </th>
-              <th className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-orange-200/80">
+              <th className="min-w-[68px] px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-orange-200/80">
                 Global
               </th>
               {families.map((fam) => (
                 <th
                   key={fam}
-                  className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-zinc-400"
+                  className="min-w-[68px] px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-zinc-400"
                 >
                   {fam}
                 </th>
@@ -371,7 +368,7 @@ function FragmentGroup({
               idx % 2 === 1 ? 'bg-white/[0.012]' : ''
             } ${rowDisabled ? 'opacity-50' : ''}`}
           >
-            <td className="sticky left-0 z-10 bg-zinc-900/60 px-4 py-3 group-hover:bg-zinc-900/80">
+            <td className="sticky left-0 z-10 w-[160px] min-w-[160px] bg-zinc-900/60 px-4 py-3 group-hover:bg-zinc-900/80">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-zinc-200">{feat.label}</span>
                 {!feat.gateable && (
@@ -386,7 +383,7 @@ function FragmentGroup({
             {/* Global kill-switch */}
             <td className="px-3 py-3 text-center">
               {feat.gateable ? (
-                <div className="inline-flex">
+                <div className="inline-flex min-h-[40px] items-center justify-center px-1">
                   <Switch
                     enabled={globalOn}
                     busy={busyCells.has(`global:${feat.key}`)}
@@ -411,7 +408,7 @@ function FragmentGroup({
               }
               return (
                 <td key={fam} className="px-3 py-3 text-center">
-                  <div className="inline-flex">
+                  <div className="inline-flex min-h-[40px] items-center justify-center px-1">
                     <Switch
                       enabled={cellOn}
                       disabled={rowDisabled}
@@ -539,21 +536,21 @@ function UsersTab() {
       ) : (
         <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-zinc-900/40">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
+            <table className="w-full min-w-[560px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-white/[0.07] text-[11px] uppercase tracking-wider text-zinc-500">
-                  <th className="px-4 py-3 text-left font-semibold">User</th>
-                  <th className="px-4 py-3 text-left font-semibold">Plan</th>
-                  <th className="px-4 py-3 text-left font-semibold">Role</th>
+                  <th className="sticky left-0 z-10 min-w-[220px] bg-zinc-950 px-4 py-3 text-left font-semibold">User</th>
+                  <th className="min-w-[90px] px-4 py-3 text-left font-semibold">Plan</th>
+                  <th className="min-w-[130px] px-4 py-3 text-left font-semibold">Role</th>
                 </tr>
               </thead>
               <tbody>
                 {users.map((u, idx) => (
                   <tr
                     key={u.id}
-                    className={`border-t border-white/[0.04] ${idx % 2 === 1 ? 'bg-white/[0.012]' : ''}`}
+                    className={`group border-t border-white/[0.04] ${idx % 2 === 1 ? 'bg-white/[0.012]' : ''}`}
                   >
-                    <td className="px-4 py-3">
+                    <td className="sticky left-0 z-10 min-w-[220px] bg-zinc-950 px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-medium text-zinc-100">{u.email}</span>
                         {u.email_verified && (
@@ -578,7 +575,7 @@ function UsersTab() {
                         disabled={savingId === u.id}
                         onChange={(e) => changeRole(u, e.target.value as UserRole)}
                         aria-label={`Role for ${u.email}`}
-                        className="rounded-lg border border-white/10 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-200 focus:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/40 disabled:opacity-50"
+                        className="min-h-[40px] rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 focus:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/40 disabled:opacity-50"
                       >
                         {ROLES.map((r) => (
                           <option key={r} value={r}>

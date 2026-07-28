@@ -125,7 +125,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Skip rate limiting for preflight requests and static/meta endpoints
         if request.method == "OPTIONS":
             return await call_next(request)
-        if request.url.path in ["/health", "/docs", "/openapi.json"] or request.url.path.startswith("/static"):
+        if (
+            request.url.path in [
+                "/health", "/livez", "/readyz", "/metrics",
+                "/jobs/health", "/docs", "/openapi.json",
+            ]
+            or request.url.path.startswith("/static")
+        ):
             return await call_next(request)
 
         # Get client identifier (IP address or user ID)
@@ -149,17 +155,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         """Get a spoofing-resistant client identifier for rate limiting."""
         return _spoof_resistant_client_id(request)
 
-    # Lua script: atomic INCR + EXPIRE for new keys (prevents GET-then-INCR race)
-    _LUA_INCR_EXPIRE = """
-local n = redis.call('INCR', KEYS[1])
-if n == 1 then
-  redis.call('EXPIRE', KEYS[1], ARGV[1])
-end
-return n
+    # Lua script: atomically INCR+EXPIRE BOTH the minute and hour windows in a
+    # single round-trip (was two separate EVALs = two ~100ms Upstash RTTs).
+    # Returns {minute_count, hour_count}.
+    _LUA_INCR_EXPIRE_2 = """
+local m = redis.call('INCR', KEYS[1])
+if m == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+local h = redis.call('INCR', KEYS[2])
+if h == 1 then redis.call('EXPIRE', KEYS[2], ARGV[2]) end
+return {m, h}
 """
 
     async def check_rate_limit(self, client_id: str, endpoint: str):
-        """Check if client has exceeded rate limits using atomic Lua script."""
+        """Check if client has exceeded rate limits using a single atomic script."""
         if not redis_manager.redis_client:
             # If Redis is not available, allow the request (fail-open).
             _warn_fail_open("rate limiting")
@@ -170,19 +178,16 @@ return n
         hour_key = f"rate_limit:{client_id}:hour:{current_time // 3600}"
 
         try:
-            minute_count = await redis_manager.redis_client.eval(
-                self._LUA_INCR_EXPIRE, 1, minute_key, 60
+            counts = await redis_manager.redis_client.eval(
+                self._LUA_INCR_EXPIRE_2, 2, minute_key, hour_key, 60, 3600
             )
+            minute_count, hour_count = int(counts[0]), int(counts[1])
             if minute_count > self.calls_per_minute:
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     detail=f"Rate limit exceeded: {self.calls_per_minute} calls per minute",
                     headers={"Retry-After": "60"},
                 )
-
-            hour_count = await redis_manager.redis_client.eval(
-                self._LUA_INCR_EXPIRE, 1, hour_key, 3600
-            )
             if hour_count > self.calls_per_hour:
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,

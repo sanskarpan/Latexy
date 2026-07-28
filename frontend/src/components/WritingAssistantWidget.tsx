@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Check, Loader2, MessageSquare, RefreshCw, Scissors, Sparkles, TrendingUp, X, ZoomIn } from 'lucide-react'
 import { apiClient, type RewriteAction } from '@/lib/api-client'
 
@@ -49,6 +49,13 @@ export default function WritingAssistantWidget({
   const [activeTone, setActiveTone]     = useState<string | null>(null)
   const [rewritten, setRewritten]       = useState<string | null>(null)
   const [error, setError]               = useState<string | null>(null)
+  const containerRef                    = useRef<HTMLDivElement>(null)
+  // Flip/clamp so the panel is never clipped when opened low in the editor.
+  const [placement, setPlacement] = useState<{
+    top?: number
+    bottom?: number
+    maxHeight: number
+  } | null>(null)
 
   // Reset when widget opens/closes or selectedText changes
   useEffect(() => {
@@ -103,9 +110,39 @@ export default function WritingAssistantWidget({
     if (activeAction) callApi(activeAction, activeTone ?? undefined)
   }
 
-  if (!isOpen) return null
+  // Anchor position within the positioned editor container.
+  const anchorTop = Math.max(8, top - 4)
 
-  const clampedTop = Math.max(8, top - 4)
+  // Measure against the viewport, flip upward when there's more room above,
+  // and always cap height so long content scrolls inside the panel.
+  // Recomputes on phase change since the panel grows with the diff/result view.
+  useLayoutEffect(() => {
+    if (!isOpen) return
+    const el = containerRef.current
+    if (!el) return
+    const margin = 12
+    // Derive the anchor's viewport position from the positioned parent so the
+    // measurement is stable across re-measures (independent of any flip already
+    // applied to the panel itself).
+    const parent = el.offsetParent as HTMLElement | null
+    const parentRect = parent?.getBoundingClientRect()
+    const parentTop = parentRect?.top ?? 0
+    const parentBottom = parentRect?.bottom ?? window.innerHeight
+    const anchorViewportTop = parentTop + anchorTop
+    const spaceBelow = window.innerHeight - anchorViewportTop - margin
+    const spaceAbove = anchorViewportTop - margin
+    if (spaceBelow < 320 && spaceAbove > spaceBelow) {
+      // Open upward: pin the panel's bottom to the anchor line.
+      setPlacement({
+        bottom: parentBottom - anchorViewportTop,
+        maxHeight: spaceAbove,
+      })
+    } else {
+      setPlacement({ top: anchorTop, maxHeight: Math.max(120, spaceBelow) })
+    }
+  }, [isOpen, top, anchorTop, phase])
+
+  if (!isOpen) return null
 
   return (
     <>
@@ -114,8 +151,13 @@ export default function WritingAssistantWidget({
 
       {/* Widget panel */}
       <div
-        className="absolute left-4 z-50 w-80 rounded-xl border border-white/[0.1] bg-zinc-950 shadow-2xl shadow-black/60 ring-1 ring-white/[0.06]"
-        style={{ top: clampedTop }}
+        ref={containerRef}
+        className="absolute left-4 z-50 w-80 overflow-y-auto overscroll-contain rounded-xl border border-white/[0.1] bg-zinc-950 shadow-2xl shadow-black/60 ring-1 ring-white/[0.06]"
+        style={{
+          top: placement?.top ?? (placement?.bottom !== undefined ? undefined : anchorTop),
+          bottom: placement?.bottom,
+          maxHeight: placement?.maxHeight,
+        }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

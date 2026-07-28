@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Brain, X, AlertCircle, Zap, ChevronDown, TrendingUp, Tag } from 'lucide-react'
 import type { ATSDeepAnalysis, ATSDeepSection } from '@/lib/event-types'
 import ATSRadarChart from './ATSRadarChart'
@@ -133,18 +134,45 @@ export default function DeepAnalysisPanel({
   const [historyOpen, setHistoryOpen] = useState(false)
   const [industryOverride, setIndustryOverride] = useState<string>('generic')
   const [industryDropdownOpen, setIndustryDropdownOpen] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
+  const industryTriggerRef = useRef<HTMLButtonElement>(null)
+  const [mounted, setMounted] = useState(false)
+  const [industryDropdownPos, setIndustryDropdownPos] = useState<{
+    top?: number
+    bottom?: number
+    left: number
+    width: number
+    maxHeight: number
+  } | null>(null)
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    const onOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIndustryDropdownOpen(false)
+  useEffect(() => { setMounted(true) }, [])
+
+  // The industry dropdown is portaled to document.body to escape the panel's
+  // overflow-y-auto scroll ancestor. Compute edge-aware fixed positioning from
+  // the trigger rect (mirrors ExportDropdown).
+  function openIndustryDropdown() {
+    if (industryTriggerRef.current) {
+      const rect = industryTriggerRef.current.getBoundingClientRect()
+      const margin = 12
+      const spaceBelow = window.innerHeight - rect.bottom - margin
+      const spaceAbove = rect.top - margin
+      if (spaceBelow < 240 && spaceAbove > spaceBelow) {
+        setIndustryDropdownPos({
+          bottom: window.innerHeight - rect.top + 6,
+          left: rect.left,
+          width: rect.width,
+          maxHeight: Math.min(spaceAbove, 240),
+        })
+      } else {
+        setIndustryDropdownPos({
+          top: rect.bottom + 6,
+          left: rect.left,
+          width: rect.width,
+          maxHeight: Math.min(spaceBelow, 240),
+        })
       }
     }
-    document.addEventListener('mousedown', onOutside)
-    return () => document.removeEventListener('mousedown', onOutside)
-  }, [])
+    setIndustryDropdownOpen(true)
+  }
 
   // Displayed industry label: from result or from override selection
   const displayedIndustryLabel =
@@ -219,10 +247,11 @@ export default function DeepAnalysisPanel({
               </div>
 
               {/* Industry override selector */}
-              <div ref={dropdownRef} className="relative">
+              <div className="relative">
                 <button
+                  ref={industryTriggerRef}
                   type="button"
-                  onClick={() => setIndustryDropdownOpen((v) => !v)}
+                  onClick={() => (industryDropdownOpen ? setIndustryDropdownOpen(false) : openIndustryDropdown())}
                   className="flex w-full items-center justify-between rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-left text-[11px] text-zinc-400 transition hover:border-white/[0.12] hover:bg-white/[0.05]"
                 >
                   <span className="flex items-center gap-1.5">
@@ -233,21 +262,40 @@ export default function DeepAnalysisPanel({
                   </span>
                   <ChevronDown size={11} className={`text-zinc-600 transition-transform ${industryDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
-                {industryDropdownOpen && (
-                  <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-lg border border-white/[0.08] bg-[#111] py-1 shadow-xl">
-                    {INDUSTRY_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.key}
-                        type="button"
-                        onClick={() => { setIndustryOverride(opt.key); setIndustryDropdownOpen(false) }}
-                        className={`flex w-full items-center px-3 py-2 text-left text-[11px] transition hover:bg-white/[0.05] ${
-                          industryOverride === opt.key ? 'text-violet-300' : 'text-zinc-400'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
+                {mounted && industryDropdownOpen && industryDropdownPos && createPortal(
+                  <>
+                    {/* Backdrop */}
+                    <div
+                      className="fixed inset-0 z-[200]"
+                      onClick={() => setIndustryDropdownOpen(false)}
+                    />
+                    {/* Dropdown — fixed positioning so it escapes the panel's overflow-y-auto */}
+                    <div
+                      className="z-[201] overflow-y-auto overscroll-contain rounded-lg border border-white/[0.08] bg-[#111] py-1 shadow-2xl shadow-black/60"
+                      style={{
+                        position: 'fixed',
+                        top: industryDropdownPos.top,
+                        bottom: industryDropdownPos.bottom,
+                        left: industryDropdownPos.left,
+                        width: industryDropdownPos.width,
+                        maxHeight: industryDropdownPos.maxHeight,
+                      }}
+                    >
+                      {INDUSTRY_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => { setIndustryOverride(opt.key); setIndustryDropdownOpen(false) }}
+                          className={`flex w-full items-center px-3 py-2 text-left text-[11px] transition hover:bg-white/[0.05] ${
+                            industryOverride === opt.key ? 'text-violet-300' : 'text-zinc-400'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>,
+                  document.body
                 )}
               </div>
 

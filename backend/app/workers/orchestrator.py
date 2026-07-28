@@ -744,6 +744,10 @@ def _run_latex_stage(
                 pdf_bytes=_pdf_bytes,
                 pages=page_count,
             )
+            # cache_compile_output caches the PDF (latexy:job:{id}:pdf) + SyncTeX
+            # in Redis before job_dir is rmtree'd, so GET /download/{job_id}
+            # works from the API container (Modal has no shared worker/API FS).
+            # This supersedes the earlier inline PDF-only cache (same key).
             return True, compilation_time, "", page_count, cache_compile_output(job_id, job_dir)
 
         record_compile("error", duration_seconds=_compile_duration)

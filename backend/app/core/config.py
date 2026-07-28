@@ -78,10 +78,13 @@ class Settings(BaseSettings):
             "http://localhost:5183",
             "http://127.0.0.1:5183",
             # Production
+            "https://latexy.xyz",
+            "https://www.latexy.xyz",
             "https://latexy.com",
             "https://www.latexy.com",
             "https://app.latexy.com",
             "https://latexy.vercel.app",
+            "https://latexy-frontend-tau.vercel.app",
         ]
     )
 
