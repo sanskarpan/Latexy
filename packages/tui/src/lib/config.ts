@@ -8,19 +8,37 @@ export interface LatexyConfig {
   email: string | null
   userId: string | null
   backendUrl: string
+  /** Next.js app origin — Better Auth is mounted there, not on the FastAPI backend. */
+  appUrl: string
   defaultResumeId: string | null
   activeModel: string | null
   activeProvider: string | null
 }
 
+export const DEFAULT_BACKEND_URL = 'http://localhost:8030'
+export const DEFAULT_APP_URL = 'http://localhost:5180'
+
 const DEFAULT_CONFIG: LatexyConfig = {
   token: null,
   email: null,
   userId: null,
-  backendUrl: process.env['LATEXY_API_URL'] ?? 'http://localhost:8030',
+  backendUrl: DEFAULT_BACKEND_URL,
+  appUrl: DEFAULT_APP_URL,
   defaultResumeId: null,
   activeModel: null,
   activeProvider: null,
+}
+
+// Env vars win over the persisted config so a stale config.toml cannot pin the CLI to a dead host
+function envConfig(): Partial<LatexyConfig> {
+  const env: Partial<LatexyConfig> = {}
+  const token = process.env['LATEXY_SESSION_TOKEN']
+  if (token) env.token = token
+  const backendUrl = process.env['LATEXY_API_URL']
+  if (backendUrl) env.backendUrl = backendUrl
+  const appUrl = process.env['LATEXY_APP_URL']
+  if (appUrl) env.appUrl = appUrl
+  return env
 }
 
 function configDir(): string {
@@ -33,20 +51,25 @@ function configPath(): string {
   return join(configDir(), 'config.toml')
 }
 
-export async function readConfig(): Promise<LatexyConfig> {
-  const envToken = process.env['LATEXY_SESSION_TOKEN'] ?? null
+/** On-disk config only, no env overlay — writeConfig() uses this so ephemeral env values
+ *  (LATEXY_API_URL/LATEXY_APP_URL) are never baked permanently into config.toml. */
+async function readDiskConfig(): Promise<LatexyConfig> {
   try {
     const raw = await readFile(configPath(), 'utf-8')
     const parsed = TOML.parse(raw) as Partial<LatexyConfig>
-    return { ...DEFAULT_CONFIG, ...parsed, ...(envToken ? { token: envToken } : {}) }
+    return { ...DEFAULT_CONFIG, ...parsed }
   } catch {
-    return { ...DEFAULT_CONFIG, ...(envToken ? { token: envToken } : {}) }
+    return { ...DEFAULT_CONFIG }
   }
+}
+
+export async function readConfig(): Promise<LatexyConfig> {
+  return { ...(await readDiskConfig()), ...envConfig() }
 }
 
 export async function writeConfig(patch: Partial<LatexyConfig>): Promise<void> {
   await mkdir(configDir(), { recursive: true })
-  const current = await readConfig()
+  const current = await readDiskConfig()
   const next = { ...current, ...patch }
   // @iarna/toml does not support null — strip null fields before serialising
   const toWrite = Object.fromEntries(Object.entries(next).filter(([, v]) => v !== null))

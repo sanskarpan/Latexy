@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { wsClient } from '../lib/ws-client.js'
+import type { WSServerError } from '../lib/ws-client.js'
 import { addMessage, updateMessage, $activeJobId } from '../stores/messages.js'
+import { resolveAtsScore } from '../lib/event-types.js'
 import type {
   AnyEvent,
   LogLineEvent,
@@ -9,6 +11,14 @@ import type {
   JobFailedEvent,
   JobCancelledEvent,
 } from '../lib/event-types.js'
+
+// Server-side rejections that will never resolve on their own — mirrors headless.ts
+const FATAL_WS_ERROR_CODES = new Set(['forbidden', 'invalid_request'])
+
+/** Only the job that owns the spinner may clear it — a background job settling must not. */
+function clearActiveJob(jobId: string): void {
+  if ($activeJobId.get() === jobId) $activeJobId.set(null)
+}
 
 export class JobController {
   private logMsgId: string | null = null
@@ -68,29 +78,38 @@ export class JobController {
 
   onComplete(ev: JobCompletedEvent): void {
     const durationMs = Date.now() - this.startedAt
+    const atsScore = resolveAtsScore(ev)
     if (this.toolMsgId) {
       updateMessage(this.toolMsgId, {
         toolState: 'success',
-        toolResult: ev.result,
+        toolResult: {
+          pdf_job_id: ev.pdf_job_id,
+          page_count: ev.page_count,
+          ats_score: atsScore,
+          compiler: ev.compiler,
+        },
         durationMs,
       })
     }
     if (this.llmMsgId) {
       updateMessage(this.llmMsgId, { streaming: false })
     }
-    $activeJobId.set(null)
-    const result = ev.result as Record<string, unknown>
-    if (result['pdf_url'] != null || result['pages'] != null) {
+    clearActiveJob(this.jobId)
+    // job.completed carries these at the top level — there is no `result` wrapper
+    if (ev.pdf_job_id != null || ev.page_count != null) {
       addMessage({
         role: 'compile_result',
         content: '',
         jobId: this.jobId,
         resultData: {
-          pages: result['pages'],
-          sizeBytes: result['size_bytes'],
-          compilationTimeMs: durationMs,
-          pdfUrl: result['pdf_url'],
-          atsScore: result['ats_score'],
+          pages: ev.page_count ?? null,
+          sizeBytes: null,
+          compilationTimeMs: ev.compilation_time != null
+            ? Math.round(ev.compilation_time * 1000)
+            : durationMs,
+          pdfUrl: ev.pdf_job_id != null ? `/download/${ev.pdf_job_id}` : null,
+          atsScore,
+          compiler: ev.compiler ?? null,
         },
       })
     }
@@ -101,18 +120,18 @@ export class JobController {
     if (this.toolMsgId) {
       updateMessage(this.toolMsgId, {
         toolState: 'error',
-        toolResult: { error: ev.error },
+        toolResult: { error: ev.error_message, error_code: ev.error_code },
         durationMs,
       })
     }
-    $activeJobId.set(null)
+    clearActiveJob(this.jobId)
   }
 
   onCancelled(_ev: JobCancelledEvent): void {
     if (this.toolMsgId) {
       updateMessage(this.toolMsgId, { toolState: 'cancelled' })
     }
-    $activeJobId.set(null)
+    clearActiveJob(this.jobId)
   }
 }
 
@@ -122,6 +141,49 @@ export function createJobController(jobId: string): JobController {
   const ctrl = new JobController(jobId)
   controllers.set(jobId, ctrl)
   return ctrl
+}
+
+function failController(jobId: string, code: string, message: string): void {
+  const ctrl = controllers.get(jobId)
+  if (!ctrl) return
+  ctrl.onFailed({
+    event_id: `ws-error-${jobId}`,
+    job_id: jobId,
+    timestamp: Date.now(),
+    sequence: -1,
+    type: 'job.failed',
+    error_code: code,
+    error_message: message,
+    retryable: false,
+  })
+  controllers.delete(jobId)
+}
+
+/**
+ * A fatal {type:"error"} frame means the rejected subscribe will never resolve; without this
+ * the TUI spins forever on a forbidden/invalid_request subscribe.
+ *
+ * The relay tags per-job rejections with job_id (ws_routes._send_error), so those only kill the
+ * one stream — other jobs on the same socket are unaffected. Only untagged frames, which are
+ * connection-wide, fail everything.
+ */
+export function handleFatalServerError(err: WSServerError): void {
+  if (!FATAL_WS_ERROR_CODES.has(err.code)) return
+  const message = `Event stream rejected by server (${err.code}): ${err.message}`
+
+  if (err.job_id) {
+    // Unknown job_id → not ours (another client's stream, or already settled); stay quiet.
+    if (!controllers.has(err.job_id)) return
+    addMessage({ role: 'error', content: message })
+    failController(err.job_id, err.code, message)
+    return
+  }
+
+  addMessage({ role: 'error', content: message })
+  for (const jobId of [...controllers.keys()]) {
+    failController(jobId, err.code, message)
+  }
+  $activeJobId.set(null)
 }
 
 export function useWSEventRouter(): void {
@@ -144,7 +206,13 @@ export function useWSEventRouter(): void {
       }
     }
 
+    const handleServerError = (err: WSServerError) => { handleFatalServerError(err) }
+
     wsClient.on('event', handleEvent)
-    return () => { wsClient.off('event', handleEvent) }
+    wsClient.on('server_error', handleServerError)
+    return () => {
+      wsClient.off('event', handleEvent)
+      wsClient.off('server_error', handleServerError)
+    }
   }, [])
 }

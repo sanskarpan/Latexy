@@ -74,6 +74,7 @@ export function MessageRow({ message }: Props): React.ReactElement {
         compilationTimeMs?: number
         pdfUrl?: string
         atsScore?: number
+        compiler?: string
       } | undefined) ?? {}
       return (
         <CompileResultCard
@@ -82,6 +83,7 @@ export function MessageRow({ message }: Props): React.ReactElement {
           compilationTimeMs={d.compilationTimeMs ?? 0}
           pdfUrl={d.pdfUrl ?? null}
           atsScore={d.atsScore ?? null}
+          {...(d.compiler != null ? { compiler: d.compiler } : {})}
         />
       )
     }

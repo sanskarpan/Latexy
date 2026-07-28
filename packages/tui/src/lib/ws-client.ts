@@ -2,6 +2,13 @@ import { EventEmitter } from 'node:events'
 import WS from 'ws'
 import type { AnyEvent } from './event-types.js'
 
+export interface WSServerError {
+  code: string
+  message: string
+  /** Present only when the rejection concerns one specific job (see ws_routes._send_error). */
+  job_id?: string
+}
+
 const MAX_BUFFER = 2000
 const MIN_BACKOFF = 100
 const MAX_BACKOFF = 30_000
@@ -24,9 +31,18 @@ export class LatexyWSClient extends EventEmitter {
     this.openSocket()
   }
 
+  /** Backend auth reads the session token from ?token= only (see ws_routes._resolve_ws_user). */
+  private socketUrl(): string {
+    if (!this.token) return this.url
+    const url = new URL(this.url)
+    // set() (not append()) so reconnects via openSocket() cannot stack duplicate params
+    url.searchParams.set('token', this.token)
+    return url.toString()
+  }
+
   private openSocket(): void {
     if (this.destroyed) return
-    this.ws = new WS(this.url, {
+    this.ws = new WS(this.socketUrl(), {
       headers: { Authorization: `Bearer ${this.token}` },
     })
 
@@ -45,8 +61,20 @@ export class LatexyWSClient extends EventEmitter {
           this.publish(outer['event'] as AnyEvent)
         } else if (outer['type'] === 'subscribed') {
           this.emit('subscribed', outer)
+        } else if (outer['type'] === 'error') {
+          // {type:"error", code, message, job_id?} — surfaced as 'server_error' (not 'error',
+          // which EventEmitter throws on when unhandled) so callers can abort instead of
+          // waiting. job_id is forwarded when present so per-job rejections stay scoped.
+          const err: WSServerError = {
+            code: String(outer['code'] ?? 'unknown'),
+            message: String(outer['message'] ?? ''),
+          }
+          if (typeof outer['job_id'] === 'string' && outer['job_id']) {
+            err.job_id = outer['job_id']
+          }
+          this.emit('server_error', err)
         }
-        // Other outer types (heartbeat, error) are intentionally ignored
+        // Other outer types (heartbeat) are intentionally ignored
       } catch {}
     })
 

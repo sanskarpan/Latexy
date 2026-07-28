@@ -30,6 +30,8 @@ export function App(): React.ReactElement {
         email: cfg.email ?? null,
         plan: null,
         backendUrl,
+        // Better Auth lives on the Next.js origin — without this a configured appUrl is ignored
+        appUrl: cfg.appUrl,
         wsUrl,
         isAuthenticated: cfg.token != null,
       })

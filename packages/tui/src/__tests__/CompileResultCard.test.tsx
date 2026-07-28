@@ -27,6 +27,14 @@ describe('CompileResultCard', () => {
     expect(lastFrame()).toContain('72')
   })
 
+  it('omits the ATS row entirely when no score is available', () => {
+    const { lastFrame } = render(
+      <CompileResultCard pages={1} sizeBytes={40000} compilationTimeMs={1000} pdfUrl="/dl/x.pdf" atsScore={null} />
+    )
+    expect(lastFrame()).not.toContain('ATS Score')
+    expect(lastFrame()).not.toContain('Poor')
+  })
+
   it('shows success message', () => {
     const { lastFrame } = render(
       <CompileResultCard pages={1} sizeBytes={50000} compilationTimeMs={1000} pdfUrl={null} atsScore={null} />
