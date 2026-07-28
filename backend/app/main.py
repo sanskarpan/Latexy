@@ -30,6 +30,53 @@ setup_telemetry("api")
 logger = get_logger(__name__)
 
 
+async def _check_coupon_offer_mappings_on_startup() -> None:
+    """Report which active percentage coupons Razorpay can actually apply.
+
+    A percentage discount reaches Razorpay only through an offer ID mapped in
+    RAZORPAY_COUPON_OFFERS; validate_coupon refuses any code without one rather
+    than charging full price behind an advertised discount. That refusal is
+    invisible until a customer hits checkout, so list the state at boot.
+
+    Best-effort: a failure here must never crash startup.
+    """
+    try:
+        from datetime import datetime, timezone
+
+        from sqlalchemy import or_
+        from sqlalchemy import select as _select
+
+        from .core.config import get_razorpay_offer_id
+        from .database.connection import get_async_db_session
+        from .database.models import CouponCode
+
+        now = datetime.now(timezone.utc)
+        async with get_async_db_session() as session:
+            result = await session.execute(
+                _select(CouponCode.code).where(
+                    CouponCode.discount_percent > 0,
+                    or_(CouponCode.expires_at.is_(None), CouponCode.expires_at > now),
+                )
+            )
+            codes = [row[0] for row in result.all()]
+
+        if not codes:
+            return
+
+        mapped = [c for c in codes if get_razorpay_offer_id(c)]
+        unmapped = [c for c in codes if c not in mapped]
+        logger.info("Coupon offer mapping: %d of %d active percentage coupon(s) redeemable: %s",
+                    len(mapped), len(codes), ", ".join(sorted(mapped)) or "none")
+        if unmapped:
+            logger.warning(
+                "Coupon codes with no RAZORPAY_COUPON_OFFERS entry will be refused at "
+                "checkout: %s",
+                ", ".join(sorted(unmapped)),
+            )
+    except Exception as e:  # pragma: no cover - diagnostics only
+        logger.error(f"Coupon offer mapping check failed (non-fatal): {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
@@ -112,6 +159,9 @@ async def lifespan(app: FastAPI):
     # CONFIG-002: Warn if CORS origins include localhost in production
     _check_cors_origins_on_startup()
 
+    # Surface coupons that checkout will refuse before a customer finds them.
+    await _check_coupon_offer_mappings_on_startup()
+
     yield
 
     # Shutdown
@@ -137,21 +187,25 @@ app = FastAPI(
 instrument_fastapi(app)
 register_exception_handlers(app)
 
-# Configure CORS.
-# effective_cors_origins() strips localhost/127.0.0.1 in production-like envs so
-# credentialed requests are only allowed from real deployed origins (CONFIG-002).
-_cors_origins = settings.effective_cors_origins()
-# allow_credentials=True must never be paired with a wildcard origin.
-_allow_credentials = "*" not in _cors_origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=_allow_credentials,
-    allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-Device-Fingerprint", "X-Tenant-Slug", "traceparent", "tracestate"],
-)
+# Middleware ordering note: add_middleware() PREPENDS, so the LAST middleware
+# registered is the OUTERMOST one at request time. CORSMiddleware must therefore
+# be registered LAST (see below) so that it wraps every middleware that can
+# short-circuit a request (429/413/504) and those error responses still carry
+# access-control-* headers — otherwise the browser only sees an opaque
+# "Failed to fetch". Do not move the CORS block back up here.
+#
+# Consequence of CORS being outermost: it answers OPTIONS preflights itself and
+# short-circuits them, so preflights never reach rate limiting, tenant
+# resolution or request-context. That is deliberate — a preflight touches no DB
+# and carries no credentials, and browsers cache it (Access-Control-Max-Age), so
+# there is nothing worth metering or tenant-scoping. The trade-off is accepted
+# in exchange for real error responses (429/413/504) being readable by the
+# browser.
 
-# Compress large JSON/PDF responses (added early so it wraps the response last).
+# Compress responses. Registered FIRST, so it is the INNERMOST middleware: it
+# only sees bodies produced by the router, which is what we want — short-circuit
+# responses from the middlewares below (429/413/504) and the access-control-*
+# headers added by CORS above stay uncompressed and untouched.
 app.add_middleware(GZipMiddleware, minimum_size=settings.GZIP_MIN_SIZE)
 
 # Baseline security headers on every response (does not affect CORS/JSON).
@@ -172,6 +226,28 @@ if settings.RATE_LIMIT_ENABLED:
 # Resolve white-label tenant from Host / X-Tenant-Slug (Feature 85)
 app.add_middleware(TenantMiddleware)
 app.add_middleware(RequestContextMiddleware)
+
+# Configure CORS. Registered LAST so it is the OUTERMOST middleware and every
+# short-circuited response above (rate limit 429, body size 413, timeout 504)
+# gets access-control-* headers.
+# effective_cors_origins() strips localhost/127.0.0.1 in production-like envs so
+# credentialed requests are only allowed from real deployed origins (CONFIG-002).
+_cors_origins = settings.effective_cors_origins()
+# allow_credentials=True must never be paired with a wildcard origin.
+_allow_credentials = "*" not in _cors_origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=_allow_credentials,
+    allow_methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Request-ID", "X-Device-Fingerprint", "X-Tenant-Slug", "traceparent", "tracestate"],
+    # Without expose_headers the browser hides every non-CORS-safelisted response
+    # header from JS, so the Retry-After on a 429 would be unreadable and the
+    # header-carrying fix above pointless. X-Request-ID (set by
+    # RequestContextMiddleware on every response) is exposed so clients can quote
+    # it in bug reports.
+    expose_headers=["Retry-After", "X-Request-ID"],
+)
 
 # Include routes
 app.include_router(router)

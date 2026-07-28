@@ -62,3 +62,54 @@ async def test_fast_request_not_timed_out():
         resp = await ac.get("/fast")
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
+
+
+async def test_short_circuited_413_carries_cors_headers():
+    """CORSMiddleware must wrap the limit middlewares so browsers can read the 413."""
+    from app.core.config import settings
+    from app.main import app as real_app
+
+    oversized = b"x" * (settings.MAX_REQUEST_BODY_BYTES + 1)
+    async with await _client(real_app) as ac:
+        resp = await ac.post(
+            "/compile",
+            content=oversized,
+            headers={"content-type": "application/json", "origin": "http://localhost:5180"},
+        )
+    assert resp.status_code == 413
+    assert resp.headers["access-control-allow-origin"] == "http://localhost:5180"
+    # The fix is only useful if JS can actually read the diagnostic headers.
+    exposed = {h.strip().lower() for h in resp.headers.get("access-control-expose-headers", "").split(",")}
+    assert "retry-after" in exposed
+    assert "x-request-id" in exposed
+
+
+def test_cors_middleware_is_outermost():
+    """add_middleware() prepends, so CORSMiddleware must be registered LAST."""
+    from starlette.middleware.cors import CORSMiddleware
+
+    from app.main import app as real_app
+
+    assert real_app.user_middleware[0].cls is CORSMiddleware
+
+
+async def test_preflight_short_circuits_at_cors_and_is_allowed():
+    """Documented consequence of CORS being outermost: OPTIONS never reaches the
+    inner middlewares (no rate limiting / tenant resolution), and CORS answers it
+    itself. Access-Control-Expose-Headers belongs on the actual response, not the
+    preflight, so it is asserted in the 413 test instead."""
+    from app.main import app as real_app
+
+    async with await _client(real_app) as ac:
+        resp = await ac.options(
+            "/compile",
+            headers={
+                "origin": "http://localhost:5180",
+                "access-control-request-method": "POST",
+                "access-control-request-headers": "content-type,authorization",
+            },
+        )
+    assert resp.status_code == 200
+    assert resp.headers["access-control-allow-origin"] == "http://localhost:5180"
+    assert resp.headers["access-control-allow-credentials"] == "true"
+    assert "authorization" in resp.headers.get("access-control-allow-headers", "").lower()
