@@ -22,6 +22,52 @@ _FAIL_OPEN_WARN_INTERVAL = 60.0
 _last_fail_open_warn = 0.0
 
 
+def _client_addr_was_rewritten(request: Request) -> bool:
+    """Whether uvicorn's proxy-headers layer replaced ``request.client`` from XFF.
+
+    That layer runs outside the app, so by the time we look, a rewritten address is
+    indistinguishable from a real one BY VALUE — checking whether the host looks like
+    a trusted proxy is useless, because the host we can see is already the spoofed
+    one. It does leave a fingerprint though: it cannot recover the peer's port and
+    sets ``(host, 0)`` (uvicorn/middleware/proxy_headers.py). A real TCP peer never
+    has port 0, so this identifies exactly the requests whose address is untrustworthy
+    — and only those, instead of everything that merely carries an XFF.
+    """
+    client = request.client
+    return client is not None and getattr(client, "port", None) == 0
+
+
+def client_ip_id(request: Request) -> str:
+    """Peer-IP rate-limit bucket, ``ip:<addr>``.
+
+    Proxy headers are only honoured behind a trusted proxy (TRUST_PROXY_HEADERS,
+    shipped as true in every manifest that puts the bundled nginx in front of us);
+    otherwise any caller could rotate them for a fresh bucket per request.
+
+    When trusted, prefer ``X-Real-IP``: nginx sets it with ``$remote_addr``, which
+    fully OVERWRITES whatever the client sent. ``X-Forwarded-For`` is built with
+    ``$proxy_add_x_forwarded_for``, i.e. the client's own value with the real peer
+    APPENDED — so the trustworthy hop is the last one, never ``split(",")[0]``.
+
+    When we do NOT trust proxies, the peer address is used — it is a real socket
+    address and cannot be spoofed — UNLESS uvicorn already rewrote it from the header
+    (see _client_addr_was_rewritten), in which case those requests, and only those,
+    share one bucket. Collapsing every request that merely CARRIES an X-Forwarded-For
+    would be a self-DoS: nginx always adds the header, so one attacker could 429 the
+    whole site any time TRUST_PROXY_HEADERS is unset.
+    """
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if getattr(settings, "TRUST_PROXY_HEADERS", False):
+        real_ip = (request.headers.get("X-Real-IP") or "").strip()
+        if real_ip:
+            return f"ip:{real_ip}"
+        if forwarded_for:
+            return f"ip:{forwarded_for.rsplit(',', 1)[-1].strip()}"
+    elif forwarded_for and _client_addr_was_rewritten(request):
+        return "ip:untrusted-proxy"
+    return f"ip:{request.client.host if request.client else 'unknown'}"
+
+
 def _spoof_resistant_client_id(request: Request) -> str:
     """Shared, spoofing-resistant client identifier used by all rate limiters.
 
@@ -43,12 +89,12 @@ def _spoof_resistant_client_id(request: Request) -> str:
     if token:
         return "user:" + hashlib.sha256(token.encode()).hexdigest()[:32]
 
-    client_ip = request.client.host if request.client else "unknown"
-    if getattr(settings, "TRUST_PROXY_HEADERS", False):
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            client_ip = forwarded_for.split(",")[0].strip()
-    return f"ip:{client_ip}"
+    return client_ip_id(request)
+
+
+# Public alias — per-route limiters (ATS, scraper, …) must key on this rather than
+# rolling their own X-Forwarded-For parsing, which is trivially spoofed.
+client_rate_limit_id = _spoof_resistant_client_id
 
 
 def _warn_fail_open(context: str) -> None:
