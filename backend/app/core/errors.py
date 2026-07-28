@@ -17,6 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .config import settings
 from .logging import get_logger
 from .observability import get_log_context
 
@@ -28,6 +29,34 @@ def _request_id(request: Request) -> str | None:
     if rid:
         return rid
     return get_log_context().get("request_id")
+
+
+def _cors_headers(request: Request) -> dict[str, str]:
+    """CORS headers for the catch-all 500 response only.
+
+    CORSMiddleware is the outermost *user* middleware, so it already re-attaches
+    CORS headers to HTTPException/validation responses and to middleware
+    short-circuits (429/413/504). The one gap is the unhandled-exception (500)
+    handler: Starlette runs it in ServerErrorMiddleware, which sits OUTSIDE the
+    user middleware stack — so its response never passes back through CORS.
+    Without this, a genuine 500 reaches the browser as an opaque
+    "blocked by CORS policy" instead of the real error. Applied ONLY to the 500
+    handler to avoid emitting a duplicate ACAO on responses CORS already covers.
+    """
+    origin = request.headers.get("origin")
+    if not origin:
+        return {}
+    try:
+        allowed = settings.effective_cors_origins()
+    except Exception:
+        allowed = settings.CORS_ORIGINS or []
+    if origin in allowed or "*" in allowed:
+        return {
+            "access-control-allow-origin": origin,
+            "access-control-allow-credentials": "true",
+            "vary": "Origin",
+        }
+    return {}
 
 
 def error_body(code: str, message: str, request_id: str | None, details: Any = None, *, detail_compat: Any = None) -> dict:
@@ -99,6 +128,7 @@ async def _unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(
         status_code=500,
         content=error_body("internal_error", "An internal error occurred.", rid, detail_compat="Internal Server Error"),
+        headers=_cors_headers(request) or None,
     )
 
 
