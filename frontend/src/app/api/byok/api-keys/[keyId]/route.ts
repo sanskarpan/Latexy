@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { BACKEND_URL, authHeaders } from '../../_forward';
+import { BACKEND_URL, authHeaders, forwardError } from '../../_forward';
 
 export async function DELETE(
   request: NextRequest,
@@ -21,7 +21,7 @@ export async function DELETE(
           { status: 404 }
         );
       }
-      throw new Error(`Backend responded with ${response.status}`);
+      return forwardError(response, 'Error deleting API key');
     }
 
     return NextResponse.json({
@@ -40,43 +40,6 @@ export async function DELETE(
   }
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { keyId: string } }
-) {
-  try {
-    const { keyId } = params;
-    const body = await request.json();
-    
-    const response = await fetch(`${BACKEND_URL}/byok/api-keys/${keyId}`, {
-      method: 'PUT',
-      headers: authHeaders(request),
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        return NextResponse.json(
-          { success: false, error: 'API key not found' },
-          { status: 404 }
-        );
-      }
-      throw new Error(`Backend responded with ${response.status}`);
-    }
-
-    const data = await response.json();
-    return NextResponse.json({
-      success: true,
-      ...data
-    });
-  } catch (error) {
-    console.error('Error updating API key:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Failed to update API key'
-      },
-      { status: 500 }
-    );
-  }
-}
+// Note: there is no PUT handler here — the backend exposes only GET/POST on
+// /byok/api-keys and DELETE on /byok/api-keys/{key_id}. Keys are rotated by
+// deleting and re-adding them.

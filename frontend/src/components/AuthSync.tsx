@@ -15,17 +15,25 @@ import { apiClient } from '@/lib/api-client'
 import { wsClient } from '@/lib/ws-client'
 
 export function AuthSync() {
-  const { data: session } = useSession()
+  const { data: session, isPending } = useSession()
 
   useEffect(() => {
+    // While the session request is in flight we know nothing yet — publishing a
+    // null token here would open apiClient's auth-ready gate too early and let
+    // mount-time fetches go out unauthenticated (401s that are never retried).
+    if (isPending) return
     // session?.session?.token is the raw Better Auth session token stored
     // in the `session` table. FastAPI validates it by querying that table.
     const token = session?.session?.token ?? null
     apiClient.setAuthToken(token)
+    // AuthSync is the single source of truth for "the session state is known",
+    // so it is the only caller of markAuthResolved() — this is what releases
+    // apiClient's auth-ready gate for anonymous visitors too.
+    apiClient.markAuthResolved()
     // Forward the same token to the WS handshake so the backend authorizes
     // access to this user's own (owner-scoped) job streams.
     wsClient.setToken(token)
-  }, [session])
+  }, [session, isPending])
 
   return null
 }

@@ -4,12 +4,14 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Bell, BookOpen, Mail, Calendar, Save, Loader2, CheckCircle, Monitor, Github, Unlink, ExternalLink, Cloud } from 'lucide-react'
 import { apiClient, type NotificationPrefs, type GitHubStatusResponse, type ZoteroStatusResponse, type MendeleyStatusResponse, type DropboxStatusResponse } from '@/lib/api-client'
+import { useSession } from '@/lib/auth-client'
 import { getNotificationPref, setNotificationPref } from '@/hooks/usePushNotifications'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030'
 
 function SettingsContent() {
   const searchParams = useSearchParams()
+  const { data: sessionData, isPending: sessionLoading } = useSession()
   const settingsTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
 
   // Clear all pending timers on unmount
@@ -67,32 +69,60 @@ function SettingsContent() {
   const [dbxError, setDbxError] = useState<string | null>(null)
   const [dbxSuccess, setDbxSuccess] = useState<string | null>(null)
 
+  // Everything on this page is per-user, so wait for the Better Auth session to
+  // resolve before fetching — otherwise these fire before AuthSync has published
+  // the Bearer token and every integration wrongly renders as "not connected".
   useEffect(() => {
+    if (sessionLoading) return
+    if (!sessionData) {
+      setLoading(false)
+      setGhLoading(false)
+      setZotLoading(false)
+      setMenLoading(false)
+      setDbxLoading(false)
+      return
+    }
+
     apiClient.getNotificationPrefs()
       .then(setPrefs)
-      .catch((e) => setError(e?.message ?? 'Failed to load preferences'))
+      .catch((e) => {
+        console.error('Failed to load notification preferences', e)
+        setError('Failed to load preferences')
+      })
       .finally(() => setLoading(false))
 
     apiClient.getGitHubStatus()
       .then(setGhStatus)
-      .catch(() => {/* ignore — user not logged in or GitHub not configured */})
+      .catch((e) => {
+        console.error('Failed to load GitHub status', e)
+        setGhError('Failed to load GitHub status')
+      })
       .finally(() => setGhLoading(false))
 
     apiClient.getZoteroStatus()
       .then(setZotStatus)
-      .catch(() => {})
+      .catch((e) => {
+        console.error('Failed to load Zotero status', e)
+        setZotError('Failed to load Zotero status')
+      })
       .finally(() => setZotLoading(false))
 
     apiClient.getMendeleyStatus()
       .then(setMenStatus)
-      .catch(() => {})
+      .catch((e) => {
+        console.error('Failed to load Mendeley status', e)
+        setMenError('Failed to load Mendeley status')
+      })
       .finally(() => setMenLoading(false))
 
     apiClient.getDropboxStatus()
       .then(setDbxStatus)
-      .catch(() => {})
+      .catch((e) => {
+        console.error('Failed to load Dropbox status', e)
+        setDbxError('Failed to load Dropbox status')
+      })
       .finally(() => setDbxLoading(false))
-  }, [])
+  }, [sessionData, sessionLoading])
 
   // Show success message after OAuth redirect
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { BACKEND_URL, authHeaders } from '../_forward';
+import { BACKEND_URL, authHeaders, forwardError } from '../_forward';
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,19 +10,15 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
-      throw new Error(`Backend responded with ${response.status}`);
+      return forwardError(response, 'Error fetching API keys', {
+        total_count: 0,
+        api_keys: [],
+      });
     }
 
     const data = await response.json();
-    
-    // Transform the data to match frontend expectations
-    const transformedData = {
-      success: true,
-      total_count: data.length || 0,
-      api_keys: data || []
-    };
-
-    return NextResponse.json(transformedData);
+    // Backend already returns { success, api_keys: [...], total_count } — pass through
+    return NextResponse.json(data);
   } catch (error) {
     console.error('Error fetching API keys:', error);
     return NextResponse.json(
@@ -48,8 +44,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Backend responded with ${response.status}`);
+      return forwardError(response, 'Error adding API key');
     }
 
     const data = await response.json();

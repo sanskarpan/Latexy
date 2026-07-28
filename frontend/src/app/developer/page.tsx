@@ -33,9 +33,9 @@ export default function DeveloperPage() {
     }
   }, [isPending, router, session])
 
-  useEffect(() => {
-    apiClient.setAuthToken(sessionToken)
-  }, [sessionToken])
+  // Note: the Bearer token is published to apiClient by <AuthSync /> in the root
+  // layout — it is the single source of truth. Mirroring it from here would race
+  // AuthSync (child effects run first) and could publish a null token.
 
   const load = async () => {
     if (!sessionToken) return

@@ -970,18 +970,27 @@ export default function ResumeEditPage() {
 
   // Check GitHub user connection
   useEffect(() => {
-    apiClient.getGitHubStatus().then(s => setGhConnected(s.connected)).catch(() => {})
-  }, [])
+    if (sessionLoading || !sessionData) return
+    apiClient.getGitHubStatus()
+      .then(s => setGhConnected(s.connected))
+      .catch(e => console.error('Failed to load GitHub connection status', e))
+  }, [sessionData, sessionLoading])
 
   // Check Dropbox user connection (Feature 77)
   useEffect(() => {
-    apiClient.getDropboxStatus().then(s => setDbxConnected(s.connected)).catch(() => {})
-  }, [])
+    if (sessionLoading || !sessionData) return
+    apiClient.getDropboxStatus()
+      .then(s => setDbxConnected(s.connected))
+      .catch(e => console.error('Failed to load Dropbox connection status', e))
+  }, [sessionData, sessionLoading])
 
   // Fetch user plan for priority queue badge (Feature 34)
   useEffect(() => {
-    apiClient.getCurrentPlan().then(setUserPlan).catch(() => {})
-  }, [])
+    if (sessionLoading || !sessionData) return
+    apiClient.getCurrentPlan()
+      .then(setUserPlan)
+      .catch(e => console.error('Failed to load subscription plan', e))
+  }, [sessionData, sessionLoading])
 
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent)
 
