@@ -23,16 +23,48 @@ services:
 
   # Frontend Service
   frontend:
+    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-frontend:${LATEXY_VERSION:-latest}
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
+      args:
+        # NEXT_PUBLIC_* are inlined into the browser bundle at build time.
+        # NEXT_PUBLIC_WS_URL must be the absolute public ws(s):// origin.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:?set NEXT_PUBLIC_WS_URL to the public WebSocket origin, e.g. wss://latexy.com}
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://localhost/api}
+      - PORT=5180
       - NEXT_TELEMETRY_DISABLED=1
+      # Better Auth runs *in this container* (nginx proxies /api/auth/ here).
+      # lib/auth.ts throws without BETTER_AUTH_SECRET in production and opens a
+      # pg Pool straight from DATABASE_URL, so both are mandatory.
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
+      - DATABASE_URL=${DATABASE_URL:?set DATABASE_URL}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:?set BETTER_AUTH_URL to the public origin, e.g. https://latexy.com}
+      # Server-only backend base. NEXT_PUBLIC_API_URL is the same-origin path
+      # "/api", which Node's fetch() cannot parse; middleware.ts and the
+      # /api/byok/ route handlers need an absolute in-cluster URL.
+      - BACKEND_URL=http://backend:8030
+      # nginx terminates client connections and overwrites X-Real-IP with
+      # $$remote_addr, so the auth rate limiter may key on it. Without this the
+      # limiter distrusts forwarding headers and puts every proxied caller in
+      # one shared bucket.
+      - TRUST_PROXY_HEADERS=true
+      # Optional: social providers activate only when both halves are set.
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      # Transactional email. lib/email.ts refuses to fall back to console
+      # logging in production, so sign-up/password-reset throw without a key.
+      - RESEND_API_KEY=${RESEND_API_KEY:?set RESEND_API_KEY (transactional email provider key)}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+    depends_on:
+      - backend
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5180/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -50,13 +82,28 @@ services:
 
   # Backend Service
   backend:
+    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-backend:${LATEXY_VERSION:-latest}
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
     environment:
-      - FASTAPI_ENV=production
+      # Settings reads ENVIRONMENT (app/core/config.py); anything else leaves the
+      # app in "development" mode with docs exposed and CORS wide open.
+      - ENVIRONMENT=production
       - DEBUG=false
-      - DATABASE_URL=${DATABASE_URL}
+      - PORT=8030
+      # nginx below is the only ingress and it overwrites X-Real-IP with
+      # $$remote_addr, so the rate limiters can bucket per real client. Without
+      # this every user shares one "untrusted proxy" bucket and any single caller
+      # can 429 the whole site. Do NOT set it if the backend port is reachable
+      # directly.
+      - TRUST_PROXY_HEADERS=true
+      - DATABASE_URL=${DATABASE_URL:?set DATABASE_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
+      # JSON array — pydantic-settings parses List[str] fields as JSON,
+      # e.g. CORS_ORIGINS=["https://latexy.com","https://www.latexy.com"]
+      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS to a JSON array of public origins, e.g. ["https://latexy.com"]}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_CACHE_URL=redis://redis:6379/1
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -64,7 +111,12 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
       - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
-      - API_KEY_ENCRYPTION_KEY=${API_KEY_ENCRYPTION_KEY}
+      # JSON object mapping coupon code -> Razorpay offer ID, e.g.
+      # {"LAUNCH20":"offer_ABC123"}. Razorpay only discounts a subscription
+      # through an offer, so a percentage coupon with no mapping here is
+      # refused at checkout rather than charged at full price.
+      - RAZORPAY_COUPON_OFFERS=${RAZORPAY_COUPON_OFFERS:-}
+      - API_KEY_ENCRYPTION_KEY=${API_KEY_ENCRYPTION_KEY:?set API_KEY_ENCRYPTION_KEY (Fernet key, required in production)}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -96,19 +148,24 @@ services:
 
   # Celery Worker
   celery-worker:
+    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-backend:${LATEXY_VERSION:-latest}
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
     command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4 --queues=latex,llm,combined,ats,cleanup,email
     environment:
-      - FASTAPI_ENV=production
+      - ENVIRONMENT=production
       - DEBUG=false
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=${DATABASE_URL:?set DATABASE_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS to a JSON array of public origins, e.g. ["https://latexy.com"]}
       - REDIS_URL=redis://redis:6379/0
+      - REDIS_CACHE_URL=redis://redis:6379/1
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - API_KEY_ENCRYPTION_KEY=${API_KEY_ENCRYPTION_KEY}
+      - API_KEY_ENCRYPTION_KEY=${API_KEY_ENCRYPTION_KEY:?set API_KEY_ENCRYPTION_KEY (Fernet key, required in production)}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -140,14 +197,21 @@ services:
 
   # Celery Beat Scheduler
   celery-beat:
+    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-backend:${LATEXY_VERSION:-latest}
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
     command: celery -A app.core.celery_app beat --loglevel=info
     environment:
-      - FASTAPI_ENV=production
+      - ENVIRONMENT=production
       - DEBUG=false
+      - API_KEY_ENCRYPTION_KEY=${API_KEY_ENCRYPTION_KEY:?set API_KEY_ENCRYPTION_KEY (Fernet key, required in production)}
+      - DATABASE_URL=${DATABASE_URL:?set DATABASE_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS to a JSON array of public origins, e.g. ["https://latexy.com"]}
       - REDIS_URL=redis://redis:6379/0
+      - REDIS_CACHE_URL=redis://redis:6379/1
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - OTEL_ENABLED=${OTEL_ENABLED:-true}
@@ -170,11 +234,20 @@ services:
 
   # Flower Monitoring (Optional)
   flower:
+    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-backend:${LATEXY_VERSION:-latest}
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
-    command: celery -A app.core.celery_app flower --port=5555 --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD}
+    command: celery -A app.core.celery_app flower --port=5555 --basic_auth=${FLOWER_USER:?set FLOWER_USER}:${FLOWER_PASSWORD:?set FLOWER_PASSWORD}
     environment:
+      # `celery -A app.core.celery_app` imports app.core.config, so flower needs
+      # the same required settings as the workers.
+      - ENVIRONMENT=production
+      - API_KEY_ENCRYPTION_KEY=${API_KEY_ENCRYPTION_KEY:?set API_KEY_ENCRYPTION_KEY (Fernet key, required in production)}
+      - DATABASE_URL=${DATABASE_URL:?set DATABASE_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS to a JSON array of public origins, e.g. ["https://latexy.com"]}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     ports:
@@ -211,7 +284,7 @@ services:
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-latexy}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -232,8 +305,11 @@ services:
   # Prometheus Monitoring
   prometheus:
     image: prom/prometheus:latest
+    # Bound to loopback: these UIs ship no authentication of their own
+    # (prometheus exposes every internal metric, alertmanager lets anyone
+    # silence alerts). Reach them over an SSH tunnel or `compose exec`.
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
@@ -256,8 +332,11 @@ services:
 
   alertmanager:
     image: prom/alertmanager:latest
+    # Bound to loopback: these UIs ship no authentication of their own
+    # (prometheus exposes every internal metric, alertmanager lets anyone
+    # silence alerts). Reach them over an SSH tunnel or `compose exec`.
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.base.yml:ro
       - ./scripts/monitoring/render-alertmanager-config.sh:/etc/alertmanager/render-alertmanager-config.sh:ro
@@ -280,10 +359,13 @@ services:
 
   tempo:
     image: grafana/tempo:latest
+    # Bound to loopback: these UIs ship no authentication of their own
+    # (prometheus exposes every internal metric, alertmanager lets anyone
+    # silence alerts). Reach them over an SSH tunnel or `compose exec`.
     ports:
-      - "3200:3200"
-      - "4317:4317"
-      - "4318:4318"
+      - "127.0.0.1:3200:3200"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
     command:
       - -config.file=/etc/tempo/tempo.yml
     volumes:
@@ -306,7 +388,7 @@ services:
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:latest
     environment:
-      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-latexy}?sslmode=disable
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-latexy}?sslmode=disable
       - PG_EXPORTER_DISABLE_DEFAULT_METRICS=false
       - PG_EXPORTER_DISABLE_SETTINGS_METRICS=false
     depends_on:
@@ -318,10 +400,12 @@ services:
   # Grafana Dashboard
   grafana:
     image: grafana/grafana:latest
+    # Loopback only — reach the dashboard over an SSH tunnel rather than
+    # publishing an admin UI on the host's public interface.
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?set GRAFANA_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro

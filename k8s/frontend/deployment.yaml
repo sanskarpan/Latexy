@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: ghcr.io/your-org/latexy-frontend:latest
+        image: ghcr.io/sanskarpan/latexy-frontend:latest
         ports:
         - containerPort: 5180
         env:
@@ -37,6 +37,50 @@ spec:
             configMapKeyRef:
               name: latexy-config
               key: ws-url
+        # Better Auth runs in this pod (nginx routes /api/auth/ here). lib/auth.ts
+        # throws without BETTER_AUTH_SECRET in production and opens a pg Pool
+        # straight from DATABASE_URL.
+        - name: BETTER_AUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: better-auth-secret
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: database-url
+        - name: BETTER_AUTH_URL
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: frontend-url
+        # Server-only backend base. NEXT_PUBLIC_API_URL is the same-origin path
+        # "/api", which Node's fetch() cannot parse; middleware.ts and the
+        # /api/byok/ route handlers need an absolute in-cluster URL.
+        - name: BACKEND_URL
+          value: "http://latexy-backend-service:8030"
+        # The nginx deployment is the only ingress and overwrites X-Real-IP with
+        # $remote_addr, so the auth rate limiter can bucket per real client.
+        # Without this it distrusts forwarding headers and puts every proxied
+        # caller in one shared bucket.
+        - name: TRUST_PROXY_HEADERS
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: trust-proxy-headers
+        # lib/email.ts refuses to fall back to console logging in production, so
+        # verification / password-reset sends throw without a provider key.
+        - name: RESEND_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: resend-api-key
+        - name: EMAIL_FROM
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: email-from
         resources:
           requests:
             memory: "256Mi"

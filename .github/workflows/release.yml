@@ -96,9 +96,16 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # NEXT_PUBLIC_WS_URL is inlined into the bundle and must be the
+          # absolute public ws(s):// origin — the client appends /ws/jobs and
+          # passes the result to `new URL()`. Defaults to this repo's own public
+          # origin (same value as k8s/namespace.yaml's ws-url and nginx's
+          # server_name); override with the NEXT_PUBLIC_WS_URL repo variable
+          # (Settings → Variables) when publishing for another domain. An unset
+          # variable would render empty and hard-abort the Dockerfile guard.
           build-args: |
             NEXT_PUBLIC_API_URL=/api
-            NEXT_PUBLIC_WS_URL=/ws
+            NEXT_PUBLIC_WS_URL=${{ vars.NEXT_PUBLIC_WS_URL || 'wss://latexy.com' }}
             BUILD_VERSION=${{ github.ref_name }}
 
   # ── Create GitHub Release ──────────────────────────────────────────────────
@@ -146,12 +153,15 @@ jobs:
             ## Deploy
 
             ```bash
+            # Point compose at this release (see LATEXY_VERSION in docker-compose.prod.yml)
+            export LATEXY_VERSION=${{ github.ref_name }}
+
             # Pull new images
-            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml --env-file .env.production pull
 
             # Restart with new images
-            docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 
             # Run migrations
-            docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+            docker compose -f docker-compose.prod.yml --env-file .env.production exec backend alembic upgrade head
             ```

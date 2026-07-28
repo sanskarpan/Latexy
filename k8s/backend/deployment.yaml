@@ -19,16 +19,35 @@ spec:
     spec:
       containers:
       - name: backend
-        image: ghcr.io/your-org/latexy-backend:latest
+        image: ghcr.io/sanskarpan/latexy-backend:latest
         ports:
         - containerPort: 8030
         env:
-        - name: FASTAPI_ENV
-          value: "production"
+        # Settings reads ENVIRONMENT (app/core/config.py). FASTAPI_ENV is not
+        # read anywhere and left the app in development mode.
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: environment
         - name: DEBUG
           value: "false"
         - name: PORT
           value: "8030"
+        # The nginx deployment is the only ingress and overwrites X-Real-IP with
+        # $remote_addr, so the rate limiters can bucket per real client. Without
+        # this every user shares one "untrusted proxy" bucket and any single
+        # caller can 429 the whole site.
+        - name: TRUST_PROXY_HEADERS
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: trust-proxy-headers
+        - name: CORS_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: cors-origins
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
@@ -39,6 +58,24 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: redis-url
+        # The API pod enqueues every compile/optimize/ATS task. Without these it
+        # falls back to the config defaults (redis://localhost:6379/...), which
+        # is a non-existent broker inside the pod.
+        - name: CELERY_BROKER_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-url
+        - name: CELERY_RESULT_BACKEND
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-url
+        - name: REDIS_CACHE_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-cache-url
         - name: OPENAI_API_KEY
           valueFrom:
             secretKeyRef:
@@ -89,6 +126,15 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: razorpay-webhook-secret
+        # JSON object mapping coupon code -> Razorpay offer ID, e.g.
+        # {"LAUNCH20":"offer_ABC123"}. Razorpay only discounts a subscription
+        # through an offer, so a percentage coupon with no mapping here is
+        # refused at checkout rather than charged at full price.
+        - name: RAZORPAY_COUPON_OFFERS
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: razorpay-coupon-offers
         - name: BETTER_AUTH_URL
           valueFrom:
             configMapKeyRef:

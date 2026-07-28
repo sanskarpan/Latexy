@@ -7,15 +7,8 @@ data:
   POSTGRES_DB: latexy
   POSTGRES_USER: latexy_user
 ---
-apiVersion: v1
-kind: Secret
-metadata:
-  name: postgres-secret
-  namespace: latexy
-type: Opaque
-data:
-  # Base64 encoded password - change this in production
-  POSTGRES_PASSWORD: bGF0ZXh5X3Bhc3N3b3JkXzEyMw==  # latexy_password_123
+# postgres-secret (key POSTGRES_PASSWORD) is NOT committed. It is generated on
+# the first deploy by k8s/deploy.sh and reused on subsequent deploys.
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

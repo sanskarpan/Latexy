@@ -10,6 +10,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DEPLOY_ENV="${DEPLOY_ENV:-production}"
 BACKUP_BEFORE_DEPLOY="${BACKUP_BEFORE_DEPLOY:-true}"
+# Must match LATEXY_IMAGE_PREFIX in docker-compose.prod.yml
+IMAGE_PREFIX="${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}"
+# Must match PORT in backend/Dockerfile.prod / docker-compose.prod.yml
+BACKEND_PORT="${BACKEND_PORT:-8030}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -207,10 +211,11 @@ build_images() {
         return 1
     fi
     
-    # Tag images with version
-    docker tag latexy-frontend:latest "latexy-frontend:$version"
-    docker tag latexy-backend:latest "latexy-backend:$version"
-    
+    # Tag images with version. The names must match the `image:` keys in
+    # docker-compose.prod.yml, otherwise these tags point at nothing.
+    docker tag "${IMAGE_PREFIX}/latexy-frontend:latest" "${IMAGE_PREFIX}/latexy-frontend:$version"
+    docker tag "${IMAGE_PREFIX}/latexy-backend:latest" "${IMAGE_PREFIX}/latexy-backend:$version"
+
     log "SUCCESS" "Images tagged with version: $version"
 }
 
@@ -261,8 +266,10 @@ check_service_health() {
     while [[ $attempt -le $max_attempts ]]; do
         log "INFO" "Health check attempt $attempt/$max_attempts"
         
-        # Check backend health
-        if curl -f -s "http://localhost:8000/health" > /dev/null; then
+        # Check backend health. The backend port is not published on the host —
+        # only nginx is — so probe it from inside the container.
+        if docker-compose -f docker-compose.prod.yml exec -T backend \
+            curl -f -s "http://localhost:${BACKEND_PORT}/health" > /dev/null; then
             log "SUCCESS" "Backend is healthy"
             break
         else
@@ -277,11 +284,11 @@ check_service_health() {
         return 1
     fi
     
-    # Check frontend (through nginx)
-    if curl -f -s "http://localhost" > /dev/null; then
-        log "SUCCESS" "Frontend is healthy"
+    # Check the proxy itself (port 80 serves /health, everything else is a 301)
+    if curl -f -s "http://localhost/health" > /dev/null; then
+        log "SUCCESS" "Nginx proxy is healthy"
     else
-        log "WARNING" "Frontend health check failed"
+        log "WARNING" "Nginx proxy health check failed"
     fi
     
     return 0
@@ -325,8 +332,8 @@ rollback_deployment() {
     fi
     
     # Use previous images
-    docker tag "latexy-frontend:$version" latexy-frontend:latest
-    docker tag "latexy-backend:$version" latexy-backend:latest
+    docker tag "${IMAGE_PREFIX}/latexy-frontend:$version" "${IMAGE_PREFIX}/latexy-frontend:latest"
+    docker tag "${IMAGE_PREFIX}/latexy-backend:$version" "${IMAGE_PREFIX}/latexy-backend:latest"
     
     # Deploy
     if deploy_services; then
@@ -345,7 +352,7 @@ cleanup_old_images() {
     docker image prune -f
     
     # Keep only last 5 versions of each image
-    for image in latexy-frontend latexy-backend; do
+    for image in "${IMAGE_PREFIX}/latexy-frontend" "${IMAGE_PREFIX}/latexy-backend"; do
         docker images "$image" --format "table {{.Tag}}\t{{.ID}}" | \
         grep -v "latest" | \
         tail -n +6 | \
