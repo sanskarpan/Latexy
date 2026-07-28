@@ -7,7 +7,10 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
 echo "==> Validating production compose rendering"
-docker compose -f docker-compose.prod.yml config >/tmp/latexy-observability-compose.out
+# docker-compose.prod.yml now requires secrets (e.g. GRAFANA_PASSWORD:?) with no
+# weak defaults, so `config` needs the env file to interpolate. .env.production
+# is a committed placeholder template — its values only have to render, not be real.
+docker compose -f docker-compose.prod.yml --env-file .env.production config >/tmp/latexy-observability-compose.out
 
 echo "==> Validating monitoring YAML and dashboard JSON"
 python3 - <<'PY'
