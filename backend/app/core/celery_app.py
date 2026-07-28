@@ -4,6 +4,8 @@ Celery application configuration for Phase 8.
 
 from __future__ import annotations
 
+import socket
+import sys
 from time import perf_counter
 
 from celery import Celery
@@ -258,6 +260,51 @@ def sample_queue_depths():
 # ------------------------------------------------------------------ #
 
 
+def _install_darwin_fork_safe_resolver() -> None:
+    """
+    Pin DNS resolution to IPv4 inside prefork children on macOS.
+
+    macOS resolves AF_UNSPEC lookups through Network.framework's NAT64
+    synthesis pass (getaddrinfo -> _gai_nat64_second_pass ->
+    nw_path_evaluator_evaluate -> os_log_type_enabled). That path is not
+    fork-safe: a prefork child inherits CoreFoundation/Network state from a
+    multi-threaded parent and segfaults the first time it resolves an
+    *external* hostname. The OS annotates the crash report itself with
+    "*** multi-threaded process forked ***" and "crashed on child side of fork
+    pre-exec".
+
+    Only tasks that reach an external API trip it — the LLM/embedding calls to
+    api.openai.com — which is why compile-only tasks (Redis/Postgres/MinIO are
+    all localhost) survive while orchestrator and embed tasks die. Once a child
+    dies billiard forks a replacement from the same parent, so the pool
+    crash-loops and jobs never reach a terminal state: /download/{job_id} 404s
+    and /jobs/{id}/state polls forever.
+
+    Forcing family=AF_INET skips the NAT64 pass and is the only variant that
+    survives a poisoned fork — AF_INET6 and AF_UNSPEC both still crash. Every
+    endpoint the worker talks to is reachable over IPv4.
+
+    No-op off Darwin, so Linux/Docker — where fork is safe and IPv6 may be
+    required — keeps stock dual-stack resolution.
+    """
+    if sys.platform != "darwin" or getattr(socket, "_latexy_ipv4_only", False):
+        return
+
+    _stock_getaddrinfo = socket.getaddrinfo
+
+    def _ipv4_only_getaddrinfo(host, port, family=socket.AF_UNSPEC, *args, **kwargs):
+        if family == socket.AF_UNSPEC:
+            family = socket.AF_INET
+        return _stock_getaddrinfo(host, port, family, *args, **kwargs)
+
+    # asyncio (and therefore asyncpg) resolves via socket.getaddrinfo in an
+    # executor and looks the attribute up per call, so patching the module
+    # covers sync and async callers alike.
+    socket.getaddrinfo = _ipv4_only_getaddrinfo
+    socket._latexy_stock_getaddrinfo = _stock_getaddrinfo
+    socket._latexy_ipv4_only = True
+
+
 @worker_process_init.connect
 def init_worker_process(sender=None, **kwargs):
     """
@@ -265,6 +312,9 @@ def init_worker_process(sender=None, **kwargs):
     Initialises both the synchronous Redis client (for event_publisher)
     and the async Redis clients (for cleanup/health tasks that use asyncio.run()).
     """
+    # Must run before anything in this process resolves a hostname.
+    _install_darwin_fork_safe_resolver()
+
     try:
         from ..workers.event_publisher import initialize_worker_redis
         initialize_worker_redis(
