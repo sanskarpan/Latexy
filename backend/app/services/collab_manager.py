@@ -17,13 +17,26 @@ Y.js / lib0 binary protocol summary
   MSG_QUERY_AWARENESS (3) → ask peers to re-broadcast their awareness
 
 All integers use lib0 variable-length unsigned encoding (see helpers below).
+
+Multi-process fan-out
+─────────────────────
+The API runs several uvicorn workers in production, so two peers editing the
+same resume usually land in different processes.  Every frame a room relays is
+therefore also published to the Redis Pub/Sub channel ``latexy:collab:{id}``;
+each process runs one listener task per live room and re-broadcasts frames that
+originated elsewhere.  The same channel carries access-revocation control
+messages so that removing a collaborator terminates their live sockets on
+whichever worker they happen to be connected to.
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
-from typing import Dict, List, Optional, Tuple
+import json
+import os
+import uuid
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi.websockets import WebSocket
 
@@ -41,8 +54,27 @@ SYNC_STEP1 = 0
 SYNC_STEP2 = 1
 MSG_UPDATE = 2
 
+# Latexy protocol extension, deliberately outside the y-protocol range: the
+# server uses it to tell a client that one of its frames was refused.  Stock
+# y-websocket clients ignore unknown message types, so it is safe to send.
+MSG_PERMISSION_DENIED = 63
+
+# Collaborator roles allowed to mutate the shared Y.Doc.  "commenter" and
+# "viewer" are read-only on the document — comments are written through the
+# REST comment API (comment_routes.py), never through the CRDT stream.
+EDIT_ROLES = frozenset({"owner", "editor"})
+
 # Redis TTL for collaboration document state (24 h)
 _COLLAB_TTL = 86_400
+
+# Pub/Sub channel prefix used to bridge rooms across API worker processes.
+_COLLAB_CHANNEL_PREFIX = "latexy:collab:"
+
+# Identifies this OS process so it can ignore the frames it published itself.
+_PROCESS_ID = f"{os.getpid()}:{uuid.uuid4().hex[:8]}"
+
+# WebSocket close code sent to a collaborator whose access was revoked.
+CLOSE_ACCESS_REVOKED = 4003
 
 # Maximum accepted size of a single collaboration frame (256 KiB). Oversized
 # frames are dropped to bound Redis writes and broadcast amplification.
@@ -104,6 +136,12 @@ def _build_sync_step2(update: bytes) -> bytes:
     return _encode_varuint(MSG_SYNC) + _encode_varuint(SYNC_STEP2) + _encode_varbuffer(update)
 
 
+def _build_permission_denied(code: str, message: str) -> bytes:
+    """Build a MSG_PERMISSION_DENIED message carrying a JSON reason payload."""
+    payload = json.dumps({"code": code, "message": message}).encode("utf-8")
+    return _encode_varuint(MSG_PERMISSION_DENIED) + _encode_varbuffer(payload)
+
+
 # Minimal valid Y.js empty-document update (0 structs, 0 deletes)
 _EMPTY_YJS_UPDATE: bytes = bytes([0, 0])
 
@@ -141,6 +179,49 @@ class CollabRoom:
         async with self._lock:
             return [(cid, info) for cid, (_, info) in self._clients.items()]
 
+    # ── Authorisation ─────────────────────────────────────────────────────
+
+    def role_of(self, client_id: str) -> Optional[str]:
+        """Role this client was authorised with at connection time."""
+        entry = self._clients.get(client_id)
+        return entry[1].get("role") if entry else None
+
+    def can_edit(self, client_id: str) -> bool:
+        """True if this client may mutate the shared document."""
+        return self.role_of(client_id) in EDIT_ROLES
+
+    async def close_user(
+        self,
+        user_id: str,
+        *,
+        code: int = CLOSE_ACCESS_REVOKED,
+        reason: str = "Access revoked",
+    ) -> int:
+        """
+        Terminate every socket belonging to *user_id* in this room.
+        Returns the number of sockets closed.
+        """
+        async with self._lock:
+            targets = [
+                (cid, ws)
+                for cid, (ws, info) in self._clients.items()
+                if info.get("user_id") == user_id
+            ]
+
+        notice = _build_permission_denied("access_revoked", reason)
+        for cid, ws in targets:
+            try:
+                await ws.send_bytes(notice)
+            except Exception:
+                pass
+            try:
+                await ws.close(code=code, reason=reason[:120])
+            except Exception:
+                pass
+            await self.remove(cid)
+
+        return len(targets)
+
     # ── Messaging ─────────────────────────────────────────────────────────
 
     async def broadcast(self, data: bytes, *, exclude: Optional[str] = None) -> None:
@@ -172,32 +253,186 @@ class CollabRoom:
         except Exception:
             await self.remove(client_id)
 
+    async def relay(self, data: bytes, *, exclude: Optional[str] = None) -> None:
+        """
+        Deliver *data* to peers in this room — both the ones connected to this
+        process and the ones connected to other API workers (via Redis).
+        """
+        await self.broadcast(data, exclude=exclude)
+        await _publish(
+            self.resume_id,
+            {"kind": "frame", "data": base64.b64encode(data).decode("ascii")},
+        )
+
 
 # ── Manager ───────────────────────────────────────────────────────────────────
 
 class CollabManager:
-    """Singleton that maps ``resume_id → CollabRoom``."""
+    """Singleton that maps ``resume_id → CollabRoom`` plus its Redis bridge."""
 
     def __init__(self) -> None:
         self._rooms: Dict[str, CollabRoom] = {}
+        # resume_id → running Redis Pub/Sub listener task
+        self._listeners: Dict[str, asyncio.Task] = {}
         self._lock = asyncio.Lock()
 
     async def get_or_create(self, resume_id: str) -> CollabRoom:
         async with self._lock:
             if resume_id not in self._rooms:
                 self._rooms[resume_id] = CollabRoom(resume_id)
+
+            listener = self._listeners.get(resume_id)
+            if listener is None or listener.done():
+                # Subscribe before starting the task so frames published while
+                # the task spins up are not lost (same ordering as EventBus).
+                pubsub = await _subscribe(resume_id)
+                if pubsub is not None:
+                    self._listeners[resume_id] = asyncio.create_task(
+                        self._bridge(resume_id, pubsub),
+                        name=f"collab:{resume_id}",
+                    )
+
             return self._rooms[resume_id]
 
     async def maybe_cleanup(self, resume_id: str) -> None:
-        """Remove the room if it has no connected clients."""
+        """Remove the room and its Redis listener if no clients remain."""
         async with self._lock:
             room = self._rooms.get(resume_id)
             if room is not None and room.size == 0:
                 del self._rooms[resume_id]
+                task = self._listeners.pop(resume_id, None)
+                if task is not None and not task.done():
+                    task.cancel()
+
+    async def revoke_access(
+        self,
+        resume_id: str,
+        user_id: str,
+        *,
+        reason: str = "Access revoked",
+    ) -> int:
+        """
+        Terminate *user_id*'s live collaboration sockets for *resume_id*, on this
+        process and on every other API worker.
+
+        Called by the collaborator management routes whenever a collaborator is
+        removed or their role changes, so that revocation takes effect
+        immediately instead of at the next reconnect.  Returns the number of
+        sockets closed locally.
+        """
+        closed = 0
+        room = self._rooms.get(resume_id)
+        if room is not None:
+            closed = await room.close_user(user_id, reason=reason)
+            await self.maybe_cleanup(resume_id)
+
+        await _publish(
+            resume_id,
+            {"kind": "revoke", "user_id": user_id, "reason": reason},
+        )
+        return closed
+
+    # ── Internal: cross-process bridge ────────────────────────────────────
+
+    async def _bridge(self, resume_id: str, pubsub: Any) -> None:
+        """Apply envelopes published by other API workers to the local room."""
+        channel = f"{_COLLAB_CHANNEL_PREFIX}{resume_id}"
+        try:
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                try:
+                    envelope = json.loads(message["data"])
+                except (TypeError, ValueError):
+                    continue
+                if envelope.get("origin") == _PROCESS_ID:
+                    continue  # already applied locally by the publisher
+
+                room = self._rooms.get(resume_id)
+                if room is None:
+                    break  # room went away — stop listening
+
+                kind = envelope.get("kind")
+                if kind == "frame":
+                    try:
+                        data = base64.b64decode(envelope.get("data", ""))
+                    except Exception:
+                        continue
+                    if data:
+                        await room.broadcast(data)
+                elif kind == "revoke":
+                    await room.close_user(
+                        envelope.get("user_id", ""),
+                        reason=envelope.get("reason", "Access revoked"),
+                    )
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.error("Collab: bridge error for %s: %s", resume_id[:8], exc)
+        finally:
+            # Only de-register if we are still the registered listener: a
+            # rejoin during our (awaiting) teardown may already have installed
+            # a newer task, and clobbering it would leak an untracked bridge.
+            if self._listeners.get(resume_id) is asyncio.current_task():
+                self._listeners.pop(resume_id, None)
+            try:
+                await pubsub.unsubscribe(channel)
+                await pubsub.aclose()
+            except Exception as exc:
+                logger.debug("Collab: bridge cleanup failed: %s", exc)
 
 
 # Module-level singleton used by the WebSocket handler.
 collab_manager = CollabManager()
+
+
+# ── Cross-process Pub/Sub helpers ────────────────────────────────────────────
+
+async def _subscribe(resume_id: str) -> Optional[Any]:
+    """Subscribe to this room's Pub/Sub channel; None if Redis is unavailable."""
+    channel = f"{_COLLAB_CHANNEL_PREFIX}{resume_id}"
+    try:
+        r = await get_redis_client()
+        pubsub = r.pubsub()
+        await pubsub.subscribe(channel)
+        return pubsub
+    except Exception as exc:
+        logger.warning("Collab: Pub/Sub subscribe failed for %s: %s", resume_id[:8], exc)
+        return None
+
+
+async def _publish(resume_id: str, envelope: dict) -> None:
+    """Publish an envelope to the other API workers hosting this room."""
+    envelope["origin"] = _PROCESS_ID
+    try:
+        r = await get_redis_client()
+        await r.publish(f"{_COLLAB_CHANNEL_PREFIX}{resume_id}", json.dumps(envelope))
+    except Exception as exc:
+        logger.warning("Collab: Pub/Sub publish failed for %s: %s", resume_id[:8], exc)
+
+
+# ── Connection-time notices ───────────────────────────────────────────────────
+
+async def notify_if_read_only(room: CollabRoom, client_id: str) -> bool:
+    """
+    Tell a freshly-joined client straight away when its role cannot edit.
+
+    Without this the client only learns it is read-only after its first write
+    is refused — by which point the user has already typed edits that the
+    server drops, so they silently vanish on reload.  Returns True if a notice
+    was sent.
+    """
+    if room.can_edit(client_id):
+        return False
+    await room.send_to(
+        client_id,
+        _build_permission_denied(
+            "read_only",
+            "Your role does not allow editing this document",
+        ),
+    )
+    return True
 
 
 # ── Per-message handler ───────────────────────────────────────────────────────
@@ -213,6 +448,7 @@ async def handle_collab_message(
 
     * SYNC_STEP1  → send all stored updates back to the requesting client
     * SYNC_STEP2 / MSG_UPDATE → persist update bytes; relay to peers
+                                (rejected unless the client's role can edit)
     * MSG_AWARENESS / MSG_QUERY_AWARENESS → relay to peers (no persistence)
     """
     if not data:
@@ -246,7 +482,24 @@ async def handle_collab_message(
             await _send_catchup(resume_id, client_id, room)
 
         elif sync_type in (SYNC_STEP2, MSG_UPDATE):
-            # Actual document update — persist then relay.
+            # Actual document update — only editors and the owner may mutate
+            # the document; viewers / commenters get a denial notice instead.
+            if not room.can_edit(client_id):
+                logger.info(
+                    "Collab: rejected write from %s role=%s on %s",
+                    client_id[:8],
+                    room.role_of(client_id),
+                    resume_id[:8],
+                )
+                await room.send_to(
+                    client_id,
+                    _build_permission_denied(
+                        "read_only",
+                        "Your role does not allow editing this document",
+                    ),
+                )
+                return
+
             try:
                 update_bytes, _ = _decode_varbuffer(data, pos)
             except ValueError:
@@ -255,11 +508,12 @@ async def handle_collab_message(
             if update_bytes:
                 await _persist_update(resume_id, update_bytes)
 
-            await room.broadcast(data, exclude=client_id)
+            await room.relay(data, exclude=client_id)
 
     elif msg_type in (MSG_AWARENESS, MSG_QUERY_AWARENESS):
-        # Cursor / presence data — relay without storage.
-        await room.broadcast(data, exclude=client_id)
+        # Cursor / presence data — relay without storage.  Allowed for every
+        # role: read-only collaborators still appear in the presence list.
+        await room.relay(data, exclude=client_id)
 
 
 # ── Redis helpers ─────────────────────────────────────────────────────────────

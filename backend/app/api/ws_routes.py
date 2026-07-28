@@ -13,7 +13,8 @@ Server → Client:
   {"type": "subscribed",  "job_id": "...", "replayed_count": N}
   {"type": "event",       "event": { ...typed event... }}
   {"type": "pong",        "server_time": 1234567890.0}
-  {"type": "error",       "code": "...", "message": "..."}
+  {"type": "error",       "code": "...", "message": "...", "job_id": "..."}
+                          (job_id present only when the error concerns one job)
 """
 
 from __future__ import annotations
@@ -30,7 +31,11 @@ from fastapi.websockets import WebSocket, WebSocketDisconnect
 from ..core.event_bus import event_bus
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client
-from ..services.collab_manager import collab_manager, handle_collab_message
+from ..services.collab_manager import (
+    collab_manager,
+    handle_collab_message,
+    notify_if_read_only,
+)
 
 logger = get_logger(__name__)
 
@@ -91,7 +96,12 @@ async def jobs_websocket(websocket: WebSocket) -> None:
 
             # Rate limit: max 20 messages/second per connection
             if not _check_rate_limit(connection_id):
-                await _send_error(websocket, "rate_limited", "Too many messages")
+                await _send_error(
+                    websocket,
+                    "rate_limited",
+                    "Too many messages",
+                    job_id=data.get("job_id") if isinstance(data, dict) else None,
+                )
                 continue
 
             msg_type = data.get("type")
@@ -105,7 +115,9 @@ async def jobs_websocket(websocket: WebSocket) -> None:
                     continue
 
                 if not await _job_ws_access_ok(job_id, ws_user_id):
-                    await _send_error(websocket, "forbidden", "Access denied for this job")
+                    await _send_error(
+                        websocket, "forbidden", "Access denied for this job", job_id=job_id
+                    )
                     continue
 
                 replayed = await event_bus.subscribe(job_id, websocket, last_event_id)
@@ -130,7 +142,9 @@ async def jobs_websocket(websocket: WebSocket) -> None:
                     await _send_error(websocket, "invalid_request", "job_id is required")
                     continue
                 if not await _job_ws_access_ok(job_id, ws_user_id):
-                    await _send_error(websocket, "forbidden", "Access denied for this job")
+                    await _send_error(
+                        websocket, "forbidden", "Access denied for this job", job_id=job_id
+                    )
                     continue
                 await _request_cancellation(job_id)
 
@@ -200,9 +214,23 @@ async def _job_ws_access_ok(job_id: str, user_id: Optional[str]) -> bool:
     return job_owner is None or job_owner == user_id
 
 
-async def _send_error(websocket: WebSocket, code: str, message: str) -> None:
+async def _send_error(
+    websocket: WebSocket,
+    code: str,
+    message: str,
+    job_id: Optional[str] = None,
+) -> None:
+    """Send an error frame.
+
+    ``job_id`` is included whenever the rejection is about a specific job so a
+    client with several concurrent job subscriptions on the one socket can route
+    the error to the right stream instead of failing all of them.
+    """
+    payload: dict = {"type": "error", "code": code, "message": message}
+    if job_id:
+        payload["job_id"] = job_id
     try:
-        await websocket.send_json({"type": "error", "code": code, "message": message})
+        await websocket.send_json(payload)
     except Exception:
         pass
 
@@ -247,12 +275,16 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
 
     Auth:       ?token=<better-auth-session-token>
     Permission: resume owner OR a row in resume_collaborators for this user.
+                The collaborator's role travels with the connection and is
+                enforced on every frame by collab_manager (viewers and
+                commenters cannot mutate the document).
 
     Binary protocol: lib0-encoded Y.js messages (MSG_SYNC / MSG_AWARENESS).
     See collab_manager.py for the full protocol description.
     """
     from sqlalchemy import select as sa_select
 
+    from ..core.config import settings
     from ..database.connection import get_async_db_session
     from ..database.models import Resume, ResumeCollaborator
     from ..middleware.auth_middleware import (
@@ -270,7 +302,9 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
     if token:
         async with get_async_db_session() as db:
             user_id = await _validate_better_auth_session(token, db)
-        if not user_id:
+        # Legacy HS256 fallback — OFF by default. Mirrors the kill-switch that
+        # auth_middleware.get_current_user_optional applies to every HTTP route.
+        if not user_id and getattr(settings, "LEGACY_JWT_ENABLED", False):
             user_id = auth_middleware.user_id(token)
 
     if not user_id:
@@ -283,6 +317,7 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
 
     # ── Permission ────────────────────────────────────────────────────────
     is_owner = False
+    role = "owner"
     async with get_async_db_session() as db:
         result = await db.execute(sa_select(Resume).where(Resume.id == resume_id))
         resume = result.scalar_one_or_none()
@@ -312,6 +347,7 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
                     reason="Forbidden",
                 )
                 return
+            role = collab.role
 
     # ── Accept and join room ──────────────────────────────────────────────
     await websocket.accept()
@@ -322,14 +358,19 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
         "name": user_name,
         "color": user_color,
         "is_owner": is_owner,
+        "role": role,
     }
 
     room = await collab_manager.get_or_create(resume_id)
     await room.add(client_id, websocket, user_info)
+    # Read-only roles are told up-front so the client can disable its editor
+    # instead of discovering the restriction only after edits are dropped.
+    await notify_if_read_only(room, client_id)
     logger.info(
-        "Collab: %s joined %s (room=%d)",
+        "Collab: %s joined %s as %s (room=%d)",
         user_name,
         resume_id[:8],
+        role,
         room.size,
     )
 
