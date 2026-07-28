@@ -1,0 +1,56 @@
+[
+ {
+  "id": "1.5",
+  "name": "GET /analytics/me GroupingError 500",
+  "verdict": "BROKEN",
+  "detail": "status=500 body={\"error\":{\"code\":\"http_error\",\"message\":\"Internal server error\",\"request_id\":\"93d5a39b-f98f-4536-b1c3-f808f1e230e2\"},\"detail\":\"Internal server error\"}"
+ },
+ {
+  "id": "1.3",
+  "name": "429/413 responses lack CORS headers (CORSMiddleware innermost)",
+  "verdict": "BROKEN",
+  "detail": "200 has ACAO=True; rate-limited status=429 has ACAO=False"
+ },
+ {
+  "id": "1.7",
+  "name": "BYOK proxy double-wraps backend response -> page TypeError",
+  "verdict": "BROKEN",
+  "detail": "backend returns list=False; proxy api_keys is list=False; proxy={\"success\":true,\"total_count\":0,\"api_keys\":{\"success\":true,\"api_keys\":[],\"total_count\":0}}"
+ },
+ {
+  "id": "1.8",
+  "name": "/ats/score returns a job_id that /jobs/{id}/state 404s forever",
+  "verdict": "BROKEN",
+  "detail": "submit=200 job_id=007c12a2-af63-43ec-b9c4-992dcf0da9e6 -> state=404 {\"error\":{\"code\":\"http_error\",\"message\":\"Job not found\",\"request_id\":\"98441bc2-57a6-4a5a-aa17-abd71a546265\"},\"detail\":\"Job not found\"}"
+ },
+ {
+  "id": "1.1",
+  "name": "Optimize+Compile completes but PDF/logs 404 (orchestrator rmtree)",
+  "verdict": "BROKEN",
+  "detail": "job completed; /download=404 (0b, magic=-); /logs=404"
+ },
+ {
+  "id": "1.2",
+  "name": "Compilation stuck 'processing' -> share links 404 (+apply/history/export)",
+  "verdict": "BROKEN",
+  "detail": "share create -> token=True; GET /share/{token} anon -> 404 {\"error\":{\"code\":\"http_error\",\"message\":\"No compiled PDF available yet. Please compile your resume first.\",\"request_id\":\"7bcae608-1535-4330-8e04-756f6\n              DB status counts: processing |    46 |     0\n completed  |     4 |     3"
+ },
+ {
+  "id": "1.6",
+  "name": "Per-plan quotas advertised but never enforced (free = unlimited)",
+  "verdict": "BROKEN",
+  "detail": "free-plan account ran 8/8 compiles with no block"
+ },
+ {
+  "id": "2.11",
+  "name": "POST /optimize is a completely unauthenticated LLM endpoint",
+  "verdict": "BROKEN",
+  "detail": "anonymous POST /optimize -> 200 {\"success\":true,\"optimized_latex\":\"\\\\documentclass[11pt]{article}\\n\\\\usepackage[margin=1in]{geometry}\\n\\\\begin{document}\\n\\\\section*{Alice Auditor}\\nB"
+ },
+ {
+  "id": "2.14",
+  "name": "ai_routes uses raw request.client.host (all anon share one bucket behind nginx)",
+  "verdict": "?",
+  "detail": "anon /ai/generate-bullets -> 200 (static check required; see report)"
+ }
+]

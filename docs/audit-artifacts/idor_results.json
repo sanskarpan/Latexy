@@ -1,0 +1,392 @@
+[
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"3eea9568-5fb2-47f1-be62-0b2e6b42ea03\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "PUT",
+  "path": "/resumes/{resume_id}",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"63b502d1-6a63-49f8-a97f-6af4f1867a15\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/settings",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/settings",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"6201f0dd-4d4f-4bb5-bc08-cab267242045\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/tags",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/tags",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"40b1c42f-0fa0-4092-8d21-71e35c228103\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/pin",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/pin",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"c6d57f8d-1f0c-40c8-a10d-5d295cd5b498\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/archive",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/archive",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"24e2378f-0a8b-407a-b224-927abfc7af52\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/analytics",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/analytics",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"a33a4cd9-7f16-444b-8c7c-d16d4d9671d0\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/score-history",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/score-history",
+  "status": 200,
+  "body": "[]"
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/optimization-history",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/optimization-history",
+  "status": 200,
+  "body": "[]"
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/variants",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/variants",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"61f7962f-14df-4d42-827b-e39c303cb1f5\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/checkpoints",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/checkpoints",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"1195994c-4108-4d33-9837-0ea5fb9cf884\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/checkpoints/{checkpoint_id}/content",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/checkpoints/53241496-02af-46f8-98d6-08624955dd7f/content",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"3c39debc-290b-4158-81e1-1399abc4e7fc\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "DELETE",
+  "path": "/resumes/{resume_id}/checkpoints/{checkpoint_id}",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/checkpoints/53241496-02af-46f8-98d6-08624955dd7f",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"c957c736-aa20-456f-8508-cab082fc83cf\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/comments",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/comments",
+  "status": 403,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"You do not have access to this resume\",\"request_id\":\"aa0f454d-2b8e-4228-a022-def6b4f3aeab\"},\"detail\":\"You do not have access to this resume\"}"
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/comments/{comment_id}",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/comments/a105cb6d-401c-48eb-aab9-73535c5d9fa1",
+  "status": 403,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"You can only edit your own comments\",\"request_id\":\"1bc81934-2007-4605-b321-4cdb7aafc530\"},\"detail\":\"You can only edit your own comments\"}"
+ },
+ {
+  "method": "DELETE",
+  "path": "/resumes/{resume_id}/comments/{comment_id}",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/comments/a105cb6d-401c-48eb-aab9-73535c5d9fa1",
+  "status": 403,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"You can only delete your own comments\",\"request_id\":\"057618ef-f381-4ca0-afb1-6ea1dd3e332d\"},\"detail\":\"You can only delete your own comments\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/collaborators",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/collaborators",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"9ac2e3be-da41-4360-a00b-ef718425f266\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/collaborators",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/collaborators",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"b60546a8-bbcf-4b88-93ce-c873b962d84d\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/builder",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/builder",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"46dea258-1807-43a5-8223-ed7d7dc20660\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/diff-with-parent",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/diff-with-parent",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"5dfeefbc-5e2f-45b7-b3c1-2fcb9b1028f7\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/fork",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/fork",
+  "status": 422,
+  "body": "{\"error\":{\"code\":\"validation_error\",\"message\":\"Request validation failed.\",\"request_id\":\"8e4ee010-8ac9-4081-8c84-b582a300fa6f\",\"details\":[{\"type\":\"missing\",\"loc\":[\"body\"],\"msg\":\"Field required\",\"input\":null}]},\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\"],\"msg\":\"Field required\",\"input\":null}]}"
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/quick-tailor",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/quick-tailor",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"9a66bf06-6c1a-4c66-8452-619961464319\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/share",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/share",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"895905a4-8385-4262-be57-b0715bb831ff\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "DELETE",
+  "path": "/resumes/{resume_id}/share",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/share",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"6f342194-00b7-445e-9a16-c5018f5ee873\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/generate-portfolio",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/generate-portfolio",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"ce8fbb27-6e6e-4aa8-88e9-3aad1b3a5b88\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/interview-prep",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/interview-prep",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"0a421b58-a57f-4a64-aad0-6cafcfb9eedc\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/academic-cv-report",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/academic-cv-report",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"d7aba50a-c20f-48a1-8671-0b8f3c78ec9d\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "DELETE",
+  "path": "/resumes/{resume_id}",
+  "real": "/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"686e72b0-2c16-4de7-bb8b-31a573bedc98\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/export/{resume_id}/docx",
+  "real": "/export/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/docx",
+  "status": 403,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Access denied\",\"request_id\":\"bf244083-b963-4b2c-8459-3f23fc24d316\"},\"detail\":\"Access denied\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/export/{resume_id}/figma",
+  "real": "/export/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/figma",
+  "status": 403,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Access denied\",\"request_id\":\"5b768d8a-d5c5-4d16-90cd-b6b8c1252128\"},\"detail\":\"Access denied\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/career/analyses/{resume_id}",
+  "real": "/career/analyses/f1f58509-8af0-4c48-ad0f-87e055f6cb7d",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"b903c643-b50f-4b9a-bf49-4524a3c93ebf\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/cover-letters/resume/{resume_id}",
+  "real": "/cover-letters/resume/f1f58509-8af0-4c48-ad0f-87e055f6cb7d",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found or not owned by you\",\"request_id\":\"36391d4c-17a6-4af9-98f1-ae3a39d6995b\"},\"detail\":\"Resume not found or not owned by you\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/cover-letters/{cover_letter_id}",
+  "status": -1,
+  "body": "SKIPPED (id not created)"
+ },
+ {
+  "method": "PUT",
+  "path": "/cover-letters/{cover_letter_id}",
+  "status": -1,
+  "body": "SKIPPED (id not created)"
+ },
+ {
+  "method": "DELETE",
+  "path": "/cover-letters/{cover_letter_id}",
+  "status": -1,
+  "body": "SKIPPED (id not created)"
+ },
+ {
+  "method": "GET",
+  "path": "/workspaces/{workspace_id}",
+  "real": "/workspaces/b8d485b6-2b6a-40cb-b8ba-092133619583",
+  "status": 403,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"You are not a member of this workspace\",\"request_id\":\"bf9f61a6-3174-4f7f-a9fe-4c13e2e21b20\"},\"detail\":\"You are not a member of this workspace\"}"
+ },
+ {
+  "method": "PATCH",
+  "path": "/workspaces/{workspace_id}",
+  "real": "/workspaces/b8d485b6-2b6a-40cb-b8ba-092133619583",
+  "status": 403,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Only the workspace owner can perform this action\",\"request_id\":\"d0aa7db1-be0b-4106-85b6-aa3c7954b580\"},\"detail\":\"Only the workspace owner can perform this action\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/workspaces/{workspace_id}/resumes",
+  "real": "/workspaces/b8d485b6-2b6a-40cb-b8ba-092133619583/resumes",
+  "status": 403,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"You are not a member of this workspace\",\"request_id\":\"6ec967e4-3138-4776-b3b6-e31ec53df9cf\"},\"detail\":\"You are not a member of this workspace\"}"
+ },
+ {
+  "method": "POST",
+  "path": "/workspaces/{workspace_id}/members/invite",
+  "real": "/workspaces/b8d485b6-2b6a-40cb-b8ba-092133619583/members/invite",
+  "status": 422,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"role must be 'editor' or 'viewer'\",\"request_id\":\"91705590-e1ad-48c9-b761-51873bf14616\"},\"detail\":\"role must be 'editor' or 'viewer'\"}"
+ },
+ {
+  "method": "DELETE",
+  "path": "/workspaces/{workspace_id}",
+  "real": "/workspaces/b8d485b6-2b6a-40cb-b8ba-092133619583",
+  "status": 403,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Only the workspace owner can perform this action\",\"request_id\":\"3b79a4ab-2aea-4ddb-9957-4eef842f27ff\"},\"detail\":\"Only the workspace owner can perform this action\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/tracker/applications/{app_id}",
+  "status": -1,
+  "body": "SKIPPED (id not created)"
+ },
+ {
+  "method": "PUT",
+  "path": "/tracker/applications/{app_id}",
+  "status": -1,
+  "body": "SKIPPED (id not created)"
+ },
+ {
+  "method": "PATCH",
+  "path": "/tracker/applications/{app_id}/status",
+  "status": -1,
+  "body": "SKIPPED (id not created)"
+ },
+ {
+  "method": "DELETE",
+  "path": "/tracker/applications/{app_id}",
+  "status": -1,
+  "body": "SKIPPED (id not created)"
+ },
+ {
+  "method": "PATCH",
+  "path": "/developer/keys/{key_id}",
+  "real": "/developer/keys/a1cc5c90-e88e-49c3-88bc-dcbab6f01370",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Developer API key not found\",\"request_id\":\"5779092b-cba2-4404-92fe-90f986b84435\"},\"detail\":\"Developer API key not found\"}"
+ },
+ {
+  "method": "DELETE",
+  "path": "/developer/keys/{key_id}",
+  "real": "/developer/keys/a1cc5c90-e88e-49c3-88bc-dcbab6f01370",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Developer API key not found\",\"request_id\":\"02f935b5-91f5-49bc-926d-b2b363da46cf\"},\"detail\":\"Developer API key not found\"}"
+ },
+ {
+  "method": "PATCH",
+  "path": "/macros/{macro_id}",
+  "real": "/macros/fae147bd-45a4-4e58-bb66-55586c6a2e3c",
+  "status": 403,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Access denied\",\"request_id\":\"dd66b82c-a662-4b19-8e91-13ef84761160\"},\"detail\":\"Access denied\"}"
+ },
+ {
+  "method": "DELETE",
+  "path": "/macros/{macro_id}",
+  "real": "/macros/fae147bd-45a4-4e58-bb66-55586c6a2e3c",
+  "status": 403,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Access denied\",\"request_id\":\"2f5ead4f-e920-4256-a7ab-bdbc361eb2d5\"},\"detail\":\"Access denied\"}"
+ },
+ {
+  "method": "PATCH",
+  "path": "/snippets/{snippet_id}",
+  "status": -1,
+  "body": "SKIPPED (id not created)"
+ },
+ {
+  "method": "DELETE",
+  "path": "/snippets/{snippet_id}",
+  "status": -1,
+  "body": "SKIPPED (id not created)"
+ },
+ {
+  "method": "GET",
+  "path": "/zotero/bibtex/{resume_id}",
+  "real": "/zotero/bibtex/f1f58509-8af0-4c48-ad0f-87e055f6cb7d",
+  "status": 405,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Method Not Allowed\",\"request_id\":\"0dbea260-bb2c-4cb5-9abb-5fdcfb6b1de5\"},\"detail\":\"Method Not Allowed\"}"
+ },
+ {
+  "method": "DELETE",
+  "path": "/zotero/bibtex/{resume_id}",
+  "real": "/zotero/bibtex/f1f58509-8af0-4c48-ad0f-87e055f6cb7d",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"47b2afdc-9d40-4941-8110-bff14de6a217\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "POST",
+  "path": "/dropbox/resumes/{resume_id}/push",
+  "real": "/dropbox/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/push",
+  "status": 400,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Dropbox not connected\",\"request_id\":\"3f453c53-102a-45d9-8d72-14c468690302\"},\"detail\":\"Dropbox not connected\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/dropbox/resumes/{resume_id}/status",
+  "real": "/dropbox/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/status",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"0b3b7521-3541-485d-8ef4-8f55ffeaaa89\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "POST",
+  "path": "/github/resumes/{resume_id}/push",
+  "real": "/github/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/push",
+  "status": 400,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"GitHub not connected\",\"request_id\":\"370038ac-1df3-4c04-97e9-88fac386169b\"},\"detail\":\"GitHub not connected\"}"
+ },
+ {
+  "method": "GET",
+  "path": "/github/resumes/{resume_id}/status",
+  "real": "/github/resumes/f1f58509-8af0-4c48-ad0f-87e055f6cb7d/status",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"1cb8d5d6-e030-4fc6-832a-0a1a132db3ad\"},\"detail\":\"Resume not found\"}"
+ },
+ {
+  "method": "POST",
+  "path": "/interview-prep/generate",
+  "real": "/interview-prep/generate",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Resume not found\",\"request_id\":\"f4c793f4-15ce-4b70-b5d1-d56c654638af\"},\"detail\":\"Resume not found\"}"
+ }
+]
