@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -73,6 +74,17 @@ def mock_jsm():
         m.publish_job_result = mock_res
         m._mock_redis = mock_r  # expose for per-test customisation
         yield m
+
+
+@pytest.fixture(autouse=True)
+def no_real_minio():
+    """
+    Keep the MinIO orphan prune inside cleanup_expired_jobs_task off the network.
+
+    Tests that exercise the prune patch storage_service themselves.
+    """
+    with patch("app.services.storage_service.list_objects", return_value=[]):
+        yield
 
 
 @pytest.fixture
@@ -565,3 +577,162 @@ class TestHealthCheckTask:
         """Task publishes exactly one job result via publish_job_result."""
         self._run(mock_jsm, mock_rm)
         assert mock_jsm.publish_job_result.call_count >= 1
+
+
+# ── MinIO orphan prune ────────────────────────────────────────────────────────
+
+
+class TestPruneOrphanedCompilationObjects:
+    """
+    Nothing used to delete anything under the compilations/ prefix, so objects
+    written for compiles with no Compilation row (anonymous submits,
+    compile-watermarked, the anonymous-share redaction compile) accumulated
+    forever. The prune only removes keys whose job_id has no row at all.
+    """
+
+    @staticmethod
+    def _obj(job_id: str, age_hours: float = 48):
+        from datetime import datetime, timedelta, timezone
+        return {
+            "key": f"compilations/{job_id}/resume.pdf",
+            "size": 1234,
+            "last_modified": datetime.now(timezone.utc) - timedelta(hours=age_hours),
+        }
+
+    def _run(self, objects, known_ids):
+        from app.workers import cleanup_worker as cw
+
+        with (
+            patch("app.services.storage_service.list_objects", return_value=objects),
+            patch("app.services.storage_service.delete_object", return_value=True) as mock_delete,
+            patch.object(
+                cw, "_select_known_compilation_job_ids", new=AsyncMock(return_value=known_ids)
+            ),
+        ):
+            stats = cw._prune_orphaned_compilation_objects()
+        return stats, mock_delete
+
+    def test_orphaned_object_deleted(self):
+        orphan = str(uuid.uuid4())
+        stats, mock_delete = self._run([self._obj(orphan)], set())
+        assert stats["deleted"] == 1
+        assert mock_delete.call_args.args[0] == f"compilations/{orphan}/resume.pdf"
+
+    def test_object_with_row_is_kept_regardless_of_age(self):
+        owned = str(uuid.uuid4())
+        stats, mock_delete = self._run([self._obj(owned, age_hours=10_000)], {owned})
+        assert stats["deleted"] == 0
+        assert not mock_delete.called
+
+    def test_recent_object_is_never_touched(self):
+        fresh = str(uuid.uuid4())
+        stats, mock_delete = self._run([self._obj(fresh, age_hours=0.1)], set())
+        assert stats["deleted"] == 0
+        assert not mock_delete.called
+
+    def test_db_unavailable_skips_deletion(self):
+        orphan = str(uuid.uuid4())
+        stats, mock_delete = self._run([self._obj(orphan)], None)
+        assert stats["deleted"] == 0
+        assert not mock_delete.called, "must not delete what it could not verify"
+
+    def test_list_failure_is_swallowed(self):
+        from app.workers import cleanup_worker as cw
+
+        with patch(
+            "app.services.storage_service.list_objects", side_effect=RuntimeError("minio down")
+        ):
+            stats = cw._prune_orphaned_compilation_objects()
+        assert stats == {"scanned": 0, "deleted": 0}
+
+    def test_task_reports_prune_counters(self, mock_jsm):
+        orphan = str(uuid.uuid4())
+        from app.workers import cleanup_worker as cw
+
+        with (
+            patch("app.services.storage_service.list_objects", return_value=[self._obj(orphan)]),
+            patch("app.services.storage_service.delete_object", return_value=True),
+            patch.object(
+                cw, "_select_known_compilation_job_ids", new=AsyncMock(return_value=set())
+            ),
+        ):
+            result = cleanup_expired_jobs_task.apply(kwargs={"max_age_hours": 24}).get()
+
+        assert result["minio_objects_scanned"] == 1
+        assert result["minio_objects_pruned"] == 1
+
+
+# ── Orphan prune: same-database verification ─────────────────────────────────
+
+
+class TestPruneDatabaseVerification:
+    """
+    The pruner deletes on the strength of "no Compilation row exists". That is
+    only true if it read the SAME database the uploader wrote the row to — the
+    repo's root .env and scripts/dev.sh can point DATABASE_URL at different
+    instances, and a mismatch made every live PDF look like an orphan.
+    """
+
+    def test_both_workers_share_one_url_resolver(self):
+        import inspect
+
+        from app.workers import cleanup_worker as cw
+        from app.workers import latex_worker as lw
+
+        for module, func in (
+            (cw, cw._select_known_compilation_job_ids),
+            (lw, lw._update_compilation_record),
+        ):
+            source = inspect.getsource(func)
+            assert "resolve_database_url()" in source, module.__name__
+            assert 'os.environ.get("DATABASE_URL"' not in source, module.__name__
+
+    def test_resolver_prefers_env_then_settings(self, monkeypatch):
+        from app.utils.db_url import database_identity, resolve_database_url
+
+        monkeypatch.setenv(
+            "DATABASE_URL", "postgresql://u:p@db.example.com:5433/latexy"
+        )
+        assert database_identity(resolve_database_url()) == "db.example.com:5433/latexy"
+
+    def test_refuses_to_verify_against_an_unstamped_database(self):
+        import asyncio
+
+        from app.workers import cleanup_worker as cw
+
+        with patch(
+            "app.workers.storage_guard.read_compilation_database", return_value=None
+        ):
+            known = asyncio.run(
+                cw._select_known_compilation_job_ids([str(uuid.uuid4())])
+            )
+        assert known is None, "no stamp => no deletes"
+
+    def test_refuses_to_verify_against_a_different_database(self):
+        import asyncio
+
+        from app.workers import cleanup_worker as cw
+
+        with patch(
+            "app.workers.storage_guard.read_compilation_database",
+            return_value="some-other-host:5432/other",
+        ):
+            known = asyncio.run(
+                cw._select_known_compilation_job_ids([str(uuid.uuid4())])
+            )
+        assert known is None, "wrong database => no deletes"
+
+    def test_uploader_stamp_matches_what_the_pruner_checks(self):
+        from app.utils.db_url import database_identity, resolve_database_url
+        from app.workers import storage_guard
+
+        identity = database_identity(resolve_database_url())
+        recorded = {}
+        with patch("app.workers.event_publisher.get_worker_redis") as mock_redis:
+            mock_redis.return_value.setex.side_effect = (
+                lambda key, ttl, value: recorded.setdefault(key, value)
+            )
+            storage_guard.record_compilation_database(identity)
+
+            mock_redis.return_value.get.side_effect = lambda key: recorded.get(key)
+            assert storage_guard.read_compilation_database() == identity

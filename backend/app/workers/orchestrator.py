@@ -15,7 +15,8 @@ Stage progression:
 Fix notes:
 - Delimiter streaming: LLM output wrapped in <<<LATEX>>>...<<<END_LATEX>>> markers;
   only LaTeX tokens published via llm.token (JSON scaffold never reaches editor).
-- Docker fallback: shutil.which("docker") → local pdflatex when Docker unavailable.
+- Docker fallback: sandboxed Docker engine, else the opt-in local engine (see
+  latex_service.assert_local_engine_allowed).
 - Compile failure preserves LLM work: job.failed includes optimized_latex + changes_made.
 - Section-specific optimization: target_sections + custom_instructions pass-through.
 
@@ -41,12 +42,29 @@ from ..core.logging import get_logger
 from ..core.observability import record_compile
 from ..core.tracing import traced
 from ..services.ats_scoring_service import ats_scoring_service
+from ..services.latex_service import (
+    ENGINE_READ_ESCAPE_ERROR,
+    LATEX_SANDBOX_FLAGS,
+    RECORDER_SUFFIX,
+    assert_local_engine_allowed,
+    docker_engine_available,
+    docker_sandbox_args,
+    engine_env,
+    find_engine_read_escape,
+    find_recorder_read_escape,
+    latex_service,
+)
 from ..services.llm_service import llm_service
 from ..services.optimization_personas import PERSONAS
 from ..workers.event_publisher import (
     is_cancelled,
     publish_event,
     publish_job_result,
+)
+from ..workers.latex_worker import (
+    cache_compile_log,
+    cache_compile_output,
+    reconcile_compilation_record,
 )
 
 logger = get_logger(__name__)
@@ -114,6 +132,9 @@ def optimize_and_compile_task(
             "error_message": "No OpenAI API key configured. Add one via BYOK settings.",
             "retryable": False,
         })
+        reconcile_compilation_record(
+            job_id, success=False, error_message="No OpenAI API key configured"
+        )
         return {"success": False, "job_id": job_id, "error": "No OpenAI API key"}
 
     if self.request.retries == 0:
@@ -147,6 +168,11 @@ def optimize_and_compile_task(
 
         if is_cancelled(job_id):
             publish_event(job_id, "job.cancelled", {})
+            # Same terminal-state obligation as the failure paths: DELETE /jobs/{id}
+            # must not leave the row wedged at "processing".
+            reconcile_compilation_record(
+                job_id, success=False, status="cancelled", error_message="cancelled"
+            )
             return {"success": False, "job_id": job_id, "cancelled": True}
 
         current_stage = "latex_compilation"
@@ -159,7 +185,7 @@ def optimize_and_compile_task(
             "message": "Starting LaTeX compilation",
         })
 
-        compilation_ok, compilation_time, compile_error, page_count = _run_latex_stage(
+        compilation_ok, compilation_time, compile_error, page_count, pdf_bytes = _run_latex_stage(
             job_id=job_id,
             latex_content=optimized_latex,
             compiler=compiler,
@@ -168,6 +194,13 @@ def optimize_and_compile_task(
 
         if is_cancelled(job_id):
             publish_event(job_id, "job.cancelled", {})
+            reconcile_compilation_record(
+                job_id,
+                success=False,
+                status="cancelled",
+                compilation_time=compilation_time,
+                error_message="cancelled",
+            )
             return {"success": False, "job_id": job_id, "cancelled": True}
 
         if not compilation_ok:
@@ -186,6 +219,12 @@ def optimize_and_compile_task(
                 "optimized_latex": optimized_latex,
                 "changes_made": changes_made,
             })
+            reconcile_compilation_record(
+                job_id,
+                success=False,
+                compilation_time=compilation_time,
+                error_message=compile_error,
+            )
             return {
                 "success": False,
                 "job_id": job_id,
@@ -224,9 +263,16 @@ def optimize_and_compile_task(
             "tokens_used": tokens_used,
             "optimized_latex": optimized_latex,
             "page_count": page_count,
+            "pdf_size": len(pdf_bytes) if pdf_bytes else None,
         }
 
         publish_job_result(job_id, result)
+        reconcile_compilation_record(
+            job_id,
+            success=True,
+            compilation_time=compilation_time,
+            pdf_bytes=pdf_bytes,
+        )
         publish_event(job_id, "job.completed", {
             "percent": 100,
             "pdf_job_id": job_id,
@@ -289,6 +335,7 @@ def optimize_and_compile_task(
             "user_plan": user_plan,
             "retryable": False,
         })
+        reconcile_compilation_record(job_id, success=False, error_message="compile_timeout")
         return {"success": False, "job_id": job_id, "error": "compile_timeout"}
 
     except Exception as exc:
@@ -310,6 +357,7 @@ def optimize_and_compile_task(
             "error_message": str(exc),
             "retryable": False,
         })
+        reconcile_compilation_record(job_id, success=False, error_message=str(exc))
         return {"success": False, "job_id": job_id, "error": str(exc)}
 
 
@@ -524,12 +572,20 @@ def _run_latex_stage(
     latex_content: str,
     compiler: str = "pdflatex",
     timeout_seconds: Optional[int] = None,
-) -> tuple[bool, float, str, Optional[int]]:
+) -> tuple[bool, float, str, Optional[int], Optional[bytes]]:
     """
-    Write LaTeX, run the requested compiler (Docker if available, else local binary)
-    with line-by-line log streaming.
+    Write LaTeX, run the requested compiler (sandboxed Docker engine if available,
+    else the opt-in local engine) with line-by-line log streaming.
 
-    Returns (success, compilation_time, error_message, page_count).
+    The LLM-produced LaTeX goes through the same latex_service.validate_latex_content
+    gate as the direct compile path — the combined path used to skip it entirely, so a
+    prompt-injected \\input{/etc/passwd} would have been compiled and its contents
+    streamed back over the job's log.line events.
+
+    Returns (success, compilation_time, error_message, page_count, pdf_bytes).
+    The log and (on success) the PDF + SyncTeX data are cached in Redis before
+    job_dir is removed, so GET /download/{job_id}, /logs/{job_id} and
+    /download/{job_id}/synctex keep working — same artifacts as latex_worker.
     Does NOT publish job.failed — caller is responsible so it can
     include optimized_latex in the failure payload.
     """
@@ -537,28 +593,40 @@ def _run_latex_stage(
     if compiler not in settings.ALLOWED_LATEX_COMPILERS:
         compiler = settings.DEFAULT_LATEX_COMPILER
 
+    # Shared content gate (same call the latex_compilation path makes)
+    if not latex_service.validate_latex_content(latex_content):
+        return False, 0.0, (
+            r"Invalid LaTeX: missing \documentclass, \begin{document}, "
+            r"\end{document}, or disallowed file/shell primitives"
+        ), None, None
+
     job_dir = Path(settings.TEMP_DIR) / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
     try:
         tex_file = job_dir / "resume.tex"
         tex_file.write_text(latex_content, encoding="utf-8")
 
-        if shutil.which("docker"):
+        if docker_engine_available():
             cmd = [
                 "docker", "run", "--rm",
+                *docker_sandbox_args(),
                 "-v", f"{job_dir}:/workdir",
                 "-w", "/workdir",
                 settings.LATEX_DOCKER_IMAGE,
                 compiler,
+                *LATEX_SANDBOX_FLAGS,
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 "-synctex=1",
                 "resume.tex",
             ]
             cwd = None
+            workspace = "/workdir"
         else:
+            assert_local_engine_allowed(job_id)
             cmd = [
                 compiler,
+                *LATEX_SANDBOX_FLAGS,
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 "-synctex=1",
@@ -566,6 +634,7 @@ def _run_latex_stage(
                 str(tex_file),
             ]
             cwd = str(job_dir)
+            workspace = str(job_dir)
 
         timeout = float(timeout_seconds) if timeout_seconds else float(settings.COMPILE_TIMEOUT)
         _perf_start = time.perf_counter()
@@ -577,13 +646,35 @@ def _run_latex_stage(
                 stderr=subprocess.STDOUT,
                 text=True,
                 cwd=cwd,
+                env=engine_env(),
             )
 
             page_count: Optional[int] = None
+            all_output_lines: list = []  # accumulated so the full log can be cached
             try:
                 for line in proc.stdout:
                     stripped = line.rstrip()
                     if stripped:
+                        # Read confinement (see latex_service.find_engine_read_escape):
+                        # kill before the line is streamed, because what follows it is
+                        # the contents of whatever file was opened. \openin reads are
+                        # invisible here — the recorder check after the run covers those.
+                        escaped = find_engine_read_escape(stripped, workspace)
+                        if escaped:
+                            proc.kill()
+                            logger.warning(
+                                f"[{job_id}] engine read outside the job directory: {escaped}"
+                            )
+                            return (
+                                False,
+                                time.time() - start_time,
+                                ENGINE_READ_ESCAPE_ERROR,
+                                None,
+                                None,
+                            )
+
+                        all_output_lines.append(stripped)
+
                         # Extract page count from pdflatex summary line
                         m = _PAGE_COUNT_RE.search(stripped)
                         if m:
@@ -600,12 +691,18 @@ def _run_latex_stage(
 
                     if is_cancelled(job_id):
                         proc.kill()
-                        return False, time.time() - start_time, "cancelled", None
+                        return False, time.time() - start_time, "cancelled", None, None
 
                     if time.time() - start_time > timeout:
                         proc.kill()
                         record_compile("error", duration_seconds=time.perf_counter() - _perf_start)
-                        return False, time.time() - start_time, f"Compilation timed out after {int(timeout)}s", None
+                        return (
+                            False,
+                            time.time() - start_time,
+                            f"Compilation timed out after {int(timeout)}s",
+                            None,
+                            None,
+                        )
             except SoftTimeLimitExceeded:
                 # Kill the subprocess before the exception propagates to the task handler
                 try:
@@ -619,6 +716,22 @@ def _run_latex_stage(
             compilation_time = time.time() - start_time
         _compile_duration = time.perf_counter() - _perf_start
 
+        # Post-run read confinement: the -recorder .fls file lists every file the
+        # engine opened, including the \openin reads the transcript never mentions.
+        # Checked before the log is cached and before the PDF is published.
+        recorder_escape = find_recorder_read_escape(
+            job_dir / f"resume{RECORDER_SUFFIX}",
+            workspace,
+            require_recorder=proc.returncode == 0,
+        )
+        if recorder_escape:
+            logger.warning(
+                f"[{job_id}] engine read outside the job directory: {recorder_escape}"
+            )
+            return False, compilation_time, ENGINE_READ_ESCAPE_ERROR, None, None
+
+        cache_compile_log(job_id, "\n".join(all_output_lines))
+
         pdf_file = job_dir / "resume.pdf"
         if proc.returncode == 0 and pdf_file.exists():
             try:
@@ -631,10 +744,10 @@ def _run_latex_stage(
                 pdf_bytes=_pdf_bytes,
                 pages=page_count,
             )
-            return True, compilation_time, "", page_count
+            return True, compilation_time, "", page_count, cache_compile_output(job_id, job_dir)
 
         record_compile("error", duration_seconds=_compile_duration)
-        return False, compilation_time, f"{compiler} exited with code {proc.returncode}", None
+        return False, compilation_time, f"{compiler} exited with code {proc.returncode}", None, None
     finally:
         shutil.rmtree(job_dir, ignore_errors=True)
 

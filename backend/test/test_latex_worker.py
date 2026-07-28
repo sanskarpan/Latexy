@@ -701,3 +701,260 @@ class TestLatexWorkerRegressions:
             result = lw.compile_latex_task(VALID_LATEX, job_id=job_id)
 
         assert result.get("job_id") == job_id, "failure result must include job_id"
+
+
+# ── Artifact caching & Compilation reconciliation ─────────────────────────────
+
+class TestCacheCompileOutput:
+    """cache_compile_output must persist artifacts before job_dir is removed."""
+
+    def test_caches_pdf_and_synctex(self, tmp_path):
+        import base64
+        import gzip
+
+        job_id = str(uuid.uuid4())
+        (tmp_path / "resume.pdf").write_bytes(b"%PDF-1.7 fake")
+        (tmp_path / "resume.synctex.gz").write_bytes(gzip.compress(b"SyncTeX data"))
+        redis_mock = MagicMock()
+
+        with patch("app.workers.latex_worker.get_worker_redis", return_value=redis_mock):
+            pdf_bytes = lw.cache_compile_output(job_id, tmp_path)
+
+        assert pdf_bytes == b"%PDF-1.7 fake"
+        stored = {c.args[0]: c.args[2] for c in redis_mock.setex.call_args_list}
+        assert stored[f"latexy:job:{job_id}:pdf"] == base64.b64encode(b"%PDF-1.7 fake").decode()
+        assert stored[f"latexy:job:{job_id}:synctex"] == "SyncTeX data"
+
+    def test_missing_pdf_returns_none(self, tmp_path):
+        redis_mock = MagicMock()
+        with patch("app.workers.latex_worker.get_worker_redis", return_value=redis_mock):
+            assert lw.cache_compile_output(str(uuid.uuid4()), tmp_path) is None
+
+    def test_cache_compile_log_stores_log(self):
+        job_id = str(uuid.uuid4())
+        redis_mock = MagicMock()
+        with patch("app.workers.latex_worker.get_worker_redis", return_value=redis_mock):
+            lw.cache_compile_log(job_id, "line one\nline two")
+        assert redis_mock.setex.call_args.args[0] == f"latexy:job:{job_id}:log"
+        assert redis_mock.setex.call_args.args[2] == "line one\nline two"
+
+
+class TestReconcileCompilationRecord:
+    """
+    Regression: the Compilation row was only ever moved out of "processing" by
+    GET /jobs/{id}/result, an endpoint the frontend never calls — so share links,
+    one-click apply and the dashboard success rate were permanently dead.
+    """
+
+    def _patched_update(self):
+        from unittest.mock import AsyncMock
+        return patch("app.workers.latex_worker._update_compilation_record", new=AsyncMock())
+
+    def test_success_passes_pdf_bytes_and_marks_completed(self):
+        job_id = str(uuid.uuid4())
+        with self._patched_update() as mock_update:
+            lw.reconcile_compilation_record(
+                job_id, success=True, compilation_time=1.5, pdf_bytes=b"%PDF-1.7"
+            )
+
+        kwargs = mock_update.await_args.kwargs
+        assert kwargs["status"] == "completed"
+        assert kwargs["pdf_bytes"] == b"%PDF-1.7"
+        assert kwargs["compilation_time"] == 1.5
+
+    def test_failure_marks_failed_and_drops_pdf_bytes(self):
+        job_id = str(uuid.uuid4())
+        with self._patched_update() as mock_update:
+            lw.reconcile_compilation_record(
+                job_id, success=False, error_message="! Undefined control sequence.",
+                pdf_bytes=b"%PDF-1.7",
+            )
+
+        kwargs = mock_update.await_args.kwargs
+        assert kwargs["status"] == "failed"
+        assert kwargs["pdf_bytes"] is None
+        assert kwargs["error_message"] == "! Undefined control sequence."
+
+    def test_explicit_status_overrides_derived_one(self):
+        with self._patched_update() as mock_update:
+            lw.reconcile_compilation_record(
+                str(uuid.uuid4()), success=False, status="cancelled",
+                error_message="cancelled",
+            )
+        assert mock_update.await_args.kwargs["status"] == "cancelled"
+
+    def test_error_message_truncated_to_column_width(self):
+        with self._patched_update() as mock_update:
+            lw.reconcile_compilation_record(
+                str(uuid.uuid4()), success=False, error_message="x" * 900
+            )
+        assert len(mock_update.await_args.kwargs["error_message"]) == 500
+
+    def test_successful_compile_reconciles_row(
+        self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok, mock_popen_success
+    ):
+        job_id = str(uuid.uuid4())
+        with patch("app.workers.latex_worker.reconcile_compilation_record") as mock_reconcile:
+            lw.compile_latex_task(VALID_LATEX, job_id=job_id)
+
+        assert mock_reconcile.call_args.args[0] == job_id
+        assert mock_reconcile.call_args.kwargs["success"] is True
+
+    def test_cancelled_compile_reconciles_row_as_cancelled(
+        self, mock_publish, mock_job_result, mock_validate_ok
+    ):
+        """
+        DELETE /jobs/{id} is a shipped endpoint: the cancel branch used to return
+        without reconciling, wedging the row at "processing" forever, and without
+        caching the log so GET /logs/{id} 404'd.
+        """
+        job_id = str(uuid.uuid4())
+        with (
+            patch("app.workers.latex_worker.is_cancelled", return_value=True),
+            patch("app.workers.latex_worker.subprocess.Popen",
+                  return_value=_make_popen(0, ["partial output\n"])),
+            patch("app.workers.latex_worker.reconcile_compilation_record") as mock_reconcile,
+            patch("app.workers.latex_worker.cache_compile_log") as mock_cache_log,
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            lw.compile_latex_task(VALID_LATEX, job_id=job_id)
+
+        assert mock_reconcile.called, "cancel branch must reconcile the Compilation row"
+        assert mock_reconcile.call_args.args[0] == job_id
+        assert mock_reconcile.call_args.kwargs["status"] == "cancelled"
+        assert mock_reconcile.call_args.kwargs["success"] is False
+        assert mock_cache_log.call_args.args[0] == job_id
+        assert "partial output" in mock_cache_log.call_args.args[1]
+
+    def test_invalid_watermark_reconciles_row(
+        self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok
+    ):
+        with patch("app.workers.latex_worker.reconcile_compilation_record") as mock_reconcile:
+            lw.compile_latex_task(
+                VALID_LATEX, job_id=str(uuid.uuid4()), watermark="bad;watermark$"
+            )
+
+        assert mock_reconcile.called, "invalid-watermark branch must reconcile the row"
+        assert mock_reconcile.call_args.kwargs["success"] is False
+        assert mock_reconcile.call_args.kwargs["error_message"] == "Invalid watermark text"
+
+    def test_failed_compile_reconciles_row(
+        self, mock_publish, mock_job_result, mock_cancelled, mock_validate_ok
+    ):
+        job_id = str(uuid.uuid4())
+        with (
+            patch("app.workers.latex_worker.subprocess.Popen",
+                  return_value=_make_popen(1, ["! Undefined control sequence.\n"])),
+            patch("app.workers.latex_worker.reconcile_compilation_record") as mock_reconcile,
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.write_text"),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            lw.compile_latex_task(VALID_LATEX, job_id=job_id)
+
+        assert mock_reconcile.call_args.kwargs["success"] is False
+        assert mock_reconcile.call_args.kwargs["error_message"] == "! Undefined control sequence."
+
+
+class TestUpdateCompilationRecord:
+    """
+    Direct tests for the guarded UPDATE.
+
+    Ordering matters: the PDF upload must happen only after the UPDATE matched a
+    row. Compile paths with no Compilation row (anonymous /jobs/submit,
+    /jobs/compile-watermarked, the anonymous-share redaction compile) previously
+    uploaded first and left permanently orphaned objects under compilations/.
+    """
+
+    @staticmethod
+    def _session_factory(rowcounts: list):
+        from unittest.mock import AsyncMock
+
+        session = MagicMock()
+        session.execute = AsyncMock(
+            side_effect=[MagicMock(rowcount=rc) for rc in rowcounts]
+        )
+        session.commit = AsyncMock()
+
+        class _Factory:
+            def __call__(self):
+                return self
+
+            async def __aenter__(self_inner):
+                return session
+            async def __aexit__(self_inner, *exc):
+                return False
+
+        factory = _Factory()
+        return factory, session
+
+    async def test_no_row_skips_upload_and_returns_false(self):
+        factory, session = self._session_factory([0])
+        with patch("app.services.storage_service.upload_bytes") as mock_upload:
+            updated = await lw._update_compilation_record(
+                job_id=str(uuid.uuid4()),
+                status="completed",
+                compilation_time=1.0,
+                pdf_bytes=b"%PDF-1.7",
+                error_message=None,
+                session_factory=factory,
+            )
+
+        assert updated is False
+        assert not mock_upload.called, "must not orphan a MinIO object with no owning row"
+        assert session.execute.await_count == 1, "must not run the pdf_path UPDATE"
+
+    async def test_row_updated_uploads_then_records_pdf_path(self):
+        job_id = str(uuid.uuid4())
+        factory, session = self._session_factory([1, 1])
+        with patch("app.services.storage_service.upload_bytes") as mock_upload:
+            updated = await lw._update_compilation_record(
+                job_id=job_id,
+                status="completed",
+                compilation_time=2.0,
+                pdf_bytes=b"%PDF-1.7",
+                error_message=None,
+                session_factory=factory,
+            )
+
+        assert updated is True
+        assert mock_upload.call_args.args[0] == f"compilations/{job_id}/resume.pdf"
+        assert session.execute.await_count == 2, "pdf_path UPDATE must follow the upload"
+
+    async def test_terminal_values_are_written(self):
+        factory, session = self._session_factory([1])
+        await lw._update_compilation_record(
+            job_id=str(uuid.uuid4()),
+            status="cancelled",
+            compilation_time=0.5,
+            pdf_bytes=None,
+            error_message="cancelled",
+            session_factory=factory,
+        )
+
+        stmt = session.execute.await_args_list[0].args[0]
+        written = {col.name for col, _ in stmt._values.items()}
+        params = stmt.compile().params
+        assert params["status"] == "cancelled"
+        assert params["error_message"] == "cancelled"
+        assert "pdf_size" not in written, "pdf_size must not be blanked when there is no PDF"
+        assert "pdf_path" not in written
+
+    async def test_failed_upload_still_reports_row_updated(self):
+        factory, session = self._session_factory([1])
+        with patch(
+            "app.services.storage_service.upload_bytes", side_effect=RuntimeError("minio down")
+        ):
+            updated = await lw._update_compilation_record(
+                job_id=str(uuid.uuid4()),
+                status="completed",
+                compilation_time=1.0,
+                pdf_bytes=b"%PDF-1.7",
+                error_message=None,
+                session_factory=factory,
+            )
+
+        assert updated is True
+        assert session.execute.await_count == 1, "no pdf_path UPDATE when the upload failed"

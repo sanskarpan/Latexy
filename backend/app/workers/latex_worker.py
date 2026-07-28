@@ -3,9 +3,12 @@ LaTeX compilation worker — event-driven rebuild.
 
 Streams pdflatex log lines via publish_event() instead of collecting
 them all at once.  Uses subprocess.Popen for line-by-line stdout
-streaming.  Zero asyncio — all Redis I/O goes through event_publisher.
+streaming.  All Redis I/O goes through the synchronous event_publisher helpers;
+the only asyncio here is the short-lived asyncio.run() used to reconcile the
+Compilation row (SQLAlchemy async engine has no sync counterpart in this app).
 """
 
+import asyncio
 import base64
 import re
 import shutil
@@ -22,7 +25,18 @@ from ..core.config import get_compile_timeout, resolve_plan_family, settings
 from ..core.logging import get_logger
 from ..core.observability import record_compile
 from ..core.tracing import traced
-from ..services.latex_service import latex_service
+from ..services.latex_service import (
+    ENGINE_READ_ESCAPE_ERROR,
+    LATEX_SANDBOX_FLAGS,
+    RECORDER_SUFFIX,
+    assert_local_engine_allowed,
+    docker_engine_available,
+    docker_sandbox_args,
+    engine_env,
+    find_engine_read_escape,
+    find_recorder_read_escape,
+    latex_service,
+)
 from ..workers.event_publisher import (
     _DEFAULT_TTL,
     get_worker_redis,
@@ -144,6 +158,212 @@ def _extract_pdf_text(pdf_file: Path, job_id: str) -> Optional[str]:
         return None
 
 
+# ------------------------------------------------------------------ #
+#  Shared artifact / bookkeeping helpers (also used by orchestrator) #
+# ------------------------------------------------------------------ #
+
+def cache_compile_log(job_id: str, log_text: str) -> None:
+    """Store the full compile log in Redis so /logs/{job_id} can serve it from any container."""
+    try:
+        get_worker_redis().setex(f"latexy:job:{job_id}:log", _DEFAULT_TTL, log_text)
+    except Exception as exc:
+        logger.warning(f"Failed to cache logs in Redis for job {job_id}: {exc}")
+
+
+def cache_compile_output(job_id: str, job_dir: Path) -> Optional[bytes]:
+    """
+    Cache the compiled PDF and SyncTeX data from job_dir in Redis.
+
+    Must run before job_dir is rmtree'd: GET /download/{job_id} and
+    GET /download/{job_id}/synctex read these keys, which is the only way the
+    artifacts survive cleanup (and the only way they are reachable from a
+    different container — Modal serverless has no shared filesystem).
+
+    Returns the PDF bytes so callers can reuse them without re-reading the file.
+    """
+    pdf_bytes: Optional[bytes] = None
+    try:
+        pdf_bytes = (job_dir / "resume.pdf").read_bytes()
+        get_worker_redis().setex(
+            f"latexy:job:{job_id}:pdf",
+            _DEFAULT_TTL,
+            base64.b64encode(pdf_bytes).decode(),
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to cache PDF in Redis for job {job_id}: {exc}")
+
+    try:
+        import gzip as _gzip
+        synctex_gz = job_dir / "resume.synctex.gz"
+        synctex_plain = job_dir / "resume.synctex"
+        synctex_text: Optional[str] = None
+        if synctex_gz.exists():
+            synctex_text = _gzip.decompress(synctex_gz.read_bytes()).decode(
+                "utf-8", errors="replace"
+            )
+        elif synctex_plain.exists():
+            synctex_text = synctex_plain.read_text(encoding="utf-8", errors="replace")
+        if synctex_text:
+            get_worker_redis().setex(
+                f"latexy:job:{job_id}:synctex", _DEFAULT_TTL, synctex_text
+            )
+    except Exception as exc:
+        logger.warning(f"Failed to cache SyncTeX in Redis for job {job_id}: {exc}")
+
+    return pdf_bytes
+
+
+def reconcile_compilation_record(
+    job_id: str,
+    success: bool,
+    compilation_time: Optional[float] = None,
+    pdf_bytes: Optional[bytes] = None,
+    error_message: Optional[str] = None,
+    status: Optional[str] = None,
+) -> None:
+    """
+    Move the Compilation row for this job out of "processing" into its terminal state.
+
+    The API creates the row with status="processing" at submission time and has no
+    other way to learn the outcome, so the worker owns this transition. Everything
+    gated on Compilation.status == "completed" (share links, one-click apply,
+    compile history, dashboard success rate) depends on it.
+
+    On success the PDF is also uploaded to MinIO and recorded in pdf_path so the
+    persistent-storage path works instead of only the temp-dir fallback — but only
+    after we know a row exists to point at it (see _update_compilation_record).
+
+    Args:
+        status: Overrides the derived "completed"/"failed" terminal status
+            (used for "cancelled", which is not a compile failure).
+    """
+    asyncio.run(
+        _update_compilation_record(
+            job_id=job_id,
+            status=status or ("completed" if success else "failed"),
+            compilation_time=compilation_time,
+            pdf_bytes=pdf_bytes if success else None,
+            error_message=(error_message or "")[:500] or None,
+        )
+    )
+
+
+async def _update_compilation_record(
+    job_id: str,
+    status: str,
+    compilation_time: Optional[float],
+    pdf_bytes: Optional[bytes],
+    error_message: Optional[str],
+    session_factory=None,
+) -> bool:
+    """
+    Write the terminal Compilation fields, then persist the PDF if a row was updated.
+
+    The guarded UPDATE runs *first* and the MinIO upload only happens when it
+    matched a row. Many compile paths have no Compilation row at all (anonymous
+    /jobs/submit, /jobs/compile-watermarked, the anonymous-share redaction
+    compile, batch forks); uploading before the UPDATE left those objects
+    orphaned under compilations/ forever, an unauthenticated storage-growth
+    vector.
+
+    The UPDATE is guarded on status == "processing" so it is idempotent and stays
+    compatible with the fallback reconciliation inside GET /jobs/{job_id}/result.
+
+    Args:
+        session_factory: Optional async session factory for dependency injection
+            (used in tests). When None, creates its own engine from DATABASE_URL.
+
+    Returns:
+        True when a Compilation row was moved to its terminal state.
+    """
+    from sqlalchemy import update
+
+    from ..database.models import Compilation
+
+    engine = None
+    db_identity: Optional[str] = None
+    if session_factory is None:
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from ..utils.db_url import database_identity, resolve_database_url
+
+        # Shared resolver: the cleanup worker's orphan pruner decides what to
+        # delete from the SAME database this upload registers itself in, so the
+        # two must never resolve DATABASE_URL differently.
+        db_url = resolve_database_url()
+        if not db_url:
+            logger.warning("DATABASE_URL not set — cannot reconcile compilation record")
+            return False
+        db_identity = database_identity(db_url)
+        engine = create_async_engine(db_url, echo=False)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_factory() as session:
+            values = {
+                "status": status,
+                "compilation_time": compilation_time,
+                "error_message": error_message,
+            }
+            # Only overwrite pdf_size when we actually produced a PDF, so a
+            # retry that fails cannot blank out previously stored metadata.
+            if pdf_bytes:
+                values["pdf_size"] = len(pdf_bytes)
+            result = await session.execute(
+                update(Compilation)
+                .where(
+                    Compilation.job_id == job_id,
+                    Compilation.status == "processing",
+                )
+                .values(**values)
+            )
+            await session.commit()
+            if not result.rowcount:
+                logger.debug(
+                    f"No processing Compilation row for job {job_id} — "
+                    f"skipping reconcile to {status} (and any PDF upload)"
+                )
+                return False
+            logger.info(f"Compilation record for job {job_id} reconciled to {status}")
+
+            if not pdf_bytes:
+                return True
+
+            # A row exists, so the object will be referenced (and prunable).
+            try:
+                from ..services.storage_service import upload_bytes
+
+                pdf_path = f"compilations/{job_id}/resume.pdf"
+                upload_bytes(pdf_path, pdf_bytes, "application/pdf")
+
+                # Tell the orphan pruner which database indexes this object, so
+                # it can refuse to delete when it is looking at a different one.
+                if db_identity:
+                    from .storage_guard import record_compilation_database
+
+                    record_compilation_database(db_identity)
+            except Exception as exc:
+                logger.warning(f"Failed to upload PDF to MinIO for job {job_id}: {exc}")
+                return True
+
+            await session.execute(
+                update(Compilation)
+                .where(
+                    Compilation.job_id == job_id,
+                    Compilation.pdf_path.is_(None),
+                )
+                .values(pdf_path=pdf_path)
+            )
+            await session.commit()
+            return True
+    except Exception as exc:
+        logger.warning(f"Failed to reconcile compilation record for job {job_id}: {exc}")
+        return False
+    finally:
+        if engine is not None:
+            await engine.dispose()
+
+
 @celery_app.task(
     bind=True,
     name="app.workers.latex_worker.compile_latex_task",
@@ -219,6 +439,7 @@ def compile_latex_task(
             })
             result = {"success": False, "job_id": job_id, "error": error_msg}
             publish_job_result(job_id, result)
+            reconcile_compilation_record(job_id, success=False, error_message=error_msg)
             return result
 
         # ── Apply compile settings ───────────────────────────────────
@@ -241,6 +462,7 @@ def compile_latex_task(
                 })
                 result = {"success": False, "job_id": job_id, "error": error_msg}
                 publish_job_result(job_id, result)
+                reconcile_compilation_record(job_id, success=False, error_message=error_msg)
                 return result
             latex_content = _inject_watermark(latex_content, watermark)
 
@@ -269,14 +491,16 @@ def compile_latex_task(
         })
 
         # ── Compile ──────────────────────────────────────────────────
-        _use_docker = shutil.which("docker") is not None
+        _use_docker = docker_engine_available()
         if _use_docker:
             cmd = [
                 "docker", "run", "--rm",
+                *docker_sandbox_args(),
                 "-v", f"{job_dir}:/workspace",
                 "-w", "/workspace",
                 settings.LATEX_DOCKER_IMAGE,
                 compiler,
+                *LATEX_SANDBOX_FLAGS,
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 "-synctex=1",
@@ -286,9 +510,12 @@ def compile_latex_task(
                 main_file,
             ]
             compile_cwd = None
+            workspace = "/workspace"
         else:
+            assert_local_engine_allowed(job_id)
             cmd = [
                 compiler,
+                *LATEX_SANDBOX_FLAGS,
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 "-synctex=1",
@@ -298,6 +525,7 @@ def compile_latex_task(
                 str(tex_file),
             ]
             compile_cwd = str(job_dir)
+            workspace = str(job_dir)
 
         _perf_start = time.perf_counter()
         with traced("latex.compile", compiler=compiler, docker=_use_docker):
@@ -308,6 +536,7 @@ def compile_latex_task(
                 stderr=subprocess.STDOUT,
                 text=True,
                 cwd=compile_cwd,
+                env=engine_env(),
             )
 
             # ── Detect Beamer presentation ───────────────────────────────
@@ -317,10 +546,47 @@ def compile_latex_task(
             page_count: Optional[int] = None
             first_latex_error: Optional[str] = None  # first "! ..." line from pdflatex
             all_output_lines: list = []  # accumulated for stderr tail on failure
+
+            def _fail_read_escape(escaped: str) -> Dict[str, Any]:
+                """Terminate the job without publishing the log, PDF or extracted text."""
+                logger.warning(
+                    f"[{job_id}] engine read outside the job directory: {escaped}"
+                )
+                publish_event(job_id, "job.failed", {
+                    "stage": "latex_compilation",
+                    "error_code": "engine_read_escape",
+                    "error_message": ENGINE_READ_ESCAPE_ERROR,
+                    "retryable": False,
+                })
+                escape_result = {
+                    "success": False,
+                    "job_id": job_id,
+                    "error": ENGINE_READ_ESCAPE_ERROR,
+                }
+                publish_job_result(job_id, escape_result)
+                cache_compile_log(job_id, ENGINE_READ_ESCAPE_ERROR)
+                reconcile_compilation_record(
+                    job_id,
+                    success=False,
+                    compilation_time=time.time() - start_time,
+                    error_message="engine_read_escape",
+                )
+                return escape_result
+
             for line in proc.stdout:
                 stripped = line.rstrip()
                 if not stripped:
                     continue
+
+                # Read confinement: \input-style reads are announced in the transcript.
+                # Kill before this line is streamed or stored — the following lines
+                # would carry the file's contents, and the PDF would render them.
+                # \openin reads announce nothing here; the recorder check after the run
+                # is what catches those.
+                escaped = find_engine_read_escape(stripped, workspace)
+                if escaped:
+                    proc.kill()
+                    return _fail_read_escape(escaped)
 
                 all_output_lines.append(stripped)
 
@@ -350,6 +616,20 @@ def compile_latex_task(
                     publish_event(job_id, "job.cancelled", {})
                     result = {"success": False, "job_id": job_id, "cancelled": True}
                     publish_job_result(job_id, result)
+                    # Cache the partial log so GET /logs/{job_id} still works, and
+                    # move the row out of "processing" — DELETE /jobs/{job_id} is a
+                    # shipped endpoint, so this is a reachable terminal path.
+                    # "cancelled" (not "failed") keeps it out of the error-history
+                    # and failed-compile analytics buckets, both of which already
+                    # understand the value.
+                    cache_compile_log(job_id, "\n".join(all_output_lines))
+                    reconcile_compilation_record(
+                        job_id,
+                        success=False,
+                        status="cancelled",
+                        compilation_time=time.time() - start_time,
+                        error_message="cancelled",
+                    )
                     return result
 
                 # ── Timeout check ────────────────────────────────────────
@@ -370,21 +650,30 @@ def compile_latex_task(
                     })
                     result = {"success": False, "job_id": job_id, "error": "compile_timeout"}
                     publish_job_result(job_id, result)
+                    reconcile_compilation_record(
+                        job_id,
+                        success=False,
+                        compilation_time=time.time() - start_time,
+                        error_message="compile_timeout",
+                    )
                     return result
 
             proc.wait()
             compilation_time = time.time() - start_time
         _compile_duration = time.perf_counter() - _perf_start
 
-        # Store full log in Redis so /logs/{job_id} can serve it from any container.
-        try:
-            get_worker_redis().setex(
-                f"latexy:job:{job_id}:log",
-                _DEFAULT_TTL,
-                "\n".join(all_output_lines),
-            )
-        except Exception as _log_exc:
-            logger.warning(f"Failed to cache logs in Redis for job {job_id}: {_log_exc}")
+        # Post-run read confinement. \openin/\read leaves no trace in the transcript,
+        # so the -recorder .fls file is the only complete list of what was opened.
+        # Runs before the log is cached and before the PDF/extracted text is published.
+        recorder_escape = find_recorder_read_escape(
+            job_dir / f"resume{RECORDER_SUFFIX}",
+            workspace,
+            require_recorder=proc.returncode == 0,
+        )
+        if recorder_escape:
+            return _fail_read_escape(recorder_escape)
+
+        cache_compile_log(job_id, "\n".join(all_output_lines))
 
         publish_event(job_id, "job.progress", {
             "percent": 90,
@@ -407,37 +696,14 @@ def compile_latex_task(
             # ── PDF text extraction for ATS pre-flight ───────────────
             extracted_text = _extract_pdf_text(pdf_file, job_id)
 
-            # Store PDF bytes in Redis so the download endpoint can serve them
-            # from a different container (Modal serverless — no shared filesystem).
-            try:
-                pdf_bytes = pdf_file.read_bytes()
-                get_worker_redis().setex(
-                    f"latexy:job:{job_id}:pdf",
-                    _DEFAULT_TTL,
-                    base64.b64encode(pdf_bytes).decode(),
-                )
-            except Exception as _redis_exc:
-                logger.warning(f"Failed to cache PDF in Redis for job {job_id}: {_redis_exc}")
+            pdf_bytes = cache_compile_output(job_id, job_dir)
 
-            # Cache SyncTeX data to Redis so GET /download/{job_id}/synctex works after
-            # job_dir is rmtree'd (bidirectional editor↔PDF sync in serverless/Docker).
-            try:
-                import gzip as _gzip
-                synctex_gz = job_dir / "resume.synctex.gz"
-                synctex_plain = job_dir / "resume.synctex"
-                synctex_text: Optional[str] = None
-                if synctex_gz.exists():
-                    synctex_text = _gzip.decompress(synctex_gz.read_bytes()).decode(
-                        "utf-8", errors="replace"
-                    )
-                elif synctex_plain.exists():
-                    synctex_text = synctex_plain.read_text(encoding="utf-8", errors="replace")
-                if synctex_text:
-                    get_worker_redis().setex(
-                        f"latexy:job:{job_id}:synctex", _DEFAULT_TTL, synctex_text
-                    )
-            except Exception as _sx_exc:
-                logger.warning(f"Failed to cache SyncTeX in Redis for job {job_id}: {_sx_exc}")
+            reconcile_compilation_record(
+                job_id,
+                success=True,
+                compilation_time=compilation_time,
+                pdf_bytes=pdf_bytes,
+            )
 
             # For Beamer, slide_count == page_count (one PDF page per slide)
             slide_count = page_count if is_beamer else None
@@ -515,6 +781,13 @@ def compile_latex_task(
         if first_latex_error:
             result["latex_error_line"] = first_latex_error
         publish_job_result(job_id, result)
+        # Prefer the specific LaTeX error line over the generic exit-code message.
+        reconcile_compilation_record(
+            job_id,
+            success=False,
+            compilation_time=compilation_time,
+            error_message=first_latex_error or error_msg,
+        )
         return result
 
     except SoftTimeLimitExceeded:
@@ -539,6 +812,7 @@ def compile_latex_task(
         })
         result = {"success": False, "job_id": job_id, "error": "compile_timeout"}
         publish_job_result(job_id, result)
+        reconcile_compilation_record(job_id, success=False, error_message="compile_timeout")
         return result
 
     except Exception as exc:
@@ -563,6 +837,7 @@ def compile_latex_task(
         })
         result = {"success": False, "job_id": job_id, "error": str(exc)}
         publish_job_result(job_id, result)
+        reconcile_compilation_record(job_id, success=False, error_message=str(exc))
         return result
     finally:
         if job_dir is not None and job_dir.exists():

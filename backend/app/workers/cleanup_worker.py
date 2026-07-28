@@ -17,7 +17,7 @@ workers never reuse async Redis clients across closed event loops.
 import json
 import shutil
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -235,6 +235,145 @@ def cleanup_temp_files_task(
         return error_data
 
 
+_COMPILATION_PREFIX = "compilations/"
+# Objects younger than this are never touched, so a compile that is still
+# mid-flight (or whose row is committed a moment later) can't be pruned.
+_ORPHAN_GRACE_SECONDS = 3600
+
+
+async def _select_known_compilation_job_ids(job_ids: list) -> Optional[set]:
+    """
+    Return the subset of job_ids that still have a Compilation row.
+
+    Returns None when the answer cannot be TRUSTED, so callers skip pruning
+    rather than deleting objects they could not verify. Untrusted means either
+    the DB is unreachable/unconfigured, or it holds no compilations at all —
+    which is indistinguishable from having connected to the wrong database, and
+    "delete everything under compilations/" is not a recoverable mistake.
+
+    The DSN comes from the shared resolver so this reads the SAME database
+    latex_worker._update_compilation_record writes the owning rows to.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from ..database.models import Compilation
+    from ..utils.db_url import database_identity, resolve_database_url
+    from .storage_guard import read_compilation_database
+
+    db_url = resolve_database_url()
+    if not db_url:
+        logger.warning("DATABASE_URL not set — skipping MinIO orphan prune")
+        return None
+
+    # Positive confirmation that this is the database the uploader indexed the
+    # objects in — a mismatch means every object would look like an orphan.
+    identity = database_identity(db_url)
+    stamped = read_compilation_database()
+    if stamped != identity:
+        logger.warning(
+            "MinIO orphan prune skipped — compilations were indexed in %s but this "
+            "worker resolved %s",
+            stamped or "an unknown database",
+            identity,
+        )
+        return None
+
+    engine = create_async_engine(db_url, echo=False)
+    try:
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        known: set = set()
+        async with session_factory() as session:
+            for i in range(0, len(job_ids), 500):
+                chunk = job_ids[i:i + 500]
+                rows = await session.execute(
+                    select(Compilation.job_id).where(Compilation.job_id.in_(chunk))
+                )
+                known.update(rows.scalars().all())
+
+            if not known:
+                # Nothing matched. Before treating every object as an orphan,
+                # confirm this database is the one that records compiles at all.
+                any_row = await session.execute(select(Compilation.job_id).limit(1))
+                if any_row.scalar_one_or_none() is None:
+                    logger.warning(
+                        "MinIO orphan prune skipped — %s has no compilation rows, "
+                        "refusing to treat %d candidate job ids as orphans",
+                        identity,
+                        len(job_ids),
+                    )
+                    return None
+        logger.info(
+            "MinIO orphan prune verified %d/%d candidate job ids against %s",
+            len(known),
+            len(job_ids),
+            identity,
+        )
+        return known
+    except Exception as exc:
+        logger.warning(f"Could not verify compilation job ids for MinIO prune: {exc}")
+        return None
+    finally:
+        await engine.dispose()
+
+
+def _prune_orphaned_compilation_objects() -> Dict[str, int]:
+    """
+    Delete compilations/{job_id}/... objects that no Compilation row references.
+
+    Compile paths without an owning row (anonymous /jobs/submit,
+    /jobs/compile-watermarked, the anonymous-share redaction compile) used to
+    upload unconditionally, and account deletion / resume deletion can also
+    remove rows, so the prefix could grow without bound. Only objects whose
+    job_id has no row at all are removed — objects still pointed at by a row are
+    kept regardless of age because share links serve them indefinitely.
+    """
+    import asyncio
+
+    from ..services import storage_service
+
+    stats = {"scanned": 0, "deleted": 0}
+    try:
+        objects = storage_service.list_objects(_COMPILATION_PREFIX, max_keys=5000)
+    except Exception as exc:
+        logger.warning(f"MinIO prune skipped — could not list {_COMPILATION_PREFIX}: {exc}")
+        return stats
+
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=_ORPHAN_GRACE_SECONDS)
+    candidates: Dict[str, list] = {}
+    for obj in objects:
+        stats["scanned"] += 1
+        last_modified = obj.get("last_modified")
+        if last_modified is not None and last_modified > cutoff:
+            continue
+        parts = obj["key"].split("/")
+        if len(parts) < 3 or not parts[1]:
+            continue
+        candidates.setdefault(parts[1], []).append(obj["key"])
+
+    if not candidates:
+        return stats
+
+    known = asyncio.run(_select_known_compilation_job_ids(list(candidates)))
+    if known is None:
+        return stats
+
+    for candidate_job_id, keys in candidates.items():
+        if candidate_job_id in known:
+            continue
+        for key in keys:
+            try:
+                if storage_service.delete_object(key):
+                    stats["deleted"] += 1
+            except Exception as exc:
+                logger.warning(f"Failed to delete orphaned object {key}: {exc}")
+    if stats["deleted"]:
+        logger.info(
+            f"Pruned {stats['deleted']} orphaned objects under {_COMPILATION_PREFIX}"
+        )
+    return stats
+
+
 @celery_app.task(bind=True, name="app.workers.cleanup_worker.cleanup_expired_jobs_task")
 def cleanup_expired_jobs_task(
     self,
@@ -276,6 +415,9 @@ def cleanup_expired_jobs_task(
             "message": "Scanning for expired jobs",
         })
 
+        # Prune orphaned MinIO objects under compilations/ (no Compilation row).
+        minio_prune = _prune_orphaned_compilation_objects()
+
         # Scan for all job state keys using the canonical latexy:job:*:state pattern.
         # get_active_jobs_sync() uses an old job_status: prefix that does not match
         # the keys written by publish_event / _update_state_snapshot.
@@ -291,6 +433,8 @@ def cleanup_expired_jobs_task(
                 "task_id": task_id,
                 "job_id": job_id,
                 "message": "No active jobs found for cleanup",
+                "minio_objects_scanned": minio_prune["scanned"],
+                "minio_objects_pruned": minio_prune["deleted"],
                 "jobs_cleaned": 0,
                 "total_jobs_scanned": 0,
                 "jobs_timed_out": 0,
@@ -400,6 +544,8 @@ def cleanup_expired_jobs_task(
             "task_id": task_id,
             "job_id": job_id,
             "message": f"Job cleanup completed: {jobs_cleaned} jobs cleaned, {jobs_timed_out} timed out",
+            "minio_objects_scanned": minio_prune["scanned"],
+            "minio_objects_pruned": minio_prune["deleted"],
             "jobs_cleaned": jobs_cleaned,
             "jobs_timed_out": jobs_timed_out,
             "total_jobs_scanned": jobs_scanned,
