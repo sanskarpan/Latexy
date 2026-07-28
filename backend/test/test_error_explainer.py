@@ -141,3 +141,123 @@ class TestExplainErrorEndpoint:
             headers=auth_headers,
         )
         assert resp2.status_code == 200
+
+
+# ── Quota metering ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+class TestExplainErrorQuotaMetering:
+    """Only real LLM work may spend an ``ai_assists`` unit.
+
+    The pattern table and the 24h cache cost nothing, so a signed-in caller with
+    an exhausted allowance must still get them — anonymous callers do.
+    """
+
+    @staticmethod
+    def _deny_quota(monkeypatch) -> list:
+        """Make every quota charge raise 402 and record that it happened."""
+        from fastapi import HTTPException
+
+        import app.api.ai_routes as ai_routes
+        from app.core.errors import error_body
+
+        charges: list = []
+
+        async def _enforce(dimension, **kwargs):
+            charges.append(dimension)
+            raise HTTPException(
+                status_code=402,
+                detail=error_body("quota_exceeded", "spent", None),
+            )
+
+        monkeypatch.setattr(
+            ai_routes.entitlement_service, "enforce_quota", _enforce
+        )
+        return charges
+
+    async def test_pattern_answer_is_free_for_authenticated_user(
+        self, client: AsyncClient, auth_headers: dict, monkeypatch
+    ):
+        import app.api.ai_routes as ai_routes
+
+        charges = self._deny_quota(monkeypatch)
+
+        async def _no_key(*args, **kwargs):
+            return ai_routes.ResolvedAIKey(None)
+
+        monkeypatch.setattr(ai_routes, "_resolve_ai_api_key", _no_key)
+
+        resp = await client.post(
+            "/ai/explain-error",
+            json={"error_message": "! Undefined control sequence."},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["source"] == "pattern"
+        assert charges == []
+
+    async def test_cache_hit_is_free_for_authenticated_user(
+        self, client: AsyncClient, auth_headers: dict, monkeypatch
+    ):
+        import app.api.ai_routes as ai_routes
+        import app.services.error_explainer_service as explainer
+
+        charges = self._deny_quota(monkeypatch)
+
+        async def _key(*args, **kwargs):
+            return ai_routes.ResolvedAIKey("sk-test")
+
+        async def _cached(_key_name):
+            return {
+                "explanation": "cached explanation",
+                "suggested_fix": "cached fix",
+                "corrected_code": None,
+                "source": "llm",
+            }
+
+        monkeypatch.setattr(ai_routes, "_resolve_ai_api_key", _key)
+        monkeypatch.setattr(explainer.cache_manager, "get", _cached)
+
+        resp = await client.post(
+            "/ai/explain-error",
+            json={"error_message": "! Undefined control sequence."},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["cached"] is True
+        assert body["explanation"] == "cached explanation"
+        assert charges == []
+
+    async def test_llm_call_is_charged_and_denial_surfaces(
+        self, client: AsyncClient, auth_headers: dict, monkeypatch
+    ):
+        import app.api.ai_routes as ai_routes
+        import app.services.error_explainer_service as explainer
+
+        charges = self._deny_quota(monkeypatch)
+
+        async def _key(*args, **kwargs):
+            return ai_routes.ResolvedAIKey("sk-test")
+
+        async def _miss(_key_name):
+            return None
+
+        async def _llm(*args, **kwargs):  # pragma: no cover - must not run
+            raise AssertionError("LLM called despite exhausted quota")
+
+        monkeypatch.setattr(ai_routes, "_resolve_ai_api_key", _key)
+        monkeypatch.setattr(explainer.cache_manager, "get", _miss)
+        monkeypatch.setattr(
+            explainer.error_explainer_service, "explain_with_llm", _llm
+        )
+
+        resp = await client.post(
+            "/ai/explain-error",
+            json={"error_message": "! Undefined control sequence."},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 402
+        assert resp.json()["error"]["code"] == "quota_exceeded"
+        assert charges == ["ai_assists"]

@@ -25,6 +25,18 @@ from httpx import AsyncClient
 # Helpers
 # ---------------------------------------------------------------------------
 
+
+@pytest.fixture
+async def auth_headers(pro_auth_headers: dict) -> dict:
+    """Run this module as a PRO user.
+
+    These routes queue LLM optimizations, which spend the plan's monthly
+    optimization allowance (the free plan sells 0). The money meter itself is
+    covered in test_usage_quotas.py — here it must not be the thing under test.
+    """
+    return pro_auth_headers
+
+
 _LATEX = r"\documentclass{article}\begin{document}Hello World\end{document}"
 _JD = "We are looking for a Senior Software Engineer with 5+ years of experience in Python and FastAPI. You will design scalable microservices."
 

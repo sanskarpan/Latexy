@@ -19,9 +19,10 @@ from ..database.connection import get_async_db_session, get_db
 from ..database.models import Compilation, Resume, User
 from ..middleware.auth_middleware import get_current_user_optional
 from ..middleware.auth_middleware import get_current_user_required as _require_user
-from ..middleware.entitlements import require_feature_optional
+from ..middleware.entitlements import require_feature
 from ..models.llm_schemas import OptimizationRequest, OptimizationResponse
 from ..models.schemas import CompilationResponse, HealthResponse, LogsResponse
+from ..services.entitlement_service import entitlement_service
 from ..services.feature_flag_service import feature_flag_service
 from ..services.latex_compiler import latex_compiler
 from ..services.latex_service import latex_service
@@ -36,6 +37,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 # Include job management routes
+from .job_routes import _resolve_user_plan
 from .job_routes import router as job_router
 
 router.include_router(job_router)
@@ -240,11 +242,16 @@ async def get_entitlements_for_user(
     """Return the effective per-feature allow map for the current user.
 
     Anonymous callers get the free-plan family map. Drives frontend gating.
+    Authenticated callers also get their monthly quota usage so the UI can show
+    how much of the plan's allowance is left before it hits a 402.
     """
-    from ..services.entitlement_service import entitlement_service
-
     features = await entitlement_service.effective_features(user_id, db)
-    return {"features": features}
+    payload: dict = {"features": features}
+    if user_id:
+        payload["quotas"] = await entitlement_service.quota_snapshot(
+            user_id, await _resolve_user_plan(db, user_id)
+        )
+    return payload
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -352,14 +359,17 @@ async def compile_latex_endpoint(
     latex_content: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
     user_id: str = Depends(_require_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Compile LaTeX content to PDF.
 
-    Authenticated only. Anonymous/trial compiles must use /public/compile,
-    which enforces the device trial limit and rate limiting; this endpoint
-    must never be an open, unmetered pdflatex execution path.
+    Authenticated only, and charged against the plan's monthly compilation
+    allowance. Anonymous/trial compiles must use /public/compile, which enforces
+    the device trial limit and rate limiting; this endpoint must never be an
+    open, unmetered pdflatex execution path.
     """
 
+    quota_ticket = None
     try:
         # Get LaTeX content from either form data or file upload
         if file:
@@ -382,6 +392,13 @@ async def compile_latex_endpoint(
                 detail="Invalid LaTeX content. Must contain \\documentclass, \\begin{document}, and \\end{document}"
             )
 
+        # Charge the allowance only once the input is known to be compilable.
+        quota_ticket = await entitlement_service.enforce_quota(
+            "compilations",
+            user_id=user_id,
+            plan=await _resolve_user_plan(db, user_id),
+        )
+
         # Compile LaTeX
         result = await latex_service.compile_latex(latex_content)
 
@@ -395,6 +412,8 @@ async def compile_latex_endpoint(
     except HTTPException:
         raise
     except Exception as e:
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"Unexpected error in compile endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -552,10 +571,20 @@ async def get_compilation_logs(
 @router.post(
     "/optimize",
     response_model=OptimizationResponse,
-    dependencies=[Depends(require_feature_optional("llm_optimize"))],
+    dependencies=[Depends(require_feature("llm_optimize"))],
 )
-async def optimize_resume(request: OptimizationRequest):
-    """Optimize resume using LLM for better ATS compatibility."""
+async def optimize_resume(
+    request: OptimizationRequest,
+    user_id: str = Depends(_require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Optimize resume using LLM for better ATS compatibility.
+
+    Authenticated only, and metered against the plan's monthly optimization
+    allowance: this runs a real LLM completion on the platform key, so it must
+    never be an anonymous, unattributable spend path. Anonymous callers use the
+    device-trial-metered /jobs/submit flow (see /try) or /api/v1 with a key.
+    """
 
     if not llm_service.is_available():
         raise HTTPException(
@@ -563,6 +592,7 @@ async def optimize_resume(request: OptimizationRequest):
             detail="LLM service is not available. Please configure OpenAI API key."
         )
 
+    quota_ticket = None
     try:
         # Validate LaTeX content
         if not latex_service.validate_latex_content(request.latex_content):
@@ -578,14 +608,27 @@ async def optimize_resume(request: OptimizationRequest):
                 detail="Job description cannot be empty"
             )
 
+        # Charge the allowance only once the request is known to be valid, and
+        # hand it back below if the LLM call itself does not produce a result.
+        quota_ticket = await entitlement_service.enforce_quota(
+            "optimizations",
+            user_id=user_id,
+            plan=await _resolve_user_plan(db, user_id),
+        )
+
         # Perform optimization
         result = await llm_service.optimize_resume(request)
+
+        if not result.success:
+            await entitlement_service.refund_quota(quota_ticket)
 
         return result
 
     except HTTPException:
         raise
     except Exception as e:
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"Unexpected error in optimize endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -593,14 +636,22 @@ async def optimize_resume(request: OptimizationRequest):
 @router.post(
     "/optimize-and-compile",
     response_model=dict,
-    dependencies=[Depends(require_feature_optional("llm_optimize"))],
+    dependencies=[Depends(require_feature("llm_optimize"))],
 )
-async def optimize_and_compile_resume(request: OptimizationRequest):
-    """Optimize resume and compile to PDF in one step."""
+async def optimize_and_compile_resume(
+    request: OptimizationRequest,
+    user_id: str = Depends(_require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Optimize resume and compile to PDF in one step.
+
+    Quota is charged once, inside optimize_resume — the compile is part of the
+    same user-facing action, so it is not billed a second time.
+    """
 
     try:
         # First optimize the resume
-        optimization_result = await optimize_resume(request)
+        optimization_result = await optimize_resume(request, user_id=user_id, db=db)
 
         if not optimization_result.success:
             return {

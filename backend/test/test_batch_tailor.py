@@ -19,6 +19,18 @@ from httpx import AsyncClient
 # Helpers
 # ---------------------------------------------------------------------------
 
+
+@pytest.fixture
+async def auth_headers(pro_auth_headers: dict) -> dict:
+    """Run this module as a PRO user.
+
+    A batch tailor spends one optimization per job description and a batch is
+    all-or-nothing, so run this module on a plan with an unlimited allowance.
+    The money meter itself is covered in test_usage_quotas.py.
+    """
+    return pro_auth_headers
+
+
 _LATEX = r"\documentclass{article}\begin{document}Alice Lee\end{document}"
 
 _JD = (
@@ -148,3 +160,32 @@ class TestBatchTailorEndpoint:
         # Company names round-trip
         company_names = {j["company_name"] for j in status_data["jobs"]}
         assert company_names == {"Acme", "Globex"}
+
+
+@pytest.mark.asyncio
+class TestBatchTailorQuotaRefund:
+    """The whole batch is charged up front, so every failure path after the
+    charge must give the units back — including the enqueue phase, which used to
+    500 with N units still on the counter."""
+
+    async def test_enqueue_failure_refunds_the_whole_batch(
+        self, client: AsyncClient, pro_auth_headers: dict
+    ):
+        from app.services.entitlement_service import entitlement_service
+
+        resume = await _create_resume(client, pro_auth_headers, "Refund Resume")
+        user_id = resume["user_id"]
+
+        redis_patch, submit_patch = _patch_infra()
+        with redis_patch, submit_patch as mock_submit:
+            mock_submit.side_effect = RuntimeError("broker down")
+            resp = await client.post(
+                "/jobs/batch",
+                headers=pro_auth_headers,
+                json={"resume_id": resume["id"], "jobs": [_make_job(), _make_job("Globex")]},
+            )
+
+        assert resp.status_code == 500
+        snapshot = await entitlement_service.quota_snapshot(user_id, "pro")
+        assert snapshot["dimensions"]["optimizations"]["used"] == 0
+

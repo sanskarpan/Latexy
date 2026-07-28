@@ -34,6 +34,7 @@ from ..middleware.auth_middleware import (
     require_admin,
 )
 from ..middleware.entitlements import require_feature
+from ..services.entitlement_service import QuotaTicket, entitlement_service
 from ..services.optimization_personas import VALID_PERSONA_KEYS
 from ..services.trial_service import trial_service
 from ..utils.file_utils import validate_job_id
@@ -47,6 +48,78 @@ logger = get_logger(__name__)
 
 # Anonymous, resource-consuming job types that count against the device trial.
 _TRIAL_JOB_TYPES = {"latex_compilation", "combined", "llm_optimization"}
+
+# Authenticated counterpart of _TRIAL_JOB_TYPES: which plan allowance a job type
+# spends (the reset window per dimension lives in config.PLAN_QUOTAS). Anonymous
+# callers are metered by the device trial instead.
+_JOB_QUOTA_DIMENSIONS = {
+    "latex_compilation": "compilations",
+    "llm_optimization": "optimizations",
+    # A combined run is one user-facing AI action (it also compiles, but we do
+    # not double-charge) so it spends a single optimization.
+    "combined": "optimizations",
+}
+
+
+async def _consume_job_quota(
+    job_type: str, user_id: Optional[str], plan: str
+) -> Optional[QuotaTicket]:
+    """Spend one unit of the caller's plan allowance for a paid job type.
+
+    Raises 402 when the allowance is used up. Returns the ticket so the caller
+    can refund it if the enqueue itself fails, or None when nothing was charged.
+    """
+    dimension = _JOB_QUOTA_DIMENSIONS.get(job_type)
+    if user_id is None or dimension is None:
+        return None
+    return await entitlement_service.enforce_quota(dimension, user_id=user_id, plan=plan)
+
+
+_TRIAL_ERRORS = {
+    "trial_limit_exceeded": "Free trial limit reached. Please sign up to continue.",
+    "blocked": "Device blocked due to abuse. Please contact support.",
+    "daily_limit_exceeded": "Daily request limit exceeded. Please try again tomorrow.",
+}
+
+
+async def _enforce_anonymous_trial(
+    db: AsyncSession,
+    http_request: Request,
+    job_type: str,
+    device_fingerprint: Optional[str],
+    ip_address: Optional[str],
+) -> None:
+    """Charge an anonymous, resource-consuming job against the device trial.
+
+    This is the single source of truth for anonymous metering: every route that
+    can start a compile or an LLM run without a session must go through it, or
+    the 3-use limit is bypassable by picking a different endpoint.
+    """
+    if job_type not in _TRIAL_JOB_TYPES:
+        return
+    if not device_fingerprint:
+        raise HTTPException(
+            status_code=400,
+            detail="device_fingerprint is required for anonymous jobs.",
+        )
+    usage = await trial_service.check_and_track_usage(
+        db=db,
+        device_fingerprint=device_fingerprint,
+        action="optimize" if job_type in {"combined", "llm_optimization"} else "compile",
+        ip_address=ip_address,
+        user_agent=http_request.headers.get("user-agent"),
+        resource_type="resume",
+    )
+    if usage.get("success"):
+        return
+    errors = {
+        **_TRIAL_ERRORS,
+        "cooldown": f"Please wait {int(usage.get('waitTime') or 0)} seconds before trying again.",
+    }
+    raise HTTPException(
+        status_code=429,
+        detail=errors.get(usage.get("error", ""), "Trial limit reached."),
+    )
 
 
 async def _resolve_user_plan(db: AsyncSession, user_id: Optional[str]) -> str:
@@ -248,6 +321,9 @@ async def submit_job(
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Submit a new job to the async queue."""
+    # Set once a plan allowance has been charged, so an enqueue failure below can
+    # hand the unit back instead of silently billing the user for nothing.
+    quota_ticket: Optional[QuotaTicket] = None
     try:
         ip_address = http_request.client.host if http_request.client else None
         job_id = str(uuid.uuid4())
@@ -263,31 +339,10 @@ async def submit_job(
         # their plan, but anonymous callers must pass the device trial here so the
         # 3-use limit cannot be bypassed by calling /jobs/submit directly (skipping
         # the frontend's separate track-usage call).
-        if user_id is None and request.job_type in _TRIAL_JOB_TYPES:
-            if not request.device_fingerprint:
-                raise HTTPException(
-                    status_code=400,
-                    detail="device_fingerprint is required for anonymous jobs.",
-                )
-            usage = await trial_service.check_and_track_usage(
-                db=db,
-                device_fingerprint=request.device_fingerprint,
-                action="optimize" if request.job_type in {"combined", "llm_optimization"} else "compile",
-                ip_address=ip_address,
-                user_agent=http_request.headers.get("user-agent"),
-                resource_type="resume",
+        if user_id is None:
+            await _enforce_anonymous_trial(
+                db, http_request, request.job_type, request.device_fingerprint, ip_address
             )
-            if not usage.get("success"):
-                _trial_errors = {
-                    "trial_limit_exceeded": "Free trial limit reached. Please sign up to continue.",
-                    "cooldown": f"Please wait {int(usage.get('waitTime') or 0)} seconds before trying again.",
-                    "blocked": "Device blocked due to abuse. Please contact support.",
-                    "daily_limit_exceeded": "Daily request limit exceeded. Please try again tomorrow.",
-                }
-                raise HTTPException(
-                    status_code=429,
-                    detail=_trial_errors.get(usage.get("error", ""), "Trial limit reached."),
-                )
 
         estimated_times = {
             "latex_compilation": 30,
@@ -302,10 +357,17 @@ async def submit_job(
             estimated_time = int(estimated_time * 0.7)
 
         # Sanitise caller-supplied metadata: cap at 10 keys, 256 chars per value.
+        # Nulls are dropped rather than stringified — str(None) is the truthy
+        # 4-char "None", which downstream consumers then treat as a real value
+        # (a {"resume_id": null} payload used to reach the Compilation insert as
+        # the literal 'None' and fail it with a UUID DataError, silently leaving
+        # the row uncreated and therefore breaking share links).
         safe_meta: Dict[str, Any] = {}
         for k, v in (request.metadata or {}).items():
             if len(safe_meta) >= 10:
                 break
+            if v is None:
+                continue
             safe_meta[str(k)[:64]] = str(v)[:256] if not isinstance(v, (int, float, bool)) else v
 
         extra_meta = {
@@ -355,6 +417,7 @@ async def submit_job(
                     status_code=422,
                     detail="latex_content is required for latex_compilation jobs",
                 )
+            quota_ticket = await _consume_job_quota(request.job_type, user_id, resolved_plan)
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
             submit_latex_compilation(
                 latex_content=request.latex_content,
@@ -373,6 +436,7 @@ async def submit_job(
                     status_code=422,
                     detail="latex_content is required for llm_optimization jobs",
                 )
+            quota_ticket = await _consume_job_quota(request.job_type, user_id, resolved_plan)
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
             submit_resume_optimization(
                 latex_content=request.latex_content,
@@ -396,6 +460,7 @@ async def submit_job(
                     status_code=422,
                     detail=f"Invalid persona '{request.persona}'. Valid values: {sorted(VALID_PERSONA_KEYS)}",
                 )
+            quota_ticket = await _consume_job_quota(request.job_type, user_id, resolved_plan)
             await _write_initial_redis_state(job_id, request.job_type, user_id, estimated_time)
             submit_optimize_and_compile(
                 latex_content=request.latex_content,
@@ -466,6 +531,9 @@ async def submit_job(
     except HTTPException:
         raise
     except Exception as exc:
+        # The job never made it onto the queue — give the plan allowance back.
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"Error submitting job: {exc}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -488,6 +556,11 @@ async def compile_watermarked(
     the canonical PDF for the resume and does NOT trigger an auto-save
     checkpoint.  Download via GET /download/{job_id} once the job
     completes.
+
+    Metered exactly like /jobs/submit's latex_compilation: authenticated callers
+    spend a ``compilations`` unit, anonymous callers must pass the device trial.
+    It runs the same pdflatex, so leaving it unmetered would make the whole
+    compile allowance one endpoint away from being bypassed.
     """
     # Validate watermark text
     watermark = request.watermark.strip()
@@ -512,12 +585,19 @@ async def compile_watermarked(
             )
         compiler = request.compiler
 
+    quota_ticket: Optional[QuotaTicket] = None
     try:
         job_id = str(uuid.uuid4())
         ip_address = http_request.client.host if http_request.client else None
         resolved_plan = await _resolve_user_plan(db, user_id)
         estimated_time = 30 if resolve_plan_family(resolved_plan) in {"pro", "byok", "team"} else 45
 
+        if user_id is None:
+            await _enforce_anonymous_trial(
+                db, http_request, "latex_compilation", request.device_fingerprint, ip_address
+            )
+
+        quota_ticket = await _consume_job_quota("latex_compilation", user_id, resolved_plan)
         await _write_initial_redis_state(job_id, "latex_compilation", user_id, estimated_time)
 
         submit_latex_compilation(
@@ -541,6 +621,9 @@ async def compile_watermarked(
     except HTTPException:
         raise
     except Exception as exc:
+        # The compile never made it onto the queue — give the allowance back.
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"Error submitting watermarked compile: {exc}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -577,6 +660,13 @@ async def create_batch_tailor(
     user_result = await db.execute(sa_select(User.subscription_plan).where(User.id == user_id))
     user_plan: str = user_result.scalar_one_or_none() or "free"
 
+    # One LLM run per job description — charge the whole batch against the plan's
+    # optimization allowance up front (all-or-nothing: a batch that does
+    # not fit is refused rather than partially run).
+    quota_ticket = await entitlement_service.enforce_quota(
+        "optimizations", user_id=user_id, plan=user_plan, cost=len(body.jobs)
+    )
+
     # Phase 1 — create all fork rows and commit before touching Celery/Redis.
     # This ensures no orphaned DB rows if a later Celery/Redis call fails.
     forks: List[tuple] = []  # (fork, item)
@@ -599,6 +689,7 @@ async def create_batch_tailor(
         await db.commit()
     except Exception as exc:
         await db.rollback()
+        await entitlement_service.refund_quota(quota_ticket, cost=len(body.jobs))
         logger.error(f"Batch tailor DB phase failed: {exc}")
         raise HTTPException(status_code=500, detail="Failed to create batch tailor jobs")
 
@@ -626,31 +717,38 @@ async def create_batch_tailor(
             }
         )
 
-    r = await get_redis_client()
-    batch_meta = {
-        "batch_id": batch_id,
-        "user_id": user_id,
-        "created_at": time.time(),
-        "jobs": job_entries,
-    }
-    await r.setex(f"latexy:batch:{batch_id}", _BATCH_TTL, json.dumps(batch_meta))
+    # A Redis blip or broker error here means the LLM runs never started, so the
+    # whole up-front charge has to go back before the 500 surfaces.
+    try:
+        r = await get_redis_client()
+        batch_meta = {
+            "batch_id": batch_id,
+            "user_id": user_id,
+            "created_at": time.time(),
+            "jobs": job_entries,
+        }
+        await r.setex(f"latexy:batch:{batch_id}", _BATCH_TTL, json.dumps(batch_meta))
 
-    for job_id, fork, item in job_plan:
-        await _write_initial_redis_state(job_id, "combined", user_id, estimated_time)
-        submit_optimize_and_compile(
-            latex_content=fork.latex_content,
-            job_description=item.job_description,
-            job_id=job_id,
-            user_id=user_id,
-            user_plan=user_plan,
-            optimization_level="aggressive",
-            custom_instructions=(
-                f"Tailor this resume for the {item.role_title} role at {item.company_name}. "
-                "Maximise keyword alignment with the job description. "
-                "Keep all factual information accurate."
-            ),
-            resume_id=str(fork.id),
-        )
+        for job_id, fork, item in job_plan:
+            await _write_initial_redis_state(job_id, "combined", user_id, estimated_time)
+            submit_optimize_and_compile(
+                latex_content=fork.latex_content,
+                job_description=item.job_description,
+                job_id=job_id,
+                user_id=user_id,
+                user_plan=user_plan,
+                optimization_level="aggressive",
+                custom_instructions=(
+                    f"Tailor this resume for the {item.role_title} role at {item.company_name}. "
+                    "Maximise keyword alignment with the job description. "
+                    "Keep all factual information accurate."
+                ),
+                resume_id=str(fork.id),
+            )
+    except Exception as exc:
+        await entitlement_service.refund_quota(quota_ticket, cost=len(body.jobs))
+        logger.error(f"Batch tailor enqueue phase failed: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to queue batch tailor jobs")
 
     return BatchTailorResponse(batch_id=batch_id, job_ids=job_ids)
 
@@ -772,7 +870,11 @@ async def get_job_result(
             )
         result_data = json.loads(raw)
 
-        # Update Compilation record with final status (non-blocking)
+        # Idempotent fallback reconciliation (non-blocking).
+        # The worker (latex_worker.reconcile_compilation_record) now owns this
+        # transition, so this normally matches 0 rows. It is kept for jobs that
+        # were enqueued by an older worker build, or whose worker died after
+        # writing the Redis result but before the DB update.
         try:
             from sqlalchemy import update
             final_status = "completed" if result_data.get("success") else "failed"

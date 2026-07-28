@@ -90,7 +90,7 @@ const faqData: FAQItem[] = [
   {
     id: 'free-trial',
     question: 'How does the free trial work?',
-    answer: 'You get 3 free resume compilations without needing to register. We use device fingerprinting to track usage, and the trial resets every 24 hours to prevent abuse. After your trial, you can register for unlimited access with our subscription plans.',
+    answer: 'You get 3 resume compilations without registering at all - we use device fingerprinting to track that trial, and it does not reset. Creating a free account is always an upgrade: it gives you 10 compilations per day (resets daily at 00:00 UTC) plus 3 AI optimizations per month. Paid plans lift those limits.',
     category: 'getting-started',
     tags: ['trial', 'free', 'registration']
   },
@@ -129,7 +129,7 @@ const faqData: FAQItem[] = [
   {
     id: 'subscription-plans',
     question: 'What subscription plans are available?',
-    answer: 'We offer: Free Trial (3 compilations), Basic (₹299/month - 50 compilations, 10 optimizations), Pro (₹599/month - unlimited), and BYOK (₹199/month - unlimited with your API keys). All paid plans include resume history and priority support.',
+    answer: 'We offer: Free (10 compilations/day, 3 AI optimizations/month), Basic (₹299/month - 50 compilations, 10 optimizations per month), Pro (₹599/month - unlimited), and BYOK (₹199/month - unlimited with your API keys). All paid plans include resume history and priority support.',
     category: 'billing',
     tags: ['plans', 'pricing', 'subscription']
   },

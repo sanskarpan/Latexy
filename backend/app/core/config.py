@@ -2,6 +2,7 @@
 Application configuration settings.
 """
 
+import json
 import logging
 import os
 from copy import deepcopy
@@ -56,6 +57,11 @@ class Settings(BaseSettings):
 
     # Docker
     LATEX_DOCKER_IMAGE: str = "texlive/texlive:latest"
+    # The LaTeX engine runs in that image when a docker CLI is available. When it is
+    # not (the production worker image bakes texlive in and ships no docker socket)
+    # it runs in-process — see latex_service.local_engine_allowed(). The
+    # ALLOW_LOCAL_LATEX_ENGINE env var overrides that decision either way; it is read
+    # there rather than here because the Celery workers are its only consumer.
 
     # CORS
     CORS_ORIGINS: List[str] = Field(
@@ -214,6 +220,15 @@ class Settings(BaseSettings):
     RAZORPAY_PLAN_BYOK_ANNUAL: str = Field(default="", description="Razorpay plan ID for BYOK annual")
     RAZORPAY_PLAN_STUDENT: str = Field(default="", description="Razorpay plan ID for Student monthly")
     RAZORPAY_PLAN_TEAM: str = Field(default="", description="Razorpay plan ID for Team monthly")
+    RAZORPAY_COUPON_OFFERS: str = Field(
+        default="",
+        description=(
+            "JSON object mapping coupon code -> Razorpay offer ID "
+            '(e.g. {"LAUNCH20": "offer_XXXX"}). A percentage coupon can only be '
+            "honoured at checkout when its offer is mapped here, because Razorpay "
+            "discounts subscriptions through offers, not ad-hoc amounts."
+        ),
+    )
     BILLING_MODE: str = Field(
         default="auto",
         description="Billing mode: disabled | auto | required",
@@ -259,10 +274,14 @@ class Settings(BaseSettings):
     WEBSOCKET_ENABLED: bool = Field(default=True, description="Enable WebSocket for real-time updates")
     WEBSOCKET_HEARTBEAT_INTERVAL: int = Field(default=30, description="WebSocket heartbeat interval in seconds")
 
-    # Subscription Plans
+    # Subscription Plans (customer-facing copy).
+    # NOTE: the "compilations" / "optimizations" entries below are PLACEHOLDERS —
+    # they are overwritten at import time from the enforced PLAN_QUOTAS table
+    # (see _sync_plan_feature_copy at the bottom of this module), so the pricing
+    # page can never advertise a number the meter does not honour.
     SUBSCRIPTION_PLANS: dict = Field(default={
         "free": {
-            "name": "Free Trial",
+            "name": "Free",
             "price": 0,
             "currency": "INR",
             "interval": "month",
@@ -641,6 +660,34 @@ def get_razorpay_plan_id(plan_id: str | None) -> str:
     return getattr(settings, env_key, "") if env_key else ""
 
 
+def get_razorpay_offer_id(coupon_code: str | None) -> str:
+    """Resolve the Razorpay offer ID that implements a coupon code.
+
+    Razorpay applies subscription discounts through offers created in the
+    dashboard, so a percentage coupon is only usable at checkout when it is
+    mapped to an offer here. An unmapped code has no way to reach the provider
+    and must be refused rather than silently charged at full price.
+    """
+    normalized = (coupon_code or "").strip().upper()
+    if not normalized:
+        return ""
+
+    raw = (settings.RAZORPAY_COUPON_OFFERS or "").strip()
+    if not raw:
+        return ""
+
+    try:
+        mapping = json.loads(raw)
+    except (TypeError, ValueError):
+        return ""
+
+    if not isinstance(mapping, dict):
+        return ""
+
+    value = mapping.get(normalized)
+    return value.strip() if isinstance(value, str) else ""
+
+
 def get_developer_api_daily_limit(plan_id: str | None) -> int:
     """Return the daily public-API request cap for the effective plan family."""
     family = resolve_plan_family(plan_id)
@@ -651,6 +698,111 @@ def get_developer_api_daily_limit(plan_id: str | None) -> int:
         "byok": settings.DEV_API_DAILY_LIMIT_BYOK,
         "team": settings.DEV_API_DAILY_LIMIT_PRO,
     }.get(family, settings.DEV_API_DAILY_LIMIT_FREE)
+
+
+# Numeric usage quotas metered by the entitlement engine.
+#
+# ``compilations``   — one LaTeX compile (including the compile inside a
+#                      combined run and the watermarked export).
+# ``optimizations``  — one user-facing AI resume rewrite (combined, quick
+#                      tailor, academic CV convert, /optimize, batch fork).
+# ``ai_assists``     — the small one-shot AI helpers in the editor (bullets,
+#                      summary, rewrite, translate, error explain, salary
+#                      estimate, section reorder, document conversion).
+#
+# PLAN_QUOTAS below is the ONLY enforced source of truth. The customer-facing
+# strings in SUBSCRIPTION_PLANS[...]["features"] are rendered FROM this table
+# (see _sync_plan_feature_copy) so pricing copy and enforcement cannot drift.
+#
+# The window is per dimension AND per plan family: the free tier is deliberately
+# generous on compiles (a DAILY window, so nobody is locked out of the editor
+# for the rest of the month) and scarce on the expensive LLM rewrites (monthly).
+# Signing up must always beat browsing anonymously — the anonymous device trial
+# is 3 lifetime uses (trial_service.TRIAL_LIMIT), so every free allowance here
+# has to exceed it.
+QUOTA_DIMENSIONS = ("compilations", "optimizations", "ai_assists")
+
+QUOTA_WINDOWS = ("day", "month")
+
+# family -> dimension -> (limit, window). limit None == unlimited.
+PLAN_QUOTAS: Dict[str, Dict[str, tuple[int | None, str]]] = {
+    "free": {
+        "compilations": (10, "day"),
+        "optimizations": (3, "month"),
+        "ai_assists": (25, "month"),
+    },
+    "basic": {
+        "compilations": (50, "month"),
+        "optimizations": (10, "month"),
+        "ai_assists": (100, "month"),
+    },
+    "pro": {
+        "compilations": (None, "month"),
+        "optimizations": (None, "month"),
+        "ai_assists": (None, "month"),
+    },
+    "byok": {
+        "compilations": (None, "month"),
+        "optimizations": (None, "month"),
+        "ai_assists": (None, "month"),
+    },
+    "team": {
+        "compilations": (None, "month"),
+        "optimizations": (None, "month"),
+        "ai_assists": (None, "month"),
+    },
+}
+
+
+def _plan_quota_entry(plan_id: str | None, dimension: str) -> tuple[int | None, str]:
+    if dimension not in QUOTA_DIMENSIONS:
+        raise KeyError(f"Unknown quota dimension: {dimension!r}")
+    family = resolve_plan_family(plan_id)
+    quotas = PLAN_QUOTAS.get(family, PLAN_QUOTAS["free"])
+    return quotas.get(dimension, PLAN_QUOTAS["free"][dimension])
+
+
+def get_plan_quota(plan_id: str | None, dimension: str) -> int | None:
+    """Return the allowance for a quota dimension, or None if unlimited.
+
+    Raises KeyError for an unknown dimension — quota dimensions are code-defined,
+    so a typo must fail loudly rather than silently granting unlimited usage.
+    """
+    return _plan_quota_entry(plan_id, dimension)[0]
+
+
+def get_plan_quota_window(plan_id: str | None, dimension: str) -> str:
+    """Return the reset window (``day`` or ``month``) for a quota dimension."""
+    return _plan_quota_entry(plan_id, dimension)[1]
+
+
+def format_plan_quota(plan_id: str | None, dimension: str) -> str:
+    """Render an allowance as the customer-facing string on the pricing cards."""
+    limit, window = _plan_quota_entry(plan_id, dimension)
+    if limit is None:
+        return "unlimited"
+    if limit == 0:
+        return "0"
+    return f"{limit} / {window}"
+
+
+def _sync_plan_feature_copy() -> None:
+    """Rewrite the advertised feature numbers from the enforced PLAN_QUOTAS.
+
+    SUBSCRIPTION_PLANS doubles as pricing copy (served by /subscriptions/plans)
+    and used to double as the enforcement table. Deriving the copy here keeps a
+    single source of truth without making the marketing dict authoritative for
+    the meter.
+    """
+    for plan_id, plan in settings.SUBSCRIPTION_PLANS.items():
+        features = plan.get("features")
+        if not isinstance(features, dict):
+            continue
+        for dimension in ("compilations", "optimizations"):
+            features[dimension] = format_plan_quota(plan_id, dimension)
+
+
+_sync_plan_feature_copy()
 
 
 def get_compile_timeout(user_plan: str) -> int:

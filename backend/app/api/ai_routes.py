@@ -8,7 +8,7 @@ import re as _re
 import time
 from calendar import month_abbr as _month_abbr
 from calendar import month_name as _month_name
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, NamedTuple, Optional
 from uuid import uuid4
 
 import httpx
@@ -25,6 +25,8 @@ from ..database.connection import get_db
 from ..database.models import Resume
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from ..middleware.entitlements import require_feature, require_feature_optional
+from ..middleware.rate_limiting import client_ip_id
+from ..services.entitlement_service import entitlement_service
 from ..services.error_explainer_service import error_explainer_service
 from ..services.latex_text_extractor import extract_prose, offset_to_latex_position
 from ..services.optimization_personas import PERSONAS
@@ -43,7 +45,12 @@ router = APIRouter(prefix="/ai", tags=["ai-tools"])
 # — which an anonymous/scripted caller could otherwise exploit to drive unbounded
 # spend (financial DoS), since the content-hash cache is trivially defeated by
 # varying the input. We therefore METER the platform-key fallback per identity
-# (user id, else client IP). BYOK callers use their own key and are never limited.
+# (user id, else the shared spoof-resistant client id). BYOK callers use their own
+# key and are never limited.
+#
+# Authenticated callers additionally spend their plan's ``ai_assists`` allowance
+# on every endpoint that makes a real LLM call on the PLATFORM key — consistently,
+# so no AI button is silently free while its neighbour 402s.
 
 # Max platform-key LLM calls per identity per minute.
 _SYSTEM_KEY_LLM_LIMIT_PER_MIN = 20
@@ -72,33 +79,84 @@ async def _system_key_rate_limited(identity: str) -> bool:
         return False
 
 
+def _meter_identity(http_request: Request, user_id: Optional[str]) -> str:
+    """Return the identity the platform-key meter buckets this caller under.
+
+    Authenticated callers are metered per user. Anonymous callers fall back to
+    the SAME peer-IP bucket the global rate limiter uses (client_ip_id), which
+    resolves X-Forwarded-For only behind a trusted proxy — reading
+    request.client.host directly collapsed every caller behind nginx into one
+    shared 20/min bucket.
+    """
+    if user_id:
+        return user_id
+    return client_ip_id(http_request)
+
+
+class ResolvedAIKey(NamedTuple):
+    """An LLM key plus WHOSE money it spends.
+
+    ``byok`` is the caller's own key: no platform meter applies to it, so the
+    ai_assists allowance must not be charged for that call.
+    """
+
+    key: Optional[str]
+    byok: bool = False
+
+    def __bool__(self) -> bool:  # `if not api_key:` stays readable at call sites
+        return self.key is not None
+
+
 async def _resolve_ai_api_key(
     db: AsyncSession,
     user_id: Optional[str],
-    client_ip: str = "unknown",
-) -> Optional[str]:
+    identity: str = "unknown",
+) -> ResolvedAIKey:
     """Resolve the LLM API key for an AI endpoint.
 
-    Prefers the caller's own BYOK key (never rate limited — they pay for it).
-    Otherwise falls back to the shared platform key, but that fallback is metered
-    per identity (user id, else client IP) to prevent cost/DoS abuse. Returns None
-    when no key may be used (none configured, or the platform-key budget is spent).
+    Prefers the caller's own BYOK key (never rate limited, never metered — they
+    pay for it). Otherwise falls back to the shared platform key, but that
+    fallback is metered per ``identity`` (see _meter_identity) to prevent
+    cost/DoS abuse. ``key`` is None when no key may be used (none configured, or
+    the platform-key budget is spent).
     """
     if user_id:
         try:
             from ..services.api_key_service import api_key_service
             byok = await api_key_service.get_user_provider(db, user_id, "openai")
             if byok:
-                return byok
+                return ResolvedAIKey(byok, True)
         except Exception:
             pass
     if settings.OPENAI_API_KEY:
-        identity = user_id or f"ip:{client_ip}"
         if await _system_key_rate_limited(identity):
             logger.warning("AI platform-key rate limit exceeded for %s", identity)
-            return None
-        return settings.OPENAI_API_KEY
-    return None
+            return ResolvedAIKey(None)
+        return ResolvedAIKey(settings.OPENAI_API_KEY)
+    return ResolvedAIKey(None)
+
+
+async def _charge_ai_assist(
+    db: AsyncSession, user_id: Optional[str], resolved: ResolvedAIKey | None = None
+):
+    """Spend one ``ai_assists`` unit for an authenticated caller.
+
+    Raises 402 once the plan's allowance is gone. Returns the ticket (so the
+    caller can refund it when no LLM call actually happened) or None when nothing
+    was charged: an anonymous caller (whose budget is the per-identity
+    platform-key meter above, not a plan allowance) or a BYOK caller (the call is
+    billed to their own key, so the platform allowance is none of its business).
+    """
+    if not user_id or (resolved is not None and resolved.byok):
+        return None
+
+    from .job_routes import _resolve_user_plan
+
+    return await entitlement_service.enforce_quota(
+        "ai_assists",
+        user_id=user_id,
+        plan=await _resolve_user_plan(db, user_id),
+    )
 
 
 # ── Request / Response schemas ──────────────────────────────────────────────
@@ -222,12 +280,14 @@ async def generate_bullets(
         pass
 
     # Resolve API key (BYOK first; platform-key fallback is rate limited)
-    client_ip = http_request.client.host if http_request.client else "unknown"
-    api_key = await _resolve_ai_api_key(db, user_id, client_ip)
+    resolved = await _resolve_ai_api_key(db, user_id, _meter_identity(http_request, user_id))
 
-    if not api_key:
+    if not resolved:
         logger.warning("generate-bullets: no API key available")
         return GenerateBulletsResponse(bullets=[], cached=False)
+
+    # The cache missed and a platform-key completion is about to run → charge it.
+    quota_ticket = await _charge_ai_assist(db, user_id, resolved)
 
     system_prompt = _BULLET_SYSTEM_PROMPT.format(count=request.count, tone=request.tone)
     user_parts = [
@@ -240,7 +300,7 @@ async def generate_bullets(
 
     try:
         start = time.monotonic()
-        client = openai.AsyncOpenAI(api_key=api_key)
+        client = openai.AsyncOpenAI(api_key=resolved.key)
         response = await client.chat.completions.create(
             model=settings.OPENAI_MODEL,
             messages=[
@@ -269,6 +329,9 @@ async def generate_bullets(
         return GenerateBulletsResponse(bullets=bullets, cached=False)
 
     except Exception as exc:
+        # No usable completion came back — hand the allowance unit back.
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"generate-bullets error: {exc}")
         return GenerateBulletsResponse(bullets=[], cached=False)
 
@@ -323,12 +386,14 @@ async def generate_summary(
     except Exception:
         pass
 
-    client_ip = http_request.client.host if http_request.client else "unknown"
-    api_key = await _resolve_ai_api_key(db, user_id, client_ip)
+    resolved = await _resolve_ai_api_key(db, user_id, _meter_identity(http_request, user_id))
 
-    if not api_key:
+    if not resolved:
         logger.warning("generate-summary: no API key available")
         return GenerateSummaryResponse(summaries=[], cached=False)
+
+    # The cache missed and a platform-key completion is about to run → charge it.
+    quota_ticket = await _charge_ai_assist(db, user_id, resolved)
 
     system_prompt = _SUMMARY_SYSTEM_PROMPT.format(
         count=request.count,
@@ -341,7 +406,7 @@ async def generate_summary(
 
     try:
         start = time.monotonic()
-        client = openai.AsyncOpenAI(api_key=api_key)
+        client = openai.AsyncOpenAI(api_key=resolved.key)
         response = await client.chat.completions.create(
             model=settings.OPENAI_MODEL,
             messages=[
@@ -375,6 +440,9 @@ async def generate_summary(
         return GenerateSummaryResponse(summaries=summaries, cached=False)
 
     except Exception as exc:
+        # No usable completion came back — hand the allowance unit back.
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"generate-summary error: {exc}")
         return GenerateSummaryResponse(summaries=[], cached=False)
 
@@ -401,19 +469,35 @@ async def explain_latex_error(
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Explain a LaTeX compilation error using pattern matching or LLM."""
+    # The plan's AI allowance is charged by the hook below, which the service
+    # only fires once the free tiers (pattern table, no key, cache) are ruled out
+    # and an LLM call is certain — same shape as salary-estimate/reorder-sections.
+    quota_ticket = None
+
+    resolved = ResolvedAIKey(None)
+
+    async def _charge_on_llm() -> None:
+        nonlocal quota_ticket
+        quota_ticket = await _charge_ai_assist(db, user_id, resolved)
+
     try:
         # Resolve API key via the shared helper: BYOK first, then a platform-key
         # fallback that is rate limited per identity — same metering as every other
         # AI endpoint, so this path can't be used to drain the platform key.
-        client_ip = http_request.client.host if http_request.client else "unknown"
-        api_key = await _resolve_ai_api_key(db, user_id, client_ip)
+        resolved = await _resolve_ai_api_key(db, user_id, _meter_identity(http_request, user_id))
 
         result = await error_explainer_service.explain(
             error_message=request.error_message,
             surrounding_latex=request.surrounding_latex,
             error_line=request.error_line,
-            api_key=api_key,
+            api_key=resolved.key,
+            on_llm_call=_charge_on_llm,
         )
+
+        # The service swallows LLM failures and falls back to the pattern table —
+        # give the unit back when no LLM answer actually came out.
+        if quota_ticket is not None and result.get("source") != "llm":
+            await entitlement_service.refund_quota(quota_ticket)
 
         return ExplainErrorResponse(
             success=True,
@@ -425,7 +509,13 @@ async def explain_latex_error(
             processing_time=result.get("processing_time", 0),
         )
 
+    except HTTPException:
+        # Quota denial (402) / metering outage (503) — surface it, don't hand the
+        # caller a free fallback answer.
+        raise
     except Exception as e:
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"Error in explain-error endpoint: {e}")
         # Still return a pattern-based result on failure
         pattern = error_explainer_service.explain_from_patterns(
@@ -508,12 +598,14 @@ async def rewrite_text(
         pass
 
     # Resolve API key (BYOK first; platform-key fallback is rate limited)
-    client_ip = http_request.client.host if http_request.client else "unknown"
-    api_key = await _resolve_ai_api_key(db, user_id, client_ip)
+    resolved = await _resolve_ai_api_key(db, user_id, _meter_identity(http_request, user_id))
 
-    if not api_key:
+    if not resolved:
         logger.warning("rewrite: no API key available")
         return RewriteResponse(rewritten=request.selected_text, action=request.action, cached=False)
+
+    # The cache missed and a platform-key completion is about to run → charge it.
+    quota_ticket = await _charge_ai_assist(db, user_id, resolved)
 
     system_prompt = _REWRITE_PROMPTS[request.action].format(tone=request.tone or "formal")
     user_parts = [f"Text to rewrite:\n{request.selected_text}"]
@@ -522,7 +614,7 @@ async def rewrite_text(
     user_prompt = "\n".join(user_parts)
 
     try:
-        client = openai.AsyncOpenAI(api_key=api_key)
+        client = openai.AsyncOpenAI(api_key=resolved.key)
         response = await client.chat.completions.create(
             model=settings.OPENAI_MODEL,
             messages=[
@@ -535,6 +627,9 @@ async def rewrite_text(
 
         rewritten = (response.choices[0].message.content or "").strip()
         if not rewritten:
+            # Nothing usable came back — hand the allowance unit back.
+            if quota_ticket is not None:
+                await entitlement_service.refund_quota(quota_ticket)
             return RewriteResponse(rewritten=request.selected_text, action=request.action, cached=False)
 
         try:
@@ -545,6 +640,8 @@ async def rewrite_text(
         return RewriteResponse(rewritten=rewritten, action=request.action, cached=False)
 
     except Exception as exc:
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"rewrite error: {exc}")
         return RewriteResponse(rewritten=request.selected_text, action=request.action, cached=False)
 
@@ -947,15 +1044,18 @@ async def salary_estimate(
         pass
 
     # Resolve API key (BYOK first; platform-key fallback is rate limited)
-    client_ip = http_request.client.host if http_request.client else "unknown"
-    api_key = await _resolve_ai_api_key(db, user_id, client_ip)
+    resolved = await _resolve_ai_api_key(db, user_id, _meter_identity(http_request, user_id))
 
-    if not api_key:
+    if not resolved:
         logger.warning("salary-estimate: no API key available")
         return SalaryEstimateResponse(
             currency="USD", low=0, median=0, high=0, percentile=0,
             key_skills=[], disclaimer="No API key configured.", cached=False,
         )
+
+    # An LLM call is now certain — charge the plan's AI allowance (cache hits and
+    # the no-key path above never reach here, so they are free).
+    quota_ticket = await _charge_ai_assist(db, user_id, resolved)
 
     user_prompt = (
         f"Target role: {request.target_role}\n"
@@ -965,7 +1065,7 @@ async def salary_estimate(
 
     try:
         start = time.monotonic()
-        client = openai.AsyncOpenAI(api_key=api_key)
+        client = openai.AsyncOpenAI(api_key=resolved.key)
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -1016,6 +1116,8 @@ async def salary_estimate(
         return result
 
     except Exception as exc:
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"salary-estimate error: {exc}")
         return SalaryEstimateResponse(
             currency="USD", low=0, median=0, high=0, percentile=0,
@@ -1355,22 +1457,20 @@ async def translate_resume(
         pass
 
     if translated_latex is None:
-        # Resolve API key: BYOK first, then system default
-        api_key: Optional[str] = None
-        try:
-            from ..services.api_key_service import api_key_service
-            api_key = await api_key_service.get_user_provider(db, user_id, "openai")
-        except Exception:
-            pass
-        if not api_key and settings.OPENAI_API_KEY:
-            api_key = settings.OPENAI_API_KEY
-        if not api_key:
+        # Resolve API key via the shared helper (BYOK first; the platform-key
+        # fallback is rate limited per identity — auth is required here, so the
+        # identity is the user).
+        resolved = await _resolve_ai_api_key(db, user_id, user_id)
+        if not resolved:
             raise HTTPException(status_code=503, detail="No OpenAI API key configured")
+
+        # The cache missed and a platform-key completion is about to run → charge it.
+        quota_ticket = await _charge_ai_assist(db, user_id, resolved)
 
         system_prompt = _TRANSLATE_SYSTEM_PROMPT.format(target_language=request.target_language)
 
         try:
-            llm_client = openai.AsyncOpenAI(api_key=api_key)
+            llm_client = openai.AsyncOpenAI(api_key=resolved.key)
             response = await llm_client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[
@@ -1382,10 +1482,14 @@ async def translate_resume(
             )
             translated_latex = (response.choices[0].message.content or "").strip()
         except Exception as exc:
+            if quota_ticket is not None:
+                await entitlement_service.refund_quota(quota_ticket)
             logger.error(f"translate LLM call failed: {exc}")
             raise HTTPException(status_code=502, detail="Translation service error. Please try again.")
 
         if not translated_latex:
+            if quota_ticket is not None:
+                await entitlement_service.refund_quota(quota_ticket)
             raise HTTPException(status_code=502, detail="Translation returned empty result. Please try again.")
 
         # Cache as string TTL=3600
@@ -1525,10 +1629,9 @@ async def reorder_sections_endpoint(
         )
 
     # Resolve API key (BYOK first; platform-key fallback is rate limited)
-    client_ip = http_request.client.host if http_request.client else "unknown"
-    api_key = await _resolve_ai_api_key(db, user_id, client_ip)
+    resolved = await _resolve_ai_api_key(db, user_id, _meter_identity(http_request, user_id))
 
-    if not api_key:
+    if not resolved:
         logger.warning("reorder-sections: no API key available")
         return ReorderSectionsResponse(
             current_order=current_order,
@@ -1537,6 +1640,10 @@ async def reorder_sections_endpoint(
             reordered_latex=request.resume_latex,
             cached=False,
         )
+
+    # An LLM call is now certain — charge the plan's AI allowance (the
+    # forced_order fast-path, cache hits and the no-key path never reach here).
+    quota_ticket = await _charge_ai_assist(db, user_id, resolved)
 
     # Build LLM prompt
     user_prompt = f"Section list (current order): {json.dumps(current_order)}\n"
@@ -1547,7 +1654,7 @@ async def reorder_sections_endpoint(
 
     try:
         start = time.monotonic()
-        llm_client = openai.AsyncOpenAI(api_key=api_key)
+        llm_client = openai.AsyncOpenAI(api_key=resolved.key)
         response = await llm_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -1563,6 +1670,8 @@ async def reorder_sections_endpoint(
         raw = response.choices[0].message.content or "{}"
         parsed = json.loads(raw)
     except Exception as exc:
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"reorder-sections LLM error: {exc}")
         return ReorderSectionsResponse(
             current_order=current_order,

@@ -11,7 +11,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from ..core.config import settings
 from ..core.logging import get_logger
@@ -274,10 +274,16 @@ class ErrorExplainerService:
         surrounding_latex: str = "",
         error_line: int = 0,
         api_key: str | None = None,
+        on_llm_call: Optional[Callable[[], Awaitable[None]]] = None,
     ) -> dict:
         """
         Full explanation flow: pattern → cache → LLM → fallback.
         Returns dict with explanation, suggested_fix, corrected_code, source, cached.
+
+        ``on_llm_call`` is awaited once the free tiers (pattern table, no key,
+        cache) have been ruled out and an LLM call is about to happen — that is
+        the only point at which the caller should meter the request. Anything it
+        raises propagates untouched, so a quota denial is not served a fallback.
         """
         start = time.monotonic()
 
@@ -306,7 +312,11 @@ class ErrorExplainerService:
         except Exception:
             pass  # cache miss or Redis down
 
-        # 4. LLM call
+        # 4. LLM call — metered first (outside the try, so a quota rejection is
+        # not swallowed by the pattern fallback below).
+        if on_llm_call is not None:
+            await on_llm_call()
+
         try:
             llm_result = await self.explain_with_llm(
                 error_message, surrounding_latex, error_line, api_key

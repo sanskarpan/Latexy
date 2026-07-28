@@ -18,6 +18,7 @@ from ..middleware.auth_middleware import get_current_user_optional
 from ..parsers.parser_factory import parser_factory
 from ..services.api_key_service import api_key_service
 from ..services.document_converter_service import ALLOWED_SOURCE_PLATFORMS
+from ..services.entitlement_service import entitlement_service
 from ..services.format_detection import ResumeFormat, format_detection_service
 
 logger = get_logger(__name__)
@@ -424,24 +425,39 @@ async def upload_for_conversion(
         except Exception:
             user_api_key = None
 
+        # The conversion burns an LLM call on the PLATFORM key, so it spends the
+        # plan's ai_assists allowance. Charged here — after every validation has
+        # passed and before the job is queued — and refunded if the enqueue
+        # fails. A BYOK caller pays their own provider, so nothing is charged.
+        quota_ticket = None
+        if not user_api_key:
+            quota_ticket = await entitlement_service.enforce_quota(
+                "ai_assists", user_id=user_id, plan=user_plan
+            )
+
         # Queue LLM conversion job
         from ..api.job_routes import _write_initial_redis_state
         from ..workers.converter_worker import submit_document_conversion
 
         job_id = str(uuid.uuid4())
         estimated_seconds = 45
-        await _write_initial_redis_state(job_id, "document_conversion", user_id, estimated_seconds)
+        try:
+            await _write_initial_redis_state(job_id, "document_conversion", user_id, estimated_seconds)
 
-        submit_document_conversion(
-            extracted_data=parsed.to_dict(),
-            source_format=detected_format.value,
-            job_id=job_id,
-            user_id=user_id,
-            user_api_key=user_api_key,
-            source_hint=source_hint,
-            source_platform=source_platform,
-            priority=get_task_priority(user_plan),
-        )
+            submit_document_conversion(
+                extracted_data=parsed.to_dict(),
+                source_format=detected_format.value,
+                job_id=job_id,
+                user_id=user_id,
+                user_api_key=user_api_key,
+                source_hint=source_hint,
+                source_platform=source_platform,
+                priority=get_task_priority(user_plan),
+            )
+        except Exception:
+            if quota_ticket is not None:
+                await entitlement_service.refund_quota(quota_ticket)
+            raise
 
         logger.info(f"Queued document conversion job {job_id} for {filename} ({detected_format.value})")
         return UploadForConversionResponse(
