@@ -139,6 +139,13 @@ def local_engine_allowed() -> bool:
     raw = os.environ.get("ALLOW_LOCAL_LATEX_ENGINE")
     if raw is not None:
         return raw.strip().lower() in _TRUTHY
+    # Modal runs each worker in an isolated gVisor container with texlive baked
+    # into the image, but its /proc/self/cgroup does not carry the
+    # docker/kubepods/containerd markers running_in_container() looks for, so
+    # detect the Modal target explicitly — the in-image engine is exactly the
+    # intended, sandboxed production path there.
+    if (settings.DEPLOY_TARGET or "").lower() == "modal":
+        return True
     if running_in_container():
         return True
     return settings.normalized_environment != "production"
