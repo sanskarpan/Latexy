@@ -42,23 +42,29 @@ describe('sendEmail without RESEND_API_KEY', () => {
     expect(logged).not.toContain('<html>')
   })
 
-  test('throws in production instead of falling back to the console', async () => {
+  test('warns loudly but still completes in production without a provider', async () => {
     vi.stubEnv('NODE_ENV', 'production')
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    await expect(sendEmail(RESET_EMAIL)).rejects.toThrow(/RESEND_API_KEY is not set/)
-    expect(info).not.toHaveBeenCalled()
+    // Email must not throw here: Better Auth awaits some senders (sign-up
+    // verification), and a throw would 500 the auth request. Degrade to a
+    // console log + a loud warning instead.
+    await expect(sendEmail(RESET_EMAIL)).resolves.toBeUndefined()
+    expect(err).toHaveBeenCalledWith(expect.stringContaining('RESEND_API_KEY is not set'))
+    expect(info).toHaveBeenCalled()
   })
 
   /**
-   * Better Auth invokes every sender inside `runInBackgroundOrAwait`, which
-   * try/catches and only logs — so the per-send throw above never reaches the
-   * user. The boot preflight is what actually stops a keyless production
-   * deploy, by refusing to construct `auth` at all (see lib/auth.ts).
+   * Email verification is a soft, product-level decision, so a missing mail
+   * provider must degrade email delivery only — it must NEVER take the auth
+   * module down. The boot preflight therefore warns instead of throwing.
    */
-  test('the boot preflight fails a keyless production process', () => {
+  test('the boot preflight warns, never throws, on a keyless production process', () => {
     vi.stubEnv('NODE_ENV', 'production')
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    expect(() => assertEmailTransportConfigured()).toThrow(/RESEND_API_KEY is not set/)
+    expect(() => assertEmailTransportConfigured()).not.toThrow()
+    expect(err).toHaveBeenCalledWith(expect.stringContaining('RESEND_API_KEY is not set'))
   })
 
   test('the boot preflight stays quiet in development and during `next build`', () => {
