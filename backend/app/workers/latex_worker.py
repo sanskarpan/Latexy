@@ -513,6 +513,11 @@ def compile_latex_task(
             workspace = "/workspace"
         else:
             assert_local_engine_allowed(job_id)
+            # Run WITH cwd=job_dir and pass RELATIVE paths. The sandbox sets
+            # openin_any/openout_any=p (paranoid), under which kpathsea refuses to
+            # read/write ABSOLUTE paths (e.g. /tmp/.../resume.tex) — pdflatex would
+            # fail with "Not reading from … (openin_any = p)". Relative names
+            # resolve against cwd, which paranoid mode permits.
             cmd = [
                 compiler,
                 *LATEX_SANDBOX_FLAGS,
@@ -520,9 +525,9 @@ def compile_latex_task(
                 "-halt-on-error",
                 "-synctex=1",
                 "-jobname", "resume",
-                "-output-directory", str(job_dir),
+                "-output-directory", ".",
                 *custom_flags,
-                str(tex_file),
+                main_file,
             ]
             compile_cwd = str(job_dir)
             workspace = str(job_dir)
