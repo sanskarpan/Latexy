@@ -123,9 +123,11 @@ def run_latex_task(payload: dict) -> None:
     image=latex_image,
     secrets=_secrets,
     timeout=600,
-    # No min_containers here (cost): combined jobs are LLM-dominated (~40s), so a cold
-    # start is proportionally smaller. A longer scaledown_window keeps back-to-back
-    # optimize runs on a warm container. Bump to min_containers=1 if optimize latency matters.
+    # Keep one orchestrator warm: the texlive image cold-starts in ~2min, which
+    # made the flagship "Optimize + Compile" flow take ~230s. Warm it so combined
+    # jobs are ~40-50s (LLM-bound) instead. scaledown_window keeps burst
+    # containers around for back-to-back runs.
+    min_containers=1,
     scaledown_window=180,
 )
 def run_orchestrator_task(payload: dict) -> None:
