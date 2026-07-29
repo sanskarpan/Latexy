@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-from sqlalchemy import and_, func, select, text
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.redis import cache_manager, redis_manager
@@ -148,18 +148,20 @@ class AnalyticsService:
             feature_usage_rows = (await db.execute(feature_usage_query)).all()
             feature_usage = {row.action: row.cnt for row in feature_usage_rows if row.action}
 
-            # Daily activity: aggregate by date in SQL using date_trunc
+            # Daily activity: aggregate by date in SQL using date_trunc.
+            # The labelled expression is built once and reused in GROUP BY —
+            # two separate func.date_trunc() calls compile to distinct bind
+            # params, which Postgres rejects as an ungrouped column.
+            day_bucket = func.date_trunc("day", UsageAnalytics.created_at).label("day")
             daily_agg_query = select(
-                func.date_trunc("day", UsageAnalytics.created_at).label("day"),
+                day_bucket,
                 func.count(UsageAnalytics.id).label("cnt"),
             ).where(
                 and_(
                     UsageAnalytics.user_id == user_id,
                     UsageAnalytics.created_at >= start_date,
                 )
-            ).group_by(text("1"))  # GROUP BY the 1st SELECT expr (date_trunc);
-            # avoids SQLAlchemy binding the 'day' literal twice ($1 vs $N), which
-            # Postgres rejects with "must appear in GROUP BY" (GroupingError).
+            ).group_by(day_bucket)
             daily_rows = (await db.execute(daily_agg_query)).all()
             daily_activity = {
                 row.day.strftime("%Y-%m-%d"): row.cnt

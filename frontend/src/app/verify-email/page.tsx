@@ -11,17 +11,32 @@ function VerifyEmailInner() {
   const params = useSearchParams()
   const token = params.get('token')
   const urlError = params.get('error') // present if Better Auth redirected here on failure
+  // Better Auth's GET /api/auth/verify-email spends the token server-side and
+  // then redirects to its callbackURL *without* it — so a missing token is not
+  // a failure. lib/auth.ts pins that callbackURL to `?verified=1`, which is the
+  // success signal here; failures arrive on the same URL as `&error=CODE`.
+  const verified = params.get('verified') === '1'
   const ranRef = useRef(false)
 
   const [status, setStatus] = useState<Status>(() =>
-    urlError ? 'error' : token ? 'verifying' : 'error',
+    urlError ? 'error' : verified ? 'success' : token ? 'verifying' : 'error',
   )
 
   useEffect(() => {
     if (ranRef.current) return
     ranRef.current = true
 
-    if (urlError || !token) {
+    if (urlError) {
+      setStatus('error')
+      return
+    }
+
+    if (verified) {
+      setStatus('success')
+      return
+    }
+
+    if (!token) {
       setStatus('error')
       return
     }
@@ -33,7 +48,7 @@ function VerifyEmailInner() {
         setStatus(res.error ? 'error' : 'success')
       })
       .catch(() => setStatus('error'))
-  }, [token, urlError])
+  }, [token, urlError, verified])
 
   return (
     <div className="content-shell flex min-h-[80vh] items-center justify-center">

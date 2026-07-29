@@ -15,11 +15,18 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
   const [isLoading, setIsLoading] = useState(true)
   const [isCancelling, setIsCancelling] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Cancellation failures are shown inline: the subscription is still live, so
+  // replacing the card with an error would hide the state the user needs.
+  const [cancelError, setCancelError] = useState<string | null>(null)
 
   const fetchSubscription = useCallback(async () => {
     setIsLoading(true)
     setError(null)
-    apiClient.setAuthToken(authToken)
+    // The Bearer token itself is published to apiClient by <AuthSync /> — this
+    // component must not set it (a child effect would race AuthSync and could
+    // publish a null). authToken stays a dependency purely so that a session
+    // change re-fetches the subscription.
+    void authToken
     const response = await apiClient.getCurrentSubscription()
     if (response.success && response.data) {
       setSubscription(response.data)
@@ -40,14 +47,13 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
   const handleCancel = async () => {
     if (!subscription || !confirm('Cancel this subscription?')) return
     setIsCancelling(true)
-    setError(null)
+    setCancelError(null)
     try {
-      apiClient.setAuthToken(authToken)
       const response = await apiClient.cancelSubscription()
       if (!response.success) throw new Error(response.error || 'Failed to cancel subscription')
       await fetchSubscription()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to cancel subscription')
+      setCancelError(err instanceof Error ? err.message : 'Failed to cancel subscription')
     } finally {
       setIsCancelling(false)
     }
@@ -146,6 +152,8 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
           </button>
         )}
       </div>
+
+      {cancelError && <p className="mt-4 text-sm text-rose-300">{cancelError}</p>}
 
       {billingStatus && !billingStatus.available && (
         <p className="mt-4 text-sm text-amber-200">{billingStatus.message}</p>

@@ -2,18 +2,21 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react'
+import { toast } from 'sonner'
 
 let _latexLanguageRegistered = false
 import type { OnMount } from '@monaco-editor/react'
 import type { LogLine } from '@/hooks/useJobStream'
 import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import ATSScoreBadge from '@/components/ATSScoreBadge'
+import { getCollabWebSocketUrl } from '@/lib/api-client'
 import type { PresenceUser, ProofreadIssue, SpellCheckIssue } from '@/lib/api-client'
 import type { LintIssue } from '@/lib/latex-linter'
 import { addWordToDict, getPersonalDict } from '@/hooks/useSpellCheck'
 import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
 import { LATEX_SEARCH_PRESETS, type LatexSearchPreset } from '@/data/latex-search-presets'
 import { observeChanges, type TrackedChange, type TrackChangesHandle } from '@/lib/yjs-track-changes'
+import { classifyCollabClose } from '@/lib/collab-close'
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
   ssr: false,
@@ -40,6 +43,30 @@ function clearMonacoTestHook(editor?: MonacoEditorInstance | null) {
   if (editor && testWindow.__latexyMonacoEditor && testWindow.__latexyMonacoEditor !== editor) return
   delete testWindow.__latexyMonacoEditor
   delete testWindow.__latexyMonaco
+}
+
+// ── Collaboration permissions (Feature 40) ────────────────────────────────
+// Mirrors EDIT_ROLES in backend/app/services/collab_manager.py.
+const COLLAB_EDIT_ROLES = new Set(['owner', 'editor'])
+// Latexy protocol extension emitted by the relay when a frame is refused.
+const MSG_PERMISSION_DENIED = 63
+
+/**
+ * Read a lib0 varbuffer straight off a y-websocket decoder.
+ * (lib0 is a transitive dependency only, so it is not importable here.)
+ */
+function readVarBuffer(decoder: { arr: Uint8Array; pos: number }): Uint8Array {
+  let length = 0
+  let shift = 0
+  for (;;) {
+    const byte = decoder.arr[decoder.pos++]
+    length |= (byte & 0x7f) << shift
+    if ((byte & 0x80) === 0) break
+    shift += 7
+  }
+  const payload = decoder.arr.subarray(decoder.pos, decoder.pos + length)
+  decoder.pos += length
+  return payload
 }
 
 export interface LaTeXEditorRef {
@@ -116,6 +143,8 @@ interface LaTeXEditorProps {
   collabResumeId?: string
   /** Current user info for cursor labelling */
   collabUser?: { name: string; color: string; token: string }
+  /** Known collaborator role; anything other than owner/editor forces read-only */
+  collabRole?: string | null
   /** Fires when the set of remote-presence users changes */
   onPresenceChange?: (users: PresenceUser[]) => void
   // ── Track Changes (Feature 41) ──────────────────────────────────────
@@ -313,7 +342,7 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, onPresenceChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
+    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, collabRole, onPresenceChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -338,6 +367,14 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     onPresenceChangeRef.current = onPresenceChange
     const onTrackedChangesUpdateRef = useRef(onTrackedChangesUpdate)
     onTrackedChangesUpdateRef.current = onTrackedChangesUpdate
+
+    // Collaboration permissions: locked either by a known non-editing role or
+    // by a permission-denied / revocation frame from the relay.
+    const [collabLocked, setCollabLocked] = useState(false)
+    const collabRoleReadOnly = !!collabRole && !COLLAB_EDIT_ROLES.has(collabRole)
+    const collabReadOnly = collabLocked || collabRoleReadOnly
+    const collabReadOnlyRef = useRef(collabReadOnly)
+    collabReadOnlyRef.current = collabReadOnly
 
     // Y.js collab refs — cleaned up on unmount
     const ydocRef = useRef<any>(null)
@@ -1460,11 +1497,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           const { MonacoBinding } = await import('y-monaco')
 
           const ydoc = new Y.Doc()
-          const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030')
-          const wsBase = apiUrl.replace(/^https?:\/\//, (m) => (m.startsWith('https') ? 'wss://' : 'ws://'))
 
           const provider = new WebsocketProvider(
-            `${wsBase}/ws/collab`,
+            getCollabWebSocketUrl(),
             collabResumeId,
             ydoc,
             {
@@ -1476,6 +1511,73 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             },
           )
 
+          // The relay refuses document frames from viewers / commenters, so
+          // lock the editor rather than letting edits apply locally and then
+          // silently disappear on reload.
+          const lockCollabEditing = (message: string) => {
+            if (collabReadOnlyRef.current) return
+            collabReadOnlyRef.current = true
+            setCollabLocked(true)
+            toast.error(message)
+          }
+
+          provider.messageHandlers[MSG_PERMISSION_DENIED] = (
+            _encoder: unknown,
+            decoder: { arr: Uint8Array; pos: number },
+          ) => {
+            let code = 'read_only'
+            let message = 'You do not have permission to edit this document'
+            try {
+              const parsed = JSON.parse(new TextDecoder().decode(readVarBuffer(decoder)))
+              if (parsed?.code) code = String(parsed.code)
+              if (parsed?.message) message = String(parsed.message)
+            } catch {
+              /* keep defaults */
+            }
+            lockCollabEditing(
+              code === 'access_revoked'
+                ? `Collaboration access revoked — ${message}`
+                : `Read-only — ${message}`,
+            )
+          }
+
+          // Handshake rejections: stop y-websocket's reconnect loop instead of hammering
+          // the auth + permission queries forever. Losing the relay is NOT the same as
+          // losing edit rights — only 4003 (access revoked) makes the buffer read-only;
+          // everything else leaves Monaco editable and falls back to REST autosave.
+          let transientCollabRejections = 0
+          let collabGiveUpNotified = false
+          provider.on('connection-close', (event: CloseEvent | null) => {
+            const code = event?.code
+            const action = classifyCollabClose(code, transientCollabRejections)
+            if (action === 'ignore') return
+            if (action === 'retry') {
+              // Could be a DB blip — let y-websocket's backoff have another go.
+              transientCollabRejections += 1
+              return
+            }
+            provider.shouldConnect = false
+            // Deferred: y-websocket has not finished tearing this socket down yet.
+            setTimeout(() => {
+              try {
+                provider.disconnect()
+              } catch {
+                /* already gone */
+              }
+            }, 0)
+            if (action === 'lock') {
+              lockCollabEditing('Collaboration access revoked — this document is now read-only')
+              return
+            }
+            if (collabGiveUpNotified) return
+            collabGiveUpNotified = true
+            toast.warning(
+              code === 4001
+                ? 'Live collaboration disconnected — your edits are still saved, reload to reconnect'
+                : 'Live collaboration is unavailable for this document — your edits are still saved',
+            )
+          })
+
           const yText = ydoc.getText('content')
           const model = editor.getModel()
           if (!model) return
@@ -1484,7 +1586,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             if (bindingRef.current) return
 
             const localContent = model.getValue()
-            if (yText.length === 0 && localContent) {
+            // Seeding is a document write: read-only peers must not attempt it.
+            if (!collabReadOnlyRef.current && yText.length === 0 && localContent) {
               ydoc.transact(() => {
                 yText.insert(0, localContent)
               })
@@ -1581,7 +1684,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 cursorSmoothCaretAnimation: 'on',
                 smoothScrolling: true,
                 contextmenu: true,
-                readOnly,
+                readOnly: readOnly || collabReadOnly,
                 suggestOnTriggerCharacters: true,
                 quickSuggestions: {
                   other: true,
@@ -1612,7 +1715,11 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         {/* Status bar */}
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-white/[0.05] bg-[#07090f] px-3 py-1 text-[10px] uppercase tracking-[0.12em]">
           <span className="text-zinc-700">
-            {readOnly ? 'Read-only — job running' : 'LaTeX editor'}
+            {readOnly
+              ? 'Read-only — job running'
+              : collabReadOnly
+                ? 'Read-only — no edit access'
+                : 'LaTeX editor'}
           </span>
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-zinc-700">
             {onAutoCompile && (

@@ -57,6 +57,42 @@ describe('LatexyWSClient', () => {
     expect(received).toHaveLength(1)
   })
 
+  it('passes the token as a ?token= query param (backend only reads the query string)', async () => {
+    const wsMod = await import('ws')
+    expect(vi.mocked(wsMod.default).mock.calls[0]?.[0]).toBe(
+      'ws://localhost:8030/ws/jobs?token=testtoken'
+    )
+  })
+
+  it('does not stack duplicate token params across reconnects', async () => {
+    const wsMod = await import('ws')
+    mockWSInstance.emit('close', 1006)
+    await new Promise(r => setTimeout(r, 200))
+    expect(vi.mocked(wsMod.default).mock.calls.at(-1)?.[0]).toBe(
+      'ws://localhost:8030/ws/jobs?token=testtoken'
+    )
+  })
+
+  it('emits server_error for {type:"error"} frames instead of dropping them', () => {
+    const errors: unknown[] = []
+    client.on('server_error', e => errors.push(e))
+    mockWSInstance.emit('message', Buffer.from(JSON.stringify({
+      type: 'error', code: 'forbidden', message: 'Access denied for this job',
+    })))
+    expect(errors).toEqual([{ code: 'forbidden', message: 'Access denied for this job' }])
+  })
+
+  it('forwards job_id on per-job rejections so callers can scope the failure', () => {
+    const errors: unknown[] = []
+    client.on('server_error', e => errors.push(e))
+    mockWSInstance.emit('message', Buffer.from(JSON.stringify({
+      type: 'error', code: 'forbidden', message: 'Access denied for this job', job_id: 'job-9',
+    })))
+    expect(errors).toEqual([
+      { code: 'forbidden', message: 'Access denied for this job', job_id: 'job-9' },
+    ])
+  })
+
   it('subscribe() sends correct subscribe message', () => {
     client.drain()
     mockWSInstance.emit('open')

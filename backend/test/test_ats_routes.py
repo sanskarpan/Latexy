@@ -183,6 +183,43 @@ class TestATSScore:
             )
         assert resp.status_code == 200
 
+    async def test_score_async_job_is_pollable(self, client: AsyncClient):
+        """
+        Regression: the async branch used to enqueue without writing
+        latexy:job:{id}:meta, so the returned job_id 404'd on
+        GET /jobs/{id}/state forever.
+        """
+        with patch(
+            "app.workers.ats_worker.submit_ats_scoring",
+            return_value=str(uuid.uuid4()),
+        ):
+            resp = await client.post(
+                "/ats/score",
+                json={"latex_content": VALID_LATEX, "async_processing": True},
+            )
+        job_id = resp.json()["job_id"]
+
+        state = await client.get(f"/jobs/{job_id}/state")
+        assert state.status_code == 200
+
+    async def test_score_async_job_owned_by_submitter(
+        self, client: AsyncClient, auth_headers: dict, auth_headers2: dict
+    ):
+        """Job meta records the submitting user, so another user is denied."""
+        with patch(
+            "app.workers.ats_worker.submit_ats_scoring",
+            return_value=str(uuid.uuid4()),
+        ):
+            resp = await client.post(
+                "/ats/score",
+                json={"latex_content": VALID_LATEX, "async_processing": True},
+                headers=auth_headers,
+            )
+        job_id = resp.json()["job_id"]
+
+        assert (await client.get(f"/jobs/{job_id}/state", headers=auth_headers)).status_code == 200
+        assert (await client.get(f"/jobs/{job_id}/state", headers=auth_headers2)).status_code == 403
+
 
 # ── POST /ats/analyze-job-description ────────────────────────────────────────
 
@@ -206,6 +243,21 @@ class TestATSAnalyzeJobDescription:
         data = resp.json()
         assert data["success"] is True
         assert "job_id" in data
+
+    async def test_analyze_async_job_is_pollable(self, client: AsyncClient):
+        """Regression: the async branch must register job meta + state in Redis."""
+        with patch(
+            "app.workers.ats_worker.submit_job_description_analysis",
+            return_value=str(uuid.uuid4()),
+        ):
+            resp = await client.post(
+                "/ats/analyze-job-description",
+                json={"job_description": JOB_DESCRIPTION, "async_processing": True},
+            )
+        job_id = resp.json()["job_id"]
+
+        state = await client.get(f"/jobs/{job_id}/state")
+        assert state.status_code == 200
 
     async def test_analyze_sync_returns_keywords(self, client: AsyncClient):
         """Sync branch returns keywords list."""

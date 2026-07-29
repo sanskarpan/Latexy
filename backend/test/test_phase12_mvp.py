@@ -47,8 +47,12 @@ class TestMVPCoreFeatures:
             assert "success" in data
 
     @pytest.mark.asyncio
-    async def test_ai_powered_optimization(self, client: AsyncClient):
-        """Test AI-powered resume optimization endpoint exists and handles requests."""
+    async def test_ai_powered_optimization(self, client: AsyncClient, pro_auth_headers: dict):
+        """Test AI-powered resume optimization endpoint exists and handles requests.
+
+        /optimize requires authentication and spends the plan's optimization
+        allowance, so this runs as a PRO user (unlimited).
+        """
         latex_content = (
             r"\documentclass{article}\begin{document}"
             r"\section{Experience}Software Developer with Python experience"
@@ -62,6 +66,7 @@ class TestMVPCoreFeatures:
                 "job_description": "Senior Python Developer with FastAPI experience",
                 "optimization_level": "balanced",
             },
+            headers=pro_auth_headers,
         )
 
         # 503 = LLM not configured (expected in CI), 200 = success

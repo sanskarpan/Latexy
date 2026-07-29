@@ -19,9 +19,31 @@ spec:
     spec:
       containers:
       - name: celery-worker
-        image: latexy-backend:latest
+        image: ghcr.io/sanskarpan/latexy-backend:latest
         command: ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info", "--concurrency=2", "--queues=latex,llm,email,cleanup,ats,combined"]
         env:
+        # `celery -A app.core.celery_app` imports app.core.config, which requires
+        # BETTER_AUTH_SECRET and JWT_SECRET_KEY at import time.
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: environment
+        - name: CORS_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: cors-origins
+        - name: BETTER_AUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: better-auth-secret
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: jwt-secret-key
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
@@ -67,6 +89,11 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: redis-url
+        - name: REDIS_CACHE_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-cache-url
         resources:
           requests:
             memory: "512Mi"
@@ -118,9 +145,35 @@ spec:
     spec:
       containers:
       - name: celery-beat
-        image: latexy-backend:latest
+        image: ghcr.io/sanskarpan/latexy-backend:latest
         command: ["celery", "-A", "app.core.celery_app", "beat", "--loglevel=info"]
         env:
+        # Same import-time requirements as the worker.
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: environment
+        - name: CORS_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: cors-origins
+        - name: BETTER_AUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: better-auth-secret
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: jwt-secret-key
+        - name: API_KEY_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: api-key-encryption-key
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
@@ -141,6 +194,11 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: redis-url
+        - name: REDIS_CACHE_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-cache-url
         resources:
           requests:
             memory: "128Mi"
@@ -180,11 +238,42 @@ spec:
     spec:
       containers:
       - name: flower
-        image: latexy-backend:latest
+        image: ghcr.io/sanskarpan/latexy-backend:latest
         command: ["celery", "-A", "app.core.celery_app", "flower", "--port=5555"]
         ports:
         - containerPort: 5555
         env:
+        # Same import-time requirements as the worker.
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: environment
+        - name: CORS_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: cors-origins
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: database-url
+        - name: BETTER_AUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: better-auth-secret
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: jwt-secret-key
+        - name: API_KEY_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: api-key-encryption-key
         - name: CELERY_BROKER_URL
           valueFrom:
             secretKeyRef:
@@ -195,6 +284,11 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: redis-url
+        - name: REDIS_CACHE_URL
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: redis-cache-url
         - name: FLOWER_BASIC_AUTH
           valueFrom:
             secretKeyRef:

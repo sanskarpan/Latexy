@@ -4,6 +4,11 @@ Job submission, state polling, and cancellation tests.
 Tests run against the real API endpoints (httpx ASGI transport).
 Celery tasks are mocked at the task dispatch level so we don't need a
 running worker for these unit/integration tests.
+
+Plan quotas: the ``auth_headers`` user is on the FREE plan, which sells 3
+compilations and 0 optimizations per month (see test_usage_quotas.py). Tests
+that submit an optimization job therefore use ``pro_auth_headers`` — they are
+about job plumbing, not about the money meter.
 """
 
 import re
@@ -12,6 +17,9 @@ from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from app.database.models import Compilation
 
 VALID_LATEX = r"""
 \documentclass[letterpaper,11pt]{article}
@@ -69,7 +77,7 @@ class TestJobSubmission:
         assert resp.status_code in (400, 422)
 
     async def test_submit_combined_job(
-        self, client: AsyncClient, auth_headers: dict
+        self, client: AsyncClient, pro_auth_headers: dict
     ):
         with patch(
             "app.workers.orchestrator.submit_optimize_and_compile",
@@ -83,7 +91,7 @@ class TestJobSubmission:
                     "job_description": "Software Engineer at Google with Python experience",
                     "optimization_level": "balanced",
                 },
-                headers=auth_headers,
+                headers=pro_auth_headers,
             )
         assert resp.status_code in (200, 202)
         data = resp.json()
@@ -221,7 +229,7 @@ class TestTrialSystem:
 class TestJobSubmissionErrorPaths:
 
     async def test_combined_job_missing_job_description(
-        self, client: AsyncClient, auth_headers: dict
+        self, client: AsyncClient, pro_auth_headers: dict
     ):
         """combined job without job_description is accepted (JD is optional)."""
         with patch(
@@ -231,12 +239,12 @@ class TestJobSubmissionErrorPaths:
             resp = await client.post(
                 "/jobs/submit",
                 json={"job_type": "combined", "latex_content": VALID_LATEX},
-                headers=auth_headers,
+                headers=pro_auth_headers,
             )
         assert resp.status_code == 200
 
     async def test_llm_optimization_missing_job_description(
-        self, client: AsyncClient, auth_headers: dict
+        self, client: AsyncClient, pro_auth_headers: dict
     ):
         """llm_optimization without job_description is accepted (JD is optional)."""
         with patch(
@@ -246,7 +254,7 @@ class TestJobSubmissionErrorPaths:
             resp = await client.post(
                 "/jobs/submit",
                 json={"job_type": "llm_optimization", "latex_content": VALID_LATEX},
-                headers=auth_headers,
+                headers=pro_auth_headers,
             )
         assert resp.status_code == 200
 
@@ -289,6 +297,40 @@ class TestJobSubmissionErrorPaths:
             )
         # Should succeed (server truncates metadata, not reject)
         assert resp.status_code in (200, 202)
+
+    async def test_submit_with_null_metadata_value_creates_compilation_row(
+        self, client: AsyncClient, auth_headers: dict, db_session
+    ):
+        """A null metadata value must be dropped, not stringified to "None".
+
+        str(None) is the truthy 4-char "None", which reached the Compilation
+        insert as a UUID and failed it with a DataError — silently leaving the
+        row uncreated, which in turn breaks share links (they require a
+        completed Compilation row).
+        """
+        with patch(
+            "app.workers.latex_worker.submit_latex_compilation",
+            return_value=None,
+        ):
+            resp = await client.post(
+                "/jobs/submit",
+                json={
+                    "job_type": "latex_compilation",
+                    "latex_content": VALID_LATEX,
+                    "metadata": {"resume_id": None},
+                },
+                headers=auth_headers,
+            )
+        assert resp.status_code in (200, 202)
+        job_id = resp.json()["job_id"]
+
+        row = (
+            await db_session.execute(
+                select(Compilation).where(Compilation.job_id == job_id)
+            )
+        ).scalar_one_or_none()
+        assert row is not None, "Compilation row was not created"
+        assert row.resume_id is None
 
     async def test_result_not_available_for_queued_job(
         self, client: AsyncClient, auth_headers: dict

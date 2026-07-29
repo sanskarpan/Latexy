@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { BACKEND_URL, authHeaders } from '../_forward';
+import { BACKEND_URL, authHeaders, forwardError } from '../_forward';
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +10,10 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
-      throw new Error(`Backend responded with ${response.status}`);
+      return forwardError(response, 'Error fetching API keys', {
+        total_count: 0,
+        api_keys: [],
+      });
     }
 
     const data = await response.json();
@@ -53,8 +56,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Backend responded with ${response.status}`);
+      return forwardError(response, 'Error adding API key');
     }
 
     const data = await response.json();

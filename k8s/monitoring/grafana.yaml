@@ -152,16 +152,8 @@ data:
       }
     }
 ---
-apiVersion: v1
-kind: Secret
-metadata:
-  name: grafana-secret
-  namespace: latexy
-type: Opaque
-data:
-  # Base64 encoded credentials - change in production
-  admin-user: YWRtaW4=  # admin
-  admin-password: Z3JhZmFuYTEyMw==  # grafana123
+# grafana-secret (keys admin-user, admin-password) is NOT committed. It is
+# generated on the first deploy by k8s/deploy.sh and reused afterwards.
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

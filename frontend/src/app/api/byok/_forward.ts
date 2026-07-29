@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 // Backend base URL: prefer the server-only BACKEND_URL, then the public API URL,
 // then localhost. Avoids a hardcoded port that breaks non-default deployments.
@@ -15,4 +15,32 @@ export function authHeaders(request: NextRequest): Record<string, string> {
   const cookie = request.headers.get('cookie')
   if (cookie) headers['Cookie'] = cookie
   return headers
+}
+
+// Turn a non-OK backend response into a proxy response that keeps the upstream
+// status. Laundering a 401/403/404 into a 500 makes an unauthenticated visit look
+// like a server fault and prevents callers from reacting appropriately.
+export async function forwardError(
+  response: Response,
+  context: string,
+  extra: Record<string, unknown> = {},
+): Promise<NextResponse> {
+  const raw = await response.text().catch(() => '')
+  let detail = raw
+  try {
+    const parsed = JSON.parse(raw) as { detail?: unknown; error?: unknown }
+    const candidate = parsed.detail ?? parsed.error
+    if (typeof candidate === 'string') detail = candidate
+  } catch {
+    // Non-JSON body (HTML error page, empty) — fall back to the raw text.
+  }
+  console.error(`${context}: backend responded ${response.status}`, detail)
+  return NextResponse.json(
+    {
+      success: false,
+      error: detail || `Backend responded with ${response.status}`,
+      ...extra,
+    },
+    { status: response.status },
+  )
 }

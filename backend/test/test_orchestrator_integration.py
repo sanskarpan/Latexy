@@ -57,6 +57,7 @@ class TestDockerFallback:
             # Must NOT use docker
             assert cmd[0] != "docker"
             assert cmd[0] == "pdflatex"
+            assert "-no-shell-escape" in cmd
             # cwd must be set (not None) for local execution
             assert mock_popen.call_args[1].get("cwd") is not None
 
@@ -85,14 +86,78 @@ class TestDockerFallback:
             mock_proc.returncode = 0
             mock_popen.return_value = mock_proc
 
+            sample_tex = r"\documentclass{article}\begin{document}Hello\end{document}"
             (job_dir / "resume.pdf").write_bytes(b"%PDF-1.4")
-            (job_dir / "resume.tex").write_text("test")
+            (job_dir / "resume.tex").write_text(sample_tex)
 
-            _run_latex_stage(job_id, "test")
+            _run_latex_stage(job_id, sample_tex)
 
             cmd = mock_popen.call_args[0][0]
             assert cmd[0] == "docker"
             assert "run" in cmd
+            # Sandbox hardening travels with the docker invocation
+            assert "--network" in cmd and cmd[cmd.index("--network") + 1] == "none"
+            assert "-no-shell-escape" in cmd
+
+
+# ─── Artifact caching: PDF must survive the job_dir cleanup ──────────────────
+
+class TestCombinedJobArtifacts:
+    """
+    Regression: _run_latex_stage rmtree'd job_dir without caching anything, so a
+    completed 'combined' job 404'd on /download, /logs and /synctex — unlike
+    latex_worker, which caches the same artifacts in Redis.
+    """
+
+    def _run_stage(self, tmp_path, job_id, cached):
+        from app.workers.orchestrator import _run_latex_stage
+
+        job_dir = tmp_path / job_id
+        job_dir.mkdir()
+
+        def capture_output(jid, jdir):
+            # Must still be readable — i.e. called before the finally-block rmtree
+            cached["pdf"] = (jdir / "resume.pdf").read_bytes()
+            return cached["pdf"]
+
+        with (
+            patch("app.workers.orchestrator.shutil.which", return_value=None),
+            patch("app.workers.orchestrator.subprocess.Popen") as mock_popen,
+            patch("app.workers.orchestrator.publish_event"),
+            patch("app.workers.orchestrator.is_cancelled", return_value=False),
+            patch("app.workers.orchestrator.cache_compile_log",
+                  side_effect=lambda jid, text: cached.__setitem__("log", text)),
+            patch("app.workers.orchestrator.cache_compile_output", side_effect=capture_output),
+            patch("app.workers.orchestrator.settings") as mock_settings,
+        ):
+            mock_settings.TEMP_DIR = tmp_path
+            mock_settings.COMPILE_TIMEOUT = 60
+            mock_settings.ALLOWED_LATEX_COMPILERS = ["pdflatex", "xelatex", "lualatex"]
+            mock_settings.DEFAULT_LATEX_COMPILER = "pdflatex"
+
+            mock_proc = MagicMock()
+            mock_proc.stdout = iter(["This is pdfTeX\n", "Output written on resume.pdf (1 page)\n"])
+            mock_proc.returncode = 0
+            mock_popen.return_value = mock_proc
+
+            (job_dir / "resume.pdf").write_bytes(b"%PDF-1.7 fake")
+
+            return _run_latex_stage(job_id, r"\documentclass{article}\begin{document}x\end{document}")
+
+    def test_pdf_cached_before_job_dir_is_removed(self, tmp_path):
+        cached: dict = {}
+        success, _, _, _, pdf_bytes = self._run_stage(tmp_path, "test-artifacts-pdf", cached)
+
+        assert success is True
+        assert cached["pdf"] == b"%PDF-1.7 fake"
+        assert pdf_bytes == b"%PDF-1.7 fake"
+        assert not (tmp_path / "test-artifacts-pdf").exists()
+
+    def test_log_cached(self, tmp_path):
+        cached: dict = {}
+        self._run_stage(tmp_path, "test-artifacts-log", cached)
+
+        assert "This is pdfTeX" in cached["log"]
 
 
 # ─── Fix 2: No JSON in llm.token events ──────────────────────────────────────
@@ -239,7 +304,7 @@ class TestCompileFailPreservesLatex:
             patch("app.workers.orchestrator._run_llm_stage",
                   return_value=(optimized_latex, [{"section": "S", "change_type": "modified", "reason": "r"}], 100, 1.0)),
             patch("app.workers.orchestrator._run_latex_stage",
-                  return_value=(False, 0.5, "pdflatex exited with code 1. See log.line events for details.", None)),
+                  return_value=(False, 0.5, "pdflatex exited with code 1. See log.line events for details.", None, None)),
             patch("app.workers.orchestrator.settings") as mock_settings,
         ):
             mock_settings.OPENAI_API_KEY = "fake-key"
@@ -265,6 +330,56 @@ class TestCompileFailPreservesLatex:
         assert "changes_made" in failed_payload
         assert result["success"] is False
         assert result.get("optimized_latex") == optimized_latex
+
+
+# ─── Cancellation must not wedge the Compilation row ─────────────────────────
+
+class TestCancelledCombinedJobReconciles:
+    """
+    DELETE /jobs/{id} sets the cancel flag; the orchestrator's cancellation exits
+    used to return without touching the Compilation row, leaving 'combined' jobs
+    stuck at status='processing' forever.
+    """
+
+    def _run(self, cancel_after_llm: bool):
+        from app.workers.orchestrator import optimize_and_compile_task
+
+        sample_latex = r"\documentclass{article}\begin{document}content\end{document}"
+        optimized_latex = r"\documentclass{article}\begin{document}optimized\end{document}"
+        # First is_cancelled() call is post-LLM, second is post-compile.
+        cancel_sequence = [True] if cancel_after_llm else [False, True]
+
+        with (
+            patch("app.workers.orchestrator.publish_event"),
+            patch("app.workers.orchestrator.publish_job_result"),
+            patch("app.workers.orchestrator.is_cancelled", side_effect=cancel_sequence),
+            patch("app.workers.orchestrator._run_llm_stage",
+                  return_value=(optimized_latex, [], 100, 1.0)),
+            patch("app.workers.orchestrator._run_latex_stage",
+                  return_value=(True, 0.5, "", 1, b"%PDF-1.7")),
+            patch("app.workers.orchestrator.reconcile_compilation_record") as mock_reconcile,
+            patch("app.workers.orchestrator.settings") as mock_settings,
+        ):
+            mock_settings.OPENAI_API_KEY = "fake-key"
+            task_instance = MagicMock()
+            task_instance.request.id = "task-cancel"
+            task_instance.request.retries = 0
+            task_instance.max_retries = 1
+            result = optimize_and_compile_task.__wrapped__(
+                task_instance, sample_latex, job_id="test-cancel-reconcile"
+            )
+        return result, mock_reconcile
+
+    def test_cancel_after_llm_stage_reconciles_as_cancelled(self):
+        result, mock_reconcile = self._run(cancel_after_llm=True)
+        assert result["cancelled"] is True
+        assert mock_reconcile.called
+        assert mock_reconcile.call_args.kwargs["status"] == "cancelled"
+
+    def test_cancel_after_compile_stage_reconciles_as_cancelled(self):
+        result, mock_reconcile = self._run(cancel_after_llm=False)
+        assert result["cancelled"] is True
+        assert mock_reconcile.call_args.kwargs["status"] == "cancelled"
 
 
 # ─── Feature 3: Section-specific prompt ──────────────────────────────────────

@@ -22,12 +22,14 @@ from ..database.connection import get_db
 from ..database.models import DeepAnalysisTrial, Resume, ResumeJobMatch, User
 from ..middleware.auth_middleware import get_current_user_optional, get_current_user_required
 from ..middleware.entitlements import require_feature, require_feature_optional
+from ..middleware.rate_limiting import client_ip_id
 from ..services.api_key_service import api_key_service
 from ..services.ats_quick_scorer import quick_score_latex
 from ..services.ats_scoring_service import ats_scoring_service
 from ..services.ats_simulator_service import ATS_PROFILES, ats_simulator_service
 from ..services.industry_ats_profiles import INDUSTRY_PROFILES, detect_industry
 from ..workers.ats_worker import submit_ats_scoring, submit_deep_analyze_ats, submit_job_description_analysis
+from .job_routes import _write_initial_redis_state
 
 logger = get_logger(__name__)
 
@@ -57,12 +59,17 @@ return n
 """
 
 
-def _client_ip(http_request: Request) -> str:
-    """Best-effort client IP, honouring X-Forwarded-For when present."""
-    forwarded = http_request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return http_request.client.host if http_request.client else "unknown"
+def _rate_limit_client(http_request: Request, user_id: Optional[str] = None) -> str:
+    """Spoofing-resistant bucket key for the per-route limiters.
+
+    Authenticated callers get their own (server-verified) user bucket; everyone
+    else falls back to the shared middleware peer-IP helper, which only honours
+    X-Forwarded-For behind a trusted proxy (TRUST_PROXY_HEADERS). Parsing that
+    header unconditionally let anyone rotate it for a fresh bucket per request.
+    """
+    if user_id:
+        return f"user:{user_id}"
+    return client_ip_id(http_request)
 
 
 async def _rate_limit_ok(key: str, limit: int, window: int) -> bool:
@@ -177,7 +184,7 @@ async def score_resume_ats(
         # Per-IP rate limit (mirrors the sibling rule-based ATS endpoints) so an
         # anonymous caller cannot flood the ats Celery queue / CPU-bound scoring.
         if not await _rate_limit_ok(
-            f"ratelimit:ats-rule:score:{_client_ip(http_request)}",
+            f"ratelimit:ats-rule:score:{_rate_limit_client(http_request, user_id)}",
             _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
         ):
             raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
@@ -221,6 +228,16 @@ async def score_resume_ats(
             job_id = str(uuid.uuid4())
             # Queue priority must be derived server-side, never from the client body.
             user_plan = await _derive_user_plan(db, user_id)
+            # Register meta + state before enqueueing, otherwise GET /jobs/{id}/state
+            # and /jobs/{id}/result 404 forever even though the job runs.
+            # Best-effort like the deep-analyze path: the worker's job.started event
+            # re-creates the snapshot, so a Redis blip must not fail the submit.
+            try:
+                await _write_initial_redis_state(job_id, "ats_scoring", user_id, 15)
+            except Exception as state_exc:
+                logger.warning(
+                    f"Redis state write failed for job {job_id}: {state_exc} — proceeding without state"
+                )
             submit_ats_scoring(
                 latex_content=request.latex_content,
                 job_id=job_id,
@@ -284,7 +301,7 @@ async def analyze_job_description_ats(
     try:
         # Per-IP rate limit (mirrors the sibling rule-based ATS endpoints).
         if not await _rate_limit_ok(
-            f"ratelimit:ats-rule:analyze-jd:{_client_ip(http_request)}",
+            f"ratelimit:ats-rule:analyze-jd:{_rate_limit_client(http_request, user_id)}",
             _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
         ):
             raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
@@ -309,6 +326,16 @@ async def analyze_job_description_ats(
             job_id = str(uuid.uuid4())
             # Queue priority must be derived server-side, never from the client body.
             user_plan = await _derive_user_plan(db, user_id)
+            # Register meta + state before enqueueing, otherwise GET /jobs/{id}/state
+            # and /jobs/{id}/result 404 forever even though the job runs.
+            # Best-effort like the deep-analyze path: the worker's job.started event
+            # re-creates the snapshot, so a Redis blip must not fail the submit.
+            try:
+                await _write_initial_redis_state(job_id, "job_description_analysis", user_id, 15)
+            except Exception as state_exc:
+                logger.warning(
+                    f"Redis state write failed for job {job_id}: {state_exc} — proceeding without state"
+                )
             submit_job_description_analysis(
                 job_description=request.job_description,
                 job_id=job_id,
@@ -556,7 +583,7 @@ async def quick_score_ats(request: QuickScoreRequest, http_request: Request):
     No auth required (works for /try anonymous users).
     """
     if not await _rate_limit_ok(
-        f"ratelimit:ats-rule:quick-score:{_client_ip(http_request)}",
+        f"ratelimit:ats-rule:quick-score:{_rate_limit_client(http_request)}",
         _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
     ):
         raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
@@ -680,9 +707,9 @@ async def deep_analyze_resume(
         # IP-based + global rate limit independent of the trial feature flag and
         # of the attacker-controlled device_fingerprint, so rotating fingerprints
         # cannot bypass it.
-        ip = _client_ip(http_request)
+        client_bucket = _rate_limit_client(http_request)
         if not await _rate_limit_ok(
-            f"ratelimit:deepanalyze:ip:{ip}", _ANON_DEEP_IP_LIMIT, _ANON_DEEP_IP_WINDOW
+            f"ratelimit:deepanalyze:ip:{client_bucket}", _ANON_DEEP_IP_LIMIT, _ANON_DEEP_IP_WINDOW
         ):
             raise HTTPException(
                 status_code=429,
@@ -1035,7 +1062,7 @@ async def simulate_ats(
     Responses are cached by content+ATS hash for 30 minutes.
     """
     if not await _rate_limit_ok(
-        f"ratelimit:ats-rule:simulate:{_client_ip(http_request)}",
+        f"ratelimit:ats-rule:simulate:{_rate_limit_client(http_request)}",
         _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
     ):
         raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
@@ -1163,7 +1190,7 @@ async def keyword_density(
     location and overall coverage score.
     """
     if not await _rate_limit_ok(
-        f"ratelimit:ats-rule:keyword-density:{_client_ip(http_request)}",
+        f"ratelimit:ats-rule:keyword-density:{_rate_limit_client(http_request)}",
         _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
     ):
         raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")

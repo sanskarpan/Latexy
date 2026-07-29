@@ -1,9 +1,9 @@
 import React, { useState, useCallback } from 'react'
 import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
-import { initApiClient } from '../../lib/api-client.js'
+import { ApiClient, initApiClient } from '../../lib/api-client.js'
 import { writeConfig } from '../../lib/config.js'
-import { $session } from '../../stores/session.js'
+import { $session, appUrl } from '../../stores/session.js'
 import { closeOverlay } from '../../stores/overlay.js'
 import { addMessage } from '../../stores/messages.js'
 import { wsClient } from '../../lib/ws-client.js'
@@ -34,11 +34,13 @@ export function LoginOverlay(): React.ReactElement {
     setErrorMsg(null)
 
     const session = $session.get()
-    const client = initApiClient(session.backendUrl, null)
+    // Better Auth is mounted on the Next.js app, not the FastAPI backend — use a dedicated
+    // client so the global one keeps pointing at the backend
+    const authClient = new ApiClient({ baseUrl: appUrl(session) })
 
     try {
       // Better Auth signin endpoint
-      const res = await client.post<AuthResponse>('/api/auth/sign-in/email', {
+      const res = await authClient.post<AuthResponse>('/api/auth/sign-in/email', {
         email: email.trim(),
         password: val,
       })

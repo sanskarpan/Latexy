@@ -1,5 +1,6 @@
 """Tests for Feature 71: Watermark Control."""
 
+import uuid
 from unittest.mock import patch
 
 import pytest
@@ -89,6 +90,7 @@ class TestCompileWatermarkedEndpoint:
             json={
                 "latex_content": SIMPLE_LATEX,
                 "watermark": "DRAFT",
+                "device_fingerprint": f"test_fp_{uuid.uuid4().hex}",
             },
         )
         assert resp.status_code == 200
@@ -105,11 +107,19 @@ class TestCompileWatermarkedEndpoint:
         mock_submit.return_value = "unused"
         resp1 = await client.post(
             "/jobs/compile-watermarked",
-            json={"latex_content": SIMPLE_LATEX, "watermark": "DRAFT"},
+            json={
+                "latex_content": SIMPLE_LATEX,
+                "watermark": "DRAFT",
+                "device_fingerprint": f"test_fp_{uuid.uuid4().hex}",
+            },
         )
         resp2 = await client.post(
             "/jobs/compile-watermarked",
-            json={"latex_content": SIMPLE_LATEX, "watermark": "DRAFT"},
+            json={
+                "latex_content": SIMPLE_LATEX,
+                "watermark": "DRAFT",
+                "device_fingerprint": f"test_fp_{uuid.uuid4().hex}",
+            },
         )
         assert resp1.status_code == 200
         assert resp2.status_code == 200
@@ -170,8 +180,21 @@ class TestCompileWatermarkedEndpoint:
             json={
                 "latex_content": SIMPLE_LATEX,
                 "watermark": "CONFIDENTIAL",
+                "device_fingerprint": f"test_fp_{uuid.uuid4().hex}",
             },
         )
         mock_submit.assert_called_once()
         call_kwargs = mock_submit.call_args.kwargs
         assert call_kwargs.get("watermark") == "CONFIDENTIAL"
+
+    @patch("app.api.job_routes.submit_latex_compilation")
+    async def test_anonymous_without_fingerprint_is_refused(
+        self, mock_submit, client: AsyncClient
+    ):
+        """This endpoint runs a real pdflatex, so it can't be an open compile path."""
+        resp = await client.post(
+            "/jobs/compile-watermarked",
+            json={"latex_content": SIMPLE_LATEX, "watermark": "DRAFT"},
+        )
+        assert resp.status_code == 400
+        mock_submit.assert_not_called()

@@ -86,9 +86,15 @@ os.environ["JWT_SECRET_KEY"] = "test_jwt_secret_32chars_minimum_!"
 os.environ["BETTER_AUTH_SECRET"] = "test_secret_key_32chars_minimum_!"
 os.environ.setdefault("API_KEY_ENCRYPTION_KEY", "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
-os.environ.setdefault("CELERY_BROKER_URL", "redis://localhost:6379/15")
-os.environ.setdefault("CELERY_RESULT_BACKEND", "redis://localhost:6379/15")
+# Redis DB 15 is the test DB and reset_test_redis() flushes it wholesale. These
+# must be assigned, not setdefault: load_dotenv() above already imported the dev
+# REDIS_URL (db 0), so a setdefault left the suite flushing the running dev
+# stack's job keys mid-run — jobs vanished seconds after completing and
+# GET /jobs/{id}/state started answering "Job not found".
+_TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")
+os.environ["REDIS_URL"] = _TEST_REDIS_URL
+os.environ["CELERY_BROKER_URL"] = _TEST_REDIS_URL
+os.environ["CELERY_RESULT_BACKEND"] = _TEST_REDIS_URL
 os.environ["OPENAI_API_KEY"] = ""  # always disable live LLM in tests — use mocks instead
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # DEBUG=true in tests to get verbose error messages in responses.
@@ -120,14 +126,65 @@ def reset_test_redis():
     """Flush the dedicated Redis test DB so repeated runs stay deterministic."""
     import redis as sync_redis
 
-    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/15")
-    client = sync_redis.from_url(redis_url, socket_connect_timeout=3)
+    client = sync_redis.from_url(_TEST_REDIS_URL, socket_connect_timeout=3)
     client.flushdb()
     yield
     client.flushdb()
 
 from app.database.connection import get_db
 from app.main import app
+
+# ── LaTeX recorder-file confinement ───────────────────────────────────────
+# The engine writes <jobname>.fls only when it actually runs; the worker unit tests
+# mock subprocess.Popen, so no recorder file is ever produced and the fail-closed
+# "no recorder file" rule would trip in every one of them. Relax THAT rule only —
+# reads outside the jail and a clobbered recorder file stay detected. The real
+# function, missing-file rule included, is exercised in test_latex_sandbox.py.
+
+
+@pytest.fixture(autouse=True)
+def _reset_async_redis_singletons():
+    """Drop the async Redis client singletons before each test.
+
+    aioredis connection pools bind to the event loop that created their
+    connections. A test that drives a coroutine via ``asyncio.run()`` (its own
+    short-lived loop — common when exercising Celery task bodies) can leave a
+    connection bound to a now-closed loop inside the *shared* module-level
+    client. A later test that reuses that client then raises "Event loop is
+    closed" — which surfaces, since the quota meter added in this branch, as a
+    503 on the first authenticated job submission that runs afterwards.
+
+    Clearing the async singletons (module globals + manager attributes) forces
+    each test to lazily re-init the clients on its own running loop via
+    get_redis_client()/get_redis_cache_client(). Sync clients are untouched (no
+    loop affinity), and production is single-loop so this is test-only.
+    """
+    import app.core.redis as _redis_mod
+
+    _redis_mod.redis_client = None
+    _redis_mod.redis_cache_client = None
+    _redis_mod.redis_manager.redis_client = None
+    _redis_mod.redis_manager.redis_cache_client = None
+    yield
+
+
+@pytest.fixture(autouse=True)
+def relax_missing_recorder_file(monkeypatch):
+    from app.services import latex_service as _ls
+
+    _real = _ls.find_recorder_read_escape
+
+    def _tolerate_missing(fls_file, workspace, *, require_recorder=True):
+        return _real(fls_file, workspace, require_recorder=False)
+
+    for module in (
+        "app.services.latex_service",
+        "app.workers.latex_worker",
+        "app.workers.orchestrator",
+    ):
+        monkeypatch.setattr(f"{module}.find_recorder_read_escape", _tolerate_missing)
+    yield
+
 
 # ── Dependency Overrides ──────────────────────────────────────────────────
 
@@ -361,6 +418,29 @@ async def auth_headers(db_session: AsyncSession) -> dict:
         text(
             "INSERT INTO users (id, email, name, email_verified, subscription_plan, subscription_status, trial_used) "
             "VALUES (:id, :email, 'Test User', true, 'free', 'active', false) ON CONFLICT (id) DO NOTHING"
+        ),
+        {"id": user_id, "email": f"test_{user_id.replace('-', '')}@example.com"},
+    )
+    await db_session.commit()
+    token = await _insert_session(db_session, user_id)
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+async def pro_auth_headers(db_session: AsyncSession) -> dict:
+    """Authorization headers for a PRO test user (unlimited plan quotas).
+
+    The default ``auth_headers`` user is on the FREE plan, whose compile and
+    optimization allowances are enforced by the usage meter (see
+    test_usage_quotas.py). Tests that exercise the mechanics of an
+    AI/optimization route — rather than the money meter itself — should use this
+    fixture so the allowance is never the thing under test.
+    """
+    user_id = str(uuid.uuid4())
+    await db_session.execute(
+        text(
+            "INSERT INTO users (id, email, name, email_verified, subscription_plan, subscription_status, trial_used) "
+            "VALUES (:id, :email, 'Pro Test User', true, 'pro', 'active', false) ON CONFLICT (id) DO NOTHING"
         ),
         {"id": user_id, "email": f"test_{user_id.replace('-', '')}@example.com"},
     )

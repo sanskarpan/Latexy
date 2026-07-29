@@ -11,11 +11,12 @@
 
 import { betterAuth } from 'better-auth'
 import { Pool } from 'pg'
-import { sendEmail } from './email'
+import { assertEmailTransportConfigured, sendEmail } from './email'
 
 const APP_URL = process.env.BETTER_AUTH_URL || 'http://localhost:5180'
 
-const pool = new Pool({
+/** Shared connection pool — also used by the auth rate-limit gate. */
+export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 })
 
@@ -37,6 +38,35 @@ function getAuthSecret(): string {
   console.warn('[auth] BETTER_AUTH_SECRET is not set — using an insecure development-only secret.')
   return 'dev-only-insecure-secret-do-not-use-in-production'
 }
+
+/**
+ * Where the browser lands after Better Auth's GET /api/auth/verify-email has
+ * consumed the token.
+ *
+ * That endpoint redirects to the bare `callbackURL` on success (the token is
+ * spent and stripped) and to `callbackURL` + `&error=CODE` on failure — so the
+ * landing page cannot tell the two apart from the absence of a token. The
+ * explicit `verified=1` marker is that signal; see app/verify-email/page.tsx.
+ */
+export const VERIFY_EMAIL_CALLBACK = '/verify-email?verified=1'
+
+/**
+ * Point a Better Auth verification link at our verify-email result page.
+ * Applied centrally so every sender (sign-up auto-send, the in-app resend
+ * banner) gets the same landing page. Exported for tests.
+ */
+export function withVerifyEmailCallback(url: string): string {
+  const link = new URL(url)
+  link.searchParams.set('callbackURL', VERIFY_EMAIL_CALLBACK)
+  return link.toString()
+}
+
+// A production deploy with no mail transport can still sign users up, but the
+// verification / reset mail it promises them never leaves the box — and the
+// per-send throw is swallowed by Better Auth's background-task wrapper, so the
+// misconfiguration is otherwise invisible until a customer reports it. Fail at
+// boot instead, the same way a missing BETTER_AUTH_SECRET does.
+assertEmailTransportConfigured()
 
 export const auth = betterAuth({
   database: pool,
@@ -75,8 +105,14 @@ export const auth = betterAuth({
         subject: 'Reset your Latexy password',
         text: `Reset your password using this link: ${url}`,
         html: resetPasswordEmail(url),
+        link: url,
       })
     },
+    // A password reset is the standard remediation after a credential leak, so
+    // it has to invalidate every session an attacker may already hold —
+    // otherwise a stolen better-auth.session_token stays usable for its full
+    // 7-day lifetime after the victim "secures" the account.
+    revokeSessionsOnPasswordReset: true,
   },
 
   // Soft email verification — built, not blocking. Sent automatically on
@@ -85,23 +121,31 @@ export const auth = betterAuth({
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
+      const link = withVerifyEmailCallback(url)
       await sendEmail({
         to: user.email,
         subject: 'Verify your Latexy email',
-        text: `Verify your email using this link: ${url}`,
-        html: verifyEmailTemplate(url),
+        text: `Verify your email using this link: ${link}`,
+        html: verifyEmailTemplate(link),
+        link,
       })
     },
   },
 
-  // Rate limiting for the Next-server auth endpoints (sign-in / sign-up /
-  // reset / verify) — the FastAPI limiter does not cover these. Default
-  // in-memory store; window in seconds, max requests per window per IP.
+  // Second, per-process layer of rate limiting on the Next-server auth
+  // endpoints (the FastAPI limiter does not cover these). The authoritative,
+  // cross-instance limit is the atomic Postgres gate that runs in front of
+  // `auth.handler` — see lib/auth-rate-limit.ts and app/api/auth/[...all].
+  //
+  // Better Auth's limiter is deliberately left on its default in-memory
+  // storage: its interface reads the counter on request and writes it on
+  // response, so no storage backend can make it correct under concurrency,
+  // and a DB-backed `customStorage` additionally lets a DB blip 500 every
+  // auth route (errors propagate straight out of `auth.handler`).
   rateLimit: {
     enabled: true,
     window: 60, // seconds
-    max: 20, // requests per window per IP (Better Auth applies stricter custom rules to sensitive paths internally)
-    storage: 'memory',
+    max: 20, // requests per window per IP (Better Auth applies stricter rules to sensitive paths internally)
   },
 
   // Social OAuth providers — only active when both client ID + secret are provided

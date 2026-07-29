@@ -24,6 +24,44 @@ describe('config', () => {
     expect(cfg.token).toBeNull()
   })
 
+  it('defaults appUrl to the Next.js app origin (Better Auth lives there)', async () => {
+    const { readConfig } = await import('../lib/config.js')
+    const cfg = await readConfig()
+    expect(cfg.appUrl).toBe('http://localhost:5180')
+  })
+
+  it('LATEXY_API_URL / LATEXY_APP_URL win over a stale on-disk config', async () => {
+    const { readConfig, writeConfig } = await import('../lib/config.js')
+    await writeConfig({ backendUrl: 'http://localhost:8032', appUrl: 'http://localhost:9999' })
+    process.env['LATEXY_API_URL'] = 'http://localhost:8030'
+    process.env['LATEXY_APP_URL'] = 'http://localhost:5180'
+    try {
+      const cfg = await readConfig()
+      expect(cfg.backendUrl).toBe('http://localhost:8030')
+      expect(cfg.appUrl).toBe('http://localhost:5180')
+    } finally {
+      delete process.env['LATEXY_API_URL']
+      delete process.env['LATEXY_APP_URL']
+    }
+  })
+
+  it('does not persist ephemeral env overrides to disk on write', async () => {
+    const { readConfig, writeConfig } = await import('../lib/config.js')
+    await writeConfig({ backendUrl: 'http://localhost:8032', appUrl: 'http://localhost:9999' })
+    process.env['LATEXY_API_URL'] = 'http://staging.example.com'
+    process.env['LATEXY_APP_URL'] = 'http://staging-app.example.com'
+    try {
+      await writeConfig({ token: 'tok-from-login' })
+    } finally {
+      delete process.env['LATEXY_API_URL']
+      delete process.env['LATEXY_APP_URL']
+    }
+    const cfg = await readConfig()
+    expect(cfg.token).toBe('tok-from-login')
+    expect(cfg.backendUrl).toBe('http://localhost:8032')
+    expect(cfg.appUrl).toBe('http://localhost:9999')
+  })
+
   it('round-trips token write + read', async () => {
     const { readConfig, writeConfig } = await import('../lib/config.js')
     await writeConfig({ token: 'tok123', email: 'a@b.com' })

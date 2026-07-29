@@ -76,6 +76,42 @@ def file_exists(key: str) -> bool:
         raise
 
 
+def list_objects(prefix: str, max_keys: int = 1000) -> list[dict]:
+    """
+    List objects under a prefix. Returns dicts with "key", "size" and "last_modified".
+
+    Paginated so callers see every object, not just the first page.
+    """
+    client = _get_client()
+    paginator = client.get_paginator("list_objects_v2")
+    objects: list[dict] = []
+    for page in paginator.paginate(
+        Bucket=settings.MINIO_BUCKET,
+        Prefix=prefix,
+        PaginationConfig={"MaxItems": max_keys},
+    ):
+        for obj in page.get("Contents", []):
+            objects.append({
+                "key": obj["Key"],
+                "size": obj.get("Size", 0),
+                "last_modified": obj.get("LastModified"),
+            })
+    return objects
+
+
+def delete_object(key: str) -> bool:
+    """Delete an object. Returns False (without raising) if it does not exist."""
+    client = _get_client()
+    try:
+        client.delete_object(Bucket=settings.MINIO_BUCKET, Key=key)
+        logger.info(f"Deleted {key}")
+        return True
+    except ClientError as e:
+        if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
+            return False
+        raise
+
+
 def generate_presigned_url(key: str, ttl: int = 3600) -> str:
     """Generate a presigned GET URL for an object (default 1-hour TTL)."""
     client = _get_client()

@@ -1,0 +1,1948 @@
+[
+ {
+  "method": "POST",
+  "path": "/admin/career-graph/seed",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"e666dff1-c08a-4e88-aff5-050220247624\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/admin/feature-flags",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"f9025d32-72af-413f-a064-5d061dd7ca33\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/admin/feature-flags/{key}",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"67dfd012-44f0-4a5f-8036-0ddabba7320e\"},\"detail\":\"Authentication required\"}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/admin/snippets/seed",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"1f72e0cb-ba42-4e76-9f37-171824e01330\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/ai/age-analysis",
+  "status": 200,
+  "body": "{\"entries\":[],\"has_old_entries\":false}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ai/confidence-score",
+  "status": 200,
+  "body": "{\"overall\":66,\"writing_quality\":100,\"completeness\":0,\"quantification\":50,\"formatting\":90,\"section_order\":80,\"grade\":\"D\",\"improvements\":[\"Add metrics to bullet points \u2014 include numbers, percentages, and scales (e.g. 'Reduced load time by 40%')\",\"Add missing sections \u2014 a complete resume should have Experience, Education, Skills, and Contact information\",\"Quantify achievements with specific numbers and metrics to demonstrate impact\"],\"cached\":false}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ai/explain-error",
+  "status": 200,
+  "body": "{\"success\":true,\"explanation\":\"The error message 'probe' is not very informative and usually indicates that there is a problem with the LaTeX setup or the way the document is being processed. Since the surrounding code is empty, it suggests that there might be an issue with the document class or preamble that is not visible in the provided snippet.\",\"suggested_fix\":\"Make sure to include a proper document structure with a document class and some content. For example, start with '\\\\documentclass{article}' and include at least a '\\\\begin{document}' and '\\\\end{document}' to create a valid LaTeX document.\",\"corrected_code\":\"\\\\documentclass{article}\\n\\\\begin{document}\\nHello, World!\\n\\\\end{document}\",\"source\":\"llm\",\"cached\":false,\"processing_time\":5.481}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ai/format-contacts",
+  "status": 200,
+  "body": "{\"changes\":[],\"formatted_latex\":\"probe\"}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ai/generate-bullets",
+  "status": 200,
+  "body": "{\"bullets\":[\"Designed and implemented probing systems, increasing efficiency by 30% and reducing costs by $50K annually.\",\"Developed probing protocols that enhanced data accuracy by 25%, leading to improved project outcomes.\",\"Managed a team of 10 engineers to deliver probing solutions, achieving project milestones 3 weeks ahead of schedule.\",\"Analyzed probing data trends, identifying key insights that boosted operational effectiveness by 15%.\",\"Collaborated with cross-functional teams to integrate probing technologies, resulting in a 40% faster data acquisition process.\"],\"cached\":false}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ai/generate-publications",
+  "status": 422,
+  "body": "{\"error\":{\"code\":\"validation_error\",\"message\":\"Request validation failed.\",\"request_id\":\"b3571302-6ff3-47e9-a25c-50e0058185c7\",\"details\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"identifier\"],\"msg\":\"Value error, ORCID iD must match the format 0000-0000-0000-0000 (16 digits in four groups, last digit may be X)\",\"input\":\"probe\",\"ctx\":{\"error\":{}}}]},\"detail\":[{\"type\":\"value_error\",\"loc\":[\"body\",\"identifier\"],\"msg\":\"Value error, ORCID iD must match the format 0000-0000-0000-0000 (16 digits in four groups, last digit may be X)\",\"input\":\"probe\",\"ctx\":{\"error\":{}}}]}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ai/generate-summary",
+  "status": 200,
+  "body": "{\"summaries\":[{\"emphasis\":\"technical\",\"title\":\"Technical Skills Focus\",\"text\":\"Innovative software engineer with expertise in full-stack development, proficient in Java, Python, and JavaScript. Spearheaded the successful migration of legacy systems to cloud-based solutions, enhancing operational efficiency by 30%.\"},{\"emphasis\":\"leadership\",\"title\":\"Leadership and Impact\",\"text\":\"Strategic leader with a proven track record of driving cross-functional teams to exceed performance goals. Increased departmental productivity by 40% through the implementation of agile methodologies and effective stakeholder engagement.\"},{\"emphasis\":\"unique\",\"title\":\"Distinctive Expertise\",\"text\":\"Versatile professional with a unique blend of technical acumen and creative problem-solving skills. Recognized for developing a patented algorithm that reduced data processing time by 50%, setting a new industry stan",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/ai/personas",
+  "status": 200,
+  "body": "[{\"key\":\"startup\",\"label\":\"Startup / Scale-up\",\"description\":\"Lean, impact-driven language for fast-moving environments. Emphasize metrics, growth, and ownership.\"},{\"key\":\"enterprise\",\"label\":\"Enterprise / Corporate\",\"description\":\"Formal, process-oriented language suited for large organizations and structured hiring pipelines.\"},{\"key\":\"academic\",\"label\":\"Academic / Research\",\"description\":\"Research-focused style highlighting publications, grants, teaching, and scholarly contributions.\"},{\"key\":\"career_change\",\"label\":\"Career Change / Pivot\",\"description\":\"Surfaces transferable skills and reframes past experience to align with a new field.\"},{\"key\":\"executive\",\"label\":\"Executive / C-Suite\",\"description\":\"Strategic, board-level language focusing on P&L, vision, and organizational leadership.\"}]",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/ai/proofread",
+  "status": 200,
+  "body": "{\"issues\":[],\"summary\":{},\"overall_score\":100}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ai/reorder-sections",
+  "status": 200,
+  "body": "{\"current_order\":[],\"suggested_order\":[],\"rationale\":\"No \\\\section{} blocks found in the supplied LaTeX.\",\"reordered_latex\":\"probe\",\"cached\":false}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ai/rewrite",
+  "status": 200,
+  "body": "{\"rewritten\":\"\\\\textbf{investigate}\",\"action\":\"improve\",\"cached\":false}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ai/salary-estimate",
+  "status": 200,
+  "body": "{\"currency\":\"USD\",\"low\":120000,\"median\":145000,\"high\":180000,\"percentile\":72,\"key_skills\":[\"Python\",\"Machine Learning\",\"AWS\"],\"disclaimer\":\"Estimates are based on publicly available market data and may vary.\",\"cached\":false}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ai/spell-check",
+  "status": 200,
+  "body": "{\"issues\":[],\"cached\":false}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ai/standardize-dates",
+  "status": 422,
+  "body": "{\"error\":{\"code\":\"validation_error\",\"message\":\"Request validation failed.\",\"request_id\":\"0325a5b4-d28f-4e29-bf99-cbca9678fc82\",\"details\":[{\"type\":\"string_pattern_mismatch\",\"loc\":[\"body\",\"target_format\"],\"msg\":\"String should match pattern '^(MMM YYYY|MMMM YYYY|YYYY-MM|MM/YYYY)$'\",\"input\":\"probe\",\"ctx\":{\"pattern\":\"^(MMM YYYY|MMMM YYYY|YYYY-MM|MM/YYYY)$\"}}]},\"detail\":[{\"type\":\"string_pattern_mismatch\",\"loc\":[\"body\",\"target_format\"],\"msg\":\"String should match pattern '^(MMM YYYY|MMMM YYYY|YYYY-MM|MM/YYYY)$'\",\"input\":\"probe\",\"ctx\":{\"pattern\":\"^(MMM YYYY|MMMM YYYY|YYYY-MM|MM/YYYY)$\"}}]}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ai/translate",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"a1244840-23db-4fb4-85e8-59ed73746e1c\"},\"detail\":\"Authentication required\"}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/analytics/conversion-funnel",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"af7d2d60-4f86-43dc-8e63-a6792ab74876\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/analytics/dashboard",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"242da479-be85-456f-b08e-56167dbe4e0a\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/analytics/me",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"8fb04459-af35-42fd-a187-83fefbb33220\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/analytics/me/timeseries",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"58ea477e-bcf0-41cc-82ab-6da918195f0b\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/analytics/system",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"faf49ec0-b4b4-422c-a0d9-b74737e47ed1\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/analytics/track",
+  "status": 201,
+  "body": "{\"message\":\"Event tracked successfully\"}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/analytics/track/compilation",
+  "status": 201,
+  "body": "{\"message\":\"Compilation event tracked successfully\"}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/analytics/track/feature-usage",
+  "status": 201,
+  "body": "{\"message\":\"Feature usage tracked successfully\"}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/analytics/track/optimization",
+  "status": 201,
+  "body": "{\"message\":\"Optimization event tracked successfully\"}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/analytics/track/page-view",
+  "status": 201,
+  "body": "{\"message\":\"Page view tracked successfully\"}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/analytics/user/{user_id}",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"04a8d9b6-4a54-40f2-96b2-0148b1b9b96d\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/v1/ats/score",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Valid developer API key required\",\"request_id\":\"e92825c6-c3a2-4d87-ac58-33e39c73daf8\"},\"detail\":\"Valid developer API key required\"}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/api/v1/compile",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Valid developer API key required\",\"request_id\":\"a4f59258-5de3-4676-b21b-809f6e913f9d\"},\"detail\":\"Valid developer API key required\"}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/api/v1/jobs/{job_id}",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Valid developer API key required\",\"request_id\":\"ae2ae5b0-e1aa-4029-a653-1b25d00d39d8\"},\"detail\":\"Valid developer API key required\"}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/api/v1/jobs/{job_id}/pdf",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Valid developer API key required\",\"request_id\":\"414f1746-d821-49ef-9852-403f50f48257\"},\"detail\":\"Valid developer API key required\"}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/api/v1/optimize",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Valid developer API key required\",\"request_id\":\"6f77efc7-cce0-43bb-9025-b7100116ecbf\"},\"detail\":\"Valid developer API key required\"}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/apply/detect",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"458f8db0-cf2a-4d3d-9d00-5a7a017f534f\"},\"detail\":\"Authentication required\"}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/apply/greenhouse",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"aa20da01-621e-4e49-a119-bb6443db4235\"},\"detail\":\"Authentication required\"}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/apply/greenhouse/preview",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"bfe36713-0e36-4234-a986-846e27d8e6f8\"},\"detail\":\"Authentication required\"}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/apply/lever",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"1822e3bd-f91f-4f07-9ce5-2ee002a3ca3b\"},\"detail\":\"Authentication required\"}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/apply/lever/preview",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"e2dc483c-e9bc-4e9e-91e4-592cd76d843d\"},\"detail\":\"Authentication required\"}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/apply/submissions",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"5c9385c7-ea23-4062-81ee-7057824ede3e\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/apply/submissions/{submission_id}",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"9df59722-30c0-48d0-bbc2-e9a642ea4b5f\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/ats/analyze-job-description",
+  "status": 200,
+  "body": "{\"success\":true,\"job_id\":\"f0088c92-b575-4f02-aa8f-bb55d8617583\",\"keywords\":null,\"requirements\":null,\"preferred_qualifications\":null,\"detected_industry\":null,\"analysis_metrics\":null,\"optimization_tips\":null,\"processing_time\":null,\"message\":\"Job description analysis submitted successfully. Use the job ID to check status and results.\"}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/ats/benchmark",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"baf8c1da-f89d-4c90-9b0f-db26e89483f8\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/ats/deep-analyze",
+  "status": 422,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"LaTeX content too short (minimum 50 characters)\",\"request_id\":\"8c1bba4b-d5d6-4c8f-a534-b44342786858\"},\"detail\":\"LaTeX content too short (minimum 50 characters)\"}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/ats/industry-keywords/{industry}",
+  "status": 200,
+  "body": "{\"success\":true,\"industry\":\"technology\",\"keywords\":[\"software\",\"programming\",\"development\",\"coding\",\"algorithm\",\"database\",\"API\",\"cloud\",\"DevOps\",\"agile\",\"scrum\",\"machine learning\",\"artificial intelligence\",\"full-stack\"],\"count\":14,\"message\":\"Retrieved 14 keywords for technology industry\"}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/ats/industry-profiles",
+  "status": 200,
+  "body": "{\"success\":true,\"profiles\":[{\"key\":\"tech_saas\",\"label\":\"Technology / SaaS\"},{\"key\":\"finance_banking\",\"label\":\"Finance / Banking\"},{\"key\":\"healthcare\",\"label\":\"Healthcare / Clinical\"},{\"key\":\"consulting\",\"label\":\"Consulting / Strategy\"},{\"key\":\"generic\",\"label\":\"General\"}]}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/ats/keyword-density",
+  "status": 200,
+  "body": "{\"keywords\":[{\"keyword\":\"probe\",\"status\":\"present\",\"count\":1,\"required\":true,\"suggested_location\":null}],\"coverage_score\":100}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ats/quick-score",
+  "status": 200,
+  "body": "{\"score\":15,\"grade\":\"F\",\"sections_found\":[],\"missing_sections\":[\"contact_info\",\"experience\",\"education\",\"skills\"],\"keyword_match_percent\":null}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ats/recommendations",
+  "status": 200,
+  "body": "{\"success\":true,\"priority_improvements\":[],\"quick_wins\":[],\"long_term_improvements\":[],\"industry_specific_tips\":[],\"estimated_score_improvement\":21.0,\"message\":\"Generated 0 priority improvements and 0 quick wins\"}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ats/score",
+  "status": 200,
+  "body": "{\"success\":true,\"job_id\":\"bd3e6f26-780b-4910-9756-2649d5789e67\",\"ats_score\":null,\"category_scores\":null,\"recommendations\":null,\"warnings\":null,\"strengths\":null,\"detailed_analysis\":null,\"processing_time\":null,\"message\":\"ATS scoring job submitted successfully. Use the job ID to check status and results.\",\"timestamp\":null,\"industry_key\":null,\"industry_label\":null}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ats/semantic-match",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"3adc70e9-ab36-4fd1-8e8b-495fd4ff5bd0\"},\"detail\":\"Authentication required\"}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/ats/simulate",
+  "status": 422,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Unknown ats_name 'probe'. Valid values: ['ashby', 'greenhouse', 'icims', 'lever', 'smartrecruiters', 'taleo', 'workday']\",\"request_id\":\"e9f4f31f-363c-42ad-9010-6cd772623c5b\"},\"detail\":\"Unknown ats_name 'probe'. Valid values: ['ashby', 'greenhouse', 'icims', 'lever', 'smartrecruiters', 'taleo', 'workday']\"}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/ats/simulate/profiles",
+  "status": 200,
+  "body": "{\"profiles\":[{\"key\":\"greenhouse\",\"label\":\"Greenhouse\",\"tier\":\"good\"},{\"key\":\"lever\",\"label\":\"Lever\",\"tier\":\"good\"},{\"key\":\"ashby\",\"label\":\"Ashby\",\"tier\":\"good\"},{\"key\":\"workday\",\"label\":\"Workday\",\"tier\":\"medium\"},{\"key\":\"smartrecruiters\",\"label\":\"SmartRecruiters\",\"tier\":\"medium\"},{\"key\":\"taleo\",\"label\":\"Taleo (Oracle)\",\"tier\":\"poor\"},{\"key\":\"icims\",\"label\":\"iCIMS\",\"tier\":\"medium\"}]}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/ats/supported-industries",
+  "status": 200,
+  "body": "{\"success\":true,\"industries\":[{\"key\":\"tech_saas\",\"label\":\"Technology / SaaS\"},{\"key\":\"finance_banking\",\"label\":\"Finance / Banking\"},{\"key\":\"healthcare\",\"label\":\"Healthcare / Clinical\"},{\"key\":\"consulting\",\"label\":\"Consulting / Strategy\"},{\"key\":\"generic\",\"label\":\"General\"}],\"count\":5,\"message\":\"Retrieved 5 supported industries\"}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/billing/validate-coupon",
+  "status": 200,
+  "body": "{\"valid\":false,\"message\":\"Invalid or expired code\",\"discountPercent\":null,\"code\":null}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/billing/webhook",
+  "status": 503,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Billing is enabled in the product, but Razorpay is not fully configured in this environment.\",\"request_id\":\"db0b898f-8c85-4f2a-8212-ea99d0fbe431\"},\"detail\":\"Billing is enabled in the product, but Razorpay is not fully configured in this environment.\"}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/byok/api-keys",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"4fee581b-3437-4dcb-8e79-fb491a66ff91\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/byok/api-keys",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"2634dd3e-af27-4620-abc8-bd9bacfd4f8a\"},\"detail\":\"Authentication required\"}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/byok/api-keys/{key_id}",
+  "status": 401,
+  "body": "{\"error\":{\"code\":\"http_error\",\"message\":\"Authentication required\",\"request_id\":\"d24e2903-1f48-440f-8dc8-f450fd5003f2\"},\"detail\":\"Authentication required\"}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/byok/capabilities/{provider}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/byok/generate",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/byok/load-providers",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/byok/models/{provider}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/byok/providers",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/byok/system/health",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/byok/test/{provider}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/byok/usage-stats",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/byok/validate",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/career/analyses/{resume_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/career/analysis/{analysis_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/career/analyze",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/career/roles",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/compile",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/config/feature-flags",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/cover-letters/",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/cover-letters/generate",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/cover-letters/resume/{resume_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/cover-letters/stats",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/cover-letters/{cover_letter_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PUT",
+  "path": "/cover-letters/{cover_letter_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/cover-letters/{cover_letter_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/developer/keys",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/developer/keys",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "PATCH",
+  "path": "/developer/keys/{key_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/developer/keys/{key_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/developer/usage",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/download/{job_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/download/{job_id}/synctex",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/dropbox/callback",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/dropbox/connect",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/dropbox/disconnect",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/dropbox/resumes/{resume_id}/disable",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/dropbox/resumes/{resume_id}/enable",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/dropbox/resumes/{resume_id}/pull",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/dropbox/resumes/{resume_id}/push",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/dropbox/resumes/{resume_id}/status",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/dropbox/status",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/export/content/{fmt}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/export/formats",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/export/{resume_id}/canva",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/export/{resume_id}/figma",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/export/{resume_id}/{fmt}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/formats/detect",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/formats/info/{format_name}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/formats/parse",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/formats/supported",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/formats/upload",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/formats/validate",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/github/callback",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/github/connect",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/github/disconnect",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/github/resumes/{resume_id}/disable",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/github/resumes/{resume_id}/enable",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/github/resumes/{resume_id}/pull",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/github/resumes/{resume_id}/push",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/github/resumes/{resume_id}/status",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/github/status",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/health",
+  "status": 200,
+  "body": "{\"status\":\"healthy\",\"version\":\"1.0.0\",\"latex_available\":true,\"database\":\"ok\",\"redis\":\"ok\"}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/interview-prep/generate",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/interview-prep/{prep_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/interview-prep/{prep_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/jobs/",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/jobs/batch",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/jobs/batch/{batch_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/jobs/compile-watermarked",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/jobs/health",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/jobs/submit",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/jobs/system/cleanup",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/jobs/{job_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/jobs/{job_id}/result",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/jobs/{job_id}/state",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/jobs/{job_id}/stream",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/logs/{job_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/macros",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/macros",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "PATCH",
+  "path": "/macros/{macro_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/macros/{macro_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/me",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/mendeley/callback",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/mendeley/connect",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/mendeley/disconnect",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/mendeley/import",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/mendeley/status",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/optimize",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/optimize-and-compile",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/portfolio/check-username",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/portfolio/resolve-domain",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/portfolio/setup",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/portfolio/verify-domain",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/portfolio/{username}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/public/compile",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/public/track-usage",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/public/trial-status",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/references/detect",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/references/fetch",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/references/fetch-orcid",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/builder",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/builder/seed-upload",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/builder/templates",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/error-history",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/export/bulk",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/merge",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/search",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/stats",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PUT",
+  "path": "/resumes/{resume_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/resumes/{resume_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/academic-cv-convert",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/academic-cv-report",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/analytics",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/archive",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/builder",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/builder",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/checkpoints",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/checkpoints",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/resumes/{resume_id}/checkpoints/{checkpoint_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/checkpoints/{checkpoint_id}/content",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/collaborators",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/collaborators",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/collaborators/{collab_user_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/resumes/{resume_id}/collaborators/{collab_user_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/comments",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/comments",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/comments/{comment_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/resumes/{resume_id}/comments/{comment_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/comments/{comment_id}/resolve",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/diff-with-parent",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/fork",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/generate-portfolio",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/generate-references",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/interview-prep",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/optimization-history",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/pin",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/quick-tailor",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/record-optimization",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/restore-optimization/{opt_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/score-history",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/settings",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/resumes/{resume_id}/share",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/resumes/{resume_id}/share",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/tags",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/unarchive",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/resumes/{resume_id}/unpin",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/resumes/{resume_id}/variants",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/scrape-job-description",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/settings/notifications",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PUT",
+  "path": "/settings/notifications",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/share/{share_token}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/snippets",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/snippets",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/snippets/{snippet_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/snippets/{snippet_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/snippets/{snippet_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/snippets/{snippet_id}/install",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/snippets/{snippet_id}/install",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/snippets/{snippet_id}/upvote",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/subscription/cancel",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/subscription/create",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/subscription/current",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/subscription/plans",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/subscription/student/verify/{token}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/team/invite",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/team/join/{token}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/team/seats",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/team/seats/{seat_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/telemetry/frontend",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/templates",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/templates/",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/templates/categories",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/templates/{template_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PUT",
+  "path": "/templates/{template_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/templates/{template_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/templates/{template_id}/activate",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/templates/{template_id}/deactivate",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/templates/{template_id}/pdf",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/templates/{template_id}/thumbnail",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/templates/{template_id}/use",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/tenants",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/tenants/current-context",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/tenants/my",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/tenants/{tenant_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "POST",
+  "path": "/tenants/{tenant_id}/domain/verify",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/tenants/{tenant_id}/members",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/tenants/{tenant_id}/members/invite",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/tenants/{tenant_id}/members/{target_user_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/tenants/{tenant_id}/stats",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/tracker/applications",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/tracker/applications",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/tracker/applications/{app_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PUT",
+  "path": "/tracker/applications/{app_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/tracker/applications/{app_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/tracker/applications/{app_id}/status",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/tracker/stats",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/workspaces",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/workspaces",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/workspaces/{workspace_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/workspaces/{workspace_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/workspaces/{workspace_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/workspaces/{workspace_id}/members/invite",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/workspaces/{workspace_id}/members/{target_user_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/workspaces/{workspace_id}/members/{target_user_id}/role",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/workspaces/{workspace_id}/resumes",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/workspaces/{workspace_id}/resumes/{resume_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/workspaces/{workspace_id}/resumes/{resume_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/workspaces/{workspace_id}/resumes/{resume_id}/notes",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/workspaces/{workspace_id}/resumes/{resume_id}/notes",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "PATCH",
+  "path": "/workspaces/{workspace_id}/resumes/{resume_id}/notes/{note_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "DELETE",
+  "path": "/workspaces/{workspace_id}/resumes/{resume_id}/notes/{note_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/zotero/bibtex/{resume_id}",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/zotero/callback",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/zotero/collections",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "GET",
+  "path": "/zotero/connect",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "DELETE",
+  "path": "/zotero/disconnect",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ },
+ {
+  "method": "POST",
+  "path": "/zotero/import",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": true
+ },
+ {
+  "method": "GET",
+  "path": "/zotero/status",
+  "status": 429,
+  "body": "{\"error\": \"Rate limit exceeded: 60 calls per minute\", \"retry_after\": 60}",
+  "sent": false
+ }
+]

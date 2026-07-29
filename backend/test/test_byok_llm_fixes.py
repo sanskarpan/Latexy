@@ -139,13 +139,16 @@ class TestAIKeyResolution:
 
     async def test_prefers_system_key_for_anonymous(self, monkeypatch):
         monkeypatch.setattr(air.settings, "OPENAI_API_KEY", "sk-sys")
-        key = await air._resolve_ai_api_key(None, None, "1.2.3.4")
-        assert key == "sk-sys"
+        resolved = await air._resolve_ai_api_key(None, None, "1.2.3.4")
+        assert resolved.key == "sk-sys"
+        # Platform key -> the plan's ai_assists allowance applies.
+        assert resolved.byok is False
 
     async def test_returns_none_when_no_key_configured(self, monkeypatch):
         monkeypatch.setattr(air.settings, "OPENAI_API_KEY", "")
-        key = await air._resolve_ai_api_key(None, None, "1.2.3.4")
-        assert key is None
+        resolved = await air._resolve_ai_api_key(None, None, "1.2.3.4")
+        assert resolved.key is None
+        assert not resolved
 
 
 # ── byok endpoint auth + stream gating (#6, #7) ──────────────────────────────
@@ -175,3 +178,70 @@ class TestByokEndpointGuards:
             },
         )
         assert r.status_code == 400
+
+
+# ── ai_assists metering: consistent, and never charged to BYOK callers ───────
+
+
+@pytest.mark.asyncio
+class TestAIAssistMetering:
+    """The platform allowance must cover every platform-key LLM call — and only
+    those. A BYOK caller pays their own provider, so charging them the platform
+    allowance would meter money we never spent."""
+
+    async def test_byok_caller_is_not_charged(self, monkeypatch):
+        async def _boom(*args, **kwargs):  # pragma: no cover - must not run
+            raise AssertionError("BYOK call must not spend the platform allowance")
+
+        monkeypatch.setattr(air.entitlement_service, "enforce_quota", _boom)
+        ticket = await air._charge_ai_assist(
+            None, "user-1", air.ResolvedAIKey("sk-user-own", True)
+        )
+        assert ticket is None
+
+    async def test_platform_key_caller_is_charged(self, monkeypatch):
+        charged = []
+
+        async def _enforce(dimension, **kwargs):
+            charged.append((dimension, kwargs["user_id"]))
+            return "ticket"
+
+        async def _plan(_db, _user_id):
+            return "free"
+
+        monkeypatch.setattr(air.entitlement_service, "enforce_quota", _enforce)
+        monkeypatch.setattr("app.api.job_routes._resolve_user_plan", _plan)
+        ticket = await air._charge_ai_assist(
+            None, "user-1", air.ResolvedAIKey("sk-platform", False)
+        )
+        assert ticket == "ticket"
+        assert charged == [("ai_assists", "user-1")]
+
+    async def test_anonymous_caller_is_not_charged(self, monkeypatch):
+        async def _boom(*args, **kwargs):  # pragma: no cover - must not run
+            raise AssertionError("anonymous callers have no plan allowance")
+
+        monkeypatch.setattr(air.entitlement_service, "enforce_quota", _boom)
+        assert await air._charge_ai_assist(None, None, air.ResolvedAIKey("sk", False)) is None
+
+
+class TestAIAssistCoverage:
+
+    def test_every_llm_endpoint_charges_the_allowance(self):
+        # Half-applied metering measured almost none of the real spend and made
+        # the UX inconsistent (some AI buttons 402, some never did).
+        import inspect
+
+        endpoints = [
+            air.generate_bullets,
+            air.generate_summary,
+            air.rewrite_text,
+            air.translate_resume,
+            air.explain_latex_error,
+            air.salary_estimate,
+            air.reorder_sections_endpoint,
+        ]
+        for endpoint in endpoints:
+            source = inspect.getsource(endpoint)
+            assert "_charge_ai_assist(" in source, endpoint.__name__
+            assert "refund_quota(" in source, endpoint.__name__

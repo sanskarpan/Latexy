@@ -1,7 +1,23 @@
-"""Entitlement service — feature access resolution for the Admin Control Plane.
+"""Entitlement service — feature access + usage quota resolution.
 
-Source of truth = DB (feature_flags kill-switches + plan_features matrix).
-Fast propagation = a single Redis JSON blob ``latexy:entitlements``:
+Two layers:
+
+1. BOOLEAN features (Admin Control Plane) — ``has_feature`` / ``get_state`` /
+   ``sync_has_feature``. Source of truth = DB (feature_flags kill-switches +
+   plan_features matrix), fanned out through a Redis blob.
+2. NUMERIC quotas — ``consume_quota`` / ``enforce_quota`` / ``refund_quota``.
+   Source of truth = ``config.PLAN_QUOTAS`` via ``config.get_plan_quota`` /
+   ``config.get_plan_quota_window``. Counters live in Redis under
+   ``latexy:quota:{dimension}:{user_id}:{period}`` and are incremented with an
+   atomic INCR, so concurrent bursts can never exceed the allowance.
+
+Quota window: per dimension AND per plan family — ``day`` (period ``YYYYMMDD``)
+or ``month`` (period ``YYYYMM``), both in UTC. The free tier's compile allowance
+is daily so a burst of edits cannot lock someone out for the rest of the month.
+The counter key embeds the period, so the reset is implicit — no cron, no
+backfill. Keys carry a 40-day TTL so an idle account's rows expire on their own.
+
+Feature-flag propagation uses a single Redis JSON blob ``latexy:entitlements``:
 
     {"kill": {key: bool}, "matrix": {family: {key: bool}}}
 
@@ -10,8 +26,13 @@ Access modes (mirroring feature_flag_service):
   in-process TTL cache on the Redis blob. Used by FastAPI routes.
 - Sync ``sync_has_feature``: reads the Redis blob (workers, no user context).
 
-Fail-OPEN on any infra error (return True / allow) — consistent with the
-existing feature flag service.
+Failure policy differs deliberately between the two layers:
+- Boolean features fail OPEN on infra error (a Redis blip must not hide the
+  product) — consistent with the existing feature flag service.
+- Quotas fail CLOSED (a Redis blip must not hand out unmetered LLM spend) —
+  consistent with developer_key_service.consume_rate_limit — except on plans
+  with no limit, where there is no allowance to protect and denying would be a
+  self-inflicted outage.
 """
 
 from __future__ import annotations
@@ -19,12 +40,21 @@ from __future__ import annotations
 import json
 import logging
 import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import resolve_plan_family
+from ..core.config import (
+    QUOTA_DIMENSIONS,
+    get_plan_quota,
+    get_plan_quota_window,
+    resolve_plan_family,
+)
+from ..core.errors import error_body
 from ..core.feature_registry import (
     FEATURE_REGISTRY,
     PLAN_FAMILIES,
@@ -37,10 +67,69 @@ logger = logging.getLogger(__name__)
 REDIS_BLOB_KEY = "latexy:entitlements"
 _CACHE_TTL = 60  # seconds
 
+# Quota counters outlive their calendar month by a margin so a late refund (or a
+# clock skew across instances) can still find the key it incremented.
+_QUOTA_TTL = 40 * 86400  # seconds
+
 # In-process cache of the parsed blob: (blob: dict, expires_at: float)
 _cache: Optional[tuple[dict, float]] = None
 
 _ADMIN_ROLES = ("admin", "support")
+
+
+@dataclass(frozen=True)
+class QuotaTicket:
+    """Outcome of one quota consumption attempt.
+
+    ``allowed`` is the only thing routes must check; the rest is what we surface
+    to the client (and what ``refund_quota`` needs to give the unit back).
+    """
+
+    dimension: str
+    user_id: str
+    period: str          # "YYYYMM" or "YYYYMMDD" — the window the counter belongs to
+    used: int            # count AFTER this consumption
+    limit: Optional[int]  # None == unlimited
+    allowed: bool
+    unavailable: bool = False  # counter store down → denied, not "over limit"
+    window: str = "month"  # "day" | "month" — how often ``period`` rolls over
+
+    @property
+    def remaining(self) -> Optional[int]:
+        if self.limit is None:
+            return None
+        return max(0, self.limit - self.used)
+
+
+def _current_period(window: str = "month") -> str:
+    """Return the current quota period key for ``window`` (UTC).
+
+    ``day`` → ``YYYYMMDD``, ``month`` → ``YYYYMM``. The two formats have
+    different lengths, so ``_period_reset_at`` can infer the window back from a
+    stored period without carrying it around.
+    """
+    now = datetime.now(timezone.utc)
+    return now.strftime("%Y%m%d" if window == "day" else "%Y%m")
+
+
+def _period_reset_at(period: str) -> str:
+    """Return the ISO timestamp at which ``period``'s counters reset (UTC).
+
+    Midnight on the day after a daily period, or midnight on the 1st of the
+    following month for a monthly one.
+    """
+    if len(period) == 8:  # YYYYMMDD — daily window
+        day = datetime(
+            int(period[:4]), int(period[4:6]), int(period[6:]), tzinfo=timezone.utc
+        )
+        return (day + timedelta(days=1)).isoformat()
+
+    year, month = int(period[:4]), int(period[4:])
+    if month == 12:
+        year, month = year + 1, 1
+    else:
+        month += 1
+    return datetime(year, month, 1, tzinfo=timezone.utc).isoformat()
 
 
 class EntitlementService:
@@ -275,6 +364,189 @@ class EntitlementService:
             else:
                 result[feature.key] = self._decide(blob, feature.key, plan)
         return result
+
+    # ---------------------------------------------------------------- #
+    #  Usage quotas (numeric, per daily/monthly window)                #
+    # ---------------------------------------------------------------- #
+
+    async def consume_quota(
+        self,
+        dimension: str,
+        *,
+        user_id: str,
+        plan: Optional[str],
+        cost: int = 1,
+    ) -> QuotaTicket:
+        """Atomically consume ``cost`` units of ``dimension`` for ``user_id``.
+
+        Uses a single Redis INCRBY on the period key, so N concurrent callers get
+        N distinct counter values and only the first ``limit`` of them are allowed
+        — there is no read-modify-write window to race.
+
+        Unlimited plans are still counted (usage reporting) but never denied.
+        Fails CLOSED: if the counter store is unavailable we cannot account for
+        the spend, so we refuse rather than hand out unmetered LLM/compile time.
+        The single exception is an unlimited plan — there is no allowance to
+        protect, so a counter outage degrades usage *reporting* only and must not
+        deny the highest-paying tiers.
+        """
+        limit = get_plan_quota(plan, dimension)
+        window = get_plan_quota_window(plan, dimension)
+        period = _current_period(window)
+        key = f"latexy:quota:{dimension}:{user_id}:{period}"
+
+        try:
+            from ..core.redis import get_redis_cache_client
+
+            redis = await get_redis_cache_client()
+            used = int(await redis.incrby(key, cost))
+            if used == cost:
+                await redis.expire(key, _QUOTA_TTL)
+        except Exception as exc:
+            # Nothing to meter on an unlimited plan → the counter is pure
+            # reporting, so let the request through instead of manufacturing an
+            # outage on endpoints that have no other Redis dependency.
+            fail_open = limit is None
+            logger.error(
+                f"Quota counter unavailable for {dimension}/{user_id}, "
+                f"failing {'open (unlimited plan)' if fail_open else 'closed'}: {exc}"
+            )
+            return QuotaTicket(
+                dimension=dimension,
+                user_id=user_id,
+                period=period,
+                used=0 if fail_open else (limit or 0),
+                limit=limit,
+                allowed=fail_open,
+                unavailable=True,
+                window=window,
+            )
+
+        allowed = limit is None or used <= limit
+        if not allowed:
+            # Roll the rejected increment back so a client hammering an exhausted
+            # quota cannot inflate the counter without bound. The INCR above is
+            # still the arbiter of who got a slot, so this cannot let anyone in.
+            try:
+                used = int(await redis.decrby(key, cost))
+            except Exception as exc:
+                logger.warning(f"Quota rollback failed for {key}: {exc}")
+
+        return QuotaTicket(
+            dimension=dimension,
+            user_id=user_id,
+            period=period,
+            used=used,
+            limit=limit,
+            allowed=allowed,
+            window=window,
+        )
+
+    async def refund_quota(self, ticket: QuotaTicket, cost: int = 1) -> None:
+        """Give back units consumed by a ticket whose work never happened.
+
+        Called when the metered spend is abandoned AFTER consumption (queue
+        submit failed, LLM call errored). Best-effort: a lost refund only ever
+        costs the user one unit, whereas a lost consumption costs us money.
+        """
+        if ticket.unavailable:
+            return
+        key = f"latexy:quota:{ticket.dimension}:{ticket.user_id}:{ticket.period}"
+        try:
+            from ..core.redis import get_redis_cache_client
+
+            redis = await get_redis_cache_client()
+            await redis.decrby(key, cost)
+        except Exception as exc:
+            logger.warning(f"Quota refund failed for {key}: {exc}")
+
+    async def enforce_quota(
+        self,
+        dimension: str,
+        *,
+        user_id: str,
+        plan: Optional[str],
+        cost: int = 1,
+    ) -> QuotaTicket:
+        """Consume quota and raise the standard error envelope when denied.
+
+        402 Payment Required when the plan's allowance is spent (the client's cue
+        to show an upgrade prompt); 503 when the counter store is down.
+        """
+        ticket = await self.consume_quota(dimension, user_id=user_id, plan=plan, cost=cost)
+        if ticket.allowed:
+            return ticket
+
+        if ticket.unavailable:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=error_body(
+                    "quota_unavailable",
+                    "Usage metering is temporarily unavailable. Please retry shortly.",
+                    None,
+                    details={"dimension": dimension},
+                ),
+            )
+
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=error_body(
+                "quota_exceeded",
+                f"Your plan's {dimension} allowance "
+                f"({ticket.limit} per {ticket.window}) is used up. "
+                "Upgrade your plan to continue.",
+                None,
+                details={
+                    "dimension": dimension,
+                    "limit": ticket.limit,
+                    "used": ticket.used,
+                    "remaining": 0,
+                    "plan_family": resolve_plan_family(plan),
+                    "period": ticket.period,
+                    "window": ticket.window,
+                    "resets_at": _period_reset_at(ticket.period),
+                },
+            ),
+        )
+
+    async def quota_snapshot(self, user_id: str, plan: Optional[str]) -> dict:
+        """Return the user's current usage/limit per dimension (read-only).
+
+        Drives the frontend's usage meters. Never mutates a counter; a Redis
+        outage reports ``used: null`` rather than failing the request.
+        """
+        windows = {d: get_plan_quota_window(plan, d) for d in QUOTA_DIMENSIONS}
+        periods = {d: _current_period(w) for d, w in windows.items()}
+        counts: dict[str, Optional[int]] = {d: None for d in QUOTA_DIMENSIONS}
+        try:
+            from ..core.redis import get_redis_cache_client
+
+            redis = await get_redis_cache_client()
+            for dimension in QUOTA_DIMENSIONS:
+                raw = await redis.get(
+                    f"latexy:quota:{dimension}:{user_id}:{periods[dimension]}"
+                )
+                counts[dimension] = int(raw or 0)
+        except Exception as exc:
+            logger.warning(f"Quota snapshot unavailable for {user_id}: {exc}")
+
+        # Top-level period/resets_at describe the monthly billing window; each
+        # dimension carries its own because the windows differ per plan.
+        month_period = _current_period("month")
+        return {
+            "period": month_period,
+            "resets_at": _period_reset_at(month_period),
+            "dimensions": {
+                dimension: {
+                    "used": counts[dimension],
+                    "limit": get_plan_quota(plan, dimension),
+                    "window": windows[dimension],
+                    "period": periods[dimension],
+                    "resets_at": _period_reset_at(periods[dimension]),
+                }
+                for dimension in QUOTA_DIMENSIONS
+            },
+        }
 
     # ---------------------------------------------------------------- #
     #  Sync access (Celery workers)                                    #

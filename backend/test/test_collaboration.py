@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.services.collab_manager import (
     MSG_AWARENESS,
+    MSG_PERMISSION_DENIED,
     MSG_SYNC,
     MSG_UPDATE,
     SYNC_STEP1,
@@ -171,6 +175,362 @@ class TestCollabManager:
         assert r2 is room  # same object — not cleaned up
 
 
+class _FakePubSub:
+    """Minimal async Pub/Sub stub: yields *envelopes* then ends the stream."""
+
+    def __init__(self, envelopes: list[dict]) -> None:
+        self._envelopes = envelopes
+
+    async def listen(self):
+        for envelope in self._envelopes:
+            yield {"type": "message", "data": json.dumps(envelope)}
+
+    async def unsubscribe(self, channel: str) -> None:
+        pass
+
+    async def aclose(self) -> None:
+        pass
+
+
+# ── Role enforcement (H1) ────────────────────────────────────────────────────
+
+
+class TestRoleEnforcement:
+    """A collaborator's role must be enforced on every document frame."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("role", ["owner", "editor"])
+    async def test_edit_roles_can_write(self, role: str) -> None:
+        room = CollabRoom("r1")
+        await room.add("c1", AsyncMock(), {"role": role})
+        assert room.can_edit("c1") is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("role", ["viewer", "commenter", None])
+    async def test_read_only_roles_cannot_write(self, role) -> None:
+        room = CollabRoom("r1")
+        await room.add("c1", AsyncMock(), {"role": role})
+        assert room.can_edit("c1") is False
+
+    @pytest.mark.asyncio
+    async def test_viewer_update_rejected_not_persisted_or_relayed(self) -> None:
+        """A viewer's MSG_UPDATE is refused: no Redis write, no relay to peers."""
+        room = CollabRoom("r1")
+        ws_viewer = AsyncMock()
+        ws_editor = AsyncMock()
+        await room.add("cv", ws_viewer, {"role": "viewer", "user_id": "u-viewer"})
+        await room.add("ce", ws_editor, {"role": "editor", "user_id": "u-editor"})
+
+        mock_redis = AsyncMock()
+        with patch("app.services.collab_manager.get_redis_client", return_value=mock_redis):
+            await handle_collab_message("r1", "cv", _make_sync_update(b"\x01\x02"), room)
+
+        mock_redis.rpush.assert_not_called()
+        mock_redis.publish.assert_not_called()
+        ws_editor.send_bytes.assert_not_called()
+
+        # The viewer is told why its frame was dropped.
+        ws_viewer.send_bytes.assert_called_once()
+        notice = ws_viewer.send_bytes.call_args[0][0]
+        assert notice[0] == MSG_PERMISSION_DENIED
+        payload, _ = _decode_varbuffer(notice, 1)
+        assert json.loads(payload)["code"] == "read_only"
+
+    @pytest.mark.asyncio
+    async def test_viewer_awareness_still_relayed(self) -> None:
+        """Presence is allowed for read-only roles so viewers show up as cursors."""
+        room = CollabRoom("r1")
+        ws_viewer = AsyncMock()
+        ws_editor = AsyncMock()
+        await room.add("cv", ws_viewer, {"role": "viewer"})
+        await room.add("ce", ws_editor, {"role": "editor"})
+
+        msg = _make_awareness(b"\x33")
+        mock_redis = AsyncMock()
+        with patch("app.services.collab_manager.get_redis_client", return_value=mock_redis):
+            await handle_collab_message("r1", "cv", msg, room)
+
+        ws_editor.send_bytes.assert_called_once_with(msg)
+
+    @pytest.mark.asyncio
+    async def test_viewer_can_still_catch_up(self) -> None:
+        """SYNC_STEP1 (read) is allowed for a viewer."""
+        room = CollabRoom("r1")
+        ws = AsyncMock()
+        await room.add("cv", ws, {"role": "viewer"})
+
+        mock_redis = AsyncMock()
+        mock_redis.lrange.return_value = []
+        with patch("app.services.collab_manager.get_redis_client", return_value=mock_redis):
+            await handle_collab_message("r1", "cv", _make_sync_step1(), room)
+
+        sent = ws.send_bytes.call_args[0][0]
+        assert sent[0] == MSG_SYNC and sent[1] == SYNC_STEP2
+
+
+# ── Revocation (H2) ──────────────────────────────────────────────────────────
+
+
+class TestRevokeAccess:
+    """Removing / demoting a collaborator must kill their live sockets."""
+
+    @pytest.mark.asyncio
+    async def test_close_user_closes_only_that_users_sockets(self) -> None:
+        room = CollabRoom("r1")
+        ws_bob_a = AsyncMock()
+        ws_bob_b = AsyncMock()
+        ws_alice = AsyncMock()
+        await room.add("c1", ws_bob_a, {"role": "viewer", "user_id": "bob"})
+        await room.add("c2", ws_bob_b, {"role": "viewer", "user_id": "bob"})
+        await room.add("c3", ws_alice, {"role": "owner", "user_id": "alice"})
+
+        closed = await room.close_user("bob", reason="Access removed")
+
+        assert closed == 2
+        ws_bob_a.close.assert_awaited_once()
+        ws_bob_b.close.assert_awaited_once()
+        ws_alice.close.assert_not_called()
+        assert room.size == 1
+        assert (await room.all_clients())[0][0] == "c3"
+
+    @pytest.mark.asyncio
+    async def test_revoked_client_stops_receiving_updates(self) -> None:
+        room = CollabRoom("r1")
+        ws_bob = AsyncMock()
+        ws_alice = AsyncMock()
+        await room.add("cb", ws_bob, {"role": "editor", "user_id": "bob"})
+        await room.add("ca", ws_alice, {"role": "owner", "user_id": "alice"})
+
+        mgr = CollabManager()
+        mgr._rooms["r1"] = room
+
+        mock_redis = AsyncMock()
+        with patch("app.services.collab_manager.get_redis_client", return_value=mock_redis):
+            assert await mgr.revoke_access("r1", "bob", reason="Access removed") == 1
+
+            ws_bob.send_bytes.reset_mock()
+            await handle_collab_message("r1", "ca", _make_sync_update(b"\x07"), room)
+
+        ws_bob.send_bytes.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_revoke_publishes_control_message_to_other_workers(self) -> None:
+        mgr = CollabManager()
+        mock_redis = AsyncMock()
+        with patch("app.services.collab_manager.get_redis_client", return_value=mock_redis):
+            await mgr.revoke_access("r1", "bob", reason="Role changed")
+
+        channel, raw = mock_redis.publish.call_args[0]
+        assert channel == "latexy:collab:r1"
+        envelope = json.loads(raw)
+        assert envelope["kind"] == "revoke"
+        assert envelope["user_id"] == "bob"
+        assert envelope["origin"]
+
+
+# ── Cross-process fan-out (H4) ───────────────────────────────────────────────
+
+
+class TestCrossProcessFanout:
+    """Frames must reach peers connected to a different uvicorn worker."""
+
+    @pytest.mark.asyncio
+    async def test_relay_publishes_frame_to_redis(self) -> None:
+        room = CollabRoom("r1")
+        await room.add("ce", AsyncMock(), {"role": "editor"})
+
+        msg = _make_sync_update(b"\xaa")
+        mock_redis = AsyncMock()
+        with patch("app.services.collab_manager.get_redis_client", return_value=mock_redis):
+            await handle_collab_message("r1", "ce", msg, room)
+
+        channel, raw = mock_redis.publish.call_args[0]
+        assert channel == "latexy:collab:r1"
+        envelope = json.loads(raw)
+        assert envelope["kind"] == "frame"
+        assert base64.b64decode(envelope["data"]) == msg
+
+    @pytest.mark.asyncio
+    async def test_bridge_delivers_remote_frame_to_local_clients(self) -> None:
+        mgr = CollabManager()
+        room = CollabRoom("r1")
+        ws = AsyncMock()
+        await room.add("c1", ws, {"role": "viewer", "user_id": "bob"})
+        mgr._rooms["r1"] = room
+
+        frame = _make_sync_update(b"\xbe\xef")
+        envelope = {
+            "origin": "other-process",
+            "kind": "frame",
+            "data": base64.b64encode(frame).decode(),
+        }
+        pubsub = _FakePubSub([envelope])
+
+        await mgr._bridge("r1", pubsub)
+
+        ws.send_bytes.assert_called_once_with(frame)
+
+    @pytest.mark.asyncio
+    async def test_bridge_ignores_own_frames(self) -> None:
+        from app.services.collab_manager import _PROCESS_ID
+
+        mgr = CollabManager()
+        room = CollabRoom("r1")
+        ws = AsyncMock()
+        await room.add("c1", ws, {"role": "editor"})
+        mgr._rooms["r1"] = room
+
+        envelope = {
+            "origin": _PROCESS_ID,
+            "kind": "frame",
+            "data": base64.b64encode(b"\x00\x02\x01\x09").decode(),
+        }
+        await mgr._bridge("r1", _FakePubSub([envelope]))
+
+        ws.send_bytes.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_bridge_applies_remote_revocation(self) -> None:
+        mgr = CollabManager()
+        room = CollabRoom("r1")
+        ws = AsyncMock()
+        await room.add("c1", ws, {"role": "viewer", "user_id": "bob"})
+        mgr._rooms["r1"] = room
+
+        envelope = {"origin": "other-process", "kind": "revoke", "user_id": "bob"}
+        await mgr._bridge("r1", _FakePubSub([envelope]))
+
+        ws.close.assert_awaited_once()
+        assert room.size == 0
+
+    @pytest.mark.asyncio
+    async def test_slow_bridge_teardown_does_not_untrack_the_new_listener(self) -> None:
+        """A rejoin during a cancelled listener's teardown must stay tracked."""
+
+        class _SlowPubSub(_FakePubSub):
+            def __init__(self) -> None:
+                super().__init__([])
+                self.unsubscribed = asyncio.Event()
+
+            async def listen(self):
+                await asyncio.sleep(3600)
+                yield  # pragma: no cover - never reached
+
+            async def unsubscribe(self, channel: str) -> None:
+                self.unsubscribed.set()
+                await asyncio.sleep(0.05)  # slow Redis round-trip
+
+        mgr = CollabManager()
+        subscribed: list[_SlowPubSub] = []
+
+        async def _fake_subscribe(resume_id: str):
+            pubsub = _SlowPubSub()
+            subscribed.append(pubsub)
+            return pubsub
+
+        with patch("app.services.collab_manager._subscribe", _fake_subscribe):
+            await mgr.get_or_create("r1")
+            first = mgr._listeners["r1"]
+            await asyncio.sleep(0)  # let the bridge task reach pubsub.listen()
+
+            # Last client leaves: the room and its listener are torn down, but
+            # the cancelled task is still awaiting unsubscribe().
+            await mgr.maybe_cleanup("r1")
+            await asyncio.wait_for(subscribed[0].unsubscribed.wait(), timeout=2)
+
+            # Client rejoins while that teardown is still in flight.
+            await mgr.get_or_create("r1")
+            second = mgr._listeners["r1"]
+            assert second is not first
+
+            await asyncio.sleep(0.1)  # let the old task's finally complete
+
+            assert first.done()
+            assert mgr._listeners.get("r1") is second
+            assert not second.done()
+            assert len(subscribed) == 2
+
+            second.cancel()
+
+    @pytest.mark.asyncio
+    async def test_bridge_finally_untracks_itself_when_still_registered(self) -> None:
+        mgr = CollabManager()
+        task = asyncio.create_task(mgr._bridge("r1", _FakePubSub([])))
+        mgr._listeners["r1"] = task
+        await task
+        assert "r1" not in mgr._listeners
+
+
+# ── Route-level revocation wiring (H2) ───────────────────────────────────────
+
+
+class _QueuedDB:
+    """AsyncSession stub returning queued scalar_one_or_none results in order."""
+
+    def __init__(self, *results: object) -> None:
+        self._results = list(results)
+        self.deleted: list[object] = []
+        self.commits = 0
+
+    async def execute(self, _stmt):  # noqa: ANN001 - test stub
+        value = self._results.pop(0)
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = value
+        return result
+
+    async def delete(self, obj) -> None:  # noqa: ANN001 - test stub
+        self.deleted.append(obj)
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+    async def refresh(self, _obj) -> None:
+        pass
+
+
+class TestCollaboratorRoutesRevokeLiveSessions:
+    """Removing / demoting a collaborator must kill their live sockets now."""
+
+    @pytest.mark.asyncio
+    async def test_remove_collaborator_revokes_access(self) -> None:
+        from app.api import resume_routes
+
+        db = _QueuedDB(MagicMock(id="r1", user_id="alice"), MagicMock(role="editor"))
+        spy = AsyncMock(return_value=1)
+
+        with patch.object(resume_routes.collab_manager, "revoke_access", spy):
+            await resume_routes.remove_collaborator("r1", "bob", db=db, user_id="alice")
+
+        assert db.commits == 1
+        spy.assert_awaited_once_with("r1", "bob", reason="Access removed")
+
+    @pytest.mark.asyncio
+    async def test_update_collaborator_role_revokes_access(self) -> None:
+        from app.api import resume_routes
+
+        now = datetime.now(timezone.utc)
+        collab = MagicMock(
+            id="c1", resume_id="r1", user_id="bob", role="editor",
+            invited_by="alice", joined_at=now, created_at=now,
+        )
+        user = MagicMock(email="bob@example.com")
+        user.name = "bob"
+        db = _QueuedDB(MagicMock(id="r1", user_id="alice"), collab, user)
+        spy = AsyncMock(return_value=1)
+
+        with patch.object(resume_routes.collab_manager, "revoke_access", spy):
+            await resume_routes.update_collaborator_role(
+                "r1",
+                "bob",
+                resume_routes.CollaboratorRoleUpdate(role="viewer"),
+                db=db,
+                user_id="alice",
+            )
+
+        assert collab.role == "viewer"
+        spy.assert_awaited_once_with("r1", "bob", reason="Role changed")
+
+
 # ── handle_collab_message ────────────────────────────────────────────────────
 
 
@@ -237,8 +597,8 @@ class TestHandleCollabMessage:
         room = CollabRoom("r1")
         ws_a = AsyncMock()
         ws_b = AsyncMock()
-        await room.add("ca", ws_a, {})
-        await room.add("cb", ws_b, {})
+        await room.add("ca", ws_a, {"role": "editor"})
+        await room.add("cb", ws_b, {"role": "editor"})
 
         update = b"\xaa\xbb\xcc"
         msg = _make_sync_update(update)
@@ -285,8 +645,8 @@ class TestHandleCollabMessage:
         room = CollabRoom("r1")
         ws_a = AsyncMock()
         ws_b = AsyncMock()
-        await room.add("ca", ws_a, {})
-        await room.add("cb", ws_b, {})
+        await room.add("ca", ws_a, {"role": "editor"})
+        await room.add("cb", ws_b, {"role": "editor"})
 
         oversized = _make_sync_update(b"\x00" * (MAX_COLLAB_MESSAGE_BYTES + 1))
         mock_redis = AsyncMock()
@@ -468,3 +828,154 @@ class TestCollaboratorEndpoints:
             assert resp.status_code == 404
         finally:
             app.dependency_overrides.pop(get_db, None)
+
+
+# ── /ws/collab handshake ─────────────────────────────────────────────────────
+
+
+class TestCollabWebSocket:
+    """End-to-end tests for the /ws/collab/{resume_id} handshake and framing."""
+
+    @staticmethod
+    def _fake_db_session(db):
+        """Replacement for get_async_db_session() yielding *db*."""
+        import contextlib
+
+        @contextlib.asynccontextmanager
+        async def _session():
+            yield db
+
+        return _session
+
+    @staticmethod
+    def _db_returning(*objects):
+        """AsyncMock DB whose successive execute() calls return *objects*."""
+        results = []
+        for obj in objects:
+            result = MagicMock()
+            result.scalar_one_or_none.return_value = obj
+            results.append(result)
+        db = AsyncMock()
+        db.execute = AsyncMock(side_effect=results)
+        return db
+
+    def _client(self):
+        from starlette.testclient import TestClient
+
+        from app.main import app
+
+        return TestClient(app, raise_server_exceptions=False)
+
+    def test_legacy_jwt_rejected_when_flag_disabled(self) -> None:
+        """H3: a self-signed HS256 token must not authenticate the collab socket."""
+        from starlette.websockets import WebSocketDisconnect
+
+        import app.middleware.auth_middleware as am
+
+        with (
+            patch.object(am, "_validate_better_auth_session", AsyncMock(return_value=None)),
+            patch.object(am.auth_middleware, "user_id", lambda token: "legacy-user"),
+            patch.object(am.settings, "LEGACY_JWT_ENABLED", False),
+        ):
+            with pytest.raises(WebSocketDisconnect) as exc:
+                with self._client().websocket_connect("/ws/collab/r1?token=legacy") as ws:
+                    ws.receive_bytes()
+
+        assert exc.value.code == 4001
+
+    def test_legacy_jwt_accepted_when_flag_enabled(self) -> None:
+        """With the migration flag on, the legacy path authenticates as before."""
+        from starlette.websockets import WebSocketDisconnect
+
+        import app.middleware.auth_middleware as am
+
+        db = self._db_returning(None)  # resume lookup → not found
+
+        with (
+            patch.object(am, "_validate_better_auth_session", AsyncMock(return_value=None)),
+            patch.object(am.auth_middleware, "user_id", lambda token: "legacy-user"),
+            patch.object(am.settings, "LEGACY_JWT_ENABLED", True),
+            patch(
+                "app.database.connection.get_async_db_session",
+                self._fake_db_session(db),
+            ),
+        ):
+            with pytest.raises(WebSocketDisconnect) as exc:
+                with self._client().websocket_connect("/ws/collab/r1?token=legacy") as ws:
+                    ws.receive_bytes()
+
+        # Got past auth (4001) and was rejected by the resume lookup instead.
+        assert exc.value.code == 4004
+
+    def test_viewer_document_update_is_refused(self) -> None:
+        """H1: a collaborator invited as viewer cannot mutate the shared doc."""
+        import app.middleware.auth_middleware as am
+
+        resume = MagicMock()
+        resume.id = "r-viewer"
+        resume.user_id = "alice"
+        collab = MagicMock()
+        collab.role = "viewer"
+        db = self._db_returning(resume, collab)
+
+        mock_redis = AsyncMock()
+        mock_redis.lrange.return_value = []
+
+        with (
+            patch.object(am, "_validate_better_auth_session", AsyncMock(return_value="bob")),
+            patch(
+                "app.database.connection.get_async_db_session",
+                self._fake_db_session(db),
+            ),
+            patch(
+                "app.services.collab_manager.get_redis_client",
+                AsyncMock(return_value=mock_redis),
+            ),
+        ):
+            with self._client().websocket_connect(
+                "/ws/collab/r-viewer?token=bob-session"
+            ) as ws:
+                ws.send_bytes(_make_sync_update(b"\x01\x02\x03"))
+                notice = ws.receive_bytes()
+
+        assert notice[0] == MSG_PERMISSION_DENIED
+        payload, _ = _decode_varbuffer(notice, 1)
+        assert json.loads(payload)["code"] == "read_only"
+        # Nothing was written to the shared document.
+        mock_redis.rpush.assert_not_called()
+
+    def test_editor_document_update_is_accepted(self) -> None:
+        """The same frame from an editor is persisted and fanned out."""
+        import app.middleware.auth_middleware as am
+
+        resume = MagicMock()
+        resume.id = "r-editor"
+        resume.user_id = "alice"
+        collab = MagicMock()
+        collab.role = "editor"
+        db = self._db_returning(resume, collab)
+
+        mock_redis = AsyncMock()
+        mock_redis.lrange.return_value = []
+
+        with (
+            patch.object(am, "_validate_better_auth_session", AsyncMock(return_value="bob")),
+            patch(
+                "app.database.connection.get_async_db_session",
+                self._fake_db_session(db),
+            ),
+            patch(
+                "app.services.collab_manager.get_redis_client",
+                AsyncMock(return_value=mock_redis),
+            ),
+        ):
+            with self._client().websocket_connect(
+                "/ws/collab/r-editor?token=bob-session"
+            ) as ws:
+                ws.send_bytes(_make_sync_update(b"\x01\x02\x03"))
+                ws.send_bytes(_make_sync_step1())
+                # SYNC_STEP1 is answered once the update above has been handled.
+                reply = ws.receive_bytes()
+
+        assert reply[0] == MSG_SYNC
+        mock_redis.rpush.assert_called_once()

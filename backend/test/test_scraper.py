@@ -634,31 +634,99 @@ class TestScrapeJobEndpoint:
 
 
 # ---------------------------------------------------------------------------
-# Unit: rate limiter (atomic INCR, XFF-aware, fail-open)
+# Unit: rate limiter (atomic INCR, TRUST_PROXY_HEADERS-aware, fail-open)
 # ---------------------------------------------------------------------------
 
 
 class _FakeRequest:
-    def __init__(self, headers: dict | None = None, host: str | None = "1.2.3.4"):
+    # port=0 is uvicorn's fingerprint for "I replaced this address with the
+    # X-Forwarded-For value"; a real TCP peer always has a real ephemeral port.
+    def __init__(
+        self,
+        headers: dict | None = None,
+        host: str | None = "1.2.3.4",
+        port: int = 54321,
+    ):
         self.headers = headers or {}
-        self.client = MagicMock(host=host) if host else None
+        self.client = MagicMock(host=host, port=port) if host else None
 
 
-class TestClientIp:
-    def test_prefers_xff_first_hop(self):
-        from app.api.scraper_routes import _client_ip
-        req = _FakeRequest(headers={"x-forwarded-for": "9.9.9.9, 10.0.0.1"}, host="10.0.0.1")
-        assert _client_ip(req) == "9.9.9.9"
+class TestClientBucket:
+    """The scraper limiter must key on the shared TRUST_PROXY_HEADERS-aware helper."""
+
+    def test_real_ip_preferred_behind_trusted_proxy(self):
+        # nginx sets X-Real-IP with $remote_addr, fully overwriting anything the
+        # client sent, so it is the one header worth trusting.
+        from app.middleware.rate_limiting import client_ip_id
+        req = _FakeRequest(
+            headers={"X-Forwarded-For": "9.9.9.9, 10.0.0.1", "X-Real-IP": "10.0.0.1"},
+            host="127.0.0.1",
+        )
+        with patch("app.middleware.rate_limiting.settings.TRUST_PROXY_HEADERS", True):
+            assert client_ip_id(req) == "ip:10.0.0.1"
+
+    def test_last_xff_hop_used_behind_trusted_proxy(self):
+        # nginx builds XFF with $proxy_add_x_forwarded_for: the client's own value
+        # with the real peer APPENDED. Trusting split(",")[0] would trust the client.
+        from app.middleware.rate_limiting import client_ip_id
+        req = _FakeRequest(headers={"X-Forwarded-For": "9.9.9.9, 10.0.0.1"}, host="127.0.0.1")
+        with patch("app.middleware.rate_limiting.settings.TRUST_PROXY_HEADERS", True):
+            assert client_ip_id(req) == "ip:10.0.0.1"
+
+    def test_rotating_xff_shares_one_bucket_when_untrusted(self):
+        # An untrusted XFF must never buy a fresh bucket: the peer address decides.
+        from app.middleware.rate_limiting import client_ip_id
+        with patch("app.middleware.rate_limiting.settings.TRUST_PROXY_HEADERS", False):
+            buckets = {
+                client_ip_id(_FakeRequest(headers={"X-Forwarded-For": f"8.8.8.{i}"}, host="203.0.113.7"))
+                for i in range(1, 6)
+            }
+        assert buckets == {"ip:203.0.113.7"}
+
+    def test_uvicorn_rewritten_address_shares_the_untrusted_bucket(self):
+        """The spoof that survives: uvicorn's proxy-headers layer runs before us.
+
+        For a peer inside forwarded_allow_ips (127.0.0.1/::1 — and Docker Desktop
+        NATs container traffic to the host as loopback) it replaces request.client
+        with the XFF value, so the address we see IS the spoofed one. It leaves
+        port 0 behind; those requests must share one bucket, not one per spoof.
+        """
+        from app.middleware.rate_limiting import client_ip_id
+        with patch("app.middleware.rate_limiting.settings.TRUST_PROXY_HEADERS", False):
+            buckets = {
+                client_ip_id(
+                    _FakeRequest(headers={"X-Forwarded-For": f"8.8.8.{i}"}, host=f"8.8.8.{i}", port=0)
+                )
+                for i in range(1, 6)
+            }
+        assert buckets == {"ip:untrusted-proxy"}
+
+    def test_distinct_peers_keep_distinct_buckets_when_untrusted(self):
+        """Regression: a missing TRUST_PROXY_HEADERS must not be a site-wide DoS.
+
+        Every reverse proxy adds an X-Forwarded-For. Collapsing on the header's mere
+        presence put all anonymous traffic into one bucket, so a single attacker could
+        429 the whole site whenever the env var was absent (stale .env, the plain
+        docker-compose, a non-nginx PaaS deploy).
+        """
+        from app.middleware.rate_limiting import client_ip_id
+        with patch("app.middleware.rate_limiting.settings.TRUST_PROXY_HEADERS", False):
+            buckets = {
+                client_ip_id(_FakeRequest(headers={"X-Forwarded-For": "1.2.3.4"}, host=f"198.51.100.{i}"))
+                for i in range(1, 6)
+            }
+        assert buckets == {f"ip:198.51.100.{i}" for i in range(1, 6)}
 
     def test_falls_back_to_client_host(self):
-        from app.api.scraper_routes import _client_ip
+        from app.middleware.rate_limiting import client_ip_id
         req = _FakeRequest(headers={}, host="5.6.7.8")
-        assert _client_ip(req) == "5.6.7.8"
+        with patch("app.middleware.rate_limiting.settings.TRUST_PROXY_HEADERS", False):
+            assert client_ip_id(req) == "ip:5.6.7.8"
 
     def test_unknown_when_no_client(self):
-        from app.api.scraper_routes import _client_ip
+        from app.middleware.rate_limiting import client_ip_id
         req = _FakeRequest(headers={}, host=None)
-        assert _client_ip(req) == "unknown"
+        assert client_ip_id(req) == "ip:unknown"
 
 
 @pytest.mark.asyncio
@@ -693,6 +761,23 @@ class TestRateLimiter:
             with pytest.raises(HTTPException) as exc:
                 await _check_rate_limit(_FakeRequest())
         assert exc.value.status_code == 429
+
+    async def test_rotating_xff_does_not_get_a_fresh_bucket(self):
+        """The spoofed-XFF bypass: every rotation from one peer hits the same key."""
+        from app.api.scraper_routes import _check_rate_limit
+        keys: list[str] = []
+        fake_redis = AsyncMock()
+        fake_redis.incr = AsyncMock(side_effect=lambda k: keys.append(k) or 1)
+        fake_redis.expire = AsyncMock()
+        with (
+            patch("app.api.scraper_routes.get_redis_cache_client", new=AsyncMock(return_value=fake_redis)),
+            patch("app.middleware.rate_limiting.settings.TRUST_PROXY_HEADERS", False),
+        ):
+            for i in range(5):
+                await _check_rate_limit(
+                    _FakeRequest(headers={"X-Forwarded-For": f"8.8.8.{i}"}, host="203.0.113.7")
+                )
+        assert len(set(keys)) == 1, keys
 
     async def test_fails_open_on_cache_error(self):
         from app.api.scraper_routes import _check_rate_limit

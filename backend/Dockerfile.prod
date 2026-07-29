@@ -58,12 +58,18 @@ COPY --chown=latexy:latexy . /app/
 # Switch to non-root user
 USER latexy
 
-# Health check
+# Listening port. Single source of truth for the image; matches Settings.PORT
+# (app/core/config.py) and every consumer (nginx upstream, compose healthcheck,
+# k8s containerPort/probes). Override with -e PORT=... if you must.
+ENV PORT=8030 \
+    UVICORN_WORKERS=4
+
+# Health check (shell form so $PORT is expanded at runtime)
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f "http://localhost:${PORT}/health" || exit 1
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8030
 
 # Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT}\" --workers \"${UVICORN_WORKERS}\""]

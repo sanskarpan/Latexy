@@ -36,7 +36,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
       const response = await fetch('/api/byok/api-keys')
       if (!response.ok) throw new Error('Failed to fetch API keys')
       const data = await response.json()
-      const keys = data.api_keys || []
+      const keys: APIKey[] = Array.isArray(data.api_keys) ? data.api_keys : []
       setApiKeys(keys)
       onKeysChange?.(keys)
     } catch (error) {

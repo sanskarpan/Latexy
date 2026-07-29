@@ -6,9 +6,11 @@ describe('event-types', () => {
     const ev: JobCompletedEvent = {
       event_id: 'e1', job_id: 'j1', timestamp: Date.now(),
       sequence: 1, type: 'job.completed',
-      result: { success: true }, final_status: 'completed',
+      pdf_job_id: 'j1', page_count: 1, ats_score: 82,
+      compilation_time: 1.5, compiler: 'pdflatex',
     }
     expect(ev.type).toBe('job.completed')
+    expect(ev.page_count).toBe(1)
   })
 
   it('LLMTokenEvent carries token string', () => {

@@ -50,9 +50,12 @@ export default function EmailVerifyBanner() {
     setResending(true)
     setError('')
     try {
+      // No callbackURL here on purpose — the landing page is pinned server-side
+      // in lib/auth.ts (`/verify-email?verified=1`). A bare `/verify-email`
+      // produced a token-less redirect that the page reported as a failed
+      // verification even though the address had just been verified.
       const { error: err } = await authClient.sendVerificationEmail({
         email: user.email,
-        callbackURL: '/verify-email',
       })
       if (err) {
         setError(err.message || 'Could not resend. Try again shortly.')

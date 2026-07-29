@@ -54,6 +54,7 @@ data:
         # Rate limiting
         limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
         limit_req_zone $binary_remote_addr zone=compile:10m rate=2r/s;
+        limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
 
         # Upstream servers
         upstream frontend {
@@ -95,11 +96,96 @@ data:
                 }
             }
 
-            # Backend API
+            # Better Auth and BYOK proxy handlers are Next.js route handlers,
+            # not FastAPI routes. Longer-prefix match keeps them on the frontend.
+            #
+            # Only the credential-submitting endpoints get the strict `login`
+            # zone. The /api/auth/ prefix as a whole must not: it also carries
+            # /api/auth/get-session, which useSession() fires on every page
+            # load, so a 5r/m budget makes the app unusable behind a shared IP.
+            location = /api/auth/sign-in/email {
+                limit_req zone=login burst=5 nodelay;
+
+                proxy_pass http://frontend;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location = /api/auth/sign-up/email {
+                limit_req zone=login burst=5 nodelay;
+
+                proxy_pass http://frontend;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location = /api/auth/request-password-reset {
+                limit_req zone=login burst=5 nodelay;
+
+                proxy_pass http://frontend;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location = /api/auth/reset-password {
+                limit_req zone=login burst=5 nodelay;
+
+                proxy_pass http://frontend;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location /api/auth/ {
+                limit_req zone=api burst=20 nodelay;
+
+                proxy_pass http://frontend;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location /api/byok/ {
+                limit_req zone=api burst=20 nodelay;
+
+                proxy_pass http://frontend;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_read_timeout 300s;
+            }
+
+            # Collaboration / job sockets reached through the /api prefix.
+            # Longer-prefix match, so it wins over `location /api/` below and
+            # keeps long-lived sockets out of that block's 60s read timeout
+            # and per-IP request budget.
+            location /api/ws/ {
+                proxy_pass http://backend/ws/;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_read_timeout 86400;
+            }
+
+            # Backend API. The trailing slash on proxy_pass strips the /api
+            # prefix — FastAPI serves these routes at the root.
             location /api/ {
                 limit_req zone=api burst=20 nodelay;
-                
-                proxy_pass http://backend;
+
+                proxy_pass http://backend/;
                 proxy_set_header Host $host;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -144,10 +230,12 @@ data:
                 proxy_read_timeout 300s;
             }
 
-            # Health check endpoint
+            # Nginx's own liveness/readiness endpoint. Answered locally so a
+            # backend outage cannot take every proxy pod out of the Service.
             location /health {
-                proxy_pass http://backend;
                 access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
             }
 
             # Flower monitoring (restrict access in production)
@@ -176,10 +264,6 @@ data:
             }
         }
     }
-  .htpasswd: |
-    # Basic auth for Flower - change in production
-    # Username: admin, Password: flower123
-    admin:$apr1$ruca84Hq$mbjdMZBAG.KWn7vfN/SNK1
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -209,9 +293,10 @@ spec:
         - name: nginx-config
           mountPath: /etc/nginx/nginx.conf
           subPath: nginx.conf
-        - name: nginx-config
+        - name: flower-htpasswd
           mountPath: /etc/nginx/.htpasswd
           subPath: .htpasswd
+          readOnly: true
         resources:
           requests:
             memory: "64Mi"
@@ -235,6 +320,10 @@ spec:
       - name: nginx-config
         configMap:
           name: nginx-config
+      # Generated by k8s/deploy.sh from FLOWER_USER/FLOWER_PASSWORD.
+      - name: flower-htpasswd
+        secret:
+          secretName: flower-htpasswd
 ---
 apiVersion: v1
 kind: Service
@@ -251,3 +340,13 @@ spec:
     targetPort: 80
     protocol: TCP
   type: LoadBalancer
+  # Preserve the client source address. Without this, kube-proxy SNATs the packet and
+  # $remote_addr is the node IP — nginx would then stamp X-Real-IP with the node IP,
+  # the backend trusts it (TRUST_PROXY_HEADERS=true), and every anonymous user behind
+  # a node would share one rate-limit bucket. nginx's own limit_req zones key on
+  # $binary_remote_addr and collapse the same way.
+  # If an L7 cloud load balancer is put in front instead (so the pod only ever sees the
+  # LB), replace this with `set_real_ip_from <LB CIDR>; real_ip_header X-Forwarded-For;
+  # real_ip_recursive on;` in the http block above — never both a broad
+  # set_real_ip_from and a spoofable header.
+  externalTrafficPolicy: Local

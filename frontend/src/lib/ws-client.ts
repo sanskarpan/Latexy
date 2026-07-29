@@ -2,10 +2,14 @@
  * WSClient — singleton WebSocket manager for Latexy.
  *
  * Features:
- * - Single persistent WebSocket to /ws/jobs
+ * - Single persistent WebSocket to /ws/jobs — a socket that is replaced
+ *   (setToken/disconnect) is detached first so its late close event cannot
+ *   tear down or duplicate the live one
  * - Exponential backoff reconnect (100ms → 200ms → 400ms → … max 30s)
  * - Auto-resubscribes all pending jobs on reconnect, sending last_event_id
- *   so the server replays missed events
+ *   so the server replays missed events ("0" = replay the whole stream)
+ * - Drops replayed events the client has already seen (stream IDs are
+ *   monotonic), so the non-idempotent UI reducer never sees a duplicate
  * - Typed event emitter: on/off for "connected" | "disconnected" |
  *   "event" | "subscribed" | "error"
  * - Heartbeat ping every 25s when connected
@@ -28,14 +32,31 @@ interface WSEventMap {
   disconnected: { wasClean: boolean }
   event: AnyEvent
   subscribed: { job_id: string; replayed_count: number }
-  error: { code: string; message: string }
+  /** `job_id` is present only when the rejection concerns one specific job
+   *  (subscribe/cancel/rate-limit). Connection-wide errors (invalid_json,
+   *  unknown_message_type) carry no job_id. */
+  error: { code: string; message: string; job_id?: string }
+}
+
+// ------------------------------------------------------------------ //
+//  Stream ID ordering                                                 //
+// ------------------------------------------------------------------ //
+
+/** Compare two Redis Stream entry IDs ("<milliseconds>-<sequence>").
+ *  Returns true when `candidate` is strictly newer than `lastSeen`. */
+export function isNewerStreamId(candidate: string, lastSeen: string): boolean {
+  const [candMs, candSeq] = candidate.split('-').map(Number)
+  const [lastMs, lastSeq] = lastSeen.split('-').map(Number)
+  if (Number.isNaN(candMs) || Number.isNaN(lastMs)) return true
+  if (candMs !== lastMs) return candMs > lastMs
+  return (candSeq || 0) > (lastSeq || 0)
 }
 
 // ------------------------------------------------------------------ //
 //  WSClient                                                           //
 // ------------------------------------------------------------------ //
 
-class WSClient {
+export class WSClient {
   private _ws: WebSocket | null = null
   private _reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private _reconnectAttempt = 0
@@ -49,9 +70,10 @@ class WSClient {
 
   /**
    * job_id → last received stream entry ID (for replay on reconnect).
-   * undefined means "subscribe from now" (no replay).
+   * "0" (the initial value) means "replay the entire stream", so events
+   * published before the subscribe frame lands are never lost.
    */
-  private _subscriptions = new Map<string, string | undefined>()
+  private _subscriptions = new Map<string, string>()
 
   /** Multi-listener event emitter */
   private _listeners = new Map<WSEventType, Set<WSEventHandler<any>>>()
@@ -61,10 +83,11 @@ class WSClient {
   // ---------------------------------------------------------------- //
 
   connect(): void {
+    this._manuallyDisconnected = false
+
     if (this._ws && this._ws.readyState === WebSocket.OPEN) return
     if (this._ws && this._ws.readyState === WebSocket.CONNECTING) return
 
-    this._manuallyDisconnected = false
     this._openSocket()
   }
 
@@ -76,34 +99,24 @@ class WSClient {
     // The existing socket was opened with the OLD token in its ?token= handshake
     // query. Refresh it whenever a socket exists — including while it is still
     // CONNECTING (a common race: the Better Auth session resolves just after the
-    // WS starts connecting, so the first socket is anonymous and, without this,
-    // would never pick up the token → the backend denies the user's own jobs).
-    if (this._ws && !this._manuallyDisconnected) {
-      const old = this._ws
-      this._ws = null
-      // Detach handlers so the old socket's onclose does not fire the backoff
-      // reconnect (which would race with the immediate reopen below).
-      old.onopen = null
-      old.onmessage = null
-      old.onclose = null
-      old.onerror = null
-      try {
-        old.close(1000, 'Reconnect with updated auth')
-      } catch {
-        /* closing a CONNECTING socket can throw in some engines — ignore */
-      }
-      this._stopHeartbeat()
-      this._openSocket()
+    // WS starts connecting, so the first socket is anonymous and would otherwise
+    // never pick up the token → the backend denies the user's own jobs).
+    // _closeSocket detaches handlers + stops the heartbeat; _openSocket rebuilds
+    // the ?token= handshake. onclose/onmessage also carry `this._ws !== ws`
+    // identity guards so a superseded socket can't race the reopen.
+    if (this._ws) {
+      this._closeSocket(1000, 'Reconnect with updated auth')
+      if (!this._manuallyDisconnected) this._openSocket()
     }
   }
 
   disconnect(): void {
     this._manuallyDisconnected = true
     this._cancelReconnect()
-    this._stopHeartbeat()
     if (this._ws) {
-      this._ws.close(1000, 'Client disconnect')
-      this._ws = null
+      this._closeSocket(1000, 'Client disconnect')
+      // The detached socket's close event is ignored, so announce it here.
+      this._emit('disconnected', { wasClean: true })
     }
   }
 
@@ -116,8 +129,25 @@ class WSClient {
   // ---------------------------------------------------------------- //
 
   subscribe(jobId: string, lastEventId?: string): void {
-    this._subscriptions.set(jobId, lastEventId)
-    this._sendSubscribe(jobId, lastEventId)
+    // Default "0" = replay from the start of the stream. Without it every event
+    // published before this frame reaches the server (job.queued, and for fast
+    // jobs job.completed itself) would be lost.
+    //
+    // An explicit "0" must never clobber an existing watermark: a second
+    // subscriber (or a Fast Refresh / StrictMode remount) would then force a
+    // full server replay that the shared 'event' emitter fans out to the
+    // already-running listeners, whose reducers append log lines blindly.
+    const known = this._subscriptions.get(jobId)
+    const requested = lastEventId ?? known ?? '0'
+    const from = known && requested === '0' ? known : requested
+    this._subscriptions.set(jobId, from)
+    this._sendSubscribe(jobId, from)
+  }
+
+  /** Number of jobs currently subscribed on this connection. Used to decide
+   *  whether an error frame without a job_id can be attributed unambiguously. */
+  get subscriptionCount(): number {
+    return this._subscriptions.size
   }
 
   unsubscribe(jobId: string): void {
@@ -151,6 +181,10 @@ class WSClient {
   // ---------------------------------------------------------------- //
 
   private _openSocket(): void {
+    this._cancelReconnect()
+    // Never leave a previous socket attached — exactly one live socket per client.
+    if (this._ws) this._closeSocket(1000, 'Replaced by new connection')
+
     try {
       const url = new URL(getWebSocketUrl())
       const traceHeaders = createTraceHeaders()
@@ -167,6 +201,7 @@ class WSClient {
       this._ws = ws
 
       ws.onopen = () => {
+        if (this._ws !== ws) return // superseded socket — ignore
         this._reconnectAttempt = 0
         this._startHeartbeat()
         this._emit('connected', undefined)
@@ -178,10 +213,16 @@ class WSClient {
       }
 
       ws.onmessage = (event: MessageEvent) => {
+        if (this._ws !== ws) return // superseded socket — ignore
         this._handleMessage(event.data)
       }
 
       ws.onclose = (event: CloseEvent) => {
+        // A socket replaced by setToken()/disconnect() closes asynchronously.
+        // Without this identity check it would null out (and schedule a
+        // reconnect for) the socket that already took its place.
+        if (this._ws !== ws) return
+
         this._stopHeartbeat()
         this._ws = null
         this._emit('disconnected', { wasClean: event.wasClean })
@@ -197,6 +238,22 @@ class WSClient {
     } catch (err) {
       this._scheduleReconnect()
     }
+  }
+
+  /** Detach every handler from the current socket and close it. The detached
+   *  socket can still emit close/message events; they are dropped by the
+   *  `this._ws !== ws` identity checks (and by having no handlers at all). */
+  private _closeSocket(code: number, reason: string): void {
+    const ws = this._ws
+    if (!ws) return
+
+    this._ws = null
+    this._stopHeartbeat()
+    ws.onopen = null
+    ws.onmessage = null
+    ws.onclose = null
+    ws.onerror = null
+    ws.close(code, reason)
   }
 
   private _handleMessage(raw: string): void {
@@ -216,11 +273,14 @@ class WSClient {
         // so we can resume replay from the correct position on reconnect.
         // The server includes this as msg.stream_id in every event envelope.
         const jobId = evt.job_id
-        if (jobId && this._subscriptions.has(jobId)) {
-          const streamId = msg.stream_id as string | undefined
-          if (streamId) {
-            this._subscriptions.set(jobId, streamId)
-          }
+        const streamId = msg.stream_id as string | undefined
+        if (jobId && this._subscriptions.has(jobId) && streamId) {
+          const lastSeen = this._subscriptions.get(jobId)!
+          // Stream IDs are monotonic, so anything not strictly newer than the
+          // last delivered entry is a replay of something the reducer already
+          // consumed — drop it rather than double-applying it.
+          if (!isNewerStreamId(streamId, lastSeen)) return
+          this._subscriptions.set(jobId, streamId)
         }
         this._emit('event', evt)
       }
@@ -232,10 +292,13 @@ class WSClient {
     } else if (type === 'pong') {
       // no-op
     } else if (type === 'error') {
-      this._emit('error', {
-        code: msg.code as string,
-        message: msg.message as string,
-      })
+      const code = msg.code as string
+      const message = msg.message as string
+      // Server rejections (forbidden / rate_limited / invalid_request) used to
+      // vanish silently, leaving the UI waiting for events that never come.
+      const errJobId = msg.job_id as string | undefined
+      console.error(`[WSClient] server error ${code}: ${message}`)
+      this._emit('error', { code, message, job_id: errJobId })
     }
   }
 

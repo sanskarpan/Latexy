@@ -12,6 +12,7 @@ from ..core.logging import get_logger
 from ..core.redis import get_redis_cache_client
 from ..database.connection import get_db
 from ..middleware.auth_middleware import get_current_user_optional
+from ..middleware.rate_limiting import client_ip_id
 from ..services.job_scraper_service import job_scraper_service
 
 logger = get_logger(__name__)
@@ -49,25 +50,15 @@ _RATE_LIMIT = 10
 _RATE_WINDOW = 60
 
 
-def _client_ip(request: Request) -> str:
-    """Best-effort client IP.
-
-    Behind a reverse proxy ``request.client.host`` is the proxy address, which
-    would collapse every user into one bucket, so prefer the first hop of the
-    ``X-Forwarded-For`` chain (the original client) when present.
-    """
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        first = xff.split(",")[0].strip()
-        if first:
-            return first
-    return (request.client.host if request.client else None) or "unknown"
-
-
 async def _check_rate_limit(request: Request) -> None:
-    """10 scrape requests per IP per minute via an atomic Redis INCR counter."""
-    ip = _client_ip(request)
-    key = f"cache:ratelimit:scrape:{ip}"
+    """10 scrape requests per IP per minute via an atomic Redis INCR counter.
+
+    Keys on the shared middleware helper, which only honours ``X-Forwarded-For``
+    behind a trusted proxy (``TRUST_PROXY_HEADERS``). This endpoint is
+    unauthenticated and makes outbound HTTP requests with retries, so letting a
+    caller rotate the header for a fresh bucket turned it into an abuse amplifier.
+    """
+    key = f"cache:ratelimit:scrape:{client_ip_id(request)}"
     try:
         client = await get_redis_cache_client()
         # INCR is atomic, so concurrent requests can't race past the limit.

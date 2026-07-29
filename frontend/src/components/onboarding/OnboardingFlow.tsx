@@ -189,7 +189,7 @@ export default function OnboardingFlow({
             <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
               <h4 className="font-semibold text-blue-900 mb-2">Free Trial Available</h4>
               <p className="text-blue-700 text-sm mb-3">
-                Get 3 free resume compilations to try Latexy - no credit card required!
+                Try 3 resume compilations right now - no account, no credit card required!
               </p>
               <div className="flex items-center justify-center gap-2 text-blue-600 text-sm">
                 <CheckCircle className="w-4 h-4" />
@@ -202,7 +202,7 @@ export default function OnboardingFlow({
             <div className="p-4 bg-green-50 rounded-lg border border-green-200">
               <h4 className="font-semibold text-green-900 mb-2">Welcome to the Community!</h4>
               <p className="text-green-700 text-sm">
-                Thanks for joining Latexy! You now have access to all features and unlimited compilations.
+                Thanks for joining Latexy! Your free account includes 10 compilations per day and 3 AI optimizations per month.
               </p>
             </div>
           )}

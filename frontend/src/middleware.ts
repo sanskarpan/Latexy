@@ -45,8 +45,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Attempt to resolve domain → username via backend API
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
+  // Attempt to resolve domain → username via backend API.
+  // This runs on the server, so the base must be absolute: in production
+  // NEXT_PUBLIC_API_URL is the same-origin path prefix "/api", which Node's
+  // fetch() rejects with "Failed to parse URL". Prefer server-only BACKEND_URL.
+  const apiBase =
+    process.env.BACKEND_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
   try {
     const res = await fetch(
       `${apiBase}/portfolio/resolve-domain?domain=${encodeURIComponent(hostname)}`,

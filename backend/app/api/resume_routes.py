@@ -24,6 +24,8 @@ from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
 from ..parsers.parser_factory import parser_factory
 from ..services.academic_cv_service import academic_cv_service
+from ..services.collab_manager import collab_manager
+from ..services.entitlement_service import entitlement_service
 from ..services.format_detection import ResumeFormat, format_detection_service
 from ..services.resume_builder_service import SUPPORTED_BUILDER_CATEGORIES, resume_builder_service
 
@@ -1116,7 +1118,15 @@ async def quick_tailor_resume(
     user_id: str = Depends(get_current_user_required),
 ):
     """Fork the resume and kick off an aggressive optimization tailored to the job description."""
+    from .job_routes import _resolve_user_plan
+
     parent = await _verify_resume_ownership(db, resume_id, user_id)
+
+    # This queues a real LLM run — charge the plan's monthly optimization
+    # allowance before forking so a denied request leaves nothing behind.
+    quota_ticket = await entitlement_service.enforce_quota(
+        "optimizations", user_id=user_id, plan=await _resolve_user_plan(db, user_id)
+    )
 
     label = body.role_title or body.company_name or "Tailored"
     fork_title = f"{parent.title} — {label}"
@@ -1156,6 +1166,7 @@ async def quick_tailor_resume(
             resume_id=str(fork.id),
         )
     except Exception:
+        await entitlement_service.refund_quota(quota_ticket)
         await db.delete(fork)
         await db.commit()
         raise
@@ -1204,6 +1215,18 @@ async def convert_academic_cv(
             detail="Resume does not strongly resemble an academic CV. Pass force=true to continue anyway.",
         )
 
+    user_plan = "free"
+    user_result = await db.execute(select(User.subscription_plan).where(User.id == user_id))
+    stored_plan = user_result.scalar_one_or_none()
+    if isinstance(stored_plan, str) and stored_plan:
+        user_plan = stored_plan
+
+    # Queues a real LLM run — charge the monthly optimization allowance before
+    # the variant is written so a denied request leaves nothing behind.
+    quota_ticket = await entitlement_service.enforce_quota(
+        "optimizations", user_id=user_id, plan=user_plan
+    )
+
     label = {
         "tech": "Industry Resume",
         "data_science": "Data Science Resume",
@@ -1247,11 +1270,6 @@ async def convert_academic_cv(
     from .job_routes import _write_initial_redis_state
 
     job_id = str(uuid4())
-    user_plan = "free"
-    user_result = await db.execute(select(User.subscription_plan).where(User.id == user_id))
-    stored_plan = user_result.scalar_one_or_none()
-    if isinstance(stored_plan, str) and stored_plan:
-        user_plan = stored_plan
     instructions = academic_cv_service.build_conversion_instructions(
         report,
         target_industry=body.target_industry,
@@ -1271,6 +1289,7 @@ async def convert_academic_cv(
             resume_id=str(variant.id),
         )
     except Exception:
+        await entitlement_service.refund_quota(quota_ticket)
         await db.delete(variant)
         await db.commit()
         raise
@@ -1728,7 +1747,10 @@ async def create_share_link(
         compilation = comp_result.scalar_one_or_none()
 
         if compilation and not compilation.pdf_path:
-            # Try local filesystem first, then Redis (Modal / serverless deployments).
+            # Rare path: the worker now uploads to compilations/{job_id}/resume.pdf
+            # and fills pdf_path, so this only fires for rows reconciled by the
+            # older API-side fallback, or when the MinIO upload failed at compile
+            # time. Try local filesystem first, then Redis (Modal / serverless).
             temp_pdf = Path(settings.TEMP_DIR) / compilation.job_id / "resume.pdf"
             pdf_bytes_for_share: bytes | None = None
             if temp_pdf.exists():
@@ -2234,6 +2256,10 @@ async def update_collaborator_role(
     await db.commit()
     await db.refresh(collab)
 
+    # The role travels with the live collaboration socket, so drop the existing
+    # sessions: the client reconnects and is re-authorised with the new role.
+    await collab_manager.revoke_access(resume_id, collab_user_id, reason="Role changed")
+
     user_result = await db.execute(select(User).where(User.id == collab_user_id))
     user = user_result.scalar_one_or_none()
 
@@ -2275,6 +2301,10 @@ async def remove_collaborator(
 
     await db.delete(collab)
     await db.commit()
+
+    # Terminate any live collaboration sockets so revocation takes effect
+    # immediately instead of at the collaborator's next reconnect.
+    await collab_manager.revoke_access(resume_id, collab_user_id, reason="Access removed")
     return None
 
 

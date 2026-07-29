@@ -908,8 +908,62 @@ class ApiClient {
   private authToken: string | null = null
   readonly baseUrl: string = API_BASE
 
+  // The Better Auth session is resolved asynchronously on the client, so AuthSync
+  // can only hand us the Bearer token a tick or two after the first paint. Any
+  // component fetching on mount would otherwise race it and get an un-retried 401.
+  // `authReady` makes outbound requests wait until AuthSync has reported the
+  // session state (a real token, or an explicit null for anonymous visitors).
+  //
+  // The wait is *bounded*: if the Better Auth session endpoint is slow or hangs,
+  // we fall through after AUTH_READY_TIMEOUT_MS and send the request without a
+  // token instead of deadlocking the app — including anonymous flows such as /try
+  // and share pages, which need no token at all.
+  // On the server there is no AuthSync, so the gate starts open.
+  private static readonly AUTH_READY_TIMEOUT_MS = 1500
+  private authReady: Promise<void> = Promise.resolve()
+  private resolveAuthReady: (() => void) | null = null
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      const reported = new Promise<void>((resolve) => {
+        this.resolveAuthReady = resolve
+      })
+      this.authReady = Promise.race([reported, this.authReadyDeadline()])
+    }
+  }
+
+  // Fallback leg of the auth gate — opens it if AuthSync never reports in.
+  private authReadyDeadline(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        if (this.resolveAuthReady) {
+          this.resolveAuthReady = null
+          console.warn(
+            '[apiClient] auth session did not resolve within ' +
+              `${ApiClient.AUTH_READY_TIMEOUT_MS}ms — proceeding unauthenticated`
+          )
+        }
+        resolve()
+      }, ApiClient.AUTH_READY_TIMEOUT_MS)
+      // Never keep a test runner / SSR process alive just for this timer.
+      ;(timer as unknown as { unref?: () => void }).unref?.()
+    })
+  }
+
   setAuthToken(token: string | null): void {
     this.authToken = token
+    // Only a real token opens the gate here. Pages that mirror their own session
+    // token into the client must not be able to open it with a null while
+    // AuthSync is still hydrating — that is precisely the race the gate exists to
+    // prevent. AuthSync calls markAuthResolved() for the anonymous case.
+    if (token) this.markAuthResolved()
+  }
+
+  // Called by AuthSync once the Better Auth session state is known, including
+  // when there is no session at all.
+  markAuthResolved(): void {
+    this.resolveAuthReady?.()
+    this.resolveAuthReady = null
   }
 
   getAuthToken(): string | null {
@@ -924,12 +978,7 @@ class ApiClient {
     if (includeJsonContentType && !('Content-Type' in h)) {
       h['Content-Type'] = 'application/json'
     }
-    const token =
-      this.authToken ??
-      (typeof window !== 'undefined'
-        ? localStorage.getItem('auth_token')
-        : null)
-    if (token) h['Authorization'] = `Bearer ${token}`
+    if (this.authToken) h['Authorization'] = `Bearer ${this.authToken}`
     for (const [key, value] of Object.entries(h)) {
       if (value === '') delete h[key]
     }
@@ -943,10 +992,11 @@ class ApiClient {
     return !(typeof FormData !== 'undefined' && init.body instanceof FormData)
   }
 
-  private async request<T>(
-    path: string,
-    init: RequestInit = {}
-  ): Promise<T> {
+  // Single entry point for every authenticated fetch. It waits for the auth gate
+  // and builds the headers *after* the wait, so the guarantee is structural: no
+  // call site can accidentally send a request with a not-yet-published token.
+  private async authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+    await this.authReady
     const headers: Record<string, string> = {
       ...(this.headers({}, this.shouldSendJsonContentType(init)) as Record<string, string>),
       ...((init.headers as Record<string, string> | undefined) ?? {}),
@@ -954,10 +1004,14 @@ class ApiClient {
     if (headers['Content-Type'] === '') {
       delete headers['Content-Type']
     }
-    const res = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      headers,
-    })
+    return fetch(url, { ...init, headers })
+  }
+
+  private async request<T>(
+    path: string,
+    init: RequestInit = {}
+  ): Promise<T> {
+    const res = await this.authedFetch(`${API_BASE}${path}`, init)
     if (!res.ok) {
       const body = await res.text().catch(() => '')
       throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
@@ -1104,12 +1158,9 @@ class ApiClient {
   async seedBuilderFromUpload(file: File): Promise<BuilderSeedUploadResponse> {
     const form = new FormData()
     form.append('file', file)
-    const headers = { ...(this.headers() as Record<string, string>) }
-    delete headers['Content-Type']
-    const res = await fetch(`${API_BASE}/resumes/builder/seed-upload`, {
+    const res = await this.authedFetch(`${API_BASE}/resumes/builder/seed-upload`, {
       method: 'POST',
       body: form,
-      headers,
       credentials: 'include',
     })
     if (!res.ok) {
@@ -1176,9 +1227,8 @@ class ApiClient {
   }
 
   async deleteResume(resumeId: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}`, {
+    const res = await this.authedFetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}`, {
       method: 'DELETE',
-      headers: this.headers({}, false),
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
@@ -1217,9 +1267,8 @@ class ApiClient {
   // ---------------------------------------------------------------- //
 
   async cancelJob(jobId: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}`, {
+    const res = await this.authedFetch(`${API_BASE}/jobs/${encodeURIComponent(jobId)}`, {
       method: 'DELETE',
-      headers: this.headers({}, false),
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
@@ -1236,9 +1285,7 @@ class ApiClient {
   }
 
   async downloadPdf(jobId: string): Promise<Blob> {
-    const res = await fetch(this.getPdfUrl(jobId), {
-      headers: this.headers({}, false),
-    })
+    const res = await this.authedFetch(this.getPdfUrl(jobId))
     if (!res.ok) throw new Error(`PDF download failed: HTTP ${res.status}`)
     return res.blob()
   }
@@ -1818,13 +1865,6 @@ class ApiClient {
   //  Multi-format file I/O                                           //
   // ---------------------------------------------------------------- //
 
-  private getAuthHeader(): Record<string, string> {
-    const token =
-      this.authToken ??
-      (typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null)
-    return token ? { Authorization: `Bearer ${token}` } : {}
-  }
-
   // Upload a file for conversion to LaTeX
   async uploadForConversion(
     file: File,
@@ -1836,9 +1876,8 @@ class ApiClient {
     if (sourceHint) formData.append('source_hint', sourceHint)
     const url = new URL(`${this.baseUrl}/formats/upload`)
     if (sourcePlatform) url.searchParams.set('source_platform', sourcePlatform)
-    const response = await fetch(url.toString(), {
+    const response = await this.authedFetch(url.toString(), {
       method: 'POST',
-      headers: this.getAuthHeader(),
       body: formData,
     })
     if (!response.ok) {
@@ -1852,9 +1891,8 @@ class ApiClient {
   async parseForPreview(file: File): Promise<ParsePreviewResponse> {
     const formData = new FormData()
     formData.append('file', file)
-    const response = await fetch(`${this.baseUrl}/formats/parse`, {
+    const response = await this.authedFetch(`${this.baseUrl}/formats/parse`, {
       method: 'POST',
-      headers: this.getAuthHeader(),
       body: formData,
     })
     if (!response.ok) {
@@ -1866,9 +1904,7 @@ class ApiClient {
 
   // Export a saved resume in a specific format (returns Blob for download)
   async exportResume(resumeId: string, format: string): Promise<Blob> {
-    const response = await fetch(`${this.baseUrl}/export/${resumeId}/${format}`, {
-      headers: this.getAuthHeader(),
-    })
+    const response = await this.authedFetch(`${this.baseUrl}/export/${resumeId}/${format}`)
     if (!response.ok) {
       throw new Error(`Export failed: ${response.status}`)
     }
@@ -1909,9 +1945,9 @@ class ApiClient {
   }
 
   async deleteCheckpoint(resumeId: string, checkpointId: string): Promise<void> {
-    const res = await fetch(
+    const res = await this.authedFetch(
       `${API_BASE}/resumes/${encodeURIComponent(resumeId)}/checkpoints/${encodeURIComponent(checkpointId)}`,
-      { method: 'DELETE', headers: this.headers({}, false) }
+      { method: 'DELETE' }
     )
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
@@ -1954,12 +1990,8 @@ class ApiClient {
 
   // Export raw LaTeX content in a specific format (for /try page, no auth needed)
   async exportContent(latexContent: string, format: string): Promise<Blob> {
-    const response = await fetch(`${this.baseUrl}/export/content/${format}`, {
+    const response = await this.authedFetch(`${this.baseUrl}/export/content/${format}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.getAuthHeader(),
-      },
       body: JSON.stringify({ latex_content: latexContent }),
     })
     if (!response.ok) {
@@ -2041,9 +2073,8 @@ class ApiClient {
   }
 
   async deleteCoverLetter(id: string): Promise<void> {
-    await fetch(`${API_BASE}/cover-letters/${encodeURIComponent(id)}`, {
+    await this.authedFetch(`${API_BASE}/cover-letters/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-      headers: this.headers({}, false),
     })
   }
 
@@ -2200,9 +2231,9 @@ class ApiClient {
   }
 
   async revokeShareLink(resumeId: string): Promise<void> {
-    const res = await fetch(
+    const res = await this.authedFetch(
       `${API_BASE}/resumes/${encodeURIComponent(resumeId)}/share`,
-      { method: 'DELETE', headers: this.headers({}, false) }
+      { method: 'DELETE' }
     )
     if (!res.ok && res.status !== 204) {
       const body = await res.text().catch(() => '')
@@ -2219,9 +2250,8 @@ class ApiClient {
   // ---------------------------------------------------------------- //
 
   async bulkExport(format: 'tex' | 'pdf' | 'docx'): Promise<Blob> {
-    const res = await fetch(
-      `${API_BASE}/resumes/export/bulk?format=${format}`,
-      { headers: this.headers({}, false) }
+    const res = await this.authedFetch(
+      `${API_BASE}/resumes/export/bulk?format=${format}`
     )
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -2362,9 +2392,8 @@ class ApiClient {
   }
 
   async deleteApplication(id: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/tracker/applications/${encodeURIComponent(id)}`, {
+    const res = await this.authedFetch(`${API_BASE}/tracker/applications/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-      headers: this.headers({}, false),
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -2403,9 +2432,8 @@ class ApiClient {
   }
 
   async deleteInterviewPrep(prepId: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/interview-prep/${encodeURIComponent(prepId)}`, {
+    const res = await this.authedFetch(`${API_BASE}/interview-prep/${encodeURIComponent(prepId)}`, {
       method: 'DELETE',
-      headers: this.headers({}, false),
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -2600,9 +2628,8 @@ class ApiClient {
   }
 
   async removeCollaborator(resumeId: string, collabUserId: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}/collaborators/${encodeURIComponent(collabUserId)}`, {
+    const res = await this.authedFetch(`${API_BASE}/resumes/${encodeURIComponent(resumeId)}/collaborators/${encodeURIComponent(collabUserId)}`, {
       method: 'DELETE',
-      headers: this.headers({}, false),
     })
     if (!res.ok) {
       const body = await res.text()
@@ -3236,11 +3263,25 @@ export function getDeviceFingerprint(): string {
 //  WebSocket URL builder (used by ws-client.ts)                      //
 // ------------------------------------------------------------------ //
 
+/** Absolute ws(s):// origin every socket hangs off. */
+export function getWebSocketBase(): string {
+  return process.env.NEXT_PUBLIC_WS_URL ?? API_BASE.replace(/^http/, 'ws')
+}
+
 export function getWebSocketUrl(): string {
-  const base =
-    process.env.NEXT_PUBLIC_WS_URL ??
-    (API_BASE.replace(/^http/, 'ws'))
-  return `${base}/ws/jobs`
+  return `${getWebSocketBase()}/ws/jobs`
+}
+
+/**
+ * Base URL for the Y.js collaboration socket; y-websocket appends the room id.
+ * Must share the /ws/ prefix with the jobs socket: in production
+ * NEXT_PUBLIC_API_URL is the same-origin path "/api", and nginx's `location
+ * /api/` caps concurrent connections per IP (limit_conn 10). A long-lived
+ * editor socket routed there would burn one of those slots per open tab and
+ * 503 all REST traffic for everyone behind the same NAT.
+ */
+export function getCollabWebSocketUrl(): string {
+  return `${getWebSocketBase()}/ws/collab`
 }
 
 // ------------------------------------------------------------------ //

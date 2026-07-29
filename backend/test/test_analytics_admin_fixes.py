@@ -195,3 +195,49 @@ class TestPublicFeatureFlagsAllowlist:
         assert internal_key not in data
         # An allowlisted flag is still exposed.
         assert "billing" in data
+
+
+class TestUserAnalyticsDailyActivity:
+    """get_user_analytics must not emit an ungrouped date_trunc expression."""
+
+    async def test_get_user_analytics_returns_daily_activity(self, db_session: AsyncSession):
+        # Seed real rows so the GROUP BY date_trunc path actually executes — with
+        # zero rows Postgres never evaluates the grouping and the test would pass
+        # even if the ungrouped-expression regression came back.
+        user_id = uuid4()
+        await db_session.execute(
+            text(
+                "INSERT INTO users (id, email, name, email_verified, subscription_plan, "
+                "subscription_status, trial_used) VALUES (:id, :email, 'Analytics User', "
+                "true, 'free', 'active', false)"
+            ),
+            {"id": str(user_id), "email": f"analytics_{user_id.hex}@example.com"},
+        )
+        for action, day_offset in (("compile", 1), ("compile", 1), ("optimize", 2)):
+            await db_session.execute(
+                text(
+                    "INSERT INTO usage_analytics (id, user_id, action, created_at) "
+                    "VALUES (:id, :uid, :action, NOW() - (:offset || ' days')::interval)"
+                ),
+                {
+                    "id": str(uuid4()),
+                    "uid": str(user_id),
+                    "action": action,
+                    "offset": str(day_offset),
+                },
+            )
+        await db_session.commit()
+
+        analytics = await analytics_service.get_user_analytics(
+            db=db_session,
+            user_id=user_id,
+            days=7,
+        )
+        daily = analytics["daily_activity"]
+        assert isinstance(daily, dict)
+        # Two distinct days, three events total.
+        assert len(daily) == 2
+        assert sum(daily.values()) == 3
+        assert analytics["most_active_day"] in daily
+        assert daily[analytics["most_active_day"]] == 2
+        assert analytics["feature_usage"] == {"compile": 2, "optimize": 1}

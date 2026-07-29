@@ -7,6 +7,18 @@ from httpx import AsyncClient
 
 from app.services.academic_cv_service import academic_cv_service
 
+
+@pytest.fixture
+async def auth_headers(pro_auth_headers: dict) -> dict:
+    """Run this module as a PRO user.
+
+    These routes queue LLM optimizations, which spend the plan's monthly
+    optimization allowance (the free plan sells 0). The money meter itself is
+    covered in test_usage_quotas.py — here it must not be the thing under test.
+    """
+    return pro_auth_headers
+
+
 ACADEMIC_CV_LATEX = r"""
 \documentclass{article}
 \begin{document}

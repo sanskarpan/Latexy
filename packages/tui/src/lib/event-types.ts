@@ -47,18 +47,19 @@ export interface JobCompletedEvent extends BaseEvent {
   pdf_job_id?: string
   page_count?: number | null
   ats_score?: number | null
+  ats_details?: Record<string, unknown> | null
   compilation_time?: number | null
   optimization_time?: number | null
   compiler?: string
   is_beamer?: boolean
-  // Legacy / fallback: some paths wrap fields under result
-  result?: Record<string, unknown>
+  slide_count?: number | null
 }
 
 export interface JobFailedEvent extends BaseEvent {
   type: 'job.failed'
-  error: string
+  stage?: string
   error_code?: string
+  error_message: string
   retryable?: boolean
 }
 
@@ -131,3 +132,17 @@ export type AnyEvent =
   | SysHeartbeatEvent
   | SysErrorEvent
   | DocumentConvertCompleteEvent
+
+/**
+ * latex_worker hardcodes `ats_score: 0.0, ats_details: {}` on every plain compile, so a raw
+ * `ats_score ?? null` renders a bogus "0/100 — Poor" card. Only report a score when ATS
+ * actually ran: a non-zero score, or a zero score backed by real ats_details.
+ */
+export function resolveAtsScore(ev: JobCompletedEvent): number | null {
+  const score = ev.ats_score
+  if (score == null) return null
+  if (score > 0) return score
+  const details = ev.ats_details
+  const ranAts = details != null && Object.keys(details).length > 0
+  return ranAts ? score : null
+}
