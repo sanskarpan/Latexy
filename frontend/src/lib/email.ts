@@ -56,21 +56,22 @@ function isProductionRuntime(): boolean {
 }
 
 const MISSING_KEY_MESSAGE =
-  'RESEND_API_KEY is not set — refusing to fall back to console logging in production. ' +
-  'Configure a transactional email provider before serving traffic.'
+  'RESEND_API_KEY is not set — transactional email (verification, password reset) ' +
+  'will be console-logged, not delivered. Configure a provider before relying on email.'
 
 /**
- * Boot-time preflight: fail the process when production has no mail transport.
+ * Boot-time preflight: warn (loudly) when production has no mail transport.
  *
- * Throwing from `sendEmail` alone is not enough — Better Auth runs every sender
- * inside `runInBackgroundOrAwait`, which swallows the error — so a container
- * missing `RESEND_API_KEY` would otherwise happily serve sign-ups whose
- * verification mail can never be delivered. Called from `lib/auth.ts` at module
- * load, alongside the `BETTER_AUTH_SECRET` check.
+ * This is called from `lib/auth.ts` at module load. It must NEVER throw:
+ * email verification is soft (a product decision), so a missing mail provider
+ * degrades email delivery only — it must not crash the auth module and 500
+ * every sign-in / sign-up / get-session. `sendEmail` already falls back to a
+ * console log when the key is absent, so flows still complete. Surface the
+ * misconfiguration in the logs rather than taking authentication down with it.
  */
 export function assertEmailTransportConfigured(): void {
   if (!process.env.RESEND_API_KEY && isProductionRuntime()) {
-    throw new Error(MISSING_KEY_MESSAGE)
+    console.error(`[email] ${MISSING_KEY_MESSAGE}`)
   }
 }
 
