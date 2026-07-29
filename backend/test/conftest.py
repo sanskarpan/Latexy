@@ -143,6 +143,32 @@ from app.main import app
 
 
 @pytest.fixture(autouse=True)
+def _reset_async_redis_singletons():
+    """Drop the async Redis client singletons before each test.
+
+    aioredis connection pools bind to the event loop that created their
+    connections. A test that drives a coroutine via ``asyncio.run()`` (its own
+    short-lived loop — common when exercising Celery task bodies) can leave a
+    connection bound to a now-closed loop inside the *shared* module-level
+    client. A later test that reuses that client then raises "Event loop is
+    closed" — which surfaces, since the quota meter added in this branch, as a
+    503 on the first authenticated job submission that runs afterwards.
+
+    Clearing the async singletons (module globals + manager attributes) forces
+    each test to lazily re-init the clients on its own running loop via
+    get_redis_client()/get_redis_cache_client(). Sync clients are untouched (no
+    loop affinity), and production is single-loop so this is test-only.
+    """
+    import app.core.redis as _redis_mod
+
+    _redis_mod.redis_client = None
+    _redis_mod.redis_cache_client = None
+    _redis_mod.redis_manager.redis_client = None
+    _redis_mod.redis_manager.redis_cache_client = None
+    yield
+
+
+@pytest.fixture(autouse=True)
 def relax_missing_recorder_file(monkeypatch):
     from app.services import latex_service as _ls
 
