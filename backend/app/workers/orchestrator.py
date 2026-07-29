@@ -624,14 +624,17 @@ def _run_latex_stage(
             workspace = "/workdir"
         else:
             assert_local_engine_allowed(job_id)
+            # Relative paths + cwd=job_dir: the sandbox sets openin_any/openout_any=p
+            # (paranoid), under which kpathsea refuses ABSOLUTE read/write paths, so
+            # an absolute /tmp/.../resume.tex fails with "Not reading … (openin_any=p)".
             cmd = [
                 compiler,
                 *LATEX_SANDBOX_FLAGS,
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 "-synctex=1",
-                "-output-directory", str(job_dir),
-                str(tex_file),
+                "-output-directory", ".",
+                "resume.tex",
             ]
             cwd = str(job_dir)
             workspace = str(job_dir)
