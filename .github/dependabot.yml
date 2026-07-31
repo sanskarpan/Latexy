@@ -20,9 +20,16 @@ updates:
       - dependency-name: "celery"
         update-types: ["version-update:semver-major"]
 
-  # Node frontend dependencies
+  # Node dependencies — this is a pnpm WORKSPACE.
+  #
+  # directory MUST be the repo root (/), where pnpm-workspace.yaml and the single
+  # pnpm-lock.yaml live — NOT /frontend. Dependabot discovers every workspace
+  # member (frontend, packages/*) and updates the ONE root lockfile that CI and
+  # Vercel actually validate. Pointing it at /frontend made Dependabot update a
+  # stray npm package-lock.json (now deleted + gitignored) and leave the pnpm
+  # lockfile stale, so `pnpm install --frozen-lockfile` failed CI on every PR.
   - package-ecosystem: npm
-    directory: /frontend
+    directory: /
     schedule:
       interval: weekly
       day: monday
@@ -31,6 +38,15 @@ updates:
     labels:
       - dependencies
       - frontend
+    # Batch low-risk minor/patch bumps into a SINGLE PR. With one shared root
+    # lockfile, separate per-package PRs each carry a lockfile change and
+    # serialize (only one merges cleanly at a time) — grouping avoids that and
+    # cuts red-CI churn to one coherent update per week.
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
     ignore:
       - dependency-name: "next"
         update-types: ["version-update:semver-major"]
