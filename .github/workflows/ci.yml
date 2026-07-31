@@ -29,6 +29,39 @@ jobs:
       - name: Run ruff
         run: uv run ruff check app/ test/
 
+  # Guards the class of bug that caused P0 outages #954 and #956: code that is
+  # correct in local dev and wrong on Modal (the real production target), on a
+  # deployment path that had no test coverage at all. Deliberately a separate job
+  # with NO service containers — the suite is pure static analysis over
+  # modal_app.py, so it stays fast and cannot be skipped for want of a database.
+  deployment-parity:
+    name: Modal Deployment Parity
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SKIP_INFRA_CHECK: "true"
+      SKIP_ENV_VALIDATION: "true"
+      # test_importing_the_app_never_raises_when_optional_providers_are_unset
+      # re-imports app.main in a subprocess with every optional provider blank, so
+      # only the hard-required secrets are supplied here.
+      JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY || 'ci-jwt-secret-key-00000000000000000000000000000000' }}
+      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'ci-better-auth-secret-00000000000000000000000000000000' }}
+      API_KEY_ENCRYPTION_KEY: ${{ secrets.CI_API_KEY_ENCRYPTION_KEY || 'MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=' }}
+      DEBUG: "true"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: "backend/requirements-dev.txt"
+      - name: Install dependencies
+        run: uv pip install -r requirements-dev.txt
+      - name: Run deployment-parity guards
+        run: uv run pytest test/test_modal_deployment_parity.py -v --tb=short
+
   backend-test:
     name: Backend Tests
     runs-on: ubuntu-latest

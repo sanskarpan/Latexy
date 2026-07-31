@@ -109,9 +109,17 @@ sys.path.insert(0, str(_backend_dir))
 # ── Infrastructure pre-flight checks ─────────────────────────────────────────
 
 
+# Static suites (e.g. test_modal_deployment_parity.py) only read source files, so
+# they must stay runnable in a bare CI job with no Postgres and no Redis — a guard
+# that needs a whole stack to run is a guard that ends up skipped.
+_SKIP_INFRA = os.environ.get("SKIP_INFRA_CHECK", "").lower() in {"1", "true", "yes"}
+
+
 @pytest.fixture(scope="session", autouse=True)
 def check_infrastructure():
     """Fail fast if Redis is unavailable."""
+    if _SKIP_INFRA:
+        return
     import redis as sync_redis
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
     try:
@@ -124,6 +132,9 @@ def check_infrastructure():
 @pytest.fixture(scope="session", autouse=True)
 def reset_test_redis():
     """Flush the dedicated Redis test DB so repeated runs stay deterministic."""
+    if _SKIP_INFRA:
+        yield
+        return
     import redis as sync_redis
 
     client = sync_redis.from_url(_TEST_REDIS_URL, socket_connect_timeout=3)
@@ -189,8 +200,19 @@ def relax_missing_recorder_file(monkeypatch):
 # ── Dependency Overrides ──────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
-def override_get_db(db_session: AsyncSession):
-    """Override get_db dependency to use the test session."""
+def override_get_db(request):
+    """Override get_db dependency to use the test session.
+
+    ``db_session`` is resolved lazily so a static suite (which touches no route
+    and no model) does not drag in Postgres via this autouse fixture — see
+    ``_SKIP_INFRA`` above.
+    """
+    if _SKIP_INFRA:
+        yield
+        return
+
+    db_session: AsyncSession = request.getfixturevalue("db_session")
+
     async def _get_db_override():
         yield db_session
 
