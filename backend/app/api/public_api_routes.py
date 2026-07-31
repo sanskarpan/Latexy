@@ -19,6 +19,7 @@ from ..database.models import DeveloperAPIKey, User
 from ..middleware.auth_middleware import get_developer_api_key_required
 from ..services.ats_scoring_service import ats_scoring_service
 from ..services.developer_key_service import developer_key_service
+from ..services.entitlement_service import QuotaTicket, entitlement_service
 from ..utils.file_utils import get_job_files, validate_job_id
 from ..workers.latex_worker import submit_latex_compilation
 from ..workers.llm_worker import submit_resume_optimization
@@ -76,11 +77,28 @@ async def _get_plan_id(db: AsyncSession, user_id: str) -> str:
     return result.scalar_one_or_none() or "free"
 
 
+# The developer API spends exactly the same resources as the first-party routes,
+# so it must spend the same plan allowance. The daily developer meter below is an
+# anti-burst limiter layered on top of that allowance, never a substitute for it —
+# free users can self-issue keys, so treating it as the only limit would put the
+# paywall one `POST /developer/keys` away from irrelevant.
+_SCOPE_QUOTA_DIMENSIONS = {
+    "compile": "compilations",
+    "optimize": "optimizations",
+}
+
+
 async def _authorize(
     scope: str,
     api_key: DeveloperAPIKey,
     db: AsyncSession,
-) -> str:
+) -> tuple[str, Optional[QuotaTicket]]:
+    """Authorise a developer-API call and spend its plan allowance.
+
+    Returns the caller's plan and the quota ticket, so the caller can hand the
+    unit back if the dispatch it was charged for never happens. A scope with no
+    quota dimension (``ats``) yields a ``None`` ticket.
+    """
     scopes = set(api_key.scopes or [])
     if scope not in scopes:
         raise HTTPException(status_code=403, detail=f"API key lacks '{scope}' scope")
@@ -98,8 +116,17 @@ async def _authorize(
             detail=f"Developer API daily limit exceeded ({meter['limit']} requests/day)",
         )
 
+    dimension = _SCOPE_QUOTA_DIMENSIONS.get(scope)
+    ticket = (
+        await entitlement_service.enforce_quota(
+            dimension, user_id=api_key.user_id, plan=plan_id
+        )
+        if dimension
+        else None
+    )
+
     await developer_key_service.touch_usage(api_key, db)
-    return plan_id
+    return plan_id, ticket
 
 
 async def _assert_job_owner(job_id: str, api_key: DeveloperAPIKey):
@@ -119,23 +146,32 @@ async def compile_v1(
     api_key: DeveloperAPIKey = Depends(get_developer_api_key_required),
     db: AsyncSession = Depends(get_db),
 ):
-    plan_id = await _authorize("compile", api_key, db)
-
+    # Validated before _authorize charges the allowance: a rejected compiler must
+    # not cost the caller a compilation.
     compiler = body.compiler or settings.DEFAULT_LATEX_COMPILER
     if compiler not in settings.ALLOWED_LATEX_COMPILERS:
         raise HTTPException(status_code=400, detail="Unsupported compiler")
 
-    job_id = str(uuid.uuid4())
-    estimated_seconds = 20 if plan_id in {"pro", "byok", "team", "student", "pro_annual", "byok_annual"} else 30
-    await _write_initial_redis_state(job_id, "latex_compilation", api_key.user_id, estimated_seconds)
-    submit_latex_compilation(
-        latex_content=body.latex_content,
-        job_id=job_id,
-        user_id=api_key.user_id,
-        user_plan=plan_id,
-        metadata={"submitted_via": "developer_api", "developer_key_id": api_key.id},
-        compiler=compiler,
-    )
+    plan_id, quota_ticket = await _authorize("compile", api_key, db)
+
+    try:
+        job_id = str(uuid.uuid4())
+        estimated_seconds = 20 if plan_id in {"pro", "byok", "team", "student", "pro_annual", "byok_annual"} else 30
+        await _write_initial_redis_state(job_id, "latex_compilation", api_key.user_id, estimated_seconds)
+        submit_latex_compilation(
+            latex_content=body.latex_content,
+            job_id=job_id,
+            user_id=api_key.user_id,
+            user_plan=plan_id,
+            metadata={"submitted_via": "developer_api", "developer_key_id": api_key.id},
+            compiler=compiler,
+        )
+    except Exception:
+        # The job never made it onto the queue — give the plan allowance back.
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
+        raise
+
     return V1QueuedResponse(
         job_id=job_id,
         status="queued",
@@ -150,20 +186,27 @@ async def optimize_v1(
     api_key: DeveloperAPIKey = Depends(get_developer_api_key_required),
     db: AsyncSession = Depends(get_db),
 ):
-    plan_id = await _authorize("optimize", api_key, db)
+    plan_id, quota_ticket = await _authorize("optimize", api_key, db)
 
-    job_id = str(uuid.uuid4())
-    estimated_seconds = 60
-    await _write_initial_redis_state(job_id, "llm_optimization", api_key.user_id, estimated_seconds)
-    submit_resume_optimization(
-        latex_content=body.latex_content,
-        job_description=body.job_description,
-        job_id=job_id,
-        user_id=api_key.user_id,
-        user_plan=plan_id,
-        optimization_level=body.optimization_level,
-        metadata={"submitted_via": "developer_api", "developer_key_id": api_key.id},
-    )
+    try:
+        job_id = str(uuid.uuid4())
+        estimated_seconds = 60
+        await _write_initial_redis_state(job_id, "llm_optimization", api_key.user_id, estimated_seconds)
+        submit_resume_optimization(
+            latex_content=body.latex_content,
+            job_description=body.job_description,
+            job_id=job_id,
+            user_id=api_key.user_id,
+            user_plan=plan_id,
+            optimization_level=body.optimization_level,
+            metadata={"submitted_via": "developer_api", "developer_key_id": api_key.id},
+        )
+    except Exception:
+        # The job never made it onto the queue — give the plan allowance back.
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
+        raise
+
     return V1QueuedResponse(
         job_id=job_id,
         status="queued",
@@ -178,6 +221,8 @@ async def ats_score_v1(
     api_key: DeveloperAPIKey = Depends(get_developer_api_key_required),
     db: AsyncSession = Depends(get_db),
 ):
+    # ATS scoring is deterministic and spends no LLM budget, so it has no quota
+    # dimension — the developer daily meter inside _authorize is the only limit.
     await _authorize("ats", api_key, db)
     result = await ats_scoring_service.score_resume(
         latex_content=body.latex_content,
