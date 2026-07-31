@@ -199,6 +199,12 @@ _ENGINE_TEXMF_ROOTS: tuple[str, ...] = (
     "/usr/local/texlive/", "/usr/share/texlive/", "/usr/share/texmf",
     "/usr/local/share/texmf", "/usr/local/texmf/", "/opt/texlive/",
     "/etc/texmf/", "/var/lib/texmf/", "/usr/share/fonts/", "/usr/local/share/fonts/",
+    # luaotfload asks fontconfig where the system fonts are, so a LuaLaTeX run
+    # records ~50 files under /etc/fonts/ that the document never referenced.
+    # Omitting this rejected every LuaLaTeX compile on the production image with a
+    # security error blaming the user's own document. pdflatex and xelatex do not
+    # consult fontconfig, which is why it surfaced for one engine only.
+    "/etc/fonts/",
 )
 
 # TeX announces an opened file as "(name" (optionally quoted when it contains spaces).
