@@ -5,6 +5,7 @@ Receives pre-extracted structured data (ParsedResume.to_dict()) so the
 expensive I/O (file reading, parsing) happens synchronously in the API layer,
 while only the LLM call runs async in the worker.
 """
+import os
 import time
 import uuid
 from typing import Any, Dict, Optional
@@ -192,6 +193,24 @@ def submit_document_conversion(
     """Enqueue convert_document_task on the llm queue."""
     if priority is None:
         priority = get_task_priority("free")
+
+    # See submit_cover_letter_generation: no Celery consumer exists on Modal.
+    # #951 added a quota charge to this path, so a silent drop here bills the
+    # user for a conversion that never happens.
+    if os.environ.get("DEPLOY_TARGET") == "modal":
+        from ..core.modal_dispatch import spawn
+        spawn("run_document_conversion_task", {
+            "extracted_data": extracted_data,
+            "source_format": source_format,
+            "job_id": job_id,
+            "user_id": user_id,
+            "user_api_key": user_api_key,
+            "source_hint": source_hint,
+            "source_platform": source_platform,
+            "metadata": metadata,
+        })
+        logger.info(f"Dispatched document conversion to Modal for job {job_id}")
+        return job_id
 
     convert_document_task.apply_async(
         kwargs={

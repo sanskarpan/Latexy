@@ -9,6 +9,7 @@ Celery's prefork worker pool.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -182,3 +183,32 @@ async def _do_auto_save(
     finally:
         if engine is not None:
             await engine.dispose()
+
+
+def submit_auto_save_checkpoint(
+    resume_id: str, user_id: str, latex_content: str
+) -> None:
+    """Queue an auto-save checkpoint, routing to Modal in production.
+
+    The compile and orchestrator task bodies dispatch this as a sub-task. On
+    Modal there is no Celery worker consuming the cleanup queue, so calling
+    apply_async() unconditionally meant checkpointing was silently lost on every
+    production compile — the feature looked healthy because the parent job
+    succeeded. Failures stay non-fatal: a lost checkpoint must not fail a compile
+    the user already paid for.
+    """
+    try:
+        if os.environ.get("DEPLOY_TARGET") == "modal":
+            from ..core.modal_dispatch import spawn
+            spawn("run_auto_save_task", {
+                "resume_id": resume_id,
+                "user_id": user_id,
+                "latex_content": latex_content,
+            })
+            return
+        record_auto_save_checkpoint.apply_async(
+            args=[resume_id, user_id, latex_content],
+            queue="cleanup",
+        )
+    except Exception as exc:
+        logger.warning("Failed to enqueue auto-save for resume %s: %s", resume_id, exc)
