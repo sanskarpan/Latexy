@@ -28,6 +28,7 @@ from ..services.collab_manager import collab_manager
 from ..services.entitlement_service import entitlement_service
 from ..services.format_detection import ResumeFormat, format_detection_service
 from ..services.resume_builder_service import SUPPORTED_BUILDER_CATEGORIES, resume_builder_service
+from ..utils.uuid_guard import ensure_uuid
 
 logger = get_logger(__name__)
 
@@ -1546,6 +1547,10 @@ class CheckpointContentResponse(BaseModel):
 async def _verify_resume_ownership(
     db: AsyncSession, resume_id: str, user_id: str
 ) -> Resume:
+    # Most of the /resumes/{resume_id}/* sub-routes reach the database through
+    # here, so the UUID guard belongs at this chokepoint: a malformed id would
+    # otherwise raise ValueError out of asyncpg and surface as a 500.
+    ensure_uuid(resume_id, "Resume not found")
     result = await db.execute(
         select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
     )

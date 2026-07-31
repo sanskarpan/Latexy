@@ -14,6 +14,7 @@ from ..database.connection import get_db
 from ..database.models import InterviewPrep, Resume
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
+from ..utils.uuid_guard import ensure_uuid
 from ..workers.interview_prep_worker import submit_interview_prep_generation
 
 logger = get_logger(__name__)
@@ -181,6 +182,9 @@ async def delete_interview_prep(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete an interview prep session."""
+    # Same guard as the fetch route above: a non-UUID segment would raise
+    # asyncpg DataError -> 500 rather than a 404.
+    ensure_uuid(prep_id, "Interview prep not found")
     result = await db.execute(
         select(InterviewPrep).where(
             InterviewPrep.id == prep_id,

@@ -22,6 +22,7 @@ from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
 from ..services.entitlement_service import entitlement_service
+from ..utils.uuid_guard import ensure_uuid
 from ..workers.cover_letter_worker import submit_cover_letter_generation
 
 logger = get_logger(__name__)
@@ -163,6 +164,7 @@ async def _verify_resume_ownership(
     db: AsyncSession, resume_id: str, user_id: str
 ) -> Resume:
     """Verify the resume exists and belongs to the user. Returns the resume."""
+    ensure_uuid(resume_id, "Resume not found or not owned by you")
     result = await db.execute(
         select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
     )
@@ -179,6 +181,7 @@ async def _verify_cover_letter_ownership(
     db: AsyncSession, cover_letter_id: str, user_id: str
 ) -> CoverLetter:
     """Verify the cover letter exists and belongs to the user."""
+    ensure_uuid(cover_letter_id, "Cover letter not found")
     result = await db.execute(
         select(CoverLetter).where(
             CoverLetter.id == cover_letter_id, CoverLetter.user_id == user_id
