@@ -55,18 +55,23 @@ def _modal_function_names() -> set[str]:
 def _modal_apt_packages() -> dict[str, set[str]]:
     """image variable name -> set of apt packages it installs.
 
-    Resolves the ``*_APT_BASE`` splat by reading that list literal too.
+    Resolves any splatted module-level list (``*_APT_BASE``, ``*_APT_LATEX``, ...)
+    by reading that list literal too, so grouping packages into a shared constant
+    does not blind the check.
     """
     tree = _parse(MODAL_APP)
-    base: set[str] = set()
+
+    # Every module-level list-of-strings, by name, so a splat can be resolved.
+    constants: dict[str, set[str]] = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
-            for t in node.targets:
-                if isinstance(t, ast.Name) and t.id == "_APT_BASE":
-                    base = {
-                        e.value for e in node.value.elts  # type: ignore[attr-defined]
-                        if isinstance(e, ast.Constant) and isinstance(e.value, str)
-                    }
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.List):
+            continue
+        for t in node.targets:
+            if isinstance(t, ast.Name):
+                constants[t.id] = {
+                    e.value for e in node.value.elts
+                    if isinstance(e, ast.Constant) and isinstance(e.value, str)
+                }
 
     images: dict[str, set[str]] = {}
     for node in ast.walk(tree):
@@ -87,8 +92,7 @@ def _modal_apt_packages() -> dict[str, set[str]]:
                 if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                     pkgs.add(arg.value)
                 elif isinstance(arg, ast.Starred) and isinstance(arg.value, ast.Name):
-                    if arg.value.id == "_APT_BASE":
-                        pkgs |= base
+                    pkgs |= constants.get(arg.value.id, set())
         images[target.id] = pkgs
     return images
 
@@ -125,17 +129,13 @@ def _dispatch_sites() -> list[tuple[str, str, bool]]:
 # Dispatchers that still have no Modal branch, and therefore never run in
 # production. Each entry is a real, tracked gap — not an approval.
 KNOWN_UNWIRED_DISPATCHERS = {
-    # User-facing features that simply never run on Modal.
-    ("cover_letter_worker.py", "submit_cover_letter_generation"),
-    ("converter_worker.py", "submit_document_conversion"),
-    ("interview_prep_worker.py", "submit_interview_prep_generation"),
-    # Fan-out of the weekly digest; inert anyway while EMAIL_ENABLED is false.
+    # Beat entry point: it fans out per-user digest tasks with apply_async. On
+    # Modal it is reached through scheduled_weekly_digest, which runs this
+    # function's body — so the fan-out inside it still targets a broker with no
+    # consumer. Left as a tracked gap rather than a fake fix: EMAIL_ENABLED is
+    # false, so nothing is dropped today, and wiring it properly means giving the
+    # per-user sends their own Modal function.
     ("email_worker.py", "_async_fan_out_weekly_digest"),
-    # These two are task bodies, not submit helpers: they dispatch
-    # record_auto_save_checkpoint (and send_job_completion_email) as sub-tasks, so
-    # auto-save checkpointing is silently lost on every production compile.
-    ("latex_worker.py", "compile_latex_task"),
-    ("orchestrator.py", "optimize_and_compile_task"),
 }
 
 
@@ -373,26 +373,70 @@ def test_importing_the_app_never_raises_when_optional_providers_are_unset():
 # ── 5. scheduled work (periodic tasks have no Modal runner) ──────────────────
 
 
+# Beat entries with no Modal counterpart, and why that is acceptable.
+SCHEDULE_WAIVERS = {
+    # Pure observability sampling, every 20s. A Modal function per 20s tick would
+    # cost more than the metric is worth; queue depth is meaningless there anyway,
+    # since Modal does not use the Celery broker to dispatch.
+    "sample-queue-depths": "Celery-broker-specific metric; no broker on Modal",
+}
+
+
 def test_beat_schedule_entries_are_accounted_for_on_modal():
     """Modal has no Celery beat, so every beat entry needs a Modal schedule.
 
-    modal_app.py declares no ``schedule=``/``modal.Period`` on any function, so
-    nothing periodic runs in production: temp-file cleanup, the expired-job reaper,
-    the MinIO orphan pruner and the weekly digest are all inert there.
+    Without one, nothing periodic runs in production: temp-file cleanup, the
+    expired-job reaper, the MinIO orphan pruner (which lives inside the
+    expired-job task) and the weekly digest are all inert.
+
+    Each beat entry is matched to a scheduled Modal function by the task it
+    invokes, so renaming a Modal wrapper cannot silently orphan an entry.
     """
     from app.core.celery_app import celery_app
 
-    scheduled = set(celery_app.conf.beat_schedule or {})
-    modal_src = MODAL_APP.read_text(encoding="utf-8")
-    has_modal_scheduler = ("schedule=" in modal_src) or ("modal.Period" in modal_src) or ("modal.Cron" in modal_src)
-
-    # Locked-in known gap: no scheduler on Modal at all. When one is added this
-    # assertion flips and the test must be tightened to a per-entry check.
-    assert not has_modal_scheduler, (
-        "modal_app.py now declares a schedule. Replace this assertion with a per-entry "
-        f"check that each beat_schedule key has a Modal counterpart. Entries: {sorted(scheduled)}"
-    )
+    scheduled = dict(celery_app.conf.beat_schedule or {})
     assert scheduled, "beat_schedule is empty — this guard is no longer meaningful"
+
+    tree = _parse(MODAL_APP)
+
+    # Task callables invoked inside a function that declares a schedule.
+    scheduled_tasks: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        # Read the decorator AST rather than its source: get_source_segment on a
+        # FunctionDef excludes the decorator lines.
+        has_schedule = any(
+            isinstance(dec, ast.Call)
+            and any(kw.arg == "schedule" for kw in dec.keywords)
+            for dec in node.decorator_list
+        )
+        if not has_schedule:
+            continue
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.ImportFrom):
+                scheduled_tasks.update(a.name for a in sub.names)
+
+    missing = {}
+    for key, entry in scheduled.items():
+        if key in SCHEDULE_WAIVERS:
+            continue
+        task_path = entry.get("task", "")
+        task_fn = task_path.rsplit(".", 1)[-1]
+        if task_fn not in scheduled_tasks:
+            missing[key] = task_path
+
+    assert not missing, (
+        f"beat_schedule entries with no scheduled Modal function: {missing}. "
+        "Nothing periodic runs on Modal without one — add an @app.function with "
+        "schedule=modal.Period(...)/modal.Cron(...) that calls the same task, or "
+        "waive it in SCHEDULE_WAIVERS with a reason."
+    )
+
+    stale = set(SCHEDULE_WAIVERS) - set(scheduled)
+    assert not stale, (
+        f"SCHEDULE_WAIVERS names beat entries that no longer exist: {sorted(stale)}."
+    )
 
 
 # ── 6. production settings are discoverable ──────────────────────────────────
