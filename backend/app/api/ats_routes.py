@@ -27,6 +27,7 @@ from ..services.api_key_service import api_key_service
 from ..services.ats_quick_scorer import quick_score_latex
 from ..services.ats_scoring_service import ats_scoring_service
 from ..services.ats_simulator_service import ATS_PROFILES, ats_simulator_service
+from ..services.entitlement_service import entitlement_service
 from ..services.industry_ats_profiles import INDUSTRY_PROFILES, detect_industry
 from ..workers.ats_worker import submit_ats_scoring, submit_deep_analyze_ats, submit_job_description_analysis
 from .job_routes import _write_initial_redis_state
@@ -778,6 +779,18 @@ async def deep_analyze_resume(
         except Exception:
             pass  # Fall back to platform key
 
+    # Authenticated callers spend an ai_assists unit. Without this, signing in
+    # REMOVED the limit — anonymous callers got a 2-use trial while signed-in
+    # users got unlimited LLM-backed deep analysis on the platform key. A BYOK
+    # caller pays their own provider, so nothing is charged.
+    quota_ticket = None
+    if user_id is not None and not api_key:
+        from .job_routes import _resolve_user_plan
+
+        quota_ticket = await entitlement_service.enforce_quota(
+            "ai_assists", user_id=user_id, plan=await _resolve_user_plan(db, user_id)
+        )
+
     # Increment trial counter BEFORE dispatching to avoid counting bypasses on commit failure
     # Only when deep_analysis_trial flag is enabled (trial object exists)
     if user_id is None and deep_trial_enabled and trial is not None:
@@ -802,8 +815,10 @@ async def deep_analyze_resume(
         )
     except Exception as e:
         logger.error(f"Failed to enqueue deep analysis job {job_id}: {e}")
-        # Refund the trial use charged before dispatch so a broker outage does
-        # not silently consume the caller's free credit.
+        # Refund the plan allowance / trial use charged before dispatch so a
+        # broker outage does not silently consume the caller's credit.
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         if user_id is None and deep_trial_enabled and trial is not None:
             try:
                 trial.usage_count = max(0, trial.usage_count - 1)
