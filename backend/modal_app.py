@@ -34,7 +34,16 @@ _IGNORE = [
 # ---------------------------------------------------------------------------
 # Base apt packages (shared across all images)
 # ---------------------------------------------------------------------------
-_APT_BASE = ["gcc", "g++", "libpq-dev", "curl"]
+# tesseract/poppler are not optional extras: app/parsers/image_parser.py shells out
+# to the `tesseract` binary via pytesseract and to poppler's pdftoppm via pdf2image,
+# and pdf_parser.py falls back to the same path for scanned, image-only PDFs. Uploads
+# are parsed in the API container, so these belong in the base set rather than only in
+# latex_image. backend/Dockerfile has installed them all along — omitting them here
+# meant image uploads and scanned PDFs failed in production only.
+_APT_BASE = [
+    "gcc", "g++", "libpq-dev", "curl",
+    "tesseract-ocr", "tesseract-ocr-eng", "poppler-utils",
+]
 
 # ---------------------------------------------------------------------------
 # Images
@@ -59,8 +68,9 @@ latex_image = (
         "texlive-science",
         "texlive-xetex",
         "texlive-luatex",
+        "texlive-lang-english",   # hyphenation patterns; matches backend/Dockerfile
         "latexmk",
-        "poppler-utils",   # pdftotext for page-count extraction
+        # poppler-utils (pdftotext, page-count extraction) now comes from _APT_BASE.
     )
     .pip_install_from_requirements("requirements.txt")
     .add_local_dir(str(_BACKEND_DIR), remote_path="/backend", copy=True, ignore=_IGNORE)
