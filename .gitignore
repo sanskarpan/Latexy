@@ -262,3 +262,11 @@ frontend/public/sw.js
 frontend/public/workbox-*.js
 frontend/public/swe-worker-*.js
 frontend/public/fallback-*.js
+
+# This is a pnpm workspace — npm/yarn lockfiles must never be committed
+# (they mislead Dependabot into treating it as an npm project). Single source
+# of truth is the root pnpm-lock.yaml.
+package-lock.json
+**/package-lock.json
+yarn.lock
+**/yarn.lock
