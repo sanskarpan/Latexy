@@ -24,7 +24,7 @@ from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
 from ..parsers.parser_factory import parser_factory
 from ..services.academic_cv_service import academic_cv_service
-from ..services.collab_manager import collab_manager
+from ..services.collab_manager import CLOSE_ROLE_CHANGED, collab_manager
 from ..services.entitlement_service import entitlement_service
 from ..services.format_detection import ResumeFormat, format_detection_service
 from ..services.resume_builder_service import SUPPORTED_BUILDER_CATEGORIES, resume_builder_service
@@ -2263,7 +2263,15 @@ async def update_collaborator_role(
 
     # The role travels with the live collaboration socket, so drop the existing
     # sessions: the client reconnects and is re-authorised with the new role.
-    await collab_manager.revoke_access(resume_id, collab_user_id, reason="Role changed")
+    # Sent with the role-changed code, not the revoked one — otherwise the client
+    # reads a promotion as a loss of access and locks the buffer read-only.
+    await collab_manager.revoke_access(
+        resume_id,
+        collab_user_id,
+        reason="Role changed",
+        code=CLOSE_ROLE_CHANGED,
+        notice_code="role_changed",
+    )
 
     user_result = await db.execute(select(User).where(User.id == collab_user_id))
     user = user_result.scalar_one_or_none()

@@ -1534,6 +1534,15 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             } catch {
               /* keep defaults */
             }
+            // A role change is not a permission loss: the relay drops the socket
+            // so the client re-handshakes with the new role. Locking here would
+            // undo a promotion — the user would come back with less access than
+            // they started with — so leave the buffer editable and let the
+            // reconnect re-authorise.
+            if (code === 'role_changed') {
+              toast.info(message || 'Your access level changed — reconnecting')
+              return
+            }
             lockCollabEditing(
               code === 'access_revoked'
                 ? `Collaboration access revoked — ${message}`
