@@ -21,6 +21,7 @@ from ..database.models import CoverLetter, Resume, User
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
+from ..services.entitlement_service import entitlement_service
 from ..workers.cover_letter_worker import submit_cover_letter_generation
 
 logger = get_logger(__name__)
@@ -306,6 +307,17 @@ async def generate_cover_letter(
     except Exception:
         user_api_key = None
 
+    # Generating a cover letter is a full LLM document run on the PLATFORM key,
+    # comparable to a tailor, so it spends the plan's optimizations allowance.
+    # Charged after ownership and plan resolution, before the job is queued, and
+    # refunded below if the enqueue fails. A BYOK caller pays their own provider,
+    # so nothing is charged.
+    quota_ticket = None
+    if not user_api_key:
+        quota_ticket = await entitlement_service.enforce_quota(
+            "optimizations", user_id=user_id, plan=user_plan
+        )
+
     # Write initial Redis state for WebSocket streaming, then enqueue the task.
     # If either step fails, roll back the CoverLetter row so we don't leave an
     # orphaned, permanently-empty "generating" record behind.
@@ -328,6 +340,8 @@ async def generate_cover_letter(
         )
     except Exception as exc:
         logger.error(f"Failed to submit cover letter job {job_id}: {exc}")
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         await db.delete(cl)
         await db.commit()
         raise HTTPException(
