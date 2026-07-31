@@ -44,12 +44,16 @@ export async function runCompile(parsed: ParsedCommand): Promise<void> {
     })
 
     try {
+      // Submitted through the async job path, like the resume-id branch below.
+      // POST /compile is synchronous: it writes no :meta/:state and publishes no
+      // events, so the subscribe below never received anything and the tool card
+      // spun forever even though the compile itself had succeeded.
       const fileBytes = await readFile(filePath)
-      const form = new FormData()
-      form.append('file', new Blob([fileBytes], { type: 'application/octet-stream' }), basename(filePath))
-      form.append('compiler', compiler)
-
-      const res = await client.postForm<JobSubmitResponse>('/compile', form)
+      const res = await client.post<JobSubmitResponse>('/jobs/submit', {
+        job_type: 'latex_compilation',
+        latex_content: new TextDecoder().decode(fileBytes),
+        compiler,
+      })
       const jobId = res.job_id
 
       $activeJobId.set(jobId)
