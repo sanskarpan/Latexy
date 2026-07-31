@@ -618,3 +618,118 @@ Worth recording so it isn't re-litigated:
 - **Open-redirect** — every `callbackURL`/`redirectTo` passes Better Auth's `originCheck`.
 - **TUI hygiene** — typecheck clean, build clean, 94/94 tests pass; config written `0600` with `chmod`.
 
+
+---
+
+# Round 3 — post-merge audit of `main` (2026-07-29)
+
+Run after PR #951 merged. **28 confirmed findings** (13 refuted and dropped), each adversarially verified.
+
+## What the merge cost
+
+PR #951 fixed ~19 real bugs and **caused two production P0 outages**:
+
+| Hotfix | What broke |
+|---|---|
+| `#954` | `assertEmailTransportConfigured()` ran at auth-module load and threw in prod without `RESEND_API_KEY` — **crashed every auth route** |
+| `#956` | `running_in_container()` refused every compile on Modal (gVisor cgroups carry no docker/kubepods marker), and `openin_any=p` rejected the absolute input path — **broke all prod compiles** |
+
+Both are the same class: **a fail-closed guard added for safety that took production down.**
+
+Root cause of the blind spot: **production runs on Modal** (`backend/modal_app.py`, deployed by hand, no CI job).
+The round-1/2 audit examined `docker-compose.prod.yml`, `nginx/` and `k8s/` — none of which are the live path — and never
+opened `modal_app.py`. `grep -rn 'DEPLOY_TARGET|modal' backend/test` returns **zero hits**: every Modal divergence is
+exercised only on the local Celery side.
+
+## Attribution
+
+- **19** introduced by PR #951
+- **9** pre-existing
+
+## Findings
+
+| Pri | Domain | Issue | Origin | Status |
+|---|---|---|---|---|
+| `P0` | fresh-sweep | Developer API (/api/v1/compile, /api/v1/optimize) completely bypasses the plan quota meter added by PR #951 | PR #951 | `OPEN` |
+| `P0` | merge-regressions | Sandbox recorder allowlist rejects /etc/fonts — every LuaLaTeX compile fails on the Modal production image | PR #951 | `OPEN` |
+| `P0` | quotas-money | Quota fails CLOSED on the CACHE Redis, which is a SEPARATE env var (REDIS_CACHE_URL) that defaults to localhost and is unvalidated in p | PR #951 | `OPEN` |
+| `P1` | fresh-sweep | ats_worker embed task reuses the module-global async DB engine across per-task asyncio.run() loops — every other worker was fixed, this | pre-existing | `OPEN` |
+| `P1` | fresh-sweep | Cover letters, interview prep, document conversion and auto-save checkpoints have no Modal dispatch branch — the tasks are enqueued to  | PR #951 | `OPEN` |
+| `P1` | fresh-sweep | Modal api_image has no LaTeX toolchain, but POST /compile and POST /public/compile execute pdflatex in the API process | PR #951 | `OPEN` |
+| `P1` | latex-engine | POST /compile, /public/compile and /optimize-and-compile run pdflatex inside the Modal API container, which has no TeX installed | pre-existing | `OPEN` |
+| `P1` | modal-prod | Nothing schedules periodic tasks on Modal — the MinIO orphan pruner, storage_guard stamp, temp-file cleanup, expired-job cleanup, healt | PR #951 | `OPEN` |
+| `P1` | modal-prod | Five task submitters have no Modal branch and no corresponding Modal function: cover letters, interview prep, document conversion, auto | PR #951 | `OPEN` |
+| `P1` | modal-prod | api_image has no LaTeX toolchain, but three shipped routes compile pdflatex in-process inside the API container | pre-existing | `OPEN` |
+| `P1` | quotas-money | Plan quota is completely bypassable via a self-issued developer API key: /api/v1/compile and /api/v1/optimize never touch PLAN_QUOTAS | PR #951 | `OPEN` |
+| `P1` | quotas-money | POST /cover-letters/generate queues a real LLM run with no quota charge at all | PR #951 | `OPEN` |
+| `P1` | quotas-money | POST /ats/deep-analyze is unmetered for every authenticated user — anonymous callers get a 2-use trial, signed-in users get unlimited L | PR #951 | `OPEN` |
+| `P1` | quotas-money | On Modal, cover-letter generation and document conversion are dispatched to Celery, which does not exist there — the /formats/upload ai | PR #951 | `OPEN` |
+| `P1` | realtime-collab | Promoting a collaborator (viewer→editor) permanently locks their editor read-only and stops the collab relay | PR #951 | `OPEN` |
+| `P2` | fresh-sweep | Modal images omit tesseract-ocr and poppler-utils that backend/Dockerfile installs — image uploads and scanned-PDF OCR fail in producti | pre-existing | `OPEN` |
+| `P2` | fresh-sweep | TUI `/compile <file.tex>` subscribes to a job that never emits any event — the tool card hangs forever | pre-existing | `OPEN` |
+| `P2` | fresh-sweep | Concrete list: env vars that exist locally (dev.sh / repo .env) but are neither in backend/.env.example nor documented as required for  | pre-existing | `OPEN` |
+| `P2` | latex-engine | No scheduler exists on Modal — every Celery beat task (temp-file cleanup, expired-job cleanup, health check, weekly digest, queue-depth | pre-existing | `OPEN` |
+| `P2` | merge-regressions | The MinIO orphan pruner added by #951 never runs on Modal — the storage-growth fix is inert in production | PR #951 | `OPEN` |
+| `P2` | modal-prod | There is no way to run Alembic migrations on Modal — the image explicitly excludes alembic/ and no deploy step applies the schema | PR #951 | `OPEN` |
+| `P2` | quotas-money | POST /career/analyze runs an LLM completion on the platform key with no quota and no BYOK fallback | PR #951 | `OPEN` |
+| `P2` | quotas-money | /jobs/batch refunds the ENTIRE batch cost when the enqueue loop fails partway, giving back optimizations for jobs that already started | PR #951 | `OPEN` |
+| `P2` | quotas-money | A failed EXPIRE after a successful INCRBY burns the user's unit AND denies the request, and leaves the counter key with no TTL | PR #951 | `OPEN` |
+| `P2` | realtime-collab | /ws/collab has no server→client keepalive, so every solo editor's collaboration socket is force-closed and re-handshaked every 30 s | PR #951 | `OPEN` |
+| `P3` | fresh-sweep | Malformed (non-UUID) path parameters raise asyncpg ValueError -> HTTP 500 on several routes | pre-existing | `OPEN` |
+| `P3` | quotas-money | ai_assists is enforced (25/month, 402s) but is never advertised — _sync_plan_feature_copy only syncs two of the three dimensions | PR #951 | `OPEN` |
+| `P3` | quotas-money | /public/compile has no authentication check and trusts a client-supplied device_fingerprint, so a signed-in user can compile outside th | pre-existing | `OPEN` |
+
+Full detail (evidence, repro, fix, and the verifier's correction for each) in `docs/audit-artifacts/audit-main-2026-07-29.json`.
+
+## The three P0s
+
+### R3-001 · LuaLaTeX compiles fail on Modal — same class as the two outages
+`backend/app/services/latex_service.py:198-202` — the recorder allowlist `_ENGINE_TEXMF_ROOTS` omits `/etc/fonts`.
+An auditor rebuilt the Modal `latex_image` and ran the real engines with the shipped flags: `pdflatex` and `xelatex`
+record nothing outside the allowlist, but **`lualatex` records 50 files under `/etc/fonts/`** (fontconfig). The sandbox
+then fails an already-successful compile with a security-flavoured error blaming the user's document.
+Does not reproduce locally, because locally `docker_engine_available()` is true and the compile runs in the container.
+*Verifier narrowed it:* `DEFAULT_LATEX_COMPILER` is `pdflatex`, so this hits only users who explicitly pick LuaLaTeX,
+and only when luaotfload's cache is cold. Still a P0 for those users, and introduced by #951.
+
+### R3-002 · Quota meter fails closed on a second, unvalidated Redis
+`REDIS_CACHE_URL` (db 1) is a *different* variable from `REDIS_URL`, and the production validator at
+`config.py:584-593` only checks `REDIS_URL`. If the cache Redis is unreachable, `consume_quota` fails **closed** —
+503 on `/compile`, `/jobs/submit`, `/optimize`, `/jobs/batch`, quick-tailor, `/formats/upload` and all of `ai_routes`,
+for every free and basic user, while unlimited plans sail through.
+*Verifier probed the live Modal secret:* `REDIS_CACHE_URL` **is** present and points at the real Upstash instance, so
+this is not currently firing. The fail-closed policy on an unvalidated var is the defect.
+
+### R3-003 · Developer API bypasses the plan quota entirely
+`backend/app/api/public_api_routes.py:79-104` — `_authorize()` checks scope and the developer daily counter but never
+calls `entitlement_service`. Observed live with the same free user: `/jobs/submit` → **402 quota_exceeded**, while
+`/api/v1/optimize` with a self-issued key → **200**. Free-tier users can mint keys, so the paywall #951 built is one
+`POST /developer/keys` away from irrelevant. Bounded by `DEV_API_DAILY_LIMIT_FREE=10/day` (~300/month vs the 3/month plan cap).
+
+## The Modal blind spot, quantified
+
+- **Five task submitters have no Modal branch and no Modal function** — cover letters, interview prep, document
+  conversion, auto-save checkpoints, completion email. They call `apply_async()` against a broker with **no consumer**.
+  All are reachable from the shipped UI. Pre-existing, but #951 added a quota charge to document conversion, so users
+  can now be billed for work that never runs.
+- **Nothing schedules periodic tasks on Modal** — no `modal.Period`/`schedule=` anywhere. So the MinIO orphan pruner,
+  temp-file cleanup and expired-job reaper never run in production. (The pruner is fail-closed, so at least it cannot
+  delete anything wrongly.)
+- **`api_image` has no TeX**, yet `/compile`, `/public/compile` and `/optimize-and-compile` exec `pdflatex` in the API
+  container. `#956` made `local_engine_allowed()` return True on Modal, so the gate now passes and the exec reaches a
+  binary that does not exist. Fails as `success:false` inside a 200, **after** charging quota — so the refund never runs.
+- **`api_image` also omits `tesseract-ocr` and `poppler-utils`** that `backend/Dockerfile` installs, so image uploads and
+  scanned-PDF OCR fail in production only.
+
+## Still-unmetered money routes (gaps #951 left)
+
+`POST /cover-letters/generate` (real LLM run, no charge) · `POST /ats/deep-analyze` (unmetered for authenticated users)
+· the developer API above.
+
+## Process lesson
+
+Every finding in the two P0s and in R3-001 shares one shape: **a guard that is correct locally and wrong in production,
+on a deployment path that has no test coverage at all.** Adversarial review caught two of these before merge
+(LX-015, LX-018) but could not catch the rest, because the reviewers were pointed at the same wrong deployment target
+I was. The durable fix is a Modal smoke test in CI, not more review.
+
