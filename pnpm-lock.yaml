@@ -138,11 +138,11 @@ importers:
         specifier: ^3.12.0
         version: 3.12.0(react@18.3.1)
       '@visx/hierarchy':
-        specifier: ^3.12.0
-        version: 3.12.0(react@18.3.1)
+        specifier: ^4.0.0
+        version: 4.0.0(@types/react@18.3.31)(react@18.3.1)
       '@visx/network':
-        specifier: ^3.12.0
-        version: 3.12.0(react@18.3.1)
+        specifier: ^4.0.0
+        version: 4.0.0(@types/react@18.3.31)(react@18.3.1)
       '@visx/scale':
         specifier: ^4.0.0
         version: 4.0.0
@@ -2929,15 +2929,23 @@ packages:
       '@types/react':
         optional: true
 
-  '@visx/hierarchy@3.12.0':
-    resolution: {integrity: sha512-+X1HOeLEOODxjAD7ixrWJ4KCVei4wFe8ra3dYU0uZ14RdPPgUeiuyBfdeXWZuAHM6Ix9qrryneatQjkC3h4mvA==}
+  '@visx/hierarchy@4.0.0':
+    resolution: {integrity: sha512-u6L3TjHazIP/XTOgmnsqWaRKGKYXU6WgjZHAIyxN8jV4kHII7sKvqD9fvjec6v0NpIPB3oHj4jz2C1KoiqquYg==}
     peerDependencies:
-      react: ^16.3.0-0 || ^17.0.0-0 || ^18.0.0-0
+      '@types/react': ^18.0.0 || ^19.0.0
+      react: ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 
-  '@visx/network@3.12.0':
-    resolution: {integrity: sha512-mVWF9TQVpe6Qz95IJ+Pm+FB6xhdjzFGRKK7/qQFhjRloIJqVZkChAiBIua04Ux8BeyCt37wdFgQKFl6C2u3DXA==}
+  '@visx/network@4.0.0':
+    resolution: {integrity: sha512-hMraCpMWODf1G4lHV3368RVAX19RDBEJIri+I5/Yg1PgY3ekRjatvp92jLvJK/y061g87QSSF55OqWoxQcoCuw==}
     peerDependencies:
-      react: ^16.3.0-0 || ^17.0.0-0 || ^18.0.0-0
+      '@types/react': ^18.0.0 || ^19.0.0
+      react: ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 
   '@visx/point@3.12.0':
     resolution: {integrity: sha512-I6UrHoJAEVbx3RORQNupgTiX5EzjuZpiwLPxn8L2mI5nfERotPKi1Yus12Cq2WtXqEBR/WgqTnoImlqOXBykcA==}
@@ -9431,23 +9439,23 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
-  '@visx/hierarchy@3.12.0(react@18.3.1)':
+  '@visx/hierarchy@4.0.0(@types/react@18.3.31)(react@18.3.1)':
     dependencies:
       '@types/d3-hierarchy': 1.1.11
-      '@types/react': 18.3.31
-      '@visx/group': 3.12.0(react@18.3.1)
+      '@visx/group': 4.0.0(@types/react@18.3.31)(react@18.3.1)
       classnames: 2.5.1
       d3-hierarchy: 1.1.9
-      prop-types: 15.8.1
       react: 18.3.1
-
-  '@visx/network@3.12.0(react@18.3.1)':
-    dependencies:
+    optionalDependencies:
       '@types/react': 18.3.31
-      '@visx/group': 3.12.0(react@18.3.1)
+
+  '@visx/network@4.0.0(@types/react@18.3.31)(react@18.3.1)':
+    dependencies:
+      '@visx/group': 4.0.0(@types/react@18.3.31)(react@18.3.1)
       classnames: 2.5.1
-      prop-types: 15.8.1
       react: 18.3.1
+    optionalDependencies:
+      '@types/react': 18.3.31
 
   '@visx/point@3.12.0': {}
 
