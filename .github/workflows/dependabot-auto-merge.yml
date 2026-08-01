@@ -1,0 +1,43 @@
+name: Dependabot auto-merge
+
+# Auto-approve + enable auto-merge for LOW-RISK Dependabot PRs (patch/minor and
+# security updates), so the strong CI suite (build, Playwright full-stack smoke,
+# pytest, Modal parity) is the gate and a solo maintainer isn't hand-merging
+# every green dependency PR. MAJOR bumps are never auto-merged — they stay manual.
+#
+# SAFETY: this only calls `gh pr merge --auto`, which GitHub holds until all
+# REQUIRED status checks pass. It is INERT until two repo settings are enabled:
+#   1. Settings → General → "Allow auto-merge"
+#   2. A branch-protection rule on `main` requiring the CI checks
+#      (Backend Tests, Frontend Build, Frontend Lint (ESLint), Full-Stack Smoke,
+#       Observability Smoke, Modal Deployment Parity, Backend Lint (ruff)).
+# Without those, `--auto` errors and nothing is merged — so shipping this file
+# early cannot cause an unreviewed merge.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge for patch/minor + security
+        # Never major. Security updates of any level are allowed (fixed fast).
+        if: >-
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor' ||
+          steps.meta.outputs.ghsa-id != ''
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
