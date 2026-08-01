@@ -54,6 +54,11 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "react-dom"
         update-types: ["version-update:semver-major"]
+      # monaco-editor 0.56 added a package `exports` map that breaks y-monaco
+      # @0.1.6's deep import `monaco-editor/esm/vs/editor/editor.api.js`
+      # (double-prefixes esm/vs → module-not-found, fails the frontend build).
+      # y-monaco has no compatible release yet, so hold monaco at 0.55.x.
+      - dependency-name: "monaco-editor"
 
   # GitHub Actions
   - package-ecosystem: github-actions
