@@ -11,6 +11,12 @@ updates:
     labels:
       - dependencies
       - backend
+    # Batch minor/patch backend bumps into one weekly PR (same rationale as npm).
+    groups:
+      python-minor-and-patch:
+        update-types:
+          - minor
+          - patch
     ignore:
       # Only update patch versions for major packages to reduce noise
       - dependency-name: "sqlalchemy"
@@ -19,13 +25,8 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "celery"
         update-types: ["version-update:semver-major"]
-      # pdfplumber 0.11.10 pins pdfminer.six==20260107 (a ~2-year jump on a core
-      # PDF-parsing lib). Hold until the coordinated pdfplumber+pdfminer upgrade
-      # is done and PDF parsing is re-verified.
-      - dependency-name: "pdfplumber"
-      - dependency-name: "pdfminer.six"
       # pydantic-core is pinned transitively by pydantic (==2.33.2 for 2.11.7);
-      # it can't move without a pydantic bump.
+      # it can't move without a pydantic bump — bump pydantic itself instead.
       - dependency-name: "pydantic-core"
 
   # Node dependencies — this is a pnpm WORKSPACE.
@@ -70,11 +71,10 @@ updates:
       # Hold eslint majors until the lint tooling migrates.
       - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
-      # lucide-react 1.0 removed brand icons (Github/Linkedin/Figma) still used
-      # in connect/import/export buttons — hold majors until replaced.
-      - dependency-name: "lucide-react"
-        update-types: ["version-update:semver-major"]
-      # react-pdf 10 jumps to pdfjs-dist 4 (worker migration) — hold majors.
+      # react-pdf 10 jumps to pdfjs-dist 5, which references browser globals
+      # (DOMMatrix) at import time → breaks Next SSR/build, and needs same-origin
+      # worker hosting + render verification. A real migration, not a bump; do it
+      # with (or after) the Next 16 / React 19 modernization. Hold majors.
       - dependency-name: "react-pdf"
         update-types: ["version-update:semver-major"]
       # typescript 7 is the native (Go) preview compiler — hold majors until GA.
