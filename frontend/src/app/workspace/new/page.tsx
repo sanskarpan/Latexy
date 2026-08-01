@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, Upload, LayoutTemplate, X, Linkedin, PackageOpen, Sparkles } from 'lucide-react'
+import { Search, Upload, LayoutTemplate, X, PackageOpen, Sparkles } from 'lucide-react'
+import { Linkedin } from '@/components/icons/brand-icons'
 import { toast } from 'sonner'
 import { useSession } from '@/lib/auth-client'
 
