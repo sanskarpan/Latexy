@@ -336,6 +336,11 @@ def scheduled_cleanup_expired_jobs() -> None:
     (cleanup_worker.py:419), not as a task of its own, so scheduling this is what
     makes the storage-growth fix actually take effect in production.
     """
+    # cleanup_expired_jobs_task publishes progress events as its first action, so
+    # the worker Redis MUST be initialized or get_worker_redis() raises and the
+    # task aborts before the reaper/pruner runs — which .apply(throw=False) would
+    # then silently swallow, leaving the storage fix inert.
+    _init_worker_redis()
     from app.workers.cleanup_worker import cleanup_expired_jobs_task
     cleanup_expired_jobs_task.apply(throw=False)
 
@@ -351,7 +356,15 @@ def scheduled_cleanup_temp_files() -> None:
 
     Runs on latex_image because the workspaces it removes are created by the
     compile container.
+
+    NOTE: on Modal each container has an isolated ephemeral filesystem, so this
+    scheduled container only sees its OWN /tmp, not the warm run_latex_task
+    container's. It is a safety net (reaps /tmp if a compile container is reused
+    long enough to accumulate). The primary /tmp hygiene is the per-job
+    shutil.rmtree in the compile workers' finally blocks.
     """
+    # Publishes events on some paths → worker Redis must be initialized first.
+    _init_worker_redis()
     from app.workers.cleanup_worker import cleanup_temp_files_task
     cleanup_temp_files_task.apply(throw=False)
 
@@ -364,6 +377,7 @@ def scheduled_cleanup_temp_files() -> None:
 )
 def scheduled_health_check() -> None:
     """Worker health check (beat: every 300s)."""
+    _init_worker_redis()
     from app.workers.cleanup_worker import health_check_task
     health_check_task.apply(throw=False)
 
@@ -376,6 +390,7 @@ def scheduled_health_check() -> None:
 )
 def scheduled_weekly_digest() -> None:
     """Monday 09:00 weekly digest fan-out (inert while EMAIL_ENABLED is false)."""
+    _init_worker_redis()
     from app.workers.email_worker import send_weekly_digest_to_all
     send_weekly_digest_to_all.apply(throw=False)
 

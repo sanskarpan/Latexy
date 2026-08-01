@@ -439,6 +439,47 @@ def test_beat_schedule_entries_are_accounted_for_on_modal():
     )
 
 
+def test_scheduled_functions_initialize_worker_redis():
+    """Every scheduled Modal function must call _init_worker_redis().
+
+    The cleanup/health/digest tasks publish job events as their first action, so
+    an uninitialized worker Redis makes get_worker_redis() raise and the task
+    aborts before doing any work — and .apply(throw=False) swallows the error, so
+    the scheduled function reports success while the reaper/pruner never runs.
+    A scheduled container is always a fresh process, so it must init Redis itself
+    (unlike the API container, which does it at lifespan). Requiring the call on
+    every scheduled function is safe (the init is idempotent) and catches this
+    silent-no-op regression that the schedule-existence guard above cannot see.
+    """
+    tree = _parse(MODAL_APP)
+    offenders = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        has_schedule = any(
+            isinstance(dec, ast.Call)
+            and any(kw.arg == "schedule" for kw in dec.keywords)
+            for dec in node.decorator_list
+        )
+        if not has_schedule:
+            continue
+        calls_init = any(
+            isinstance(sub, ast.Call)
+            and isinstance(sub.func, ast.Name)
+            and sub.func.id == "_init_worker_redis"
+            for sub in ast.walk(node)
+        )
+        if not calls_init:
+            offenders.append(node.name)
+
+    assert not offenders, (
+        f"scheduled Modal functions missing _init_worker_redis(): {offenders}. "
+        "Their dispatched tasks publish events on a fresh container whose worker "
+        "Redis is uninitialized → get_worker_redis() raises and the task no-ops "
+        "silently. Add _init_worker_redis() as the first call."
+    )
+
+
 # ── 6. production settings are discoverable ──────────────────────────────────
 
 
