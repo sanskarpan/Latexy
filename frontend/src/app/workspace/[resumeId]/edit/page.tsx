@@ -36,7 +36,6 @@ import {
   ShieldCheck,
   Package,
   Braces,
-  Github,
   Settings2,
   QrCode,
   Calendar,
@@ -53,6 +52,7 @@ import {
   Pencil,
   GraduationCap,
 } from 'lucide-react'
+import { Github } from '@/components/icons/brand-icons'
 import { apiClient, type AcademicCVReport, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type DropboxResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import WritingAssistantWidget from '@/components/WritingAssistantWidget'

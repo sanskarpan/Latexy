@@ -2,7 +2,8 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Bell, BookOpen, Mail, Calendar, Save, Loader2, CheckCircle, Monitor, Github, Unlink, ExternalLink, Cloud } from 'lucide-react'
+import { Bell, BookOpen, Mail, Calendar, Save, Loader2, CheckCircle, Monitor, Unlink, ExternalLink, Cloud } from 'lucide-react'
+import { Github } from '@/components/icons/brand-icons'
 import { apiClient, type NotificationPrefs, type GitHubStatusResponse, type ZoteroStatusResponse, type MendeleyStatusResponse, type DropboxStatusResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import { getNotificationPref, setNotificationPref } from '@/hooks/usePushNotifications'

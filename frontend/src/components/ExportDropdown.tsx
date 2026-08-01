@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Download, ChevronDown, Loader2, FileText, Code, File, Globe, Database, Figma, Palette } from 'lucide-react'
+import { Download, ChevronDown, Loader2, FileText, Code, File, Globe, Database, Palette } from 'lucide-react'
+import { Figma } from '@/components/icons/brand-icons'
 import { toast } from 'sonner'
 import { apiClient } from '@/lib/api-client'
 
