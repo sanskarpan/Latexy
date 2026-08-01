@@ -1,0 +1,16 @@
+# Keep the frontend image build reproducible and small: never copy host
+# node_modules (they carry pnpm symlinks that clobber the container install),
+# build output, or secrets into the image.
+node_modules
+.next
+.turbo
+.git
+coverage
+playwright-report
+test-results
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+e2e

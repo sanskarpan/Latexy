@@ -5,9 +5,12 @@ WORKDIR /app
 # Install pnpm 9 (matches lockfileVersion: 9.0)
 RUN npm install -g pnpm@9
 
-# Install dependencies first (cached layer)
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+# Install dependencies first (cached layer). Built with the frontend as context,
+# so pnpm resolves frontend/package.json standalone (no workspace here). No
+# committed frontend lockfile — the single source of truth is the repo-root
+# pnpm-lock.yaml; a second one would drift on every Dependabot bump.
+COPY package.json ./
+RUN pnpm install --no-frozen-lockfile
 
 # Source code is mounted as a volume — no COPY needed for dev
 ARG PORT=5180
