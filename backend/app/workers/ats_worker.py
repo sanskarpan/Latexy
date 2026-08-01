@@ -702,13 +702,45 @@ def deep_analyze_ats_task(
 #  Layer 3 — Background Resume Embedding Task                        #
 # ------------------------------------------------------------------ #
 
-async def _async_embed_resume(resume_id: str, latex_content: str) -> None:
-    """Async implementation: extract text -> embed -> store in DB."""
-    from ..database.connection import get_async_db_session
+async def _async_embed_resume(
+    resume_id: str, latex_content: str, session_factory=None
+) -> None:
+    """Async implementation: extract text -> embed -> store in DB.
+
+    Builds and disposes its own engine, because the caller drives this through
+    ``asyncio.run()`` once per task. asyncpg connections bind to the loop that
+    created them, so borrowing the shared module-global engine hands the next
+    task a connection belonging to a loop that has already closed — which
+    surfaces as "Event loop is closed" on a later, unrelated embed. Every other
+    worker was migrated to this shape (see auto_save_worker._do_auto_save); this
+    one was missed.
+
+    *session_factory* is for dependency injection in tests; when None an engine
+    is created from DATABASE_URL and disposed in the finally.
+    """
     from ..services.embedding_service import embedding_service
 
-    async with get_async_db_session() as db:
-        await embedding_service.embed_resume(resume_id, latex_content, db)
+    engine = None
+    if session_factory is None:
+        import os
+
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from ..utils.db_url import normalize_database_url
+
+        raw_url = os.environ.get("DATABASE_URL", "")
+        if not raw_url:
+            logger.warning("DATABASE_URL not set — cannot embed resume %s", resume_id)
+            return
+        engine = create_async_engine(normalize_database_url(raw_url), echo=False)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_factory() as db:
+            await embedding_service.embed_resume(resume_id, latex_content, db)
+    finally:
+        if engine is not None:
+            await engine.dispose()
 
 
 @celery_app.task(

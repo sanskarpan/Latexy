@@ -76,6 +76,13 @@ _PROCESS_ID = f"{os.getpid()}:{uuid.uuid4().hex[:8]}"
 # WebSocket close code sent to a collaborator whose access was revoked.
 CLOSE_ACCESS_REVOKED = 4003
 
+# A role change is NOT a revocation: the socket has to drop so the client
+# re-handshakes and picks up the new role, but the client must reconnect rather
+# than lock its buffer read-only. Sharing 4003 meant promoting someone
+# viewer->editor left them with LESS access than before — the frontend saw
+# "access revoked" and locked the editor.
+CLOSE_ROLE_CHANGED = 4005
+
 # Maximum accepted size of a single collaboration frame (256 KiB). Oversized
 # frames are dropped to bound Redis writes and broadcast amplification.
 MAX_COLLAB_MESSAGE_BYTES = 256 * 1024
@@ -196,6 +203,7 @@ class CollabRoom:
         *,
         code: int = CLOSE_ACCESS_REVOKED,
         reason: str = "Access revoked",
+        notice_code: str = "access_revoked",
     ) -> int:
         """
         Terminate every socket belonging to *user_id* in this room.
@@ -208,7 +216,7 @@ class CollabRoom:
                 if info.get("user_id") == user_id
             ]
 
-        notice = _build_permission_denied("access_revoked", reason)
+        notice = _build_permission_denied(notice_code, reason)
         for cid, ws in targets:
             try:
                 await ws.send_bytes(notice)
@@ -310,6 +318,8 @@ class CollabManager:
         user_id: str,
         *,
         reason: str = "Access revoked",
+        code: int = CLOSE_ACCESS_REVOKED,
+        notice_code: str = "access_revoked",
     ) -> int:
         """
         Terminate *user_id*'s live collaboration sockets for *resume_id*, on this
@@ -323,12 +333,20 @@ class CollabManager:
         closed = 0
         room = self._rooms.get(resume_id)
         if room is not None:
-            closed = await room.close_user(user_id, reason=reason)
+            closed = await room.close_user(
+                user_id, code=code, reason=reason, notice_code=notice_code
+            )
             await self.maybe_cleanup(resume_id)
 
         await _publish(
             resume_id,
-            {"kind": "revoke", "user_id": user_id, "reason": reason},
+            {
+                "kind": "revoke",
+                "user_id": user_id,
+                "reason": reason,
+                "code": code,
+                "notice_code": notice_code,
+            },
         )
         return closed
 
@@ -363,7 +381,9 @@ class CollabManager:
                 elif kind == "revoke":
                     await room.close_user(
                         envelope.get("user_id", ""),
+                        code=int(envelope.get("code") or CLOSE_ACCESS_REVOKED),
                         reason=envelope.get("reason", "Access revoked"),
+                        notice_code=envelope.get("notice_code") or "access_revoked",
                     )
 
         except asyncio.CancelledError:

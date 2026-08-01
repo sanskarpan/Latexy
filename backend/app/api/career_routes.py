@@ -24,7 +24,9 @@ from ..database.models import CareerAnalysis, CareerRole, Resume
 from ..middleware.auth_middleware import get_current_user_required as get_current_user
 from ..middleware.auth_middleware import require_admin
 from ..middleware.entitlements import require_feature
+from ..services.api_key_service import api_key_service
 from ..services.career_path_service import career_path_service
+from ..services.entitlement_service import entitlement_service
 
 logger = get_logger(__name__)
 
@@ -144,6 +146,24 @@ async def analyze_career_path(
     if not body.target_role_title.strip():
         raise HTTPException(status_code=400, detail="target_role_title is required")
 
+    # The analysis runs several LLM completions. On the platform key that spends
+    # the plan's ai_assists allowance; a BYOK caller pays their own provider, so
+    # their key is threaded into the service and nothing is charged. Refunded
+    # below if the analysis fails, since no usable result was produced.
+    user_api_key = None
+    try:
+        user_api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+    except Exception:
+        user_api_key = None
+
+    quota_ticket = None
+    if not user_api_key:
+        from .job_routes import _resolve_user_plan
+
+        quota_ticket = await entitlement_service.enforce_quota(
+            "ai_assists", user_id=user_id, plan=await _resolve_user_plan(db, user_id)
+        )
+
     try:
         analysis = await career_path_service.run_full_analysis(
             resume_id=body.resume_id,
@@ -151,9 +171,12 @@ async def analyze_career_path(
             target_role_title=body.target_role_title.strip(),
             latex_content=resume.latex_content,
             db=db,
+            api_key=user_api_key,
         )
     except Exception as exc:
         logger.error(f"Career analysis failed: {exc}", exc_info=True)
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
         raise HTTPException(
             status_code=500,
             detail="Career analysis failed, please try again.",

@@ -38,7 +38,7 @@ class CareerPathService:
 
     # ── Role detection ────────────────────────────────────────────────────────
 
-    async def detect_current_role(self, latex_content: str) -> str:
+    async def detect_current_role(self, latex_content: str, api_key: Optional[str] = None) -> str:
         """
         LLM call: extract the most recent job title from the resume LaTeX.
         Returns a best-guess plain-text title string.
@@ -55,6 +55,7 @@ class CareerPathService:
                     f"{latex_content[:4000]}"
                 ),
                 max_tokens=50,
+                api_key=api_key,
             )
             extracted = result.strip().strip('"').strip("'")
             if extracted and extracted.lower() != "unknown":
@@ -202,6 +203,7 @@ class CareerPathService:
         path: list[CareerRole],
         latex_content: str,
         db: AsyncSession,
+        api_key: Optional[str] = None,
     ) -> dict:
         """
         LLM call: compare current skills vs target required_skills.
@@ -222,6 +224,7 @@ class CareerPathService:
             path=path,
             timeline_months=timeline_months,
             latex_content=latex_content,
+            api_key=api_key,
         )
 
         return {
@@ -256,6 +259,7 @@ class CareerPathService:
         path: list[CareerRole],
         timeline_months: int,
         latex_content: str,
+        api_key: Optional[str] = None,
     ) -> str:
         """Generate markdown narrative career analysis via LLM."""
         path_str = " → ".join(r.title for r in path) if path else target_role.title
@@ -282,6 +286,7 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
                 system="You are an expert career coach. Write structured Markdown career advice.",
                 user=prompt,
                 max_tokens=800,
+                api_key=api_key,
             )
         except Exception as exc:
             logger.warning(f"LLM gap analysis failed: {exc}")
@@ -306,7 +311,7 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
 
     # ── Current skills extraction ─────────────────────────────────────────────
 
-    async def extract_current_skills(self, latex_content: str) -> list[str]:
+    async def extract_current_skills(self, latex_content: str, api_key: Optional[str] = None) -> list[str]:
         """
         Extract skills from resume using LLM. Falls back to keyword scanning.
         """
@@ -318,6 +323,7 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
                     "Return a JSON array of skill strings only. Maximum 40 skills.\n\n"
                     f"{latex_content[:3000]}"
                 ),
+                api_key=api_key,
                 max_tokens=300,
             )
             import json
@@ -339,7 +345,7 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
 
         return self._heuristic_extract_skills(latex_content)
 
-    async def infer_required_skills(self, role_title: str) -> list[str]:
+    async def infer_required_skills(self, role_title: str, api_key: Optional[str] = None) -> list[str]:
         """LLM: infer the core required skills for a free-text target role title.
 
         Used when the target role is not present in the seed career graph, so that
@@ -355,6 +361,7 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
                     "Return a JSON array of skill strings only, no explanation."
                 ),
                 max_tokens=200,
+                api_key=api_key,
             )
             import json
             m = re.search(r'\[.*?\]', result, re.DOTALL)
@@ -396,6 +403,7 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
         target_role_title: str,
         latex_content: str,
         db: AsyncSession,
+        api_key: Optional[str] = None,
     ) -> CareerAnalysis:
         """
         Orchestrate the full career analysis pipeline:
@@ -406,8 +414,8 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
           5. Persist & return CareerAnalysis
         """
         # 1. Extract
-        current_role_title = await self.detect_current_role(latex_content)
-        current_skills = await self.extract_current_skills(latex_content)
+        current_role_title = await self.detect_current_role(latex_content, api_key=api_key)
+        current_skills = await self.extract_current_skills(latex_content, api_key=api_key)
 
         # 2. Match roles
         current_role = await self.match_career_role(current_role_title, db)
@@ -423,7 +431,7 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
             target_role_freetext = target_role_title
             # Target not in the seed graph: infer required skills via LLM so gap
             # analysis is meaningful instead of reporting 'already qualified'.
-            inferred_skills = await self.infer_required_skills(target_role_title)
+            inferred_skills = await self.infer_required_skills(target_role_title, api_key=api_key)
             target_role = CareerRole(
                 id=str(uuid4()),
                 title=target_role_title,
@@ -445,6 +453,7 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
             path=path,
             latex_content=latex_content,
             db=db,
+            api_key=api_key,
         )
 
         # 5. Persist
@@ -468,20 +477,25 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
     # ── LLM helper ────────────────────────────────────────────────────────────
 
     async def _llm_complete(
-        self, system: str, user: str, max_tokens: int = 400
+        self, system: str, user: str, max_tokens: int = 400, api_key: Optional[str] = None
     ) -> str:
         """
-        Thin wrapper that calls the system LLM (OpenAI) with a simple
-        system + user message pair and returns the text content.
+        Thin wrapper that calls the LLM (OpenAI) with a simple system + user
+        message pair and returns the text content.
+
+        *api_key* is the caller's own provider key when they have one (BYOK), in
+        which case the spend is theirs and the route charges no plan allowance.
+        Falls back to the platform key.
         """
         from ..core.config import settings
 
-        if not settings.OPENAI_API_KEY:
+        resolved_key = api_key or settings.OPENAI_API_KEY
+        if not resolved_key:
             raise RuntimeError("OPENAI_API_KEY not configured")
 
         from openai import AsyncOpenAI
 
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        client = AsyncOpenAI(api_key=resolved_key)
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[

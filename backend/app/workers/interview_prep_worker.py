@@ -6,6 +6,7 @@ Questions are saved to the interview_prep table. Runs on the 'llm' queue.
 """
 
 import json
+import os
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -278,6 +279,24 @@ def submit_interview_prep_generation(
 ) -> str:
     """Enqueue generate_interview_prep_task on the llm queue."""
     priority = get_task_priority(user_plan)
+
+    # See submit_cover_letter_generation: no Celery consumer exists on Modal.
+    if os.environ.get("DEPLOY_TARGET") == "modal":
+        from ..core.modal_dispatch import spawn
+        spawn("run_interview_prep_task", {
+            "resume_latex": resume_latex,
+            "prep_id": prep_id,
+            "job_id": job_id,
+            "user_id": user_id,
+            "resume_id": resume_id,
+            "job_description": job_description,
+            "company_name": company_name,
+            "role_title": role_title,
+            "user_api_key": user_api_key,
+            "model": model,
+        })
+        logger.info(f"Dispatched interview prep to Modal for job {job_id}, prep {prep_id}")
+        return job_id
 
     generate_interview_prep_task.apply_async(
         args=[resume_latex, prep_id],

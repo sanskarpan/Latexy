@@ -717,8 +717,12 @@ async def create_batch_tailor(
             }
         )
 
-    # A Redis blip or broker error here means the LLM runs never started, so the
-    # whole up-front charge has to go back before the 500 surfaces.
+    # A Redis blip or broker error here means the remaining LLM runs never
+    # started, so their share of the up-front charge has to go back before the
+    # 500 surfaces. Only the undispatched ones: jobs already handed to the broker
+    # are running and will be billed, and refunding those too would hand back
+    # optimizations the user is actually consuming.
+    dispatched = 0
     try:
         r = await get_redis_client()
         batch_meta = {
@@ -745,9 +749,15 @@ async def create_batch_tailor(
                 ),
                 resume_id=str(fork.id),
             )
+            dispatched += 1
     except Exception as exc:
-        await entitlement_service.refund_quota(quota_ticket, cost=len(body.jobs))
-        logger.error(f"Batch tailor enqueue phase failed: {exc}")
+        unstarted = len(body.jobs) - dispatched
+        if unstarted > 0:
+            await entitlement_service.refund_quota(quota_ticket, cost=unstarted)
+        logger.error(
+            f"Batch tailor enqueue phase failed after {dispatched}/{len(body.jobs)} "
+            f"dispatched, refunded {unstarted}: {exc}"
+        )
         raise HTTPException(status_code=500, detail="Failed to queue batch tailor jobs")
 
     return BatchTailorResponse(batch_id=batch_id, job_ids=job_ids)

@@ -582,15 +582,25 @@ class Settings(BaseSettings):
             )
 
         # OBS-004: Warn when REDIS_URL is empty or pointing at localhost in production.
+        #
+        # REDIS_CACHE_URL is checked with it because the quota meter lives there,
+        # not on REDIS_URL, and consume_quota fails CLOSED — an unreachable cache
+        # Redis 503s every metered route for free and basic users while unlimited
+        # plans sail through. It was the only production-critical Redis with no
+        # startup validation at all.
         _REDIS_LOCALHOST_PREFIXES = ("redis://localhost", "redis://127.0.0.1")
-        if self.is_production_like() and (
-            not self.REDIS_URL
-            or self.REDIS_URL.startswith(_REDIS_LOCALHOST_PREFIXES)
+        for _var, _value in (
+            ("REDIS_URL", self.REDIS_URL),
+            ("REDIS_CACHE_URL", self.REDIS_CACHE_URL),
         ):
-            _config_logger.warning(
-                "REDIS_URL is %s — using a localhost Redis in production is likely misconfigured",
-                repr(self.REDIS_URL) if self.REDIS_URL else "empty",
-            )
+            if self.is_production_like() and (
+                not _value or _value.startswith(_REDIS_LOCALHOST_PREFIXES)
+            ):
+                _config_logger.warning(
+                    "%s is %s — using a localhost Redis in production is likely misconfigured",
+                    _var,
+                    repr(_value) if _value else "empty",
+                )
 
     def admin_email_set(self) -> set[str]:
         """Return the union of ADMIN_EMAIL + ADMIN_EMAILS, lowercased and stripped.
@@ -801,7 +811,10 @@ def _sync_plan_feature_copy() -> None:
         features = plan.get("features")
         if not isinstance(features, dict):
             continue
-        for dimension in ("compilations", "optimizations"):
+        # Every enforced dimension, not a hard-coded pair: ai_assists is metered
+        # at 25/month and returns a 402 like the others, so omitting it here made
+        # that limit invisible to the UI and the 402 unpredictable.
+        for dimension in QUOTA_DIMENSIONS:
             features[dimension] = format_plan_quota(plan_id, dimension)
 
 

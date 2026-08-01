@@ -71,6 +71,22 @@ _CACHE_TTL = 60  # seconds
 # clock skew across instances) can still find the key it incremented.
 _QUOTA_TTL = 40 * 86400  # seconds
 
+# INCRBY and EXPIRE as one round-trip, so they cannot come apart.
+#
+# Done as two calls, a failure between them left the counter incremented with no
+# TTL: the caller was charged, the request was denied anyway because the error
+# propagated, and the key then never expired — so the charge never rolled over to
+# the next period and the user stayed billed for it permanently. Inside a Lua
+# script the pair either both apply or neither does, and there is no window for a
+# concurrent caller to observe a TTL-less key.
+_INCR_WITH_TTL = """
+local v = redis.call('INCRBY', KEYS[1], ARGV[1])
+if v == tonumber(ARGV[1]) then
+  redis.call('EXPIRE', KEYS[1], ARGV[2])
+end
+return v
+"""
+
 # In-process cache of the parsed blob: (blob: dict, expires_at: float)
 _cache: Optional[tuple[dict, float]] = None
 
@@ -399,9 +415,7 @@ class EntitlementService:
             from ..core.redis import get_redis_cache_client
 
             redis = await get_redis_cache_client()
-            used = int(await redis.incrby(key, cost))
-            if used == cost:
-                await redis.expire(key, _QUOTA_TTL)
+            used = int(await redis.eval(_INCR_WITH_TTL, 1, key, cost, _QUOTA_TTL))
         except Exception as exc:
             # Nothing to meter on an unlimited plan → the counter is pure
             # reporting, so let the request through instead of manufacturing an

@@ -18,6 +18,7 @@ from ..database.models import Resume
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
 from ..services.document_export_service import document_export_service
+from ..utils.uuid_guard import ensure_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ async def export_canva(
     Maps LaTeX sections to typed Canva elements (HEADING, TEXT, DIVIDER).
     Requires authentication; user must own the resume.
     """
-    resume = await db.get(Resume, resume_id)
+    resume = await db.get(Resume, ensure_uuid(resume_id, "Resume not found"))
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
     if resume.user_id != user_id:
@@ -155,7 +156,7 @@ async def export_figma(
     The returned JSON is consumed by the Latexy Figma plugin.
     Requires authentication; user must own the resume.
     """
-    resume = await db.get(Resume, resume_id)
+    resume = await db.get(Resume, ensure_uuid(resume_id, "Resume not found"))
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
     if resume.user_id != user_id:
@@ -204,7 +205,7 @@ async def export_resume(
         )
 
     try:
-        resume = await db.get(Resume, resume_id)
+        resume = await db.get(Resume, ensure_uuid(resume_id, "Resume not found"))
         if not resume:
             raise HTTPException(status_code=404, detail="Resume not found")
         if resume.user_id != user_id:

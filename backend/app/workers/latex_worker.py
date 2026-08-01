@@ -754,14 +754,8 @@ def compile_latex_task(
             # Auto-save checkpoint if resume_id is known (skip for watermarked compiles)
             _resume_id = resume_id or (metadata or {}).get("resume_id")
             if _resume_id and user_id and not watermark:
-                try:
-                    from .auto_save_worker import record_auto_save_checkpoint
-                    record_auto_save_checkpoint.apply_async(
-                        args=[_resume_id, user_id, latex_content],
-                        queue="cleanup",
-                    )
-                except Exception as auto_exc:
-                    logger.warning(f"Failed to enqueue auto-save for resume {_resume_id}: {auto_exc}")
+                from .auto_save_worker import submit_auto_save_checkpoint
+                submit_auto_save_checkpoint(_resume_id, user_id, latex_content)
 
             return result
 

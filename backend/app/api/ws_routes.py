@@ -268,6 +268,33 @@ async def _close_expected_collab_rejection(
     await websocket.close(code=code, reason=reason)
 
 
+# y-websocket clients send nothing while their user is idle, so a solo editor
+# generates no traffic at all and the proxy force-closes the socket at its idle
+# timeout (~30s), producing a reconnect-per-30s churn for the commonest case: one
+# person editing alone. The jobs socket already has _heartbeat for this; the
+# collab socket had none.
+#
+# MSG_QUERY_AWARENESS is the right frame to send: it is part of the stock
+# y-protocol, so every client already handles it, and the reply is bounded (each
+# peer re-broadcasts its own awareness) rather than a document resync.
+_COLLAB_HEARTBEAT_INTERVAL = 15
+
+
+async def _collab_heartbeat(websocket: WebSocket) -> None:
+    """Keep the collab socket alive through idle-timeout proxies."""
+    from ..services.collab_manager import MSG_QUERY_AWARENESS, _encode_varuint
+
+    frame = _encode_varuint(MSG_QUERY_AWARENESS)
+    try:
+        while True:
+            await asyncio.sleep(_COLLAB_HEARTBEAT_INTERVAL)
+            await websocket.send_bytes(frame)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.debug("Collab: heartbeat stopped: %s", exc)
+
+
 @ws_router.websocket("/ws/collab/{resume_id}")
 async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
     """
@@ -374,6 +401,8 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
         room.size,
     )
 
+    heartbeat_task = asyncio.create_task(_collab_heartbeat(websocket))
+
     try:
         while True:
             try:
@@ -391,6 +420,7 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
     except Exception as exc:
         logger.error("Collab: handler error: %s", exc)
     finally:
+        heartbeat_task.cancel()
         await room.remove(client_id)
         await collab_manager.maybe_cleanup(resume_id)
         logger.info(

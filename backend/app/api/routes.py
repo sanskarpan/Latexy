@@ -784,9 +784,19 @@ async def compile_latex_anonymous(
     file: Optional[UploadFile] = File(None),
     device_fingerprint: str = Form(...),
     request: Request = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Compile LaTeX content for anonymous users with trial limits."""
+
+    # This route is metered by a client-supplied device fingerprint, which an
+    # authenticated caller could rotate at will to compile outside their plan.
+    # Signed-in users belong on /compile, where the plan meter is authoritative.
+    if user_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Authenticated callers must use /compile, which applies your plan allowance.",
+        )
 
     try:
         ip_address = request.client.host if request.client else None

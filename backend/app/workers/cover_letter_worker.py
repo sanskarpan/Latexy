@@ -5,6 +5,7 @@ Mirrors llm_worker.py patterns: synchronous OpenAI client with stream=True,
 publishes llm.token events for each delta. Runs on the 'llm' queue.
 """
 
+import os
 import re
 import time
 import uuid
@@ -356,6 +357,27 @@ def submit_cover_letter_generation(
 ) -> str:
     """Enqueue generate_cover_letter_task on the llm queue."""
     priority = get_task_priority(user_plan)
+
+    # On Modal there is no Celery worker consuming the llm queue, so an
+    # unconditional apply_async() hands back a job id for work nothing will ever
+    # run — and since the route now charges for it, the user is billed for it too.
+    if os.environ.get("DEPLOY_TARGET") == "modal":
+        from ..core.modal_dispatch import spawn
+        spawn("run_cover_letter_task", {
+            "resume_latex": resume_latex,
+            "job_description": job_description,
+            "job_id": job_id,
+            "user_id": user_id,
+            "cover_letter_id": cover_letter_id,
+            "company_name": company_name,
+            "role_title": role_title,
+            "tone": tone,
+            "length_preference": length_preference,
+            "user_api_key": user_api_key,
+            "model": model,
+        })
+        logger.info(f"Dispatched cover letter generation to Modal for job {job_id}")
+        return job_id
 
     generate_cover_letter_task.apply_async(
         args=[resume_latex, job_description],

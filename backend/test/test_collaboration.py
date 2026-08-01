@@ -495,14 +495,14 @@ class TestCollaboratorRoutesRevokeLiveSessions:
     async def test_remove_collaborator_revokes_access(self) -> None:
         from app.api import resume_routes
 
-        db = _QueuedDB(MagicMock(id="r1", user_id="alice"), MagicMock(role="editor"))
+        db = _QueuedDB(MagicMock(id="11111111-1111-4111-8111-111111111111", user_id="alice"), MagicMock(role="editor"))
         spy = AsyncMock(return_value=1)
 
         with patch.object(resume_routes.collab_manager, "revoke_access", spy):
-            await resume_routes.remove_collaborator("r1", "bob", db=db, user_id="alice")
+            await resume_routes.remove_collaborator("11111111-1111-4111-8111-111111111111", "bob", db=db, user_id="alice")
 
         assert db.commits == 1
-        spy.assert_awaited_once_with("r1", "bob", reason="Access removed")
+        spy.assert_awaited_once_with("11111111-1111-4111-8111-111111111111", "bob", reason="Access removed")
 
     @pytest.mark.asyncio
     async def test_update_collaborator_role_revokes_access(self) -> None:
@@ -510,17 +510,17 @@ class TestCollaboratorRoutesRevokeLiveSessions:
 
         now = datetime.now(timezone.utc)
         collab = MagicMock(
-            id="c1", resume_id="r1", user_id="bob", role="editor",
+            id="c1", resume_id="11111111-1111-4111-8111-111111111111", user_id="bob", role="editor",
             invited_by="alice", joined_at=now, created_at=now,
         )
         user = MagicMock(email="bob@example.com")
         user.name = "bob"
-        db = _QueuedDB(MagicMock(id="r1", user_id="alice"), collab, user)
+        db = _QueuedDB(MagicMock(id="11111111-1111-4111-8111-111111111111", user_id="alice"), collab, user)
         spy = AsyncMock(return_value=1)
 
         with patch.object(resume_routes.collab_manager, "revoke_access", spy):
             await resume_routes.update_collaborator_role(
-                "r1",
+                "11111111-1111-4111-8111-111111111111",
                 "bob",
                 resume_routes.CollaboratorRoleUpdate(role="viewer"),
                 db=db,
@@ -528,7 +528,13 @@ class TestCollaboratorRoutesRevokeLiveSessions:
             )
 
         assert collab.role == "viewer"
-        spy.assert_awaited_once_with("r1", "bob", reason="Role changed")
+        spy.assert_awaited_once_with(
+            "11111111-1111-4111-8111-111111111111",
+            "bob",
+            reason="Role changed",
+            code=resume_routes.CLOSE_ROLE_CHANGED,
+            notice_code="role_changed",
+        )
 
 
 # ── handle_collab_message ────────────────────────────────────────────────────
@@ -710,7 +716,7 @@ class TestCollaboratorEndpoints:
 
     def _make_resume(self, owner_id="test-owner-id"):
         resume = MagicMock()
-        resume.id = "test-resume-id"
+        resume.id = "11111111-1111-4111-8111-111111111111"
         resume.user_id = owner_id
         return resume
 
@@ -765,7 +771,7 @@ class TestCollaboratorEndpoints:
         # Simulate collab object returned after db.refresh
         mock_collab = MagicMock()
         mock_collab.id = "collab-id"
-        mock_collab.resume_id = "test-resume-id"
+        mock_collab.resume_id = "11111111-1111-4111-8111-111111111111"
         mock_collab.user_id = invitee_id
         mock_collab.role = "editor"
         mock_collab.invited_by = owner
@@ -805,7 +811,7 @@ class TestCollaboratorEndpoints:
         app.dependency_overrides[get_db] = lambda: mock_db
         try:
             resp = authed_client.post(
-                "/resumes/test-resume-id/collaborators",
+                "/resumes/11111111-1111-4111-8111-111111111111/collaborators",
                 json={"email": "bob@example.com", "role": "editor"},
             )
             assert resp.status_code == 201

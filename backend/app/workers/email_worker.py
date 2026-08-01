@@ -249,3 +249,32 @@ async def _async_fan_out_weekly_digest() -> None:
         logger.error(f"EMAIL: fan-out weekly digest failed: {exc}", exc_info=True)
     finally:
         await engine.dispose()
+
+
+def submit_job_completion_email(
+    user_id: str, job_type: str, job_id: str, result_summary: Optional[Dict[str, Any]] = None
+) -> None:
+    """Queue a completion email, routing to Modal in production.
+
+    Same shape as submit_auto_save_checkpoint: no Celery consumer exists on
+    Modal, so the unconditional apply_async() dropped the notification silently.
+    Non-fatal by design — the job itself has already succeeded.
+    """
+    try:
+        if os.environ.get("DEPLOY_TARGET") == "modal":
+            from ..core.modal_dispatch import spawn
+            spawn("run_email_task", {
+                "user_id": user_id,
+                "job_type": job_type,
+                "job_id": job_id,
+                "result_summary": result_summary or {},
+            })
+            return
+        send_job_completion_email.apply_async(
+            args=[user_id, job_type, job_id],
+            kwargs={"result_summary": result_summary or {}},
+            queue="email",
+            countdown=3,
+        )
+    except Exception as exc:
+        logger.debug("Failed to enqueue completion email: %s", exc)
