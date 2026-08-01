@@ -6,10 +6,17 @@ WORKDIR /app
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
-# Copy lockfile and manifests first for layer caching
-COPY package.json pnpm-lock.yaml ./
+# Copy the manifest first for layer caching. This image builds with the frontend
+# as build context, so it is deliberately NON-workspace: pnpm sees no
+# pnpm-workspace.yaml here and resolves frontend/package.json standalone. There
+# is intentionally no committed frontend lockfile — the single source of truth is
+# the repo-root pnpm-lock.yaml (used by CI + Vercel + Dependabot); a second
+# committed frontend lockfile would drift the moment Dependabot bumps a dep.
+COPY package.json ./
 
-# Install all deps (including devDependencies needed for next build)
+# Install all deps (including devDependencies needed for next build). No frozen
+# lockfile: deps resolve from package.json's pinned ranges (same as before —
+# this build was already --no-frozen against a stale lockfile).
 RUN pnpm install --no-frozen-lockfile
 
 # Copy source code
