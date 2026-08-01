@@ -19,6 +19,11 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "celery"
         update-types: ["version-update:semver-major"]
+      # pdfplumber 0.11.10 pins pdfminer.six==20260107 (a ~2-year jump on a core
+      # PDF-parsing lib). Hold until the coordinated pdfplumber+pdfminer upgrade
+      # is done and PDF parsing is re-verified.
+      - dependency-name: "pdfplumber"
+      - dependency-name: "pdfminer.six"
 
   # Node dependencies — this is a pnpm WORKSPACE.
   #
@@ -53,6 +58,14 @@ updates:
       - dependency-name: "react"
         update-types: ["version-update:semver-major"]
       - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      # @react-three/drei 10 requires react@19 + @react-three/fiber@9; this app
+      # is on react 18 + fiber 8. Hold major drei bumps until a React 19 upgrade.
+      - dependency-name: "@react-three/drei"
+        update-types: ["version-update:semver-major"]
+      # eslint 9/10 is flat-config only; `next lint` (Next 14) doesn't support it.
+      # Hold eslint majors until the lint tooling migrates.
+      - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
       # monaco-editor 0.56 added a package `exports` map that breaks y-monaco
       # @0.1.6's deep import `monaco-editor/esm/vs/editor/editor.api.js`
