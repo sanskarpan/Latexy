@@ -105,7 +105,7 @@
         "autoprefixer": "^10.5.4",
         "eslint": "^8.56.0",
         "eslint-config-next": "14.0.4",
-        "monaco-editor": "0.56.0",
+        "monaco-editor": "0.55.1",
         "postcss": "^8.5.24",
         "prettier": "^3.9.6",
         "tailwindcss": "^3.3.6",
