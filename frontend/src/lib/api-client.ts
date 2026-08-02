@@ -685,6 +685,25 @@ export interface GitHubPullResponse {
   latex_content: string
 }
 
+/** A single imported GitHub project (public data only). */
+export interface ProjectEvidence {
+  source: string
+  title: string
+  description: string
+  tech: string[]
+  metrics: { stars: number; forks: number }
+  dates: { last_active: string | null }
+  url: string | null
+  suggested_bullets: string[]
+  raw_excerpt: string
+}
+
+export interface GitHubImportResult {
+  status: 'pending' | 'completed' | 'failed'
+  projects: ProjectEvidence[]
+  error: string | null
+}
+
 // Dropbox Integration (Feature 77)
 export interface DropboxStatusResponse {
   connected: boolean
@@ -2573,6 +2592,20 @@ class ApiClient {
     return this.request<GitHubPullResponse>(`/github/resumes/${encodeURIComponent(resumeId)}/pull`, {
       method: 'POST',
     })
+  }
+
+  /**
+   * Start an async import of the user's top PUBLIC GitHub projects (F1). Returns
+   * a job id to poll via {@link getGitHubImportResult}. Requires a connected
+   * GitHub account (400 otherwise).
+   */
+  async importGitHubProjects(): Promise<{ job_id: string }> {
+    return this.request<{ job_id: string }>('/github/import-projects', { method: 'POST' })
+  }
+
+  /** Poll a GitHub-import job for its ranked, AI-summarized ProjectEvidence. */
+  async getGitHubImportResult(jobId: string): Promise<GitHubImportResult> {
+    return this.request<GitHubImportResult>(`/github/import-projects/${encodeURIComponent(jobId)}`)
   }
 
   // ---------------------------------------------------------------- //
