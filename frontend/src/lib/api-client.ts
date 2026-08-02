@@ -84,6 +84,25 @@ export interface JobSubmitRequest {
   downplay?: string[]
 }
 
+/** One discrete, independently-applicable change from /optimize/segment-changes. */
+export interface ChangeHunk {
+  id: string
+  kind: 'modified' | 'added' | 'removed'
+  original_text: string
+  new_text: string
+  before_context: string
+  after_context: string
+  section: string | null
+  rationale: string | null
+  original_start: number
+  original_end: number
+}
+
+export interface SegmentChangesResponse {
+  hunks: ChangeHunk[]
+  summary: { total: number; added: number; modified: number; removed: number }
+}
+
 export interface OptimizationHistoryEntry {
   id: string
   created_at: string
@@ -1392,6 +1411,38 @@ class ApiClient {
 
   async getPersonas(): Promise<Array<{ key: string; label: string; description: string }>> {
     return this.request('/ai/personas')
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Per-change review (input-driven optimization, F2-P0)             //
+  // ---------------------------------------------------------------- //
+
+  /**
+   * Segment the original→optimized diff into discrete, individually-applicable
+   * change hunks (server-side, deterministic). The frontend renders these for
+   * accept/reject/edit, then calls {@link applyChanges} with the accepted ids.
+   */
+  async segmentChanges(body: {
+    original_latex: string
+    optimized_latex: string
+    change_reasons?: Array<{ section?: string; change_type?: string; reason?: string }>
+  }): Promise<SegmentChangesResponse> {
+    return this.request<SegmentChangesResponse>('/optimize/segment-changes', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }
+
+  /** Reconstruct the final LaTeX from the original + the accepted hunk ids. */
+  async applyChanges(body: {
+    original_latex: string
+    hunks: ChangeHunk[]
+    accepted_ids: string[]
+  }): Promise<{ latex: string }> {
+    return this.request<{ latex: string }>('/optimize/apply-changes', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
   }
 
   // ---------------------------------------------------------------- //
