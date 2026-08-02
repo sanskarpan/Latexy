@@ -89,6 +89,8 @@ FEATURE_REGISTRY: list[FeatureDef] = [
                "Import references from Zotero."),
     FeatureDef("integration_mendeley", "Mendeley Integration", "integrations",
                "Import references from Mendeley."),
+    FeatureDef("ai_import_github", "GitHub Project Import", "integrations",
+               "Import your top public GitHub projects as AI-summarized resume evidence."),
     # ---- analytics --------------------------------------------------------
     FeatureDef("analytics", "Analytics Dashboard", "analytics",
                "Usage and performance analytics dashboard."),
