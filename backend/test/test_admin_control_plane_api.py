@@ -94,7 +94,7 @@ class TestGetEntitlements:
         body = resp.json()
         assert set(body.keys()) == {"registry", "kill_switches", "matrix", "plan_families"}
         assert body["plan_families"] == ["free", "basic", "pro", "byok", "team"]
-        assert len(body["registry"]) == 27
+        assert len(body["registry"]) == 28
 
 
 # ── PATCH /admin/entitlements/kill-switch/{key} ──────────────────────────────
@@ -306,7 +306,7 @@ class TestConfigEntitlements:
         assert resp.status_code == 200
         body = resp.json()
         assert "features" in body
-        assert len(body["features"]) == 27
+        assert len(body["features"]) == 28
         assert body["features"]["compile"] is True
 
     async def test_anonymous(self, client: AsyncClient):
@@ -314,7 +314,7 @@ class TestConfigEntitlements:
         assert resp.status_code == 200
         body = resp.json()
         assert "features" in body
-        assert len(body["features"]) == 27
+        assert len(body["features"]) == 28
 
     async def test_anonymous_reflects_free_matrix_disable(
         self, client: AsyncClient, db_session: AsyncSession

@@ -282,6 +282,19 @@ def run_interview_prep_task(payload: dict) -> None:
     timeout=300,
     scaledown_window=60,
 )
+def run_github_import_task(payload: dict) -> None:
+    """Import + summarize a user's top public GitHub projects."""
+    _init_worker_redis()
+    from app.workers.github_import_worker import import_github_projects_task
+    import_github_projects_task.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=300,
+    scaledown_window=60,
+)
 def run_document_conversion_task(payload: dict) -> None:
     """LLM document conversion (imported resume -> LaTeX)."""
     _init_worker_redis()

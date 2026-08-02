@@ -2,8 +2,9 @@
 
 import secrets
 import urllib.parse
+import uuid
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,15 +13,18 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import settings
+from ..core.config import resolve_plan_family, settings
 from ..core.logging import get_logger
-from ..core.redis import cache_manager
+from ..core.redis import cache_manager, get_redis_client
 from ..database.connection import get_db
 from ..database.models import Resume, User
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
+from ..services import github_projects_service as gh_projects
+from ..services.api_key_service import api_key_service
 from ..services.encryption_service import encryption_service
 from ..services.github_sync_service import github_sync_service
+from ..workers.github_import_worker import submit_github_import
 
 logger = get_logger(__name__)
 
@@ -52,6 +56,16 @@ class GitHubResumeStatus(BaseModel):
     github_sync_enabled: bool
     github_repo_name: Optional[str] = None
     github_last_sync_at: Optional[str] = None
+
+
+class GitHubImportStartResponse(BaseModel):
+    job_id: str
+
+
+class GitHubImportResultResponse(BaseModel):
+    status: str  # pending | completed | failed
+    projects: List[dict] = []
+    error: Optional[str] = None
 
 
 # ── OAuth flow ───────────────────────────────────────────────────────────────
@@ -390,6 +404,82 @@ async def pull_from_github(
 
 
 # ── Resume GitHub status ─────────────────────────────────────────────────────
+
+@router.post("/import-projects", response_model=GitHubImportStartResponse)
+async def import_github_projects(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_feature("ai_import_github")),
+):
+    """Enqueue an async import of the user's top PUBLIC GitHub projects.
+
+    Reads public repository data only (see github_projects_service). Requires a
+    connected GitHub account; summarization runs on the user's own LLM key when
+    they have one (BYOK), otherwise on the platform key.
+    """
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user or not user.github_access_token:
+        raise HTTPException(
+            status_code=400,
+            detail="GitHub not connected. Go to Settings → GitHub Integration to connect your account.",
+        )
+
+    github_token = encryption_service.decrypt(user.github_access_token)
+
+    # Resolve the LLM key the same way optimize/cover-letter do: the user's own
+    # OpenAI key (BYOK) when present, else fall back to the platform key inside
+    # the worker (api_key=None → worker uses settings.OPENAI_API_KEY).
+    api_key = None
+    try:
+        api_key = await api_key_service.get_user_provider(db, user_id, "openai")
+    except Exception:
+        api_key = None
+
+    user_plan = "free"
+    if isinstance(user.subscription_plan, str) and user.subscription_plan:
+        user_plan = user.subscription_plan
+
+    job_id = str(uuid.uuid4())
+    try:
+        submit_github_import(
+            job_id=job_id,
+            user_id=user_id,
+            github_token=github_token,
+            api_key=api_key,
+            user_plan=resolve_plan_family(user_plan),
+        )
+    except Exception as exc:
+        logger.error(f"Failed to submit GitHub import job {job_id}: {exc}")
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to start GitHub import. Please try again.",
+        )
+
+    return GitHubImportStartResponse(job_id=job_id)
+
+
+@router.get("/import-projects/{job_id}", response_model=GitHubImportResultResponse)
+async def get_github_import_result(
+    job_id: str,
+    user_id: str = Depends(require_feature("ai_import_github")),
+):
+    """Return the candidate ProjectEvidence for an import job.
+
+    ``status`` is ``pending`` until the worker writes a result (~1h TTL),
+    then ``completed`` or ``failed``.
+    """
+    redis = await get_redis_client()
+    raw = await redis.get(gh_projects.import_result_key(job_id))
+    envelope = gh_projects.decode_result(raw)
+    if envelope is None:
+        return GitHubImportResultResponse(status="pending", projects=[])
+
+    return GitHubImportResultResponse(
+        status=envelope.get("status", "pending"),
+        projects=envelope.get("projects", []),
+        error=envelope.get("error"),
+    )
+
 
 @router.get("/resumes/{resume_id}/status", response_model=GitHubResumeStatus)
 async def get_resume_github_status(

@@ -47,6 +47,7 @@ celery_app = Celery(
         "app.workers.cover_letter_worker",
         "app.workers.interview_prep_worker",
         "app.workers.converter_worker",
+        "app.workers.github_import_worker",
     ]
 )
 
@@ -70,6 +71,7 @@ celery_app.conf.update(
         "app.workers.cover_letter_worker.*": {"queue": "llm"},
         "app.workers.interview_prep_worker.*": {"queue": "llm"},
         "app.workers.converter_worker.*": {"queue": "llm"},
+        "app.workers.github_import_worker.*": {"queue": "llm"},
     },
 
     # Task configuration
