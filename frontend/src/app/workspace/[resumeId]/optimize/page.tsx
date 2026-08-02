@@ -25,6 +25,8 @@ import { usePushNotifications } from '@/hooks/usePushNotifications'
 import AtsSimulatorPanel from '@/components/ats/AtsSimulatorPanel'
 import KeywordDensityMap from '@/components/KeywordDensityMap'
 import PublicationsPanel from '@/components/PublicationsPanel'
+import GuidedIntakePanel from '@/components/GuidedIntakePanel'
+import { EMPTY_INTAKE, intakeIsEmpty, type GuidedIntake } from '@/lib/guided-intake'
 
 const TRIM_INSTRUCTION =
   'Condense this resume to fit on exactly ONE page. Prioritize recent and most impactful content. Remove less critical details, condense bullet points, reduce descriptions. Do NOT remove any job titles, companies, degrees, or institution names.'
@@ -80,6 +82,9 @@ export default function OptimizationSuitePage() {
 
   // Optimization persona (Feature 56)
   const [persona, setPersona] = useState<string | null>(null)
+
+  // Guided intake — user direction for the rewrite (input-driven optimization P1)
+  const [intake, setIntake] = useState<GuidedIntake>(EMPTY_INTAKE)
 
   // Industry override for ATS calibration (Feature 46)
   const [industryOverride, setIndustryOverride] = useState<string | null>(null)
@@ -225,6 +230,11 @@ export default function OptimizationSuitePage() {
         optimization_level: 'balanced',
         compiler,
         persona: persona ?? undefined,
+        industry: intake.industry || undefined,
+        seniority: intake.seniority || undefined,
+        tone: intake.tone || undefined,
+        emphasize: intake.emphasize.length ? intake.emphasize : undefined,
+        downplay: intake.downplay.length ? intake.downplay : undefined,
       })
 
       if (!response.success || !response.job_id) {
@@ -328,6 +338,11 @@ export default function OptimizationSuitePage() {
         job_description: jobDescription,
         optimization_level: 'aggressive',
         custom_instructions: TRIM_INSTRUCTION,
+        industry: intake.industry || undefined,
+        seniority: intake.seniority || undefined,
+        tone: intake.tone || undefined,
+        emphasize: intake.emphasize.length ? intake.emphasize : undefined,
+        downplay: intake.downplay.length ? intake.downplay : undefined,
       })
       if (!response.success || !response.job_id) {
         throw new Error(response.message || 'Failed to start trim')
@@ -340,7 +355,7 @@ export default function OptimizationSuitePage() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [resume?.latex_content, jobDescription])
+  }, [resume?.latex_content, jobDescription, intake])
 
   const handleHistoryRestore = useCallback((latex: string) => {
     editorRef.current?.setValue(latex)
@@ -554,6 +569,9 @@ export default function OptimizationSuitePage() {
               disabled={isProcessing}
               className="scrollbar-subtle mt-2 h-56 w-full resize-none rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-zinc-100 outline-none transition focus:border-orange-300/50"
             />
+            <div className="mt-3">
+              <GuidedIntakePanel value={intake} onChange={setIntake} />
+            </div>
             <button
               onClick={runOptimization}
               disabled={isProcessing || isSubmitting}
@@ -561,6 +579,19 @@ export default function OptimizationSuitePage() {
             >
               {isProcessing || isSubmitting ? 'Processing...' : jobDescription.trim() ? 'Optimize for this Role' : 'Optimize Resume'}
             </button>
+            {!intakeIsEmpty(intake) && (
+              <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
+                The AI will follow your direction —
+                {[
+                  intake.industry && ` ${intake.industry} industry`,
+                  intake.seniority && ` ${intake.seniority} level`,
+                  intake.tone && ` ${intake.tone.toLowerCase()} tone`,
+                  intake.emphasize.length ? ` emphasizing ${intake.emphasize.join(', ')}` : '',
+                  intake.downplay.length ? ` downplaying ${intake.downplay.join(', ')}` : '',
+                ].filter(Boolean).join(' ·')}
+                .
+              </p>
+            )}
           </section>
 
           <AnimatePresence>

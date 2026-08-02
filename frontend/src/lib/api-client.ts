@@ -77,6 +77,11 @@ export interface JobSubmitRequest {
   metadata?: Record<string, unknown>
   compiler?: LatexCompiler
   persona?: string
+  // Guided-intake direction (input-driven optimization)
+  seniority?: string
+  tone?: string
+  emphasize?: string[]
+  downplay?: string[]
 }
 
 export interface OptimizationHistoryEntry {
@@ -1357,6 +1362,12 @@ class ApiClient {
     resume_id?: string
     compiler?: LatexCompiler
     persona?: string
+    // Guided-intake direction (input-driven optimization)
+    industry?: string
+    seniority?: string
+    tone?: string
+    emphasize?: string[]
+    downplay?: string[]
   }): Promise<JobSubmitResponse> {
     return this.submitJob({
       job_type: 'combined',
@@ -1371,6 +1382,11 @@ class ApiClient {
       metadata: body.resume_id ? { resume_id: body.resume_id } : undefined,
       compiler: body.compiler,
       persona: body.persona,
+      industry: body.industry,
+      seniority: body.seniority,
+      tone: body.tone,
+      emphasize: body.emphasize,
+      downplay: body.downplay,
     })
   }
 
