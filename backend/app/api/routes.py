@@ -202,6 +202,11 @@ from .telemetry_routes import router as telemetry_router
 router.include_router(application_router)
 router.include_router(telemetry_router)
 
+# Include per-change accept/reject review routes (Feature 2 / P0)
+from .optimize_routes import router as optimize_review_router
+
+router.include_router(optimize_review_router)
+
 
 def _check_cors_origins_on_startup() -> None:
     """CONFIG-002: Warn if CORS origins include localhost in a production-like environment."""
