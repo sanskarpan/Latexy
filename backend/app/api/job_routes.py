@@ -171,6 +171,13 @@ class JobSubmissionRequest(BaseModel):
     model: Optional[str] = None
     compiler: Optional[str] = None  # "pdflatex" | "xelatex" | "lualatex"
     persona: Optional[str] = None
+    # Guided-intake direction (input-driven optimization, PRD 2026-08-02): the
+    # user's explicit answers, threaded into the LLM prompt so the output honours
+    # their intent over generic ATS heuristics.
+    seniority: Optional[str] = None
+    tone: Optional[str] = None
+    emphasize: Optional[List[str]] = None
+    downplay: Optional[List[str]] = None
 
 
 class JobSubmissionResponse(BaseModel):
@@ -476,6 +483,11 @@ async def submit_job(
                 metadata=extra_meta,
                 compiler=compiler,
                 persona=request.persona,
+                industry=request.industry,
+                seniority=request.seniority,
+                tone=request.tone,
+                emphasize=request.emphasize,
+                downplay=request.downplay,
             )
 
         elif request.job_type == "ats_scoring":
