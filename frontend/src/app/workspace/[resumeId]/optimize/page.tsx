@@ -19,6 +19,7 @@ import PDFPreview from '@/components/PDFPreview'
 import ATSScoreCard from '@/components/ATSScoreCard'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import CompareModal from '@/components/CompareModal'
+import ChangeReviewModal from '@/components/ChangeReviewModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ErrorExplainerPanel from '@/components/ErrorExplainerPanel'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
@@ -55,6 +56,7 @@ export default function OptimizationSuitePage() {
   const [compareOriginalLatex, setCompareOriginalLatex] = useState<string | null>(null)
   const [compareAfterLatex, setCompareAfterLatex] = useState<string | null>(null)
   const [showCompareModal, setShowCompareModal] = useState(false)
+  const [showReviewModal, setShowReviewModal] = useState(false)
 
   // Variant awareness
   const [parentResumeId, setParentResumeId] = useState<string | null>(null)
@@ -271,6 +273,25 @@ export default function OptimizationSuitePage() {
       setIsSubmitting(false)
     }
   }, [isSubmitting, resumeId, compiler])
+
+  // Apply the user's per-change review result (F2-P0): load the reconstructed
+  // LaTeX into the editor, make it the new "after" snapshot, and recompile.
+  const handleApplyReviewedChanges = useCallback(async (latex: string) => {
+    editorRef.current?.setValue(latex)
+    setCompareAfterLatex(latex)
+    setIsSubmitting(true)
+    setPdfUrl(null)
+    try {
+      const response = await apiClient.compileLatex({ latex_content: latex, resume_id: resumeId, compiler })
+      if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to recompile')
+      setActiveJobId(response.job_id)
+      setActiveJobKind('compile')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Recompile failed')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [resumeId, compiler])
 
   const handleCompareWithParent = useCallback(async () => {
     try {
@@ -722,12 +743,20 @@ export default function OptimizationSuitePage() {
                 <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Output Preview</p>
                 <div className="flex items-center gap-3">
                   {compareAfterLatex !== null && compareOriginalLatex !== null && (
-                    <button
-                      onClick={() => setShowCompareModal(true)}
-                      className="text-xs font-semibold text-orange-300 transition hover:text-orange-200"
-                    >
-                      Compare with Original
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setShowReviewModal(true)}
+                        className="text-xs font-semibold text-emerald-300 transition hover:text-emerald-200"
+                      >
+                        Review Changes
+                      </button>
+                      <button
+                        onClick={() => setShowCompareModal(true)}
+                        className="text-xs font-semibold text-orange-300 transition hover:text-orange-200"
+                      >
+                        Compare with Original
+                      </button>
+                    </>
                   )}
                   {pdfUrl && (
                     <a href={pdfUrl} download="optimized_resume.pdf" className="text-xs font-semibold text-zinc-300 transition hover:text-white">
@@ -893,6 +922,16 @@ export default function OptimizationSuitePage() {
             setShowCompareModal(false)
             toast.success('Original restored')
           }}
+        />
+      )}
+
+      {/* Per-change accept/reject review (F2-P0) */}
+      {showReviewModal && compareOriginalLatex !== null && compareAfterLatex !== null && (
+        <ChangeReviewModal
+          originalLatex={compareOriginalLatex}
+          optimizedLatex={compareAfterLatex}
+          onApply={handleApplyReviewedChanges}
+          onClose={() => setShowReviewModal(false)}
         />
       )}
     </div>
