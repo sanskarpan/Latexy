@@ -295,8 +295,19 @@ class LLMService:
         optimization_level: str,
         target_sections: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
+        industry: Optional[str] = None,
+        seniority: Optional[str] = None,
+        tone: Optional[str] = None,
+        emphasize: Optional[List[str]] = None,
+        downplay: Optional[List[str]] = None,
     ) -> str:
-        """Create optimization prompt for LLM using delimiter output format."""
+        """Create optimization prompt for LLM using delimiter output format.
+
+        The guided-intake fields (industry/seniority/tone/emphasize/downplay)
+        are the user's explicit direction — they are injected verbatim so the
+        model tailors to what the user actually asked for, not just the ATS
+        heuristics. See docs/prd/2026-08-02-input-driven-optimization.md.
+        """
 
         level_instructions = {
             "conservative": "Make minimal changes, only fixing obvious issues and improving clarity where clearly beneficial.",
@@ -336,12 +347,42 @@ KEY REQUIREMENTS:
         if custom_instructions:
             user_constraint = f"\n\nUser instructions: {custom_instructions}"
 
+        # Guided-intake direction: the user's explicit answers, honoured over the
+        # generic ATS defaults. Each line is only added when the user provided it.
+        direction_lines = []
+        if industry:
+            direction_lines.append(
+                f"- Target industry: {industry}. Use its conventions, terminology, and expected emphasis."
+            )
+        if seniority:
+            direction_lines.append(
+                f"- Seniority level: {seniority}. Calibrate scope, ownership, and leadership language accordingly."
+            )
+        if tone:
+            direction_lines.append(
+                f"- Voice/tone: {tone}. Match this consistently across bullets."
+            )
+        if emphasize:
+            direction_lines.append(
+                f"- Emphasize these (make them prominent and impactful): {', '.join(emphasize)}."
+            )
+        if downplay:
+            direction_lines.append(
+                f"- De-emphasize / keep brief (do NOT remove, just reduce prominence): {', '.join(downplay)}."
+            )
+        direction_block = ""
+        if direction_lines:
+            direction_block = (
+                "\n\nUSER DIRECTION (respect these explicit choices above generic heuristics):\n"
+                + "\n".join(direction_lines)
+            )
+
         return f"""Please optimize the following LaTeX resume.
 
 OPTIMIZATION LEVEL: {optimization_level}
 INSTRUCTIONS: {level_instructions.get(optimization_level, level_instructions['balanced'])}
 
-{jd_section}{section_constraint}{user_constraint}
+{jd_section}{section_constraint}{user_constraint}{direction_block}
 
 CURRENT LATEX RESUME:
 {latex_content}

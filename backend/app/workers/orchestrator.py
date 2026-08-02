@@ -104,6 +104,11 @@ def optimize_and_compile_task(
     compiler: str = "pdflatex",
     timeout_seconds: Optional[int] = None,
     persona: Optional[str] = None,
+    industry: Optional[str] = None,
+    seniority: Optional[str] = None,
+    tone: Optional[str] = None,
+    emphasize: Optional[List[str]] = None,
+    downplay: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Full pipeline: LLM optimize → pdflatex compile → ATS score.
@@ -164,6 +169,11 @@ def optimize_and_compile_task(
             custom_instructions=custom_instructions,
             model=model,
             persona=persona,
+            industry=industry,
+            seniority=seniority,
+            tone=tone,
+            emphasize=emphasize,
+            downplay=downplay,
         )
 
         if is_cancelled(job_id):
@@ -363,6 +373,11 @@ def _run_llm_stage(
     custom_instructions: Optional[str] = None,
     model: Optional[str] = None,
     persona: Optional[str] = None,
+    industry: Optional[str] = None,
+    seniority: Optional[str] = None,
+    tone: Optional[str] = None,
+    emphasize: Optional[List[str]] = None,
+    downplay: Optional[List[str]] = None,
 ) -> tuple[str, List[Dict], int, float]:
     """
     Stream OpenAI tokens through a delimiter state machine.
@@ -383,6 +398,11 @@ def _run_llm_stage(
         latex_content, job_description, keywords, optimization_level,
         target_sections=target_sections,
         custom_instructions=custom_instructions,
+        industry=industry,
+        seniority=seniority,
+        tone=tone,
+        emphasize=emphasize,
+        downplay=downplay,
     )
 
     publish_event(job_id, "job.progress", {
@@ -798,6 +818,11 @@ def submit_optimize_and_compile(
     compiler: str = "pdflatex",
     timeout_seconds: Optional[int] = None,
     persona: Optional[str] = None,
+    industry: Optional[str] = None,
+    seniority: Optional[str] = None,
+    tone: Optional[str] = None,
+    emphasize: Optional[List[str]] = None,
+    downplay: Optional[List[str]] = None,
 ) -> str:
     """Enqueue optimize_and_compile_task on the combined queue."""
     if priority is None:
@@ -827,6 +852,11 @@ def submit_optimize_and_compile(
             "compiler": compiler,
             "timeout_seconds": compile_timeout,
             "persona": persona,
+            "industry": industry,
+            "seniority": seniority,
+            "tone": tone,
+            "emphasize": emphasize,
+            "downplay": downplay,
         })
         logger.info(f"Modal spawn: orchestrator for job {job_id} (compiler={compiler})")
         return job_id
@@ -848,6 +878,11 @@ def submit_optimize_and_compile(
             "compiler": compiler,
             "timeout_seconds": compile_timeout,
             "persona": persona,
+            "industry": industry,
+            "seniority": seniority,
+            "tone": tone,
+            "emphasize": emphasize,
+            "downplay": downplay,
         },
         priority=priority,
         queue="combined",
