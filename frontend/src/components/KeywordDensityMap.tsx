@@ -22,9 +22,9 @@ interface KeywordDensityMapProps {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  present: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/30',
-  partial: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30',
-  missing: 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-500/30',
+  present: 'bg-ok/20 text-ok ring-1 ring-ok/30',
+  partial: 'bg-warn/20 text-warn ring-1 ring-warn/30',
+  missing: 'bg-err/20 text-err ring-1 ring-err/30',
 }
 
 const STATUS_ICONS: Record<string, string> = {
@@ -66,28 +66,28 @@ export default function KeywordDensityMap({ getLatexContent }: KeywordDensityMap
   return (
     <div className="space-y-4">
       <div>
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
           Job Description
         </label>
         <textarea
           value={jobDescription}
           onChange={e => setJobDescription(e.target.value)}
           placeholder="Paste the job description to see which keywords your resume covers…"
-          className="scrollbar-subtle h-36 w-full resize-none rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40"
+          className="scrollbar-subtle h-36 w-full resize-none rounded-[var(--radius-lg)] border border-line bg-bg p-3 text-sm text-fg outline-none transition focus:border-accent"
         />
       </div>
 
       <button
         onClick={runAnalysis}
         disabled={isLoading || !jobDescription.trim()}
-        className="flex items-center gap-2 rounded-lg bg-orange-500/20 px-4 py-2.5 text-sm font-semibold text-orange-200 ring-1 ring-orange-400/20 transition hover:bg-orange-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2.5 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
         {isLoading ? 'Analyzing…' : 'Analyze Keywords'}
       </button>
 
       {error && (
-        <div className="rounded-lg border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">
+        <div className="rounded-[var(--radius-md)] border border-err/20 bg-err/10 px-4 py-3 text-sm text-err">
           {error}
         </div>
       )}
@@ -97,25 +97,25 @@ export default function KeywordDensityMap({ getLatexContent }: KeywordDensityMap
           {/* Coverage progress bar */}
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-xs font-semibold text-zinc-400">Keyword Coverage</span>
-              <span className="text-sm font-semibold text-white">{result.coverage_score}%</span>
+              <span className="text-xs font-semibold text-fg-2">Keyword Coverage</span>
+              <span className="text-sm font-semibold text-fg">{result.coverage_score}%</span>
             </div>
-            <div className="h-2 rounded-full bg-white/10">
+            <div className="h-2 rounded-full bg-surface-2">
               <div
                 className={`h-full rounded-full transition-all ${
                   result.coverage_score >= 70
-                    ? 'bg-emerald-400'
+                    ? 'bg-ok'
                     : result.coverage_score >= 40
-                    ? 'bg-amber-400'
-                    : 'bg-rose-400'
+                    ? 'bg-warn'
+                    : 'bg-err'
                 }`}
                 style={{ width: `${result.coverage_score}%` }}
               />
             </div>
-            <div className="mt-2 flex gap-4 text-[11px] text-zinc-500">
-              <span><span className="text-emerald-400 font-semibold">{present}</span> present</span>
-              <span><span className="text-amber-400 font-semibold">{partial}</span> partial</span>
-              <span><span className="text-rose-400 font-semibold">{missing}</span> missing</span>
+            <div className="mt-2 flex gap-4 text-[11px] text-fg-3">
+              <span><span className="text-ok font-semibold">{present}</span> present</span>
+              <span><span className="text-warn font-semibold">{partial}</span> partial</span>
+              <span><span className="text-err font-semibold">{missing}</span> missing</span>
             </div>
           </div>
 
@@ -149,9 +149,9 @@ export default function KeywordDensityMap({ getLatexContent }: KeywordDensityMap
 
                 {/* Tooltip for missing keywords */}
                 {tooltip?.keyword === kw.keyword && kw.suggested_location && (
-                  <div className="absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-[11px] text-zinc-300 shadow-lg">
-                    Suggested: <span className="font-semibold text-white">{kw.suggested_location}</span>
-                    <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-zinc-900" />
+                  <div className="absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded-[var(--radius-md)] border border-line bg-surface px-3 py-2 text-[11px] text-fg-2 shadow-[var(--shadow-2)]">
+                    Suggested: <span className="font-semibold text-fg">{kw.suggested_location}</span>
+                    <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-surface" />
                   </div>
                 )}
               </div>
@@ -159,7 +159,7 @@ export default function KeywordDensityMap({ getLatexContent }: KeywordDensityMap
           </div>
 
           {result.keywords.length === 0 && (
-            <p className="text-sm text-zinc-500">No keywords extracted from the job description.</p>
+            <p className="text-sm text-fg-3">No keywords extracted from the job description.</p>
           )}
         </div>
       )}
