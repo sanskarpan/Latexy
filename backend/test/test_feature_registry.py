@@ -15,12 +15,12 @@ from app.core.feature_registry import (
 )
 
 
-def test_registry_has_28_entries():
-    assert len(FEATURE_REGISTRY) == 28
+def test_registry_has_29_entries():
+    assert len(FEATURE_REGISTRY) == 29
 
 
-def test_registry_has_27_gateable():
-    assert len(gateable_keys()) == 27
+def test_registry_has_28_gateable():
+    assert len(gateable_keys()) == 28
 
 
 def test_compile_present_and_non_gateable():
