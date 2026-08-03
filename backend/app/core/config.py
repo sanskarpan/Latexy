@@ -191,6 +191,15 @@ class Settings(BaseSettings):
     # Number of free deep analysis uses per device (anonymous users)
     DEEP_ANALYSIS_TRIAL_LIMIT: int = Field(default=2, description="Number of free deep analysis uses per device")
 
+    # Region used to read phone numbers written WITHOUT a country code, e.g. a
+    # bare "98765 43210". Numbers written with one (+91, +44) are unambiguous and
+    # parse correctly regardless of this. A bare number from another region
+    # yields no phone rather than a wrong one, so this only ever adds coverage.
+    RESUME_DEFAULT_PHONE_REGION: str = Field(
+        default="US",
+        description="ISO 3166-1 alpha-2 region for parsing phone numbers with no country code (e.g. IN, GB, US)",
+    )
+
     # JWT Configuration
     JWT_SECRET_KEY: str = Field(default="", description="JWT secret key for token signing")
     JWT_ALGORITHM: str = Field(default="HS256", description="JWT algorithm")

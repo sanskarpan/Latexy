@@ -59,6 +59,46 @@ IMPORTANT:
 - Return ONLY valid compilable LaTeX code — no markdown, no explanations, no code fences"""
 
 
+
+# gpt-4o-mini has a 128k-token context and the conversion asks for at most 4096
+# output tokens, so the input budget here is bounded by cost and abuse, not by
+# the model. The previous 4000-CHARACTER cap was far below both: a one-page
+# resume is ~1000 chars but a dense two-page one runs 4000-6000, so those were
+# cut mid-sentence. For a PDF that mattered doubly, because PDFParser fills only
+# raw_text — the structured-sections block is empty, so this excerpt is the ONLY
+# content the model receives.
+#
+# 24k chars is roughly 6k tokens: comfortably more than any real resume, still a
+# hard bound on a hostile upload.
+RAW_TEXT_CHAR_BUDGET = 24_000
+
+
+def _clip_raw_text(raw_text: str) -> tuple[str, int]:
+    """Clip *raw_text* to the prompt budget, returning (text, chars_dropped).
+
+    Cuts on a line boundary where one is reasonably close to the limit, so the
+    excerpt does not end mid-word. Callers surface the dropped count to the model
+    (and the log) instead of silently pretending the resume ended there.
+    """
+    if len(raw_text) <= RAW_TEXT_CHAR_BUDGET:
+        return raw_text, 0
+
+    dropped = len(raw_text) - RAW_TEXT_CHAR_BUDGET
+    head = raw_text[:RAW_TEXT_CHAR_BUDGET]
+    boundary = head.rfind("\n")
+    # Only honour the boundary if it is not throwing away a lot of the budget.
+    if boundary > RAW_TEXT_CHAR_BUDGET * 0.9:
+        dropped += len(head) - boundary
+        head = head[:boundary]
+
+    logger.warning(
+        "Resume text exceeded the conversion prompt budget: %d chars supplied, "
+        "%d dropped. The generated LaTeX will be missing content.",
+        len(head),
+        dropped,
+    )
+    return head, dropped
+
 class DocumentConverterService:
     """Service for converting parsed resume data to LaTeX via LLM."""
 
@@ -80,7 +120,7 @@ class DocumentConverterService:
             List of message dicts for OpenAI chat completions
         """
         contact = structure.get('contact') or {}
-        raw_text = (structure.get('raw_text') or '')[:4000]  # cap at 4K chars
+        raw_text, truncated_chars = _clip_raw_text(structure.get('raw_text') or '')
 
         # Build sections summary
         sections_text = self._format_sections(structure)
@@ -143,6 +183,16 @@ class DocumentConverterService:
             "=== FULL RAW TEXT ===",
             raw_text,
         ])
+
+        # Tell the model the input is incomplete rather than letting it treat a
+        # mid-sentence cut as the end of the resume and invent a tidy ending.
+        if truncated_chars:
+            user_parts.extend([
+                "",
+                f"[NOTE: the resume was longer than this excerpt and {truncated_chars} "
+                "characters were omitted. Convert only what is shown above; do not "
+                "invent content to fill the gap.]",
+            ])
 
         user = "\n".join(user_parts)
 

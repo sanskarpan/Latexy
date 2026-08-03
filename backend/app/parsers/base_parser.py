@@ -9,6 +9,8 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from ..utils.contact import find_phone
+
 logger = logging.getLogger(__name__)
 
 
@@ -147,10 +149,21 @@ SECTION_PATTERNS = _re.compile(
 )
 
 EMAIL_RE = _re.compile(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}')
+# Kept for backwards compatibility with anything importing it; phone extraction
+# now goes through app.utils.contact.find_phone, which handles non-NANP numbers.
+# This pattern matches US layouts ONLY and silently missed +91/+44/+61/+65.
 PHONE_RE = _re.compile(r'(?:\+?1[-.\s]?)?(?:\(?[2-9]\d{2}\)?[-.\s]?)[2-9]\d{2}[-.\s]?\d{4}')
 LINKEDIN_RE = _re.compile(r'(?:linkedin\.com/in/|linkedin:\s*)([a-zA-Z0-9\-]+)', _re.IGNORECASE)
 GITHUB_RE = _re.compile(r'(?:github\.com/|github:\s*)([a-zA-Z0-9\-]+)', _re.IGNORECASE)
 
+
+def _default_phone_region() -> str:
+    """Region used to resolve phone numbers written without a country code."""
+    try:
+        from ..core.config import settings
+        return getattr(settings, "RESUME_DEFAULT_PHONE_REGION", "US") or "US"
+    except Exception:
+        return "US"
 
 class AbstractParser(ABC):
     """Abstract base class for all resume format parsers."""
@@ -212,9 +225,7 @@ class AbstractParser(ABC):
         email_match = EMAIL_RE.search(text)
         if email_match:
             contact.email = email_match.group(0)
-        phone_match = PHONE_RE.search(text)
-        if phone_match:
-            contact.phone = phone_match.group(0)
+        contact.phone = find_phone(text, _default_phone_region())
         linkedin_match = LINKEDIN_RE.search(text)
         if linkedin_match:
             contact.linkedin = f"linkedin.com/in/{linkedin_match.group(1)}"
