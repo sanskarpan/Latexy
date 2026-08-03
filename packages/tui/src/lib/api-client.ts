@@ -13,7 +13,16 @@ interface RequestOptions {
   retryDelayMs?: number
   timeoutMs?: number
   signal?: AbortSignal
+  /**
+   * Force retry on or off. Defaults to true only for idempotent methods, so a
+   * POST is never silently replayed. Set explicitly where a non-idempotent call
+   * is genuinely safe to repeat.
+   */
+  retry?: boolean
 }
+
+/** Methods that are safe to replay. Everything else runs exactly once. */
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 export class ApiClient {
   private token: string | null = null
@@ -45,7 +54,15 @@ export class ApiClient {
   ): Promise<T> {
     const { retryDelayMs = 1000, timeoutMs = 30_000 } = opts
     const url = `${this.baseUrl}${path}`
-    const maxAttempts = 3
+    // Only replay requests that are safe to replay. A 5xx can be returned after
+    // the server already did the work, and a network timeout says nothing about
+    // whether it was processed — so retrying POST /jobs/submit could enqueue the
+    // same job up to three times, and since #998 each one is a separate charge
+    // against the caller's plan allowance. Callers that know a POST is safe to
+    // repeat can opt in with `retry: true`.
+    const idempotent = IDEMPOTENT_METHODS.has(method.toUpperCase())
+    const mayRetry = opts.retry ?? idempotent
+    const maxAttempts = mayRetry ? 3 : 1
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const controller = new AbortController()
