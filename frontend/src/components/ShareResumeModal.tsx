@@ -23,7 +23,7 @@ function Sparkline({ data }: { data: { date: string; count: number }[] }) {
   const W = 220
   const H = 36
   if (data.length === 0) {
-    return <div className="h-9 flex items-center justify-center text-[10px] text-zinc-600">No data yet</div>
+    return <div className="h-9 flex items-center justify-center text-[10px] text-fg-3">No data yet</div>
   }
   const max = Math.max(...data.map((d) => d.count), 1)
   const pts = data.map((d, i) => {
@@ -36,8 +36,8 @@ function Sparkline({ data }: { data: { date: string; count: number }[] }) {
   const fill = `${pts[0].split(',')[0]},${H} ${polyline} ${pts[pts.length - 1].split(',')[0]},${H}`
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-9" preserveAspectRatio="none">
-      <polygon points={fill} fill="rgba(56,189,248,0.12)" />
-      <polyline points={polyline} fill="none" stroke="rgb(56,189,248)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      <polygon points={fill} fill="var(--accent)" fillOpacity={0.12} />
+      <polyline points={polyline} fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   )
 }
@@ -83,12 +83,12 @@ function AnalyticsPanel({ resumeId }: { resumeId: string }) {
   if (loading) {
     return (
       <div className="flex h-48 items-center justify-center">
-        <Loader2 size={16} className="animate-spin text-zinc-600" />
+        <Loader2 size={16} className="animate-spin text-fg-3" />
       </div>
     )
   }
   if (error) {
-    return <p className="py-4 text-center text-[11px] text-rose-400">{error}</p>
+    return <p className="py-4 text-center text-[11px] text-err">{error}</p>
   }
   if (!analytics) return null
 
@@ -105,17 +105,17 @@ function AnalyticsPanel({ resumeId }: { resumeId: string }) {
           { label: 'Last 7d', value: analytics.views_last_7_days },
           { label: 'Last 30d', value: analytics.views_last_30_days },
         ].map(({ label, value }) => (
-          <div key={label} className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-2 py-2 text-center">
-            <p className="text-base font-semibold text-sky-300">{value}</p>
-            <p className="text-[9px] uppercase tracking-wider text-zinc-600">{label}</p>
+          <div key={label} className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-2 text-center">
+            <p className="text-base font-semibold text-accent-strong">{value}</p>
+            <p className="text-[9px] uppercase tracking-wider text-fg-3">{label}</p>
           </div>
         ))}
       </div>
 
       {/* Sparkline */}
       <div>
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Last 30 days</p>
-        <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2">
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-fg-3">Last 30 days</p>
+        <div className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2">
           <Sparkline data={analytics.views_by_day} />
         </div>
       </div>
@@ -123,13 +123,13 @@ function AnalyticsPanel({ resumeId }: { resumeId: string }) {
       {/* Countries */}
       {analytics.views_by_country.length > 0 && (
         <div>
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Top countries</p>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-fg-3">Top countries</p>
           <div className="space-y-1">
             {analytics.views_by_country.slice(0, 5).map((c, i) => (
               <div key={i} className="flex items-center gap-2">
                 <span className="text-sm leading-none">{countryFlag(c.country_code)}</span>
-                <span className="flex-1 text-[11px] text-zinc-400">{c.country_code ?? 'Unknown'}</span>
-                <span className="text-[11px] font-semibold text-zinc-300">{c.count}</span>
+                <span className="flex-1 text-[11px] text-fg-2">{c.country_code ?? 'Unknown'}</span>
+                <span className="text-[11px] font-semibold text-fg-2">{c.count}</span>
               </div>
             ))}
           </div>
@@ -139,12 +139,12 @@ function AnalyticsPanel({ resumeId }: { resumeId: string }) {
       {/* Referrers */}
       {analytics.views_by_referrer.length > 0 && (
         <div>
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Top referrers</p>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-fg-3">Top referrers</p>
           <div className="space-y-1">
             {analytics.views_by_referrer.slice(0, 5).map((r, i) => (
               <div key={i} className="flex items-center gap-2">
-                <span className="flex-1 truncate text-[11px] text-zinc-400">{displayReferrer(r.referrer)}</span>
-                <span className="text-[11px] font-semibold text-zinc-300">{r.count}</span>
+                <span className="flex-1 truncate text-[11px] text-fg-2">{displayReferrer(r.referrer)}</span>
+                <span className="text-[11px] font-semibold text-fg-2">{r.count}</span>
               </div>
             ))}
           </div>
@@ -152,11 +152,11 @@ function AnalyticsPanel({ resumeId }: { resumeId: string }) {
       )}
 
       {analytics.total_views === 0 && (
-        <p className="text-center text-[11px] text-zinc-600">No views recorded yet. Share your link to start tracking.</p>
+        <p className="text-center text-[11px] text-fg-3">No views recorded yet. Share your link to start tracking.</p>
       )}
 
       {lastViewed && (
-        <p className="text-[10px] text-zinc-600">Last viewed {lastViewed}</p>
+        <p className="text-[10px] text-fg-3">Last viewed {lastViewed}</p>
       )}
     </div>
   )
@@ -249,24 +249,24 @@ export default function ShareResumeModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-md rounded-xl border border-white/[0.08] bg-[#111] shadow-2xl">
+      <div className="w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-surface shadow-[var(--shadow-2)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
+        <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/15 ring-1 ring-sky-400/20">
-              <Link size={13} className="text-sky-300" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft ring-1 ring-accent">
+              <Link size={13} className="text-accent-strong" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Share Resume</h2>
-              <p className="text-[11px] text-zinc-500">{resumeTitle}</p>
+              <h2 className="text-sm font-semibold text-fg">Share Resume</h2>
+              <p className="text-[11px] text-fg-3">{resumeTitle}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="rounded-md p-1 text-zinc-600 transition hover:bg-white/[0.05] hover:text-zinc-300"
+            className="rounded-[var(--radius-md)] p-1 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={14} />
           </button>
@@ -274,15 +274,15 @@ export default function ShareResumeModal({
 
         {/* Tab bar — only when link exists */}
         {shareData && (
-          <div className="flex border-b border-white/[0.06] px-5">
+          <div className="flex border-b border-line px-5">
             {tabs.map(({ id, label, icon }) => (
               <button
                 key={id}
                 onClick={() => setTab(id)}
                 className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-[11px] font-medium transition ${
                   tab === id
-                    ? 'border-sky-400 text-sky-300'
-                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                    ? 'border-accent text-accent-strong'
+                    : 'border-transparent text-fg-3 hover:text-fg-2'
                 }`}
               >
                 {icon}
@@ -297,22 +297,22 @@ export default function ShareResumeModal({
           {!shareData ? (
             // No link yet — always show the generate UI
             <div className="space-y-4">
-              <p className="text-sm text-zinc-400">
+              <p className="text-sm text-fg-2">
                 Generate a public link so anyone can view the compiled PDF — no login needed.
               </p>
-              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-                <p className="text-[11px] text-zinc-500">
+              <div className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-3">
+                <p className="text-[11px] text-fg-3">
                   Viewers can read the PDF but cannot edit or access your LaTeX source.
                 </p>
               </div>
 
               {/* Anonymous mode toggle */}
-              <div className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+              <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2.5">
                 <div className="flex items-center gap-2">
-                  <EyeOff size={13} className="text-zinc-500" />
+                  <EyeOff size={13} className="text-fg-3" />
                   <div>
-                    <p className="text-[12px] font-medium text-zinc-300">Anonymous Mode</p>
-                    <p className="text-[10px] text-zinc-600">Hides name, email, phone &amp; social profiles</p>
+                    <p className="text-[12px] font-medium text-fg-2">Anonymous Mode</p>
+                    <p className="text-[10px] text-fg-3">Hides name, email, phone &amp; social profiles</p>
                   </div>
                 </div>
                 <button
@@ -321,7 +321,7 @@ export default function ShareResumeModal({
                   aria-checked={anonymous}
                   onClick={() => setAnonymous(a => !a)}
                   className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-                    anonymous ? 'bg-amber-500' : 'bg-zinc-700'
+                    anonymous ? 'bg-warn' : 'bg-surface-2'
                   }`}
                 >
                   <span
@@ -335,7 +335,7 @@ export default function ShareResumeModal({
               <button
                 onClick={handleGenerate}
                 disabled={isGenerating}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-sky-400/25 bg-sky-500/15 py-2.5 text-sm font-semibold text-sky-200 transition hover:bg-sky-500/25 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-accent bg-accent-soft py-2.5 text-sm font-semibold text-accent-strong transition hover:brightness-110 disabled:opacity-50"
               >
                 {isGenerating ? (
                   <><Loader2 size={13} className="animate-spin" /> Generating…</>
@@ -348,80 +348,80 @@ export default function ShareResumeModal({
             // Share tab
             <div className="space-y-4">
               {shareData.anonymous && (
-                <div className="flex items-center gap-1.5 rounded-md border border-amber-400/20 bg-amber-500/10 px-3 py-1.5">
-                  <EyeOff size={11} className="text-amber-400" />
-                  <p className="text-[11px] text-amber-300">Anonymous mode — PII redacted in shared view</p>
+                <div className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-warn bg-surface-2 px-3 py-1.5">
+                  <EyeOff size={11} className="text-warn" />
+                  <p className="text-[11px] text-warn">Anonymous mode — PII redacted in shared view</p>
                 </div>
               )}
               {/* URL display */}
               <div>
-                <p className="mb-2 text-xs font-medium text-zinc-400">Shareable link</p>
-                <div className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-black/40 px-3 py-2">
-                  <span className="flex-1 truncate text-xs font-mono text-sky-300">
+                <p className="mb-2 text-xs font-medium text-fg-2">Shareable link</p>
+                <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2">
+                  <span className="flex-1 truncate text-xs font-mono text-accent-strong">
                     {shareData.share_url}
                   </span>
                   <button
                     onClick={handleCopy}
-                    className="shrink-0 rounded-md p-1 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+                    className="shrink-0 rounded-[var(--radius-md)] p-1 text-fg-3 transition hover:bg-surface-2 hover:text-fg"
                     title="Copy link"
                   >
                     {copied ? (
-                      <Check size={13} className="text-emerald-400" />
+                      <Check size={13} className="text-ok" />
                     ) : (
                       <Copy size={13} />
                     )}
                   </button>
                 </div>
                 {createdAt && (
-                  <p className="mt-1.5 text-[11px] text-zinc-600">Link created {createdAt}</p>
+                  <p className="mt-1.5 text-[11px] text-fg-3">Link created {createdAt}</p>
                 )}
               </div>
 
               {/* Copy button (full-width) */}
               <button
                 onClick={handleCopy}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] py-2 text-xs font-semibold text-zinc-300 transition hover:bg-white/[0.08]"
+                className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 py-2 text-xs font-semibold text-fg-2 transition hover:bg-surface-2"
               >
                 {copied ? (
-                  <><Check size={12} className="text-emerald-400" /> Copied!</>
+                  <><Check size={12} className="text-ok" /> Copied!</>
                 ) : (
                   <><Copy size={12} /> Copy link</>
                 )}
               </button>
 
               {/* Info */}
-              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
-                <p className="text-[11px] text-zinc-500">
+              <div className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-3">
+                <p className="text-[11px] text-fg-3">
                   Anyone with this link can view the PDF. They cannot edit the resume.
                 </p>
               </div>
 
               {/* Revoke section */}
-              <div className="border-t border-white/[0.06] pt-4">
+              <div className="border-t border-line pt-4">
                 {!showRevokeConfirm ? (
                   <button
                     onClick={() => setShowRevokeConfirm(true)}
-                    className="flex items-center gap-1.5 text-[11px] text-zinc-600 transition hover:text-rose-400"
+                    className="flex items-center gap-1.5 text-[11px] text-fg-3 transition hover:text-err"
                   >
                     <Trash2 size={11} />
                     Revoke link
                   </button>
                 ) : (
                   <div className="space-y-2">
-                    <p className="text-[11px] text-zinc-400">
+                    <p className="text-[11px] text-fg-2">
                       Revoking this link will immediately break all shared URLs. Are you sure?
                     </p>
                     <div className="flex gap-2">
                       <button
                         onClick={() => setShowRevokeConfirm(false)}
-                        className="flex-1 rounded-md border border-white/[0.08] py-1.5 text-[11px] text-zinc-500 transition hover:text-zinc-300"
+                        className="flex-1 rounded-[var(--radius-md)] border border-line-2 py-1.5 text-[11px] text-fg-3 transition hover:text-fg-2"
                       >
                         Cancel
                       </button>
                       <button
                         onClick={handleRevoke}
                         disabled={isRevoking}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-rose-400/20 bg-rose-500/10 py-1.5 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-50"
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-err bg-surface-2 py-1.5 text-[11px] font-semibold text-err transition hover:brightness-110 disabled:opacity-50"
                       >
                         {isRevoking ? (
                           <><Loader2 size={10} className="animate-spin" /> Revoking…</>

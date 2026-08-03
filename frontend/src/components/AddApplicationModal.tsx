@@ -88,20 +88,20 @@ export default function AddApplicationModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl"
+        className="relative w-full max-w-lg rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-          <h2 className="text-sm font-semibold text-white">Add Application</h2>
+        <div className="flex items-center justify-between border-b border-line px-5 py-4">
+          <h2 className="text-sm font-semibold text-fg">Add Application</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/5 hover:text-white"
+            className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <X size={16} />
           </button>
@@ -111,7 +111,7 @@ export default function AddApplicationModal({
         <form onSubmit={handleSubmit} className="space-y-4 p-5">
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2 sm:col-span-1">
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
                 Company *
               </label>
               <input
@@ -121,11 +121,11 @@ export default function AddApplicationModal({
                 onChange={(e) => setCompanyName(e.target.value)}
                 placeholder="e.g. Google"
                 required
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40"
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
               />
             </div>
             <div className="col-span-2 sm:col-span-1">
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
                 Role *
               </label>
               <input
@@ -134,20 +134,20 @@ export default function AddApplicationModal({
                 onChange={(e) => setRoleTitle(e.target.value)}
                 placeholder="e.g. Software Engineer"
                 required
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40"
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
                 Status
               </label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40"
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
               >
                 {STATUSES.map((s) => (
                   <option key={s.value} value={s.value}>
@@ -157,20 +157,20 @@ export default function AddApplicationModal({
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
                 Applied On
               </label>
               <input
                 type="date"
                 value={appliedAt}
                 onChange={(e) => setAppliedAt(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40"
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
               />
             </div>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
               Job URL
             </label>
             <input
@@ -178,18 +178,18 @@ export default function AddApplicationModal({
               value={jobUrl}
               onChange={(e) => setJobUrl(e.target.value)}
               placeholder="https://..."
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
               Linked Resume
             </label>
             <select
               value={resumeId}
               onChange={(e) => setResumeId(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
             >
               <option value="">— None —</option>
               {resumes.map((r) => (
@@ -202,7 +202,7 @@ export default function AddApplicationModal({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
               Notes
             </label>
             <textarea
@@ -210,7 +210,7 @@ export default function AddApplicationModal({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Referral, recruiter name, etc."
               rows={2}
-              className="w-full resize-none rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40"
+              className="w-full resize-none rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
             />
           </div>
 
@@ -218,7 +218,7 @@ export default function AddApplicationModal({
             <button
               type="button"
               onClick={() => setShowJD((v) => !v)}
-              className="text-xs font-semibold text-zinc-500 transition hover:text-zinc-300"
+              className="text-xs font-semibold text-fg-3 transition hover:text-fg-2"
             >
               {showJD ? '▲ Hide' : '▼ Show'} job description
             </button>
@@ -228,23 +228,23 @@ export default function AddApplicationModal({
                 onChange={(e) => setJobDescription(e.target.value)}
                 placeholder="Paste the full job description..."
                 rows={5}
-                className="mt-2 w-full resize-none rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40"
+                className="mt-2 w-full resize-none rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
               />
             )}
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-white/10 pt-4">
+          <div className="flex justify-end gap-2 border-t border-line pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 transition hover:text-white"
+              className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !companyName.trim() || !roleTitle.trim()}
-              className="btn-accent px-4 py-2 text-xs disabled:opacity-50"
+              className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110 disabled:opacity-50"
             >
               {isSubmitting ? 'Adding…' : 'Add Application'}
             </button>
