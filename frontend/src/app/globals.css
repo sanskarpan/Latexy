@@ -37,12 +37,19 @@
     min-height: 100%;
   }
 
+  /* Token-driven page canvas so all four variants render correctly (was a
+     hard-coded near-black that made the light variants inert). */
   body {
-    @apply bg-background text-foreground antialiased;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    @apply antialiased;
+  }
+  /* Atmospheric depth only in dark modes. */
+  :root[data-mode="dark"] body {
     background-image:
-      radial-gradient(circle at 65% 36%, rgba(247, 123, 82, 0.19), transparent 26%),
-      radial-gradient(circle at 21% 82%, rgba(255, 255, 255, 0.07), transparent 24%),
-      linear-gradient(180deg, rgba(7, 7, 7, 1) 0%, rgba(3, 3, 3, 1) 100%);
+      radial-gradient(circle at 65% 36%, var(--accent-soft), transparent 28%),
+      radial-gradient(circle at 21% 82%, rgba(255, 255, 255, 0.04), transparent 24%);
     background-attachment: fixed;
   }
 }
