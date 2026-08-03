@@ -2610,6 +2610,36 @@ class ApiClient {
     return this.request<GitHubImportResult>(`/github/import-projects/${encodeURIComponent(jobId)}`)
   }
 
+  /**
+   * Import projects from a public portfolio / personal-site URL (F1 Phase 2).
+   * Synchronous — one SSRF-guarded fetch + one LLM call server-side.
+   */
+  async importFromUrl(url: string): Promise<{ projects: ProjectEvidence[] }> {
+    return this.request<{ projects: ProjectEvidence[] }>('/sources/import-url', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    })
+  }
+
+  /**
+   * Import projects from a user-uploaded LinkedIn data-export ZIP or resume file
+   * (F1 Phase 3 — compliant, parsed locally server-side, never scrapes LinkedIn).
+   */
+  async importLinkedIn(file: File): Promise<{ projects: ProjectEvidence[] }> {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await this.authedFetch(`${API_BASE}/sources/import-linkedin`, {
+      method: 'POST',
+      body: form,
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+    }
+    return res.json()
+  }
+
   // ---------------------------------------------------------------- //
   //  Dropbox Integration (Feature 77)                               //
   // ---------------------------------------------------------------- //
