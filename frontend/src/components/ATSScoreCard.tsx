@@ -49,21 +49,21 @@ interface ATSScoreCardProps {
 }
 
 const getScoreColor = (score: number) => {
-  if (score >= 80) return 'text-green-600'
-  if (score >= 60) return 'text-yellow-600'
-  return 'text-red-600'
+  if (score >= 80) return 'text-ok'
+  if (score >= 60) return 'text-warn'
+  return 'text-err'
 }
 
 const getScoreBgColor = (score: number) => {
-  if (score >= 80) return 'bg-green-100'
-  if (score >= 60) return 'bg-yellow-100'
-  return 'bg-red-100'
+  if (score >= 80) return 'bg-[color-mix(in_srgb,var(--ok)_14%,transparent)]'
+  if (score >= 60) return 'bg-[color-mix(in_srgb,var(--warn)_14%,transparent)]'
+  return 'bg-[color-mix(in_srgb,var(--err)_14%,transparent)]'
 }
 
 const getScoreBorderColor = (score: number) => {
-  if (score >= 80) return 'border-green-200'
-  if (score >= 60) return 'border-yellow-200'
-  return 'border-red-200'
+  if (score >= 80) return 'border-[color-mix(in_srgb,var(--ok)_40%,transparent)]'
+  if (score >= 60) return 'border-[color-mix(in_srgb,var(--warn)_40%,transparent)]'
+  return 'border-[color-mix(in_srgb,var(--err)_40%,transparent)]'
 }
 
 const getScoreLabel = (score: number) => {
@@ -125,8 +125,8 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
       <Card className={`${className}`}>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-              <Target className="w-6 h-6 text-blue-600 animate-pulse" />
+            <div className="w-12 h-12 bg-accent-soft rounded-full flex items-center justify-center">
+              <Target className="w-6 h-6 text-accent-strong animate-pulse" />
             </div>
             <div>
               <CardTitle>ATS Score</CardTitle>
@@ -137,14 +137,14 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
         <CardContent>
           <div className="space-y-4">
             <div className="animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
-              <div className="h-20 bg-gray-200 rounded"></div>
+              <div className="h-4 bg-surface-2 rounded-[var(--radius-md)] w-1/4 mb-2"></div>
+              <div className="h-20 bg-surface-2 rounded-[var(--radius-md)]"></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="animate-pulse">
-                  <div className="h-3 bg-gray-200 rounded w-3/4 mb-2"></div>
-                  <div className="h-2 bg-gray-200 rounded"></div>
+                  <div className="h-3 bg-surface-2 rounded-[var(--radius-md)] w-3/4 mb-2"></div>
+                  <div className="h-2 bg-surface-2 rounded-[var(--radius-md)]"></div>
                 </div>
               ))}
             </div>
@@ -156,9 +156,9 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
 
   if (score === undefined) {
     return (
-      <Card className={`${className} border-dashed border-2 border-gray-300`}>
+      <Card className={`${className} border-dashed border-2 border-line`}>
         <CardContent className="flex items-center justify-center py-8">
-          <div className="text-center text-gray-500">
+          <div className="text-center text-fg-3">
             <Target className="w-8 h-8 mx-auto mb-2" />
             <p>No ATS score available</p>
             <p className="text-sm">Run ATS analysis to see your score</p>
@@ -193,15 +193,15 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
             </Badge>
             {industryLabel && (
               <div className="flex items-center gap-1.5">
-                <Building2 className="w-3 h-3 text-violet-600" />
-                <span className="text-xs font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-0.5">
+                <Building2 className="w-3 h-3 text-accent" />
+                <span className="text-xs font-medium text-accent-strong bg-accent-soft border border-accent rounded-full px-2 py-0.5">
                   Calibrated for: {industryLabel}
                 </span>
               </div>
             )}
             {onIndustryOverride && (
               <select
-                className="text-xs border border-gray-200 rounded px-1.5 py-0.5 text-gray-600 bg-white cursor-pointer"
+                className="text-xs border border-line rounded-[var(--radius-md)] px-1.5 py-0.5 text-fg-2 bg-surface cursor-pointer"
                 defaultValue=""
                 onChange={(e) => e.target.value && onIndustryOverride(e.target.value)}
                 title="Override industry calibration"
@@ -229,10 +229,10 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
               {Math.round(score)}
             </span>
           </motion.div>
-          <p className="text-lg font-semibold text-gray-900">
+          <p className="text-lg font-semibold text-fg">
             {scoreLabel} ATS Compatibility
           </p>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-fg-2">
             Score: {score.toFixed(1)}/100
           </p>
         </div>
@@ -240,7 +240,7 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
         {/* Category Scores */}
         {categoryScores && Object.keys(categoryScores).length > 0 && (
           <div className="space-y-3">
-            <h4 className="font-medium text-gray-900 flex items-center gap-2">
+            <h4 className="font-medium text-fg flex items-center gap-2">
               <BarChart3 className="w-4 h-4" />
               Category Breakdown
             </h4>
@@ -255,12 +255,12 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                       {Math.round(categoryScore)}%
                     </span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-surface-2 rounded-full h-2">
                     <motion.div
                       className={`h-2 rounded-full ${
-                        categoryScore >= 80 ? 'bg-green-500' :
-                        categoryScore >= 60 ? 'bg-yellow-500' :
-                        'bg-red-500'
+                        categoryScore >= 80 ? 'bg-ok' :
+                        categoryScore >= 60 ? 'bg-warn' :
+                        'bg-err'
                       }`}
                       initial={{ width: 0 }}
                       animate={{ width: `${categoryScore}%` }}
@@ -276,7 +276,7 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
         {/* Strengths */}
         {strengths.length > 0 && (
           <div className="space-y-2">
-            <h4 className="font-medium text-green-700 flex items-center gap-2">
+            <h4 className="font-medium text-ok flex items-center gap-2">
               <CheckCircle className="w-4 h-4" />
               Strengths ({strengths.length})
             </h4>
@@ -287,14 +287,14 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className="flex items-start gap-2 text-sm text-green-700"
+                  className="flex items-start gap-2 text-sm text-ok"
                 >
                   <CheckCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
                   <span>{strength}</span>
                 </motion.div>
               ))}
               {strengths.length > 3 && (
-                <p className="text-xs text-gray-500 ml-5">
+                <p className="text-xs text-fg-3 ml-5">
                   +{strengths.length - 3} more strengths
                 </p>
               )}
@@ -305,7 +305,7 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
         {/* Warnings */}
         {warnings.length > 0 && (
           <div className="space-y-2">
-            <h4 className="font-medium text-yellow-700 flex items-center gap-2">
+            <h4 className="font-medium text-warn flex items-center gap-2">
               <AlertTriangle className="w-4 h-4" />
               Warnings ({warnings.length})
             </h4>
@@ -316,14 +316,14 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className="flex items-start gap-2 text-sm text-yellow-700"
+                  className="flex items-start gap-2 text-sm text-warn"
                 >
                   <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
                   <span>{warning}</span>
                 </motion.div>
               ))}
               {warnings.length > 2 && (
-                <p className="text-xs text-gray-500 ml-5">
+                <p className="text-xs text-fg-3 ml-5">
                   +{warnings.length - 2} more warnings
                 </p>
               )}
@@ -334,7 +334,7 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
         {/* Top Recommendations */}
         {recommendations.length > 0 && (
           <div className="space-y-2">
-            <h4 className="font-medium text-blue-700 flex items-center gap-2">
+            <h4 className="font-medium text-accent-strong flex items-center gap-2">
               <Lightbulb className="w-4 h-4" />
               Top Recommendations ({recommendations.length})
             </h4>
@@ -345,14 +345,14 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className="flex items-start gap-2 text-sm text-blue-700"
+                  className="flex items-start gap-2 text-sm text-accent-strong"
                 >
                   <Lightbulb className="w-3 h-3 mt-0.5 flex-shrink-0" />
                   <span>{recommendation}</span>
                 </motion.div>
               ))}
               {recommendations.length > 3 && (
-                <p className="text-xs text-gray-500 ml-5">
+                <p className="text-xs text-fg-3 ml-5">
                   +{recommendations.length - 3} more recommendations
                 </p>
               )}
@@ -361,7 +361,7 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
         )}
 
         {/* Action Buttons */}
-        <div className="flex gap-2 pt-4 border-t border-gray-200">
+        <div className="flex gap-2 pt-4 border-t border-line">
           {onViewRecommendations && recommendations.length > 0 && (
             <Button
               variant="outline"
@@ -389,36 +389,36 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
 
         {/* Benchmark Row */}
         {(benchmarkLoading || benchmark) && (
-          <div className="space-y-2 pt-2 border-t border-gray-100">
-            <h4 className="font-medium text-gray-900 flex items-center gap-2 text-sm">
-              <Users className="w-4 h-4 text-violet-600" />
+          <div className="space-y-2 pt-2 border-t border-line">
+            <h4 className="font-medium text-fg flex items-center gap-2 text-sm">
+              <Users className="w-4 h-4 text-accent" />
               Community Benchmark
             </h4>
             {benchmarkLoading && (
-              <div className="h-4 bg-gray-100 rounded animate-pulse w-3/4" />
+              <div className="h-4 bg-surface-2 rounded-[var(--radius-md)] animate-pulse w-3/4" />
             )}
             {benchmark && !benchmarkLoading && (
               benchmark.sufficient_data && benchmark.percentile !== null ? (
                 <div className="space-y-2">
-                  <p className="text-sm text-gray-700">
+                  <p className="text-sm text-fg-2">
                     Your resume scores in the{' '}
-                    <span className="font-semibold text-violet-700">
+                    <span className="font-semibold text-accent-strong">
                       top {Math.round(100 - benchmark.percentile)}%
                     </span>{' '}
                     of{' '}
                     <span className="font-medium">{benchmark.industry}</span>{' '}
                     resumes on Latexy
                     {benchmark.sample_size > 0 && (
-                      <span className="text-gray-400"> ({benchmark.sample_size.toLocaleString()} resumes)</span>
+                      <span className="text-fg-3"> ({benchmark.sample_size.toLocaleString()} resumes)</span>
                     )}
                   </p>
 
                   {/* Mini distribution bar */}
                   {benchmark.cohort_p25 !== null && benchmark.cohort_p75 !== null && (
-                    <div className="relative h-3 rounded-full bg-gray-200 overflow-visible">
+                    <div className="relative h-3 rounded-full bg-surface-2 overflow-visible">
                       {/* IQR band (p25–p75) */}
                       <div
-                        className="absolute h-full rounded-full bg-violet-200"
+                        className="absolute h-full rounded-full bg-accent-soft"
                         style={{
                           left: `${benchmark.cohort_p25}%`,
                           width: `${(benchmark.cohort_p75 ?? 100) - (benchmark.cohort_p25 ?? 0)}%`,
@@ -427,21 +427,21 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                       {/* Median marker */}
                       {benchmark.cohort_median !== null && (
                         <div
-                          className="absolute top-0 h-full w-0.5 bg-violet-500"
+                          className="absolute top-0 h-full w-0.5 bg-accent"
                           style={{ left: `${benchmark.cohort_median}%` }}
                           title={`Median: ${benchmark.cohort_median.toFixed(1)}`}
                         />
                       )}
                       {/* User's score marker */}
                       <div
-                        className="absolute -top-0.5 h-4 w-1.5 rounded-sm bg-violet-700 shadow-sm"
+                        className="absolute -top-0.5 h-4 w-1.5 rounded-sm bg-accent-strong shadow-sm"
                         style={{ left: `calc(${score}% - 3px)` }}
                         title={`Your score: ${score?.toFixed(1)}`}
                       />
                     </div>
                   )}
 
-                  <div className="flex justify-between text-xs text-gray-400 mt-0.5 px-0.5">
+                  <div className="flex justify-between text-xs text-fg-3 mt-0.5 px-0.5">
                     <span>0</span>
                     {benchmark.cohort_p25 !== null && (
                       <span style={{ position: 'absolute', left: `${benchmark.cohort_p25}%`, transform: 'translateX(-50%)' }}
@@ -456,7 +456,7 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-fg-3">
                   {benchmark.message || `Benchmarking available once more ${benchmark.industry} users join`}
                 </p>
               )
@@ -465,7 +465,7 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
         )}
 
         {/* Score Interpretation */}
-        <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
+        <div className="text-xs text-fg-3 bg-surface-2 p-3 rounded-[var(--radius-md)]">
           <div className="flex items-start gap-2">
             <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
             <div>
