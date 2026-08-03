@@ -62,113 +62,14 @@
   .content-shell {
     @apply mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-10;
   }
-
-  .surface-panel {
-    @apply rounded-2xl border border-white/10 bg-zinc-950/75 backdrop-blur-xl;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 30px 70px rgba(0, 0, 0, 0.55);
-  }
-
-  .surface-card {
-    @apply rounded-xl border border-white/10 bg-zinc-900/65 backdrop-blur-md;
-  }
-
-  .enterprise-grid {
-    background-image:
-      linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-    background-size: 48px 48px;
-  }
-
-  .edge-highlight {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .edge-highlight::after {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(120deg, rgba(255, 255, 255, 0.22), rgba(247, 123, 82, 0.35), rgba(255, 255, 255, 0.08));
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
-  }
-
-  .hero-title {
-    font-size: clamp(2.4rem, 7.5vw, 7rem);
-    line-height: 0.92;
-    letter-spacing: -0.04em;
-  }
-
-  .section-title {
-    font-size: clamp(1.45rem, 2.7vw, 2.55rem);
-    line-height: 1.04;
-    letter-spacing: -0.03em;
-  }
-
-  .overline {
-    @apply text-xs uppercase tracking-[0.2em] text-zinc-500;
-  }
-
-  .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-zinc-200;
-  }
-
-  .btn-accent {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-orange-300 px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-orange-200;
-  }
-
-  .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 px-5 py-2.5 text-sm text-white transition hover:bg-white/10;
-  }
-
-  .orange-burst {
-    position: relative;
-    isolation: isolate;
-  }
-
-  .orange-burst::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle, rgba(247, 123, 82, 0.95) 0%, rgba(247, 123, 82, 0.55) 28%, rgba(247, 123, 82, 0.1) 60%, transparent 75%);
-    filter: blur(34px);
-    opacity: 0.84;
-    z-index: -2;
-  }
-
-  .orange-burst::after {
-    content: '';
-    position: absolute;
-    inset: -6%;
-    background-image: radial-gradient(rgba(255, 170, 141, 0.8) 0.8px, transparent 0.8px);
-    background-size: 3px 3px;
-    opacity: 0.28;
-    transform: rotate(-8deg);
-    z-index: -1;
-  }
+  /* Legacy surface/btn/edge-highlight/orange-burst/hero-title/section-title/
+     overline/enterprise-grid classes were removed after the token redesign
+     (PRD 2026-08-03) — all surfaces now use design tokens. */
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
-  }
-
-  .noise-overlay {
-    position: relative;
-  }
-
-  .noise-overlay::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background-image: radial-gradient(rgba(255, 255, 255, 0.08) 0.5px, transparent 0.5px);
-    background-size: 2px 2px;
-    opacity: 0.06;
-    pointer-events: none;
   }
 
   .float-soft {
