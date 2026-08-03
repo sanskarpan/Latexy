@@ -1,0 +1,85 @@
+/* ============================================================================
+   LATEXY DESIGN TOKENS  (PRD 2026-08-03 · Phase 0)
+   Three layers: SPINE (shared) · AESTHETIC (data-aesthetic) · THEME (data-mode).
+   Components read only these semantic tokens, never raw values, so all four
+   variants (typeset/compiler × light/dark) resolve from one component set.
+   This file is additive — the stock Tailwind palette (zinc/white/black) stays
+   valid during migration and is removed only per-surface.
+   ============================================================================ */
+
+:root {
+  /* ---- SPINE: spacing (8pt) ---- */
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
+  --space-5: 1.5rem; --space-6: 2rem; --space-7: 3rem; --space-8: 4rem; --space-9: 6rem;
+
+  /* ---- SPINE: motion ---- */
+  --dur-1: .15s; --dur-2: .3s; --dur-3: .5s;
+  --ease-out: cubic-bezier(.2,.7,.2,1);
+  --ease-in-out: cubic-bezier(.65,0,.35,1);
+
+  /* ---- SPINE: z-index ---- */
+  --z-base: 0; --z-raised: 10; --z-sticky: 20; --z-dropdown: 30;
+  --z-modal: 40; --z-toast: 50; --z-dock: 60;
+
+  /* ---- SPINE: reading measure + font role fallbacks ---- */
+  --measure: 66ch;
+  --serif: var(--font-fraunces), "Hoefler Text", "Iowan Old Style", Charter, Palatino, Georgia, serif;
+  --mono: var(--font-jetbrains), "SF Mono", ui-monospace, Menlo, Monaco, monospace;
+  --sans: var(--font-geist-sans), "Avenir Next", "Helvetica Neue", system-ui, sans-serif;
+
+  /* Default aesthetic/theme values (typeset · light) so tokens resolve even
+     before the bootstrap script/route-group set the attributes. */
+  --font-display: var(--serif); --font-body: var(--serif); --font-ui: var(--mono);
+  --radius-sm: 2px; --radius-md: 3px; --radius-lg: 4px; --radius-pill: 999px;
+  --track-label: .2em; --display-tracking: -.025em;
+  --shadow-1: 0 1px 0 rgba(0,0,0,.04);
+  --shadow-2: 0 22px 44px -30px rgba(0,0,0,.4);
+}
+
+/* ---- AESTHETIC LAYER: fonts + radius + rhythm (colors come from THEME) ---- */
+:root[data-aesthetic="typeset"] {
+  --font-display: var(--serif); --font-body: var(--serif); --font-ui: var(--mono);
+  --radius-sm: 2px; --radius-md: 3px; --radius-lg: 4px; --radius-pill: 999px;
+  --track-label: .2em; --display-tracking: -.025em;
+  --shadow-2: 0 22px 44px -30px rgba(0,0,0,.4);
+}
+:root[data-aesthetic="compiler"] {
+  --font-display: var(--mono); --font-body: var(--sans); --font-ui: var(--mono);
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-pill: 999px;
+  --track-label: .16em; --display-tracking: -.03em;
+  --shadow-2: 0 30px 60px -35px rgba(0,0,0,.7);
+}
+
+/* ---- THEME LAYER: the four hand-tuned color sets ---- */
+:root[data-aesthetic="typeset"][data-mode="light"] {
+  --bg:#FBFAF6; --surface:#FFFFFF; --surface-2:#F3F0E8; --line:#D8D2C4; --line-2:#C6BFAE;
+  --fg:#1B1815; --fg-2:#4A443C; --fg-3:#8C857A;
+  --accent:#1C3F6E; --accent-fg:#FBFAF6; --accent-soft:rgba(28,63,110,.10);
+  --ok:#2E7D57; --warn:#9A7B3F; --err:#B23A2E;
+  --grid:rgba(27,24,21,.05);
+  color-scheme: light;
+}
+:root[data-aesthetic="typeset"][data-mode="dark"] {
+  --bg:#141310; --surface:#1B1A14; --surface-2:#211F18; --line:#302C24; --line-2:#3E392E;
+  --fg:#E9E4D7; --fg-2:#ABA595; --fg-3:#746E60;
+  --accent:#8AB0DE; --accent-fg:#101319; --accent-soft:rgba(138,176,222,.14);
+  --ok:#6FCB9A; --warn:#D8B36A; --err:#E0796B;
+  --grid:rgba(233,228,215,.05);
+  color-scheme: dark;
+}
+:root[data-aesthetic="compiler"][data-mode="dark"] {
+  --bg:#0B0B0D; --surface:#111114; --surface-2:#17171B; --line:#26262C; --line-2:#33333B;
+  --fg:#ECEAE4; --fg-2:#A7A49C; --fg-3:#6E6B64;
+  --accent:#F0A250; --accent-fg:#1C1200; --accent-soft:rgba(240,162,80,.14);
+  --ok:#5BD6A4; --warn:#E7C46A; --err:#E5715C;
+  --grid:rgba(236,234,228,.035);
+  color-scheme: dark;
+}
+:root[data-aesthetic="compiler"][data-mode="light"] {
+  --bg:#F7F6F3; --surface:#FFFFFF; --surface-2:#EFEDE7; --line:#E1DED7; --line-2:#D2CFC7;
+  --fg:#17171A; --fg-2:#55534D; --fg-3:#8A877F;
+  --accent:#C2691F; --accent-fg:#FFFFFF; --accent-soft:rgba(194,105,31,.10);
+  --ok:#1F9D63; --warn:#B07A1E; --err:#C4472F;
+  --grid:rgba(23,23,26,.045);
+  color-scheme: light;
+}
