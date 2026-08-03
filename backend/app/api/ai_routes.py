@@ -193,7 +193,9 @@ class GenerateSummaryResponse(BaseModel):
     cached: bool
 
 
-RewriteAction = Literal["improve", "shorten", "quantify", "power_verbs", "change_tone", "expand"]
+RewriteAction = Literal[
+    "improve", "shorten", "quantify", "power_verbs", "change_tone", "expand", "steer"
+]
 
 
 class RewriteRequest(BaseModel):
@@ -201,6 +203,8 @@ class RewriteRequest(BaseModel):
     action: RewriteAction
     context: Optional[str] = Field(None, max_length=1000)
     tone: Optional[str] = Field(None, max_length=50)
+    # Free-text steer for the "steer" action (regenerate-with-a-note, F2-P3).
+    instruction: Optional[str] = Field(None, max_length=500)
 
 
 class RewriteResponse(BaseModel):
@@ -565,11 +569,22 @@ _REWRITE_PROMPTS: Dict[str, str] = {
         "Limit the increase to roughly 50% more words. Keep LaTeX commands valid. "
         "Return ONLY the expanded LaTeX text."
     ),
+    "steer": (
+        "Revise the LaTeX text to follow this instruction from the user: {instruction}. "
+        "Keep all LaTeX commands valid and preserve factual accuracy — never invent facts, "
+        "metrics, or experience. Return ONLY the revised LaTeX text."
+    ),
 }
 
 
-def _rewrite_cache_key(action: str, selected_text: str, tone: Optional[str], context: Optional[str] = None) -> str:
-    raw = f"{action}|{selected_text}|{tone or ''}|{(context or '').strip()}"
+def _rewrite_cache_key(
+    action: str,
+    selected_text: str,
+    tone: Optional[str],
+    context: Optional[str] = None,
+    instruction: Optional[str] = None,
+) -> str:
+    raw = f"{action}|{selected_text}|{tone or ''}|{(context or '').strip()}|{(instruction or '').strip()}"
     return "ai:rewrite:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
@@ -585,7 +600,13 @@ async def rewrite_text(
     user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Rewrite selected LaTeX text using AI. Auth optional."""
-    cache_key = _rewrite_cache_key(request.action, request.selected_text, request.tone, request.context)
+    # The "steer" action needs a non-empty instruction; without one it has no
+    # direction, so fall back to a general improve rather than a no-op prompt.
+    if request.action == "steer" and not (request.instruction or "").strip():
+        request.action = "improve"
+    cache_key = _rewrite_cache_key(
+        request.action, request.selected_text, request.tone, request.context, request.instruction
+    )
 
     # Check cache
     try:
@@ -607,7 +628,10 @@ async def rewrite_text(
     # The cache missed and a platform-key completion is about to run → charge it.
     quota_ticket = await _charge_ai_assist(db, user_id, resolved)
 
-    system_prompt = _REWRITE_PROMPTS[request.action].format(tone=request.tone or "formal")
+    system_prompt = _REWRITE_PROMPTS[request.action].format(
+        tone=request.tone or "formal",
+        instruction=(request.instruction or "").strip() or "improve the text",
+    )
     user_parts = [f"Text to rewrite:\n{request.selected_text}"]
     if request.context:
         user_parts.append(f"\nContext (for reference only):\n{request.context}")

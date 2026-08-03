@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Check, Loader2, MessageSquare, RefreshCw, Scissors, Sparkles, TrendingUp, X, ZoomIn } from 'lucide-react'
+import { Check, Loader2, MessageSquare, RefreshCw, Scissors, Sparkles, TrendingUp, Wand2, X, ZoomIn } from 'lucide-react'
 import { apiClient, type RewriteAction } from '@/lib/api-client'
 
 interface ActionDef {
@@ -18,6 +18,7 @@ const ACTIONS: ActionDef[] = [
   { key: 'power_verbs', label: 'Power Verbs', icon: <Check size={11} />,         description: 'Replace weak verbs' },
   { key: 'change_tone', label: 'Change Tone', icon: <MessageSquare size={11} />, description: 'Formal or casual style' },
   { key: 'expand',      label: 'Expand',      icon: <ZoomIn size={11} />,        description: 'Add more detail' },
+  { key: 'steer',       label: 'Steer',       icon: <Wand2 size={11} />,         description: 'Regenerate with your own note' },
 ]
 
 const TONES = [
@@ -25,7 +26,7 @@ const TONES = [
   { key: 'casual', label: 'Casual', description: 'Friendly & conversational' },
 ]
 
-type Phase = 'picking' | 'tone_picking' | 'loading' | 'result'
+type Phase = 'picking' | 'tone_picking' | 'steer_input' | 'loading' | 'result'
 
 interface WritingAssistantWidgetProps {
   isOpen: boolean
@@ -47,6 +48,8 @@ export default function WritingAssistantWidget({
   const [phase, setPhase]               = useState<Phase>('picking')
   const [activeAction, setActiveAction] = useState<RewriteAction | null>(null)
   const [activeTone, setActiveTone]     = useState<string | null>(null)
+  const [activeInstruction, setActiveInstruction] = useState<string | null>(null)
+  const [steerNote, setSteerNote]       = useState('')
   const [rewritten, setRewritten]       = useState<string | null>(null)
   const [error, setError]               = useState<string | null>(null)
   const containerRef                    = useRef<HTMLDivElement>(null)
@@ -63,6 +66,8 @@ export default function WritingAssistantWidget({
       setPhase('picking')
       setActiveAction(null)
       setActiveTone(null)
+      setActiveInstruction(null)
+      setSteerNote('')
       setRewritten(null)
       setError(null)
     }
@@ -76,9 +81,10 @@ export default function WritingAssistantWidget({
     return () => window.removeEventListener('keydown', handler)
   }, [isOpen, onClose])
 
-  const callApi = async (action: RewriteAction, tone?: string) => {
+  const callApi = async (action: RewriteAction, tone?: string, instruction?: string) => {
     setActiveAction(action)
     setActiveTone(tone ?? null)
+    setActiveInstruction(instruction ?? null)
     setPhase('loading')
     setError(null)
     setRewritten(null)
@@ -88,6 +94,7 @@ export default function WritingAssistantWidget({
         action,
         context: context || undefined,
         tone: tone || undefined,
+        instruction: instruction || undefined,
       })
       setRewritten(res.rewritten)
       setPhase('result')
@@ -101,13 +108,16 @@ export default function WritingAssistantWidget({
     if (key === 'change_tone') {
       setActiveAction('change_tone')
       setPhase('tone_picking')
+    } else if (key === 'steer') {
+      setActiveAction('steer')
+      setPhase('steer_input')
     } else {
       callApi(key)
     }
   }
 
   const handleRegenerate = () => {
-    if (activeAction) callApi(activeAction, activeTone ?? undefined)
+    if (activeAction) callApi(activeAction, activeTone ?? undefined, activeInstruction ?? undefined)
   }
 
   // Anchor position within the positioned editor container.
@@ -243,6 +253,44 @@ export default function WritingAssistantWidget({
                   </span>
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* ── Phase: steer_input ──────────────────────────────────── */}
+          {phase === 'steer_input' && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPhase('picking')}
+                  className="text-[10px] text-zinc-600 transition hover:text-zinc-400"
+                  aria-label="Back to actions"
+                >
+                  ←
+                </button>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Your instruction</p>
+              </div>
+              <textarea
+                value={steerNote}
+                onChange={(e) => setSteerNote(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && steerNote.trim()) {
+                    e.preventDefault()
+                    callApi('steer', undefined, steerNote.trim())
+                  }
+                }}
+                autoFocus
+                maxLength={500}
+                placeholder="e.g. Emphasize leadership and quantify the impact; keep it to one line."
+                className="h-20 w-full resize-none rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-[11px] leading-relaxed text-zinc-200 outline-none transition placeholder:text-zinc-600 focus:border-violet-400/30"
+              />
+              <button
+                onClick={() => callApi('steer', undefined, steerNote.trim())}
+                disabled={!steerNote.trim()}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-violet-500/20 py-2 text-[11px] font-semibold text-violet-200 ring-1 ring-violet-400/30 transition hover:bg-violet-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Wand2 size={11} />
+                Regenerate with this note
+              </button>
             </div>
           )}
 

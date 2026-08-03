@@ -129,6 +129,11 @@ from .github_routes import router as github_router
 
 router.include_router(github_router)
 
+# Include external-source import routes (Feature 1 Phase 2 — URL project ingest)
+from .sources_routes import router as sources_router
+
+router.include_router(sources_router)
+
 # Include Zotero integration routes (Feature 42)
 from .zotero_routes import router as zotero_router
 

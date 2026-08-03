@@ -77,6 +77,13 @@ class TestRewriteCacheKey:
         k2 = _rewrite_cache_key("change_tone", _SAMPLE_INPUT, "casual")
         assert k1 != k2
 
+    def test_instruction_changes_key(self) -> None:
+        from app.api.ai_routes import _rewrite_cache_key
+
+        k1 = _rewrite_cache_key("steer", _SAMPLE_INPUT, None, None, "make it more technical")
+        k2 = _rewrite_cache_key("steer", _SAMPLE_INPUT, None, None, "make it more concise")
+        assert k1 != k2
+
 
 # ---------------------------------------------------------------------------
 # Validation tests (no LLM needed)
@@ -264,3 +271,70 @@ class TestRewriteLLM:
                 },
             )
             assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Steer / regenerate-with-a-note (F2-P3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestRewriteSteer:
+    async def test_instruction_too_long_returns_422(self, client: AsyncClient) -> None:
+        resp = await client.post(
+            "/ai/rewrite",
+            json={"selected_text": _SAMPLE_INPUT, "action": "steer", "instruction": "x" * 501},
+        )
+        assert resp.status_code == 422
+
+    async def test_steer_with_instruction_returns_rewrite(self, client: AsyncClient) -> None:
+        with patch(_SETTINGS_PATCH) as mock_settings, patch(
+            "app.api.ai_routes.openai.AsyncOpenAI"
+        ) as mock_cls, patch(
+            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
+        ), patch(
+            "app.api.ai_routes.cache_manager.set", new_callable=AsyncMock
+        ):
+            _mock_settings(mock_settings)
+            mock_openai = AsyncMock()
+            mock_openai.chat.completions.create = AsyncMock(
+                return_value=_make_openai_response(_SAMPLE_REWRITTEN)
+            )
+            mock_cls.return_value = mock_openai
+
+            resp = await client.post(
+                "/ai/rewrite",
+                json={
+                    "selected_text": _SAMPLE_INPUT,
+                    "action": "steer",
+                    "instruction": "Emphasize leadership and scale",
+                },
+            )
+            assert resp.status_code == 200
+            assert resp.json()["rewritten"] == _SAMPLE_REWRITTEN
+            # The user's instruction must reach the system prompt.
+            sys_prompt = mock_openai.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+            assert "Emphasize leadership and scale" in sys_prompt
+
+    async def test_steer_without_instruction_falls_back_to_improve(self, client: AsyncClient) -> None:
+        with patch(_SETTINGS_PATCH) as mock_settings, patch(
+            "app.api.ai_routes.openai.AsyncOpenAI"
+        ) as mock_cls, patch(
+            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
+        ), patch(
+            "app.api.ai_routes.cache_manager.set", new_callable=AsyncMock
+        ):
+            _mock_settings(mock_settings)
+            mock_openai = AsyncMock()
+            mock_openai.chat.completions.create = AsyncMock(
+                return_value=_make_openai_response(_SAMPLE_REWRITTEN)
+            )
+            mock_cls.return_value = mock_openai
+
+            resp = await client.post(
+                "/ai/rewrite",
+                json={"selected_text": _SAMPLE_INPUT, "action": "steer", "instruction": "   "},
+            )
+            assert resp.status_code == 200
+            # Empty instruction → treated as a general improve (no undirected prompt).
+            assert resp.json()["action"] == "improve"
