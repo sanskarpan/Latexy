@@ -9,6 +9,8 @@ import EmailVerifyBanner from '@/components/EmailVerifyBanner'
 import MarketingFooter from '@/components/marketing/MarketingFooter'
 import TenantThemeSync from '@/components/TenantThemeSync'
 import WebVitalsReporter from '@/components/WebVitalsReporter'
+import { ThemeProvider } from '@/components/theme/ThemeProvider'
+import AestheticController from '@/components/theme/AestheticController'
 import { Toaster } from 'sonner'
 import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext'
 import { EntitlementsProvider } from '@/contexts/EntitlementsContext'
@@ -53,6 +55,8 @@ export default function RootLayout({
     <html lang="en" data-aesthetic="typeset" className={fontVariables} suppressHydrationWarning>
       <body className="font-sans antialiased">
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+        <ThemeProvider>
+        <AestheticController />
         <FeatureFlagsProvider>
         <EntitlementsProvider>
         <NotificationProvider>
@@ -80,6 +84,7 @@ export default function RootLayout({
         </NotificationProvider>
         </EntitlementsProvider>
         </FeatureFlagsProvider>
+        </ThemeProvider>
       </body>
     </html>
   )
