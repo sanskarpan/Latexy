@@ -50,6 +50,37 @@ const LOCAL_HANDLERS: Record<string, (parsed: ReturnType<typeof parseSlashComman
 
 // Tier 2: API handlers (REST calls, job submission)
 const API_HANDLERS: Record<string, (parsed: NonNullable<ReturnType<typeof parseSlashCommand>>) => Promise<void>> = {
+  // Resume lifecycle
+  new:        async p => (await import('../tools/resume-commands.js')).runNew(p),
+  edit:       async p => (await import('../tools/resume-commands.js')).runEdit(p),
+  fork:       async p => (await import('../tools/resume-commands.js')).runFork(p),
+  diff:       async p => (await import('../tools/resume-commands.js')).runDiff(p),
+  share:      async p => (await import('../tools/resume-commands.js')).runShare(p),
+  export:     async p => (await import('../tools/resume-commands.js')).runExport(p),
+  checkpoint: async p => (await import('../tools/resume-commands.js')).runCheckpoint(p),
+  history:    async p => (await import('../tools/resume-commands.js')).runHistory(p),
+  restore:    async p => (await import('../tools/account-commands.js')).runRestore(p),
+
+  // AI
+  optimize:   async p => (await import('../tools/ai-commands.js')).runOptimize(p),
+  combined:   async p => (await import('../tools/ai-commands.js')).runCombined(p),
+  ats:        async p => (await import('../tools/ai-commands.js')).runAts(p),
+  'quick-ats': async p => (await import('../tools/ai-commands.js')).runQuickAts(p),
+  cover:      async p => (await import('../tools/ai-commands.js')).runCover(p),
+  interview:  async p => (await import('../tools/ai-commands.js')).runInterview(p),
+
+  // Account / artefacts
+  jobs:       async () => (await import('../tools/account-commands.js')).runJobs(),
+  pdf:        async p => (await import('../tools/account-commands.js')).runPdf(p),
+  log:        async p => (await import('../tools/account-commands.js')).runLog(p),
+  analytics:  async p => (await import('../tools/account-commands.js')).runAnalytics(p),
+  billing:    async () => (await import('../tools/account-commands.js')).runBilling(),
+  tracker:    async p => (await import('../tools/account-commands.js')).runTracker(p),
+  snippets:   async p => (await import('../tools/account-commands.js')).runSnippets(p),
+  byok:       async () => (await import('../tools/account-commands.js')).runByok(),
+  model:      async () => (await import('../tools/account-commands.js')).runModel(),
+  settings:   async p => (await import('../tools/account-commands.js')).runSettings(p),
+
   compile: async (p) => {
     if ($activeJobId.get() != null) {
       addMessage({ role: 'error', content: 'A job is already running. Use /cancel to stop it first.' })
@@ -121,4 +152,15 @@ export async function dispatch(input: string): Promise<void> {
     role: 'system',
     content: 'No model configured — run /byok to add an API key or /model to select a provider.',
   })
+}
+
+/**
+ * Names dispatch will actually route.
+ *
+ * Exported so the parity test can compare it against the advertised registry
+ * without executing anything — the two lists silently diverging is what left 25
+ * commands answering "Unknown command".
+ */
+export function handlerNames(): Set<string> {
+  return new Set([...Object.keys(LOCAL_HANDLERS), ...Object.keys(API_HANDLERS)])
 }

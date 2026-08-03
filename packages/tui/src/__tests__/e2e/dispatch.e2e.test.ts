@@ -57,18 +57,18 @@ describe('dispatch — LOCAL_HANDLERS', () => {
     expect($messages.get().length).toBe(0)
   })
 
-  it('/help lists the commands that work, and only those', async () => {
-    // This previously asserted that /help listed /ats. It does not any more, and
-    // that is the fix: /ats has no handler, so listing it sent users to a command
-    // that answers "Unknown command". /help is the answer to "what can I do", so
-    // it must not name things that cannot be done.
+  it('/help lists exactly the commands that work', async () => {
+    // Not a hard-coded list: /help must track whatever is actually routed. It
+    // previously advertised 32 commands while 7 worked, which is how users were
+    // sent to commands that answered "Unknown command".
     const { dispatch } = await import('../../commands/dispatch.js')
+    const { IMPLEMENTED_COMMANDS } = await import('../../commands/registry.js')
     await dispatch('/help')
-    const msgs = $messages.get()
-    const sys = msgs.find(m => m.role === 'system')
+    const sys = $messages.get().find(m => m.role === 'system')
     expect(sys).toBeDefined()
-    expect(sys?.content).toContain('/compile')
-    expect(sys?.content).not.toContain('/ats')
+    for (const cmd of IMPLEMENTED_COMMANDS) {
+      expect(sys?.content, `/help omits ${cmd.name}`).toContain(`/${cmd.name}`)
+    }
   })
 
   it('/help compile adds usage for that specific command', async () => {
