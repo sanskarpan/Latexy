@@ -403,10 +403,10 @@ export default function WorkspacePage() {
   if (!session) {
     return (
       <div className="content-shell">
-        <section className="surface-panel edge-highlight mx-auto max-w-2xl p-8 text-center">
-          <h1 className="text-2xl font-semibold text-white">Sign in required</h1>
-          <p className="mt-2 text-zinc-400">Please sign in to access your workspace and resumes.</p>
-          <Link href="/login" className="btn-accent mt-6">
+        <section className="rounded-[var(--radius-lg)] border border-line bg-surface mx-auto max-w-2xl p-8 text-center">
+          <h1 className="text-2xl font-semibold text-fg">Sign in required</h1>
+          <p className="mt-2 text-fg-2">Please sign in to access your workspace and resumes.</p>
+          <Link href="/login" className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110 mt-6">
             Continue to Login
           </Link>
         </section>
@@ -416,21 +416,21 @@ export default function WorkspacePage() {
 
   // Shared card renderer for both master and variant resumes
   const renderResumeCard = (resume: ResumeResponse, isVariant = false, parentTitle?: string) => (
-    <article key={resume.id} className={`surface-card edge-highlight flex flex-col p-5 ${isVariant ? 'border-l-2 border-l-orange-500/20' : ''}`}>
+    <article key={resume.id} className={`rounded-[var(--radius-lg)] border border-line bg-surface flex flex-col p-5 ${isVariant ? 'border-l-2 border-l-accent/20' : ''}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
-          <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+          <p className="text-xs uppercase tracking-[0.14em] text-fg-3">
             {isVariant ? 'Variant' : 'Resume'}
           </p>
           {resume.pinned && (
-            <span className="flex items-center gap-0.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-300">
+            <span className="flex items-center gap-0.5 rounded bg-warn/15 px-1.5 py-0.5 text-[9px] font-semibold text-warn">
               <Pin size={8} />Pinned
             </span>
           )}
           {!isVariant && getVariantCount(resume) > 0 && (
             <button
               onClick={() => toggleExpand(resume.id)}
-              className="flex items-center gap-1 rounded-md bg-orange-500/10 px-2 py-0.5 text-[10px] font-semibold text-orange-300 ring-1 ring-orange-400/20 transition hover:bg-orange-500/20"
+              className="flex items-center gap-1 rounded-[var(--radius-md)] bg-accent-soft px-2 py-0.5 text-[10px] font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110"
             >
               <GitFork size={10} />
               {getVariantCount(resume)}
@@ -439,28 +439,28 @@ export default function WorkspacePage() {
           )}
         </div>
         {matchMap[resume.id] && matchMap[resume.id].similarity_score != null && (
-          <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${
+          <span className={`shrink-0 rounded-[var(--radius-md)] px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${
             (matchMap[resume.id].similarity_score as number) >= 0.8
-              ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20'
+              ? 'bg-ok/10 text-ok ring-ok/20'
               : (matchMap[resume.id].similarity_score as number) >= 0.6
-              ? 'bg-amber-500/10 text-amber-300 ring-amber-400/20'
-              : 'bg-rose-500/10 text-rose-300 ring-rose-400/20'
+              ? 'bg-warn/10 text-warn ring-warn/20'
+              : 'bg-err/10 text-err ring-err/20'
           }`}>
             {Math.round((matchMap[resume.id].similarity_score as number) * 100)}% match
           </span>
         )}
       </div>
-      <h3 className="mt-2 line-clamp-2 text-lg font-semibold text-white">{resume.title}</h3>
+      <h3 className="mt-2 line-clamp-2 text-lg font-semibold text-fg">{resume.title}</h3>
       {isVariant && parentTitle && (
-        <p className="mt-0.5 text-[10px] text-zinc-500">Variant of: {parentTitle}</p>
+        <p className="mt-0.5 text-[10px] text-fg-3">Variant of: {parentTitle}</p>
       )}
       <p
         className={`mt-2 text-xs ${
           resume.freshness_status === 'very_stale'
-            ? 'text-rose-400'
+            ? 'text-err'
             : resume.freshness_status === 'stale'
-            ? 'text-amber-400'
-            : 'text-zinc-500'
+            ? 'text-warn'
+            : 'text-fg-3'
         }`}
         title={new Date(resume.updated_at).toLocaleString()}
       >
@@ -478,8 +478,8 @@ export default function WorkspacePage() {
               onClick={() => setActiveTagFilter(activeTagFilter === tag ? null : tag)}
               className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition ${
                 activeTagFilter === tag
-                  ? 'bg-violet-500/30 text-violet-200 ring-1 ring-violet-400/40'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
+                  ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
+                  : 'bg-surface-2 text-fg-2 hover:brightness-110 hover:text-fg'
               }`}
             >
               {tag}
@@ -491,26 +491,26 @@ export default function WorkspacePage() {
       <div className="mt-6 grid grid-cols-3 gap-2 text-xs">
         <Link
           href={`/workspace/${resume.id}/edit`}
-          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center font-semibold text-zinc-200 transition hover:bg-white/10"
+          className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-center font-semibold text-fg transition hover:brightness-110"
         >
           Edit
         </Link>
         <Link
           href={`/workspace/${resume.id}/optimize`}
-          className="rounded-lg border border-orange-300/20 bg-orange-300/10 px-3 py-2 text-center font-semibold text-orange-200 transition hover:bg-orange-300/20"
+          className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-2 text-center font-semibold text-accent-strong transition hover:brightness-110"
         >
           Optimize
         </Link>
         <button
           onClick={() => setQuickTailorResume(resume)}
-          className="flex items-center justify-center gap-1 rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-2 font-semibold text-amber-300 transition hover:bg-amber-500/20"
+          className="flex items-center justify-center gap-1 rounded-[var(--radius-md)] border border-warn/20 bg-warn/10 px-3 py-2 font-semibold text-warn transition hover:bg-warn/20"
         >
           <Zap size={11} />
           Tailor
         </button>
         <Link
           href={`/workspace/${resume.id}/cover-letter`}
-          className="col-span-3 rounded-lg border border-violet-300/20 bg-violet-300/10 px-3 py-2 text-center font-semibold text-violet-200 transition hover:bg-violet-300/20"
+          className="col-span-3 rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-2 text-center font-semibold text-accent-strong transition hover:brightness-110"
         >
           Cover Letter
         </Link>
@@ -518,14 +518,14 @@ export default function WorkspacePage() {
       <div className="mt-2 flex flex-wrap gap-2">
         <button
           onClick={() => openForkModal(resume.id, resume.title)}
-          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs font-semibold text-fg-2 transition hover:brightness-110 hover:text-fg"
         >
           <GitFork size={11} />
           Fork
         </button>
         <button
           onClick={() => { setTranslateModalResumeId(resume.id); setTranslateSelectedLang('fr') }}
-          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110"
           title="Translate to another language"
         >
           <Globe size={11} />
@@ -534,7 +534,7 @@ export default function WorkspacePage() {
         <button
           onClick={() => handleGeneratePortfolio(resume.id)}
           disabled={isGeneratingPortfolio === resume.id}
-          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-500/[0.06] px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:opacity-50"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110 disabled:opacity-50"
           title="Generate portfolio site"
         >
           {isGeneratingPortfolio === resume.id
@@ -546,10 +546,10 @@ export default function WorkspacePage() {
         </button>
         <button
           onClick={() => setShareModalResumeId(resume.id)}
-          className={`flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+          className={`flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-[var(--radius-md)] border px-3 py-2 text-xs font-semibold transition ${
             resume.share_token
-              ? 'border-sky-400/25 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20'
-              : 'border-white/10 bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200'
+              ? 'border-accent bg-accent-soft text-accent-strong hover:brightness-110'
+              : 'border-line bg-surface-2 text-fg-2 hover:brightness-110 hover:text-fg'
           }`}
         >
           <Share2 size={11} />
@@ -558,20 +558,20 @@ export default function WorkspacePage() {
         {isVariant && resume.parent_resume_id && (
           <button
             onClick={() => handleCompareWithParent(resume.id)}
-            className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-violet-400/20 bg-violet-500/[0.06] px-3 py-2 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/10"
+            className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110"
           >
             Compare
           </button>
         )}
         <button
           onClick={() => setTrackerModalResumeId(resume.id)}
-          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-sky-400/20 bg-sky-500/[0.06] px-3 py-2 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs font-semibold text-fg-2 transition hover:brightness-110 hover:text-fg"
         >
           Track
         </button>
         <button
           onClick={() => setApplyModalResume(resume)}
-          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-lg border border-orange-400/20 bg-orange-500/[0.06] px-3 py-2 text-xs font-semibold text-orange-300 transition hover:bg-orange-500/10"
+          className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110"
           title="Apply to a job with this resume"
         >
           <Send size={11} />
@@ -584,7 +584,7 @@ export default function WorkspacePage() {
       <div className="mt-2">
         <button
           onClick={() => setReferencesModalResume(resume)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] py-2 text-xs font-semibold text-zinc-500 transition hover:bg-white/[0.06] hover:text-violet-300"
+          className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 py-2 text-xs font-semibold text-fg-3 transition hover:brightness-110 hover:text-accent-strong"
         >
           <BookUser size={11} />
           Generate References Page
@@ -593,11 +593,11 @@ export default function WorkspacePage() {
 
       {/* Pin / Archive / Tag actions */}
       {!isVariant && (
-        <div className="mt-2 flex gap-1.5 border-t border-white/[0.05] pt-2">
+        <div className="mt-2 flex gap-1.5 border-t border-line pt-2">
           <button
             onClick={() => handlePin(resume.id, !!resume.pinned)}
             title={resume.pinned ? 'Unpin' : 'Pin to top'}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-zinc-500 transition hover:bg-amber-500/10 hover:text-amber-300"
+            className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] text-fg-3 transition hover:bg-warn/10 hover:text-warn"
           >
             {resume.pinned ? <PinOff size={10} /> : <Pin size={10} />}
             {resume.pinned ? 'Unpin' : 'Pin'}
@@ -608,7 +608,7 @@ export default function WorkspacePage() {
               setTagEditValue(resume.tags?.join(', ') ?? '')
             }}
             title="Edit tags"
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-zinc-500 transition hover:bg-violet-500/10 hover:text-violet-300"
+            className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] text-fg-3 transition hover:bg-accent-soft hover:text-accent-strong"
           >
             <Tag size={10} />
             Tags
@@ -620,7 +620,7 @@ export default function WorkspacePage() {
               }
             }}
             title="Archive resume"
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-400"
+            className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] text-fg-3 transition hover:bg-err/10 hover:text-err"
           >
             <Archive size={10} />
             Archive
@@ -634,10 +634,10 @@ export default function WorkspacePage() {
     <div className="content-shell space-y-6">
       {/* Stale resume banner (Feature 48) */}
       {!staleBannerDismissed && veryStaleResumes.length > 0 && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-400/20 bg-amber-500/[0.07] px-4 py-3">
+        <div className="flex items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-warn/20 bg-warn/[0.07] px-4 py-3">
           <div className="flex items-center gap-2.5">
-            <AlertTriangle size={14} className="shrink-0 text-amber-400" />
-            <p className="text-[13px] text-amber-200">
+            <AlertTriangle size={14} className="shrink-0 text-warn" />
+            <p className="text-[13px] text-warn">
               <strong>{veryStaleResumes.length}</strong>{' '}
               {veryStaleResumes.length === 1 ? "resume hasn't" : "resumes haven't"} been updated in 90+ days.
               Update {veryStaleResumes.length === 1 ? 'it' : 'them'} to stay competitive.
@@ -645,7 +645,7 @@ export default function WorkspacePage() {
           </div>
           <button
             onClick={() => setStaleBannerDismissed(true)}
-            className="shrink-0 rounded-md p-1 text-amber-500 transition hover:bg-amber-500/10 hover:text-amber-300"
+            className="shrink-0 rounded-[var(--radius-md)] p-1 text-warn transition hover:bg-warn/10 hover:text-warn"
             aria-label="Dismiss"
           >
             <X size={14} />
@@ -655,25 +655,25 @@ export default function WorkspacePage() {
 
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="overline">Workspace</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">Resume Library</h1>
-          <p className="mt-1 text-sm text-zinc-400">Create, edit, and optimize resumes from a single workspace.</p>
+          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Workspace</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">Resume Library</h1>
+          <p className="mt-1 text-sm text-fg-2">Create, edit, and optimize resumes from a single workspace.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setProjectSearchOpen(true)}
             title="Search resumes (⌘⇧F)"
-            className="btn-ghost px-3 py-2 text-xs flex items-center gap-1.5"
+            className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-3 py-2 text-xs flex items-center gap-1.5"
           >
             <Search className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Search</span>
           </button>
-          <Link href="/workspace/history" className="btn-ghost px-4 py-2 text-xs">
+          <Link href="/workspace/history" className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
             Run History
           </Link>
           <button
             onClick={() => setMatchModalOpen(true)}
-            className="rounded-lg border border-violet-400/20 bg-violet-500/10 px-4 py-2 text-xs font-semibold text-violet-200 transition hover:bg-violet-500/20"
+            className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110"
           >
             Match to Job
           </button>
@@ -692,7 +692,7 @@ export default function WorkspacePage() {
                 setExportMenuOpen(o => !o)
               }}
               disabled={exportLoading}
-              className="btn-ghost flex items-center gap-1.5 px-3 py-2 text-xs"
+              className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 flex items-center gap-1.5 px-3 py-2 text-xs"
             >
               {exportLoading ? (
                 <Loader2 size={12} className="animate-spin" />
@@ -703,7 +703,7 @@ export default function WorkspacePage() {
               <ChevronDown size={11} />
             </button>
             {exportMenuOpen && (
-              <div className={`absolute right-0 z-50 max-h-[min(20rem,calc(100vh-6rem))] w-44 overflow-y-auto rounded-lg border border-white/[0.08] bg-[#111] py-1 shadow-xl ${
+              <div className={`absolute right-0 z-50 max-h-[min(20rem,calc(100vh-6rem))] w-44 overflow-y-auto rounded-[var(--radius-md)] border border-line bg-surface py-1 shadow-[var(--shadow-2)] ${
                 exportMenuFlipUp ? 'bottom-full mb-1' : 'top-full mt-1'
               }`}>
                 {([
@@ -714,7 +714,7 @@ export default function WorkspacePage() {
                   <button
                     key={format}
                     onClick={() => handleBulkExport(format)}
-                    className="w-full px-3 py-2 text-left text-[12px] text-zinc-400 transition hover:bg-white/[0.05] hover:text-zinc-200"
+                    className="w-full px-3 py-2 text-left text-[12px] text-fg-2 transition hover:bg-surface-2 hover:text-fg"
                   >
                     {label}
                   </button>
@@ -727,41 +727,41 @@ export default function WorkspacePage() {
             href="/workspace/merge"
             aria-label="Merge resumes"
             title="Merge resumes"
-            className="btn-ghost flex items-center gap-1.5 px-4 py-2 text-xs"
+            className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 flex items-center gap-1.5 px-4 py-2 text-xs"
           >
             <GitMerge size={12} aria-hidden="true" />
             <span className="hidden sm:inline">Merge</span>
           </Link>
 
-          <Link href="/workspace/new" className="btn-accent px-4 py-2 text-xs">
+          <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
             New Resume
           </Link>
         </div>
       </section>
 
-      <section className="surface-panel edge-highlight p-4 sm:p-5">
+      <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <input
             type="text"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Search resume titles"
-            className="w-full max-w-md rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40"
+            className="w-full max-w-md rounded-[var(--radius-md)] border border-line bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
           />
 
-          <div className="flex rounded-lg border border-white/10 bg-white/5 p-1 text-xs">
+          <div className="flex rounded-[var(--radius-md)] border border-line bg-surface-2 p-1 text-xs">
             <button
               onClick={() => setViewMode('grid')}
-              className={`rounded-md px-3 py-1.5 uppercase tracking-[0.12em] transition ${
-                viewMode === 'grid' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-zinc-200'
+              className={`rounded-[var(--radius-md)] px-3 py-1.5 uppercase tracking-[0.12em] transition ${
+                viewMode === 'grid' ? 'bg-surface-2 text-fg' : 'text-fg-2 hover:text-fg'
               }`}
             >
               Grid
             </button>
             <button
               onClick={() => setViewMode('list')}
-              className={`rounded-md px-3 py-1.5 uppercase tracking-[0.12em] transition ${
-                viewMode === 'list' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-zinc-200'
+              className={`rounded-[var(--radius-md)] px-3 py-1.5 uppercase tracking-[0.12em] transition ${
+                viewMode === 'list' ? 'bg-surface-2 text-fg' : 'text-fg-2 hover:text-fg'
               }`}
             >
               List
@@ -773,17 +773,17 @@ export default function WorkspacePage() {
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <section>
           {isLoading ? (
-            <div className="surface-panel edge-highlight flex h-72 items-center justify-center">
+            <div className="rounded-[var(--radius-lg)] border border-line bg-surface flex h-72 items-center justify-center">
               <LoadingSpinner />
             </div>
           ) : filteredResumes.length === 0 ? (
-            <div className="surface-panel edge-highlight px-6 py-16 text-center">
-              <h2 className="text-lg font-semibold text-white">No resumes found</h2>
-              <p className="mt-2 text-sm text-zinc-400">
+            <div className="rounded-[var(--radius-lg)] border border-line bg-surface px-6 py-16 text-center">
+              <h2 className="text-lg font-semibold text-fg">No resumes found</h2>
+              <p className="mt-2 text-sm text-fg-2">
                 {searchQuery ? `No results for "${searchQuery}".` : 'Create your first resume to start your pipeline.'}
               </p>
               {!searchQuery && (
-                <Link href="/workspace/new" className="btn-accent mt-5 px-4 py-2 text-xs">
+                <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 mt-5 px-4 py-2 text-xs">
                   Create Resume
                 </Link>
               )}
@@ -795,7 +795,7 @@ export default function WorkspacePage() {
                   <div key={resume.id}>
                     {renderResumeCard(resume)}
                     {expandedParents.has(resume.id) && variantMap[resume.id] && (
-                      <div className="ml-6 mt-2 space-y-3 border-l-2 border-orange-500/20 pl-4">
+                      <div className="ml-6 mt-2 space-y-3 border-l-2 border-accent/20 pl-4">
                         {variantMap[resume.id].map((variant) => renderResumeCard(variant, true, resume.title))}
                       </div>
                     )}
@@ -804,17 +804,17 @@ export default function WorkspacePage() {
               </div>
             </div>
           ) : (
-            <div className="surface-panel edge-highlight overflow-hidden">
+            <div className="rounded-[var(--radius-lg)] border border-line bg-surface overflow-hidden">
               <table className="w-full text-left">
                 <thead>
-                  <tr className="border-b border-white/10 bg-white/[0.03] text-[11px] uppercase tracking-[0.14em] text-zinc-500">
+                  <tr className="border-b border-line bg-surface-2 text-[11px] uppercase tracking-[0.14em] text-fg-3">
                     <th className="px-4 py-3 font-semibold">Title</th>
                     {matchResults.length > 0 && <th className="px-4 py-3 font-semibold text-right">Match</th>}
                     <th className="px-4 py-3 font-semibold text-right">Updated</th>
                     <th className="px-4 py-3 font-semibold text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/10">
+                <tbody className="divide-y divide-line">
                   {masterResumes.map((resume) => (
                     <>
                       <tr key={resume.id}>
@@ -823,16 +823,16 @@ export default function WorkspacePage() {
                             {getVariantCount(resume) > 0 && (
                               <button
                                 onClick={() => toggleExpand(resume.id)}
-                                className="flex items-center gap-1 text-orange-400 transition hover:text-orange-300"
+                                className="flex items-center gap-1 text-accent-strong transition hover:brightness-110"
                               >
                                 {expandedParents.has(resume.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                               </button>
                             )}
-                            <Link href={`/workspace/${resume.id}/edit`} className="text-sm font-medium text-white transition hover:text-orange-200">
+                            <Link href={`/workspace/${resume.id}/edit`} className="text-sm font-medium text-fg transition hover:text-accent-strong">
                               {resume.title}
                             </Link>
                             {getVariantCount(resume) > 0 && (
-                              <span className="flex items-center gap-1 rounded-md bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-orange-300">
+                              <span className="flex items-center gap-1 rounded-[var(--radius-md)] bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent-strong">
                                 <GitFork size={9} />{getVariantCount(resume)}
                               </span>
                             )}
@@ -841,23 +841,23 @@ export default function WorkspacePage() {
                         {matchResults.length > 0 && (
                           <td className="px-4 py-3 text-right">
                             {matchMap[resume.id] && matchMap[resume.id].similarity_score != null ? (
-                              <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${
+                              <span className={`rounded-[var(--radius-md)] px-2 py-0.5 text-[10px] font-bold tabular-nums ring-1 ${
                                 (matchMap[resume.id].similarity_score as number) >= 0.8
-                                  ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20'
+                                  ? 'bg-ok/10 text-ok ring-ok/20'
                                   : (matchMap[resume.id].similarity_score as number) >= 0.6
-                                  ? 'bg-amber-500/10 text-amber-300 ring-amber-400/20'
-                                  : 'bg-rose-500/10 text-rose-300 ring-rose-400/20'
+                                  ? 'bg-warn/10 text-warn ring-warn/20'
+                                  : 'bg-err/10 text-err ring-err/20'
                               }`}>
                                 {Math.round((matchMap[resume.id].similarity_score as number) * 100)}%
                               </span>
                             ) : (
-                              <span className="text-zinc-700">—</span>
+                              <span className="text-fg-3">—</span>
                             )}
                           </td>
                         )}
                         <td className={`px-4 py-3 text-right text-sm ${
-                          resume.freshness_status === 'very_stale' ? 'text-rose-400' :
-                          resume.freshness_status === 'stale' ? 'text-amber-400' : 'text-zinc-400'
+                          resume.freshness_status === 'very_stale' ? 'text-err' :
+                          resume.freshness_status === 'stale' ? 'text-warn' : 'text-fg-2'
                         }`} title={new Date(resume.updated_at).toLocaleString()}>
                           {resume.days_since_updated != null && resume.days_since_updated > 0
                             ? `${resume.days_since_updated}d ago`
@@ -867,39 +867,39 @@ export default function WorkspacePage() {
                           <div className="inline-flex gap-2 items-center">
                             <Link
                               href={`/workspace/${resume.id}/edit`}
-                              className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white"
+                              className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-semibold text-fg-2 transition hover:border-line-2 hover:text-fg"
                             >
                               Edit
                             </Link>
                             <Link
                               href={`/workspace/${resume.id}/optimize`}
-                              className="rounded-lg border border-orange-300/25 bg-orange-300/10 px-3 py-1.5 text-xs font-semibold text-orange-200 transition hover:bg-orange-300/20"
+                              className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong transition hover:brightness-110"
                             >
                               Optimize
                             </Link>
                             <Link
                               href={`/workspace/${resume.id}/cover-letter`}
-                              className="rounded-lg border border-violet-300/25 bg-violet-300/10 px-3 py-1.5 text-xs font-semibold text-violet-200 transition hover:bg-violet-300/20"
+                              className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong transition hover:brightness-110"
                             >
                               CL
                             </Link>
                             <button
                               onClick={() => setQuickTailorResume(resume)}
-                              className="flex items-center gap-1 rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/20"
+                              className="flex items-center gap-1 rounded-[var(--radius-md)] border border-warn/20 bg-warn/10 px-3 py-1.5 text-xs font-semibold text-warn transition hover:bg-warn/20"
                             >
                               <Zap size={11} />
                               Tailor
                             </button>
                             <button
                               onClick={() => openForkModal(resume.id, resume.title)}
-                              className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-400 transition hover:border-white/20 hover:text-zinc-200"
+                              className="flex items-center gap-1 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-semibold text-fg-2 transition hover:border-line-2 hover:text-fg"
                             >
                               <GitFork size={11} />
                               Fork
                             </button>
                             <button
                               onClick={() => setReferencesModalResume(resume)}
-                              className="flex items-center gap-1 rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs font-semibold text-zinc-400 transition hover:border-violet-400/30 hover:text-violet-300"
+                              className="flex items-center gap-1 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-semibold text-fg-2 transition hover:border-accent hover:text-accent-strong"
                             >
                               <BookUser size={11} />
                               Refs
@@ -909,24 +909,24 @@ export default function WorkspacePage() {
                         </td>
                       </tr>
                       {expandedParents.has(resume.id) && variantMap[resume.id]?.map((variant) => (
-                        <tr key={variant.id} className="bg-white/[0.01]">
+                        <tr key={variant.id} className="bg-surface-2">
                           <td className="py-3 pl-12 pr-4">
                             <div className="flex items-center gap-2">
-                              <GitFork size={11} className="text-orange-500/50" />
-                              <Link href={`/workspace/${variant.id}/edit`} className="text-sm font-medium text-zinc-300 transition hover:text-orange-200">
+                              <GitFork size={11} className="text-accent/50" />
+                              <Link href={`/workspace/${variant.id}/edit`} className="text-sm font-medium text-fg-2 transition hover:text-accent-strong">
                                 {variant.title}
                               </Link>
-                              <span className="text-[10px] text-zinc-600">variant</span>
+                              <span className="text-[10px] text-fg-3">variant</span>
                             </div>
                           </td>
                           {matchResults.length > 0 && (
                             <td className="px-4 py-3 text-right">
-                              <span className="text-zinc-700">—</span>
+                              <span className="text-fg-3">—</span>
                             </td>
                           )}
                           <td className={`px-4 py-3 text-right text-sm ${
-                            variant.freshness_status === 'very_stale' ? 'text-rose-400' :
-                            variant.freshness_status === 'stale' ? 'text-amber-400' : 'text-zinc-500'
+                            variant.freshness_status === 'very_stale' ? 'text-err' :
+                            variant.freshness_status === 'stale' ? 'text-warn' : 'text-fg-3'
                           }`} title={new Date(variant.updated_at).toLocaleString()}>
                             {variant.days_since_updated != null && variant.days_since_updated > 0
                               ? `${variant.days_since_updated}d ago`
@@ -936,19 +936,19 @@ export default function WorkspacePage() {
                             <div className="inline-flex gap-2 items-center">
                               <Link
                                 href={`/workspace/${variant.id}/edit`}
-                                className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white"
+                                className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-semibold text-fg-2 transition hover:border-line-2 hover:text-fg"
                               >
                                 Edit
                               </Link>
                               <button
                                 onClick={() => handleCompareWithParent(variant.id)}
-                                className="rounded-lg border border-violet-400/20 bg-violet-500/[0.06] px-3 py-1.5 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/10"
+                                className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong transition hover:brightness-110"
                               >
                                 Compare
                               </button>
                               <button
                                 onClick={() => openForkModal(variant.id, variant.title)}
-                                className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-zinc-400 transition hover:border-white/20 hover:text-zinc-202"
+                                className="flex items-center gap-1 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-semibold text-fg-2 transition hover:border-line-2 hover:text-fg"
                               >
                                 <GitFork size={11} />
                                 Fork
@@ -968,28 +968,28 @@ export default function WorkspacePage() {
           {/* Archived resumes section (Feature 39) */}
           {showArchived && (
             <div className="mt-6">
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-zinc-500">
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-fg-3">
                 <Archive size={12} />
                 Archived
               </h2>
               {archivedLoading ? (
                 <div className="flex items-center justify-center py-8"><LoadingSpinner /></div>
               ) : archivedResumes.length === 0 ? (
-                <p className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-sm text-zinc-600">
+                <p className="rounded-[var(--radius-lg)] border border-line bg-surface-2 px-4 py-6 text-center text-sm text-fg-3">
                   No archived resumes.
                 </p>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {archivedResumes.map(r => (
-                    <div key={r.id} className="surface-card edge-highlight flex items-center justify-between gap-3 p-4 opacity-60">
+                    <div key={r.id} className="rounded-[var(--radius-lg)] border border-line bg-surface flex items-center justify-between gap-3 p-4 opacity-60">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-zinc-300">{r.title}</p>
-                        <p className="text-[11px] text-zinc-600">Archived</p>
+                        <p className="truncate text-sm font-medium text-fg-2">{r.title}</p>
+                        <p className="text-[11px] text-fg-3">Archived</p>
                       </div>
                       <button
                         onClick={() => handleUnarchive(r.id)}
                         title="Restore"
-                        className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-[10px] font-medium text-zinc-500 ring-1 ring-white/10 transition hover:bg-emerald-500/10 hover:text-emerald-400"
+                        className="flex shrink-0 items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[10px] font-medium text-fg-3 ring-1 ring-line transition hover:bg-ok/10 hover:text-ok"
                       >
                         <ArchiveRestore size={11} />
                         Restore
@@ -1004,19 +1004,19 @@ export default function WorkspacePage() {
           {/* My Templates section (Feature 39E) */}
           {templateResumes.length > 0 && !activeTagFilter && (
             <div className="mt-6">
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-zinc-500">
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-fg-3">
                 <LayoutTemplate size={12} />
                 My Templates
               </h2>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {templateResumes.map(r => (
-                  <article key={r.id} className="surface-card edge-highlight flex flex-col gap-2 p-4">
+                  <article key={r.id} className="rounded-[var(--radius-lg)] border border-line bg-surface flex flex-col gap-2 p-4">
                     <div className="flex items-center gap-2">
-                      <LayoutTemplate size={11} className="text-zinc-600" />
-                      <p className="truncate text-sm font-medium text-zinc-300">{r.title}</p>
+                      <LayoutTemplate size={11} className="text-fg-3" />
+                      <p className="truncate text-sm font-medium text-fg-2">{r.title}</p>
                     </div>
                     <div className="flex gap-2">
-                      <a href={`/workspace/${r.id}/edit`} className="flex-1 rounded-md border border-white/10 bg-white/[0.03] px-3 py-1.5 text-center text-[11px] font-semibold text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200">
+                      <a href={`/workspace/${r.id}/edit`} className="flex-1 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-1.5 text-center text-[11px] font-semibold text-fg-2 transition hover:brightness-110 hover:text-fg">
                         Edit
                       </a>
                       <button
@@ -1027,7 +1027,7 @@ export default function WorkspacePage() {
                             toast.success('Removed from templates')
                           } catch { toast.error('Failed') }
                         }}
-                        className="rounded-md border border-white/10 px-2 py-1.5 text-[11px] text-zinc-600 transition hover:text-rose-400"
+                        className="rounded-[var(--radius-md)] border border-line px-2 py-1.5 text-[11px] text-fg-3 transition hover:text-err"
                         title="Remove from templates"
                       >
                         <X size={12} />
@@ -1042,18 +1042,18 @@ export default function WorkspacePage() {
 
         <aside className="space-y-4">
           {/* Tag Filter + Archive (Feature 39) */}
-          <section className="surface-panel edge-highlight p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300 flex items-center gap-2">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-fg-2 flex items-center gap-2">
               <Tag size={12} />
               Organize
             </h2>
             {allTags.length > 0 ? (
               <div className="mt-3 space-y-1">
-                <p className="text-[10px] uppercase tracking-wide text-zinc-600 mb-2">Filter by tag</p>
+                <p className="text-[10px] uppercase tracking-wide text-fg-3 mb-2">Filter by tag</p>
                 <button
                   onClick={() => setActiveTagFilter(null)}
-                  className={`w-full rounded-md px-3 py-1.5 text-left text-xs transition ${
-                    !activeTagFilter ? 'bg-white/[0.06] text-zinc-200' : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300'
+                  className={`w-full rounded-[var(--radius-md)] px-3 py-1.5 text-left text-xs transition ${
+                    !activeTagFilter ? 'bg-surface-2 text-fg' : 'text-fg-3 hover:bg-surface-2 hover:text-fg-2'
                   }`}
                 >
                   All resumes
@@ -1062,21 +1062,21 @@ export default function WorkspacePage() {
                   <button
                     key={tag}
                     onClick={() => setActiveTagFilter(activeTagFilter === tag ? null : tag)}
-                    className={`flex w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-left text-xs transition ${
+                    className={`flex w-full items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-left text-xs transition ${
                       activeTagFilter === tag
-                        ? 'bg-violet-500/20 text-violet-200'
-                        : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300'
+                        ? 'bg-accent-soft text-accent-strong'
+                        : 'text-fg-3 hover:bg-surface-2 hover:text-fg-2'
                     }`}
                   >
-                    <span className="h-1.5 w-1.5 rounded-full bg-violet-400/60" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent/60" />
                     {tag}
                   </button>
                 ))}
               </div>
             ) : (
-              <p className="mt-2 text-xs text-zinc-600">Add tags to resumes to filter here.</p>
+              <p className="mt-2 text-xs text-fg-3">Add tags to resumes to filter here.</p>
             )}
-            <div className="mt-4 border-t border-white/[0.05] pt-3">
+            <div className="mt-4 border-t border-line pt-3">
               <button
                 onClick={() => {
                   setShowArchived(v => {
@@ -1084,7 +1084,7 @@ export default function WorkspacePage() {
                     return !v
                   })
                 }}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-400"
+                className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-xs text-fg-3 transition hover:bg-err/10 hover:text-err"
               >
                 <Archive size={11} />
                 {showArchived ? 'Hide Archived' : 'View Archived'}
@@ -1092,61 +1092,61 @@ export default function WorkspacePage() {
             </div>
           </section>
 
-          <section className="surface-panel edge-highlight p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300">Recent Activity</h2>
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-fg-2">Recent Activity</h2>
             {jobs.length === 0 ? (
-              <p className="mt-3 text-sm text-zinc-500">No recent runs yet.</p>
+              <p className="mt-3 text-sm text-fg-3">No recent runs yet.</p>
             ) : (
               <div className="mt-4 space-y-3">
                 {jobs.slice(0, 5).map((job, index) => (
-                  <div key={job.job_id ?? `${job.last_updated}-${index}`} className="rounded-lg border border-white/10 bg-black/25 p-3">
-                    <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{job.stage || 'Pipeline'}</p>
-                    <p className="mt-1 text-sm capitalize text-zinc-200">{job.status}</p>
-                    <p className="mt-1 text-xs text-zinc-500">{new Date(job.last_updated * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  <div key={job.job_id ?? `${job.last_updated}-${index}`} className="rounded-[var(--radius-md)] border border-line bg-bg p-3">
+                    <p className="text-xs uppercase tracking-[0.12em] text-fg-3">{job.stage || 'Pipeline'}</p>
+                    <p className="mt-1 text-sm capitalize text-fg">{job.status}</p>
+                    <p className="mt-1 text-xs text-fg-3">{new Date(job.last_updated * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 ))}
               </div>
             )}
             {jobs.length > 0 && (
-              <Link href="/workspace/history" className="mt-4 inline-block text-xs font-semibold uppercase tracking-[0.12em] text-orange-200 transition hover:text-orange-100">
+              <Link href="/workspace/history" className="mt-4 inline-block text-xs font-semibold uppercase tracking-[0.12em] text-accent-strong transition hover:brightness-110">
                 View Full History
               </Link>
             )}
           </section>
 
           {atsStats && atsStats.optimized_count > 0 && (
-            <section className="surface-panel edge-highlight p-5">
+            <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
               <div className="flex items-center gap-2 mb-3">
-                <BarChart2 size={13} className="text-orange-300/70" />
-                <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300">ATS Scores</h3>
+                <BarChart2 size={13} className="text-accent-strong/70" />
+                <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-fg-2">ATS Scores</h3>
               </div>
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div>
-                  <p className="text-lg font-bold tabular-nums text-orange-300">
+                  <p className="text-lg font-bold tabular-nums text-accent-strong">
                     {atsStats.avg_ats_score != null ? Math.round(atsStats.avg_ats_score) : '—'}
                   </p>
-                  <p className="text-[10px] text-zinc-600 mt-0.5">Avg</p>
+                  <p className="text-[10px] text-fg-3 mt-0.5">Avg</p>
                 </div>
                 <div>
-                  <p className="text-lg font-bold tabular-nums text-emerald-400">
+                  <p className="text-lg font-bold tabular-nums text-ok">
                     {atsStats.best_ats_score != null ? Math.round(atsStats.best_ats_score) : '—'}
                   </p>
-                  <p className="text-[10px] text-zinc-600 mt-0.5">Best</p>
+                  <p className="text-[10px] text-fg-3 mt-0.5">Best</p>
                 </div>
                 <div>
-                  <p className="text-lg font-bold tabular-nums text-zinc-200">
+                  <p className="text-lg font-bold tabular-nums text-fg">
                     {atsStats.optimized_count}
                   </p>
-                  <p className="text-[10px] text-zinc-600 mt-0.5">Optimized</p>
+                  <p className="text-[10px] text-fg-3 mt-0.5">Optimized</p>
                 </div>
               </div>
             </section>
           )}
 
-          <section className="surface-panel edge-highlight p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300">Workflow Tip</h3>
-            <p className="mt-2 text-sm text-zinc-400">
-              Use <strong className="text-zinc-300">Fork</strong> to create role-specific variants of a resume. Edit each variant independently, then compare with the parent to review changes.
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-fg-2">Workflow Tip</h3>
+            <p className="mt-2 text-sm text-fg-2">
+              Use <strong className="text-fg">Fork</strong> to create role-specific variants of a resume. Edit each variant independently, then compare with the parent to review changes.
             </p>
           </section>
         </aside>
@@ -1154,15 +1154,15 @@ export default function WorkspacePage() {
 
       {/* Fork modal */}
       {forkModalResumeId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setForkModalResumeId(null)}>
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]" onClick={() => setForkModalResumeId(null)}>
+          <div className="w-full max-w-sm rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-white">Create Variant</h3>
-              <button onClick={() => setForkModalResumeId(null)} className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300">
+              <h3 className="text-base font-semibold text-fg">Create Variant</h3>
+              <button onClick={() => setForkModalResumeId(null)} className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2">
                 <X size={16} />
               </button>
             </div>
-            <p className="text-xs text-zinc-500 mb-4">This creates a linked copy you can customize for a specific role.</p>
+            <p className="text-xs text-fg-3 mb-4">This creates a linked copy you can customize for a specific role.</p>
             <input
               type="text"
               value={forkTitle}
@@ -1170,19 +1170,19 @@ export default function WorkspacePage() {
               onKeyDown={e => { if (e.key === 'Enter' && !isForking) handleFork(forkModalResumeId, forkTitle); if (e.key === 'Escape') setForkModalResumeId(null) }}
               placeholder="Variant title"
               autoFocus
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40 mb-4"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-accent mb-4"
             />
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setForkModalResumeId(null)}
-                className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 transition hover:text-zinc-200"
+                className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleFork(forkModalResumeId, forkTitle)}
                 disabled={isForking}
-                className="btn-accent px-4 py-2 text-xs disabled:opacity-50"
+                className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 px-4 py-2 text-xs disabled:opacity-50"
               >
                 {isForking ? 'Creating...' : 'Create Variant'}
               </button>
@@ -1193,23 +1193,23 @@ export default function WorkspacePage() {
 
       {/* Translate modal */}
       {translateModalResumeId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setTranslateModalResumeId(null)}>
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]" onClick={() => setTranslateModalResumeId(null)}>
+          <div className="w-full max-w-sm rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Globe size={16} className="text-sky-400" />
-                <h3 className="text-base font-semibold text-white">Translate Resume</h3>
+                <Globe size={16} className="text-accent-strong" />
+                <h3 className="text-base font-semibold text-fg">Translate Resume</h3>
               </div>
-              <button onClick={() => setTranslateModalResumeId(null)} className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300">
+              <button onClick={() => setTranslateModalResumeId(null)} className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2">
                 <X size={16} />
               </button>
             </div>
-            <p className="text-xs text-zinc-500 mb-4">Creates a new variant with prose translated by AI. LaTeX commands are preserved exactly.</p>
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">Target Language</label>
+            <p className="text-xs text-fg-3 mb-4">Creates a new variant with prose translated by AI. LaTeX commands are preserved exactly.</p>
+            <label className="block text-xs font-medium text-fg-2 mb-1.5">Target Language</label>
             <select
               value={translateSelectedLang}
               onChange={e => setTranslateSelectedLang(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-sky-400/40 mb-5"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-accent mb-5"
             >
               {TRANSLATE_LANGUAGES.map(l => (
                 <option key={l.code} value={l.code}>{l.name}</option>
@@ -1218,14 +1218,14 @@ export default function WorkspacePage() {
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setTranslateModalResumeId(null)}
-                className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 transition hover:text-zinc-200"
+                className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleTranslate(translateModalResumeId, translateSelectedLang)}
                 disabled={isTranslating}
-                className="flex items-center gap-1.5 rounded-lg bg-sky-500/15 px-4 py-2 text-xs font-semibold text-sky-300 ring-1 ring-sky-400/30 transition hover:bg-sky-500/25 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:opacity-50"
               >
                 {isTranslating ? <><Loader2 size={12} className="animate-spin" /> Translating…</> : <><Globe size={12} /> Translate</>}
               </button>
@@ -1345,18 +1345,18 @@ export default function WorkspacePage() {
 
       {/* Tag Edit modal (Feature 39) */}
       {tagEditResumeId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setTagEditResumeId(null)}>
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]" onClick={() => setTagEditResumeId(null)}>
+          <div className="w-full max-w-sm rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)]" onClick={e => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-base font-semibold text-white">
-                <Tag size={14} className="text-violet-400" />
+              <h3 className="flex items-center gap-2 text-base font-semibold text-fg">
+                <Tag size={14} className="text-accent-strong" />
                 Edit Tags
               </h3>
-              <button onClick={() => setTagEditResumeId(null)} className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300">
+              <button onClick={() => setTagEditResumeId(null)} className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2">
                 <X size={16} />
               </button>
             </div>
-            <p className="mb-3 text-xs text-zinc-500">Enter tags separated by commas (max 10, each ≤30 chars)</p>
+            <p className="mb-3 text-xs text-fg-3">Enter tags separated by commas (max 10, each ≤30 chars)</p>
             <input
               type="text"
               value={tagEditValue}
@@ -1364,13 +1364,13 @@ export default function WorkspacePage() {
               onKeyDown={e => { if (e.key === 'Enter') handleSaveTags(); if (e.key === 'Escape') setTagEditResumeId(null) }}
               placeholder="e.g. frontend, senior, remote"
               autoFocus
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-violet-400/40 mb-4"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-accent mb-4"
             />
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setTagEditResumeId(null)} className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 transition hover:text-zinc-200">
+              <button onClick={() => setTagEditResumeId(null)} className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg">
                 Cancel
               </button>
-              <button onClick={handleSaveTags} className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-violet-500">
+              <button onClick={handleSaveTags} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg transition hover:brightness-110">
                 Save Tags
               </button>
             </div>
