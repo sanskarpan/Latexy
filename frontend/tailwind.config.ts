@@ -1,7 +1,9 @@
 import type { Config } from 'tailwindcss'
 
 const config: Config = {
-  darkMode: ["class"],
+  // Redesign (PRD 2026-08-03): themes are driven by [data-mode] on :root, not a
+  // `.dark` class. Any `dark:` utility now resolves under our attribute.
+  darkMode: ["selector", '[data-mode="dark"]'],
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -17,6 +19,19 @@ const config: Config = {
     },
     extend: {
       colors: {
+        // ── Redesign design tokens (PRD 2026-08-03) — additive; stock palette kept ──
+        bg: "var(--bg)",
+        surface: "var(--surface)",
+        "surface-2": "var(--surface-2)",
+        line: "var(--line)",
+        "line-2": "var(--line-2)",
+        fg: "var(--fg)",
+        "fg-2": "var(--fg-2)",
+        "fg-3": "var(--fg-3)",
+        accent: { DEFAULT: "var(--accent)", fg: "var(--accent-fg)", soft: "var(--accent-soft)" },
+        ok: "var(--ok)",
+        warn: "var(--warn)",
+        err: "var(--err)",
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -59,9 +74,9 @@ const config: Config = {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
         },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+        "ui-accent": {
+          DEFAULT: "hsl(var(--ui-accent))",
+          foreground: "hsl(var(--ui-accent-foreground))",
         },
         popover: {
           DEFAULT: "hsl(var(--popover))",
@@ -78,8 +93,14 @@ const config: Config = {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'Monaco', 'monospace'],
+        // Repointed to the fonts actually loaded via next/font (was 'Inter',
+        // which was never delivered). Aesthetic-aware roles below.
+        sans: ['var(--font-geist-sans)', 'Avenir Next', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-jetbrains)', 'SF Mono', 'ui-monospace', 'Monaco', 'monospace'],
+        serif: ['var(--font-fraunces)', 'Hoefler Text', 'Charter', 'Georgia', 'serif'],
+        display: ['var(--font-display)'],
+        body: ['var(--font-body)'],
+        ui: ['var(--font-ui)'],
       },
       fontSize: {
         xs: ["0.75rem", { lineHeight: "1rem" }],
