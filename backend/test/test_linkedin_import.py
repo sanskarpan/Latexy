@@ -230,3 +230,236 @@ class TestConverterWorkerSourceHint:
             )
 
         mock_build.assert_called_once_with(STRUCTURE, "pdf", source_hint="linkedin", source_platform=None)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LinkedIn COMPLIANT export/resume import (Feature 1 Phase 3)
+#
+# These tests exercise the DATA-EXPORT parser (a user-uploaded LinkedIn export
+# ZIP or resume file → ProjectEvidence). This is a distinct feature from the
+# Feature-16 document-converter tests above and shares only the file name.
+#
+# COMPLIANCE: every test operates on in-memory bytes only. NO test performs (or
+# permits) any network I/O to LinkedIn — one test actively blocks sockets to
+# prove the parser is fully offline.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import io as _io
+import zipfile as _zipfile
+
+from app.parsers.base_parser import Experience, ParsedResume, Project
+from app.services import linkedin_import_service as lin
+
+
+def _make_export_zip(files: dict) -> bytes:
+    """Build an in-memory LinkedIn-export-style ZIP from {name: csv_text}."""
+    buf = _io.BytesIO()
+    with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+        for name, text in files.items():
+            zf.writestr(name, text)
+    return buf.getvalue()
+
+
+_PROJECTS_CSV = (
+    "Title,Description,Url,Started On,Finished On\r\n"
+    'Latexy,"Resume compiler in the cloud.\nCut latency 40%.",'
+    "https://example.com/latexy,Jan 2024,Dec 2024\r\n"
+)
+_POSITIONS_CSV = (
+    "Company Name,Title,Description,Started On,Finished On\r\n"
+    "Acme Corp,Senior Engineer,Owned backend systems. Led a team of 5.,"
+    "Jan 2020,Present\r\n"
+)
+
+
+class TestParseLinkedInExport:
+    def test_projects_csv_maps_to_project_evidence(self):
+        zip_bytes = _make_export_zip({"Projects.csv": _PROJECTS_CSV})
+        out = lin.parse_linkedin_export(zip_bytes)
+        assert len(out) == 1
+        ev = out[0]
+        assert ev["source"] == "linkedin"
+        assert ev["title"] == "Latexy"
+        assert "Resume compiler" in ev["description"]
+        assert ev["url"] == "https://example.com/latexy"
+        assert ev["dates"]["last_active"] == "Dec 2024"
+        assert ev["metrics"] == {}
+        assert ev["tech"] == []
+        # Newline-delimited description → multiple bullets
+        assert len(ev["suggested_bullets"]) == 2
+
+    def test_positions_csv_maps_title_at_company(self):
+        zip_bytes = _make_export_zip({"Positions.csv": _POSITIONS_CSV})
+        out = lin.parse_linkedin_export(zip_bytes)
+        assert len(out) == 1
+        ev = out[0]
+        assert ev["source"] == "linkedin"
+        assert ev["title"] == "Senior Engineer at Acme Corp"
+        assert ev["dates"]["last_active"] == "Present"
+        assert ev["suggested_bullets"]  # sentence-split description
+
+    def test_both_files_combined(self):
+        zip_bytes = _make_export_zip(
+            {"Projects.csv": _PROJECTS_CSV, "Positions.csv": _POSITIONS_CSV}
+        )
+        out = lin.parse_linkedin_export(zip_bytes)
+        titles = {e["title"] for e in out}
+        assert "Latexy" in titles
+        assert "Senior Engineer at Acme Corp" in titles
+
+    def test_case_insensitive_filename_and_headers(self):
+        csv_text = "TITLE,description\r\nMyProj,Did a thing.\r\n"
+        zip_bytes = _make_export_zip({"data/PROJECTS.CSV": csv_text})
+        out = lin.parse_linkedin_export(zip_bytes)
+        assert len(out) == 1
+        assert out[0]["title"] == "MyProj"
+
+    def test_missing_relevant_files_tolerated(self):
+        zip_bytes = _make_export_zip(
+            {"Profile.csv": "First Name,Last Name\r\nAlice,Lee\r\n"}
+        )
+        assert lin.parse_linkedin_export(zip_bytes) == []
+
+    def test_malformed_csv_tolerated(self):
+        # Ragged rows / stray quotes must not raise.
+        bad = 'Title,Description\r\n"unterminated,thing\r\nok,fine\r\n'
+        zip_bytes = _make_export_zip({"Projects.csv": bad})
+        out = lin.parse_linkedin_export(zip_bytes)
+        assert isinstance(out, list)  # tolerated, whatever it could extract
+
+    def test_bom_encoded_csv(self):
+        text = "﻿Title,Description\r\nBOMProj,Handled BOM.\r\n"
+        zip_bytes = _make_export_zip({"Projects.csv": text})
+        out = lin.parse_linkedin_export(zip_bytes)
+        assert len(out) == 1
+        assert out[0]["title"] == "BOMProj"
+
+    def test_not_a_zip_raises_value_error(self):
+        with pytest.raises(ValueError):
+            lin.parse_linkedin_export(b"this is not a zip file")
+
+    def test_empty_bytes_raises_value_error(self):
+        with pytest.raises(ValueError):
+            lin.parse_linkedin_export(b"")
+
+    def test_non_csv_members_ignored(self):
+        zip_bytes = _make_export_zip(
+            {
+                "Projects.csv": _PROJECTS_CSV,
+                "photo.jpg": "\x00\x01\x02binary",
+                "README.txt": "hello",
+            }
+        )
+        out = lin.parse_linkedin_export(zip_bytes)
+        assert len(out) == 1  # only the CSV contributed
+
+    def test_no_network_used_sockets_blocked(self, monkeypatch):
+        """Prove the parser is fully offline: block sockets, parsing still works."""
+        import socket
+
+        def _boom(*args, **kwargs):
+            raise AssertionError("network access attempted during LinkedIn parse")
+
+        monkeypatch.setattr(socket, "socket", _boom)
+        zip_bytes = _make_export_zip({"Projects.csv": _PROJECTS_CSV})
+        out = lin.parse_linkedin_export(zip_bytes)
+        assert len(out) == 1
+
+
+class TestParseResumeFile:
+    async def test_resume_file_maps_experience_and_projects(self):
+        canned = ParsedResume(
+            experience=[
+                Experience(
+                    title="Staff Engineer",
+                    company="Globex",
+                    start_date="2021",
+                    end_date="2024",
+                    description=["Shipped X", "Scaled Y to 1M users"],
+                    technologies=["Go", "Kafka"],
+                )
+            ],
+            projects=[
+                Project(
+                    name="OpenTool",
+                    description="An open-source tool. Widely adopted.",
+                    technologies=["Rust"],
+                    url="https://example.com/opentool",
+                    end_date="2023",
+                )
+            ],
+        )
+
+        class _FakeParser:
+            async def parse(self, content, filename=""):
+                return canned
+
+        with patch(
+            "app.parsers.parser_factory.parser_factory.get_parser_for_file",
+            return_value=_FakeParser(),
+        ):
+            out = await lin.parse_resume_file(b"%PDF-1.4 fake", "resume.pdf")
+
+        titles = {e["title"] for e in out}
+        assert "Staff Engineer at Globex" in titles
+        assert "OpenTool" in titles
+        for e in out:
+            assert e["source"] == "linkedin"
+        proj = next(e for e in out if e["title"] == "OpenTool")
+        assert proj["tech"] == ["Rust"]
+        assert proj["url"] == "https://example.com/opentool"
+        exp = next(e for e in out if e["title"] == "Staff Engineer at Globex")
+        assert exp["suggested_bullets"] == ["Shipped X", "Scaled Y to 1M users"]
+
+    async def test_unsupported_format_raises(self):
+        with patch(
+            "app.parsers.parser_factory.parser_factory.get_parser_for_file",
+            return_value=None,
+        ):
+            with pytest.raises(ValueError):
+                await lin.parse_resume_file(b"junk", "weird.xyz")
+
+    async def test_empty_resume_bytes_raises(self):
+        with pytest.raises(ValueError):
+            await lin.parse_resume_file(b"", "resume.pdf")
+
+
+@pytest.mark.asyncio
+class TestSourcesImportEndpoint:
+    async def test_import_zip_returns_projects(self, client: AsyncClient, auth_headers):
+        zip_bytes = _make_export_zip({"Projects.csv": _PROJECTS_CSV})
+        resp = await client.post(
+            "/sources/import-linkedin",
+            files={"file": ("export.zip", zip_bytes, "application/zip")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["projects"]) == 1
+        assert body["projects"][0]["source"] == "linkedin"
+        assert body["projects"][0]["title"] == "Latexy"
+
+    async def test_import_bad_zip_returns_422(self, client: AsyncClient, auth_headers):
+        resp = await client.post(
+            "/sources/import-linkedin",
+            files={"file": ("export.zip", b"definitely not a zip", "application/zip")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422
+
+    async def test_import_oversized_returns_413(self, client: AsyncClient, auth_headers):
+        big = b"\x00" * (10 * 1024 * 1024 + 1)
+        resp = await client.post(
+            "/sources/import-linkedin",
+            files={"file": ("big.zip", big, "application/zip")},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 413
+
+    async def test_import_requires_auth(self, client: AsyncClient):
+        zip_bytes = _make_export_zip({"Projects.csv": _PROJECTS_CSV})
+        resp = await client.post(
+            "/sources/import-linkedin",
+            files={"file": ("export.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code in (401, 403)

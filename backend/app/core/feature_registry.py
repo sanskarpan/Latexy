@@ -93,6 +93,8 @@ FEATURE_REGISTRY: list[FeatureDef] = [
                "Import your top public GitHub projects as AI-summarized resume evidence."),
     FeatureDef("ai_import_url", "URL Project Import", "integrations",
                "Import projects from a portfolio or personal-site URL as AI-summarized resume evidence."),
+    FeatureDef("ai_import_linkedin", "LinkedIn Export Import", "integrations",
+               "Import projects and experience from a user-uploaded LinkedIn data export or resume file."),
     # ---- analytics --------------------------------------------------------
     FeatureDef("analytics", "Analytics Dashboard", "analytics",
                "Usage and performance analytics dashboard."),
