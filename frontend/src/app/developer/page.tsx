@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { KeyRound, Trash2 } from 'lucide-react'
 import { useSession } from '@/lib/auth-client'
 import {
   apiClient,
@@ -12,6 +13,19 @@ import {
 } from '@/lib/api-client'
 
 type ExampleTab = 'curl' | 'python' | 'node'
+
+const reveal = 'motion-safe:animate-[fade-in-up_.7s_cubic-bezier(.2,.7,.2,1)_both]'
+
+const primaryBtn =
+  'inline-flex items-center justify-center rounded-[var(--radius-md)] bg-accent px-5 py-2.5 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 motion-reduce:transition-none'
+
+const ghostBtn =
+  'inline-flex items-center justify-center rounded-[var(--radius-md)] border border-line-2 px-4 py-2.5 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-fg transition duration-150 hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 motion-reduce:transition-none'
+
+const fieldInput =
+  'w-full rounded-[var(--radius-md)] border border-line-2 bg-surface px-3 py-2.5 font-body text-sm text-fg outline-none transition duration-150 placeholder:text-fg-3 focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none'
+
+const label = 'font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3'
 
 export default function DeveloperPage() {
   const { data: session, isPending } = useSession()
@@ -137,125 +151,158 @@ console.log(payload);`,
 
   if (isPending || !session) {
     return (
-      <div className="content-shell">
-        <div className="surface-panel edge-highlight p-6 sm:p-8 text-slate-300">
-          Loading developer portal...
+      <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8">
+        <div className="border border-line bg-surface p-6 font-ui text-sm text-fg-3 sm:p-8">
+          Loading developer portal…
         </div>
       </div>
     )
   }
 
   return (
-    <div className="content-shell">
-      <div className="space-y-6">
-        <section className="surface-panel edge-highlight p-6 sm:p-8">
-          <h1 className="text-3xl font-bold text-white tracking-tight">Developer API</h1>
-          <p className="mt-2 max-w-2xl text-zinc-400">
-            Create stable API keys for compile, optimize, and ATS workflows. Keys are shown only once and are rate-limited by your current plan.
-          </p>
-        </section>
+    <div className="bg-bg text-fg">
+      {/* folio strip */}
+      <div className="border-b border-line">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-2 font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3 sm:px-8">
+          <span>№ 07 — Developer API</span>
+          <span className="hidden sm:inline">Bearer keys · rate-limited by plan</span>
+          <span>compile · optimize · ats</span>
+        </div>
+      </div>
 
-        <section className="surface-panel edge-highlight p-5 sm:p-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-white">API keys</h2>
-              <p className="mt-1 text-sm text-slate-400">Maximum 5 active keys per account.</p>
-            </div>
+      {/* ── hero ── */}
+      <section className={`mx-auto max-w-6xl px-5 py-14 sm:px-8 lg:py-20 ${reveal}`}>
+        <span className={label}>The API</span>
+        <h1 className="mt-5 max-w-[18ch] text-balance font-display text-[clamp(2.4rem,6vw,4.4rem)] font-semibold leading-[0.98] tracking-[-0.025em] text-fg">
+          Compile, optimize, and score — <em className="italic text-accent">from your own stack.</em>
+        </h1>
+        <p className="mt-6 max-w-[52ch] font-body text-lg text-fg-2">
+          Create stable API keys for compile, optimize, and ATS workflows. Keys are shown only once and
+          are rate-limited by your current plan.
+        </p>
+      </section>
+
+      {/* ── § 1 · API keys ── */}
+      <section className="mx-auto max-w-6xl px-5 pb-14 sm:px-8">
+        <div className="mb-6 flex items-baseline gap-3 border-b border-line pb-4">
+          <span className="font-ui text-sm text-accent-strong">§ 1</span>
+          <h2 className="font-display text-[clamp(1.5rem,3vw,2.1rem)] font-semibold text-fg">API keys</h2>
+          <span className="ml-auto font-ui text-xs text-fg-3">Maximum 5 active keys per account</span>
+        </div>
+
+        {/* create */}
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+          <label htmlFor="new-key-name" className="sr-only">
+            New key name
+          </label>
+          <input
+            id="new-key-name"
+            value={createName}
+            onChange={(event) => setCreateName(event.target.value)}
+            placeholder="Production integration"
+            className={fieldInput}
+          />
+          <button
+            onClick={handleCreateKey}
+            disabled={busyKeyId === 'new' || !createName.trim()}
+            className={`${primaryBtn} shrink-0`}
+          >
+            {busyKeyId === 'new' ? 'Creating…' : 'Create key'}
+          </button>
+        </div>
+
+        {createdKey && (
+          <div className="mb-6 rounded-[var(--radius-md)] border border-accent bg-accent-soft p-4">
+            <p className="flex items-center gap-2 font-ui text-xs uppercase tracking-[0.14em] text-accent-strong">
+              <KeyRound className="h-4 w-4" aria-hidden="true" />
+              Copy this key now — it will never be shown again
+            </p>
+            <code className="mt-3 block overflow-x-auto rounded-[var(--radius-sm)] bg-code-bg p-3 font-ui text-sm text-code-fg">
+              {createdKey.full_key}
+            </code>
           </div>
+        )}
 
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row">
-            <input
-              value={createName}
-              onChange={(event) => setCreateName(event.target.value)}
-              placeholder="Production integration"
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500"
-            />
-            <button
-              onClick={handleCreateKey}
-              disabled={busyKeyId === 'new' || !createName.trim()}
-              className="rounded-lg bg-orange-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-orange-200 disabled:opacity-60"
-            >
-              {busyKeyId === 'new' ? 'Creating...' : 'Create key'}
-            </button>
+        {loading ? (
+          <div className="border border-line bg-surface p-4 font-ui text-sm text-fg-3">Loading keys…</div>
+        ) : keys.length === 0 ? (
+          <div className="border border-line bg-surface p-4 font-ui text-sm text-fg-3">
+            No developer API keys yet.
           </div>
-
-          {createdKey && (
-            <div className="mb-5 rounded-xl border border-amber-300/30 bg-amber-300/10 p-4">
-              <p className="text-sm font-semibold text-amber-100">Copy this key now. It will never be shown again.</p>
-              <code className="mt-3 block overflow-x-auto rounded-lg bg-black/50 p-3 text-sm text-white">{createdKey.full_key}</code>
-            </div>
-          )}
-
-          {loading ? (
-            <div className="rounded-xl border border-white/10 bg-slate-950/60 p-4 text-slate-300">Loading keys...</div>
-          ) : (
-            <div className="space-y-3">
-              {keys.length === 0 ? (
-                <div className="rounded-xl border border-white/10 bg-slate-950/60 p-4 text-sm text-slate-400">
-                  No developer API keys yet.
-                </div>
-              ) : (
-                keys.map((key) => (
-                  <div key={key.id} className="rounded-xl border border-white/10 bg-slate-950/60 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-white">{key.key_prefix}</p>
-                        <p className="mt-1 text-xs text-slate-400">
-                          {key.request_count} requests • last used {key.last_used_at ? new Date(key.last_used_at).toLocaleString() : 'never'}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => handleRevoke(key.id)}
-                        disabled={busyKeyId === key.id}
-                        className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-sm text-rose-100 hover:bg-rose-300/20 disabled:opacity-60"
-                      >
-                        Revoke
-                      </button>
-                    </div>
-                    <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                      <input
-                        value={renaming[key.id] ?? ''}
-                        onChange={(event) => setRenaming((current) => ({ ...current, [key.id]: event.target.value }))}
-                        className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none"
-                      />
-                      <button
-                        onClick={() => handleRename(key.id)}
-                        disabled={busyKeyId === key.id}
-                        className="rounded-lg border border-white/15 px-4 py-2 text-sm text-slate-100 hover:bg-white/10 disabled:opacity-60"
-                      >
-                        Rename
-                      </button>
-                    </div>
+        ) : (
+          <div className="overflow-hidden rounded-[var(--radius-lg)] border border-line">
+            {keys.map((key, i) => (
+              <div key={key.id} className={`bg-surface p-5 ${i > 0 ? 'border-t border-line' : ''}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-ui text-sm font-semibold text-fg">{key.key_prefix}</p>
+                    <p className="mt-1 font-ui text-xs text-fg-3">
+                      {key.request_count} requests · last used{' '}
+                      {key.last_used_at ? new Date(key.last_used_at).toLocaleString() : 'never'}
+                    </p>
                   </div>
-                ))
-              )}
-            </div>
-          )}
-        </section>
-
-        <section className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
-          <div className="surface-panel edge-highlight min-w-0 p-5 sm:p-6">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-white">Usage</h2>
-                <p className="mt-1 text-sm text-slate-400">
-                  {usage ? `Current plan: ${usage.plan_id} • ${usage.daily_limit} requests/day` : 'Rate limit history'}
-                </p>
+                  <button
+                    onClick={() => handleRevoke(key.id)}
+                    disabled={busyKeyId === key.id}
+                    className="inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-line-2 px-3 py-2 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-err transition duration-150 hover:border-err focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 motion-reduce:transition-none"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    Revoke
+                  </button>
+                </div>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                  <label htmlFor={`rename-${key.id}`} className="sr-only">
+                    Rename key
+                  </label>
+                  <input
+                    id={`rename-${key.id}`}
+                    value={renaming[key.id] ?? ''}
+                    onChange={(event) =>
+                      setRenaming((current) => ({ ...current, [key.id]: event.target.value }))
+                    }
+                    className={fieldInput}
+                  />
+                  <button
+                    onClick={() => handleRename(key.id)}
+                    disabled={busyKeyId === key.id}
+                    className={`${ghostBtn} shrink-0`}
+                  >
+                    Rename
+                  </button>
+                </div>
               </div>
-            </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-            <div className="space-y-3">
+      {/* ── § 2 · usage + docs ── */}
+      <section className="mx-auto max-w-6xl px-5 pb-20 sm:px-8">
+        <div className="grid gap-8 xl:grid-cols-[1.2fr_1fr]">
+          {/* usage */}
+          <div className="min-w-0">
+            <div className="mb-6 flex items-baseline gap-3 border-b border-line pb-4">
+              <span className="font-ui text-sm text-accent-strong">§ 2</span>
+              <h2 className="font-display text-[clamp(1.5rem,3vw,2.1rem)] font-semibold text-fg">Usage</h2>
+            </div>
+            <p className="mb-5 font-ui text-xs text-fg-3">
+              {usage
+                ? `Current plan: ${usage.plan_id} · ${usage.daily_limit} requests/day`
+                : 'Rate limit history'}
+            </p>
+
+            <div className="space-y-4">
               {(usage?.history || []).map((point) => {
                 const max = Math.max(...(usage?.history.map((entry) => entry.count) || [1]), 1)
                 const width = `${Math.max((point.count / max) * 100, point.count > 0 ? 6 : 0)}%`
                 return (
                   <div key={point.date}>
-                    <div className="mb-1 flex items-center justify-between text-sm text-slate-300">
+                    <div className="mb-1.5 flex items-center justify-between font-ui text-xs text-fg-2">
                       <span>{point.date}</span>
-                      <span>{point.count}</span>
+                      <span className="text-fg">{point.count}</span>
                     </div>
-                    <div className="h-2 rounded-full bg-white/10">
-                      <div className="h-2 rounded-full bg-orange-300" style={{ width }} />
+                    <div className="h-2 rounded-[var(--radius-pill)] bg-surface-2">
+                      <div className="h-2 rounded-[var(--radius-pill)] bg-accent" style={{ width }} />
                     </div>
                   </div>
                 )
@@ -263,29 +310,59 @@ console.log(payload);`,
             </div>
           </div>
 
-          <div className="surface-panel edge-highlight min-w-0 p-5 sm:p-6">
-            <h2 className="text-lg font-semibold text-white">Documentation</h2>
-            <div className="mt-4 inline-flex rounded-xl border border-white/10 bg-slate-950/70 p-1">
+          {/* docs */}
+          <div className="min-w-0">
+            <div className="mb-6 flex items-baseline gap-3 border-b border-line pb-4">
+              <span className="font-ui text-sm text-accent-strong">§ 3</span>
+              <h2 className="font-display text-[clamp(1.5rem,3vw,2.1rem)] font-semibold text-fg">
+                Documentation
+              </h2>
+            </div>
+
+            <div
+              role="tablist"
+              aria-label="Code examples"
+              className="inline-flex gap-1 rounded-[var(--radius-md)] border border-line bg-surface p-1"
+            >
               {(['curl', 'python', 'node'] as ExampleTab[]).map((tab) => (
                 <button
                   key={tab}
+                  role="tab"
+                  aria-selected={activeTab === tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`rounded-lg px-4 py-2 text-sm capitalize ${activeTab === tab ? 'bg-orange-300 text-slate-950' : 'text-slate-300'}`}
+                  className={`rounded-[var(--radius-sm)] px-4 py-2 font-ui text-xs uppercase tracking-[0.06em] transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none ${
+                    activeTab === tab
+                      ? 'bg-accent text-accent-fg'
+                      : 'text-fg-3 hover:text-fg'
+                  }`}
                 >
                   {tab}
                 </button>
               ))}
             </div>
-            <pre className="mt-4 max-w-full overflow-x-auto rounded-xl border border-white/10 bg-black/50 p-4 text-xs text-slate-200">
+
+            <pre className="mt-4 max-w-full overflow-x-auto rounded-[var(--radius-md)] border border-line bg-code-bg p-4 font-ui text-xs leading-relaxed text-code-fg">
               {codeExamples[activeTab]}
             </pre>
-            <div className="mt-4 space-y-2 text-sm text-slate-300">
-              <p className="break-words">Available endpoints: `POST /api/v1/compile`, `POST /api/v1/optimize`, `POST /api/v1/ats/score`, `GET /api/v1/jobs/{'{job_id}'}`.</p>
-              <p className="break-words">Interactive backend docs: {(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030')}/docs</p>
+
+            <div className="mt-5 space-y-2 border-t border-line pt-4 font-body text-sm text-fg-2">
+              <p className="break-words">
+                <span className={label}>Endpoints</span>{' '}
+                <code className="font-ui text-xs text-code-fg">POST /api/v1/compile</code>,{' '}
+                <code className="font-ui text-xs text-code-fg">POST /api/v1/optimize</code>,{' '}
+                <code className="font-ui text-xs text-code-fg">POST /api/v1/ats/score</code>,{' '}
+                <code className="font-ui text-xs text-code-fg">GET /api/v1/jobs/{'{job_id}'}</code>.
+              </p>
+              <p className="break-words">
+                <span className={label}>Interactive docs</span>{' '}
+                <span className="text-accent-strong">
+                  {(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030')}/docs
+                </span>
+              </p>
             </div>
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
     </div>
   )
 }
