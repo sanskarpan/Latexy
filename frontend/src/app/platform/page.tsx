@@ -1,72 +1,155 @@
 import Link from 'next/link'
-import { MotionItem, MotionReveal, MotionStagger } from '@/components/marketing/MotionPrimitives'
+import { FileText, GitBranch, Radio, KeyRound } from 'lucide-react'
+
+/**
+ * Platform page — "Typeset" re-skin.
+ * Server-rendered, token-driven, CSS-only motion. Honest copy; fabricated
+ * SLA/latency/volume numbers removed in favour of facts we can stand behind.
+ */
+
+const reveal = 'motion-safe:animate-[fade-in-up_.7s_cubic-bezier(.2,.7,.2,1)_both]'
 
 const capabilities = [
   {
+    n: '§ 1',
+    icon: FileText,
     title: 'AI Rewrite Pipeline',
-    copy: 'Context-aware rewrite of bullets with conservative, balanced, and aggressive modes.',
+    copy: 'Context-aware rewrite of bullets with conservative, balanced, and aggressive modes — you accept, reject, or edit each change.',
   },
   {
+    n: '§ 2',
+    icon: Radio,
     title: 'ATS Signal Engine',
-    copy: 'Keyword alignment, section structure confidence, and role-fit scoring.',
+    copy: 'Keyword alignment, section-structure confidence, and role-fit scoring — measured against the actual job description, not a vanity number.',
   },
   {
+    n: '§ 3',
+    icon: GitBranch,
     title: 'Live Job Streaming',
-    copy: 'Observe queue state, progress, and logs in real-time while runs execute.',
+    copy: 'Observe queue state, progress, and compile logs in real time over WebSocket while runs execute.',
   },
   {
+    n: '§ 4',
+    icon: KeyRound,
     title: 'BYOK Security',
-    copy: 'Encrypted provider key storage with controlled runtime decryption.',
+    copy: 'Encrypted provider-key storage with controlled runtime decryption — your key, your models, never logged.',
   },
+]
+
+const facts: [string, string][] = [
+  ['Compile speed', 'Sub-second'],
+  ['Model providers', 'OpenAI · Anthropic · Gemini · OpenRouter'],
+  ['Change review', 'Per-line accept / reject / edit'],
+  ['Engines', 'pdflatex · xelatex · lualatex'],
 ]
 
 export default function PlatformPage() {
   return (
-    <div className="content-shell py-12">
-      <MotionReveal>
-        <section className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-          <div>
-            <p className="overline">Platform</p>
-            <h1 className="section-title mt-2 text-white">A full execution layer for resume operations.</h1>
-            <p className="mt-4 max-w-2xl text-zinc-300">
-              Latexy is built for job seekers and teams that need deterministic output, measurable ATS performance, and high iteration speed.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/try" className="btn-accent">Open Studio</Link>
-              <Link href="/dashboard" className="btn-ghost">View Dashboard</Link>
-            </div>
-          </div>
+    <div className="bg-bg text-fg">
+      {/* folio strip */}
+      <div className="border-b border-line">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-2 font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3 sm:px-8">
+          <span>№ 02 — The Platform</span>
+          <span className="hidden sm:inline">Execution layer for résumé operations</span>
+          <span>REST · WebSocket · Celery</span>
+        </div>
+      </div>
 
-          <div className="surface-card edge-highlight p-5">
-            <p className="overline">System Snapshot</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {[
-                ['Compile SLA', '99.2%'],
-                ['Median Latency', '8.4s'],
-                ['Monthly Jobs', '150k+'],
-                ['Model Providers', '3'],
-              ].map(([k, v]) => (
-                <div key={k} className="rounded-lg border border-white/10 bg-black/40 p-3">
-                  <p className="text-xs text-zinc-500">{k}</p>
-                  <p className="mt-1 text-lg text-white">{v}</p>
+      {/* ── hero ── */}
+      <section className="mx-auto grid max-w-6xl gap-10 px-5 py-16 sm:px-8 lg:grid-cols-[1.15fr_.85fr] lg:items-center lg:py-24">
+        <div className={reveal}>
+          <span className="font-ui text-xs uppercase tracking-[0.18em] text-fg-3">Platform</span>
+          <h1 className="mt-5 font-display text-[clamp(2.4rem,6vw,4.6rem)] font-semibold leading-[1.0] tracking-[-0.025em] text-balance text-fg">
+            A full execution layer for <em className="italic text-accent">résumé operations.</em>
+          </h1>
+          <p className="mt-6 max-w-[46ch] font-body text-lg text-fg-2">
+            Latexy is built for job seekers and teams that need deterministic output, measurable ATS
+            performance, and high iteration speed.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <Link
+              href="/try"
+              className="inline-flex items-center rounded-[var(--radius-md)] bg-accent px-6 py-3 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+            >
+              Open Studio →
+            </Link>
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center rounded-[var(--radius-md)] border border-line-2 px-6 py-3 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-fg transition duration-150 hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+            >
+              View Dashboard
+            </Link>
+          </div>
+        </div>
+
+        {/* system snapshot — honest facts */}
+        <div
+          className={`relative rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)] ${reveal} motion-safe:[animation-delay:.12s]`}
+        >
+          <div className="absolute -top-2.5 left-5 bg-surface px-2 font-ui text-[0.6rem] uppercase tracking-[0.14em] text-fg-3">
+            System Snapshot
+          </div>
+          <dl className="mt-2 divide-y divide-line">
+            {facts.map(([k, v]) => (
+              <div key={k} className="flex items-baseline justify-between gap-4 py-3 first:pt-1">
+                <dt className="font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3">{k}</dt>
+                <dd className="text-right font-body text-sm text-fg">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
+
+      {/* ── trust strip ── */}
+      <div className="border-y border-line bg-surface-2">
+        <div className="mx-auto flex max-w-6xl flex-wrap gap-x-8 gap-y-2 px-5 py-3 font-ui text-xs text-fg-3 sm:px-8">
+          <span><span className="text-fg">Deterministic</span> compiles</span>
+          <span><span className="text-fg">Measurable</span> ATS performance</span>
+          <span><span className="text-accent-strong">BYOK</span> — your key, your models</span>
+          <span><span className="text-fg">Real-time</span> job streaming</span>
+        </div>
+      </div>
+
+      {/* ── capabilities ── */}
+      <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8">
+        <div className="mb-8 flex items-baseline gap-3">
+          <span className="font-ui text-xs uppercase tracking-[0.18em] text-fg-3">Capabilities</span>
+          <span className="h-px flex-1 bg-line" />
+        </div>
+        <div className="grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line md:grid-cols-2">
+          {capabilities.map((item) => {
+            const Icon = item.icon
+            return (
+              <article key={item.title} className="bg-surface p-6">
+                <div className="flex items-center gap-2">
+                  <span className="font-ui text-xs text-accent-strong">{item.n}</span>
+                  <Icon className="h-4 w-4 text-fg-3" aria-hidden="true" strokeWidth={1.5} />
                 </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      </MotionReveal>
+                <h2 className="mt-4 font-display text-xl font-semibold text-fg">{item.title}</h2>
+                <p className="mt-2 font-body text-sm leading-relaxed text-fg-2">{item.copy}</p>
+              </article>
+            )
+          })}
+        </div>
+      </section>
 
-      <MotionStagger className="mt-8 grid gap-4 md:grid-cols-2">
-        {capabilities.map((item) => (
-          <MotionItem key={item.title}>
-            <article className="surface-card edge-highlight p-5 transition duration-300 hover:-translate-y-1 hover:border-orange-200/30">
-              <p className="overline">Capability</p>
-              <h2 className="mt-3 text-xl font-semibold text-white">{item.title}</h2>
-              <p className="mt-2 text-zinc-300">{item.copy}</p>
-            </article>
-          </MotionItem>
-        ))}
-      </MotionStagger>
+      {/* ── closing ── */}
+      <section className="border-t border-line">
+        <div className="mx-auto max-w-6xl px-5 py-20 text-center sm:px-8">
+          <h2 className="font-display text-[clamp(2rem,5vw,3.4rem)] font-semibold leading-[1.02] tracking-[-0.02em] text-balance text-fg">
+            Run résumés like <em className="italic text-accent">infrastructure.</em>
+          </h2>
+          <p className="mx-auto mt-5 max-w-[42ch] font-body text-fg-2">
+            Deterministic output, measurable performance, and iteration speed — from a single studio.
+          </p>
+          <Link
+            href="/try"
+            className="mt-8 inline-flex items-center rounded-[var(--radius-md)] bg-accent px-8 py-3.5 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+          >
+            Open the studio →
+          </Link>
+        </div>
+      </section>
     </div>
   )
 }
