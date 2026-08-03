@@ -1,153 +1,188 @@
 import Link from 'next/link'
-import dynamic from 'next/dynamic'
-import HeroTypingLine from '@/components/marketing/HeroTypingLine'
-import { MotionItem, MotionReveal, MotionStagger, ScrollDepth } from '@/components/marketing/MotionPrimitives'
 
-const HeroScene3D = dynamic(() => import('@/components/marketing/HeroScene3D'), {
-  ssr: false,
-  loading: () => null,
-})
+/**
+ * Landing page — "Typeset" reference (redesign, PRD 2026-08-03).
+ * The site is set like a printed specimen: serif display, mono labels, a baseline
+ * grid, real section marks, and proof-marks used only where they mean something.
+ * Token-driven (resolves to typeset·light/dark), server-rendered, CSS-only motion
+ * (LCP is the headline text, not a demo). Problem-oriented sections, honest copy.
+ */
 
-const featureCards = [
-  {
-    title: 'LaTeX-First Accuracy',
-    text: 'No visual drift. Production-grade resume output every run.',
-  },
-  {
-    title: 'Signal-Driven ATS Scoring',
-    text: 'Keyword fit, structure checks, and recommendations in one pass.',
-  },
-  {
-    title: 'AI Context Optimization',
-    text: 'Inject job context and auto-adapt bullets to target role intent.',
-  },
-]
+const reveal = 'motion-safe:animate-[fade-in-up_.7s_cubic-bezier(.2,.7,.2,1)_both]'
 
-const workflow = [
+const problems = [
   {
-    step: '01',
-    title: 'Draft Or Import Resume',
-    text: 'Start with your existing LaTeX resume or use a clean template baseline.',
+    n: '§ 1',
+    quip: '“The AI rewrote my whole résumé.”',
+    title: 'You approve every edit.',
+    body: 'The optimizer drafts; you accept, reject, or rewrite each change with its reason shown. No silent auto-rewrite — the document stays yours.',
   },
   {
-    step: '02',
-    title: 'Inject Job Context',
-    text: 'Paste the target job description and run a context-aware optimization.',
+    n: '§ 2',
+    quip: '“My projects live in GitHub, not a form.”',
+    title: 'Import from where you work.',
+    body: 'Pull your best projects from GitHub, a portfolio URL, or a LinkedIn export — summarized into résumé-ready lines you choose to keep.',
   },
   {
-    step: '03',
-    title: 'Review ATS Signals',
-    text: 'Check score movement, keyword alignment, and risk areas before submitting.',
-  },
-  {
-    step: '04',
-    title: 'Ship Final PDF',
-    text: 'Compile and download a deterministic, application-ready resume output.',
+    n: '§ 3',
+    quip: '“The ATS ate my formatting.”',
+    title: 'Parse-clean by design.',
+    body: 'Single-column, standard headings, real text — the formatting where ATS value is actually won, not keyword-stuffed to a fake score.',
   },
 ]
 
 export default function LandingPage() {
   return (
-    <div className="relative overflow-hidden py-12">
-      <ScrollDepth className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_58%_44%,rgba(247,123,82,0.24),transparent_46%)]" />
-
-      <div className="content-shell">
-        <MotionReveal className="relative" y={30}>
-          <div className="orange-burst relative mx-auto max-w-5xl rounded-[44px] border border-white/10 bg-black/45 p-3 sm:p-4">
-            <div className="relative h-[360px] overflow-hidden rounded-[34px] bg-black sm:h-[460px]">
-              <HeroScene3D />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_52%_38%,rgba(255,132,93,0.28),transparent_42%)]" />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(255,183,160,0.16),transparent_48%)]" />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/5 via-black/30 to-black/60" />
-
-              <div className="absolute inset-x-0 bottom-6 z-20 px-3 sm:bottom-9">
-                <h1 className="text-center text-[clamp(2.15rem,7.1vw,6.25rem)] font-semibold leading-[0.92] tracking-[-0.04em] text-white">
-                  <span className="block">Build resumes</span>
-                  <HeroTypingLine />
-                </h1>
-              </div>
-            </div>
-          </div>
-
-          <p className="mx-auto mt-8 max-w-2xl text-center text-lg text-zinc-300">
-            LaTeX precision, ATS intelligence, and AI optimization in one clean control surface.
-          </p>
-
-          <div className="mt-8 flex flex-wrap justify-center gap-4">
-            <Link href="/try" className="btn-accent px-8 py-3 font-bold">
-              Start Building
-            </Link>
-            <Link href="/platform" className="btn-ghost px-8 py-3 font-bold">
-              Explore Platform
-            </Link>
-          </div>
-        </MotionReveal>
-
-        <MotionStagger className="mt-20 grid gap-4 sm:grid-cols-3">
-          {[
-            ['Latency', '8.4s median compile'],
-            ['ATS Lift', '+23% average score gain'],
-            ['Resumes', '50k+ generated monthly'],
-          ].map(([k, v]) => (
-            <MotionItem key={k}>
-              <div className="surface-card px-6 py-5 transition duration-300 hover:-translate-y-1 hover:border-orange-200/30">
-                <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">{k}</p>
-                <p className="mt-2 text-xl font-bold text-white">{v}</p>
-              </div>
-            </MotionItem>
-          ))}
-        </MotionStagger>
-
-        <MotionStagger className="mt-8 grid gap-4 md:grid-cols-3">
-          {featureCards.map((card) => (
-            <MotionItem key={card.title}>
-              <article className="surface-card edge-highlight p-6 transition duration-300 hover:-translate-y-1 hover:border-orange-200/30">
-                <p className="overline">Feature</p>
-                <h3 className="mt-3 text-xl font-bold text-white">{card.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-zinc-400">{card.text}</p>
-              </article>
-            </MotionItem>
-          ))}
-        </MotionStagger>
-
-        <MotionReveal className="mt-12">
-          <section className="surface-card edge-highlight p-8 sm:p-10">
-            <p className="overline">Workflow</p>
-            <h2 className="section-title mt-2 font-bold text-white">A complete application pipeline, not just a form.</h2>
-            <p className="mt-4 max-w-3xl text-zinc-400">
-              Move from resume draft to high-confidence submission with measurable quality signals at each step.
-            </p>
-
-            <div className="mt-10 grid gap-4 md:grid-cols-2">
-              {workflow.map((item) => (
-                <div key={item.step} className="rounded-2xl border border-white/10 border-l-4 border-l-orange-300/40 bg-black/35 p-6">
-                  <p className="text-xs font-mono font-bold tracking-[0.2em] text-orange-200">STEP {item.step}</p>
-                  <h3 className="mt-3 text-lg font-bold text-white">{item.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-zinc-400">{item.text}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        </MotionReveal>
-
-        <MotionReveal className="mt-12">
-          <section className="surface-panel edge-highlight bg-gradient-to-br from-orange-300/10 to-transparent p-10 text-center sm:p-16">
-            <p className="overline">Get Started</p>
-            <h2 className="section-title mt-2 font-bold text-white">Turn every application into a repeatable system.</h2>
-            <p className="mx-auto mt-4 max-w-2xl text-lg text-zinc-400">
-              Launch the studio, run your optimized pipeline, and ship stronger resumes in less time.
-            </p>
-            <div className="mt-10 flex flex-wrap justify-center gap-4">
-              <Link href="/try" className="btn-accent px-10 py-4 text-lg font-bold">
-                Open Resume Studio
-              </Link>
-              <Link href="/dashboard" className="btn-ghost px-10 py-4 text-lg font-bold">
-                View Dashboard
-              </Link>
-            </div>
-          </section>
-        </MotionReveal>
+    <div className="bg-bg text-fg">
+      {/* folio strip */}
+      <div className="border-b border-line">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-2 font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3 sm:px-8">
+          <span>№ 01 — The Résumé, Typeset</span>
+          <span className="hidden sm:inline">Set in Fraunces &amp; JetBrains Mono</span>
+          <span>pdflatex · xelatex · lualatex</span>
+        </div>
       </div>
+
+      {/* ── hero ── */}
+      <section className="mx-auto grid max-w-6xl gap-10 px-5 py-16 sm:px-8 lg:grid-cols-[1.15fr_.85fr] lg:items-center lg:py-24">
+        <div className={reveal}>
+          <span className="font-ui text-xs uppercase tracking-[0.18em] text-fg-3">
+            New — import projects from GitHub, a URL, or LinkedIn
+          </span>
+          <h1 className="mt-5 font-display text-[clamp(2.6rem,7vw,5.4rem)] font-semibold leading-[0.98] tracking-[-0.025em] text-fg">
+            Your résumé, <em className="italic text-accent">tailored</em> — and you approve every line.
+          </h1>
+          <p className="mt-6 max-w-[42ch] font-body text-lg text-fg-2">
+            Write in LaTeX, let the AI tailor it to the role, and review every change before it lands.
+            Output that looks like it came off a press — because it did.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <Link
+              href="/try"
+              className="inline-flex items-center rounded-[var(--radius-md)] bg-accent px-6 py-3 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+            >
+              Start compiling →
+            </Link>
+            <Link
+              href="/templates"
+              className="inline-flex items-center rounded-[var(--radius-md)] border border-line-2 px-6 py-3 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-fg transition duration-150 hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+            >
+              See a specimen
+            </Link>
+            <span className="font-ui text-xs text-fg-3">3 free compiles · no card</span>
+          </div>
+        </div>
+
+        {/* living specimen */}
+        <div
+          className={`relative rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)] ${reveal} motion-safe:[animation-delay:.12s]`}
+          aria-label="A résumé being edited"
+        >
+          <div className="absolute -top-2.5 left-5 bg-surface px-2 font-ui text-[0.6rem] uppercase tracking-[0.14em] text-fg-3">
+            resume.tex → resume.pdf
+          </div>
+          <p className="font-display text-2xl font-semibold text-fg">Ada Lovelace</p>
+          <p className="mt-0.5 font-ui text-xs text-fg-3">Staff Engineer · London · ada@analytical.dev</p>
+          <div className="my-3 h-px bg-fg" />
+          <p className="font-ui text-[0.62rem] uppercase tracking-[0.2em] text-accent-strong">Experience</p>
+          <p className="mt-1 font-body text-sm leading-relaxed text-fg-2">
+            Led the{' '}
+            <span className="border-b-2 border-accent bg-accent-soft px-0.5 text-fg">Kubernetes</span>{' '}
+            migration, cutting p95 latency{' '}
+            <span className="text-err line-through decoration-err">a lot</span>{' '}
+            <span className="border-b-2 border-accent bg-accent-soft px-0.5 text-fg">from 380ms to 140ms</span>.
+          </p>
+          <p className="mt-3 font-ui text-[0.62rem] uppercase tracking-[0.2em] text-accent-strong">Skills</p>
+          <p className="mt-1 font-body text-sm text-fg-2">
+            Go · Rust ·{' '}
+            <span className="border-b-2 border-accent bg-accent-soft px-0.5 text-fg">Distributed systems</span> · Postgres
+          </p>
+          <p className="mt-4 font-ui text-[0.62rem] leading-relaxed text-fg-3">
+            ↑ AI proposed 3 edits · you accepted 2, kept your voice.
+          </p>
+        </div>
+      </section>
+
+      {/* ── trust strip (honest facts, no fabricated numbers) ── */}
+      <div className="border-y border-line bg-surface-2">
+        <div className="mx-auto flex max-w-6xl flex-wrap gap-x-8 gap-y-2 px-5 py-3 font-ui text-xs text-fg-3 sm:px-8">
+          <span><span className="text-fg">Sub-second</span> compiles</span>
+          <span><span className="text-fg">4</span> import sources: <span className="text-accent-strong">github · url · linkedin · pdf</span></span>
+          <span><span className="text-fg">Per-change</span> accept / reject / edit</span>
+          <span><span className="text-fg">BYOK</span> — your key, your models</span>
+        </div>
+      </div>
+
+      {/* ── problems, not features ── */}
+      <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8">
+        <div className="grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line md:grid-cols-3">
+          {problems.map((p) => (
+            <article key={p.n} className="bg-surface p-6">
+              <div className="flex items-baseline gap-2">
+                <span className="font-ui text-xs text-accent-strong">{p.n}</span>
+                <span className="font-ui text-[0.68rem] italic text-fg-3">{p.quip}</span>
+              </div>
+              <h3 className="mt-4 font-display text-xl font-semibold text-fg">{p.title}</h3>
+              <p className="mt-2 font-body text-sm leading-relaxed text-fg-2">{p.body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* ── product moment: source → impression ── */}
+      <section className="mx-auto max-w-6xl px-5 pb-16 sm:px-8">
+        <div className="mb-6 flex items-baseline gap-3">
+          <span className="font-ui text-sm text-accent-strong">§ 4</span>
+          <h2 className="font-display text-[clamp(1.5rem,3vw,2.1rem)] font-semibold text-fg">
+            Source on the left. Impression on the right.
+          </h2>
+        </div>
+        <div className="grid overflow-hidden rounded-[var(--radius-lg)] border border-line md:grid-cols-2">
+          <div className="border-b border-line bg-code-bg p-5 md:border-b-0 md:border-r">
+            <div className="mb-3 flex justify-between font-ui text-[0.6rem] uppercase tracking-[0.14em] text-fg-3">
+              <span>resume.tex</span><span>utf-8 · lualatex</span>
+            </div>
+            <pre className="overflow-x-auto font-ui text-[0.76rem] leading-relaxed text-code-fg">
+{`\\section{Experience}
+\\resumeItem{Architected a scalable
+  payments pipeline, cutting
+  latency 40%.}
+
+\\section{Skills}
+Go, Rust, Kubernetes, Postgres`}</pre>
+          </div>
+          <div className="bg-surface p-5">
+            <div className="mb-3 flex justify-between font-ui text-[0.6rem] uppercase tracking-[0.14em] text-fg-3">
+              <span>resume.pdf</span><span>1 page · compiled 0.8s</span>
+            </div>
+            <p className="font-display text-xl font-semibold text-fg">Ada Lovelace</p>
+            <p className="font-ui text-xs text-fg-3">Staff Engineer · London</p>
+            <div className="my-2 h-px bg-fg" />
+            <p className="font-ui text-[0.6rem] uppercase tracking-[0.2em] text-accent-strong">Experience</p>
+            <p className="mt-1 font-body text-sm text-fg-2">Architected a scalable payments pipeline, cutting latency 40%.</p>
+            <p className="mt-3 font-ui text-[0.6rem] uppercase tracking-[0.2em] text-accent-strong">Skills</p>
+            <p className="mt-1 font-body text-sm text-fg-2">Go · Rust · Kubernetes · Postgres</p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── closing ── */}
+      <section className="border-t border-line">
+        <div className="mx-auto max-w-6xl px-5 py-20 text-center sm:px-8">
+          <h2 className="font-display text-[clamp(2rem,5.5vw,3.8rem)] font-semibold leading-[1.02] tracking-[-0.02em] text-fg">
+            Compile something <em className="italic text-accent">worth reading.</em>
+          </h2>
+          <p className="mx-auto mt-5 max-w-[40ch] font-body text-fg-2">
+            Three free compiles. Bring your own key or use ours. Your résumé, finally set right.
+          </p>
+          <Link
+            href="/try"
+            className="mt-8 inline-flex items-center rounded-[var(--radius-md)] bg-accent px-8 py-3.5 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-accent-fg transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+          >
+            Open the studio →
+          </Link>
+        </div>
+      </section>
     </div>
   )
 }
