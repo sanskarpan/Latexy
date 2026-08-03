@@ -159,8 +159,18 @@ export function describeError(err: unknown): string {
   return String(err)
 }
 
-export function formatAge(iso: string): string {
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
+/**
+ * Ages a timestamp that may be an ISO string OR a Unix epoch.
+ *
+ * /jobs returns `created_at` as a float epoch while /resumes and /checkpoints
+ * return ISO strings. Feeding the epoch to `new Date(string)` yields Invalid
+ * Date, which printed "NaNd ago" in the job list.
+ */
+export function formatAge(value: string | number): string {
+  const ms = typeof value === 'number' || /^\d+(\.\d+)?$/.test(String(value))
+    ? Number(value) * (Number(value) < 1e11 ? 1000 : 1)   // seconds vs milliseconds
+    : new Date(value).getTime()
+  const days = Math.floor((Date.now() - ms) / 86_400_000)
   if (!Number.isFinite(days)) return ''
   if (days <= 0) return 'today'
   if (days === 1) return 'yesterday'
@@ -170,8 +180,14 @@ export function formatAge(iso: string): string {
 
 /** Render a plain key/value block as a system message. */
 export function report(title: string, rows: Array<[string, unknown]>): void {
+  if (rows.length === 0) {
+    addMessage({ role: 'system', content: `${title}\n  (nothing to show)` })
+    return
+  }
   const width = Math.max(...rows.map(([k]) => k.length))
   const body = rows
+    // `false` and `0` are real values worth printing — dropping them made the
+    // notification settings render as an empty block.
     .filter(([, v]) => v !== undefined && v !== null && v !== '')
     .map(([k, v]) => `  ${k.padEnd(width)}  ${String(v)}`)
     .join('\n')

@@ -107,10 +107,19 @@ export async function runTracker(parsed: ParsedCommand): Promise<void> {
   if (!requireAuth()) return
   try {
     const client = getApiClient()
-    const res = await client.get<{ applications?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>(
-      '/tracker/applications',
-    )
-    const apps = Array.isArray(res) ? res : (res.applications ?? [])
+    // The API groups by pipeline stage: {by_status: {applied: [...], offer: [...]}}.
+    // Reading `.applications` (which does not exist) reported "no applications"
+    // however many were tracked.
+    const res = await client.get<{
+      by_status?: Record<string, Array<Record<string, unknown>>>
+      applications?: Array<Record<string, unknown>>
+    } | Array<Record<string, unknown>>>('/tracker/applications')
+    const apps: Array<Record<string, unknown>> = Array.isArray(res)
+      ? res
+      : res.by_status != null
+        ? Object.entries(res.by_status).flatMap(([status, list]) =>
+            list.map((a): Record<string, unknown> => ({ ...a, status: a['status'] ?? status })))
+        : (res.applications ?? [])
     if (apps.length === 0) {
       addMessage({ role: 'system', content: 'No tracked applications yet.' })
       return
@@ -120,7 +129,8 @@ export async function runTracker(parsed: ParsedCommand): Promise<void> {
     addMessage({
       role: 'system',
       content: `Applications (${shown.length}):\n` + shown.slice(0, 30).map(a =>
-        `  ${String(a['company'] ?? '').padEnd(22)} ${String(a['role'] ?? '').padEnd(28)} ${String(a['status'] ?? '')}`,
+        `  ${String(a['company_name'] ?? '').padEnd(22)} ` +
+        `${String(a['role_title'] ?? '').padEnd(28)} ${String(a['status'] ?? '')}`,
       ).join('\n'),
     })
   } catch (err) {
@@ -142,7 +152,9 @@ export async function runSnippets(parsed: ParsedCommand): Promise<void> {
     addMessage({
       role: 'system',
       content: `Snippets (${snips.length}):\n` + snips.slice(0, 25).map(s =>
-        `  ${String(s['title'] ?? s['name'] ?? '').padEnd(34)} ${String(s['category'] ?? '').padEnd(14)} ▲${String(s['upvotes'] ?? 0)}`,
+        `  ${String(s['title'] ?? s['name'] ?? '').padEnd(34)} ` +
+        `${String(s['category'] ?? '').padEnd(12)} ▲${String(s['upvotes_count'] ?? 0)}` +
+        `  ⇩${String(s['installs_count'] ?? 0)}`,
       ).join('\n'),
     })
   } catch (err) {
@@ -166,9 +178,10 @@ export async function runByok(): Promise<void> {
       content:
         `Your API keys (${list.length}):\n` +
         (list.length
-          ? list.map(k => `  ${String(k['provider'] ?? '').padEnd(14)} ${String(k['name'] ?? '')}`).join('\n')
+          ? list.map(k => `  ${String(k['provider'] ?? k['provider_name'] ?? '').padEnd(14)} ` +
+              `${String(k['name'] ?? k['key_name'] ?? '')}`).join('\n')
           : '  (none — the platform key is used)') +
-        `\n\nSupported providers: ${provs.map(p => String(p['id'] ?? p['name'])).join(', ')}` +
+        `\n\nSupported providers: ${provs.map(p => String(p['name'])).join(', ')}` +
         `\n\nKeys are added on the web app at /byok.`,
     })
   } catch (err) {
@@ -184,9 +197,13 @@ export async function runModel(): Promise<void> {
     const provs = Array.isArray(res) ? res : (res.providers ?? [])
     addMessage({
       role: 'system',
-      content: `Providers (${provs.length}):\n` + provs.map(p =>
-        `  ${String(p['id'] ?? p['name'] ?? '').padEnd(14)} ${String(p['description'] ?? '')}`,
-      ).join('\n') + '\n\nAdd a key with the web app at /byok, then it is used automatically.',
+      content: `Providers (${provs.length}):\n` + provs.map(p => {
+        const models = (p['available_models'] as string[] | undefined) ?? []
+        const caps = (p['capabilities'] ?? {}) as Record<string, unknown>
+        return `  ${String(p['name'] ?? '').padEnd(12)} ${String(p['display_name'] ?? '').padEnd(14)}` +
+          `${models.length} model(s)` +
+          (caps['max_context_length'] != null ? `  ctx ${caps['max_context_length']}` : '')
+      }).join('\n') + '\n\nAdd a key on the web app at /byok; it is then used automatically.',
     })
   } catch (err) {
     addMessage({ role: 'error', content: `Could not load providers: ${describeError(err)}` })
