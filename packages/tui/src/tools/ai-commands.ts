@@ -106,16 +106,32 @@ export async function runQuickAts(parsed: ParsedCommand): Promise<void> {
   if (!resumeId) return
   try {
     // Rule-based and synchronous — no job, no LLM, so print it straight away.
+    // The response carries sections_found / missing_sections /
+    // keyword_match_percent. Declaring `sections` and `issues` — neither of
+    // which exists — threw away the only actionable output, leaving a bare score.
     const res = await getApiClient().post<{
-      score?: number; grade?: string; sections?: Record<string, unknown>; issues?: string[]
+      score?: number
+      grade?: string
+      sections_found?: string[]
+      missing_sections?: string[]
+      keyword_match_percent?: number
     }>('/ats/quick-score', { latex_content: await latexOf(resumeId) })
 
-    const rows: Array<[string, unknown]> = [['score', res.score], ['grade', res.grade]]
+    const rows: Array<[string, unknown]> = [
+      ['score', res.score],
+      ['grade', res.grade],
+      ['keywords', res.keyword_match_percent != null ? `${res.keyword_match_percent}%` : undefined],
+      ['sections found', res.sections_found?.join(', ')],
+    ]
     addMessage({
       role: 'system',
       content: `Quick ATS score\n` +
-        rows.filter(([, v]) => v != null).map(([k, v]) => `  ${k.padEnd(8)} ${String(v)}`).join('\n') +
-        (res.issues?.length ? `\n\nIssues:\n${res.issues.slice(0, 12).map(i => `  · ${i}`).join('\n')}` : ''),
+        rows.filter(([, v]) => v != null && v !== '')
+          .map(([k, v]) => `  ${k.padEnd(15)} ${String(v)}`).join('\n') +
+        (res.missing_sections?.length
+          ? `\n\nMissing sections (fix these first):\n` +
+            res.missing_sections.map(m => `  · ${m}`).join('\n')
+          : ''),
     })
   } catch (err) {
     addMessage({ role: 'error', content: `Quick ATS failed: ${describeError(err)}` })

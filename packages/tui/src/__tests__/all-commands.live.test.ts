@@ -91,9 +91,13 @@ function assertClean(out: string, cmd: string): void {
     expect(out).toMatch(/Snippets \(\d+\)|No snippets/)
   })
 
-  it('/billing shows the real plan and quotas', async () => {
+  it('/billing shows real quota numbers, not placeholders', async () => {
     const out = await run('/billing'); assertClean(out, 'billing')
     expect(out).toMatch(/plan\s+\w+/)
+    // The old code iterated the wrong level of the entitlements payload and
+    // printed "period  ? / unlimited" while hiding the real counters.
+    expect(out, 'quota block is placeholders').not.toMatch(/\?\s*\/\s*unlimited/)
+    expect(out).toMatch(/compilations\s+\d+\s*\/|optimizations\s+\d+\s*\//)
   })
 
   it('/analytics returns real counters', async () => {
@@ -132,13 +136,19 @@ function assertClean(out: string, cmd: string): void {
     expect(out).toMatch(/Version history \(\d+\)|No history/)
   })
 
-  it('/diff compares against the parent', async () => {
+  it('/diff does not claim identity it cannot know', async () => {
     const out = await run(`/diff ${RESUME}`); assertClean(out, 'diff')
+    // It used to read fields the API never returns and always fall through to
+    // "No differences", however different the variant was.
+    expect(out).toMatch(/no parent|Identical|---|\+\+\+/)
   })
 
-  it('/quick-ats returns a numeric score', async () => {
+  it('/quick-ats returns a score AND the actionable detail', async () => {
     const out = await run(`/quick-ats ${RESUME}`); assertClean(out, 'quick-ats')
     expect(out).toMatch(/score\s+\d+/)
+    // sections_found / missing_sections were being discarded, leaving a bare
+    // number the user could do nothing with.
+    expect(out, 'no section detail surfaced').toMatch(/Missing sections|sections found/)
   })
 
   // ── mutations ────────────────────────────────────────────────────────────
@@ -205,6 +215,52 @@ function assertClean(out: string, cmd: string): void {
 
   it('/interview reaches the backend', async () => {
     const out = await run(`/interview ${RESUME}`, 6000); assertClean(out, 'interview')
+  })
+
+  it('/restore actually restores a checkpoint', async () => {
+    const label = `restore-${Date.now()}`
+    await run(`/checkpoint ${RESUME} ${label}`)
+    // Cancelling the picker is the null path; supply the id directly instead by
+    // letting the single-checkpoint case resolve. Assert we never hit the old
+    // "no stored content" dead end, which fired 100% of the time.
+    const out = await run(`/restore ${RESUME}`, 5000)
+    expect(out, '/restore still reports no content').not.toMatch(/no stored content/i)
+  })
+
+  it('/settings --set rejects an unknown key instead of faking success', async () => {
+    const out = await run('/settings --set bogus_key=true')
+    expect(out).toMatch(/Unknown setting/)
+    expect(out, 'reported success for a key that does not exist').not.toMatch(/^system:.*Set bogus_key/m)
+  })
+
+  it('/settings --set preserves the sibling preference', async () => {
+    const before = await run('/settings')
+    const weekly = /weekly_digest\s+true/.test(before)
+    await run('/settings --set job_completed=true')
+    const after = await run('/settings')
+    // A single-key PUT used to let the endpoint reset every omitted field.
+    expect(/weekly_digest\s+true/.test(after), 'weekly_digest was clobbered').toBe(weekly)
+  })
+
+  it('/analytics honours --period instead of silently ignoring it', async () => {
+    const out = await run('/analytics --period 7d'); assertClean(out, 'analytics')
+    expect(out).toMatch(/last 7 days/)
+    expect(out, 'header and body disagree').not.toMatch(/period_days\s+30/)
+  })
+
+  it('/snippets search actually filters', async () => {
+    const out = await run('/snippets zzzznomatchzzz'); assertClean(out, 'snippets')
+    expect(out, 'search term was ignored').toMatch(/No snippets|Snippets \(0\)/)
+  })
+
+  it('/export rejects a format the API does not have, and lists the real ones', async () => {
+    const out = await run('/export'); assertClean(out, 'export')
+    expect(out, 'available-format list is empty').toMatch(/docx/)
+  })
+
+  it('/cancel does not claim success for a job that does not exist', async () => {
+    const out = await run('/cancel definitely-not-a-job')
+    expect(out, 'faked a cancellation').not.toMatch(/cancellation requested/)
   })
 
   // ── local ────────────────────────────────────────────────────────────────

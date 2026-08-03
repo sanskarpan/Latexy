@@ -19,7 +19,14 @@ interface ResumeListResponse {
   total: number
 }
 
-export function ResumePicker(): React.ReactElement {
+interface ResumePickerProps {
+  /** Show archived resumes instead of active ones (/list --archived). */
+  archived?: boolean
+  /** Restrict to a document type, e.g. resume | academic_cv (/list --type). */
+  documentType?: string
+}
+
+export function ResumePicker({ archived, documentType }: ResumePickerProps): React.ReactElement {
   const [resumes, setResumes] = useState<Resume[]>([])
   const [filter, setFilter] = useState('')
   const [cursor, setCursor] = useState(0)
@@ -28,7 +35,10 @@ export function ResumePicker(): React.ReactElement {
 
   useEffect(() => {
     const client = getApiClient()
-    client.get<ResumeListResponse>('/resumes?limit=50')
+    const params = new URLSearchParams({ limit: '50' })
+    if (archived === true) params.set('archived', 'true')
+    if (documentType != null) params.set('document_type', documentType)
+    client.get<ResumeListResponse>(`/resumes/?${params.toString()}`)
       .then(res => {
         setResumes(res.resumes)
         setLoading(false)
@@ -37,7 +47,7 @@ export function ResumePicker(): React.ReactElement {
         setErrorMsg(String(err))
         setLoading(false)
       })
-  }, [])
+  }, [archived, documentType])
 
   const filtered = filter
     ? resumes.filter(r => r.title.toLowerCase().includes(filter.toLowerCase()))
@@ -71,7 +81,7 @@ export function ResumePicker(): React.ReactElement {
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="blue" padding={1} width={60}>
-      <Text bold color="cyan">Select Resume</Text>
+      <Text bold color="cyan">{archived === true ? 'Archived Resumes' : 'Select Resume'}</Text>
       <Box marginTop={1} gap={1}>
         <Text dimColor>Filter:</Text>
         <TextInput value={filter} onChange={setFilter} placeholder="type to filter..." />

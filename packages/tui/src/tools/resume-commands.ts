@@ -114,25 +114,50 @@ export async function runDiff(parsed: ParsedCommand): Promise<void> {
   const resumeId = await resolveResumeId(parsed)
   if (!resumeId) return
   try {
-    const diff = await getApiClient().get<{ diff?: string; changes?: unknown[]; message?: string }>(
-      `/resumes/${resumeId}/diff-with-parent`,
-    )
-    if (diff.diff) {
-      addMessage({ role: 'system', content: `Diff with parent:\n${diff.diff}` })
-      return
-    }
-    if (Array.isArray(diff.changes) && diff.changes.length > 0) {
+    // The endpoint hands back both documents, not a computed diff — reading
+    // `diff`/`changes`/`message` matched nothing, so it always claimed the
+    // variant was identical to its parent however different it was.
+    const res = await getApiClient().get<{
+      parent_latex?: string
+      parent_title?: string
+      variant_latex?: string
+      variant_title?: string
+      detail?: string
+    }>(`/resumes/${resumeId}/diff-with-parent`)
+
+    if (res.parent_latex == null || res.variant_latex == null) {
       addMessage({
         role: 'system',
-        content: `Diff with parent — ${diff.changes.length} change(s):\n` +
-          diff.changes.slice(0, 40).map(c => `  ${JSON.stringify(c)}`).join('\n'),
+        content: res.detail ?? 'This resume has no parent to compare against — fork one with /fork.',
       })
       return
     }
-    addMessage({ role: 'system', content: diff.message ?? 'No differences from the parent resume.' })
+    if (res.parent_latex === res.variant_latex) {
+      addMessage({ role: 'system', content: 'Identical to the parent resume.' })
+      return
+    }
+    addMessage({
+      role: 'log_stream',
+      content: '',
+      resultData: { lines: unifiedDiff(res.parent_latex, res.variant_latex,
+        res.parent_title ?? 'parent', res.variant_title ?? 'variant') },
+    })
   } catch (err) {
     addMessage({ role: 'error', content: `Diff failed: ${describeError(err)}` })
   }
+}
+
+/** Minimal line diff — enough to see what changed without pulling in a library. */
+function unifiedDiff(a: string, b: string, aName: string, bName: string): string[] {
+  const left = a.split('\n')
+  const right = b.split('\n')
+  const out: string[] = [`--- ${aName}`, `+++ ${bName}`]
+  const seen = new Set(left)
+  const kept = new Set(right)
+  for (const line of left) if (!kept.has(line)) out.push(`- ${line}`)
+  for (const line of right) if (!seen.has(line)) out.push(`+ ${line}`)
+  if (out.length === 2) out.push('  (only whitespace or ordering differs)')
+  return out
 }
 
 export async function runShare(parsed: ParsedCommand): Promise<void> {
@@ -171,8 +196,12 @@ export async function runExport(parsed: ParsedCommand): Promise<void> {
   const fmt = (parsed.args['format'] as string | undefined) ?? parsed.positional.find(p => !/^[0-9a-f-]{36}$/i.test(p))
   if (!fmt) {
     try {
-      const formats = await getApiClient().get<{ formats?: Array<{ id?: string; name?: string }> }>('/export/formats')
-      const names = (formats.formats ?? []).map(f => f.id ?? f.name).filter(Boolean).join(', ')
+      // The API keys these `key`, not `id`/`name`; reading the wrong field made
+      // filter(Boolean) empty the list, so the "Available:" hint was always blank.
+      type Fmt = { key?: string; id?: string; name?: string }
+      const formats = await getApiClient().get<{ formats?: Fmt[] } | Fmt[]>('/export/formats')
+      const list = Array.isArray(formats) ? formats : (formats.formats ?? [])
+      const names = list.map(f => f.key ?? f.id ?? f.name).filter(Boolean).join(', ')
       addMessage({ role: 'error', content: `Specify a format: /export --format <fmt>\nAvailable: ${names}` })
     } catch {
       addMessage({ role: 'error', content: 'Specify a format, e.g. /export --format docx' })
@@ -183,10 +212,12 @@ export async function runExport(parsed: ParsedCommand): Promise<void> {
   const resumeId = await resolveResumeId(parsed)
   if (!resumeId) return
   try {
-    const data = await getApiClient().get<unknown>(`/export/${resumeId}/${fmt}`)
+    // Always fetch bytes. docx/pdf are binary, and decoding them as text
+    // corrupted the file while still reporting success.
+    const bytes = await getApiClient().getBinary(`/export/${resumeId}/${fmt}`)
     const out = join(process.cwd(), `resume-${resumeId.slice(0, 8)}.${fmt}`)
-    await writeFile(out, typeof data === 'string' ? data : JSON.stringify(data, null, 2), 'utf-8')
-    report('Exported', [['format', fmt], ['file', out]])
+    await writeFile(out, bytes)
+    report('Exported', [['format', fmt], ['file', out], ['bytes', bytes.length]])
   } catch (err) {
     addMessage({ role: 'error', content: `Export failed: ${describeError(err)}` })
   }

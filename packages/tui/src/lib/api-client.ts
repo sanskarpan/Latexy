@@ -114,6 +114,29 @@ export class ApiClient {
     return this.request<T>('GET', path, undefined, opts)
   }
 
+  /**
+   * Fetch raw bytes, authenticated.
+   *
+   * request() decodes anything non-JSON with res.text(), which mangles binary:
+   * a .docx round-tripped through a UTF-8 string grew from 36,666 to 65,425
+   * bytes and no longer unzipped. Exports and PDF downloads must not go through
+   * that path.
+   */
+  async getBinary(path: string, opts: RequestOptions = {}): Promise<Buffer> {
+    const { timeoutMs = 60_000 } = opts
+    const headers = new Headers()
+    if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '')
+      throw new ApiError(detail.slice(0, 200) || res.statusText, res.status, null)
+    }
+    return Buffer.from(await res.arrayBuffer())
+  }
+
   post<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
     return this.request<T>('POST', path, body, opts)
   }

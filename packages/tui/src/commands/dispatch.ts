@@ -13,15 +13,22 @@ async function getLoginOverlay(): Promise<React.ReactElement> {
   return React.createElement(LoginOverlay)
 }
 
-async function getResumePicker(): Promise<React.ReactElement> {
+async function getResumePicker(
+  opts: { archived?: boolean; documentType?: string } = {},
+): Promise<React.ReactElement> {
   const { ResumePicker } = await import('../components/overlays/ResumePicker.js')
-  return React.createElement(ResumePicker)
+  return React.createElement(ResumePicker, { ...opts })
 }
 
 // Tier 1: local handlers (no API call, just UI changes)
 const LOCAL_HANDLERS: Record<string, (parsed: ReturnType<typeof parseSlashCommand>) => Promise<void>> = {
-  list: async () => {
-    openOverlay(await getResumePicker())
+  list: async (p) => {
+    // The flags were documented in the registry and thrown away here — `parsed`
+    // was discarded entirely, so /list --archived listed active resumes.
+    openOverlay(await getResumePicker({
+      archived: p?.args['archived'] === true,
+      documentType: typeof p?.args['type'] === 'string' ? p.args['type'] : undefined,
+    }))
   },
   clear: async () => {
     clearMessages()
@@ -106,7 +113,18 @@ const API_HANDLERS: Record<string, (parsed: NonNullable<ReturnType<typeof parseS
     }
     const { getApiClient } = await import('../lib/api-client.js')
     try {
-      await getApiClient().delete(`/jobs/${jobId}`)
+      // DELETE /jobs/{id} answers 200 {"success":true} even for an id that was
+      // never a job, so the response cannot distinguish a real cancellation from
+      // a no-op. Confirm the job exists first, otherwise any typo was reported
+      // back as a successful cancellation.
+      const client = getApiClient()
+      try {
+        await client.get(`/jobs/${jobId}/state`)
+      } catch {
+        addMessage({ role: 'error', content: `No job with id ${jobId} — see /jobs for recent ones.` })
+        return
+      }
+      await client.delete(`/jobs/${jobId}`)
       addMessage({ role: 'system', content: `Job ${jobId} cancellation requested.` })
     } catch (err) {
       addMessage({ role: 'error', content: `Cancel failed: ${String(err)}` })

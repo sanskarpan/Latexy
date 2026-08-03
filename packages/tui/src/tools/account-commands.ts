@@ -38,10 +38,8 @@ export async function runPdf(parsed: ParsedCommand): Promise<void> {
     return
   }
   try {
-    const client = getApiClient()
-    const res = await fetch(`${(client as unknown as { baseUrl: string }).baseUrl ?? ''}/download/${jobId}`)
-    if (!res.ok) throw new Error(`server returned ${res.status}`)
-    const buf = Buffer.from(await res.arrayBuffer())
+    // A bare fetch() carried no Authorization header, so /download always 403'd.
+    const buf = await getApiClient().getBinary(`/download/${jobId}`)
     const out = join(process.cwd(), `resume-${jobId.slice(0, 8)}.pdf`)
     await writeFile(out, buf)
     report('PDF downloaded', [['file', out], ['bytes', buf.length]])
@@ -73,10 +71,14 @@ export async function runLog(parsed: ParsedCommand): Promise<void> {
 
 export async function runAnalytics(parsed: ParsedCommand): Promise<void> {
   if (!requireAuth()) return
-  const period = (parsed.args['period'] as string | undefined) ?? '30d'
+  // The endpoint takes `days` (int). Sending `period=30d` was silently dropped
+  // by FastAPI, so every window returned byte-identical data while the header
+  // claimed otherwise.
+  const raw = String(parsed.args['period'] ?? '30')
+  const days = Number.parseInt(raw.replace(/[^0-9]/g, ''), 10) || 30
   try {
-    const res = await getApiClient().get<Record<string, unknown>>(`/analytics/me?period=${period}`)
-    report(`Your analytics (${period})`, Object.entries(res)
+    const res = await getApiClient().get<Record<string, unknown>>(`/analytics/me?days=${days}`)
+    report(`Your analytics (last ${days} days)`, Object.entries(res)
       .filter(([, v]) => typeof v === 'string' || typeof v === 'number')
       .slice(0, 20) as Array<[string, unknown]>)
   } catch (err) {
@@ -92,11 +94,16 @@ export async function runBilling(): Promise<void> {
       client.get<Record<string, unknown>>('/me'),
       client.get<Record<string, unknown>>('/config/entitlements').catch(() => ({} as Record<string, unknown>)),
     ])
-    const quotas = (ent['quotas'] ?? {}) as Record<string, Record<string, unknown>>
+    // quotas is {period, resets_at, dimensions:{compilations:{used,limit},…}}.
+    // Iterating the top level read `used`/`limit` off strings and printed
+    // "period ? / unlimited" while hiding the real numbers.
+    const quotas = (ent['quotas'] ?? {}) as Record<string, unknown>
+    const dims = (quotas['dimensions'] ?? {}) as Record<string, Record<string, unknown>>
     const rows: Array<[string, unknown]> = [['plan', me['plan']], ['email', me['email']]]
-    for (const [dim, q] of Object.entries(quotas)) {
-      rows.push([dim, `${q['used'] ?? '?'} / ${q['limit'] ?? 'unlimited'}`])
+    for (const [dim, q] of Object.entries(dims)) {
+      rows.push([dim, `${q['used'] ?? 0} / ${q['limit'] ?? 'unlimited'}`])
     }
+    if (quotas['resets_at'] != null) rows.push(['resets', String(quotas['resets_at'])])
     report('Subscription', rows)
   } catch (err) {
     addMessage({ role: 'error', content: `Could not load billing: ${describeError(err)}` })
@@ -142,7 +149,7 @@ export async function runSnippets(parsed: ParsedCommand): Promise<void> {
   const q = parsed.positional.join(' ')
   try {
     const res = await getApiClient().get<{ snippets?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>(
-      `/snippets${q ? `?search=${encodeURIComponent(q)}` : ''}`,
+      `/snippets${q ? `?q=${encodeURIComponent(q)}` : ''}`   // param is `q`, not `search`,
     )
     const snips = Array.isArray(res) ? res : (res.snippets ?? [])
     if (snips.length === 0) {
@@ -220,8 +227,26 @@ export async function runSettings(parsed: ParsedCommand): Promise<void> {
         addMessage({ role: 'error', content: 'Usage: /settings --set <key>=<true|false>' })
         return
       }
-      await client.put('/settings/notifications', { [key]: value === 'true' })
-      addMessage({ role: 'system', content: `Set ${key} = ${value}` })
+      // Read first and PUT the whole object. The endpoint's model re-applies
+      // defaults to omitted fields, so a single-key body silently reset the
+      // sibling preference.
+      const current = await client.get<Record<string, unknown>>('/settings/notifications')
+      if (!(key in current)) {
+        addMessage({
+          role: 'error',
+          content: `Unknown setting '${key}'. Available: ${Object.keys(current).join(', ')}`,
+        })
+        return
+      }
+      if (value !== 'true' && value !== 'false') {
+        addMessage({ role: 'error', content: `Value must be true or false, got '${value}'.` })
+        return
+      }
+      // Confirm from the server's response rather than assuming it took.
+      const updated = await client.put<Record<string, unknown>>(
+        '/settings/notifications', { ...current, [key]: value === 'true' },
+      )
+      report('Notification settings', Object.entries(updated) as Array<[string, unknown]>)
       return
     }
     const res = await client.get<Record<string, unknown>>('/settings/notifications')
@@ -267,15 +292,27 @@ export async function runRestore(parsed: ParsedCommand): Promise<void> {
     })
     if (!chosen) return
 
-    const content = await client.get<{ latex_content?: string }>(
-      `/resumes/${resumeId}/checkpoints/${chosen}/content`,
-    )
-    if (content.latex_content == null) {
+    // The endpoint returns {original_latex, optimized_latex, checkpoint_label} —
+    // there is no `latex_content`, so reading it made every restore fail with
+    // "no stored content" even on checkpoints flagged has_content: true.
+    // Prefer the optimized text where a checkpoint has one; that is the state
+    // the user saved.
+    const content = await client.get<{
+      original_latex?: string
+      optimized_latex?: string
+      checkpoint_label?: string
+    }>(`/resumes/${resumeId}/checkpoints/${chosen}/content`)
+
+    const latex = content.optimized_latex ?? content.original_latex
+    if (latex == null || latex === '') {
       addMessage({ role: 'error', content: 'That checkpoint has no stored content.' })
       return
     }
-    await client.put(`/resumes/${resumeId}`, { latex_content: content.latex_content })
-    addMessage({ role: 'system', content: 'Restored. Run /compile to rebuild the PDF.' })
+    await client.put(`/resumes/${resumeId}`, { latex_content: latex })
+    addMessage({
+      role: 'system',
+      content: `Restored ${content.checkpoint_label ?? 'checkpoint'}. Run /compile to rebuild the PDF.`,
+    })
   } catch (err) {
     addMessage({ role: 'error', content: `Restore failed: ${describeError(err)}` })
   }

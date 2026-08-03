@@ -91,11 +91,22 @@ export async function resolveJobDescription(parsed: ParsedCommand): Promise<stri
     try {
       // The backend already knows how to turn a posting URL into structured text
       // (native ATS APIs, then JSON-LD, then HTML), so don't re-implement it here.
-      const scraped = await getApiClient().post<{ description?: string; raw_text?: string }>(
-        '/scrape-job-description',
-        { url: jd },
-      )
-      return scraped.description ?? scraped.raw_text ?? null
+      // The scraper answers 200 with description:null and an `error` string when
+      // it cannot read a posting, so the catch below never fires. Returning null
+      // made the caller report "a job description is required", hiding the real
+      // reason (blocked page, 404, login wall).
+      const scraped = await getApiClient().post<{
+        description?: string | null
+        error?: string | null
+      }>('/scrape-job-description', { url: jd })
+
+      if (scraped.description != null && scraped.description !== '') return scraped.description
+      addMessage({
+        role: 'error',
+        content: `Could not read that job posting: ${scraped.error ?? 'no description found'}. ` +
+          'Paste the text or pass a file path instead.',
+      })
+      return null
     } catch (err) {
       addMessage({ role: 'error', content: `Could not read the job posting: ${describeError(err)}` })
       return null
