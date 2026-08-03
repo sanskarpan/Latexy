@@ -109,110 +109,136 @@ export default function TemplatesPage() {
     handleUseTemplate(id)
   }, [handleUseTemplate])
 
+  const tabClass = (isActive: boolean) =>
+    `inline-flex min-h-[36px] items-center rounded-[var(--radius-pill)] border px-4 py-1.5 font-ui text-xs uppercase tracking-[0.08em] transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none ${
+      isActive
+        ? 'border-accent bg-accent-soft text-accent-strong'
+        : 'border-line text-fg-3 hover:border-line-2 hover:text-fg'
+    }`
+
   return (
     <>
-      <div className="content-shell space-y-7 pb-16">
-        {/* Header */}
-        <header className="pt-2">
-          <p className="overline">Library</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
-            Resume Templates
-          </h1>
-          <p className="mt-1 text-sm text-zinc-400">
-            Browse 50+ professional LaTeX templates across industries. Preview, then use any template to start building.
-          </p>
-        </header>
-
-        {/* Search + count */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative w-full sm:max-w-xs">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
-            <input
-              type="text"
-              placeholder="Search templates…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-black/40 py-2 pl-9 pr-9 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-300/40"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-              >
-                <X size={13} />
-              </button>
-            )}
+      <div className="bg-bg text-fg">
+        {/* folio strip */}
+        <div className="border-b border-line">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-2 font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3 sm:px-8">
+            <span>№ 02 — The Specimen Library</span>
+            <span className="hidden sm:inline">Set in Fraunces &amp; JetBrains Mono</span>
+            <span>pdflatex · xelatex · lualatex</span>
           </div>
-          <p className="text-xs text-zinc-500">
-            {filteredTemplates.length} template{filteredTemplates.length !== 1 ? 's' : ''}
-          </p>
         </div>
 
-        {/* Category tabs */}
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setActiveCategory('all')}
-            className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-              activeCategory === 'all'
-                ? 'border-orange-300/40 bg-orange-300/10 text-orange-200'
-                : 'border-white/10 text-zinc-500 hover:border-white/20 hover:text-zinc-300'
-            }`}
-          >
-            All ({templates.length})
-          </button>
-          {sortedCategories.map(cat => (
+        <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8 lg:py-16">
+          {/* Header */}
+          <header>
+            <p className="font-ui text-xs uppercase tracking-[0.18em] text-fg-3">Library</p>
+            <h1 className="mt-4 max-w-[18ch] text-balance font-display text-[clamp(2.4rem,6vw,4.4rem)] font-semibold leading-[0.98] tracking-[-0.025em] text-fg">
+              Résumé <em className="italic text-accent">specimens</em>, ready to set.
+            </h1>
+            <p className="mt-6 max-w-[52ch] font-body text-lg text-fg-2">
+              Browse professional LaTeX templates across industries. Preview any specimen, then
+              use it to start building.
+            </p>
+          </header>
+
+          {/* Search + count */}
+          <div className="mt-10 flex flex-col gap-4 border-t border-line pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-3" />
+              <label htmlFor="template-search" className="sr-only">Search templates</label>
+              <input
+                id="template-search"
+                type="text"
+                placeholder="Search templates…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface py-2.5 pl-9 pr-10 font-body text-sm text-fg outline-none transition duration-150 placeholder:text-fg-3 focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+              />
+              {search && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => setSearch('')}
+                  className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[var(--radius-sm)] text-fg-3 transition duration-150 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent motion-reduce:transition-none"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <p className="font-ui text-xs uppercase tracking-[0.12em] text-fg-3">
+              {filteredTemplates.length} template{filteredTemplates.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+
+          {/* Category tabs */}
+          <div className="mt-5 flex flex-wrap gap-2">
             <button
-              key={cat.category}
-              onClick={() => setActiveCategory(cat.category)}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                activeCategory === cat.category
-                  ? 'border-orange-300/40 bg-orange-300/10 text-orange-200'
-                  : 'border-white/10 text-zinc-500 hover:border-white/20 hover:text-zinc-300'
-              }`}
+              type="button"
+              onClick={() => setActiveCategory('all')}
+              className={tabClass(activeCategory === 'all')}
             >
-              {cat.label} ({cat.count})
+              All ({templates.length})
             </button>
-          ))}
-        </div>
-
-        {/* Template grid */}
-        {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="h-64 animate-pulse rounded-xl bg-white/5" />
+            {sortedCategories.map(cat => (
+              <button
+                key={cat.category}
+                type="button"
+                onClick={() => setActiveCategory(cat.category)}
+                className={tabClass(activeCategory === cat.category)}
+              >
+                {cat.label} ({cat.count})
+              </button>
             ))}
           </div>
-        ) : filteredTemplates.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-16 text-center">
-            <p className="text-sm text-zinc-500">No templates found</p>
-            {search && (
-              <button onClick={() => setSearch('')} className="text-xs text-orange-300 hover:underline">
-                Clear search
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredTemplates.map(template => (
-              <div key={template.id} className="relative">
-                <TemplateCard
-                  template={template}
-                  onSelect={handleUseTemplate}
-                  onPreview={handlePreview}
-                  disabled={usingTemplateId !== null}
-                />
-                {usingTemplateId === template.id && (
-                  <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/60 backdrop-blur-sm">
-                    <div className="flex items-center gap-2 text-xs text-white">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-orange-300" />
-                      Creating…
-                    </div>
-                  </div>
+
+          {/* Template grid */}
+          <div className="mt-10">
+            {loading ? (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-64 rounded-[var(--radius-lg)] border border-line bg-surface-2 motion-safe:animate-pulse"
+                  />
+                ))}
+              </div>
+            ) : filteredTemplates.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 border-t border-line py-20 text-center">
+                <p className="font-body text-sm text-fg-2">No templates found</p>
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="font-ui text-xs uppercase tracking-[0.08em] text-accent-strong transition duration-150 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+                  >
+                    Clear search
+                  </button>
                 )}
               </div>
-            ))}
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {filteredTemplates.map(template => (
+                  <div key={template.id} className="relative">
+                    <TemplateCard
+                      template={template}
+                      onSelect={handleUseTemplate}
+                      onPreview={handlePreview}
+                      disabled={usingTemplateId !== null}
+                    />
+                    {usingTemplateId === template.id && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[var(--radius-lg)] bg-bg/80">
+                        <div className="flex items-center gap-2 font-ui text-xs uppercase tracking-[0.08em] text-fg">
+                          <div className="h-4 w-4 animate-spin rounded-[var(--radius-pill)] border-2 border-line border-t-accent" />
+                          Creating…
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       <TemplatePreviewModal

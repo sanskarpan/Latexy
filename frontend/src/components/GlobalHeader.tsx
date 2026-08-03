@@ -11,11 +11,12 @@ import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { usePWAInstall } from '@/hooks/usePWAInstall'
 import { clearAllDrafts } from '@/lib/offline-drafts'
 import { clearCompileQueue } from '@/lib/compile-queue'
+import ModeToggle from '@/components/theme/ModeToggle'
 
 const guestNav = [
   { label: 'Platform', href: '/platform' },
   { label: 'Templates', href: '/templates' },
-  { label: 'Pricing', href: '/billing' },
+  { label: 'Pricing', href: '/pricing' },
   { label: 'Resources', href: '/resources' },
   { label: 'FAQ', href: '/faq' },
 ]
@@ -65,7 +66,7 @@ export default function GlobalHeader() {
   const isAuthenticated = Boolean(resolvedUser)
   const effectiveGuestNav = flags.billing
     ? guestNav
-    : guestNav.filter((item) => item.href !== '/billing')
+    : guestNav.filter((item) => item.href !== '/pricing')
   // Gate feature-specific app nav items behind entitlements (fail-open via
   // can()). Core items without a `feature` key always show.
   const effectiveAppNav = appNav.filter((item) => !item.feature || can(item.feature))
@@ -94,21 +95,24 @@ export default function GlobalHeader() {
     window.location.href = '/'
   }
 
+  const menuLink =
+    'block rounded-[var(--radius-md)] px-3 py-2 text-sm text-fg-2 transition hover:bg-surface-2 hover:text-fg'
+
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-black/65 backdrop-blur-xl">
+    <header className="sticky top-0 z-[var(--z-sticky)] border-b border-line bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-10">
-        <Link href="/" className="text-xl font-semibold tracking-tight text-white transition hover:text-orange-100">
+        <Link href="/" className="font-display text-xl font-semibold tracking-tight text-fg transition hover:text-accent">
           Latexy
         </Link>
 
-        <nav className="hidden items-center gap-8 md:flex">
+        <nav className="hidden items-center gap-7 md:flex">
           {activeNav.map((item) => {
             const active = pathname === item.href
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`text-sm font-medium transition ${active ? 'text-orange-200' : 'text-zinc-400 hover:text-white'}`}
+                className={`font-ui text-sm font-medium transition ${active ? 'text-accent-strong' : 'text-fg-2 hover:text-fg'}`}
               >
                 {item.label}
               </Link>
@@ -117,11 +121,12 @@ export default function GlobalHeader() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
+          <ModeToggle />
           {hydrated && canInstall && (
             <button
               onClick={promptInstall}
               title="Add Latexy to Home Screen"
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-zinc-400 transition hover:border-white/20 hover:text-white"
+              className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-1.5 font-ui text-xs font-medium text-fg-2 transition hover:border-line-2 hover:text-fg"
             >
               <Download size={12} />
               Install
@@ -134,11 +139,11 @@ export default function GlobalHeader() {
                 aria-label={isUserMenuOpen ? 'Close account menu' : 'Open account menu'}
                 aria-expanded={isUserMenuOpen}
                 aria-haspopup="menu"
-                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 py-1 pl-1 pr-3 text-xs font-semibold text-zinc-300 transition hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/60"
+                className="flex items-center gap-2 rounded-[var(--radius-pill)] border border-line bg-surface-2 py-1 pl-1 pr-3 font-ui text-xs font-semibold text-fg-2 transition hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
                 <span
                   aria-hidden
-                  className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-300 text-[11px] font-bold text-slate-950"
+                  className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-pill)] bg-accent text-[11px] font-bold text-accent-fg"
                 >
                   {firstName.charAt(0).toUpperCase()}
                 </span>
@@ -151,7 +156,7 @@ export default function GlobalHeader() {
                     <button
                       type="button"
                       onClick={() => setIsUserMenuOpen(false)}
-                      className="fixed inset-0 z-10"
+                      className="fixed inset-0 z-[var(--z-raised)]"
                       aria-label="Close account menu"
                     />
                     <motion.div
@@ -160,56 +165,26 @@ export default function GlobalHeader() {
                       exit={{ opacity: 0, y: 8, scale: 0.98 }}
                       role="menu"
                       aria-label="Account menu"
-                      className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-white/10 bg-zinc-900 p-2 shadow-2xl"
+                      className="absolute right-0 z-[var(--z-dropdown)] mt-2 w-56 rounded-[var(--radius-lg)] border border-line bg-surface p-2 shadow-[var(--shadow-2)]"
                     >
                       <div className="px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Account</p>
-                        <p className="mt-1 truncate text-sm font-semibold text-white">{resolvedUser?.email || 'Unknown account'}</p>
+                        <p className="font-ui text-[10px] uppercase tracking-[0.2em] text-fg-3">Account</p>
+                        <p className="mt-1 truncate text-sm font-semibold text-fg">{resolvedUser?.email || 'Unknown account'}</p>
                       </div>
-                      <div className="my-1 h-px bg-white/10" />
-                      <Link
-                        href="/dashboard"
-                        className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        Dashboard
-                      </Link>
+                      <div className="my-1 h-px bg-line" />
+                      <Link href="/dashboard" className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Dashboard</Link>
                       {flags.billing && (
-                        <Link
-                          href="/billing"
-                          className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
-                          onClick={() => setIsUserMenuOpen(false)}
-                        >
-                          Billing
-                        </Link>
+                        <Link href="/billing" className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Billing</Link>
                       )}
-                      <Link
-                        href="/developer"
-                        className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        Developer API
-                      </Link>
-                      <Link
-                        href="/byok"
-                        className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        Settings
-                      </Link>
+                      <Link href="/developer" className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Developer API</Link>
+                      <Link href="/byok" className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Settings</Link>
                       {isAdmin && (
-                        <Link
-                          href="/admin"
-                          className="block rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/5 hover:text-white"
-                          onClick={() => setIsUserMenuOpen(false)}
-                        >
-                          Admin
-                        </Link>
+                        <Link href="/admin" className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Admin</Link>
                       )}
-                      <div className="my-1 h-px bg-white/10" />
+                      <div className="my-1 h-px bg-line" />
                       <button
                         onClick={handleSignOut}
-                        className="block w-full rounded-lg px-3 py-2 text-left text-sm text-rose-300 transition hover:bg-rose-500/10"
+                        className="block w-full rounded-[var(--radius-md)] px-3 py-2 text-left text-sm text-err transition hover:bg-[color-mix(in_srgb,var(--err)_12%,transparent)]"
                       >
                         Sign Out
                       </button>
@@ -220,24 +195,30 @@ export default function GlobalHeader() {
             </div>
           ) : (
             <>
-              <Link href="/login" className="text-sm font-medium text-zinc-400 transition hover:text-white">
+              <Link href="/login" className="font-ui text-sm font-medium text-fg-2 transition hover:text-fg">
                 Log In
               </Link>
-              <Link href="/try" className="btn-accent px-4 py-1.5 text-xs">
+              <Link
+                href="/try"
+                className="rounded-[var(--radius-md)] bg-accent px-4 py-1.5 font-ui text-xs font-semibold text-accent-fg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+              >
                 Try Free
               </Link>
             </>
           )}
         </div>
 
-        <button
-          className="rounded-lg border border-white/10 px-3 py-1 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white md:hidden"
-          onClick={() => setIsMobileMenuOpen((open) => !open)}
-          aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
-          aria-expanded={isMobileMenuOpen}
-        >
-          {isMobileMenuOpen ? 'Close' : 'Menu'}
-        </button>
+        <div className="flex items-center gap-2 md:hidden">
+          <ModeToggle />
+          <button
+            className="rounded-[var(--radius-md)] border border-line px-3 py-1 font-ui text-xs font-semibold text-fg-2 transition hover:border-line-2 hover:text-fg"
+            onClick={() => setIsMobileMenuOpen((open) => !open)}
+            aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={isMobileMenuOpen}
+          >
+            {isMobileMenuOpen ? 'Close' : 'Menu'}
+          </button>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -246,14 +227,14 @@ export default function GlobalHeader() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="border-t border-white/10 bg-zinc-950 md:hidden"
+            className="border-t border-line bg-surface md:hidden"
           >
             <div className="space-y-1 p-4">
               {activeNav.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="block rounded-lg px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-white/5 hover:text-white"
+                  className="block rounded-[var(--radius-md)] px-4 py-2.5 font-ui text-sm font-medium text-fg-2 transition hover:bg-surface-2 hover:text-fg"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {item.label}
@@ -261,17 +242,17 @@ export default function GlobalHeader() {
               ))}
 
               {!isAuthenticated && (
-                <div className="mt-3 grid grid-cols-2 gap-2 border-t border-white/10 pt-3">
+                <div className="mt-3 grid grid-cols-2 gap-2 border-t border-line pt-3">
                   <Link
                     href="/login"
-                    className="rounded-lg border border-white/10 py-2 text-center text-sm font-medium text-white"
+                    className="rounded-[var(--radius-md)] border border-line py-2.5 text-center font-ui text-sm font-medium text-fg"
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     Log In
                   </Link>
                   <Link
                     href="/try"
-                    className="rounded-lg bg-orange-300 py-2 text-center text-sm font-semibold text-slate-950"
+                    className="rounded-[var(--radius-md)] bg-accent py-2.5 text-center font-ui text-sm font-semibold text-accent-fg"
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
                     Try Free
