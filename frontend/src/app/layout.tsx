@@ -1,5 +1,6 @@
 import './globals.css'
 import type { Metadata, Viewport } from 'next'
+import { fontVariables } from './fonts'
 import { NotificationProvider } from '@/components/NotificationProvider'
 import { WebSocketProvider } from '@/components/WebSocketProvider'
 import { AuthSync } from '@/components/AuthSync'
@@ -25,8 +26,23 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#ff845d',
+  // Mode-aware browser chrome (Typeset grounds — the default marketing surface).
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#FBFAF6' },
+    { media: '(prefers-color-scheme: dark)', color: '#141310' },
+  ],
 }
+
+// Runs before first paint so the theme is set with no flash. Reads the dedicated
+// theme cookie (distinct from the auth cookie), else the OS preference. Aesthetic
+// defaults to 'typeset'; route-group layouts override it per surface.
+const THEME_BOOTSTRAP = `(function(){try{
+var m=document.cookie.match(/(?:^|; )latexy-theme=(light|dark)/);
+var mode=m?m[1]:(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+var r=document.documentElement;
+if(!r.getAttribute('data-aesthetic'))r.setAttribute('data-aesthetic','typeset');
+r.setAttribute('data-mode',mode);
+}catch(e){}})();`
 
 export default function RootLayout({
   children,
@@ -34,8 +50,9 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-aesthetic="typeset" className={fontVariables} suppressHydrationWarning>
       <body className="font-sans antialiased">
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
         <FeatureFlagsProvider>
         <EntitlementsProvider>
         <NotificationProvider>
