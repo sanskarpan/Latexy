@@ -8,7 +8,7 @@ export function Skeleton({ className }: { className?: string }) {
 
 export function CardSkeleton() {
   return (
-    <div className="surface-card edge-highlight p-5 space-y-4">
+    <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 space-y-4">
       <div className="flex items-center justify-between">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-4 w-4 rounded-full" />
@@ -23,7 +23,7 @@ export function CardSkeleton() {
 
 export function ResumeCardSkeleton() {
   return (
-    <div className="surface-card edge-highlight p-5 space-y-6">
+    <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 space-y-6">
       <div className="flex items-start justify-between">
         <Skeleton className="h-12 w-12 rounded-lg" />
         <Skeleton className="h-6 w-6" />
