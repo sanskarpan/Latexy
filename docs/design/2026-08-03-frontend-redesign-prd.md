@@ -203,11 +203,11 @@ Each phase = its own PR(s) following the repo commit procedure (issues first, on
 - Design-consistency: 0 raw accent hex / non-token accent literals in app code (lint-enforced); one primitive library used everywhere (`ui/Button` import count ≫ hand-rolled buttons, which trend to ~0).
 - All four theme variants pass AA contrast on the test matrix.
 
-## 13. Open decisions (for founder / scrutiny)
-1. **Compiler body font:** Geist Sans (default) vs a less-common grotesque (Hanken Grotesk, or a licensed Söhne-alike)?
-2. **Typeset display:** Fraunces (recommended) vs an alternative editorial serif — confirm license + variable-font weight/opsz plan.
-3. **`/try` aesthetic:** Compiler (product surface) vs Typeset (public entry) — §4.1 proposes Compiler; confirm.
-4. **Live hero interactivity depth:** fully interactive vs canned-loop-only for v1 (perf/scope tradeoff).
-5. **Default mode per surface:** honor OS preference only, or default marketing→light and app→dark regardless of OS (with toggle)?
-6. **Testimonials:** do we have real quotes, or omit the block until we do (no fabricated social proof)?
-7. **Scope of copy rewrite:** replace only slop/placeholder + emoji, or a fuller marketing copy pass?
+## 13. Decisions (resolved 2026-08-03)
+1. ✅ **Compiler body font: Geist Sans** (OSS, dev-native) + JetBrains Mono.
+2. ✅ **Typeset display: Fraunces** (variable, OFL — self-host a subset with the `opsz` axis; display uses large optical size, body uses text optical size).
+3. ✅ **`/try` aesthetic: Compiler** (it is the product editor surface); its public header stays auth-aware for CTAs.
+4. ✅ **Hero v1: scoped & nudgeable** — a canned `.tex → .pdf` loop the visitor can nudge (tap a JD chip to re-tailor); a fully-live in-hero compile is a fast-follow.
+5. ✅ **Mode default: honor OS `prefers-color-scheme`** on both surfaces, with a persisted toggle. All four variants reachable.
+6. ✅ **Testimonials: omit until real** — no fabricated social proof; the block ships when we have genuine quotes.
+7. ✅ **Copy: replace only slop/placeholder + emoji** for this redesign (a fuller marketing copy pass is out of scope).
