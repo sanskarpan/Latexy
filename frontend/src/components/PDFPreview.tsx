@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo, type MutableRefObject } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
-import { AlertTriangle, FileText, Download, ZoomIn, ZoomOut, MousePointer, Moon, Printer, Sun } from 'lucide-react'
+import { AlertTriangle, FileText, Download, ZoomIn, ZoomOut, MousePointer, Moon, Printer, Sun, Flame } from 'lucide-react'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import { parseSynctex, synctexReverse, synctexForward, type SynctexData } from '@/lib/synctex-parser'
@@ -298,27 +298,27 @@ export default function PDFPreview({
 
   if (isLoading) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 bg-[#1a1a1a]">
-        <div className="h-7 w-7 animate-spin rounded-full border-2 border-white/10 border-t-orange-400" />
-        <p className="text-xs text-zinc-600">Compiling…</p>
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-bg">
+        <div className="h-7 w-7 animate-spin rounded-full border-2 border-line border-t-accent" />
+        <p className="text-xs text-fg-3">Compiling…</p>
       </div>
     )
   }
 
   if (!pdfUrl) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 bg-[#1a1a1a]">
-        <FileText className="h-9 w-9 text-zinc-800" />
-        <p className="text-xs text-zinc-700">No preview yet</p>
-        <p className="text-[10px] text-zinc-800">Compile your LaTeX to see the PDF</p>
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-bg">
+        <FileText className="h-9 w-9 text-fg-3" />
+        <p className="text-xs text-fg-3">No preview yet</p>
+        <p className="text-[10px] text-fg-3">Compile your LaTeX to see the PDF</p>
       </div>
     )
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#1a1a1a]">
+    <div className="flex h-full flex-col bg-bg">
       {/* Toolbar */}
-      <div className="flex shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#111] px-2 py-1">
+      <div className="flex shrink-0 items-center justify-between border-b border-line bg-surface px-2 py-1">
         {/* Zoom */}
         <div className="flex items-center gap-0.5">
           <button
@@ -326,11 +326,11 @@ export default function PDFPreview({
             disabled={zoom <= 0.4}
             aria-label="Zoom out"
             title="Zoom out"
-            className="rounded p-1 text-zinc-500 transition hover:bg-white/10 hover:text-zinc-200 disabled:opacity-30"
+            className="rounded p-1 text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-30"
           >
             <ZoomOut size={13} />
           </button>
-          <span className="min-w-[3rem] text-center text-[11px] tabular-nums text-zinc-500">
+          <span className="min-w-[3rem] text-center text-[11px] tabular-nums text-fg-3">
             {Math.round(zoom * 100)}%
           </span>
           <button
@@ -338,7 +338,7 @@ export default function PDFPreview({
             disabled={zoom >= 3}
             aria-label="Zoom in"
             title="Zoom in"
-            className="rounded p-1 text-zinc-500 transition hover:bg-white/10 hover:text-zinc-200 disabled:opacity-30"
+            className="rounded p-1 text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-30"
           >
             <ZoomIn size={13} />
           </button>
@@ -348,7 +348,7 @@ export default function PDFPreview({
         {synctexReady && (
           <div
             className={`flex items-center gap-1 text-[10px] transition ${
-              syncHint ? 'text-amber-400' : 'text-zinc-700'
+              syncHint ? 'text-warn' : 'text-fg-3'
             }`}
             title="SyncTeX enabled — Ctrl+click PDF to jump to source"
           >
@@ -362,18 +362,18 @@ export default function PDFPreview({
           <button
             onClick={() => setShowHeatmap((p) => !p)}
             title="Shows predicted areas recruiters focus on (based on eye-tracking research)"
-            className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] transition hover:bg-white/10 ${
-              showHeatmap ? 'text-orange-300' : 'text-zinc-600 hover:text-zinc-200'
+            className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] transition hover:bg-surface-2 ${
+              showHeatmap ? 'text-accent-strong' : 'text-fg-3 hover:text-fg'
             }`}
           >
-            🔥 Heatmap
+            <Flame size={12} /> Heatmap
           </button>
           <button
             onClick={toggleDarkPdf}
             aria-label={darkPdf ? 'Light PDF preview' : 'Dark PDF preview'}
             title={darkPdf ? 'Switch to light preview' : 'Switch to dark preview'}
-            className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] transition hover:bg-white/10 ${
-              darkPdf ? 'text-orange-300' : 'text-zinc-600 hover:text-zinc-200'
+            className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] transition hover:bg-surface-2 ${
+              darkPdf ? 'text-accent-strong' : 'text-fg-3 hover:text-fg'
             }`}
           >
             {darkPdf ? <Sun size={12} /> : <Moon size={12} />}
@@ -382,8 +382,8 @@ export default function PDFPreview({
             onClick={togglePrintPreview}
             aria-label={printPreview ? 'Exit print preview' : 'B&W print preview'}
             title={printPreview ? 'Exit B&W print preview' : 'Preview as B&W printed page'}
-            className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] transition hover:bg-white/10 ${
-              printPreview ? 'text-amber-300' : 'text-zinc-600 hover:text-zinc-200'
+            className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] transition hover:bg-surface-2 ${
+              printPreview ? 'text-warn' : 'text-fg-3 hover:text-fg'
             }`}
           >
             <Printer size={12} />
@@ -392,7 +392,7 @@ export default function PDFPreview({
           {onDownload && (
             <button
               onClick={onDownload}
-              className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-zinc-600 transition hover:bg-white/10 hover:text-zinc-200"
+              className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             >
               <Download size={12} />
               PDF
@@ -403,9 +403,9 @@ export default function PDFPreview({
 
       {/* Print preview banner */}
       {printPreview && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5">
-          <Printer size={12} className="shrink-0 text-amber-400" />
-          <span className="text-[11px] text-amber-300">
+        <div className="flex shrink-0 items-center gap-2 border-b border-warn/30 bg-warn/10 px-3 py-1.5">
+          <Printer size={12} className="shrink-0 text-warn" />
+          <span className="text-[11px] text-warn">
             Print Preview — showing how this looks on a B&W printer
           </span>
         </div>
@@ -416,15 +416,15 @@ export default function PDFPreview({
         ref={containerRef}
         className="flex-1 overflow-auto"
         style={{
-          background: darkPdf ? '#1e1e1e' : '#2a2a2a',
+          background: darkPdf ? 'var(--bg)' : 'var(--surface-2)',
         }}
       >
         {renderError ? (
           <div className="flex h-full flex-col items-center justify-center gap-2">
-            <FileText className="h-9 w-9 text-zinc-700" />
-            <p className="text-xs text-zinc-600">Failed to render PDF</p>
+            <FileText className="h-9 w-9 text-fg-3" />
+            <p className="text-xs text-fg-3">Failed to render PDF</p>
             {onDownload && (
-              <button onClick={onDownload} className="text-[11px] text-orange-400 hover:underline">
+              <button onClick={onDownload} className="text-[11px] text-accent-strong hover:underline">
                 Download to view
               </button>
             )}
@@ -436,7 +436,7 @@ export default function PDFPreview({
             onLoadError={() => setRenderError(true)}
             loading={
               <div className="flex h-32 items-center justify-center">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/10 border-t-orange-400" />
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-line border-t-accent" />
               </div>
             }
             className="flex min-w-max flex-col items-center gap-5 px-4 py-6"
@@ -445,7 +445,7 @@ export default function PDFPreview({
               <div
                 key={pageNum}
                 ref={(el) => { pageRefs.current[pageNum] = el }}
-                className="shadow-[0_4px_24px_rgba(0,0,0,0.5)] select-text"
+                className="shadow-[var(--shadow-2)] select-text"
                 style={{ lineHeight: 0, position: 'relative' }}
                 onClick={(e) => handlePageClick(e, pageNum)}
               >
@@ -476,10 +476,10 @@ export default function PDFPreview({
 
         {/* Color-dependency warnings (Feature 89B) */}
         {printPreview && colorWarnings.length > 0 && (
-          <div className="shrink-0 border-t border-amber-500/20 bg-[#111] px-4 py-3">
+          <div className="shrink-0 border-t border-warn/20 bg-surface px-4 py-3">
             <div className="mb-2 flex items-center gap-2">
-              <AlertTriangle size={13} className="text-amber-400" />
-              <span className="text-[11px] font-semibold text-amber-300">
+              <AlertTriangle size={13} className="text-warn" />
+              <span className="text-[11px] font-semibold text-warn">
                 Color-dependent elements detected — these may become invisible or lose meaning in grayscale print:
               </span>
             </div>
@@ -488,13 +488,13 @@ export default function PDFPreview({
                 <li key={i} className="flex items-baseline gap-2 text-[11px]">
                   <button
                     onClick={() => onJumpToLine?.(w.line)}
-                    className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 font-mono text-[10px] text-amber-400 hover:bg-amber-500/30 transition"
+                    className="shrink-0 rounded bg-warn/20 px-1.5 py-0.5 font-mono text-[10px] text-warn hover:bg-warn/30 transition"
                     title={`Jump to line ${w.line} in editor`}
                   >
                     L{w.line}
                   </button>
-                  <code className="font-mono text-amber-200">{w.command}</code>
-                  <span className="truncate text-zinc-500" title={w.context}>{w.context}</span>
+                  <code className="font-mono text-warn">{w.command}</code>
+                  <span className="truncate text-fg-3" title={w.context}>{w.context}</span>
                 </li>
               ))}
             </ul>
