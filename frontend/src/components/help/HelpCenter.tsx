@@ -225,11 +225,11 @@ export default function HelpCenter({ isOpen, onClose }: HelpCenterProps) {
 
   const getCategoryColor = (color: string) => {
     const colors = {
-      blue: 'bg-blue-50 text-blue-700 border-blue-200',
-      green: 'bg-green-50 text-green-700 border-green-200',
-      purple: 'bg-purple-50 text-purple-700 border-purple-200',
-      red: 'bg-red-50 text-red-700 border-red-200',
-      orange: 'bg-orange-50 text-orange-700 border-orange-200'
+      blue: 'bg-accent-soft text-accent-strong border-accent',
+      green: 'bg-accent-soft text-accent-strong border-accent',
+      purple: 'bg-accent-soft text-accent-strong border-accent',
+      red: 'bg-accent-soft text-accent-strong border-accent',
+      orange: 'bg-accent-soft text-accent-strong border-accent'
     }
     return colors[color as keyof typeof colors] || colors.blue
   }
@@ -237,27 +237,27 @@ export default function HelpCenter({ isOpen, onClose }: HelpCenterProps) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-[var(--overlay)] flex items-center justify-center z-50 p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
-        className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-surface rounded-[var(--radius-lg)] shadow-[var(--shadow-2)] max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
       >
         {/* Header */}
-        <div className="p-6 border-b border-secondary-200 bg-gradient-to-r from-primary-50 to-blue-50">
+        <div className="p-6 border-b border-line bg-surface-2">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-secondary-900 mb-2">
+              <h2 className="text-2xl font-bold text-fg mb-2">
                 Help Center
               </h2>
-              <p className="text-secondary-600">
+              <p className="text-fg-2">
                 Find answers to common questions and get help with Latexy
               </p>
             </div>
             <button
               onClick={onClose}
-              className="text-secondary-400 hover:text-secondary-600 text-xl font-semibold"
+              className="text-fg-3 hover:text-fg-2 text-xl font-semibold"
             >
               ×
             </button>
@@ -265,29 +265,29 @@ export default function HelpCenter({ isOpen, onClose }: HelpCenterProps) {
 
           {/* Search */}
           <div className="mt-4 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-secondary-400 w-5 h-5" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-fg-3 w-5 h-5" />
             <input
               type="text"
               placeholder="Search for help..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-secondary-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-3 border border-line rounded-[var(--radius-md)] focus:ring-2 focus:ring-accent focus:border-transparent"
             />
           </div>
         </div>
 
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar */}
-          <div className="w-80 border-r border-secondary-200 bg-secondary-50 overflow-y-auto">
+          <div className="w-80 border-r border-line bg-surface-2 overflow-y-auto">
             <div className="p-4">
-              <h3 className="font-semibold text-secondary-900 mb-3">Categories</h3>
+              <h3 className="font-semibold text-fg mb-3">Categories</h3>
               <div className="space-y-2">
                 <button
                   onClick={() => setSelectedCategory(null)}
-                  className={`w-full text-left p-3 rounded-lg transition-colors ${
+                  className={`w-full text-left p-3 rounded-[var(--radius-md)] transition-colors ${
                     selectedCategory === null
-                      ? 'bg-primary-100 text-primary-700 border border-primary-200'
-                      : 'hover:bg-secondary-100'
+                      ? 'bg-accent-soft text-accent-strong border border-accent'
+                      : 'hover:bg-surface-2'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -300,10 +300,10 @@ export default function HelpCenter({ isOpen, onClose }: HelpCenterProps) {
                   <button
                     key={category.id}
                     onClick={() => setSelectedCategory(category.id)}
-                    className={`w-full text-left p-3 rounded-lg transition-colors border ${
+                    className={`w-full text-left p-3 rounded-[var(--radius-md)] transition-colors border ${
                       selectedCategory === category.id
                         ? getCategoryColor(category.color)
-                        : 'hover:bg-secondary-100 border-transparent'
+                        : 'hover:bg-surface-2 border-transparent'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -318,26 +318,26 @@ export default function HelpCenter({ isOpen, onClose }: HelpCenterProps) {
               </div>
 
               {/* Contact Support */}
-              <div className="mt-6 p-4 bg-white rounded-lg border border-secondary-200">
-                <h4 className="font-semibold text-secondary-900 mb-2">Need More Help?</h4>
+              <div className="mt-6 p-4 bg-surface rounded-[var(--radius-md)] border border-line">
+                <h4 className="font-semibold text-fg mb-2">Need More Help?</h4>
                 <div className="space-y-2">
                   <a
                     href="mailto:support@latexy.com"
-                    className="flex items-center gap-2 text-sm text-secondary-600 hover:text-primary-600"
+                    className="flex items-center gap-2 text-sm text-fg-2 hover:text-accent-strong"
                   >
                     <Mail className="w-4 h-4" />
                     Email Support
                   </a>
                   <a
                     href="/contact"
-                    className="flex items-center gap-2 text-sm text-secondary-600 hover:text-primary-600"
+                    className="flex items-center gap-2 text-sm text-fg-2 hover:text-accent-strong"
                   >
                     <MessageCircle className="w-4 h-4" />
                     Live Chat
                   </a>
                   <a
                     href="/documentation"
-                    className="flex items-center gap-2 text-sm text-secondary-600 hover:text-primary-600"
+                    className="flex items-center gap-2 text-sm text-fg-2 hover:text-accent-strong"
                   >
                     <ExternalLink className="w-4 h-4" />
                     Documentation
@@ -351,18 +351,18 @@ export default function HelpCenter({ isOpen, onClose }: HelpCenterProps) {
           <div className="flex-1 overflow-y-auto">
             <div className="p-6">
               {searchQuery && (
-                <div className="mb-4 text-sm text-secondary-600">
+                <div className="mb-4 text-sm text-fg-2">
                   Found {filteredFAQs.length} result{filteredFAQs.length !== 1 ? 's' : ''} for "{searchQuery}"
                 </div>
               )}
 
               {filteredFAQs.length === 0 ? (
                 <div className="text-center py-12">
-                  <Search className="w-12 h-12 text-secondary-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-secondary-900 mb-2">
+                  <Search className="w-12 h-12 text-fg-3 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-fg mb-2">
                     No results found
                   </h3>
-                  <p className="text-secondary-600 mb-4">
+                  <p className="text-fg-2 mb-4">
                     Try adjusting your search terms or browse categories
                   </p>
                   <button
@@ -370,7 +370,7 @@ export default function HelpCenter({ isOpen, onClose }: HelpCenterProps) {
                       setSearchQuery('')
                       setSelectedCategory(null)
                     }}
-                    className="btn-outline"
+                    className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-sm text-fg hover:bg-surface-2"
                   >
                     Clear Search
                   </button>
@@ -382,20 +382,20 @@ export default function HelpCenter({ isOpen, onClose }: HelpCenterProps) {
                       key={faq.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="border border-secondary-200 rounded-lg overflow-hidden"
+                      className="border border-line rounded-[var(--radius-md)] overflow-hidden"
                     >
                       <button
                         onClick={() => toggleFAQ(faq.id)}
-                        className="w-full p-4 text-left hover:bg-secondary-50 transition-colors"
+                        className="w-full p-4 text-left hover:bg-surface-2 transition-colors"
                       >
                         <div className="flex items-center justify-between">
-                          <h3 className="font-semibold text-secondary-900 pr-4">
+                          <h3 className="font-semibold text-fg pr-4">
                             {faq.question}
                           </h3>
                           {expandedFAQ === faq.id ? (
-                            <ChevronDown className="w-5 h-5 text-secondary-400 flex-shrink-0" />
+                            <ChevronDown className="w-5 h-5 text-fg-3 flex-shrink-0" />
                           ) : (
-                            <ChevronRight className="w-5 h-5 text-secondary-400 flex-shrink-0" />
+                            <ChevronRight className="w-5 h-5 text-fg-3 flex-shrink-0" />
                           )}
                         </div>
                       </button>
@@ -408,15 +408,15 @@ export default function HelpCenter({ isOpen, onClose }: HelpCenterProps) {
                             exit={{ height: 0 }}
                             className="overflow-hidden"
                           >
-                            <div className="p-4 pt-0 border-t border-secondary-100">
-                              <p className="text-secondary-700 leading-relaxed">
+                            <div className="p-4 pt-0 border-t border-line">
+                              <p className="text-fg-2 leading-relaxed">
                                 {faq.answer}
                               </p>
                               <div className="mt-3 flex flex-wrap gap-2">
                                 {faq.tags.map((tag) => (
                                   <span
                                     key={tag}
-                                    className="px-2 py-1 bg-secondary-100 text-secondary-600 text-xs rounded-full"
+                                    className="px-2 py-1 bg-surface-2 text-fg-2 text-xs rounded-full"
                                   >
                                     {tag}
                                   </span>
@@ -435,15 +435,15 @@ export default function HelpCenter({ isOpen, onClose }: HelpCenterProps) {
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-secondary-200 bg-secondary-50">
-          <div className="flex items-center justify-between text-sm text-secondary-600">
+        <div className="p-4 border-t border-line bg-surface-2">
+          <div className="flex items-center justify-between text-sm text-fg-2">
             <div>
-              Still need help? <a href="mailto:support@latexy.com" className="text-primary-600 hover:underline">Contact Support</a>
+              Still need help? <a href="mailto:support@latexy.com" className="text-accent-strong hover:underline">Contact Support</a>
             </div>
             <div className="flex items-center gap-4">
-              <a href="/documentation" className="hover:text-primary-600">Documentation</a>
-              <a href="/tutorials" className="hover:text-primary-600">Tutorials</a>
-              <a href="/status" className="hover:text-primary-600">System Status</a>
+              <a href="/documentation" className="hover:text-accent-strong">Documentation</a>
+              <a href="/tutorials" className="hover:text-accent-strong">Tutorials</a>
+              <a href="/status" className="hover:text-accent-strong">System Status</a>
             </div>
           </div>
         </div>

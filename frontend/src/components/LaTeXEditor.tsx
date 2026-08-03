@@ -20,7 +20,7 @@ import { classifyCollabClose } from '@/lib/collab-close'
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
   ssr: false,
-  loading: () => <div className="h-full w-full bg-[#07090f]" aria-hidden="true" />,
+  loading: () => <div className="h-full w-full bg-bg" aria-hidden="true" />,
 })
 
 type MonacoEditorInstance = import('monaco-editor').editor.IStandaloneCodeEditor
@@ -1649,14 +1649,14 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       <div className="flex h-full flex-col">
         {!value ? (
           <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-            <p className="text-sm uppercase tracking-[0.14em] text-zinc-600">Empty document</p>
-            <p className="mt-2 max-w-sm text-xs text-zinc-600">
+            <p className="text-sm uppercase tracking-[0.14em] text-fg-3">Empty document</p>
+            <p className="mt-2 max-w-sm text-xs text-fg-3">
               {hideEmptyAction ? 'Content will appear here once generated.' : 'Start writing or use a sample template.'}
             </p>
             {!hideEmptyAction && (
               <button
                 onClick={() => onChange(BLANK_RESUME_TEMPLATE)}
-                className="mt-4 rounded-lg border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08]"
+                className="mt-4 rounded-[var(--radius-md)] border border-line bg-surface px-4 py-2 text-xs font-medium text-fg-2 transition hover:bg-surface-2"
               >
                 Insert Sample Resume
               </button>
@@ -1722,18 +1722,18 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         )}
 
         {/* Status bar */}
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-white/[0.05] bg-[#07090f] px-3 py-1 text-[10px] uppercase tracking-[0.12em]">
-          <span className="text-zinc-700">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line bg-bg px-3 py-1 text-[10px] uppercase tracking-[0.12em]">
+          <span className="text-fg-3">
             {readOnly
               ? 'Read-only — job running'
               : collabReadOnly
                 ? 'Read-only — no edit access'
                 : 'LaTeX editor'}
           </span>
-          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-zinc-700">
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-fg-3">
             {onAutoCompile && (
-              <span className="flex items-center gap-1 text-[10px] text-orange-400/70">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400/70" />
+              <span className="flex items-center gap-1 text-[10px] text-accent-strong">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                 Auto
               </span>
             )}
@@ -1741,12 +1741,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             {(pageCount !== null && pageCount !== undefined) ? (
               <span
                 title={`Resume is ${pageCount} page${pageCount === 1 ? '' : 's'}`}
-                className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md ${
+                className={`text-[10px] font-medium px-1.5 py-0.5 rounded-[var(--radius-md)] ${
                   pageCount === 1
-                    ? 'text-emerald-400 bg-emerald-500/10'
+                    ? 'text-ok bg-ok/10'
                     : pageCount === 2
-                    ? 'text-amber-400 bg-amber-500/10'
-                    : 'text-rose-400 bg-rose-500/10 animate-pulse'
+                    ? 'text-warn bg-warn/10'
+                    : 'text-err bg-err/10 animate-pulse'
                 }`}
               >
                 {pageCount} {pageCount === 1 ? 'page' : 'pages'}{pageCount > 1 ? ' ⚠' : ''}
@@ -1754,7 +1754,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             ) : estimatedPageCount !== null ? (
               <span
                 title="Estimated page count (compile for exact count)"
-                className="text-[10px] text-zinc-600 px-1.5"
+                className="text-[10px] text-fg-3 px-1.5"
               >
                 ~{estimatedPageCount} {estimatedPageCount === 1 ? 'page' : 'pages'}
               </span>
@@ -1765,13 +1765,13 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 title={spellCheckEnabled ? 'Spell check on — click to disable' : 'Spell check off — click to enable'}
                 className={`flex items-center gap-1 text-[10px] transition ${
                   spellCheckEnabled
-                    ? 'text-blue-400 hover:text-blue-300'
-                    : 'text-zinc-700 hover:text-zinc-400'
+                    ? 'text-accent-strong hover:text-accent'
+                    : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 ABC{spellCheckEnabled ? ' ✓' : ''}
                 {spellCheckLoading && (
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" />
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                 )}
               </button>
             )}
@@ -1784,8 +1784,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             )}
             {(confidenceScore !== undefined || confidenceScoreLoading) && (
               confidenceScoreLoading ? (
-                <span className="flex items-center gap-1 text-[10px] text-zinc-500">
-                  <span className="h-1.5 w-1.5 animate-spin rounded-full border border-zinc-500 border-t-transparent" />
+                <span className="flex items-center gap-1 text-[10px] text-fg-3">
+                  <span className="h-1.5 w-1.5 animate-spin rounded-full border border-line-2 border-t-transparent" />
                   Quality
                 </span>
               ) : confidenceScore != null ? (
@@ -1794,12 +1794,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                     type="button"
                     onClick={onConfidenceBadgeClick}
                     title="Resume quality score — click to view details"
-                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer hover:brightness-110 ${
+                    className={`rounded-[var(--radius-md)] px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer hover:brightness-110 ${
                       confidenceScore >= 80
-                        ? 'text-emerald-400 bg-emerald-500/10'
+                        ? 'text-ok bg-ok/10'
                         : confidenceScore >= 60
-                          ? 'text-amber-400 bg-amber-500/10'
-                          : 'text-rose-400 bg-rose-500/10'
+                          ? 'text-warn bg-warn/10'
+                          : 'text-err bg-err/10'
                     }`}
                   >
                     Q {confidenceScore}
@@ -1807,12 +1807,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 ) : (
                   <span
                     title="Resume quality score"
-                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
+                    className={`rounded-[var(--radius-md)] px-1.5 py-0.5 text-[10px] font-medium ${
                       confidenceScore >= 80
-                        ? 'text-emerald-400 bg-emerald-500/10'
+                        ? 'text-ok bg-ok/10'
                         : confidenceScore >= 60
-                          ? 'text-amber-400 bg-amber-500/10'
-                          : 'text-rose-400 bg-rose-500/10'
+                          ? 'text-warn bg-warn/10'
+                          : 'text-err bg-err/10'
                     }`}
                   >
                     Q {confidenceScore}
@@ -1821,7 +1821,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               ) : null
             )}
             <span>{value.length.toLocaleString()} chars</span>
-            <span className="hidden text-zinc-800 sm:inline">
+            <span className="hidden text-fg-3 sm:inline">
               {[onSave && '⌘S save', onCompile && '⌘↵ compile', '⌘⇧H presets'].filter(Boolean).join(' · ')}
             </span>
           </div>
