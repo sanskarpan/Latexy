@@ -890,13 +890,15 @@ export interface GenerateBulletsResponse {
   cached: boolean
 }
 
-export type RewriteAction = 'improve' | 'shorten' | 'quantify' | 'power_verbs' | 'change_tone' | 'expand'
+export type RewriteAction = 'improve' | 'shorten' | 'quantify' | 'power_verbs' | 'change_tone' | 'expand' | 'steer'
 
 export interface RewriteRequest {
   selected_text: string
   action: RewriteAction
   context?: string
   tone?: string
+  /** Free-text steer for the 'steer' action (regenerate-with-a-note). */
+  instruction?: string
 }
 
 export interface RewriteResponse {
