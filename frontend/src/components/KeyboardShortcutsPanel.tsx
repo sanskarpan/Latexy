@@ -64,31 +64,31 @@ export default function KeyboardShortcutsPanel({ isOpen, onClose }: KeyboardShor
       role="dialog"
       aria-modal="true"
       aria-labelledby="keyboard-shortcuts-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)]"
       onClick={handleBackdropClick}
     >
-      <div className="w-full max-w-lg rounded-xl border border-white/[0.08] bg-[#0d0d0d] shadow-2xl">
+      <div className="w-full max-w-lg rounded-[var(--radius-md)] border border-line bg-bg shadow-[var(--shadow-2)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3.5">
+        <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/15">
-              <Keyboard size={14} className="text-orange-300" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <Keyboard size={14} className="text-accent-strong" />
             </div>
-            <h2 id="keyboard-shortcuts-title" className="text-sm font-semibold text-zinc-100">Keyboard Shortcuts</h2>
+            <h2 id="keyboard-shortcuts-title" className="text-sm font-semibold text-fg">Keyboard Shortcuts</h2>
           </div>
           <button
             onClick={onClose}
             aria-label="Close keyboard shortcuts"
-            className="rounded-lg p-1.5 text-zinc-600 transition hover:bg-white/[0.06] hover:text-zinc-300"
+            className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={16} />
           </button>
         </div>
 
         {/* Search */}
-        <div className="border-b border-white/[0.06] px-5 py-2.5">
+        <div className="border-b border-line px-5 py-2.5">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600" size={13} />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-3" size={13} />
             <input
               type="text"
               aria-label="Search keyboard shortcuts"
@@ -96,7 +96,7 @@ export default function KeyboardShortcutsPanel({ isOpen, onClose }: KeyboardShor
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search shortcuts..."
               autoFocus
-              className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-1.5 pl-8 pr-3 text-sm text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-orange-400/30"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 py-1.5 pl-8 pr-3 text-sm text-fg outline-none placeholder:text-fg-3 focus:border-accent"
             />
           </div>
         </div>
@@ -104,26 +104,26 @@ export default function KeyboardShortcutsPanel({ isOpen, onClose }: KeyboardShor
         {/* Shortcuts list */}
         <div className="max-h-[420px] overflow-y-auto px-5 py-3">
           {grouped.length === 0 ? (
-            <p className="py-8 text-center text-sm text-zinc-600">No shortcuts match your search</p>
+            <p className="py-8 text-center text-sm text-fg-3">No shortcuts match your search</p>
           ) : (
             <div className="space-y-4">
               {grouped.map(({ category, label, shortcuts }) => (
                 <div key={category}>
-                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-600">
+                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-fg-3">
                     {label}
                   </p>
                   <div className="space-y-0.5">
                     {shortcuts.map((s) => (
                       <div
                         key={s.description}
-                        className="flex items-center justify-between rounded-lg px-2 py-1.5 transition hover:bg-white/[0.03]"
+                        className="flex items-center justify-between rounded-[var(--radius-md)] px-2 py-1.5 transition hover:bg-surface-2"
                       >
-                        <span className="text-[13px] text-zinc-400">{s.description}</span>
+                        <span className="text-[13px] text-fg-2">{s.description}</span>
                         <div className="flex items-center gap-1">
                           {s.keys.map((key, i) => (
                             <kbd
                               key={i}
-                              className="inline-flex min-w-[22px] items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 text-[11px] font-medium text-zinc-400"
+                              className="inline-flex min-w-[22px] items-center justify-center rounded-[var(--radius-md)] border border-line bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium text-fg-2"
                             >
                               {key}
                             </kbd>
@@ -139,9 +139,9 @@ export default function KeyboardShortcutsPanel({ isOpen, onClose }: KeyboardShor
         </div>
 
         {/* Footer */}
-        <div className="border-t border-white/[0.06] px-5 py-2.5">
-          <p className="text-[10px] text-zinc-700">
-            Press <kbd className="rounded border border-white/[0.08] bg-white/[0.04] px-1 py-0.5 text-[10px] text-zinc-500">Esc</kbd> to close
+        <div className="border-t border-line px-5 py-2.5">
+          <p className="text-[10px] text-fg-3">
+            Press <kbd className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-1 py-0.5 text-[10px] text-fg-3">Esc</kbd> to close
           </p>
         </div>
       </div>
