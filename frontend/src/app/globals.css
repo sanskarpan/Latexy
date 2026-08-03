@@ -1,3 +1,5 @@
+@import './design-tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -16,8 +18,8 @@
     --secondary-foreground: 0 0% 96%;
     --muted: 0 0% 14%;
     --muted-foreground: 0 0% 66%;
-    --accent: 16 94% 62%;
-    --accent-foreground: 0 0% 4%;
+    --ui-accent: 16 94% 62%;
+    --ui-accent-foreground: 0 0% 4%;
     --destructive: 0 70% 58%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 17%;
