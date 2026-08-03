@@ -425,21 +425,21 @@ export default function OptimizationSuitePage() {
     <div className="content-shell min-h-screen space-y-6 pb-12">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <p className="overline">Optimization</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">Targeted Optimization</h1>
-          <p className="mt-1 text-sm text-zinc-400">Optimize "{resume?.title}" — add a job description to tailor it to a specific role, or leave blank for general improvements.</p>
+          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Optimization</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">Targeted Optimization</h1>
+          <p className="mt-1 text-sm text-fg-2">Optimize "{resume?.title}" — add a job description to tailor it to a specific role, or leave blank for general improvements.</p>
         </div>
         <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:shrink-0">
           <div className="relative">
             <button
               onClick={() => { setForkPopoverOpen(v => !v); setForkTitleInput(`${resume?.title ?? ''} — Variant`) }}
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-zinc-400 transition hover:text-zinc-200"
+              className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
             >
               <GitFork size={12} />
               Variant
             </button>
             {forkPopoverOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-white/10 bg-zinc-950 p-3 shadow-xl">
+              <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-[var(--radius-md)] border border-line bg-bg p-3 shadow-[var(--shadow-2)]">
                 <input
                   type="text"
                   value={forkTitleInput}
@@ -447,27 +447,27 @@ export default function OptimizationSuitePage() {
                   onKeyDown={e => { if (e.key === 'Enter') handleCreateVariant(); if (e.key === 'Escape') setForkPopoverOpen(false) }}
                   placeholder="Variant title"
                   autoFocus
-                  className="w-full rounded-md border border-white/10 bg-black/40 px-2 py-1.5 text-xs text-zinc-100 outline-none focus:border-orange-300/40 mb-2"
+                  className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-1.5 text-xs text-fg outline-none focus:border-accent mb-2"
                 />
                 <div className="flex gap-2 justify-end">
-                  <button onClick={() => setForkPopoverOpen(false)} className="px-2 py-1 text-[10px] text-zinc-500 hover:text-zinc-300">Cancel</button>
-                  <button onClick={handleCreateVariant} disabled={isForkingResume} className="rounded-md bg-orange-500/20 px-3 py-1 text-[10px] font-semibold text-orange-200 ring-1 ring-orange-400/20 hover:bg-orange-500/30 disabled:opacity-50">
+                  <button onClick={() => setForkPopoverOpen(false)} className="px-2 py-1 text-[10px] text-fg-3 hover:text-fg-2">Cancel</button>
+                  <button onClick={handleCreateVariant} disabled={isForkingResume} className="rounded-[var(--radius-md)] bg-accent-soft px-3 py-1 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/20 hover:brightness-110 disabled:opacity-50">
                     {isForkingResume ? 'Creating...' : 'Create'}
                   </button>
                 </div>
               </div>
             )}
           </div>
-          <Link href={`/workspace/${resumeId}/edit`} className="btn-ghost px-4 py-2 text-xs">
+          <Link href={`/workspace/${resumeId}/edit`} className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2">
             Back to Editor
           </Link>
           <Link
             href={`/workspace/${resumeId}/cover-letter`}
-            className="rounded-lg border border-violet-300/25 bg-violet-300/10 px-4 py-2 text-xs font-semibold text-violet-200 transition hover:bg-violet-300/20"
+            className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-semibold text-fg transition hover:bg-surface-2"
           >
             Cover Letter
           </Link>
-          <span className="rounded-lg border border-orange-300/25 bg-orange-300/10 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-200">
+          <span className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-accent-strong">
             Pro Pipeline
           </span>
         </div>
@@ -475,13 +475,13 @@ export default function OptimizationSuitePage() {
 
       {/* Variant banner */}
       {parentResumeId && parentTitle && (
-        <div className="flex items-center justify-between rounded-lg border border-orange-500/10 bg-orange-500/5 px-4 py-2">
-          <span className="text-xs text-zinc-400">
-            Variant of: <span className="font-medium text-zinc-300">{parentTitle}</span>
+        <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-accent bg-accent-soft px-4 py-2">
+          <span className="text-xs text-fg-2">
+            Variant of: <span className="font-medium text-fg-2">{parentTitle}</span>
           </span>
           <button
             onClick={handleCompareWithParent}
-            className="text-xs font-semibold text-orange-300 transition hover:text-orange-200"
+            className="text-xs font-semibold text-accent-strong transition hover:brightness-110"
           >
             Compare with Parent
           </button>
@@ -491,12 +491,12 @@ export default function OptimizationSuitePage() {
       <div className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
         <aside className="min-w-0 space-y-6">
           {/* ── Persona selector (Feature 56) ── */}
-          <section className="surface-panel edge-highlight p-5">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Optimization Style</h2>
-              <span className="text-[10px] text-zinc-600">optional</span>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">Optimization Style</h2>
+              <span className="text-[10px] text-fg-3">optional</span>
             </div>
-            <p className="mt-1 text-[11px] text-zinc-600">Choose a persona to bias the AI toward a specific context.</p>
+            <p className="mt-1 text-[11px] text-fg-3">Choose a persona to bias the AI toward a specific context.</p>
             <div className="mt-3 grid grid-cols-1 gap-1.5">
               {PERSONA_OPTIONS.map((p) => {
                 const active = persona === p.key
@@ -509,16 +509,16 @@ export default function OptimizationSuitePage() {
                       apiClient.updateResumeSettings(resumeId, { last_persona: next ?? '' }).catch(() => {})
                     }}
                     disabled={isProcessing}
-                    className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition disabled:opacity-50 ${
+                    className={`flex items-start gap-2.5 rounded-[var(--radius-md)] border px-3 py-2 text-left transition disabled:opacity-50 ${
                       active
-                        ? 'border-orange-400/40 bg-orange-400/10'
-                        : 'border-white/[0.06] bg-black/20 hover:bg-white/[0.04]'
+                        ? 'border-accent bg-accent-soft'
+                        : 'border-line bg-surface-2 hover:bg-surface-2'
                     }`}
                   >
                     <span className="mt-0.5 text-base leading-none">{p.icon}</span>
                     <div className="min-w-0">
-                      <p className={`text-[11px] font-semibold ${active ? 'text-orange-200' : 'text-zinc-300'}`}>{p.label}</p>
-                      <p className="mt-0.5 text-[10px] leading-relaxed text-zinc-600">{p.description}</p>
+                      <p className={`text-[11px] font-semibold ${active ? 'text-accent-strong' : 'text-fg-2'}`}>{p.label}</p>
+                      <p className="mt-0.5 text-[10px] leading-relaxed text-fg-3">{p.description}</p>
                     </div>
                   </button>
                 )
@@ -526,10 +526,10 @@ export default function OptimizationSuitePage() {
             </div>
           </section>
 
-          <section className="surface-panel edge-highlight p-5">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Job Description</h2>
-              <span className="text-[10px] text-zinc-600">optional</span>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">Job Description</h2>
+              <span className="text-[10px] text-fg-3">optional</span>
             </div>
             <div className="mt-3 flex gap-2">
               <input
@@ -539,13 +539,13 @@ export default function OptimizationSuitePage() {
                 onKeyDown={(e) => { if (e.key === 'Enter') handleScrapeUrl() }}
                 placeholder="Paste job URL (Greenhouse, Lever, Workday, Indeed…)"
                 disabled={isProcessing || isScraping}
-                className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-orange-300/40 disabled:opacity-50"
+                className="flex-1 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-1.5 text-xs text-fg outline-none transition placeholder:text-fg-3 focus:border-accent disabled:opacity-50"
               />
               <button
                 onClick={handleScrapeUrl}
                 disabled={!jobUrl.trim() || isProcessing || isScraping}
                 title="Import job description from URL"
-                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-1.5 text-xs font-medium text-fg-2 transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {isScraping ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />}
                 {isScraping ? 'Importing…' : 'Import'}
@@ -554,31 +554,31 @@ export default function OptimizationSuitePage() {
             {scrapedMeta && !scrapedMeta.error && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {scrapedMeta.title && (
-                  <span className="rounded bg-orange-400/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-300">
+                  <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent-strong">
                     {scrapedMeta.title}
                   </span>
                 )}
                 {scrapedMeta.company && (
-                  <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-400">
+                  <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-2">
                     {scrapedMeta.company}
                   </span>
                 )}
                 {scrapedMeta.location && (
-                  <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500">
+                  <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-3">
                     📍 {scrapedMeta.location}
                   </span>
                 )}
                 {scrapedMeta.job_type && (
-                  <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500">
+                  <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-3">
                     {scrapedMeta.job_type}
                   </span>
                 )}
                 {scrapedMeta.salary && (
-                  <span className="rounded bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                  <span className="rounded bg-ok/10 px-1.5 py-0.5 text-[10px] text-ok">
                     {scrapedMeta.salary}
                   </span>
                 )}
-                <span className="ml-auto text-[9px] text-zinc-700">
+                <span className="ml-auto text-[9px] text-fg-3">
                   via {scrapedMeta.source}
                 </span>
               </div>
@@ -588,7 +588,7 @@ export default function OptimizationSuitePage() {
               onChange={(event) => setJobDescription(event.target.value)}
               placeholder="Paste a job description to tailor the optimization to a specific role. Leave blank for general improvements."
               disabled={isProcessing}
-              className="scrollbar-subtle mt-2 h-56 w-full resize-none rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-zinc-100 outline-none transition focus:border-orange-300/50"
+              className="scrollbar-subtle mt-2 h-56 w-full resize-none rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4 text-sm text-fg outline-none transition focus:border-accent"
             />
             <div className="mt-3">
               <GuidedIntakePanel value={intake} onChange={setIntake} />
@@ -596,12 +596,12 @@ export default function OptimizationSuitePage() {
             <button
               onClick={runOptimization}
               disabled={isProcessing || isSubmitting}
-              className="btn-accent mt-4 w-full py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-[var(--radius-md)] bg-accent px-4 text-accent-fg hover:brightness-110 mt-4 w-full py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isProcessing || isSubmitting ? 'Processing...' : jobDescription.trim() ? 'Optimize for this Role' : 'Optimize Resume'}
             </button>
             {!intakeIsEmpty(intake) && (
-              <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
+              <p className="mt-2 text-[10px] leading-relaxed text-fg-3">
                 The AI will follow your direction —
                 {[
                   intake.industry && ` ${intake.industry} industry`,
@@ -620,43 +620,43 @@ export default function OptimizationSuitePage() {
               <motion.section
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="surface-panel edge-highlight p-5"
+                className="rounded-[var(--radius-lg)] border border-line bg-surface p-5"
               >
                 <div className="mb-4 flex items-start justify-between gap-3">
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Pipeline Status</h2>
-                  <span className="text-[10px] font-mono text-zinc-500">{activeJobId.slice(0, 8)}</span>
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">Pipeline Status</h2>
+                  <span className="text-[10px] font-mono text-fg-3">{activeJobId.slice(0, 8)}</span>
                 </div>
-                <div className="h-2 rounded-full bg-white/10">
-                  <div className="h-full rounded-full bg-orange-300 transition-all" style={{ width: `${stream.percent}%` }} />
+                <div className="h-2 rounded-full bg-surface-2">
+                  <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${stream.percent}%` }} />
                 </div>
-                <p className="mt-3 text-sm capitalize text-zinc-200">{stream.stage || 'Initializing'}</p>
-                <p className="mt-1 text-xs text-zinc-500">{stream.message || 'Connecting to workers...'}</p>
+                <p className="mt-3 text-sm capitalize text-fg">{stream.stage || 'Initializing'}</p>
+                <p className="mt-1 text-xs text-fg-3">{stream.message || 'Connecting to workers...'}</p>
               </motion.section>
             )}
           </AnimatePresence>
 
-          <section className="surface-panel edge-highlight p-5">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Live Logs</h2>
-            <div className="mt-4 h-56 overflow-hidden rounded-lg bg-black/60">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">Live Logs</h2>
+            <div className="mt-4 h-56 overflow-hidden rounded-[var(--radius-md)] bg-[var(--overlay)]">
               <LogViewer lines={stream.logLines} maxHeight="100%" className="h-full text-[10px]" />
             </div>
           </section>
 
-          <section className="surface-panel edge-highlight overflow-hidden">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface overflow-hidden">
             <button
               onClick={() => setShowHistory((v) => !v)}
-              className="flex w-full items-center justify-between px-5 py-3.5 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400 transition hover:text-zinc-200"
+              className="flex w-full items-center justify-between px-5 py-3.5 text-xs font-semibold uppercase tracking-[0.14em] text-fg-2 transition hover:text-fg"
             >
               <span className="flex items-center gap-2">
                 <History size={13} />
                 Version History
               </span>
-              <span className="text-[10px] font-normal normal-case tracking-normal text-zinc-600">
+              <span className="text-[10px] font-normal normal-case tracking-normal text-fg-3">
                 {showHistory ? 'Hide' : 'Show'}
               </span>
             </button>
             {showHistory && (
-              <div className="max-h-80 overflow-y-auto border-t border-white/5">
+              <div className="max-h-80 overflow-y-auto border-t border-line">
                 <VersionHistoryPanel
                   resumeId={resumeId}
                   onRestore={handleHistoryRestore}
@@ -670,23 +670,23 @@ export default function OptimizationSuitePage() {
 
         <main className="min-w-0 space-y-6">
           <div className="grid gap-6 xl:grid-cols-2">
-            <section className="surface-panel edge-highlight flex h-[620px] min-w-0 flex-col overflow-hidden">
-              <div className="flex h-11 items-center justify-between gap-2 border-b border-white/10 bg-white/[0.03] px-4">
+            <section className="rounded-[var(--radius-lg)] border border-line bg-surface flex h-[620px] min-w-0 flex-col overflow-hidden">
+              <div className="flex h-11 items-center justify-between gap-2 border-b border-line bg-surface-2 px-4">
                 <div className="flex min-w-0 items-center gap-3 overflow-x-auto">
-                  <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">LaTeX Source</p>
+                  <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">LaTeX Source</p>
                   <button
                     onClick={toggleAutoCompile}
                     title="Auto-compile on change (2s debounce)"
-                    className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition ${
+                    className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium transition ${
                       autoCompile
-                        ? 'bg-orange-500/20 text-orange-300 ring-1 ring-orange-500/30'
-                        : 'text-zinc-600 hover:text-zinc-300'
+                        ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
+                        : 'text-fg-3 hover:text-fg-2'
                     }`}
                   >
                     <Zap size={10} />
                     Auto
                   </button>
-                  <span className="h-4 w-px bg-white/10" />
+                  <span className="h-4 w-px bg-line" />
                   <CompilerSelector
                     resumeId={resumeId}
                     current={compiler}
@@ -694,25 +694,25 @@ export default function OptimizationSuitePage() {
                     disabled={isProcessing || isSubmitting}
                   />
                 </div>
-                <button onClick={restoreOriginal} className="shrink-0 text-xs font-semibold text-zinc-300 transition hover:text-white">
+                <button onClick={restoreOriginal} className="shrink-0 text-xs font-semibold text-fg-2 transition hover:text-fg">
                   Restore Original
                 </button>
               </div>
               {stream.pageCount !== null && stream.pageCount > 1 && (
-                <div className="flex shrink-0 items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-4 py-1.5">
-                  <span className="text-[11px] text-amber-400">
+                <div className="flex shrink-0 items-center justify-between border-b border-warn/20 bg-warn/10 px-4 py-1.5">
+                  <span className="text-[11px] text-warn">
                     ⚠ Your resume is {stream.pageCount} pages. Most recruiters prefer 1 page.
                   </span>
                   <button
                     onClick={handleTrimToOnePage}
                     disabled={isSubmitting || isProcessing}
-                    className="ml-3 text-[11px] text-amber-300 underline hover:text-amber-100 disabled:opacity-50"
+                    className="ml-3 text-[11px] text-warn underline hover:brightness-110 disabled:opacity-50"
                   >
                     Trim with AI →
                   </button>
                 </div>
               )}
-              <div className="relative min-h-0 min-w-0 flex-1 overflow-x-auto bg-black/20">
+              <div className="relative min-h-0 min-w-0 flex-1 overflow-x-auto bg-bg">
                 <LaTeXEditor
                   ref={editorRef}
                   value={resume?.latex_content || ''}
@@ -738,50 +738,50 @@ export default function OptimizationSuitePage() {
               </div>
             </section>
 
-            <section className="surface-panel edge-highlight flex h-[620px] min-w-0 flex-col overflow-hidden">
-              <div className="flex h-11 items-center justify-between gap-2 border-b border-white/10 bg-white/[0.03] px-4">
-                <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Output Preview</p>
+            <section className="rounded-[var(--radius-lg)] border border-line bg-surface flex h-[620px] min-w-0 flex-col overflow-hidden">
+              <div className="flex h-11 items-center justify-between gap-2 border-b border-line bg-surface-2 px-4">
+                <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">Output Preview</p>
                 <div className="flex items-center gap-3">
                   {compareAfterLatex !== null && compareOriginalLatex !== null && (
                     <>
                       <button
                         onClick={() => setShowReviewModal(true)}
-                        className="text-xs font-semibold text-emerald-300 transition hover:text-emerald-200"
+                        className="text-xs font-semibold text-ok transition hover:brightness-110"
                       >
                         Review Changes
                       </button>
                       <button
                         onClick={() => setShowCompareModal(true)}
-                        className="text-xs font-semibold text-orange-300 transition hover:text-orange-200"
+                        className="text-xs font-semibold text-accent-strong transition hover:brightness-110"
                       >
                         Compare with Original
                       </button>
                     </>
                   )}
                   {pdfUrl && (
-                    <a href={pdfUrl} download="optimized_resume.pdf" className="text-xs font-semibold text-zinc-300 transition hover:text-white">
+                    <a href={pdfUrl} download="optimized_resume.pdf" className="text-xs font-semibold text-fg-2 transition hover:text-fg">
                       Download PDF
                     </a>
                   )}
                 </div>
               </div>
-              <div className="min-h-0 flex-1 bg-black/30">
+              <div className="min-h-0 flex-1 bg-bg">
                 <PDFPreview pdfUrl={pdfUrl} isLoading={isProcessing && stream.percent > 40} />
               </div>
             </section>
           </div>
 
-          <section className="surface-panel edge-highlight overflow-hidden">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface overflow-hidden">
             {/* Tab bar */}
-            <div className="flex overflow-x-auto border-b border-white/10">
+            <div className="flex overflow-x-auto border-b border-line">
               {(['ATS Simulator', 'Keywords', 'Publications'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveToolTab(tab)}
                   className={`shrink-0 px-5 py-3 text-xs font-semibold uppercase tracking-[0.14em] transition ${
                     activeToolTab === tab
-                      ? 'border-b-2 border-orange-400 text-orange-300'
-                      : 'text-zinc-500 hover:text-zinc-300'
+                      ? 'border-b-2 border-accent text-accent-strong'
+                      : 'text-fg-3 hover:text-fg-2'
                   }`}
                 >
                   {tab}
@@ -791,7 +791,7 @@ export default function OptimizationSuitePage() {
             <div className="p-6">
               {activeToolTab === 'ATS Simulator' ? (
                 <>
-                  <p className="mb-5 text-sm text-zinc-400">
+                  <p className="mb-5 text-sm text-fg-2">
                     See how major ATS platforms parse your resume. Select a system to view the
                     plain-text representation it would extract and identify any compatibility issues.
                   </p>
@@ -799,7 +799,7 @@ export default function OptimizationSuitePage() {
                 </>
               ) : activeToolTab === 'Keywords' ? (
                 <>
-                  <p className="mb-5 text-sm text-zinc-400">
+                  <p className="mb-5 text-sm text-fg-2">
                     Paste a job description to see which keywords your resume covers. Green = present,
                     amber = partial match, red = missing. Click a missing keyword for insertion advice.
                   </p>
@@ -807,7 +807,7 @@ export default function OptimizationSuitePage() {
                 </>
               ) : (
                 <>
-                  <p className="mb-5 text-sm text-zinc-400">
+                  <p className="mb-5 text-sm text-fg-2">
                     Fetch your publications from ORCID and insert a formatted bibliography section
                     directly into your resume. Filter by year range or publication type.
                   </p>
@@ -822,13 +822,13 @@ export default function OptimizationSuitePage() {
               <motion.section
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="surface-panel edge-highlight p-6"
+                className="rounded-[var(--radius-lg)] border border-line bg-surface p-6"
               >
                 <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-xl font-semibold text-white">ATS Analysis</h2>
+                  <h2 className="text-xl font-semibold text-fg">ATS Analysis</h2>
                   <div className="flex gap-2">
                     <button
-                      className="btn-ghost px-4 py-2 text-xs"
+                      className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2"
                       onClick={async () => {
                         try {
                           const latex = editorRef.current?.getValue() || stream.streamingLatex || ''
@@ -842,7 +842,7 @@ export default function OptimizationSuitePage() {
                       Save as New Version
                     </button>
                     <button
-                      className="btn-accent px-4 py-2 text-xs"
+                      className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs"
                       onClick={async () => {
                         if (!stream.pdfJobId) return
                         try {
