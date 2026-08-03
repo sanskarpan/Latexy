@@ -19,7 +19,7 @@ import { applyTenantTheme } from '@/lib/tenant-theme'
 
 function Spinner() {
   return (
-    <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-orange-300" />
+    <div className="h-5 w-5 animate-spin rounded-full border-2 border-line-2 border-t-accent" />
   )
 }
 
@@ -27,7 +27,7 @@ function Badge({ label, color = 'zinc' }: { label: string; color?: string }) {
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider
-        ${color === 'orange' ? 'bg-orange-400/15 text-orange-300' : 'bg-zinc-800 text-zinc-400'}`}
+        ${color === 'orange' ? 'bg-accent-soft text-accent-strong' : 'bg-surface-2 text-fg-2'}`}
     >
       {label}
     </span>
@@ -195,12 +195,12 @@ export default function TenantAdminPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-600">Admin</p>
-          <h1 className="mt-1 text-xl font-semibold text-white">Tenant Management</h1>
+          <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">Admin</p>
+          <h1 className="mt-1 text-xl font-semibold text-fg">Tenant Management</h1>
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="rounded-lg bg-orange-500/20 px-4 py-2 text-sm font-medium text-orange-300 transition hover:bg-orange-500/30"
+          className="rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-medium text-accent-strong transition hover:brightness-110"
         >
           + New Tenant
         </button>
@@ -208,39 +208,39 @@ export default function TenantAdminPage() {
 
       {/* Create tenant modal */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl">
-            <h2 className="mb-5 text-base font-semibold text-white">Create New Tenant</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)]">
+          <div className="w-full max-w-sm rounded-[var(--radius-lg)] border border-line bg-bg p-6 shadow-[var(--shadow-2)]">
+            <h2 className="mb-5 text-base font-semibold text-fg">Create New Tenant</h2>
             <div className="space-y-3">
               <input
                 type="text"
                 placeholder="Tenant name (e.g. Acme Recruiting)"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-orange-400/40"
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:ring-1 focus:ring-accent"
               />
               <input
                 type="text"
                 placeholder="Slug (e.g. acme-recruiting)"
                 value={newSlug}
                 onChange={(e) => setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-                className="w-full rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-orange-400/40"
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:ring-1 focus:ring-accent"
               />
-              <p className="text-[11px] text-zinc-600">
-                Access URL: <span className="text-zinc-400">{newSlug || 'your-slug'}.latexy.io</span>
+              <p className="text-[11px] text-fg-3">
+                Access URL: <span className="text-fg-2">{newSlug || 'your-slug'}.latexy.io</span>
               </p>
             </div>
             <div className="mt-5 flex gap-3">
               <button
                 onClick={() => setShowCreate(false)}
-                className="flex-1 rounded-lg border border-white/10 py-2 text-sm text-zinc-400 transition hover:text-white"
+                className="flex-1 rounded-[var(--radius-md)] border border-line py-2 text-sm text-fg-2 transition hover:text-fg"
               >
                 Cancel
               </button>
               <button
                 onClick={createTenant}
                 disabled={creating || !newName.trim() || !newSlug.trim()}
-                className="flex-1 rounded-lg bg-orange-500/20 py-2 text-sm font-medium text-orange-300 transition hover:bg-orange-500/30 disabled:opacity-40"
+                className="flex-1 rounded-[var(--radius-md)] bg-accent-soft py-2 text-sm font-medium text-accent-strong transition hover:brightness-110 disabled:opacity-40"
               >
                 {creating ? 'Creating…' : 'Create'}
               </button>
@@ -258,8 +258,8 @@ export default function TenantAdminPage() {
               onClick={() => selectTenant(t)}
               className={`rounded-full border px-4 py-1.5 text-sm transition ${
                 selected?.id === t.id
-                  ? 'border-orange-400/40 bg-orange-400/10 text-orange-200'
-                  : 'border-white/10 bg-zinc-900 text-zinc-400 hover:text-white'
+                  ? 'border-accent bg-accent-soft text-accent-strong'
+                  : 'border-line bg-surface text-fg-2 hover:text-fg'
               }`}
             >
               {t.name}
@@ -269,7 +269,7 @@ export default function TenantAdminPage() {
       )}
 
       {!selected && (
-        <div className="rounded-xl border border-white/[0.07] bg-zinc-900/60 px-6 py-12 text-center text-zinc-500">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface px-6 py-12 text-center text-fg-3">
           No tenants yet. Create one to get started.
         </div>
       )}
@@ -279,8 +279,8 @@ export default function TenantAdminPage() {
           {/* Left column — stats */}
           <div className="space-y-4 lg:col-span-1">
             {/* Stats cards */}
-            <div className="rounded-xl border border-white/[0.07] bg-zinc-900/60 p-5">
-              <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-zinc-600">Stats</p>
+            <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+              <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-fg-3">Stats</p>
               {stats ? (
                 <div className="space-y-3">
                   {[
@@ -289,8 +289,8 @@ export default function TenantAdminPage() {
                     { label: 'Compilations', value: stats.total_compilations },
                   ].map(({ label, value }) => (
                     <div key={label} className="flex items-center justify-between">
-                      <span className="text-sm text-zinc-500">{label}</span>
-                      <span className="text-sm font-semibold text-white">{value}</span>
+                      <span className="text-sm text-fg-3">{label}</span>
+                      <span className="text-sm font-semibold text-fg">{value}</span>
                     </div>
                   ))}
                 </div>
@@ -300,17 +300,17 @@ export default function TenantAdminPage() {
             </div>
 
             {/* Tenant meta */}
-            <div className="rounded-xl border border-white/[0.07] bg-zinc-900/60 p-5 space-y-2">
-              <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-600">Info</p>
-              <div className="text-sm text-zinc-400">
-                <span className="text-zinc-600">Slug: </span>{selected.slug}
+            <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 space-y-2">
+              <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">Info</p>
+              <div className="text-sm text-fg-2">
+                <span className="text-fg-3">Slug: </span>{selected.slug}
               </div>
-              <div className="text-sm text-zinc-400">
-                <span className="text-zinc-600">Plan: </span>
+              <div className="text-sm text-fg-2">
+                <span className="text-fg-3">Plan: </span>
                 <Badge label={selected.plan_id} color="orange" />
               </div>
-              <div className="text-sm text-zinc-400">
-                <span className="text-zinc-600">Max members: </span>{selected.max_members}
+              <div className="text-sm text-fg-2">
+                <span className="text-fg-3">Max members: </span>{selected.max_members}
               </div>
             </div>
           </div>
@@ -318,26 +318,26 @@ export default function TenantAdminPage() {
           {/* Right column — branding + members + domain */}
           <div className="space-y-6 lg:col-span-2">
             {/* Branding */}
-            <section className="rounded-xl border border-white/[0.07] bg-zinc-900/60 p-5">
-              <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-zinc-600">Branding</p>
+            <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+              <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-fg-3">Branding</p>
               <div className="space-y-3">
                 <div>
-                  <label className="mb-1 block text-xs text-zinc-500">Tenant name</label>
+                  <label className="mb-1 block text-xs text-fg-3">Tenant name</label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full rounded-lg border border-white/10 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-orange-400/40"
+                    className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-zinc-500">Logo URL</label>
+                  <label className="mb-1 block text-xs text-fg-3">Logo URL</label>
                   <input
                     type="url"
                     value={logoUrl}
                     onChange={(e) => setLogoUrl(e.target.value)}
                     placeholder="https://example.com/logo.png"
-                    className="w-full rounded-lg border border-white/10 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-orange-400/40"
+                    className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                   {logoUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -345,17 +345,17 @@ export default function TenantAdminPage() {
                   )}
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-zinc-500">Primary color</label>
+                  <label className="mb-1 block text-xs text-fg-3">Primary color</label>
                   <div className="flex items-center gap-3">
                     <input
                       type="color"
                       value={primaryColor}
                       onChange={(e) => setPrimaryColor(e.target.value)}
-                      className="h-9 w-14 cursor-pointer rounded border border-white/10 bg-transparent"
+                      className="h-9 w-14 cursor-pointer rounded border border-line bg-transparent"
                     />
-                    <span className="font-mono text-sm text-zinc-400">{primaryColor}</span>
+                    <span className="font-mono text-sm text-fg-2">{primaryColor}</span>
                     <span
-                      className="h-6 w-6 rounded-full border border-white/10"
+                      className="h-6 w-6 rounded-full border border-line"
                       style={{ background: primaryColor }}
                     />
                   </div>
@@ -363,7 +363,7 @@ export default function TenantAdminPage() {
                 <button
                   onClick={saveBranding}
                   disabled={saving}
-                  className="w-full rounded-lg bg-orange-500/20 py-2 text-sm font-medium text-orange-300 transition hover:bg-orange-500/30 disabled:opacity-40"
+                  className="w-full rounded-[var(--radius-md)] bg-accent-soft py-2 text-sm font-medium text-accent-strong transition hover:brightness-110 disabled:opacity-40"
                 >
                   {saving ? 'Saving…' : 'Save Branding'}
                 </button>
@@ -371,44 +371,44 @@ export default function TenantAdminPage() {
             </section>
 
             {/* Custom domain */}
-            <section className="rounded-xl border border-white/[0.07] bg-zinc-900/60 p-5">
-              <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-zinc-600">Custom Domain</p>
+            <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+              <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-fg-3">Custom Domain</p>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={customDomain}
                   onChange={(e) => setCustomDomain(e.target.value)}
                   placeholder="resumes.acme.com"
-                  className="flex-1 rounded-lg border border-white/10 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-orange-400/40"
+                  className="flex-1 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:ring-1 focus:ring-accent"
                 />
                 <button
                   onClick={verifyDomain}
                   disabled={!selected.custom_domain && !customDomain}
-                  className="rounded-lg border border-white/10 px-4 py-2 text-sm text-zinc-400 transition hover:text-white disabled:opacity-30"
+                  className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg-2 transition hover:text-fg disabled:opacity-30"
                 >
                   DNS Setup
                 </button>
               </div>
 
               {dnsInfo && (
-                <div className="mt-4 rounded-lg border border-white/[0.07] bg-zinc-950/60 p-4 space-y-2 text-xs text-zinc-400">
-                  <p className="font-medium text-zinc-200">Add this DNS TXT record:</p>
+                <div className="mt-4 rounded-[var(--radius-md)] border border-line bg-bg p-4 space-y-2 text-xs text-fg-2">
+                  <p className="font-medium text-fg">Add this DNS TXT record:</p>
                   <div>
-                    <span className="text-zinc-600">Name: </span>
-                    <code className="text-orange-300">{dnsInfo.txt_record_name}</code>
+                    <span className="text-fg-3">Name: </span>
+                    <code className="text-accent-strong">{dnsInfo.txt_record_name}</code>
                   </div>
                   <div>
-                    <span className="text-zinc-600">Value: </span>
-                    <code className="text-orange-300">{dnsInfo.txt_record_value}</code>
+                    <span className="text-fg-3">Value: </span>
+                    <code className="text-accent-strong">{dnsInfo.txt_record_value}</code>
                   </div>
-                  <p className="text-zinc-600 leading-relaxed">{dnsInfo.instructions}</p>
+                  <p className="text-fg-3 leading-relaxed">{dnsInfo.instructions}</p>
                 </div>
               )}
             </section>
 
             {/* Member management */}
-            <section className="rounded-xl border border-white/[0.07] bg-zinc-900/60 p-5">
-              <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-zinc-600">
+            <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+              <p className="mb-4 text-[10px] uppercase tracking-[0.25em] text-fg-3">
                 Members ({members.length} / {selected.max_members})
               </p>
 
@@ -420,12 +420,12 @@ export default function TenantAdminPage() {
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="colleague@example.com"
                   onKeyDown={(e) => e.key === 'Enter' && invite()}
-                  className="flex-1 rounded-lg border border-white/10 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-orange-400/40"
+                  className="flex-1 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:ring-1 focus:ring-accent"
                 />
                 <select
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value as 'admin' | 'member')}
-                  className="rounded-lg border border-white/10 bg-zinc-800 px-2 py-2 text-sm text-zinc-300 focus:outline-none"
+                  className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-2 text-sm text-fg-2 focus:outline-none"
                 >
                   <option value="member">Member</option>
                   <option value="admin">Admin</option>
@@ -433,7 +433,7 @@ export default function TenantAdminPage() {
                 <button
                   onClick={invite}
                   disabled={inviting || !inviteEmail.trim()}
-                  className="rounded-lg bg-orange-500/20 px-4 py-2 text-sm font-medium text-orange-300 transition hover:bg-orange-500/30 disabled:opacity-40"
+                  className="rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-medium text-accent-strong transition hover:brightness-110 disabled:opacity-40"
                 >
                   {inviting ? '…' : 'Invite'}
                 </button>
@@ -442,24 +442,24 @@ export default function TenantAdminPage() {
               {/* Member list */}
               <div className="space-y-2">
                 {members.length === 0 && (
-                  <p className="text-sm text-zinc-600">No members yet.</p>
+                  <p className="text-sm text-fg-3">No members yet.</p>
                 )}
                 {members.map((m) => (
                   <div
                     key={m.user_id}
-                    className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-zinc-800/40 px-4 py-3"
+                    className="flex items-center justify-between rounded-[var(--radius-md)] border border-line bg-surface-2 px-4 py-3"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm text-zinc-200">{m.name || m.email}</p>
+                      <p className="truncate text-sm text-fg">{m.name || m.email}</p>
                       {m.name && (
-                        <p className="truncate text-xs text-zinc-500">{m.email}</p>
+                        <p className="truncate text-xs text-fg-3">{m.email}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-3">
                       <Badge label={m.role} color={m.role === 'admin' ? 'orange' : 'zinc'} />
                       <button
                         onClick={() => removeMember(m.user_id)}
-                        className="text-xs text-zinc-600 transition hover:text-red-400"
+                        className="text-xs text-fg-3 transition hover:text-err"
                       >
                         Remove
                       </button>
