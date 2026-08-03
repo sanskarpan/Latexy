@@ -70,7 +70,7 @@ import SectionReorderPanel from '@/components/SectionReorderPanel'
 import WatermarkDownloadPopover from '@/components/WatermarkDownloadPopover'
 import CompilerSelector from '@/components/CompilerSelector'
 import TemplateCustomizerPanel from '@/components/TemplateCustomizerPanel'
-import GithubImportModal from '@/components/GithubImportModal'
+import ImportProjectsModal from '@/components/ImportProjectsModal'
 import type { TrackedChange } from '@/lib/yjs-track-changes'
 import { GitMerge } from 'lucide-react'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
@@ -742,7 +742,7 @@ export default function ResumeEditPage() {
   const [contactFormatterOpen, setContactFormatterOpen] = useState(false)
   const [salaryEstimatorOpen, setSalaryEstimatorOpen] = useState(false)
   const [sectionReorderOpen, setSectionReorderOpen] = useState(false)
-  const [githubImportOpen, setGithubImportOpen] = useState(false)
+  const [importModalOpen, setImportModalOpen] = useState(false)
   const [showErrorHistory, setShowErrorHistory] = useState(false)
   const [docCommand, setDocCommand] = useState<string | undefined>(undefined)
 
@@ -1915,7 +1915,7 @@ export default function ResumeEditPage() {
           </button>
 
           <button
-            onClick={() => setGithubImportOpen(true)}
+            onClick={() => setImportModalOpen(true)}
             title="Import top projects from GitHub"
             className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
           >
@@ -2909,12 +2909,12 @@ export default function ResumeEditPage() {
         }}
       />
 
-      {/* GitHub project import (F1 — external sources to resume) */}
-      <GithubImportModal
-        isOpen={githubImportOpen}
-        onClose={() => setGithubImportOpen(false)}
+      {/* Project import — GitHub / URL / LinkedIn (F1 — external sources to resume) */}
+      <ImportProjectsModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
         onInsert={(latex) => {
-          pushUndo('Before GitHub project import')
+          pushUndo('Before project import')
           editorRef.current?.insertAtCursor(latex)
           setLatexContent(editorRef.current?.getValue() ?? latexContent)
         }}
