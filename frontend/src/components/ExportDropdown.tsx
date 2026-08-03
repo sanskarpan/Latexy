@@ -183,12 +183,12 @@ export default function ExportDropdown({
   const triggerCls = (() => {
     const base = 'flex items-center gap-1.5 transition disabled:opacity-50'
     if (variant === 'toolbar') {
-      return `${base} rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200`
+      return `${base} rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 hover:bg-surface-2 hover:text-fg`
     }
     if (variant === 'card') {
-      return `${base} w-full justify-center rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-white/10`
+      return `${base} w-full justify-center rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs font-semibold text-fg hover:bg-surface-2`
     }
-    return `${base} rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm text-zinc-200 hover:bg-white/10`
+    return `${base} rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-4 py-2 text-sm text-fg hover:bg-surface-2`
   })()
 
   const chevronSize = variant === 'toolbar' ? 10 : 12
@@ -224,7 +224,7 @@ export default function ExportDropdown({
           />
           {/* Dropdown panel — fixed positioning + capped height so it's never clipped */}
           <div
-            className="z-[201] w-56 overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-zinc-900 shadow-2xl shadow-black/60"
+            className="z-[201] w-56 overflow-y-auto overscroll-contain rounded-[var(--radius-lg)] border border-line bg-surface shadow-[var(--shadow-2)]"
             style={{
               position: 'fixed',
               top: dropdownPos.top,
@@ -234,7 +234,7 @@ export default function ExportDropdown({
             }}
           >
             <div className="px-3 pt-2.5 pb-1.5">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 font-medium">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-fg-3 font-medium">
                 Download As
               </p>
             </div>
@@ -248,8 +248,8 @@ export default function ExportDropdown({
                 return (
                   <div key={fmt.key}>
                     {showSeparator && (
-                      <div className="mx-3 my-1 border-t border-white/10">
-                        <p className="mt-1.5 mb-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-600 font-medium">
+                      <div className="mx-3 my-1 border-t border-line">
+                        <p className="mt-1.5 mb-0.5 text-[10px] uppercase tracking-[0.14em] text-fg-3 font-medium">
                           Design Exports
                         </p>
                       </div>
@@ -258,16 +258,16 @@ export default function ExportDropdown({
                       onClick={() => handleExport(fmt.key)}
                       disabled={isExporting || ((fmt.key === 'canva' || fmt.key === 'figma') && !resumeId)}
                       title={fmt.desc}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-white/[0.05] disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isLoading ? (
-                        <Loader2 size={14} className="shrink-0 animate-spin text-orange-300" />
+                        <Loader2 size={14} className="shrink-0 animate-spin text-accent-strong" />
                       ) : (
-                        <Icon size={14} className={`shrink-0 ${isDesignExport ? 'text-violet-400' : 'text-zinc-500'}`} />
+                        <Icon size={14} className={`shrink-0 ${isDesignExport ? 'text-accent-strong' : 'text-fg-3'}`} />
                       )}
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-zinc-200">{fmt.label}</div>
-                        <div className="text-[11px] text-zinc-600 truncate">{fmt.desc}</div>
+                        <div className="text-sm font-medium text-fg">{fmt.label}</div>
+                        <div className="text-[11px] text-fg-3 truncate">{fmt.desc}</div>
                       </div>
                     </button>
                   </div>

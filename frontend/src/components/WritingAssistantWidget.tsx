@@ -162,7 +162,7 @@ export default function WritingAssistantWidget({
       {/* Widget panel */}
       <div
         ref={containerRef}
-        className="absolute left-4 z-50 w-80 overflow-y-auto overscroll-contain rounded-xl border border-white/[0.1] bg-zinc-950 shadow-2xl shadow-black/60 ring-1 ring-white/[0.06]"
+        className="absolute left-4 z-50 w-80 overflow-y-auto overscroll-contain rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)] ring-1 ring-line"
         style={{
           top: placement?.top ?? (placement?.bottom !== undefined ? undefined : anchorTop),
           bottom: placement?.bottom,
@@ -171,12 +171,12 @@ export default function WritingAssistantWidget({
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.07] px-3 py-2">
+        <div className="flex items-center justify-between border-b border-line px-3 py-2">
           <div className="flex items-center gap-1.5">
-            <Sparkles size={12} className="text-violet-400" />
-            <span className="text-[11px] font-semibold text-zinc-200">AI Writing Assistant</span>
+            <Sparkles size={12} className="text-accent-strong" />
+            <span className="text-[11px] font-semibold text-fg">AI Writing Assistant</span>
             {activeAction && phase !== 'picking' && (
-              <span className="rounded-md bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-300 ring-1 ring-violet-400/20">
+              <span className="rounded-[var(--radius-md)] bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent-strong ring-1 ring-accent/20">
                 {ACTIONS.find(a => a.key === activeAction)?.label}
                 {activeTone && phase === 'result' && ` · ${activeTone}`}
               </span>
@@ -185,7 +185,7 @@ export default function WritingAssistantWidget({
           <button
             onClick={onClose}
             aria-label="Close writing assistant"
-            className="rounded-md p-0.5 text-zinc-600 transition hover:bg-white/[0.06] hover:text-zinc-300"
+            className="rounded-[var(--radius-md)] p-0.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={13} />
           </button>
@@ -194,15 +194,15 @@ export default function WritingAssistantWidget({
         <div className="p-3 space-y-2.5">
           {/* Selected text preview */}
           <div>
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Selected text</p>
-            <p className="rounded-lg border border-white/[0.06] bg-black/30 px-2.5 py-1.5 text-[11px] leading-relaxed text-zinc-400 line-clamp-2">
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">Selected text</p>
+            <p className="rounded-[var(--radius-md)] border border-line bg-surface px-2.5 py-1.5 text-[11px] leading-relaxed text-fg-2 line-clamp-2">
               {selectedText}
             </p>
           </div>
 
           {/* Error */}
           {error && (
-            <p className="rounded-lg bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-400 ring-1 ring-rose-500/20">
+            <p className="rounded-[var(--radius-md)] bg-err/10 px-2.5 py-1.5 text-[11px] text-err ring-1 ring-err/20">
               {error}
             </p>
           )}
@@ -210,17 +210,17 @@ export default function WritingAssistantWidget({
           {/* ── Phase: picking ─────────────────────────────────────── */}
           {phase === 'picking' && (
             <div className="space-y-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Choose an action</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">Choose an action</p>
               {ACTIONS.map(({ key, label, icon, description }) => (
                 <button
                   key={key}
                   onClick={() => handleActionClick(key)}
-                  className="flex w-full items-center gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 text-left transition hover:border-violet-400/20 hover:bg-violet-500/[0.08]"
+                  className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-2.5 py-2 text-left transition hover:border-accent/20 hover:bg-accent-soft"
                 >
-                  <span className="shrink-0 text-violet-400">{icon}</span>
+                  <span className="shrink-0 text-accent-strong">{icon}</span>
                   <span className="flex-1 min-w-0">
-                    <span className="block text-[11px] font-semibold text-zinc-200">{label}</span>
-                    <span className="block text-[10px] text-zinc-600">{description}</span>
+                    <span className="block text-[11px] font-semibold text-fg">{label}</span>
+                    <span className="block text-[10px] text-fg-3">{description}</span>
                   </span>
                 </button>
               ))}
@@ -233,23 +233,23 @@ export default function WritingAssistantWidget({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPhase('picking')}
-                  className="text-[10px] text-zinc-600 transition hover:text-zinc-400"
+                  className="text-[10px] text-fg-3 transition hover:text-fg-2"
                   aria-label="Back to actions"
                 >
                   ←
                 </button>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Choose tone</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">Choose tone</p>
               </div>
               {TONES.map(({ key, label, description }) => (
                 <button
                   key={key}
                   onClick={() => callApi('change_tone', key)}
-                  className="flex w-full items-center gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-2 text-left transition hover:border-violet-400/20 hover:bg-violet-500/[0.08]"
+                  className="flex w-full items-center gap-2.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-2.5 py-2 text-left transition hover:border-accent/20 hover:bg-accent-soft"
                 >
-                  <span className="shrink-0 text-violet-400"><MessageSquare size={11} /></span>
+                  <span className="shrink-0 text-accent-strong"><MessageSquare size={11} /></span>
                   <span className="flex-1 min-w-0">
-                    <span className="block text-[11px] font-semibold text-zinc-200">{label}</span>
-                    <span className="block text-[10px] text-zinc-600">{description}</span>
+                    <span className="block text-[11px] font-semibold text-fg">{label}</span>
+                    <span className="block text-[10px] text-fg-3">{description}</span>
                   </span>
                 </button>
               ))}
@@ -262,12 +262,12 @@ export default function WritingAssistantWidget({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPhase('picking')}
-                  className="text-[10px] text-zinc-600 transition hover:text-zinc-400"
+                  className="text-[10px] text-fg-3 transition hover:text-fg-2"
                   aria-label="Back to actions"
                 >
                   ←
                 </button>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">Your instruction</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">Your instruction</p>
               </div>
               <textarea
                 value={steerNote}
@@ -281,12 +281,12 @@ export default function WritingAssistantWidget({
                 autoFocus
                 maxLength={500}
                 placeholder="e.g. Emphasize leadership and quantify the impact; keep it to one line."
-                className="h-20 w-full resize-none rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-[11px] leading-relaxed text-zinc-200 outline-none transition placeholder:text-zinc-600 focus:border-violet-400/30"
+                className="h-20 w-full resize-none rounded-[var(--radius-md)] border border-line-2 bg-surface px-2.5 py-1.5 text-[11px] leading-relaxed text-fg outline-none transition placeholder:text-fg-3 focus:border-accent/30"
               />
               <button
                 onClick={() => callApi('steer', undefined, steerNote.trim())}
                 disabled={!steerNote.trim()}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-violet-500/20 py-2 text-[11px] font-semibold text-violet-200 ring-1 ring-violet-400/30 transition hover:bg-violet-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-2 text-[11px] font-semibold text-accent-strong ring-1 ring-accent/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Wand2 size={11} />
                 Regenerate with this note
@@ -296,7 +296,7 @@ export default function WritingAssistantWidget({
 
           {/* ── Phase: loading ─────────────────────────────────────── */}
           {phase === 'loading' && (
-            <div className="flex items-center justify-center gap-2 py-6 text-zinc-500">
+            <div className="flex items-center justify-center gap-2 py-6 text-fg-3">
               <Loader2 size={14} className="animate-spin" />
               <span className="text-xs">Rewriting…</span>
             </div>
@@ -306,17 +306,17 @@ export default function WritingAssistantWidget({
           {phase === 'result' && rewritten !== null && (
             <div className="space-y-2.5">
               {/* Diff view */}
-              <div className="rounded-lg border border-white/[0.07] bg-black/20 p-2.5 space-y-2">
+              <div className="rounded-[var(--radius-md)] border border-line bg-surface p-2.5 space-y-2">
                 <div>
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-rose-500/70">Original</p>
-                  <p className="text-[11px] leading-relaxed text-rose-400/80 line-through decoration-rose-500/40">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-err/70">Original</p>
+                  <p className="text-[11px] leading-relaxed text-err/80 line-through decoration-err/40">
                     {selectedText}
                   </p>
                 </div>
-                <div className="border-t border-white/[0.06]" />
+                <div className="border-t border-line" />
                 <div>
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-emerald-500/70">Rewritten</p>
-                  <p className="text-[11px] leading-relaxed text-emerald-300">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-ok/70">Rewritten</p>
+                  <p className="text-[11px] leading-relaxed text-ok">
                     {rewritten}
                   </p>
                 </div>
@@ -326,21 +326,21 @@ export default function WritingAssistantWidget({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => onAccept(rewritten)}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-500/20 py-2 text-[11px] font-semibold text-emerald-300 ring-1 ring-emerald-400/30 transition hover:bg-emerald-500/30"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-ok/20 py-2 text-[11px] font-semibold text-ok ring-1 ring-ok/30 transition hover:bg-ok/30"
                 >
                   <Check size={11} />
                   Accept
                 </button>
                 <button
                   onClick={handleRegenerate}
-                  className="flex items-center justify-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-zinc-400 transition hover:border-violet-400/20 hover:text-zinc-200"
+                  className="flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-[11px] font-semibold text-fg-2 transition hover:border-accent/20 hover:text-fg"
                   title="Try again"
                 >
                   <RefreshCw size={11} />
                 </button>
                 <button
                   onClick={onClose}
-                  className="flex items-center justify-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-zinc-400 transition hover:text-zinc-200"
+                  className="flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-[11px] font-semibold text-fg-2 transition hover:text-fg"
                   title="Reject"
                 >
                   <X size={11} />
@@ -350,7 +350,7 @@ export default function WritingAssistantWidget({
               {/* Back to actions */}
               <button
                 onClick={() => setPhase('picking')}
-                className="flex w-full items-center justify-center gap-1 text-[10px] text-zinc-600 transition hover:text-zinc-400"
+                className="flex w-full items-center justify-center gap-1 text-[10px] text-fg-3 transition hover:text-fg-2"
               >
                 Try a different action
               </button>
