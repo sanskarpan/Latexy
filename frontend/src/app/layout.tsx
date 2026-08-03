@@ -39,11 +39,14 @@ export const viewport: Viewport = {
 // theme cookie (distinct from the auth cookie), else the OS preference. Aesthetic
 // defaults to 'typeset'; route-group layouts override it per surface.
 const THEME_BOOTSTRAP = `(function(){try{
+var r=document.documentElement;
 var m=document.cookie.match(/(?:^|; )latexy-theme=(light|dark)/);
 var mode=m?m[1]:(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
-var r=document.documentElement;
-if(!r.getAttribute('data-aesthetic'))r.setAttribute('data-aesthetic','typeset');
 r.setAttribute('data-mode',mode);
+var p=location.pathname;
+var TS=['/','/platform','/pricing','/templates','/resources','/faq','/updates','/developer','/login','/signup','/forgot-password','/reset-password','/verify-email'];
+var aes=(TS.indexOf(p)>=0||p.indexOf('/u/')===0||p.indexOf('/r/')===0)?'typeset':'compiler';
+r.setAttribute('data-aesthetic',aes);
 }catch(e){}})();`
 
 export default function RootLayout({
