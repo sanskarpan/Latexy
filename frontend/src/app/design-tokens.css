@@ -27,13 +27,25 @@
   --mono: var(--font-jetbrains), "SF Mono", ui-monospace, Menlo, Monaco, monospace;
   --sans: var(--font-geist-sans), "Avenir Next", "Helvetica Neue", system-ui, sans-serif;
 
-  /* Default aesthetic/theme values (typeset · light) so tokens resolve even
-     before the bootstrap script/route-group set the attributes. */
+  /* Aesthetic defaults (typeset) so tokens resolve before attributes are set. */
   --font-display: var(--serif); --font-body: var(--serif); --font-ui: var(--mono);
   --radius-sm: 2px; --radius-md: 3px; --radius-lg: 4px; --radius-pill: 999px;
   --track-label: .2em; --display-tracking: -.025em;
   --shadow-1: 0 1px 0 rgba(0,0,0,.04);
   --shadow-2: 0 22px 44px -30px rgba(0,0,0,.4);
+
+  /* Base COLOR fallback = typeset·light, so bg-bg/text-fg/etc. are never empty
+     with JS disabled or before the bootstrap script runs. Overridden by the
+     variant blocks below. */
+  --bg:#FBFAF6; --surface:#FFFFFF; --surface-2:#F3F0E8; --line:#D8D2C4; --line-2:#C6BFAE;
+  --fg:#1B1815; --fg-2:#4A443C; --fg-3:#736F66;
+  --accent:#1C3F6E; --accent-strong:#1C3F6E; --accent-fg:#FBFAF6; --accent-soft:rgba(28,63,110,.10);
+  --ok:#2E7D57; --warn:#9A7B3F; --err:#B23A2E;
+  --focus:#1C3F6E; --overlay:rgba(27,24,21,.45);
+  --code-bg:#F3F0E8; --code-fg:#4A443C;
+  --fg-disabled:#B8B2A6; --surface-disabled:#EFEBE2;
+  --grid:rgba(27,24,21,.05);
+  color-scheme: light;
 }
 
 /* ---- AESTHETIC LAYER: fonts + radius + rhythm (colors come from THEME) ---- */
@@ -50,36 +62,56 @@
   --shadow-2: 0 30px 60px -35px rgba(0,0,0,.7);
 }
 
-/* ---- THEME LAYER: the four hand-tuned color sets ---- */
+/* ---- THEME LAYER: the four hand-tuned color sets (AA-verified) ---- */
 :root[data-aesthetic="typeset"][data-mode="light"] {
   --bg:#FBFAF6; --surface:#FFFFFF; --surface-2:#F3F0E8; --line:#D8D2C4; --line-2:#C6BFAE;
-  --fg:#1B1815; --fg-2:#4A443C; --fg-3:#8C857A;
-  --accent:#1C3F6E; --accent-fg:#FBFAF6; --accent-soft:rgba(28,63,110,.10);
+  --fg:#1B1815; --fg-2:#4A443C; --fg-3:#736F66;
+  --accent:#1C3F6E; --accent-strong:#1C3F6E; --accent-fg:#FBFAF6; --accent-soft:rgba(28,63,110,.10);
   --ok:#2E7D57; --warn:#9A7B3F; --err:#B23A2E;
+  --focus:#1C3F6E; --overlay:rgba(27,24,21,.45);
+  --code-bg:#F3F0E8; --code-fg:#4A443C; --fg-disabled:#B8B2A6; --surface-disabled:#EFEBE2;
   --grid:rgba(27,24,21,.05);
   color-scheme: light;
 }
 :root[data-aesthetic="typeset"][data-mode="dark"] {
   --bg:#141310; --surface:#1B1A14; --surface-2:#211F18; --line:#302C24; --line-2:#3E392E;
-  --fg:#E9E4D7; --fg-2:#ABA595; --fg-3:#746E60;
-  --accent:#8AB0DE; --accent-fg:#101319; --accent-soft:rgba(138,176,222,.14);
+  --fg:#E9E4D7; --fg-2:#ABA595; --fg-3:#8C8574;
+  --accent:#8AB0DE; --accent-strong:#8AB0DE; --accent-fg:#101319; --accent-soft:rgba(138,176,222,.14);
   --ok:#6FCB9A; --warn:#D8B36A; --err:#E0796B;
+  --focus:#8AB0DE; --overlay:rgba(0,0,0,.6);
+  --code-bg:#211F18; --code-fg:#ABA595; --fg-disabled:#5A5346; --surface-disabled:#1B1A14;
   --grid:rgba(233,228,215,.05);
   color-scheme: dark;
 }
 :root[data-aesthetic="compiler"][data-mode="dark"] {
   --bg:#0B0B0D; --surface:#111114; --surface-2:#17171B; --line:#26262C; --line-2:#33333B;
-  --fg:#ECEAE4; --fg-2:#A7A49C; --fg-3:#6E6B64;
-  --accent:#F0A250; --accent-fg:#1C1200; --accent-soft:rgba(240,162,80,.14);
+  --fg:#ECEAE4; --fg-2:#A7A49C; --fg-3:#8A877E;
+  --accent:#F0A250; --accent-strong:#F0A250; --accent-fg:#1C1200; --accent-soft:rgba(240,162,80,.14);
   --ok:#5BD6A4; --warn:#E7C46A; --err:#E5715C;
+  --focus:#F0A250; --overlay:rgba(0,0,0,.65);
+  --code-bg:#17171B; --code-fg:#A7A49C; --fg-disabled:#4A4852; --surface-disabled:#17171B;
   --grid:rgba(236,234,228,.035);
   color-scheme: dark;
 }
 :root[data-aesthetic="compiler"][data-mode="light"] {
   --bg:#F7F6F3; --surface:#FFFFFF; --surface-2:#EFEDE7; --line:#E1DED7; --line-2:#D2CFC7;
-  --fg:#17171A; --fg-2:#55534D; --fg-3:#8A877F;
-  --accent:#C2691F; --accent-fg:#FFFFFF; --accent-soft:rgba(194,105,31,.10);
+  --fg:#17171A; --fg-2:#55534D; --fg-3:#74716A;
+  /* --accent is a fill hue; --accent-strong (darker) is for accent-colored TEXT/links to clear AA on white. */
+  --accent:#C2691F; --accent-strong:#9E5312; --accent-fg:#FFFFFF; --accent-soft:rgba(194,105,31,.10);
   --ok:#1F9D63; --warn:#B07A1E; --err:#C4472F;
+  --focus:#9E5312; --overlay:rgba(23,23,26,.5);
+  --code-bg:#EFEDE7; --code-fg:#55534D; --fg-disabled:#BFBBB2; --surface-disabled:#EFEDE7;
   --grid:rgba(23,23,26,.045);
   color-scheme: light;
+}
+
+/* ---- Reduced-motion floor (applies across all variants) ---- */
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-1: 0s; --dur-2: 0s; --dur-3: 0s; }
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
