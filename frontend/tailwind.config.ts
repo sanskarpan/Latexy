@@ -136,8 +136,13 @@ const config: Config = {
         "spin-slow": "spin 3s linear infinite",
         "gradient": "gradient 6s ease infinite",
         "shimmer": "shimmer 2s linear infinite",
+        "progress-indeterminate": "progress-indeterminate 1.4s ease-in-out infinite",
       },
       keyframes: {
+        "progress-indeterminate": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(350%)" },
+        },
         "accordion-down": {
           from: { height: "0" },
           to: { height: "var(--radix-accordion-content-height)" },
