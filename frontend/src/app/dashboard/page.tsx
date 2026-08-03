@@ -147,17 +147,17 @@ export default function DashboardPage() {
   if (!session) {
     return (
       <div className="content-shell">
-        <section className="surface-panel edge-highlight mx-auto max-w-3xl p-8 text-center">
-          <p className="overline">Analytics</p>
-          <h1 className="mt-2 text-3xl font-semibold text-white">Usage Intelligence Dashboard</h1>
-          <p className="mx-auto mt-3 max-w-xl text-zinc-400">
+        <section className="rounded-[var(--radius-lg)] border border-line bg-surface mx-auto max-w-3xl p-8 text-center">
+          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Analytics</p>
+          <h1 className="mt-2 text-3xl font-semibold text-fg">Usage Intelligence Dashboard</h1>
+          <p className="mx-auto mt-3 max-w-xl text-fg-2">
             Signed-in users get pipeline analytics, feature usage charts, and run-performance signals over configurable time windows.
           </p>
           <div className="mt-6 flex justify-center gap-3">
-            <Link href="/login" className="btn-accent px-6 py-2.5 text-sm">
+            <Link href="/login" className="rounded-[var(--radius-md)] bg-accent px-6 py-2.5 text-sm font-semibold text-accent-fg hover:brightness-110">
               Sign In
             </Link>
-            <Link href="/" className="btn-ghost px-6 py-2.5 text-sm">
+            <Link href="/" className="rounded-[var(--radius-md)] border border-line-2 px-6 py-2.5 text-sm text-fg hover:bg-surface-2">
               View Public Site
             </Link>
           </div>
@@ -170,39 +170,39 @@ export default function DashboardPage() {
     <div className="content-shell space-y-6">
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="overline">Dashboard</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">Usage Intelligence</h1>
-          <p className="mt-1 text-sm text-zinc-400">Detailed analytics for your personal resume optimization workflow.</p>
+          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Dashboard</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">Usage Intelligence</h1>
+          <p className="mt-1 text-sm text-fg-2">Detailed analytics for your personal resume optimization workflow.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {ranges.map((range) => (
             <button
               key={range.days}
               onClick={() => setSelectedRange(range.days)}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] transition ${
+              className={`rounded-[var(--radius-md)] border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] transition ${
                 selectedRange === range.days
-                  ? 'border-orange-300/45 bg-orange-300/10 text-orange-200'
-                  : 'border-white/10 bg-white/5 text-zinc-400 hover:border-white/20 hover:text-white'
+                  ? 'border-accent bg-accent-soft text-accent-strong'
+                  : 'border-line bg-surface-2 text-fg-2 hover:border-line-2 hover:text-fg'
               }`}
             >
               {range.label}
             </button>
           ))}
-          <Link href="/workspace" className="btn-ghost px-4 py-1.5 text-xs">
+          <Link href="/workspace" className="rounded-[var(--radius-md)] border border-line-2 px-4 py-1.5 text-xs text-fg hover:bg-surface-2">
             Workspace
           </Link>
         </div>
       </section>
 
       {error && !loading && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-err/30 bg-err/10 px-4 py-3">
           <div>
-            <p className="text-sm font-semibold text-rose-200">Couldn&apos;t load dashboard data</p>
-            <p className="text-xs text-rose-300/80">{error}</p>
+            <p className="text-sm font-semibold text-err">Couldn&apos;t load dashboard data</p>
+            <p className="text-xs text-err/80">{error}</p>
           </div>
           <button
             onClick={fetchDashboardData}
-            className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-4 py-1.5 text-xs font-semibold text-rose-100 transition hover:bg-rose-500/20"
+            className="rounded-[var(--radius-md)] border border-err/40 bg-err/10 px-4 py-1.5 text-xs font-semibold text-err transition hover:bg-err/20"
           >
             Retry
           </button>
@@ -211,72 +211,72 @@ export default function DashboardPage() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {loading
-          ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="surface-card h-28 animate-pulse" />)
+          ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="rounded-[var(--radius-lg)] border border-line bg-surface h-28 animate-pulse" />)
           : kpis.map((item) => (
-              <article key={item.label} className="surface-card edge-highlight p-4">
-                <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">{item.label}</p>
-                <p className="mt-2 text-3xl font-semibold text-white">{item.value}</p>
-                <p className="mt-1 text-xs text-zinc-400">{item.note}</p>
+              <article key={item.label} className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-fg-3">{item.label}</p>
+                <p className="mt-2 text-3xl font-semibold text-fg">{item.value}</p>
+                <p className="mt-1 text-xs text-fg-2">{item.note}</p>
               </article>
             ))}
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
         <section className="space-y-6">
-          <article className="surface-panel edge-highlight p-5">
+          <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <div className="mb-3 flex items-end justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold text-white">Activity Trend</h2>
-                <p className="text-xs text-zinc-500">Daily action density over the selected window</p>
+                <h2 className="text-lg font-semibold text-fg">Activity Trend</h2>
+                <p className="text-xs text-fg-3">Daily action density over the selected window</p>
               </div>
-              <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-zinc-500">
+              <span className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-fg-3">
                 {selectedRange} day window
               </span>
             </div>
-            {loading ? <div className="h-[280px] animate-pulse rounded-xl bg-white/5" /> : <ActivityAreaChart data={dailySeries} />}
+            {loading ? <div className="h-[280px] animate-pulse rounded-[var(--radius-lg)] bg-surface-2" /> : <ActivityAreaChart data={dailySeries} />}
           </article>
 
-          <article className="surface-panel edge-highlight p-5">
+          <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <div className="mb-3">
-              <h2 className="text-lg font-semibold text-white">Feature Usage Mix</h2>
-              <p className="text-xs text-zinc-500">Most used actions in your current range</p>
+              <h2 className="text-lg font-semibold text-fg">Feature Usage Mix</h2>
+              <p className="text-xs text-fg-3">Most used actions in your current range</p>
             </div>
-            {loading ? <div className="h-[260px] animate-pulse rounded-xl bg-white/5" /> : <FeatureUsageBars data={featureSeries} />}
+            {loading ? <div className="h-[260px] animate-pulse rounded-[var(--radius-lg)] bg-surface-2" /> : <FeatureUsageBars data={featureSeries} />}
           </article>
 
-          <article className="surface-panel edge-highlight p-5">
+          <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <JobQueue maxJobs={10} showFilters={false} showSearch={false} />
           </article>
         </section>
 
         <aside className="space-y-6">
-          <article className="surface-panel edge-highlight p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300">Run Status Distribution</h2>
-            <div className="mt-4">{loading ? <div className="h-[220px] animate-pulse rounded-xl bg-white/5" /> : <StatusDonutChart data={statusSeries} />}</div>
+          <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-fg-2">Run Status Distribution</h2>
+            <div className="mt-4">{loading ? <div className="h-[220px] animate-pulse rounded-[var(--radius-lg)] bg-surface-2" /> : <StatusDonutChart data={statusSeries} />}</div>
           </article>
 
-          <article className="surface-panel edge-highlight p-5">
+          <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-300">Recent Runs</h2>
-              <Link href="/workspace/history" className="text-[10px] uppercase tracking-[0.12em] text-orange-200 hover:text-orange-100">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-fg-2">Recent Runs</h2>
+              <Link href="/workspace/history" className="text-[10px] uppercase tracking-[0.12em] text-accent-strong hover:brightness-110">
                 Full history
               </Link>
             </div>
             {loading ? (
               <div className="space-y-2">
                 {Array.from({ length: 4 }).map((_, index) => (
-                  <div key={index} className="h-14 animate-pulse rounded-lg bg-white/5" />
+                  <div key={index} className="h-14 animate-pulse rounded-[var(--radius-md)] bg-surface-2" />
                 ))}
               </div>
             ) : recentJobs.length === 0 ? (
-              <p className="text-sm text-zinc-500">No recent jobs recorded.</p>
+              <p className="text-sm text-fg-3">No recent jobs recorded.</p>
             ) : (
               <div className="space-y-2">
                 {recentJobs.map((job, index) => (
-                  <div key={job.job_id ?? `${job.last_updated}-${index}`} className="rounded-lg border border-white/10 bg-black/20 p-3">
-                    <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">{job.stage || 'Pipeline'}</p>
-                    <p className="mt-1 text-sm capitalize text-zinc-200">{job.status}</p>
-                    <p className="mt-1 text-xs text-zinc-500">{new Date(job.last_updated * 1000).toLocaleString()}</p>
+                  <div key={job.job_id ?? `${job.last_updated}-${index}`} className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-3">
+                    <p className="text-xs uppercase tracking-[0.12em] text-fg-3">{job.stage || 'Pipeline'}</p>
+                    <p className="mt-1 text-sm capitalize text-fg">{job.status}</p>
+                    <p className="mt-1 text-xs text-fg-3">{new Date(job.last_updated * 1000).toLocaleString()}</p>
                   </div>
                 ))}
               </div>
