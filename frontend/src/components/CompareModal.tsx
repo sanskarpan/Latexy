@@ -158,25 +158,25 @@ export default function CompareModal({
     originalStream.status === 'processing'
 
   const modalClasses = isFullscreen
-    ? 'relative flex h-screen w-screen flex-col bg-zinc-950'
-    : 'relative flex h-[85vh] w-[95vw] max-w-7xl flex-col rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl'
+    ? 'relative flex h-screen w-screen flex-col bg-bg'
+    : 'relative flex h-[85vh] w-[95vw] max-w-7xl flex-col rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)]'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm">
       <div className={modalClasses}>
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+        <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <div className="flex items-center gap-4">
-            <h2 className="text-sm font-semibold text-white">Before / After Optimization</h2>
+            <h2 className="text-sm font-semibold text-fg">Before / After Optimization</h2>
 
             {/* Tab toggle */}
-            <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] p-0.5">
+            <div className="flex items-center gap-1 rounded-[var(--radius-md)] border border-line bg-surface p-0.5">
               <button
                 onClick={() => setActiveTab('diff')}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                className={`rounded-[var(--radius-md)] px-3 py-1 text-xs font-medium transition ${
                   activeTab === 'diff'
-                    ? 'bg-white/10 text-white'
-                    : 'text-zinc-500 hover:text-zinc-300'
+                    ? 'bg-surface-2 text-fg'
+                    : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 LaTeX Diff
@@ -185,12 +185,12 @@ export default function CompareModal({
                 onClick={() => optimizedPdfUrl && setActiveTab('pdf')}
                 disabled={!optimizedPdfUrl}
                 title={!optimizedPdfUrl ? 'No compiled PDF available for this comparison' : undefined}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                className={`rounded-[var(--radius-md)] px-3 py-1 text-xs font-medium transition ${
                   activeTab === 'pdf'
-                    ? 'bg-white/10 text-white'
+                    ? 'bg-surface-2 text-fg'
                     : optimizedPdfUrl
-                      ? 'text-zinc-500 hover:text-zinc-300'
-                      : 'cursor-not-allowed text-zinc-700'
+                      ? 'text-fg-3 hover:text-fg-2'
+                      : 'cursor-not-allowed text-fg-3'
                 }`}
               >
                 PDF Preview
@@ -199,10 +199,10 @@ export default function CompareModal({
 
             {activeTab === 'diff' && diffStats && (
               <div className="flex items-center gap-2 text-[11px]">
-                <span className="text-emerald-400">+{diffStats.added}</span>
-                <span className="text-rose-400">−{diffStats.removed}</span>
-                <span className="text-zinc-600">·</span>
-                <span className="text-zinc-500">
+                <span className="text-ok">+{diffStats.added}</span>
+                <span className="text-err">−{diffStats.removed}</span>
+                <span className="text-fg-3">·</span>
+                <span className="text-fg-3">
                   {diffStats.changed} section{diffStats.changed !== 1 ? 's' : ''} changed
                 </span>
               </div>
@@ -213,7 +213,7 @@ export default function CompareModal({
             {onRestore && (
               <button
                 onClick={() => onRestore(originalLatex)}
-                className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-white/20 hover:text-white"
+                className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs text-fg-2 transition hover:border-line-2 hover:text-fg"
               >
                 <RotateCcw size={12} />
                 Restore Original
@@ -222,7 +222,7 @@ export default function CompareModal({
             <button
               type="button"
               onClick={() => setIsFullscreen((v) => !v)}
-              className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/5 hover:text-white"
+              className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg"
               title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
               aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             >
@@ -230,7 +230,7 @@ export default function CompareModal({
             </button>
             <button
               onClick={onClose}
-              className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/5 hover:text-white"
+              className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             >
               <X size={16} />
             </button>
@@ -238,11 +238,11 @@ export default function CompareModal({
         </div>
 
         {/* Column labels */}
-        <div className="grid grid-cols-2 border-b border-white/5 text-[11px]">
-          <div className="truncate border-r border-white/5 px-4 py-1.5 text-zinc-500">
+        <div className="grid grid-cols-2 border-b border-line text-[11px]">
+          <div className="truncate border-r border-line px-4 py-1.5 text-fg-3">
             Before Optimization
           </div>
-          <div className="truncate px-4 py-1.5 text-zinc-500">After Optimization</div>
+          <div className="truncate px-4 py-1.5 text-fg-3">After Optimization</div>
         </div>
 
         {/* Content */}
@@ -272,34 +272,34 @@ export default function CompareModal({
 
           {/* PDF Preview tab */}
           {activeTab === 'pdf' && (
-            <div className="grid h-full grid-cols-2 divide-x divide-white/5">
+            <div className="grid h-full grid-cols-2 divide-x divide-line">
               {/* Left: Before (original — needs compile) */}
               <div ref={leftWrapperRef} className="flex h-full flex-col overflow-hidden">
                 {!originalPdfUrl && !isOriginalLoading && (
-                  <div className="flex h-full flex-col items-center justify-center gap-3 bg-[#1a1a1a]">
-                    <FileText className="h-9 w-9 text-zinc-700" />
-                    <p className="text-xs text-zinc-500">Original PDF not compiled yet</p>
+                  <div className="flex h-full flex-col items-center justify-center gap-3 bg-surface-2">
+                    <FileText className="h-9 w-9 text-fg-3" />
+                    <p className="text-xs text-fg-3">Original PDF not compiled yet</p>
                     {compileError && (
-                      <p className="max-w-[220px] text-center text-[11px] text-rose-400">{compileError}</p>
+                      <p className="max-w-[220px] text-center text-[11px] text-err">{compileError}</p>
                     )}
                     <button
                       onClick={handleCompileOriginal}
-                      className="flex items-center gap-1.5 rounded-lg border border-orange-400/25 bg-orange-400/10 px-4 py-2 text-xs font-semibold text-orange-300 transition hover:bg-orange-400/20"
+                      className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-accent bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110"
                     >
                       Compile Original
                     </button>
                   </div>
                 )}
                 {isOriginalLoading && (
-                  <div className="flex h-full flex-col items-center justify-center gap-3 bg-[#1a1a1a]">
-                    <Loader2 className="h-6 w-6 animate-spin text-orange-400" />
-                    <p className="text-xs text-zinc-500">
+                  <div className="flex h-full flex-col items-center justify-center gap-3 bg-surface-2">
+                    <Loader2 className="h-6 w-6 animate-spin text-accent-strong" />
+                    <p className="text-xs text-fg-3">
                       {originalStream.stage || 'Compiling…'}
                     </p>
                     {originalStream.percent > 0 && (
-                      <div className="h-1 w-40 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-1 w-40 overflow-hidden rounded-full bg-surface-2">
                         <div
-                          className="h-full rounded-full bg-orange-400 transition-all"
+                          className="h-full rounded-full bg-accent transition-all"
                           style={{ width: `${originalStream.percent}%` }}
                         />
                       </div>

@@ -9,22 +9,24 @@ import type { TemplateDetailResponse } from '@/lib/api-client'
 //  Category label map                                                 //
 // ------------------------------------------------------------------ //
 
+const ACCENT_CHIP = { bg: 'bg-accent-soft', text: 'text-accent-strong', border: 'border-accent' }
+
 const CATEGORY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  software_engineering: { bg: 'bg-blue-500/10',    text: 'text-blue-300',    border: 'border-blue-500/20' },
-  finance:              { bg: 'bg-emerald-500/10',  text: 'text-emerald-300', border: 'border-emerald-500/20' },
-  academic:             { bg: 'bg-violet-500/10',   text: 'text-violet-300',  border: 'border-violet-500/20' },
-  creative:             { bg: 'bg-pink-500/10',     text: 'text-pink-300',    border: 'border-pink-500/20' },
-  minimal:              { bg: 'bg-zinc-500/10',     text: 'text-zinc-300',    border: 'border-zinc-500/20' },
-  ats_safe:             { bg: 'bg-green-500/10',    text: 'text-green-300',   border: 'border-green-500/20' },
-  two_column:           { bg: 'bg-cyan-500/10',     text: 'text-cyan-300',    border: 'border-cyan-500/20' },
-  executive:            { bg: 'bg-amber-500/10',    text: 'text-amber-300',   border: 'border-amber-500/20' },
-  marketing:            { bg: 'bg-orange-500/10',   text: 'text-orange-300',  border: 'border-orange-500/20' },
-  medical:              { bg: 'bg-red-500/10',      text: 'text-red-300',     border: 'border-red-500/20' },
-  legal:                { bg: 'bg-indigo-500/10',   text: 'text-indigo-300',  border: 'border-indigo-500/20' },
-  graduate:             { bg: 'bg-teal-500/10',     text: 'text-teal-300',    border: 'border-teal-500/20' },
+  software_engineering: ACCENT_CHIP,
+  finance:              ACCENT_CHIP,
+  academic:             ACCENT_CHIP,
+  creative:             ACCENT_CHIP,
+  minimal:              ACCENT_CHIP,
+  ats_safe:             ACCENT_CHIP,
+  two_column:           ACCENT_CHIP,
+  executive:            ACCENT_CHIP,
+  marketing:            ACCENT_CHIP,
+  medical:              ACCENT_CHIP,
+  legal:                ACCENT_CHIP,
+  graduate:             ACCENT_CHIP,
 }
 
-const DEFAULT_STYLE = { bg: 'bg-zinc-500/10', text: 'text-zinc-300', border: 'border-zinc-500/20' }
+const DEFAULT_STYLE = ACCENT_CHIP
 
 type ViewMode = 'pdf' | 'latex'
 
@@ -120,21 +122,21 @@ export default function TemplatePreviewModal({
   return (
     /* Backdrop */
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       {/* Modal */}
       <div
-        className="relative flex w-full max-w-3xl flex-col rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl h-[85vh]"
+        className="relative flex w-full max-w-3xl flex-col rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)] h-[85vh]"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-white/8 px-6 py-5">
+        <div className="flex items-start justify-between gap-4 border-b border-line px-6 py-5">
           {loading ? (
-            <div className="h-5 w-48 animate-pulse rounded bg-white/10" />
+            <div className="h-5 w-48 animate-pulse rounded bg-surface-2" />
           ) : (
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold text-white leading-snug">
+              <h2 className="text-lg font-semibold text-fg leading-snug">
                 {template?.name ?? '—'}
               </h2>
               {template && (
@@ -147,7 +149,7 @@ export default function TemplatePreviewModal({
           <button
             onClick={onClose}
             aria-label="Close preview"
-            className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/8 hover:text-zinc-300"
+            className="shrink-0 rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={18} />
           </button>
@@ -157,32 +159,32 @@ export default function TemplatePreviewModal({
         <div className="flex flex-1 overflow-hidden">
           {loading ? (
             <div className="flex flex-1 items-center justify-center p-12">
-              <div className="flex flex-col items-center gap-3 text-zinc-500">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-orange-300" />
+              <div className="flex flex-col items-center gap-3 text-fg-3">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-accent" />
                 <span className="text-sm">Loading template…</span>
               </div>
             </div>
           ) : error ? (
             <div className="flex flex-1 items-center justify-center p-12">
-              <p className="text-sm text-rose-400">{error}</p>
+              <p className="text-sm text-err">{error}</p>
             </div>
           ) : template ? (
             <div className="flex flex-1 overflow-hidden">
               {/* Left: metadata */}
-              <div className="flex w-52 shrink-0 flex-col gap-5 border-r border-white/8 p-6">
+              <div className="flex w-52 shrink-0 flex-col gap-5 border-r border-line p-6">
                 {template.description && (
                   <div>
-                    <p className="mb-1.5 text-[10px] uppercase tracking-[0.12em] text-zinc-600">Description</p>
-                    <p className="text-xs text-zinc-400 leading-relaxed">{template.description}</p>
+                    <p className="mb-1.5 text-[10px] uppercase tracking-[0.12em] text-fg-3">Description</p>
+                    <p className="text-xs text-fg-2 leading-relaxed">{template.description}</p>
                   </div>
                 )}
 
                 {template.tags.length > 0 && (
                   <div>
-                    <p className="mb-1.5 text-[10px] uppercase tracking-[0.12em] text-zinc-600">Tags</p>
+                    <p className="mb-1.5 text-[10px] uppercase tracking-[0.12em] text-fg-3">Tags</p>
                     <div className="flex flex-wrap gap-1">
                       {template.tags.map(tag => (
-                        <span key={tag} className="rounded-md bg-white/5 px-2 py-0.5 text-[10px] text-zinc-400">
+                        <span key={tag} className="rounded-[var(--radius-md)] bg-surface-2 px-2 py-0.5 text-[10px] text-fg-2">
                           {tag}
                         </span>
                       ))}
@@ -191,8 +193,8 @@ export default function TemplatePreviewModal({
                 )}
 
                 <div>
-                  <p className="mb-1.5 text-[10px] uppercase tracking-[0.12em] text-zinc-600">Format</p>
-                  <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <p className="mb-1.5 text-[10px] uppercase tracking-[0.12em] text-fg-3">Format</p>
+                  <div className="flex items-center gap-1.5 text-xs text-fg-2">
                     <FileText size={12} />
                     LaTeX (pdflatex)
                   </div>
@@ -202,16 +204,16 @@ export default function TemplatePreviewModal({
               {/* Right: preview area with toggle */}
               <div className="flex flex-1 flex-col overflow-hidden">
                 {/* View mode toggle */}
-                <div className="flex items-center gap-1 border-b border-white/8 px-4 py-2">
+                <div className="flex items-center gap-1 border-b border-line px-4 py-2">
                   <button
                     onClick={() => !pdfFailed && setViewMode('pdf')}
                     disabled={pdfFailed}
-                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-xs font-medium transition ${
                       effectiveView === 'pdf'
-                        ? 'bg-white/10 text-white'
+                        ? 'bg-surface-2 text-fg'
                         : pdfFailed
-                        ? 'text-zinc-700 cursor-not-allowed'
-                        : 'text-zinc-500 hover:text-zinc-300'
+                        ? 'text-fg-3 cursor-not-allowed'
+                        : 'text-fg-3 hover:text-fg-2'
                     }`}
                   >
                     <FileText size={12} />
@@ -219,10 +221,10 @@ export default function TemplatePreviewModal({
                   </button>
                   <button
                     onClick={() => setViewMode('latex')}
-                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                    className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-xs font-medium transition ${
                       effectiveView === 'latex'
-                        ? 'bg-white/10 text-white'
-                        : 'text-zinc-500 hover:text-zinc-300'
+                        ? 'bg-surface-2 text-fg'
+                        : 'text-fg-3 hover:text-fg-2'
                     }`}
                   >
                     <Code size={12} />
@@ -239,8 +241,8 @@ export default function TemplatePreviewModal({
                     onError={() => setPdfFailed(true)}
                   />
                 ) : (
-                  <div className="flex-1 overflow-auto bg-zinc-900/60 p-4">
-                    <pre className="text-[11px] leading-relaxed text-zinc-400 whitespace-pre-wrap break-all">
+                  <div className="flex-1 overflow-auto bg-surface p-4">
+                    <pre className="text-[11px] leading-relaxed text-fg-2 whitespace-pre-wrap break-all">
                       {template.latex_content}
                     </pre>
                   </div>
@@ -252,16 +254,16 @@ export default function TemplatePreviewModal({
 
         {/* Footer */}
         {!loading && !error && template && (
-          <div className="flex items-center justify-end gap-3 border-t border-white/8 px-6 py-4">
+          <div className="flex items-center justify-end gap-3 border-t border-line px-6 py-4">
             <button
               onClick={onClose}
-              className="rounded-lg border border-white/10 px-4 py-2 text-xs font-medium text-zinc-400 transition hover:border-white/20 hover:text-zinc-200"
+              className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-medium text-fg transition hover:bg-surface-2"
             >
               Cancel
             </button>
             <button
               onClick={() => { onUse(template.id); onClose() }}
-              className="btn-accent px-6 py-2 text-xs font-semibold"
+              className="rounded-[var(--radius-md)] bg-accent px-6 py-2 text-xs font-semibold text-accent-fg hover:brightness-110"
             >
               Use This Template
             </button>
