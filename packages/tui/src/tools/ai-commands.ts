@@ -8,7 +8,9 @@ import { getApiClient } from '../lib/api-client.js'
 import { addMessage } from '../stores/messages.js'
 import type { ParsedCommand } from '../commands/parser.js'
 import {
-  busyWithAnotherJob,
+  claimJobSlot,
+  jdFailureAlreadyReported,
+  releaseJobSlot,
   describeError,
   report,
   requireAuth,
@@ -23,13 +25,17 @@ async function latexOf(resumeId: string): Promise<string> {
 }
 
 export async function runOptimize(parsed: ParsedCommand): Promise<void> {
-  if (!requireAuth() || busyWithAnotherJob()) return
+  if (!requireAuth() || !claimJobSlot()) return
   const resumeId = await resolveResumeId(parsed)
-  if (!resumeId) return
+  if (!resumeId) { releaseJobSlot(); return }
 
   const jd = await resolveJobDescription(parsed)
   if (!jd) {
-    addMessage({ role: 'error', content: 'A job description is required: /optimize --jd <url|file|text>' })
+    releaseJobSlot()
+    // resolveJobDescription already said why, if it knew.
+    if (!jdFailureAlreadyReported()) {
+      addMessage({ role: 'error', content: 'A job description is required: /optimize --jd <url|file|text>' })
+    }
     return
   }
   const level = (parsed.args['level'] as string | undefined) ?? 'balanced'
@@ -47,18 +53,22 @@ export async function runOptimize(parsed: ParsedCommand): Promise<void> {
       },
     })
   } catch (err) {
+    releaseJobSlot()
     addMessage({ role: 'error', content: `Could not start optimization: ${describeError(err)}` })
   }
 }
 
 export async function runCombined(parsed: ParsedCommand): Promise<void> {
-  if (!requireAuth() || busyWithAnotherJob()) return
+  if (!requireAuth() || !claimJobSlot()) return
   const resumeId = await resolveResumeId(parsed)
-  if (!resumeId) return
+  if (!resumeId) { releaseJobSlot(); return }
 
   const jd = await resolveJobDescription(parsed)
   if (!jd) {
-    addMessage({ role: 'error', content: 'A job description is required: /combined --jd <url|file|text>' })
+    releaseJobSlot()
+    if (!jdFailureAlreadyReported()) {
+      addMessage({ role: 'error', content: 'A job description is required: /combined --jd <url|file|text>' })
+    }
     return
   }
 
@@ -75,14 +85,15 @@ export async function runCombined(parsed: ParsedCommand): Promise<void> {
       },
     })
   } catch (err) {
+    releaseJobSlot()
     addMessage({ role: 'error', content: `Could not start the pipeline: ${describeError(err)}` })
   }
 }
 
 export async function runAts(parsed: ParsedCommand): Promise<void> {
-  if (!requireAuth() || busyWithAnotherJob()) return
+  if (!requireAuth() || !claimJobSlot()) return
   const resumeId = await resolveResumeId(parsed)
-  if (!resumeId) return
+  if (!resumeId) { releaseJobSlot(); return }
 
   try {
     await submitJob({
@@ -96,6 +107,7 @@ export async function runAts(parsed: ParsedCommand): Promise<void> {
       },
     })
   } catch (err) {
+    releaseJobSlot()
     addMessage({ role: 'error', content: `Could not start ATS analysis: ${describeError(err)}` })
   }
 }
@@ -141,11 +153,13 @@ export async function runQuickAts(parsed: ParsedCommand): Promise<void> {
 export async function runCover(parsed: ParsedCommand): Promise<void> {
   if (!requireAuth()) return
   const resumeId = await resolveResumeId(parsed)
-  if (!resumeId) return
+  if (!resumeId) { releaseJobSlot(); return }
 
   const jd = await resolveJobDescription(parsed)
   if (!jd) {
-    addMessage({ role: 'error', content: 'A job description is required: /cover --jd <url|file|text>' })
+    if (!jdFailureAlreadyReported()) {
+      addMessage({ role: 'error', content: 'A job description is required: /cover --jd <url|file|text>' })
+    }
     return
   }
 

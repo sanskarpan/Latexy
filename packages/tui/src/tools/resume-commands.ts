@@ -76,16 +76,48 @@ export async function runEdit(parsed: ParsedCommand): Promise<void> {
     addMessage({ role: 'system', content: `Opening ${resume.title} in ${editor}…` })
     // Inherit the terminal so the editor takes over the screen, and wait: the
     // TUI cannot repaint underneath a full-screen editor anyway.
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(editor, [path], { stdio: 'inherit' })
-      child.on('exit', () => resolve())
-      child.on('error', reject)
-    })
+    // The exit code matters. Discarding it meant a crashed, killed, or
+    // nonzero-exiting editor still had whatever bytes were on disk written back
+    // — a truncated file silently replaced the user's resume and was reported as
+    // "Saved". Refuse to save unless the editor exited cleanly.
+    const { code, signal } = await new Promise<{ code: number | null; signal: string | null }>(
+      (resolve, reject) => {
+        const child = spawn(editor, [path], { stdio: 'inherit' })
+        child.on('exit', (c, sig) => resolve({ code: c, signal: sig }))
+        child.on('error', reject)
+      },
+    )
+    if (signal != null) {
+      addMessage({
+        role: 'error',
+        content: `${editor} was killed (${signal}) — nothing saved. Your resume is unchanged, ` +
+          `and the draft is at ${path}.`,
+      })
+      return
+    }
+    if (code !== 0) {
+      addMessage({
+        role: 'error',
+        content: `${editor} exited with code ${code} — nothing saved. Your resume is unchanged, ` +
+          `and the draft is at ${path}.`,
+      })
+      return
+    }
 
     const { readFile } = await import('node:fs/promises')
     const edited = await readFile(path, 'utf-8')
     if (edited === resume.latex_content) {
       addMessage({ role: 'system', content: 'No changes made.' })
+      return
+    }
+    // A clean exit over an emptied buffer is almost always an accident, and the
+    // saved version is the only copy unless the user happened to /checkpoint.
+    if (edited.trim() === '') {
+      addMessage({
+        role: 'error',
+        content: `The edited file is empty — refusing to overwrite ${resume.title}. ` +
+          `The draft is at ${path} if that was intentional.`,
+      })
       return
     }
     await client.put(`/resumes/${resumeId}`, { latex_content: edited })
@@ -136,12 +168,18 @@ export async function runDiff(parsed: ParsedCommand): Promise<void> {
       addMessage({ role: 'system', content: 'Identical to the parent resume.' })
       return
     }
-    addMessage({
-      role: 'log_stream',
-      content: '',
-      resultData: { lines: unifiedDiff(res.parent_latex, res.variant_latex,
-        res.parent_title ?? 'parent', res.variant_title ?? 'variant') },
-    })
+    // LogStreamCard keeps only the last 25 lines and is titled "Build Log",
+    // which hid three-quarters of the removals and dropped the ---/+++ headers
+    // that say which side is which. A diff is not a log; render it as text.
+    const lines = unifiedDiff(
+      res.parent_latex, res.variant_latex,
+      res.parent_title ?? 'parent', res.variant_title ?? 'variant',
+    )
+    const MAX = 60
+    const shown = lines.length > MAX
+      ? [...lines.slice(0, MAX), `  … ${lines.length - MAX} more changed line(s)`]
+      : lines
+    addMessage({ role: 'system', content: shown.join('\n') })
   } catch (err) {
     addMessage({ role: 'error', content: `Diff failed: ${describeError(err)}` })
   }
@@ -151,12 +189,21 @@ export async function runDiff(parsed: ParsedCommand): Promise<void> {
 function unifiedDiff(a: string, b: string, aName: string, bName: string): string[] {
   const left = a.split('\n')
   const right = b.split('\n')
-  const out: string[] = [`--- ${aName}`, `+++ ${bName}`]
   const seen = new Set(left)
   const kept = new Set(right)
-  for (const line of left) if (!kept.has(line)) out.push(`- ${line}`)
-  for (const line of right) if (!seen.has(line)) out.push(`+ ${line}`)
-  if (out.length === 2) out.push('  (only whitespace or ordering differs)')
+  const removed = left.filter(l => !kept.has(l))
+  const added = right.filter(l => !seen.has(l))
+  const out: string[] = [
+    `--- ${aName}`,
+    `+++ ${bName}`,
+    `    ${removed.length} removed · ${added.length} added`,
+    '',
+  ]
+  for (const line of removed) out.push(`- ${line}`)
+  for (const line of added) out.push(`+ ${line}`)
+  if (removed.length === 0 && added.length === 0) {
+    out.push('  (only whitespace or ordering differs)')
+  }
   return out
 }
 

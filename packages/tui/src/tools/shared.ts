@@ -82,8 +82,22 @@ export async function resolveResumeId(parsed: ParsedCommand): Promise<string | n
   })
 }
 
+/**
+ * Set when resolveJobDescription has already explained its own failure, so the
+ * caller does not follow it with "a job description is required" — which told
+ * the user to supply the flag they had just supplied.
+ */
+let jdFailureReported = false
+
+export function jdFailureAlreadyReported(): boolean {
+  const was = jdFailureReported
+  jdFailureReported = false
+  return was
+}
+
 /** Read a job description from --jd (a URL, a file path, or literal text). */
 export async function resolveJobDescription(parsed: ParsedCommand): Promise<string | null> {
+  jdFailureReported = false
   const jd = parsed.args['jd']
   if (typeof jd !== 'string' || !jd) return null
 
@@ -101,6 +115,7 @@ export async function resolveJobDescription(parsed: ParsedCommand): Promise<stri
       }>('/scrape-job-description', { url: jd })
 
       if (scraped.description != null && scraped.description !== '') return scraped.description
+      jdFailureReported = true
       addMessage({
         role: 'error',
         content: `Could not read that job posting: ${scraped.error ?? 'no description found'}. ` +
@@ -142,12 +157,16 @@ export async function submitJob(opts: {
   try {
     const res = await getApiClient().post<JobSubmitResponse>(opts.path ?? '/jobs/submit', opts.body)
     const jobId = res.job_id
+    jobSlotClaimed = false          // $activeJobId is now the authority
     $activeJobId.set(jobId)
     const ctrl = createJobController(jobId)
     ctrl.setToolMsgId(toolMsgId)
     wsClient.subscribe(jobId, '0')
     return jobId
   } catch (err) {
+    // Submission failed, so nothing is running — hand the slot back or the user
+    // is locked out of starting anything until they restart.
+    jobSlotClaimed = false
     updateMessage(toolMsgId, {
       toolState: 'error',
       toolResult: { error: describeError(err) },
@@ -157,11 +176,34 @@ export async function submitJob(opts: {
   }
 }
 
-/** Refuse to start a second job while one is already streaming. */
-export function busyWithAnotherJob(): boolean {
-  if ($activeJobId.get() == null) return false
-  addMessage({ role: 'error', content: 'A job is already running — /cancel it first.' })
+/**
+ * Claim the single-job slot, or report that it is taken.
+ *
+ * This used to only *read* $activeJobId, which submitJob sets after its POST
+ * resolves — a check-then-act window wide enough that /optimize, /combined and
+ * /ats dispatched together all passed the guard and all three were queued and
+ * charged. Only one could be tracked, so the other two cards could never be
+ * cancelled. The slot is claimed synchronously now, before any await.
+ */
+let jobSlotClaimed = false
+
+export function claimJobSlot(): boolean {
+  if (jobSlotClaimed || $activeJobId.get() != null) {
+    addMessage({ role: 'error', content: 'A job is already running — /cancel it first.' })
+    return false
+  }
+  jobSlotClaimed = true
   return true
+}
+
+/** Release the slot when submission failed, so the user is not locked out. */
+export function releaseJobSlot(): void {
+  jobSlotClaimed = false
+}
+
+/** Kept for callers that only need to ask, without claiming. */
+export function busyWithAnotherJob(): boolean {
+  return jobSlotClaimed || $activeJobId.get() != null
 }
 
 /** ApiError carries a useful message; anything else stringifies poorly. */
