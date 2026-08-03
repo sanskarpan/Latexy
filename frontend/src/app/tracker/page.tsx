@@ -28,19 +28,19 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 // ------------------------------------------------------------------ //
 
 const COLUMNS = [
-  { id: 'applied', label: 'Applied', color: 'border-t-blue-500/60', badge: 'bg-blue-500/10 text-blue-300' },
-  { id: 'phone_screen', label: 'Phone Screen', color: 'border-t-violet-500/60', badge: 'bg-violet-500/10 text-violet-300' },
-  { id: 'technical', label: 'Technical', color: 'border-t-amber-500/60', badge: 'bg-amber-500/10 text-amber-300' },
-  { id: 'onsite', label: 'On-Site', color: 'border-t-orange-500/60', badge: 'bg-orange-500/10 text-orange-300' },
-  { id: 'offer', label: 'Offer', color: 'border-t-emerald-500/60', badge: 'bg-emerald-500/10 text-emerald-300' },
-  { id: 'rejected', label: 'Rejected', color: 'border-t-rose-500/60', badge: 'bg-rose-500/10 text-rose-300' },
-  { id: 'withdrawn', label: 'Withdrawn', color: 'border-t-zinc-500/60', badge: 'bg-zinc-500/10 text-zinc-400' },
+  { id: 'applied', label: 'Applied', color: 'border-t-accent/60', badge: 'bg-accent-soft text-accent-strong' },
+  { id: 'phone_screen', label: 'Phone Screen', color: 'border-t-accent/60', badge: 'bg-accent-soft text-accent-strong' },
+  { id: 'technical', label: 'Technical', color: 'border-t-warn/60', badge: 'bg-warn/10 text-warn' },
+  { id: 'onsite', label: 'On-Site', color: 'border-t-accent/60', badge: 'bg-accent-soft text-accent-strong' },
+  { id: 'offer', label: 'Offer', color: 'border-t-ok/60', badge: 'bg-ok/10 text-ok' },
+  { id: 'rejected', label: 'Rejected', color: 'border-t-err/60', badge: 'bg-err/10 text-err' },
+  { id: 'withdrawn', label: 'Withdrawn', color: 'border-t-line-2', badge: 'bg-surface-2 text-fg-3' },
 ] as const
 
 function atsColor(score: number) {
-  if (score >= 75) return 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20'
-  if (score >= 55) return 'bg-amber-500/10 text-amber-300 ring-amber-400/20'
-  return 'bg-rose-500/10 text-rose-300 ring-rose-400/20'
+  if (score >= 75) return 'bg-ok/10 text-ok ring-ok/20'
+  if (score >= 55) return 'bg-warn/10 text-warn ring-warn/20'
+  return 'bg-err/10 text-err ring-err/20'
 }
 
 function timeAgo(iso: string) {
@@ -71,12 +71,12 @@ function CompanyAvatar({ name, logoUrl }: { name: string; logoUrl: string | null
         src={logoUrl}
         alt={name}
         onError={() => setImgFailed(true)}
-        className="h-8 w-8 flex-shrink-0 rounded-lg object-contain bg-white/5 p-0.5"
+        className="h-8 w-8 flex-shrink-0 rounded-[var(--radius-md)] object-contain bg-surface-2 p-0.5"
       />
     )
   }
   return (
-    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-zinc-800 text-[11px] font-bold text-zinc-300">
+    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-surface-2 text-[11px] font-bold text-fg-2">
       {initials || '?'}
     </div>
   )
@@ -130,8 +130,8 @@ function ApplicationCard({ app, onDelete, onEdit, isDragging = false }: Applicat
     <div
       ref={setNodeRef}
       style={style}
-      className={`group relative rounded-xl border border-white/10 bg-zinc-900 p-3.5 shadow-sm transition hover:border-white/20 ${
-        isDragging ? 'shadow-2xl ring-1 ring-orange-300/20' : ''
+      className={`group relative rounded-[var(--radius-lg)] border border-line bg-surface p-3.5 shadow-sm transition hover:border-line-2 ${
+        isDragging ? 'shadow-[var(--shadow-2)] ring-1 ring-accent/20' : ''
       }`}
     >
       {/* Drag handle area */}
@@ -139,8 +139,8 @@ function ApplicationCard({ app, onDelete, onEdit, isDragging = false }: Applicat
         <div className="flex items-start gap-2.5">
           <CompanyAvatar name={app.company_name} logoUrl={app.company_logo_url} />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-white leading-tight">{app.company_name}</p>
-            <p className="truncate text-xs text-zinc-400 mt-0.5">{app.role_title}</p>
+            <p className="truncate text-sm font-semibold text-fg leading-tight">{app.company_name}</p>
+            <p className="truncate text-xs text-fg-2 mt-0.5">{app.role_title}</p>
           </div>
         </div>
       </div>
@@ -152,14 +152,14 @@ function ApplicationCard({ app, onDelete, onEdit, isDragging = false }: Applicat
             ATS {Math.round(app.ats_score_at_submission)}
           </span>
         )}
-        <span className="text-[10px] text-zinc-600">{timeAgo(app.applied_at)}</span>
+        <span className="text-[10px] text-fg-3">{timeAgo(app.applied_at)}</span>
         {app.job_url && (
           <a
             href={app.job_url}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="ml-auto text-zinc-600 transition hover:text-zinc-300"
+            className="ml-auto text-fg-3 transition hover:text-fg-2"
           >
             <ExternalLink size={11} />
           </a>
@@ -172,7 +172,7 @@ function ApplicationCard({ app, onDelete, onEdit, isDragging = false }: Applicat
           ref={menuTriggerRef}
           type="button"
           onClick={(e) => { e.stopPropagation(); menuOpen ? setMenuOpen(false) : openMenu() }}
-          className="rounded p-1 text-zinc-600 transition hover:bg-white/5 hover:text-zinc-300"
+          className="rounded p-1 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
         >
           <MoreHorizontal size={14} />
         </button>
@@ -189,7 +189,7 @@ function ApplicationCard({ app, onDelete, onEdit, isDragging = false }: Applicat
               tabIndex={-1}
             />
             <div
-              className="z-[201] w-36 rounded-xl border border-white/10 bg-zinc-900 p-1 shadow-xl"
+              className="z-[201] w-36 rounded-[var(--radius-lg)] border border-line bg-surface p-1 shadow-[var(--shadow-2)]"
               style={{
                 position: 'fixed',
                 top: menuPos.top,
@@ -200,14 +200,14 @@ function ApplicationCard({ app, onDelete, onEdit, isDragging = false }: Applicat
               <button
                 type="button"
                 onClick={() => { setMenuOpen(false); onEdit(app) }}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5"
+                className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-3 py-1.5 text-xs text-fg-2 transition hover:bg-surface-2"
               >
                 <Pencil size={12} /> Edit
               </button>
               <button
                 type="button"
                 onClick={() => { setMenuOpen(false); onDelete(app.id) }}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-rose-400 transition hover:bg-rose-500/10"
+                className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-3 py-1.5 text-xs text-err transition hover:bg-err/10"
               >
                 <Trash2 size={12} /> Delete
               </button>
@@ -236,9 +236,9 @@ interface ColumnProps {
 
 function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete, onEdit }: ColumnProps) {
   return (
-    <div className={`flex min-h-[200px] w-[80vw] max-w-[300px] flex-shrink-0 flex-col rounded-xl border border-white/10 bg-zinc-950 border-t-2 sm:w-[260px] ${colorClass}`}>
+    <div className={`flex min-h-[200px] w-[80vw] max-w-[300px] flex-shrink-0 flex-col rounded-[var(--radius-lg)] border border-line bg-bg border-t-2 sm:w-[260px] ${colorClass}`}>
       <div className="flex items-center gap-2 px-3.5 py-3">
-        <span className="text-xs font-semibold text-zinc-300">{label}</span>
+        <span className="text-xs font-semibold text-fg-2">{label}</span>
         <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${badgeClass}`}>
           {apps.length}
         </span>
@@ -250,7 +250,7 @@ function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete,
           ))}
         </SortableContext>
         {apps.length === 0 && (
-          <div className="flex h-16 items-center justify-center rounded-lg border border-dashed border-white/10 text-[11px] text-zinc-700">
+          <div className="flex h-16 items-center justify-center rounded-[var(--radius-md)] border border-dashed border-line text-[11px] text-fg-3">
             Drop here
           </div>
         )}
@@ -266,26 +266,26 @@ function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete,
 function StatsBar({ stats }: { stats: TrackerStats | null }) {
   if (!stats || stats.total_applications === 0) return null
   return (
-    <div className="flex flex-wrap gap-4 rounded-xl border border-white/10 bg-zinc-950 px-5 py-3 text-xs">
-      <span className="text-zinc-400">
-        <span className="font-semibold text-white">{stats.total_applications}</span> total
+    <div className="flex flex-wrap gap-4 rounded-[var(--radius-lg)] border border-line bg-bg px-5 py-3 text-xs">
+      <span className="text-fg-2">
+        <span className="font-semibold text-fg">{stats.total_applications}</span> total
       </span>
-      <span className="text-zinc-400">
+      <span className="text-fg-2">
         Response rate:{' '}
-        <span className="font-semibold text-white">{Math.round(stats.response_rate * 100)}%</span>
+        <span className="font-semibold text-fg">{Math.round(stats.response_rate * 100)}%</span>
       </span>
-      <span className="text-zinc-400">
+      <span className="text-fg-2">
         Offer rate:{' '}
-        <span className="font-semibold text-white">{Math.round(stats.offer_rate * 100)}%</span>
+        <span className="font-semibold text-fg">{Math.round(stats.offer_rate * 100)}%</span>
       </span>
       {stats.avg_ats_score != null && (
-        <span className="text-zinc-400">
-          Avg ATS: <span className="font-semibold text-white">{Math.round(stats.avg_ats_score)}</span>
+        <span className="text-fg-2">
+          Avg ATS: <span className="font-semibold text-fg">{Math.round(stats.avg_ats_score)}</span>
         </span>
       )}
-      <span className="text-zinc-400">
+      <span className="text-fg-2">
         This week:{' '}
-        <span className="font-semibold text-white">{stats.applications_this_week}</span>
+        <span className="font-semibold text-fg">{stats.applications_this_week}</span>
       </span>
     </div>
   )
@@ -457,20 +457,20 @@ export default function TrackerPage() {
       {/* Header */}
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="overline">Tracker</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">Job Applications</h1>
-          <p className="mt-1 text-sm text-zinc-400">
+          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Tracker</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">Job Applications</h1>
+          <p className="mt-1 text-sm text-fg-2">
             Track every application across its full lifecycle.
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/workspace" className="btn-ghost px-4 py-2 text-xs">
+          <Link href="/workspace" className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2">
             Workspace
           </Link>
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="btn-accent flex items-center gap-1.5 px-4 py-2 text-xs"
+            className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110 flex items-center gap-1.5"
           >
             <Plus size={13} />
             Add Application
@@ -506,12 +506,12 @@ export default function TrackerPage() {
 
           <DragOverlay>
             {activeApp && (
-              <div className="w-[260px] rounded-xl border border-orange-300/20 bg-zinc-900 p-3.5 shadow-2xl ring-1 ring-orange-300/20">
+              <div className="w-[260px] rounded-[var(--radius-lg)] border border-accent/20 bg-surface p-3.5 shadow-[var(--shadow-2)] ring-1 ring-accent/20">
                 <div className="flex items-start gap-2.5">
                   <CompanyAvatar name={activeApp.company_name} logoUrl={activeApp.company_logo_url} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-white">{activeApp.company_name}</p>
-                    <p className="truncate text-xs text-zinc-400">{activeApp.role_title}</p>
+                    <p className="truncate text-sm font-semibold text-fg">{activeApp.company_name}</p>
+                    <p className="truncate text-xs text-fg-2">{activeApp.role_title}</p>
                   </div>
                 </div>
               </div>
@@ -611,56 +611,56 @@ function EditApplicationModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl"
+        className="w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-          <h2 className="text-sm font-semibold text-white">Edit Application</h2>
-          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-zinc-500 hover:text-white">
+        <div className="flex items-center justify-between border-b border-line px-5 py-4">
+          <h2 className="text-sm font-semibold text-fg">Edit Application</h2>
+          <button type="button" onClick={onClose} className="rounded-[var(--radius-md)] p-1.5 text-fg-3 hover:text-fg">
             <X size={16} />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4 p-5">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Company</label>
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">Company</label>
               <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} required
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40" />
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent" />
             </div>
             <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Role</label>
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">Role</label>
               <input value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} required
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40" />
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent" />
             </div>
           </div>
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Status</label>
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">Status</label>
             <select value={status} onChange={(e) => setStatus(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40">
+              className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent">
               {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Job URL</label>
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">Job URL</label>
             <input type="url" value={jobUrl} onChange={(e) => setJobUrl(e.target.value)} placeholder="https://..."
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40" />
+              className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent" />
           </div>
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Notes</label>
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">Notes</label>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-              className="w-full resize-none rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40" />
+              className="w-full resize-none rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent" />
           </div>
-          <div className="flex justify-end gap-2 border-t border-white/10 pt-4">
+          <div className="flex justify-end gap-2 border-t border-line pt-4">
             <button type="button" onClick={onClose}
-              className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 hover:text-white">
+              className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-semibold text-fg-2 hover:text-fg">
               Cancel
             </button>
             <button type="submit" disabled={isSubmitting}
-              className="btn-accent px-4 py-2 text-xs disabled:opacity-50">
+              className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110 disabled:opacity-50">
               {isSubmitting ? 'Saving…' : 'Save Changes'}
             </button>
           </div>
