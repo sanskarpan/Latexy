@@ -207,6 +207,11 @@ from .optimize_routes import router as optimize_review_router
 
 router.include_router(optimize_review_router)
 
+# Include external-source import routes (Feature 1 Phase 3 — LinkedIn/resume)
+from .sources_routes import router as sources_router
+
+router.include_router(sources_router)
+
 
 def _check_cors_origins_on_startup() -> None:
     """CONFIG-002: Warn if CORS origins include localhost in a production-like environment."""
