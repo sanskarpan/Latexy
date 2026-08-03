@@ -1,6 +1,6 @@
 import React from 'react'
 import { parseSlashCommand } from './parser.js'
-import { COMMAND_MAP } from './registry.js'
+import { COMMAND_MAP, IMPLEMENTED_COMMANDS } from './registry.js'
 import { addMessage, $activeJobId, clearMessages } from '../stores/messages.js'
 import { openOverlay, closeOverlay } from '../stores/overlay.js'
 import { $session } from '../stores/session.js'
@@ -32,8 +32,10 @@ const LOCAL_HANDLERS: Record<string, (parsed: ReturnType<typeof parseSlashComman
     addMessage({
       role: 'system',
       content: cmd
-        ? `/${cmd.name} — ${cmd.description}\nUsage: ${cmd.usage}`
-        : `Available commands:\n${[...COMMAND_MAP.keys()].map(k => `  /${k}`).join('\n')}`,
+        ? cmd.implemented
+          ? `/${cmd.name} — ${cmd.description}\nUsage: ${cmd.usage}`
+          : `/${cmd.name} — ${cmd.description}\nUsage: ${cmd.usage}\n\nNot implemented yet — this command is planned but has no handler, so running it will not do anything.`
+        : `Available commands:\n${IMPLEMENTED_COMMANDS.map(c => `  /${c.name.padEnd(10)} ${c.description}`).join('\n')}`,
     })
   },
   logout: async () => {
@@ -100,10 +102,15 @@ export async function dispatch(input: string): Promise<void> {
       return
     }
 
-    // Unknown command
+    // Distinguish "no such command" from "planned but not built". Telling a user
+    // that /optimize is unknown when it is listed in the registry and described
+    // in /help is simply misleading.
+    const known = COMMAND_MAP.get(parsed.name)
     addMessage({
       role: 'error',
-      content: `Unknown command: /${parsed.name}. Type /help to see available commands.`,
+      content: known
+        ? `/${parsed.name} is not implemented yet. Type /help to see what you can run today.`
+        : `Unknown command: /${parsed.name}. Type /help to see available commands.`,
     })
     return
   }

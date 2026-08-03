@@ -57,14 +57,18 @@ describe('dispatch — LOCAL_HANDLERS', () => {
     expect($messages.get().length).toBe(0)
   })
 
-  it('/help adds a system message listing all commands', async () => {
+  it('/help lists the commands that work, and only those', async () => {
+    // This previously asserted that /help listed /ats. It does not any more, and
+    // that is the fix: /ats has no handler, so listing it sent users to a command
+    // that answers "Unknown command". /help is the answer to "what can I do", so
+    // it must not name things that cannot be done.
     const { dispatch } = await import('../../commands/dispatch.js')
     await dispatch('/help')
     const msgs = $messages.get()
     const sys = msgs.find(m => m.role === 'system')
     expect(sys).toBeDefined()
     expect(sys?.content).toContain('/compile')
-    expect(sys?.content).toContain('/ats')
+    expect(sys?.content).not.toContain('/ats')
   })
 
   it('/help compile adds usage for that specific command', async () => {
