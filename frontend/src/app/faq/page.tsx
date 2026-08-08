@@ -41,20 +41,15 @@ export default function FAQPage() {
       {/* ── the list, set as hairline-ruled entries ── */}
       <section className="border-t border-line">
         <MotionStagger className="mx-auto max-w-6xl px-5 sm:px-8">
-          {faqs.map((item, i) => (
+          {faqs.map((item) => (
             <MotionItem key={item.q}>
-              <article className="grid gap-4 border-b border-line py-8 md:grid-cols-[auto_1fr] md:gap-10">
-                <span className="font-ui text-xs uppercase tracking-[0.16em] text-accent-strong md:pt-1.5">
-                  § {i + 1}
-                </span>
-                <div>
-                  <h2 className="text-balance font-display text-[clamp(1.35rem,2.4vw,1.85rem)] font-semibold leading-snug text-fg">
-                    {item.q}
-                  </h2>
-                  <p className="mt-3 max-w-[62ch] font-body text-base leading-relaxed text-fg-2">
-                    {item.a}
-                  </p>
-                </div>
+              <article className="border-b border-line py-8">
+                <h2 className="text-balance font-display text-[clamp(1.35rem,2.4vw,1.85rem)] font-semibold leading-snug text-fg">
+                  {item.q}
+                </h2>
+                <p className="mt-3 max-w-[62ch] font-body text-base leading-relaxed text-fg-2">
+                  {item.a}
+                </p>
               </article>
             </MotionItem>
           ))}
