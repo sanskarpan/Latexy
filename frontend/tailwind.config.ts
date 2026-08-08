@@ -99,7 +99,7 @@ const config: Config = {
         // which was never delivered). Aesthetic-aware roles below.
         sans: ['var(--font-geist-sans)', 'Avenir Next', 'system-ui', 'sans-serif'],
         mono: ['var(--font-jetbrains)', 'SF Mono', 'ui-monospace', 'Monaco', 'monospace'],
-        serif: ['var(--font-fraunces)', 'Hoefler Text', 'Charter', 'Georgia', 'serif'],
+        grotesque: ['var(--font-bricolage)', 'Hanken Grotesk', 'system-ui', 'sans-serif'],
         display: ['var(--font-display)'],
         body: ['var(--font-body)'],
         ui: ['var(--font-ui)'],
