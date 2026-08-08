@@ -58,6 +58,7 @@ def mock_jsm():
     # Mock Redis client returned by get_worker_redis()
     mock_r = MagicMock()
     mock_r.keys.return_value = []
+    mock_r.scan.return_value = (0, [])
     mock_r.scan_iter.return_value = iter([])
     mock_r.get.return_value = None
     mock_r.delete.return_value = 1
@@ -290,6 +291,7 @@ class TestCleanupTempFilesTask:
 
         mock_r2 = MagicMock()
         mock_r2.keys.return_value = []
+        mock_r2.scan.return_value = (0, [])
         with patch("app.workers.cleanup_worker.publish_event", side_effect=_side_effect), \
              patch("app.workers.cleanup_worker.publish_job_result"), \
              patch("app.workers.cleanup_worker.get_worker_redis", return_value=mock_r2):
@@ -325,6 +327,7 @@ class TestCleanupExpiredJobsTask:
         r = mock_jsm._mock_redis
         keys = [f"latexy:job:{jid}:state" for jid in job_states]
         r.keys.return_value = keys
+        r.scan.return_value = (0, keys)
 
         state_map = {
             f"latexy:job:{jid}:state": json.dumps({"status": st, "last_updated": ts})
@@ -360,6 +363,7 @@ class TestCleanupExpiredJobsTask:
 
     def test_no_active_jobs_returns_zero(self, mock_jsm):
         mock_jsm._mock_redis.keys.return_value = []
+        mock_jsm._mock_redis.scan.return_value = (0, [])
         result = self._run(mock_jsm)
         assert result["success"] is True
         assert result["jobs_cleaned"] == 0
@@ -408,6 +412,7 @@ class TestCleanupExpiredJobsTask:
 
     def test_job_with_no_status_skipped_gracefully(self, mock_jsm):
         mock_jsm._mock_redis.keys.return_value = ["latexy:job:ghost:state"]
+        mock_jsm._mock_redis.scan.return_value = (0, ["latexy:job:ghost:state"])
         mock_jsm._mock_redis.get.return_value = None  # key exists but no data
         result = self._run(mock_jsm)
         assert result["success"] is True
@@ -439,6 +444,7 @@ class TestCleanupExpiredJobsTask:
 
     def test_get_job_status_error_captured_not_propagated(self, mock_jsm):
         mock_jsm._mock_redis.keys.return_value = ["latexy:job:bad-job:state"]
+        mock_jsm._mock_redis.scan.return_value = (0, ["latexy:job:bad-job:state"])
         mock_jsm._mock_redis.get.side_effect = RuntimeError("Redis timeout")
         result = self._run(mock_jsm)
         assert result["success"] is True
@@ -451,6 +457,7 @@ class TestCleanupExpiredJobsTask:
             "latexy:job:bad:state",
             "latexy:job:good:state",
         ]
+        mock_jsm._mock_redis.scan.return_value = (0, mock_jsm._mock_redis.keys.return_value)
 
         def _get(key):
             if "bad" in key:
@@ -471,6 +478,7 @@ class TestHealthCheckTask:
     def _run(self, mock_jsm, mock_rm, *, free_gb=10.0, total_gb=100.0, active_jobs=None):
         du = _disk_usage(free_gb, total_gb)
         mock_jsm._mock_redis.keys.return_value = active_jobs or []
+        mock_jsm._mock_redis.scan.return_value = (0, active_jobs or [])
         with patch("shutil.disk_usage", return_value=du):
             return health_check_task.apply(kwargs={}).result
 
