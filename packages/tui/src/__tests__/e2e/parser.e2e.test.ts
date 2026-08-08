@@ -3,8 +3,8 @@ import { parseSlashCommand } from '../../commands/parser.js'
 import { COMMAND_MAP, SLASH_COMMANDS } from '../../commands/registry.js'
 
 describe('slash command registry integration', () => {
-  it('registers exactly 32 commands', () => {
-    expect(SLASH_COMMANDS.length).toBe(32)
+  it('registers exactly 33 commands', () => {
+    expect(SLASH_COMMANDS.length).toBe(33)
   })
 
   it('COMMAND_MAP has an entry for every SLASH_COMMANDS item', () => {
