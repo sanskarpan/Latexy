@@ -43,29 +43,29 @@ export default function BYOKPage() {
   return (
     <div className="content-shell">
       <div className="space-y-6">
-        <section className="surface-panel edge-highlight p-6 sm:p-8 text-center sm:text-left">
-          <h1 className="text-3xl font-bold text-white tracking-tight">API Key Management</h1>
-          <p className="mt-2 mx-auto sm:mx-0 max-w-2xl text-zinc-400">
+        <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 sm:p-8 text-center sm:text-left">
+          <h1 className="text-3xl font-bold text-fg tracking-tight">API Key Management</h1>
+          <p className="mt-2 mx-auto sm:mx-0 max-w-2xl text-fg-2">
             Connect your own model provider keys for direct access and cost-efficient scaling.
           </p>
           <div className="mt-8 grid gap-4 md:grid-cols-3 text-left">
             {points.map((point) => (
-              <article key={point.title} className="surface-card p-5 border border-white/5 bg-white/[0.02]">
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider">{point.title}</h2>
-                <p className="mt-2 text-sm text-zinc-400 leading-relaxed">{point.text}</p>
+              <article key={point.title} className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+                <h2 className="text-sm font-bold text-fg uppercase tracking-wider">{point.title}</h2>
+                <p className="mt-2 text-sm text-fg-2 leading-relaxed">{point.text}</p>
               </article>
             ))}
           </div>
         </section>
 
-        <section className="surface-panel edge-highlight p-5 sm:p-6">
+        <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 sm:p-6">
           <APIKeyManager onKeysChange={setUserApiKeys} />
         </section>
 
-        <section className="surface-panel edge-highlight p-5 sm:p-6">
+        <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 sm:p-6">
           <div className="mb-4">
-            <h2 className="text-xl font-semibold text-white">Provider Capabilities</h2>
-            <p className="text-sm text-zinc-400">
+            <h2 className="text-xl font-semibold text-fg">Provider Capabilities</h2>
+            <p className="text-sm text-fg-2">
               Explore supported providers, models, and features. Click a provider to see details.
             </p>
           </div>

@@ -96,33 +96,33 @@ export default function CompilerSelector({
         onClick={toggleOpen}
         disabled={disabled || saving}
         title="LaTeX compiler engine"
-        className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+        className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium transition ${
           open
-            ? 'bg-white/[0.07] text-zinc-200'
-            : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300'
+            ? 'bg-surface-2 text-fg'
+            : 'text-fg-3 hover:bg-surface-2 hover:text-fg-2'
         } disabled:opacity-40`}
       >
-        <Cpu size={11} className={current !== 'pdflatex' ? 'text-cyan-400' : undefined} />
-        <span className={current !== 'pdflatex' ? 'text-cyan-300' : undefined}>
+        <Cpu size={11} className={current !== 'pdflatex' ? 'text-accent-strong' : undefined} />
+        <span className={current !== 'pdflatex' ? 'text-accent-strong' : undefined}>
           {currentOption.label}
         </span>
         <ChevronDown size={10} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className={`absolute right-0 z-50 max-h-[min(20rem,calc(100vh-6rem))] w-56 overflow-y-auto rounded-lg border border-white/10 bg-zinc-950 py-1 shadow-xl ${
+        <div className={`absolute right-0 z-50 max-h-[min(20rem,calc(100vh-6rem))] w-56 overflow-y-auto rounded-[var(--radius-md)] border border-line bg-bg py-1 shadow-[var(--shadow-2)] ${
           flipUp ? 'bottom-full mb-1' : 'top-full mt-1'
         }`}>
           {COMPILER_OPTIONS.map((option) => (
             <button
               key={option.id}
               onClick={() => handleSelect(option.id)}
-              className={`flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left transition hover:bg-white/[0.05] ${
-                option.id === current ? 'text-cyan-300' : 'text-zinc-300'
+              className={`flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left transition hover:bg-surface-2 ${
+                option.id === current ? 'text-accent-strong' : 'text-fg-2'
               }`}
             >
               <span className="text-[12px] font-medium">{option.label}</span>
-              <span className="text-[10px] text-zinc-600">{option.description}</span>
+              <span className="text-[10px] text-fg-3">{option.description}</span>
             </button>
           ))}
         </div>

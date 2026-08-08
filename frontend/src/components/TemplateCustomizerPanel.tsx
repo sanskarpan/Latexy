@@ -156,7 +156,7 @@ export default function TemplateCustomizerPanel({
 
   function SectionLabel({ label }: { label: string }) {
     return (
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500 mb-2">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3 mb-2">
         {label}
       </p>
     )
@@ -165,14 +165,14 @@ export default function TemplateCustomizerPanel({
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto scrollbar-subtle bg-[#0e0e0e]">
+    <div className="flex h-full flex-col overflow-y-auto scrollbar-subtle bg-bg">
       <div className="space-y-6 p-4">
 
         {/* ── Margins ──────────────────────────────────────────────────── */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <SectionLabel label="Margins" />
-            <span className="text-[11px] tabular-nums text-zinc-400">
+            <span className="text-[11px] tabular-nums text-fg-2">
               {marginIn.toFixed(2)} in
             </span>
           </div>
@@ -183,9 +183,9 @@ export default function TemplateCustomizerPanel({
             step={0.05}
             value={marginIn}
             onChange={(e) => handleMargin(parseFloat(e.target.value))}
-            className="w-full accent-orange-400"
+            className="w-full accent-accent"
           />
-          <div className="flex justify-between text-[10px] text-zinc-600">
+          <div className="flex justify-between text-[10px] text-fg-3">
             <span>0.5 in</span>
             <span>1.25 in</span>
           </div>
@@ -199,10 +199,10 @@ export default function TemplateCustomizerPanel({
               <button
                 key={s}
                 onClick={() => handleFontSize(s)}
-                className={`rounded px-3 py-1 text-[11px] transition ${
+                className={`rounded-[var(--radius-md)] px-3 py-1 text-[11px] transition ${
                   fontSize === s
-                    ? 'bg-orange-500/20 text-orange-300 ring-1 ring-orange-500/40'
-                    : 'text-zinc-500 hover:text-zinc-300'
+                    ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
+                    : 'text-fg-3 hover:text-fg'
                 }`}
               >
                 {s}pt
@@ -219,10 +219,10 @@ export default function TemplateCustomizerPanel({
               <button
                 key={mode}
                 onClick={() => handleSpacing(mode)}
-                className={`rounded px-3 py-1 text-[11px] capitalize transition ${
+                className={`rounded-[var(--radius-md)] px-3 py-1 text-[11px] capitalize transition ${
                   spacing === mode
-                    ? 'bg-orange-500/20 text-orange-300 ring-1 ring-orange-500/40'
-                    : 'text-zinc-500 hover:text-zinc-300'
+                    ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
+                    : 'text-fg-3 hover:text-fg'
                 }`}
               >
                 {mode.charAt(0).toUpperCase() + mode.slice(1)}
@@ -232,15 +232,15 @@ export default function TemplateCustomizerPanel({
         </div>
 
         {/* ── Auto-compile toggle ──────────────────────────────────────── */}
-        <div className="border-t border-white/[0.05] pt-4">
+        <div className="border-t border-line pt-4">
           <label className="flex cursor-pointer items-center justify-between gap-3">
-            <span className="text-[11px] text-zinc-400">Auto-compile on change</span>
+            <span className="text-[11px] text-fg-2">Auto-compile on change</span>
             <button
               role="switch"
               aria-checked={autoCompile}
               onClick={handleAutoCompileToggle}
               className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none ${
-                autoCompile ? 'bg-orange-500/70' : 'bg-zinc-700'
+                autoCompile ? 'bg-accent' : 'bg-surface-2'
               }`}
             >
               <span
@@ -256,7 +256,7 @@ export default function TemplateCustomizerPanel({
         <div>
           <button
             onClick={handleReset}
-            className="flex items-center gap-1.5 text-[11px] text-zinc-500 transition hover:text-zinc-300"
+            className="flex items-center gap-1.5 text-[11px] text-fg-3 transition hover:text-fg"
           >
             <RotateCcw size={11} />
             Reset to Defaults

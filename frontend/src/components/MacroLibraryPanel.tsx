@@ -74,33 +74,33 @@ function EditModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-80 rounded-xl border border-white/[0.08] bg-zinc-900 p-5 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)]">
+      <div className="w-80 rounded-[var(--radius-lg)] border border-line bg-surface p-5 shadow-[var(--shadow-2)]">
         <div className="mb-4 flex items-center justify-between">
-          <span className="text-[12px] font-semibold text-zinc-200">Edit Macro</span>
-          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300">
+          <span className="text-[12px] font-semibold text-fg">Edit Macro</span>
+          <button onClick={onClose} className="text-fg-3 hover:text-fg-2">
             <X size={14} />
           </button>
         </div>
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-[10px] text-zinc-600">Name</label>
+            <label className="mb-1 block text-[10px] text-fg-3">Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded border border-white/[0.06] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-violet-500/30"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-2 py-1 text-[11px] text-fg outline-none focus:border-accent"
             />
           </div>
           <div>
-            <label className="mb-1 block text-[10px] text-zinc-600">Description</label>
+            <label className="mb-1 block text-[10px] text-fg-3">Description</label>
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded border border-white/[0.06] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-violet-500/30"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-2 py-1 text-[11px] text-fg outline-none focus:border-accent"
             />
           </div>
           <div>
-            <label className="mb-1 block text-[10px] text-zinc-600">
+            <label className="mb-1 block text-[10px] text-fg-3">
               Shortcut (press keys to capture)
             </label>
             <input
@@ -108,21 +108,21 @@ function EditModal({
               value={shortcut}
               onKeyDown={captureShortcut}
               placeholder="e.g. ctrl+shift+1"
-              className="w-full rounded border border-white/[0.06] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-violet-500/30"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-2 py-1 text-[11px] text-fg outline-none focus:border-accent"
             />
           </div>
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded px-3 py-1 text-[10px] text-zinc-600 hover:text-zinc-300"
+            className="rounded-[var(--radius-md)] px-3 py-1 text-[10px] text-fg-3 hover:text-fg-2"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving || !name.trim()}
-            className="flex items-center gap-1 rounded bg-violet-500/20 px-3 py-1 text-[10px] text-violet-300 ring-1 ring-violet-400/20 hover:bg-violet-500/30 disabled:opacity-40"
+            className="flex items-center gap-1 rounded-[var(--radius-md)] bg-accent-soft px-3 py-1 text-[10px] text-accent-strong ring-1 ring-accent hover:brightness-110 disabled:opacity-40"
           >
             {saving && <Loader2 size={10} className="animate-spin" />}
             Save
@@ -258,13 +258,13 @@ export default function MacroLibraryPanel({ editor, onMacrosChange }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <Keyboard size={11} className="text-zinc-500" />
-          <span className="text-[11px] font-semibold text-zinc-300">Keyboard Macros</span>
+          <Keyboard size={11} className="text-fg-3" />
+          <span className="text-[11px] font-semibold text-fg-2">Keyboard Macros</span>
         </div>
         {!recording && (
           <button
             onClick={startRecording}
-            className="flex items-center gap-1 rounded bg-violet-500/15 px-2 py-1 text-[9px] font-medium text-violet-300 ring-1 ring-violet-400/20 transition hover:bg-violet-500/25"
+            className="flex items-center gap-1 rounded-[var(--radius-md)] bg-accent-soft px-2 py-1 text-[9px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110"
           >
             <Plus size={9} />
             Record New
@@ -274,29 +274,29 @@ export default function MacroLibraryPanel({ editor, onMacrosChange }: Props) {
 
       {/* Recording controls */}
       {recording && (
-        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+        <div className="rounded-[var(--radius-md)] border border-err/20 bg-err/5 p-3">
           <div className="mb-2 flex items-center gap-1.5">
-            <Circle size={8} className="animate-pulse fill-red-400 text-red-400" />
-            <span className="text-[10px] font-medium text-red-400">Recording…</span>
+            <Circle size={8} className="animate-pulse fill-err text-err" />
+            <span className="text-[10px] font-medium text-err">Recording…</span>
           </div>
           <input
             ref={nameInputRef}
             value={recordingName}
             onChange={(e) => setRecordingName(e.target.value)}
             placeholder="Macro name (optional)"
-            className="mb-2 w-full rounded border border-white/[0.06] bg-black/30 px-2 py-1 text-[10px] text-zinc-200 outline-none focus:border-violet-500/30"
+            className="mb-2 w-full rounded-[var(--radius-md)] border border-line bg-bg px-2 py-1 text-[10px] text-fg outline-none focus:border-accent"
           />
           <div className="flex gap-2">
             <button
               onClick={stopRecording}
-              className="flex flex-1 items-center justify-center gap-1 rounded bg-red-500/20 py-1 text-[9px] font-medium text-red-300 ring-1 ring-red-400/20 hover:bg-red-500/30"
+              className="flex flex-1 items-center justify-center gap-1 rounded-[var(--radius-md)] bg-err/20 py-1 text-[9px] font-medium text-err ring-1 ring-err/20 hover:bg-err/30"
             >
               <Square size={9} />
               Stop & Save
             </button>
             <button
               onClick={cancelRecording}
-              className="rounded px-2 py-1 text-[9px] text-zinc-600 hover:text-zinc-400"
+              className="rounded-[var(--radius-md)] px-2 py-1 text-[9px] text-fg-3 hover:text-fg-2"
             >
               Cancel
             </button>
@@ -308,10 +308,10 @@ export default function MacroLibraryPanel({ editor, onMacrosChange }: Props) {
       <div className="flex-1 space-y-1.5 overflow-y-auto">
         {loading ? (
           <div className="flex justify-center py-8">
-            <Loader2 size={14} className="animate-spin text-zinc-700" />
+            <Loader2 size={14} className="animate-spin text-fg-3" />
           </div>
         ) : macros.length === 0 ? (
-          <div className="py-8 text-center text-[10px] text-zinc-700">
+          <div className="py-8 text-center text-[10px] text-fg-3">
             No macros yet.
             <br />
             Click "Record New" to capture a sequence of editor actions.
@@ -320,32 +320,32 @@ export default function MacroLibraryPanel({ editor, onMacrosChange }: Props) {
           macros.map((macro) => (
             <div
               key={macro.id}
-              className="rounded-lg border border-white/[0.05] bg-white/[0.02] p-2.5 transition hover:border-white/[0.08]"
+              className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-2.5 transition hover:border-line-2"
             >
               <div className="mb-1 flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <span className="truncate text-[11px] font-medium text-zinc-200">
+                  <span className="truncate text-[11px] font-medium text-fg">
                     {macro.name}
                   </span>
                   {macro.description && (
-                    <p className="mt-0.5 truncate text-[9px] text-zinc-600">{macro.description}</p>
+                    <p className="mt-0.5 truncate text-[9px] text-fg-3">{macro.description}</p>
                   )}
                 </div>
                 {macro.shortcut && (
-                  <span className="shrink-0 rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[8px] text-zinc-500">
+                  <span className="shrink-0 rounded-[var(--radius-md)] bg-surface-2 px-1.5 py-0.5 font-mono text-[8px] text-fg-3">
                     {macro.shortcut}
                   </span>
                 )}
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-[9px] text-zinc-700">
+                <span className="text-[9px] text-fg-3">
                   {macro.actions.length} action{macro.actions.length !== 1 ? 's' : ''}
                 </span>
                 <div className="ml-auto flex items-center gap-1">
                   <button
                     onClick={() => playMacro(macro)}
                     disabled={playingId === macro.id}
-                    className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] text-emerald-500 transition hover:bg-emerald-500/10 disabled:opacity-40"
+                    className="flex items-center gap-0.5 rounded-[var(--radius-md)] px-1.5 py-0.5 text-[9px] text-ok transition hover:bg-ok/10 disabled:opacity-40"
                     title="Play macro"
                   >
                     {playingId === macro.id ? (
@@ -356,14 +356,14 @@ export default function MacroLibraryPanel({ editor, onMacrosChange }: Props) {
                   </button>
                   <button
                     onClick={() => setEditingMacro(macro)}
-                    className="rounded px-1.5 py-0.5 text-[9px] text-zinc-600 transition hover:text-zinc-300"
+                    className="rounded-[var(--radius-md)] px-1.5 py-0.5 text-[9px] text-fg-3 transition hover:text-fg-2"
                     title="Edit macro"
                   >
                     <Edit2 size={9} />
                   </button>
                   <button
                     onClick={() => deleteMacro(macro)}
-                    className="rounded px-1.5 py-0.5 text-[9px] text-zinc-700 transition hover:text-red-400"
+                    className="rounded-[var(--radius-md)] px-1.5 py-0.5 text-[9px] text-fg-3 transition hover:text-err"
                     title="Delete macro"
                   >
                     <Trash2 size={9} />

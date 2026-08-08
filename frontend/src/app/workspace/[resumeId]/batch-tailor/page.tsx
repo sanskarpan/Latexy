@@ -46,12 +46,12 @@ function emptyRow(): RowData {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
-    queued:    { label: 'Queued',     cls: 'bg-zinc-700 text-zinc-300', icon: null },
-    running:   { label: 'Running',    cls: 'bg-blue-600/30 text-blue-300 animate-pulse', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
-    processing:{ label: 'Running',    cls: 'bg-blue-600/30 text-blue-300 animate-pulse', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
-    completed: { label: 'Complete',   cls: 'bg-emerald-600/30 text-emerald-300', icon: <CheckCircle2 className="w-3 h-3" /> },
-    failed:    { label: 'Failed',     cls: 'bg-red-600/30 text-red-300', icon: <XCircle className="w-3 h-3" /> },
-    cancelled: { label: 'Cancelled',  cls: 'bg-zinc-600/30 text-zinc-400', icon: null },
+    queued:    { label: 'Queued',     cls: 'bg-surface-2 text-fg-2', icon: null },
+    running:   { label: 'Running',    cls: 'bg-accent-soft text-accent-strong animate-pulse', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
+    processing:{ label: 'Running',    cls: 'bg-accent-soft text-accent-strong animate-pulse', icon: <Loader2 className="w-3 h-3 animate-spin" /> },
+    completed: { label: 'Complete',   cls: 'bg-ok/20 text-ok', icon: <CheckCircle2 className="w-3 h-3" /> },
+    failed:    { label: 'Failed',     cls: 'bg-err/20 text-err', icon: <XCircle className="w-3 h-3" /> },
+    cancelled: { label: 'Cancelled',  cls: 'bg-surface-2 text-fg-3', icon: null },
   }
   const cfg = map[status] ?? map['queued']
   return (
@@ -180,22 +180,22 @@ export default function BatchTailorPage() {
   // ---------------------------------------------------------------- //
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-bg text-fg">
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center gap-3 mb-8">
           <Link
             href={`/workspace/${resumeId}/edit`}
-            className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            className="p-2 rounded-[var(--radius-md)] text-fg-2 hover:text-fg hover:bg-surface-2 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-zinc-100 flex items-center gap-2">
-              <Zap className="w-6 h-6 text-violet-400" />
+            <h1 className="text-2xl font-bold text-fg flex items-center gap-2">
+              <Zap className="w-6 h-6 text-accent" />
               Batch Tailor
             </h1>
-            <p className="text-sm text-zinc-400 mt-0.5">
+            <p className="text-sm text-fg-2 mt-0.5">
               Submit up to 10 job descriptions — get a tailored resume variant for each.
             </p>
           </div>
@@ -212,16 +212,16 @@ export default function BatchTailorPage() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, height: 0, marginBottom: 0, overflow: 'hidden' }}
                   transition={{ duration: 0.15 }}
-                  className="border border-zinc-800 rounded-xl p-4 bg-zinc-900/50 space-y-3"
+                  className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 space-y-3"
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-fg-3 uppercase tracking-wider">
                       Job {idx + 1}
                     </span>
                     {rows.length > 1 && (
                       <button
                         onClick={() => removeRow(row.id)}
-                        className="p-1 rounded text-zinc-600 hover:text-red-400 hover:bg-zinc-800 transition-colors"
+                        className="p-1 rounded-[var(--radius-md)] text-fg-3 hover:text-err hover:bg-surface-2 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -230,9 +230,9 @@ export default function BatchTailorPage() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs text-zinc-500 mb-1">Company *</label>
+                      <label className="block text-xs text-fg-3 mb-1">Company *</label>
                       <input
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-violet-500"
+                        className="w-full bg-surface-2 border border-line rounded-[var(--radius-md)] px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:border-accent"
                         placeholder="Acme Corp"
                         value={row.company_name}
                         onChange={e => updateRow(row.id, 'company_name', e.target.value)}
@@ -240,9 +240,9 @@ export default function BatchTailorPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-zinc-500 mb-1">Role Title *</label>
+                      <label className="block text-xs text-fg-3 mb-1">Role Title *</label>
                       <input
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-violet-500"
+                        className="w-full bg-surface-2 border border-line rounded-[var(--radius-md)] px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:border-accent"
                         placeholder="Software Engineer"
                         value={row.role_title}
                         onChange={e => updateRow(row.id, 'role_title', e.target.value)}
@@ -252,24 +252,24 @@ export default function BatchTailorPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs text-zinc-500 mb-1">Job Description *</label>
+                    <label className="block text-xs text-fg-3 mb-1">Job Description *</label>
                     <textarea
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-violet-500 resize-none"
+                      className="w-full bg-surface-2 border border-line rounded-[var(--radius-md)] px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:border-accent resize-none"
                       rows={4}
                       placeholder="Paste the full job description here…"
                       value={row.job_description}
                       onChange={e => updateRow(row.id, 'job_description', e.target.value)}
                       maxLength={20000}
                     />
-                    <p className="text-right text-xs text-zinc-600 mt-0.5">
+                    <p className="text-right text-xs text-fg-3 mt-0.5">
                       {row.job_description.length.toLocaleString()} / 20,000
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-xs text-zinc-500 mb-1">Job URL (optional)</label>
+                    <label className="block text-xs text-fg-3 mb-1">Job URL (optional)</label>
                     <input
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-violet-500"
+                      className="w-full bg-surface-2 border border-line rounded-[var(--radius-md)] px-3 py-2 text-sm text-fg placeholder-fg-3 focus:outline-none focus:border-accent"
                       placeholder="https://linkedin.com/jobs/…"
                       value={row.job_url}
                       onChange={e => updateRow(row.id, 'job_url', e.target.value)}
@@ -284,17 +284,17 @@ export default function BatchTailorPage() {
               <button
                 onClick={addRow}
                 disabled={rows.length >= 10}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-100 hover:border-zinc-500 text-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-4 py-2 rounded-[var(--radius-md)] border border-line-2 text-fg-2 hover:text-fg hover:bg-surface-2 text-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <Plus className="w-4 h-4" />
                 Add Row
-                <span className="text-zinc-600 text-xs">{rows.length}/10</span>
+                <span className="text-fg-3 text-xs">{rows.length}/10</span>
               </button>
 
               <button
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-6 py-2.5 rounded-[var(--radius-md)] bg-accent hover:brightness-110 text-accent-fg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Starting…</>
@@ -311,15 +311,15 @@ export default function BatchTailorPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-2">
               <div>
-                <p className="text-sm text-zinc-400">
-                  Batch <span className="font-mono text-zinc-300">{batchId.slice(0, 8)}…</span>
+                <p className="text-sm text-fg-2">
+                  Batch <span className="font-mono text-fg-2">{batchId.slice(0, 8)}…</span>
                   {' · '}
                   <span className="capitalize">{batchStatus.status}</span>
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 {allComplete && (
-                  <span className="text-xs text-emerald-400 font-medium">All complete — use View links below</span>
+                  <span className="text-xs text-ok font-medium">All complete — use View links below</span>
                 )}
                 <button
                   onClick={() => {
@@ -327,7 +327,7 @@ export default function BatchTailorPage() {
                     setBatchStatus(null)
                     setRows([emptyRow()])
                   }}
-                  className="px-4 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-100 text-sm transition-colors"
+                  className="px-4 py-2 rounded-[var(--radius-md)] border border-line-2 text-fg-2 hover:text-fg hover:bg-surface-2 text-sm transition-colors"
                 >
                   New Batch
                 </button>
@@ -341,7 +341,7 @@ export default function BatchTailorPage() {
             </div>
 
             {!allComplete && (
-              <p className="text-center text-xs text-zinc-600 pt-2">
+              <p className="text-center text-xs text-fg-3 pt-2">
                 Polling every 3s…
               </p>
             )}
@@ -351,7 +351,7 @@ export default function BatchTailorPage() {
         {/* Loading state before first poll result */}
         {batchId && !batchStatus && (
           <div className="flex justify-center py-16">
-            <Loader2 className="w-8 h-8 animate-spin text-violet-400" />
+            <Loader2 className="w-8 h-8 animate-spin text-accent" />
           </div>
         )}
       </div>
@@ -365,10 +365,10 @@ export default function BatchTailorPage() {
 
 function JobCard({ job, resumeId }: { job: BatchJobStatus; resumeId: string }) {
   return (
-    <div className="border border-zinc-800 rounded-xl p-4 bg-zinc-900/50 flex items-center gap-4">
+    <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 flex items-center gap-4">
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-zinc-100 truncate">{job.role_title}</p>
-        <p className="text-sm text-zinc-400 truncate">{job.company_name}</p>
+        <p className="font-medium text-fg truncate">{job.role_title}</p>
+        <p className="text-sm text-fg-2 truncate">{job.company_name}</p>
       </div>
 
       <StatusBadge status={job.status} />
@@ -376,7 +376,7 @@ function JobCard({ job, resumeId }: { job: BatchJobStatus; resumeId: string }) {
       {job.status === 'completed' && job.variant_resume_id && (
         <Link
           href={`/workspace/${job.variant_resume_id}/edit`}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-zinc-100 hover:border-zinc-500 text-xs transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-md)] border border-line-2 text-fg-2 hover:text-fg hover:bg-surface-2 text-xs transition-colors"
         >
           View <ExternalLink className="w-3 h-3" />
         </Link>

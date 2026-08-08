@@ -100,12 +100,12 @@ const SECTION_CONFIG: SectionConfig[] = [
 ]
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-2xl border border-white/8 bg-black/20 p-4 ${className}`}>{children}</div>
+  return <div className={`rounded-[var(--radius-lg)] border border-line bg-surface p-4 ${className}`}>{children}</div>
 }
 
 function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: React.ReactNode }) {
   return (
-    <label htmlFor={htmlFor} className="mb-2 block text-xs uppercase tracking-[0.14em] text-zinc-500">
+    <label htmlFor={htmlFor} className="mb-2 block font-ui text-xs uppercase tracking-[0.14em] text-fg-3">
       {children}
     </label>
   )
@@ -119,7 +119,7 @@ function TextInput(
   return (
     <input
       {...props}
-      className={`w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-white outline-none transition focus:border-orange-300/50 ${props.className ?? ''}`}
+      className={`w-full rounded-[var(--radius-md)] border border-line bg-bg px-4 py-3 text-fg outline-none transition focus:border-accent focus:ring-accent focus:ring-offset-bg ${props.className ?? ''}`}
     />
   )
 }
@@ -128,7 +128,7 @@ function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      className={`w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-white outline-none transition focus:border-orange-300/50 ${props.className ?? ''}`}
+      className={`w-full rounded-[var(--radius-md)] border border-line bg-bg px-4 py-3 text-fg outline-none transition focus:border-accent focus:ring-accent focus:ring-offset-bg ${props.className ?? ''}`}
     />
   )
 }
@@ -154,17 +154,17 @@ function SectionHeader({
   return (
     <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
       <div>
-        <p className="text-lg font-semibold text-white">{title}</p>
-        <p className="mt-1 max-w-2xl text-sm text-zinc-400">{description}</p>
+        <p className="text-lg font-semibold text-fg">{title}</p>
+        <p className="mt-1 max-w-2xl text-sm text-fg-2">{description}</p>
       </div>
       <div className="flex items-center gap-2">
-        <button type="button" onClick={() => onMove(sectionKey, -1)} disabled={idx <= 0} className="btn-ghost px-2 py-2 text-xs disabled:opacity-30">
+        <button type="button" onClick={() => onMove(sectionKey, -1)} disabled={idx <= 0} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-2 py-2 text-xs disabled:opacity-30">
           <ArrowUp className="h-3.5 w-3.5" />
         </button>
-        <button type="button" onClick={() => onMove(sectionKey, 1)} disabled={idx === -1 || idx >= order.length - 1} className="btn-ghost px-2 py-2 text-xs disabled:opacity-30">
+        <button type="button" onClick={() => onMove(sectionKey, 1)} disabled={idx === -1 || idx >= order.length - 1} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-2 py-2 text-xs disabled:opacity-30">
           <ArrowDown className="h-3.5 w-3.5" />
         </button>
-        <button type="button" onClick={() => onToggleHidden(sectionKey)} className="btn-ghost px-2 py-2 text-xs">
+        <button type="button" onClick={() => onToggleHidden(sectionKey)} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-2 py-2 text-xs">
           {hidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
         </button>
       </div>
@@ -183,7 +183,7 @@ function StarterChip({
     <button
       type="button"
       onClick={onClick}
-      className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-zinc-300 transition hover:bg-white/[0.08]"
+      className="rounded-full border border-line bg-surface-2 px-3 py-1.5 text-[11px] uppercase tracking-[0.16em] text-fg-2 transition hover:brightness-110"
     >
       {label}
     </button>
@@ -392,13 +392,13 @@ export default function BuilderResumePage() {
   )
 
   const healthTone = completenessScore >= 85
-    ? 'border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-100'
+    ? 'border-ok/20 bg-ok/10 text-ok'
     : completenessScore >= 65
-      ? 'border-amber-300/20 bg-amber-300/[0.08] text-amber-100'
-      : 'border-rose-300/20 bg-rose-300/[0.08] text-rose-100'
+      ? 'border-warn/20 bg-warn/10 text-warn'
+      : 'border-err/20 bg-err/10 text-err'
 
   if (loading) {
-    return <div className="content-shell py-16 text-sm text-zinc-400">Loading builder…</div>
+    return <div className="content-shell py-16 text-sm text-fg-2">Loading builder…</div>
   }
 
   const hidden = new Set(structured.hidden_sections)
@@ -408,34 +408,34 @@ export default function BuilderResumePage() {
     <div className="content-shell space-y-8 pb-16">
       <header className="flex flex-wrap items-end justify-between gap-4 pt-2">
         <div>
-          <p className="overline">Guided Builder</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">{title || 'Untitled Resume'}</h1>
-          <p className="mt-2 max-w-3xl text-sm text-zinc-400">
+          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Guided Builder</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">{title || 'Untitled Resume'}</h1>
+          <p className="mt-2 max-w-3xl text-sm text-fg-2">
             This builder is now the structured path: guide the narrative, tune density, and keep LaTeX synchronized
             without treating the resume like a raw text file.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Link href={`/workspace/${resumeId}/edit`} className="btn-ghost px-4 py-2 text-xs">
+          <Link href={`/workspace/${resumeId}/edit`} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
             Open Advanced Editor
           </Link>
-          <div className="rounded-full border border-white/10 px-3 py-2 text-xs text-zinc-400">
+          <div className="rounded-full border border-line px-3 py-2 text-xs text-fg-2">
             {saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'All changes saved'}
           </div>
         </div>
       </header>
 
       {builderStatus === 'detached' ? (
-        <section className="surface-panel edge-highlight border border-amber-300/20 bg-amber-300/[0.05] p-5">
+        <section className="rounded-[var(--radius-lg)] border border-warn/20 bg-warn/10 p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-amber-100">Builder detached</p>
-              <p className="mt-1 text-sm text-amber-50/80">
+              <p className="text-sm font-semibold text-warn">Builder detached</p>
+              <p className="mt-1 text-sm text-warn/80">
                 This resume was edited directly in the advanced editor. Structured changes are paused until you explicitly
                 overwrite the current LaTeX from builder data.
               </p>
             </div>
-            <button type="button" onClick={() => void forceReattach()} className="btn-accent px-4 py-2 text-xs">
+            <button type="button" onClick={() => void forceReattach()} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
               <RefreshCcw className="mr-2 inline h-3.5 w-3.5" />
               Reattach Builder
             </button>
@@ -454,25 +454,25 @@ export default function BuilderResumePage() {
           </p>
         </Card>
         <Card>
-          <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Page Strategy</p>
-          <p className="mt-2 text-3xl font-semibold text-white">{pageEstimate}</p>
-          <p className="mt-2 text-sm text-zinc-400">
+          <p className="text-xs uppercase tracking-[0.14em] text-fg-3">Page Strategy</p>
+          <p className="mt-2 text-3xl font-semibold text-fg">{pageEstimate}</p>
+          <p className="mt-2 text-sm text-fg-2">
             {pageEstimate > 1 ? 'Trim bullets and optional sections to stay tighter.' : 'Compact enough for the most common one-page target.'}
           </p>
         </Card>
         <Card>
-          <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Visible Sections</p>
-          <p className="mt-2 text-3xl font-semibold text-white">{visibleSections.length}</p>
-          <p className="mt-2 text-sm text-zinc-400">
+          <p className="text-xs uppercase tracking-[0.14em] text-fg-3">Visible Sections</p>
+          <p className="mt-2 text-3xl font-semibold text-fg">{visibleSections.length}</p>
+          <p className="mt-2 text-sm text-fg-2">
             {structured.hidden_sections.length
               ? `${structured.hidden_sections.length} section${structured.hidden_sections.length === 1 ? '' : 's'} hidden from the rendered resume.`
               : 'All configured sections are currently visible.'}
           </p>
         </Card>
         <Card>
-          <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Current Template</p>
-          <p className="mt-2 text-lg font-semibold text-white">{selectedTemplate?.name || 'Template'}</p>
-          <p className="mt-2 text-sm text-zinc-400">
+          <p className="text-xs uppercase tracking-[0.14em] text-fg-3">Current Template</p>
+          <p className="mt-2 text-lg font-semibold text-fg">{selectedTemplate?.name || 'Template'}</p>
+          <p className="mt-2 text-sm text-fg-2">
             Family: {selectedTemplate?.template_family || templateFamily} · {selectedTemplate?.category_label || 'Builder'}
           </p>
         </Card>
@@ -481,8 +481,8 @@ export default function BuilderResumePage() {
       <section className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)_420px]">
         <aside className="space-y-4">
           <Card className="sticky top-24">
-            <div className="flex items-center gap-2 text-sm font-semibold text-white">
-              <LayoutList className="h-4 w-4 text-orange-300" />
+            <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+              <LayoutList className="h-4 w-4 text-accent-strong" />
               Builder Flow
             </div>
             <div className="mt-4 space-y-2">
@@ -495,17 +495,17 @@ export default function BuilderResumePage() {
                     key={section.key}
                     type="button"
                     onClick={() => jumpToSection(section.key)}
-                    className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
+                    className={`w-full rounded-[var(--radius-lg)] border px-3 py-3 text-left transition ${
                       isActive
-                        ? 'border-orange-300/30 bg-orange-300/[0.08]'
-                        : 'border-white/8 bg-black/20 hover:bg-white/[0.04]'
+                        ? 'border-accent bg-accent-soft'
+                        : 'border-line bg-surface hover:bg-surface-2'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-white">{section.title}</p>
-                      {ready ? <CheckCircle2 className="h-4 w-4 text-emerald-300" /> : null}
+                      <p className="text-sm font-medium text-fg">{section.title}</p>
+                      {ready ? <CheckCircle2 className="h-4 w-4 text-ok" /> : null}
                     </div>
-                    <p className="mt-1 text-xs text-zinc-500">
+                    <p className="mt-1 text-xs text-fg-3">
                       {hidden.has(section.key)
                         ? 'Hidden from output'
                         : count
@@ -518,8 +518,8 @@ export default function BuilderResumePage() {
             </div>
 
             {missingSections.length ? (
-              <div className="mt-5 rounded-2xl border border-amber-300/15 bg-amber-300/[0.06] px-3 py-3">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-100/85">
+              <div className="mt-5 rounded-[var(--radius-lg)] border border-warn/20 bg-warn/10 px-3 py-3">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-warn">
                   <Target className="h-3.5 w-3.5" />
                   Next fixes
                 </div>
@@ -538,7 +538,7 @@ export default function BuilderResumePage() {
         </aside>
 
         <div className="space-y-6">
-          <section className="surface-panel edge-highlight p-6">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
@@ -562,7 +562,7 @@ export default function BuilderResumePage() {
                       setSelectedTemplateId(event.target.value)
                       setDirty(true)
                     }}
-                    className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-white outline-none transition focus:border-orange-300/50"
+                    className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-4 py-3 text-fg outline-none transition focus:border-accent focus:ring-accent focus:ring-offset-bg"
                   >
                     {templates.map(template => (
                       <option key={template.id} value={template.id}>
@@ -574,11 +574,11 @@ export default function BuilderResumePage() {
               </div>
 
               <Card className="flex h-full flex-col justify-between">
-                <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                  <Wand2 className="h-4 w-4 text-orange-300" />
+                <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+                  <Wand2 className="h-4 w-4 text-accent-strong" />
                   Builder Guidance
                 </div>
-                <div className="mt-3 space-y-2 text-sm text-zinc-300">
+                <div className="mt-3 space-y-2 text-sm text-fg-2">
                   <p>Lead with measurable impact, not responsibility lists.</p>
                   <p>Keep the preview one page unless the role clearly benefits from a second page.</p>
                   <p>Hide sections that don’t reinforce the target job instead of filling them with weak content.</p>
@@ -589,7 +589,7 @@ export default function BuilderResumePage() {
             {warnings.length ? (
               <div className="mt-4 space-y-2">
                 {warnings.map(warning => (
-                  <div key={warning} className="rounded-xl border border-amber-300/20 bg-amber-300/[0.05] px-3 py-2 text-xs text-amber-50/90">
+                  <div key={warning} className="rounded-[var(--radius-md)] border border-warn/20 bg-warn/10 px-3 py-2 text-xs text-warn">
                     {warning}
                   </div>
                 ))}
@@ -601,7 +601,7 @@ export default function BuilderResumePage() {
             ref={node => {
               sectionRefs.current.summary = node
             }}
-            className="surface-panel edge-highlight scroll-mt-28 p-6"
+            className="rounded-[var(--radius-lg)] border border-line bg-surface scroll-mt-28 p-6"
           >
             <SectionHeader
               title="Profile & Summary"
@@ -670,7 +670,7 @@ export default function BuilderResumePage() {
             ref={node => {
               sectionRefs.current.experience = node
             }}
-            className="surface-panel edge-highlight scroll-mt-28 p-6"
+            className="rounded-[var(--radius-lg)] border border-line bg-surface scroll-mt-28 p-6"
           >
             <SectionHeader
               title="Experience"
@@ -705,7 +705,7 @@ export default function BuilderResumePage() {
                       </div>
                     ))}
                   </div>
-                  <label className="mt-4 flex items-center gap-2 text-sm text-zinc-300">
+                  <label className="mt-4 flex items-center gap-2 text-sm text-fg-2">
                     <input
                       type="checkbox"
                       checked={entry.current}
@@ -753,7 +753,7 @@ export default function BuilderResumePage() {
                   <div className="mt-4 flex justify-end">
                     <button type="button" onClick={() => mutateStructured(draft => {
                       draft.experience.splice(idx, 1)
-                    })} className="btn-ghost px-4 py-2 text-xs">
+                    })} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
                       Remove entry
                     </button>
                   </div>
@@ -772,7 +772,7 @@ export default function BuilderResumePage() {
                   bullets: [],
                   technologies: [],
                 })
-              })} className="btn-accent px-4 py-2 text-xs">
+              })} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
                 <Plus className="mr-2 inline h-3.5 w-3.5" />
                 Add experience
               </button>
@@ -783,7 +783,7 @@ export default function BuilderResumePage() {
             ref={node => {
               sectionRefs.current.education = node
             }}
-            className="surface-panel edge-highlight scroll-mt-28 p-6"
+            className="rounded-[var(--radius-lg)] border border-line bg-surface scroll-mt-28 p-6"
           >
             <SectionHeader
               title="Education"
@@ -835,7 +835,7 @@ export default function BuilderResumePage() {
                   <div className="mt-4 flex justify-end">
                     <button type="button" onClick={() => mutateStructured(draft => {
                       draft.education.splice(idx, 1)
-                    })} className="btn-ghost px-4 py-2 text-xs">
+                    })} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
                       Remove education
                     </button>
                   </div>
@@ -853,7 +853,7 @@ export default function BuilderResumePage() {
                   gpa: '',
                   highlights: [],
                 })
-              })} className="btn-accent px-4 py-2 text-xs">
+              })} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
                 <Plus className="mr-2 inline h-3.5 w-3.5" />
                 Add education
               </button>
@@ -864,7 +864,7 @@ export default function BuilderResumePage() {
             ref={node => {
               sectionRefs.current.skills = node
             }}
-            className="surface-panel edge-highlight scroll-mt-28 p-6"
+            className="rounded-[var(--radius-lg)] border border-line bg-surface scroll-mt-28 p-6"
           >
             <SectionHeader
               title="Skills"
@@ -901,7 +901,7 @@ export default function BuilderResumePage() {
                   <div className="mt-4 flex justify-end">
                     <button type="button" onClick={() => mutateStructured(draft => {
                       draft.skills.splice(idx, 1)
-                    })} className="btn-ghost px-4 py-2 text-xs">
+                    })} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
                       Remove skill group
                     </button>
                   </div>
@@ -910,7 +910,7 @@ export default function BuilderResumePage() {
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={() => mutateStructured(draft => {
                   draft.skills.push({ id: createBuilderId('skill'), name: 'Core Skills', keywords: [] })
-                })} className="btn-accent px-4 py-2 text-xs">
+                })} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
                   <Plus className="mr-2 inline h-3.5 w-3.5" />
                   Add skill group
                 </button>
@@ -933,7 +933,7 @@ export default function BuilderResumePage() {
             ref={node => {
               sectionRefs.current.projects = node
             }}
-            className="surface-panel edge-highlight scroll-mt-28 p-6"
+            className="rounded-[var(--radius-lg)] border border-line bg-surface scroll-mt-28 p-6"
           >
             <SectionHeader
               title="Projects"
@@ -1004,7 +1004,7 @@ export default function BuilderResumePage() {
                   <div className="mt-4 flex justify-end">
                     <button type="button" onClick={() => mutateStructured(draft => {
                       draft.projects.splice(idx, 1)
-                    })} className="btn-ghost px-4 py-2 text-xs">
+                    })} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
                       Remove project
                     </button>
                   </div>
@@ -1022,7 +1022,7 @@ export default function BuilderResumePage() {
                   bullets: [],
                   technologies: [],
                 })
-              })} className="btn-accent px-4 py-2 text-xs">
+              })} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
                 <Plus className="mr-2 inline h-3.5 w-3.5" />
                 Add project
               </button>
@@ -1033,7 +1033,7 @@ export default function BuilderResumePage() {
             ref={node => {
               sectionRefs.current.certifications = node
             }}
-            className="surface-panel edge-highlight scroll-mt-28 p-6"
+            className="rounded-[var(--radius-lg)] border border-line bg-surface scroll-mt-28 p-6"
           >
             <SectionHeader
               title="Certifications"
@@ -1070,7 +1070,7 @@ export default function BuilderResumePage() {
                   <div className="mt-4 flex justify-end">
                     <button type="button" onClick={() => mutateStructured(draft => {
                       draft.certifications.splice(idx, 1)
-                    })} className="btn-ghost px-4 py-2 text-xs">
+                    })} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
                       Remove certification
                     </button>
                   </div>
@@ -1078,7 +1078,7 @@ export default function BuilderResumePage() {
               ))}
               <button type="button" onClick={() => mutateStructured(draft => {
                 draft.certifications.push({ id: createBuilderId('cert'), name: '', issuer: '', date: '', url: '' })
-              })} className="btn-accent px-4 py-2 text-xs">
+              })} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
                 <Plus className="mr-2 inline h-3.5 w-3.5" />
                 Add certification
               </button>
@@ -1089,7 +1089,7 @@ export default function BuilderResumePage() {
             ref={node => {
               sectionRefs.current.awards = node
             }}
-            className="surface-panel edge-highlight scroll-mt-28 p-6"
+            className="rounded-[var(--radius-lg)] border border-line bg-surface scroll-mt-28 p-6"
           >
             <SectionHeader
               title="Awards"
@@ -1130,7 +1130,7 @@ export default function BuilderResumePage() {
                   <div className="mt-4 flex justify-end">
                     <button type="button" onClick={() => mutateStructured(draft => {
                       draft.awards.splice(idx, 1)
-                    })} className="btn-ghost px-4 py-2 text-xs">
+                    })} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
                       Remove award
                     </button>
                   </div>
@@ -1138,7 +1138,7 @@ export default function BuilderResumePage() {
               ))}
               <button type="button" onClick={() => mutateStructured(draft => {
                 draft.awards.push({ id: createBuilderId('award'), name: '', detail: '' })
-              })} className="btn-accent px-4 py-2 text-xs">
+              })} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
                 <Plus className="mr-2 inline h-3.5 w-3.5" />
                 Add award
               </button>
@@ -1149,7 +1149,7 @@ export default function BuilderResumePage() {
             ref={node => {
               sectionRefs.current.languages = node
             }}
-            className="surface-panel edge-highlight scroll-mt-28 p-6"
+            className="rounded-[var(--radius-lg)] border border-line bg-surface scroll-mt-28 p-6"
           >
             <SectionHeader
               title="Languages"
@@ -1191,7 +1191,7 @@ export default function BuilderResumePage() {
                   <div className="mt-4 flex justify-end">
                     <button type="button" onClick={() => mutateStructured(draft => {
                       draft.languages.splice(idx, 1)
-                    })} className="btn-ghost px-4 py-2 text-xs">
+                    })} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
                       Remove language
                     </button>
                   </div>
@@ -1199,7 +1199,7 @@ export default function BuilderResumePage() {
               ))}
               <button type="button" onClick={() => mutateStructured(draft => {
                 draft.languages.push({ id: createBuilderId('lang'), name: '', detail: '' })
-              })} className="btn-accent px-4 py-2 text-xs">
+              })} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
                 <Plus className="mr-2 inline h-3.5 w-3.5" />
                 Add language
               </button>
@@ -1210,7 +1210,7 @@ export default function BuilderResumePage() {
             ref={node => {
               sectionRefs.current.interests = node
             }}
-            className="surface-panel edge-highlight scroll-mt-28 p-6"
+            className="rounded-[var(--radius-lg)] border border-line bg-surface scroll-mt-28 p-6"
           >
             <SectionHeader
               title="Interests"
@@ -1252,7 +1252,7 @@ export default function BuilderResumePage() {
                   <div className="mt-4 flex justify-end">
                     <button type="button" onClick={() => mutateStructured(draft => {
                       draft.interests.splice(idx, 1)
-                    })} className="btn-ghost px-4 py-2 text-xs">
+                    })} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
                       Remove interest
                     </button>
                   </div>
@@ -1260,7 +1260,7 @@ export default function BuilderResumePage() {
               ))}
               <button type="button" onClick={() => mutateStructured(draft => {
                 draft.interests.push({ id: createBuilderId('interest'), name: '', detail: '' })
-              })} className="btn-accent px-4 py-2 text-xs">
+              })} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
                 <Plus className="mr-2 inline h-3.5 w-3.5" />
                 Add interest
               </button>
@@ -1279,17 +1279,17 @@ export default function BuilderResumePage() {
             warnings={warnings}
           />
 
-          <section className="surface-panel edge-highlight p-6">
-            <div className="flex items-center gap-2 text-sm font-semibold text-white">
-              <Sparkles className="h-4 w-4 text-orange-300" />
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
+            <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+              <Sparkles className="h-4 w-4 text-accent-strong" />
               Builder Notes
             </div>
-            <div className="mt-4 space-y-3 text-sm text-zinc-300">
+            <div className="mt-4 space-y-3 text-sm text-fg-2">
               <p>Section order and visibility update both the preview and the generated LaTeX.</p>
               <p>Template switching stays within builder-native families so the structure remains stable.</p>
               <p>The advanced editor is still available when you need raw control, but that detaches the builder until you reattach it.</p>
             </div>
-            <div className="mt-5 rounded-2xl border border-white/8 bg-black/20 p-4 text-xs text-zinc-500">
+            <div className="mt-5 rounded-[var(--radius-lg)] border border-line bg-surface p-4 text-xs text-fg-3">
               <FileText className="mr-2 inline h-3.5 w-3.5" />
               Current mode: {builderStatus} · {selectedTemplate?.category_label || templateFamily}
             </div>

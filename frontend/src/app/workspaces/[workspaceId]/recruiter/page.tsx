@@ -153,28 +153,28 @@ export default function RecruiterDashboardPage() {
   if (!ws) return null
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 max-w-4xl mx-auto">
+    <div className="min-h-screen bg-bg text-fg p-6 max-w-4xl mx-auto">
       {/* Back nav */}
       <Link
         href={`/workspaces/${workspaceId}`}
-        className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200 mb-6 transition-colors"
+        className="inline-flex items-center gap-1.5 text-sm text-fg-2 hover:text-fg mb-6 transition-colors"
       >
         <ArrowLeft className="h-4 w-4" /> {ws.name}
       </Link>
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-8">
-        <div className="h-10 w-10 rounded-xl bg-violet-500/20 flex items-center justify-center">
-          <StickyNote className="h-5 w-5 text-violet-400" />
+        <div className="h-10 w-10 rounded-[var(--radius-lg)] bg-accent-soft flex items-center justify-center">
+          <StickyNote className="h-5 w-5 text-accent-strong" />
         </div>
         <div>
           <h1 className="text-2xl font-semibold">Recruiter Dashboard</h1>
-          <p className="text-sm text-zinc-400">{ws.name} · {items.length} resumes</p>
+          <p className="text-sm text-fg-2">{ws.name} · {items.length} resumes</p>
         </div>
       </div>
 
       {items.length === 0 ? (
-        <div className="text-center py-20 text-zinc-500">
+        <div className="text-center py-20 text-fg-3">
           <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
           <p className="text-lg mb-1">No resumes shared yet</p>
           <p className="text-sm">Share resumes from the workspace overview to annotate them here.</p>
@@ -184,46 +184,46 @@ export default function RecruiterDashboardPage() {
           {items.map(({ resume, notes, expanded, loading: notesLoading }) => (
             <div
               key={resume.id}
-              className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden"
+              className="bg-surface border border-line rounded-[var(--radius-lg)] overflow-hidden"
             >
               {/* Resume header row */}
               <button
                 onClick={() => toggleExpand(resume.id)}
-                className="w-full flex items-center justify-between px-5 py-4 hover:bg-zinc-800/50 transition-colors text-left"
+                className="w-full flex items-center justify-between px-5 py-4 hover:bg-surface-2 transition-colors text-left"
               >
                 <div className="flex items-center gap-3">
-                  <FileText className="h-4 w-4 text-zinc-400 shrink-0" />
-                  <span className="font-medium text-zinc-200">{resume.title}</span>
+                  <FileText className="h-4 w-4 text-fg-2 shrink-0" />
+                  <span className="font-medium text-fg">{resume.title}</span>
                   {notes.length > 0 && (
-                    <span className="text-xs bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded-full">
+                    <span className="text-xs bg-accent-soft text-accent-strong border border-accent px-2 py-0.5 rounded-full">
                       {notes.length} {notes.length === 1 ? 'note' : 'notes'}
                     </span>
                   )}
                 </div>
                 {expanded
-                  ? <ChevronDown className="h-4 w-4 text-zinc-500" />
-                  : <ChevronRight className="h-4 w-4 text-zinc-500" />
+                  ? <ChevronDown className="h-4 w-4 text-fg-3" />
+                  : <ChevronRight className="h-4 w-4 text-fg-3" />
                 }
               </button>
 
               {/* Expanded notes section */}
               {expanded && (
-                <div className="border-t border-zinc-800 px-5 pb-5 pt-4">
+                <div className="border-t border-line px-5 pb-5 pt-4">
                   {notesLoading ? (
                     <div className="flex justify-center py-4">
-                      <Loader2 className="h-5 w-5 animate-spin text-zinc-500" />
+                      <Loader2 className="h-5 w-5 animate-spin text-fg-3" />
                     </div>
                   ) : (
                     <>
                       {/* Existing notes */}
                       {notes.length === 0 ? (
-                        <p className="text-sm text-zinc-500 mb-4">No notes yet. Add one below.</p>
+                        <p className="text-sm text-fg-3 mb-4">No notes yet. Add one below.</p>
                       ) : (
                         <ul className="space-y-3 mb-4">
                           {notes.map((note) => (
                             <li
                               key={note.id}
-                              className="bg-zinc-800 rounded-lg p-3"
+                              className="bg-surface-2 rounded-[var(--radius-md)] p-3"
                             >
                               {editDrafts[note.id] !== undefined ? (
                                 <div className="space-y-2">
@@ -233,13 +233,13 @@ export default function RecruiterDashboardPage() {
                                       setEditDrafts((p) => ({ ...p, [note.id]: e.target.value }))
                                     }
                                     rows={3}
-                                    className="w-full bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-violet-500 resize-none"
+                                    className="w-full bg-surface-2 border border-line rounded-[var(--radius-md)] px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none"
                                   />
                                   <div className="flex gap-2">
                                     <button
                                       onClick={() => handleUpdateNote(resume.id, note.id)}
                                       disabled={saving[`edit-${note.id}`]}
-                                      className="flex items-center gap-1 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg text-xs font-medium transition-colors"
+                                      className="flex items-center gap-1 px-3 py-1.5 bg-accent hover:brightness-110 text-accent-fg disabled:opacity-50 rounded-[var(--radius-md)] text-xs font-medium transition-colors"
                                     >
                                       {saving[`edit-${note.id}`]
                                         ? <Loader2 className="h-3 w-3 animate-spin" />
@@ -251,7 +251,7 @@ export default function RecruiterDashboardPage() {
                                       onClick={() =>
                                         setEditDrafts((p) => { const next = { ...p }; delete next[note.id]; return next })
                                       }
-                                      className="flex items-center gap-1 px-3 py-1.5 text-zinc-400 hover:text-zinc-200 text-xs transition-colors"
+                                      className="flex items-center gap-1 px-3 py-1.5 text-fg-2 hover:text-fg text-xs transition-colors"
                                     >
                                       <X className="h-3 w-3" /> Cancel
                                     </button>
@@ -260,8 +260,8 @@ export default function RecruiterDashboardPage() {
                               ) : (
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-sm text-zinc-200 whitespace-pre-wrap">{note.content}</p>
-                                    <p className="text-xs text-zinc-500 mt-1">
+                                    <p className="text-sm text-fg whitespace-pre-wrap">{note.content}</p>
+                                    <p className="text-xs text-fg-3 mt-1">
                                       {note.author_name ?? note.author_email ?? 'You'} ·{' '}
                                       {new Date(note.created_at).toLocaleDateString()}
                                     </p>
@@ -272,14 +272,14 @@ export default function RecruiterDashboardPage() {
                                         onClick={() =>
                                           setEditDrafts((p) => ({ ...p, [note.id]: note.content }))
                                         }
-                                        className="p-1 text-zinc-500 hover:text-violet-400 transition-colors"
+                                        className="p-1 text-fg-3 hover:text-accent-strong transition-colors"
                                         title="Edit note"
                                       >
                                         <Pencil className="h-3.5 w-3.5" />
                                       </button>
                                       <button
                                         onClick={() => handleDeleteNote(resume.id, note.id)}
-                                        className="p-1 text-zinc-500 hover:text-rose-400 transition-colors"
+                                        className="p-1 text-fg-3 hover:text-err transition-colors"
                                         title="Delete note"
                                       >
                                         <Trash2 className="h-3.5 w-3.5" />
@@ -302,12 +302,12 @@ export default function RecruiterDashboardPage() {
                           }
                           placeholder="Add a recruiter note…"
                           rows={3}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-violet-500 resize-none placeholder-zinc-600"
+                          className="w-full bg-surface-2 border border-line rounded-[var(--radius-md)] px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none placeholder-fg-3"
                         />
                         <button
                           onClick={() => handleAddNote(resume.id)}
                           disabled={saving[`add-${resume.id}`] || !(drafts[resume.id] ?? '').trim()}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg text-xs font-medium transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:brightness-110 text-accent-fg disabled:opacity-50 rounded-[var(--radius-md)] text-xs font-medium transition-colors"
                         >
                           {saving[`add-${resume.id}`]
                             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
