@@ -21,21 +21,12 @@ const updates = [
 export default function UpdatesPage() {
   return (
     <div className="bg-bg text-fg">
-      {/* folio strip */}
-      <div className="border-b border-line">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-2 font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3 sm:px-8">
-          <span>The Shipping Log</span>
-          <span className="hidden sm:inline">Set in Fraunces &amp; JetBrains Mono</span>
-          <span>{updates.length} releases</span>
-        </div>
-      </div>
-
       {/* ── masthead ── */}
       <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-24">
         <MotionReveal>
           <span className="font-ui text-xs uppercase tracking-[0.18em] text-fg-3">Updates</span>
           <h1 className="mt-5 max-w-[18ch] text-balance font-display text-[clamp(2.4rem,6vw,4.6rem)] font-semibold leading-[1.0] tracking-[-0.025em] text-fg">
-            Shipping log and <em className="italic text-accent">platform progress.</em>
+            Shipping log and <span className="text-accent">platform progress.</span>
           </h1>
           <p className="mt-6 max-w-[46ch] font-body text-lg text-fg-2">
             Product and engineering updates published with clear release dates and impact notes.
@@ -46,11 +37,10 @@ export default function UpdatesPage() {
       {/* ── changelog ── */}
       <section className="mx-auto max-w-6xl px-5 pb-24 sm:px-8">
         <MotionStagger className="border-t border-line">
-          {updates.map((item, i) => (
+          {updates.map((item) => (
             <MotionItem key={item.title}>
               <article className="grid gap-4 border-b border-line py-10 md:grid-cols-[.85fr_2.15fr] md:gap-10">
                 <div className="flex items-baseline gap-3 md:flex-col md:items-start md:gap-2">
-                  <span className="font-ui text-xs text-accent-strong">§ {updates.length - i}</span>
                   <time className="font-ui text-xs uppercase tracking-[0.14em] text-fg-3">{item.date}</time>
                 </div>
                 <div>

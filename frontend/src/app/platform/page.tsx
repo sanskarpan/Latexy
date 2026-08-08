@@ -11,25 +11,21 @@ const reveal = 'motion-safe:animate-[fade-in-up_.7s_cubic-bezier(.2,.7,.2,1)_bot
 
 const capabilities = [
   {
-    n: '§ 1',
     icon: FileText,
     title: 'AI Rewrite Pipeline',
     copy: 'Context-aware rewrite of bullets with conservative, balanced, and aggressive modes — you accept, reject, or edit each change.',
   },
   {
-    n: '§ 2',
     icon: Radio,
     title: 'ATS Signal Engine',
     copy: 'Keyword alignment, section-structure confidence, and role-fit scoring — measured against the actual job description, not a vanity number.',
   },
   {
-    n: '§ 3',
     icon: GitBranch,
     title: 'Live Job Streaming',
     copy: 'Observe queue state, progress, and compile logs in real time over WebSocket while runs execute.',
   },
   {
-    n: '§ 4',
     icon: KeyRound,
     title: 'BYOK Security',
     copy: 'Encrypted provider-key storage with controlled runtime decryption — your key, your models, never logged.',
@@ -46,21 +42,12 @@ const facts: [string, string][] = [
 export default function PlatformPage() {
   return (
     <div className="bg-bg text-fg">
-      {/* folio strip */}
-      <div className="border-b border-line">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-2 font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3 sm:px-8">
-          <span>№ 02 — The Platform</span>
-          <span className="hidden sm:inline">Execution layer for résumé operations</span>
-          <span>REST · WebSocket · Celery</span>
-        </div>
-      </div>
-
       {/* ── hero ── */}
       <section className="mx-auto grid max-w-6xl gap-10 px-5 py-16 sm:px-8 lg:grid-cols-[1.15fr_.85fr] lg:items-center lg:py-24">
         <div className={reveal}>
           <span className="font-ui text-xs uppercase tracking-[0.18em] text-fg-3">Platform</span>
           <h1 className="mt-5 font-display text-[clamp(2.4rem,6vw,4.6rem)] font-semibold leading-[1.0] tracking-[-0.025em] text-balance text-fg">
-            A full execution layer for <em className="italic text-accent">résumé operations.</em>
+            A full execution layer for <span className="text-accent">résumé operations.</span>
           </h1>
           <p className="mt-6 max-w-[46ch] font-body text-lg text-fg-2">
             Latexy is built for job seekers and teams that need deterministic output, measurable ATS
@@ -122,7 +109,6 @@ export default function PlatformPage() {
             return (
               <article key={item.title} className="bg-surface p-6">
                 <div className="flex items-center gap-2">
-                  <span className="font-ui text-xs text-accent-strong">{item.n}</span>
                   <Icon className="h-4 w-4 text-fg-3" aria-hidden="true" strokeWidth={1.5} />
                 </div>
                 <h2 className="mt-4 font-display text-xl font-semibold text-fg">{item.title}</h2>
@@ -137,7 +123,7 @@ export default function PlatformPage() {
       <section className="border-t border-line">
         <div className="mx-auto max-w-6xl px-5 py-20 text-center sm:px-8">
           <h2 className="font-display text-[clamp(2rem,5vw,3.4rem)] font-semibold leading-[1.02] tracking-[-0.02em] text-balance text-fg">
-            Run résumés like <em className="italic text-accent">infrastructure.</em>
+            Run résumés like <span className="text-accent">infrastructure.</span>
           </h2>
           <p className="mx-auto mt-5 max-w-[42ch] font-body text-fg-2">
             Deterministic output, measurable performance, and iteration speed — from a single studio.

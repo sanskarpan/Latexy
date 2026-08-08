@@ -338,6 +338,91 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
   return errors
 }
 
+// ── Editor themes ───────────────────────────────────────────────────────
+// Defined unconditionally on every editor mount (defineTheme is idempotent) so
+// the light theme ALWAYS exists — it must not sit behind the run-once language
+// guard, or a hot-reload / prior mount leaves it undefined and setTheme falls
+// back to dark on a light page.
+function defineLatexyThemes(monaco: MonacoNamespace) {
+  monaco.editor.defineTheme('latexy-dark', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment',           foreground: '6b7280', fontStyle: 'italic' },
+      { token: 'keyword.structure', foreground: 'fb923c', fontStyle: 'bold' },
+      { token: 'keyword.doc',       foreground: '818cf8' },
+      { token: 'keyword.font',      foreground: '67e8f9' },
+      { token: 'keyword.math',      foreground: 'f472b6' },
+      { token: 'keyword.special',   foreground: 'fbbf24' },
+      { token: 'keyword',           foreground: 'fcd34d' },
+      { token: 'math.delim',        foreground: 'ec4899', fontStyle: 'bold' },
+      { token: 'math.content',      foreground: 'f9a8d4' },
+      { token: 'math.command',      foreground: 'f472b6' },
+      { token: 'math.bracket',      foreground: 'a78bfa' },
+      { token: 'delimiter.bracket', foreground: 'a78bfa' },
+      { token: 'delimiter.square',  foreground: 'c4b5fd' },
+      { token: 'number',            foreground: '86efac' },
+    ],
+    colors: {
+      'editor.background':            '#0d1117',
+      'editor.foreground':            '#e2e8f0',
+      'editor.lineHighlightBackground': '#161b22',
+      'editor.selectionBackground':   '#1e3a5f',
+      'editor.inactiveSelectionBackground': '#162a44',
+      'editorLineNumber.foreground':  '#4b5563',
+      'editorLineNumber.activeForeground': '#9ca3af',
+      'editorCursor.foreground':      '#f59e0b',
+      'editorWhitespace.foreground':  '#1e293b',
+      'editorIndentGuide.background': '#1e293b',
+      'editorIndentGuide.activeBackground': '#334155',
+      'editorOverviewRuler.background': '#0d1117',
+      'scrollbar.shadow':             '#00000000',
+      'scrollbarSlider.background':   '#334155aa',
+      'scrollbarSlider.hoverBackground': '#475569bb',
+      'editorGutter.background':      '#0d1117',
+    },
+  })
+  // Light counterpart — warm paper-white surface, muted higher-contrast ink.
+  monaco.editor.defineTheme('latexy-light', {
+    base: 'vs',
+    inherit: true,
+    rules: [
+      { token: 'comment',           foreground: '8a8f98', fontStyle: 'italic' },
+      { token: 'keyword.structure', foreground: 'c2410c', fontStyle: 'bold' },
+      { token: 'keyword.doc',       foreground: '4f46e5' },
+      { token: 'keyword.font',      foreground: '0e7490' },
+      { token: 'keyword.math',      foreground: 'be185d' },
+      { token: 'keyword.special',   foreground: 'b45309' },
+      { token: 'keyword',           foreground: 'a16207' },
+      { token: 'math.delim',        foreground: 'be185d', fontStyle: 'bold' },
+      { token: 'math.content',      foreground: 'a21caf' },
+      { token: 'math.command',      foreground: 'be185d' },
+      { token: 'math.bracket',      foreground: '7c3aed' },
+      { token: 'delimiter.bracket', foreground: '7c3aed' },
+      { token: 'delimiter.square',  foreground: '9333ea' },
+      { token: 'number',            foreground: '15803d' },
+    ],
+    colors: {
+      'editor.background':            '#fbfbf9',
+      'editor.foreground':            '#26282d',
+      'editor.lineHighlightBackground': '#f1f1ec',
+      'editor.selectionBackground':   '#d6e4f5',
+      'editor.inactiveSelectionBackground': '#e8eef6',
+      'editorLineNumber.foreground':  '#b8b8b0',
+      'editorLineNumber.activeForeground': '#4b5563',
+      'editorCursor.foreground':      '#d97706',
+      'editorWhitespace.foreground':  '#e6e6df',
+      'editorIndentGuide.background': '#ecece5',
+      'editorIndentGuide.activeBackground': '#d6d6cd',
+      'editorOverviewRuler.background': '#fbfbf9',
+      'scrollbar.shadow':             '#00000000',
+      'scrollbarSlider.background':   '#c8c8be88',
+      'scrollbarSlider.hoverBackground': '#b0b0a6aa',
+      'editorGutter.background':      '#fbfbf9',
+    },
+  })
+}
+
 // ── Component ─────────────────────────────────────────────────────────────
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
@@ -403,6 +488,21 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     }, [])
 
     const [searchPanelOpen, setSearchPanelOpen] = useState(false)
+
+    // Follow the app's light/dark mode so the editor matches the page instead
+    // of being permanently dark. Reads the `data-mode` attribute the
+    // ThemeProvider stamps on <html> and reacts to toggles.
+    // Matches the token CSS: dark ONLY when data-mode="dark"; anything else
+    // (light, or the attribute missing) resolves to the light editor theme.
+    const [editorTheme, setEditorTheme] = useState<'latexy-dark' | 'latexy-light'>('latexy-light')
+    useEffect(() => {
+      const read = () =>
+        setEditorTheme(document.documentElement.getAttribute('data-mode') === 'dark' ? 'latexy-dark' : 'latexy-light')
+      read()
+      const obs = new MutationObserver(read)
+      obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-mode'] })
+      return () => obs.disconnect()
+    }, [])
 
     function handlePresetSelect(preset: LatexSearchPreset) {
       const editor = editorRef.current
@@ -814,6 +914,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       exposeMonacoTestHook(editor, monaco)
       disposablesRef.current.push({ dispose: () => clearMonacoTestHook(editor) })
 
+      // Always (re)define themes before applying one — never behind the language guard.
+      defineLatexyThemes(monaco)
+
       if (collabEnabled && value && !editor.getValue()) {
         editor.setValue(value)
       }
@@ -871,45 +974,6 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         },
       })
 
-      // ── Theme ──────────────────────────────────────────────────────
-      monaco.editor.defineTheme('latexy-dark', {
-        base: 'vs-dark',
-        inherit: true,
-        rules: [
-          { token: 'comment',         foreground: '6b7280', fontStyle: 'italic' },
-          { token: 'keyword.structure', foreground: 'fb923c', fontStyle: 'bold' }, // orange - sections
-          { token: 'keyword.doc',     foreground: '818cf8' },                       // indigo - doc cmds
-          { token: 'keyword.font',    foreground: '67e8f9' },                       // cyan - font cmds
-          { token: 'keyword.math',    foreground: 'f472b6' },                       // pink - math cmds
-          { token: 'keyword.special', foreground: 'fbbf24' },                       // amber
-          { token: 'keyword',         foreground: 'fcd34d' },                       // yellow - generic
-          { token: 'math.delim',      foreground: 'ec4899', fontStyle: 'bold' },   // hot pink
-          { token: 'math.content',    foreground: 'f9a8d4' },                       // light pink
-          { token: 'math.command',    foreground: 'f472b6' },
-          { token: 'math.bracket',    foreground: 'a78bfa' },
-          { token: 'delimiter.bracket', foreground: 'a78bfa' },                    // purple
-          { token: 'delimiter.square',  foreground: 'c4b5fd' },
-          { token: 'number',          foreground: '86efac' },                       // green
-        ],
-        colors: {
-          'editor.background':            '#0d1117',
-          'editor.foreground':            '#e2e8f0',
-          'editor.lineHighlightBackground': '#0f1420',
-          'editor.selectionBackground':   '#1e3a5f',
-          'editor.inactiveSelectionBackground': '#162a44',
-          'editorLineNumber.foreground':  '#334155',
-          'editorLineNumber.activeForeground': '#64748b',
-          'editorCursor.foreground':      '#f59e0b',
-          'editorWhitespace.foreground':  '#1e293b',
-          'editorIndentGuide.background': '#1e293b',
-          'editorIndentGuide.activeBackground': '#334155',
-          'editorOverviewRuler.background': '#07090f',
-          'scrollbar.shadow':             '#00000000',
-          'scrollbarSlider.background':   '#334155aa',
-          'scrollbarSlider.hoverBackground': '#475569bb',
-          'editorGutter.background':      '#07090f',
-        },
-      })
       // ── Completion provider ────────────────────────────────────────
       const completionDisposable = monaco.languages.registerCompletionItemProvider('latex', {
         triggerCharacters: ['\\', '{'],
@@ -1196,7 +1260,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
         _latexLanguageRegistered = true
       } // end !_latexLanguageRegistered
-      monaco.editor.setTheme('latexy-dark')
+      monaco.editor.setTheme(
+        document.documentElement.getAttribute('data-mode') === 'dark' ? 'latexy-dark' : 'latexy-light'
+      )
 
       // ── CodeLens provider (Explain this error) ──────────────────────
       // Register a unique command that CodeLens items can reference
@@ -1674,6 +1740,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             <MonacoEditor
               height="100%"
               defaultLanguage="latex"
+              theme={editorTheme}
               {...(collabEnabled ? { defaultValue: '' } : { value })}
               onChange={(v) => onChange(v || '')}
               onMount={handleEditorDidMount}

@@ -37,6 +37,11 @@ function SettingsContent() {
   const [error, setError] = useState<string | null>(null)
   const [desktopNotifs, setDesktopNotifs] = useState(true)
 
+  // Gate client-only UI (e.g. Notification.permission) until after hydration so
+  // the first client render matches the server and doesn't mismatch.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+
   // Load desktop notification preference from localStorage
   useEffect(() => {
     setDesktopNotifs(getNotificationPref())
@@ -701,7 +706,7 @@ function SettingsContent() {
             </button>
           </label>
 
-          {typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'denied' && (
+          {mounted && 'Notification' in window && Notification.permission === 'denied' && (
             <p className="rounded-[var(--radius-md)] bg-warn/10 px-3 py-2 text-[11px] text-warn ring-1 ring-warn/20">
               Notifications are blocked by your browser. Update your site permissions to enable them.
             </p>

@@ -1,24 +1,24 @@
 /**
- * Webfonts for the redesign (PRD 2026-08-03, Phase 0).
+ * Webfonts for the redesign (PRD 2026-08-03; typography reworked 2026-08-04).
  *
- * These are loaded via next/font (self-hosted, subset, display:swap) and exposed
- * as CSS variables consumed by the design tokens in globals.css:
- *   --font-fraunces  → Typeset display + body (serif, variable, optical sizing)
- *   --font-jetbrains → shared mono (UI labels, code, metadata) — both aesthetics
- *   --font-geist     → Compiler body (grotesque)
+ * Loaded via next/font (self-hosted, subset, display:swap) and exposed as CSS
+ * variables consumed by the design tokens:
+ *   --font-bricolage → display (bold grotesque — distinctive, modern/technical)
+ *   --font-geist-sans → body (clean grotesque)
+ *   --font-jetbrains  → mono (UI labels, code, metadata) — both aesthetics
  *
- * Fixes the audited bug where `Inter` was referenced in tailwind.config but never
- * actually delivered, so the site rendered in the OS default font.
+ * The all-serif Fraunces treatment was dropped (monotonous + overused); the site
+ * now pairs a characterful grotesque display with a neutral sans body.
  */
-import { Fraunces, JetBrains_Mono } from 'next/font/google'
+import { JetBrains_Mono, Bricolage_Grotesque } from 'next/font/google'
 import { GeistSans } from 'geist/font/sans'
 
-export const fraunces = Fraunces({
+export const bricolage = Bricolage_Grotesque({
   subsets: ['latin'],
   display: 'swap',
-  variable: '--font-fraunces',
-  axes: ['opsz'], // optical sizing: large opsz for display, text opsz for body
-  fallback: ['Hoefler Text', 'Iowan Old Style', 'Charter', 'Palatino', 'Georgia', 'serif'],
+  variable: '--font-bricolage',
+  axes: ['opsz'], // optical sizing; wght is included for the variable font
+  fallback: ['Hanken Grotesk', 'Helvetica Neue', 'system-ui', 'sans-serif'],
 })
 
 export const jetbrainsMono = JetBrains_Mono({
@@ -28,9 +28,9 @@ export const jetbrainsMono = JetBrains_Mono({
   fallback: ['SF Mono', 'ui-monospace', 'Menlo', 'Monaco', 'monospace'],
 })
 
-// Geist is not on Google Fonts; it ships as its own package. Its `.variable`
-// class defines `--font-geist-sans`, which the design tokens reference.
+// Geist ships as its own package (not on Google Fonts); `.variable` defines
+// `--font-geist-sans`.
 export const geist = GeistSans
 
 /** Combined variable classes to apply on <html>. */
-export const fontVariables = `${fraunces.variable} ${jetbrainsMono.variable} ${geist.variable}`
+export const fontVariables = `${bricolage.variable} ${jetbrainsMono.variable} ${geist.variable}`

@@ -47,8 +47,8 @@ export default function OnboardingFlow({
       icon: <Sparkles className="w-8 h-8 text-accent-strong" />,
       content: (
         <div className="text-center space-y-6">
-          <div className="w-24 h-24 mx-auto bg-gradient-to-br from-accent to-accent rounded-full flex items-center justify-center">
-            <FileText className="w-12 h-12 text-white" />
+          <div className="w-24 h-24 mx-auto bg-gradient-to-br from-accent to-accent rounded-[var(--radius-pill)] flex items-center justify-center">
+            <FileText className="w-12 h-12 text-accent-fg" />
           </div>
           <div>
             <h3 className="text-2xl font-bold text-fg mb-2">
@@ -59,20 +59,20 @@ export default function OnboardingFlow({
             </p>
           </div>
           <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="p-4 bg-accent-soft rounded-lg">
+            <div className="p-4 bg-accent-soft rounded-[var(--radius-lg)]">
               <Users className="w-6 h-6 text-accent-strong mx-auto mb-2" />
               <p className="text-sm font-medium text-accent-strong">10,000+</p>
               <p className="text-xs text-accent-strong">Happy Users</p>
             </div>
-            <div className="p-4 bg-green-50 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-green-500 mx-auto mb-2" />
-              <p className="text-sm font-medium text-green-700">95%</p>
-              <p className="text-xs text-green-600">ATS Pass Rate</p>
+            <div className="p-4 bg-ok/10 rounded-[var(--radius-lg)]">
+              <TrendingUp className="w-6 h-6 text-ok mx-auto mb-2" />
+              <p className="text-sm font-medium text-ok">95%</p>
+              <p className="text-xs text-ok">ATS Pass Rate</p>
             </div>
-            <div className="p-4 bg-purple-50 rounded-lg">
-              <Shield className="w-6 h-6 text-purple-500 mx-auto mb-2" />
-              <p className="text-sm font-medium text-purple-700">100%</p>
-              <p className="text-xs text-purple-600">Secure & Private</p>
+            <div className="p-4 bg-accent-soft rounded-[var(--radius-lg)]">
+              <Shield className="w-6 h-6 text-accent-strong mx-auto mb-2" />
+              <p className="text-sm font-medium text-accent-strong">100%</p>
+              <p className="text-xs text-accent-strong">Secure & Private</p>
             </div>
           </div>
         </div>
@@ -89,8 +89,8 @@ export default function OnboardingFlow({
             Three Simple Steps
           </h3>
           <div className="space-y-4">
-            <div className="flex items-start gap-4 p-4 bg-accent-soft rounded-lg">
-              <div className="w-8 h-8 bg-accent-soft0 text-white rounded-full flex items-center justify-center font-bold text-sm">
+            <div className="flex items-start gap-4 p-4 bg-accent-soft rounded-[var(--radius-lg)]">
+              <div className="w-8 h-8 bg-accent text-accent-fg rounded-[var(--radius-pill)] flex items-center justify-center font-bold text-sm">
                 1
               </div>
               <div>
@@ -100,24 +100,24 @@ export default function OnboardingFlow({
                 </p>
               </div>
             </div>
-            <div className="flex items-start gap-4 p-4 bg-green-50 rounded-lg">
-              <div className="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold text-sm">
+            <div className="flex items-start gap-4 p-4 bg-ok/10 rounded-[var(--radius-lg)]">
+              <div className="w-8 h-8 bg-ok text-accent-fg rounded-[var(--radius-pill)] flex items-center justify-center font-bold text-sm">
                 2
               </div>
               <div>
-                <h4 className="font-semibold text-green-900">AI Optimization</h4>
-                <p className="text-green-700 text-sm">
+                <h4 className="font-semibold text-ok">AI Optimization</h4>
+                <p className="text-ok text-sm">
                   Paste the job description and let AI optimize your resume for ATS compatibility
                 </p>
               </div>
             </div>
-            <div className="flex items-start gap-4 p-4 bg-purple-50 rounded-lg">
-              <div className="w-8 h-8 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold text-sm">
+            <div className="flex items-start gap-4 p-4 bg-accent-soft rounded-[var(--radius-lg)]">
+              <div className="w-8 h-8 bg-accent text-accent-fg rounded-[var(--radius-pill)] flex items-center justify-center font-bold text-sm">
                 3
               </div>
               <div>
-                <h4 className="font-semibold text-purple-900">Download & Apply</h4>
-                <p className="text-purple-700 text-sm">
+                <h4 className="font-semibold text-accent-strong">Download & Apply</h4>
+                <p className="text-accent-strong text-sm">
                   Get your optimized PDF resume and start applying with confidence
                 </p>
               </div>
@@ -137,28 +137,28 @@ export default function OnboardingFlow({
             Powerful Features
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 border border-line rounded-lg hover:border-accent transition-colors">
+            <div className="p-4 border border-line rounded-[var(--radius-lg)] hover:border-accent transition-colors">
               <FileText className="w-6 h-6 text-accent-strong mb-2" />
               <h4 className="font-semibold text-fg mb-1">LaTeX Editor</h4>
               <p className="text-sm text-fg-2">
                 Professional typesetting with syntax highlighting
               </p>
             </div>
-            <div className="p-4 border border-line rounded-lg hover:border-accent transition-colors">
+            <div className="p-4 border border-line rounded-[var(--radius-lg)] hover:border-accent transition-colors">
               <Zap className="w-6 h-6 text-accent-strong mb-2" />
               <h4 className="font-semibold text-fg mb-1">AI Optimization</h4>
               <p className="text-sm text-fg-2">
                 Smart content optimization for job descriptions
               </p>
             </div>
-            <div className="p-4 border border-line rounded-lg hover:border-accent transition-colors">
+            <div className="p-4 border border-line rounded-[var(--radius-lg)] hover:border-accent transition-colors">
               <Target className="w-6 h-6 text-accent-strong mb-2" />
               <h4 className="font-semibold text-fg mb-1">ATS Scoring</h4>
               <p className="text-sm text-fg-2">
                 Real-time compatibility scoring and recommendations
               </p>
             </div>
-            <div className="p-4 border border-line rounded-lg hover:border-accent transition-colors">
+            <div className="p-4 border border-line rounded-[var(--radius-lg)] hover:border-accent transition-colors">
               <Shield className="w-6 h-6 text-accent-strong mb-2" />
               <h4 className="font-semibold text-fg mb-1">BYOK Support</h4>
               <p className="text-sm text-fg-2">
@@ -186,7 +186,7 @@ export default function OnboardingFlow({
           </div>
           
           {userType === 'new' && (
-            <div className="p-4 bg-accent-soft rounded-lg border border-accent">
+            <div className="p-4 bg-accent-soft rounded-[var(--radius-lg)] border border-accent">
               <h4 className="font-semibold text-accent-strong mb-2">Free Trial Available</h4>
               <p className="text-accent-strong text-sm mb-3">
                 Try 3 resume compilations right now - no account, no credit card required!
@@ -199,18 +199,18 @@ export default function OnboardingFlow({
           )}
           
           {userType === 'trial_converted' && (
-            <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-              <h4 className="font-semibold text-green-900 mb-2">Welcome to the Community!</h4>
-              <p className="text-green-700 text-sm">
+            <div className="p-4 bg-ok/10 rounded-[var(--radius-lg)] border border-ok/20">
+              <h4 className="font-semibold text-ok mb-2">Welcome to the Community!</h4>
+              <p className="text-ok text-sm">
                 Thanks for joining Latexy! Your free account includes 10 compilations per day and 3 AI optimizations per month.
               </p>
             </div>
           )}
           
           {userType === 'premium' && (
-            <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-              <h4 className="font-semibold text-purple-900 mb-2">Premium Features Unlocked!</h4>
-              <p className="text-purple-700 text-sm">
+            <div className="p-4 bg-accent-soft rounded-[var(--radius-lg)] border border-accent/30">
+              <h4 className="font-semibold text-accent-strong mb-2">Premium Features Unlocked!</h4>
+              <p className="text-accent-strong text-sm">
                 Enjoy unlimited optimizations, priority support, and advanced features.
               </p>
             </div>
@@ -255,12 +255,12 @@ export default function OnboardingFlow({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-[var(--overlay)] flex items-center justify-center z-50 p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
+        className="bg-surface rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
       >
         {/* Header */}
         <div className="p-6 border-b border-line">
@@ -288,7 +288,8 @@ export default function OnboardingFlow({
                 <button
                   key={index}
                   onClick={() => goToStep(index)}
-                  className={`flex-1 h-2 rounded-full transition-colors ${
+                  aria-label={`Go to step ${index + 1}`}
+                  className={`flex-1 h-2 rounded-[var(--radius-pill)] transition-colors ${
                     index <= currentStep
                       ? 'bg-accent'
                       : 'bg-surface-2'
@@ -321,7 +322,7 @@ export default function OnboardingFlow({
             <button
               onClick={prevStep}
               disabled={currentStep === 0}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-[var(--radius-lg)] text-sm font-medium transition-colors ${
                 currentStep === 0
                   ? 'text-fg-3 cursor-not-allowed'
                   : 'text-fg-2 hover:bg-surface-2'
@@ -336,7 +337,8 @@ export default function OnboardingFlow({
                 <button
                   key={index}
                   onClick={() => goToStep(index)}
-                  className={`w-2 h-2 rounded-full transition-colors ${
+                  aria-label={`Go to step ${index + 1}`}
+                  className={`w-2 h-2 rounded-[var(--radius-pill)] transition-colors ${
                     index === currentStep
                       ? 'bg-accent'
                       : index < currentStep

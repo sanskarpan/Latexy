@@ -12,19 +12,16 @@ const reveal = 'motion-safe:animate-[fade-in-up_.7s_cubic-bezier(.2,.7,.2,1)_bot
 
 const problems = [
   {
-    n: '§ 1',
     quip: '“The AI rewrote my whole résumé.”',
     title: 'You approve every edit.',
     body: 'The optimizer drafts; you accept, reject, or rewrite each change with its reason shown. No silent auto-rewrite — the document stays yours.',
   },
   {
-    n: '§ 2',
     quip: '“My projects live in GitHub, not a form.”',
     title: 'Import from where you work.',
     body: 'Pull your best projects from GitHub, a portfolio URL, or a LinkedIn export — summarized into résumé-ready lines you choose to keep.',
   },
   {
-    n: '§ 3',
     quip: '“The ATS ate my formatting.”',
     title: 'Parse-clean by design.',
     body: 'Single-column, standard headings, real text — the formatting where ATS value is actually won, not keyword-stuffed to a fake score.',
@@ -34,15 +31,6 @@ const problems = [
 export default function LandingPage() {
   return (
     <div className="bg-bg text-fg">
-      {/* folio strip */}
-      <div className="border-b border-line">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-2 font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3 sm:px-8">
-          <span>№ 01 — The Résumé, Typeset</span>
-          <span className="hidden sm:inline">Set in Fraunces &amp; JetBrains Mono</span>
-          <span>pdflatex · xelatex · lualatex</span>
-        </div>
-      </div>
-
       {/* ── hero ── */}
       <section className="mx-auto grid max-w-6xl gap-10 px-5 py-16 sm:px-8 lg:grid-cols-[1.15fr_.85fr] lg:items-center lg:py-24">
         <div className={reveal}>
@@ -50,7 +38,7 @@ export default function LandingPage() {
             New — import projects from GitHub, a URL, or LinkedIn
           </span>
           <h1 className="mt-5 font-display text-[clamp(2.6rem,7vw,5.4rem)] font-semibold leading-[0.98] tracking-[-0.025em] text-fg">
-            Your résumé, <em className="italic text-accent">tailored</em> — and you approve every line.
+            Your résumé, <span className="text-accent">tailored</span> — and you approve every line.
           </h1>
           <p className="mt-6 max-w-[42ch] font-body text-lg text-fg-2">
             Write in LaTeX, let the AI tailor it to the role, and review every change before it lands.
@@ -67,7 +55,7 @@ export default function LandingPage() {
               href="/templates"
               className="inline-flex items-center rounded-[var(--radius-md)] border border-line-2 px-6 py-3 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-fg transition duration-150 hover:border-accent hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
             >
-              See a specimen
+              See an example
             </Link>
             <span className="font-ui text-xs text-fg-3">3 free compiles · no card</span>
           </div>
@@ -117,12 +105,9 @@ export default function LandingPage() {
       <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8">
         <div className="grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line md:grid-cols-3">
           {problems.map((p) => (
-            <article key={p.n} className="bg-surface p-6">
-              <div className="flex items-baseline gap-2">
-                <span className="font-ui text-xs text-accent-strong">{p.n}</span>
-                <span className="font-ui text-[0.68rem] italic text-fg-3">{p.quip}</span>
-              </div>
-              <h3 className="mt-4 font-display text-xl font-semibold text-fg">{p.title}</h3>
+            <article key={p.title} className="bg-surface p-6">
+              <span className="font-ui text-[0.72rem] italic text-fg-3">{p.quip}</span>
+              <h3 className="mt-3 font-display text-xl font-semibold text-fg">{p.title}</h3>
               <p className="mt-2 font-body text-sm leading-relaxed text-fg-2">{p.body}</p>
             </article>
           ))}
@@ -131,8 +116,7 @@ export default function LandingPage() {
 
       {/* ── product moment: source → impression ── */}
       <section className="mx-auto max-w-6xl px-5 pb-16 sm:px-8">
-        <div className="mb-6 flex items-baseline gap-3">
-          <span className="font-ui text-sm text-accent-strong">§ 4</span>
+        <div className="mb-6">
           <h2 className="font-display text-[clamp(1.5rem,3vw,2.1rem)] font-semibold text-fg">
             Source on the left. Impression on the right.
           </h2>
@@ -170,7 +154,7 @@ Go, Rust, Kubernetes, Postgres`}</pre>
       <section className="border-t border-line">
         <div className="mx-auto max-w-6xl px-5 py-20 text-center sm:px-8">
           <h2 className="font-display text-[clamp(2rem,5.5vw,3.8rem)] font-semibold leading-[1.02] tracking-[-0.02em] text-fg">
-            Compile something <em className="italic text-accent">worth reading.</em>
+            Compile something <span className="text-accent">worth reading.</span>
           </h2>
           <p className="mx-auto mt-5 max-w-[40ch] font-body text-fg-2">
             Three free compiles. Bring your own key or use ours. Your résumé, finally set right.

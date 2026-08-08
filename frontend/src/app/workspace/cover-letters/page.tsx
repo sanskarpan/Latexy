@@ -119,7 +119,7 @@ export default function CoverLettersPage() {
             <button
               onClick={() => setViewMode('grid')}
               className={`rounded-[var(--radius-md)] px-3 py-1.5 uppercase tracking-[0.12em] transition ${
-                viewMode === 'grid' ? 'bg-surface-2 text-fg' : 'text-fg-2 hover:text-fg'
+                viewMode === 'grid' ? 'bg-accent-soft text-accent-strong' : 'text-fg-2 hover:text-fg'
               }`}
             >
               Grid
@@ -127,7 +127,7 @@ export default function CoverLettersPage() {
             <button
               onClick={() => setViewMode('list')}
               className={`rounded-[var(--radius-md)] px-3 py-1.5 uppercase tracking-[0.12em] transition ${
-                viewMode === 'list' ? 'bg-surface-2 text-fg' : 'text-fg-2 hover:text-fg'
+                viewMode === 'list' ? 'bg-accent-soft text-accent-strong' : 'text-fg-2 hover:text-fg'
               }`}
             >
               List

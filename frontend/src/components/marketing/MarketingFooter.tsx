@@ -5,7 +5,13 @@ import { usePathname } from 'next/navigation'
 
 export default function MarketingFooter() {
   const pathname = usePathname()
-  const hidden = /^\/workspace\/[^/]+\/(edit|optimize)$/.test(pathname)
+  // The marketing footer belongs only on public/marketing + auth surfaces.
+  // App surfaces (the authenticated product) must never show it.
+  const APP_PREFIXES = [
+    '/try', '/dashboard', '/workspace', '/workspaces', '/billing',
+    '/byok', '/settings', '/admin', '/tracker',
+  ]
+  const hidden = APP_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'))
   if (hidden) return null
 
   return (

@@ -57,12 +57,6 @@ const tiers: Tier[] = [
 export default function PricingPage() {
   return (
     <div className="bg-bg text-fg">
-      <div className="border-b border-line">
-        <div className="mx-auto max-w-6xl px-5 py-2 font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3 sm:px-8">
-          Pricing — set once, tailor forever
-        </div>
-      </div>
-
       <section className="mx-auto max-w-6xl px-5 py-16 sm:px-8">
         <h1 className="max-w-[18ch] font-display text-[clamp(2.2rem,5.5vw,3.8rem)] font-semibold leading-[1.02] tracking-[-0.025em] text-fg text-balance">
           Start free. Pay only when it&apos;s working for you.

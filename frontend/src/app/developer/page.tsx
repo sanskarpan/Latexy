@@ -161,20 +161,11 @@ console.log(payload);`,
 
   return (
     <div className="bg-bg text-fg">
-      {/* folio strip */}
-      <div className="border-b border-line">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-2 font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3 sm:px-8">
-          <span>№ 07 — Developer API</span>
-          <span className="hidden sm:inline">Bearer keys · rate-limited by plan</span>
-          <span>compile · optimize · ats</span>
-        </div>
-      </div>
-
       {/* ── hero ── */}
       <section className={`mx-auto max-w-6xl px-5 py-14 sm:px-8 lg:py-20 ${reveal}`}>
         <span className={label}>The API</span>
         <h1 className="mt-5 max-w-[18ch] text-balance font-display text-[clamp(2.4rem,6vw,4.4rem)] font-semibold leading-[0.98] tracking-[-0.025em] text-fg">
-          Compile, optimize, and score — <em className="italic text-accent">from your own stack.</em>
+          Compile, optimize, and score — <span className="text-accent">from your own stack.</span>
         </h1>
         <p className="mt-6 max-w-[52ch] font-body text-lg text-fg-2">
           Create stable API keys for compile, optimize, and ATS workflows. Keys are shown only once and
@@ -182,10 +173,9 @@ console.log(payload);`,
         </p>
       </section>
 
-      {/* ── § 1 · API keys ── */}
+      {/* ── API keys ── */}
       <section className="mx-auto max-w-6xl px-5 pb-14 sm:px-8">
         <div className="mb-6 flex items-baseline gap-3 border-b border-line pb-4">
-          <span className="font-ui text-sm text-accent-strong">§ 1</span>
           <h2 className="font-display text-[clamp(1.5rem,3vw,2.1rem)] font-semibold text-fg">API keys</h2>
           <span className="ml-auto font-ui text-xs text-fg-3">Maximum 5 active keys per account</span>
         </div>
@@ -276,13 +266,12 @@ console.log(payload);`,
         )}
       </section>
 
-      {/* ── § 2 · usage + docs ── */}
+      {/* ── usage + docs ── */}
       <section className="mx-auto max-w-6xl px-5 pb-20 sm:px-8">
         <div className="grid gap-8 xl:grid-cols-[1.2fr_1fr]">
           {/* usage */}
           <div className="min-w-0">
             <div className="mb-6 flex items-baseline gap-3 border-b border-line pb-4">
-              <span className="font-ui text-sm text-accent-strong">§ 2</span>
               <h2 className="font-display text-[clamp(1.5rem,3vw,2.1rem)] font-semibold text-fg">Usage</h2>
             </div>
             <p className="mb-5 font-ui text-xs text-fg-3">
@@ -313,7 +302,6 @@ console.log(payload);`,
           {/* docs */}
           <div className="min-w-0">
             <div className="mb-6 flex items-baseline gap-3 border-b border-line pb-4">
-              <span className="font-ui text-sm text-accent-strong">§ 3</span>
               <h2 className="font-display text-[clamp(1.5rem,3vw,2.1rem)] font-semibold text-fg">
                 Documentation
               </h2>

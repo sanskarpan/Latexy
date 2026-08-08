@@ -42,15 +42,15 @@ export default function OfflineBanner({ pendingCount = 0 }: OfflineBannerProps) 
   if (isOnline) return null
 
   return (
-    <div className="flex shrink-0 items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-4 py-1.5">
+    <div className="flex shrink-0 items-center justify-between border-b border-warn/20 bg-warn/10 px-4 py-1.5">
       <div className="flex items-center gap-2">
-        <WifiOff size={13} className="text-amber-400" />
-        <span className="text-[11px] text-amber-300">
+        <WifiOff size={13} className="text-warn" />
+        <span className="text-[11px] text-warn">
           You&apos;re offline — edits are saved locally and will sync when you reconnect
         </span>
       </div>
       {pendingCount > 0 && (
-        <span className="ml-3 shrink-0 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+        <span className="ml-3 shrink-0 rounded-[var(--radius-pill)] bg-warn/20 px-2 py-0.5 text-[10px] font-semibold text-warn">
           {pendingCount} pending
         </span>
       )}

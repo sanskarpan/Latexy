@@ -426,9 +426,9 @@ function BillingPageContent() {
             <div className="rounded-[var(--radius-lg)] border border-line bg-bg p-4 text-fg-2">Loading plans...</div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {visiblePlans.map((plan) => (
+              {visiblePlans.map((plan, idx) => (
                 <PricingCard
-                  key={plan.id}
+                  key={`${plan.id ?? 'plan'}-${idx}`}
                   plan={plan}
                   isPopular={plan.id === (billingPeriod === 'annual' ? 'pro_annual' : 'pro')}
                   onSelectPlan={handleSelectPlan}

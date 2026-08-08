@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { BookUser, GitFork, GitMerge, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate, Globe, Send } from 'lucide-react'
@@ -532,15 +532,19 @@ export default function WorkspacePage() {
           Translate
         </button>
         <button
-          onClick={() => handleGeneratePortfolio(resume.id)}
+          onClick={() =>
+            portfolioUrls[resume.id]
+              ? window.open(portfolioUrls[resume.id], '_blank', 'noopener,noreferrer')
+              : handleGeneratePortfolio(resume.id)
+          }
           disabled={isGeneratingPortfolio === resume.id}
           className="flex flex-1 basis-[calc(50%-0.25rem)] items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110 disabled:opacity-50"
-          title="Generate portfolio site"
+          title={portfolioUrls[resume.id] ? 'Open portfolio site' : 'Generate portfolio site'}
         >
           {isGeneratingPortfolio === resume.id
             ? <><Loader2 size={11} className="animate-spin" /> Generating…</>
             : portfolioUrls[resume.id]
-              ? <><Globe size={11} /> Portfolio</>
+              ? <><Globe size={11} /> View Portfolio</>
               : <><Globe size={11} /> Portfolio</>
           }
         </button>
@@ -753,7 +757,7 @@ export default function WorkspacePage() {
             <button
               onClick={() => setViewMode('grid')}
               className={`rounded-[var(--radius-md)] px-3 py-1.5 uppercase tracking-[0.12em] transition ${
-                viewMode === 'grid' ? 'bg-surface-2 text-fg' : 'text-fg-2 hover:text-fg'
+                viewMode === 'grid' ? 'bg-accent-soft text-accent-strong' : 'text-fg-2 hover:text-fg'
               }`}
             >
               Grid
@@ -761,7 +765,7 @@ export default function WorkspacePage() {
             <button
               onClick={() => setViewMode('list')}
               className={`rounded-[var(--radius-md)] px-3 py-1.5 uppercase tracking-[0.12em] transition ${
-                viewMode === 'list' ? 'bg-surface-2 text-fg' : 'text-fg-2 hover:text-fg'
+                viewMode === 'list' ? 'bg-accent-soft text-accent-strong' : 'text-fg-2 hover:text-fg'
               }`}
             >
               List
@@ -816,8 +820,8 @@ export default function WorkspacePage() {
                 </thead>
                 <tbody className="divide-y divide-line">
                   {masterResumes.map((resume) => (
-                    <>
-                      <tr key={resume.id}>
+                    <Fragment key={resume.id}>
+                      <tr>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             {getVariantCount(resume) > 0 && (
@@ -958,7 +962,7 @@ export default function WorkspacePage() {
                           </td>
                         </tr>
                       ))}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
