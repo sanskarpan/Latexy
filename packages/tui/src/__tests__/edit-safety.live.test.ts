@@ -17,7 +17,7 @@ const LIVE = process.env['LATEXY_LIVE'] === '1'
 const API = process.env['LATEXY_API_URL'] ?? 'http://localhost:8030'
 const TOKEN = process.env['LATEXY_SESSION_TOKEN'] ?? ''
 const RESUME = process.env['LATEXY_TEST_RESUME'] ?? ''
-const SANDBOX = process.env['LATEXY_SANDBOX'] ?? ''
+const SANDBOX = process.env['LATEXY_FIXTURES'] ?? ''
 const ORIGINAL = '\\documentclass{article}\\begin{document}KEEP THIS\\end{document}'
 
 async function content(): Promise<string> {

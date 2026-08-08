@@ -82,7 +82,12 @@ export async function runEdit(parsed: ParsedCommand): Promise<void> {
     // "Saved". Refuse to save unless the editor exited cleanly.
     const { code, signal } = await new Promise<{ code: number | null; signal: string | null }>(
       (resolve, reject) => {
-        const child = spawn(editor, [path], { stdio: 'inherit' })
+        // "code --wait" and "subl -w" are the documented values for VS Code and
+        // Sublime; treating the whole variable as one executable name reported
+        // `spawn code --wait ENOENT`, naming a binary the user never set. git
+        // solves this by going through a shell; so do we.
+        const [bin, ...editorArgs] = editor.trim().split(/\s+/)
+        const child = spawn(bin!, [...editorArgs, path], { stdio: 'inherit' })
         child.on('exit', (c, sig) => resolve({ code: c, signal: sig }))
         child.on('error', reject)
       },
@@ -105,7 +110,20 @@ export async function runEdit(parsed: ParsedCommand): Promise<void> {
     }
 
     const { readFile } = await import('node:fs/promises')
-    const edited = await readFile(path, 'utf-8')
+    // Read bytes, not text. readFile(path,'utf-8') substitutes U+FFFD for any
+    // byte it cannot decode, so a latin-1 editor writing "Résumé" silently
+    // saved "R\uFFFDsum\uFFFD" and reported success — three characters
+    // destroyed irreversibly.
+    const rawBytes = await readFile(path)
+    const edited = new TextDecoder('utf-8', { fatal: false }).decode(rawBytes)
+    if (edited.includes('\uFFFD') && !resume.latex_content.includes('\uFFFD')) {
+      addMessage({
+        role: 'error',
+        content: `The edited file is not valid UTF-8 — refusing to save, since converting it ` +
+          `would destroy characters. Re-save it as UTF-8. The draft is at ${path}.`,
+      })
+      return
+    }
     if (edited === resume.latex_content) {
       addMessage({ role: 'system', content: 'No changes made.' })
       return
@@ -175,14 +193,46 @@ export async function runDiff(parsed: ParsedCommand): Promise<void> {
       res.parent_latex, res.variant_latex,
       res.parent_title ?? 'parent', res.variant_title ?? 'variant',
     )
-    const MAX = 60
-    const shown = lines.length > MAX
-      ? [...lines.slice(0, MAX), `  … ${lines.length - MAX} more changed line(s)`]
-      : lines
+    // Keeping the head hid every addition, because unifiedDiff emits all
+    // removals first — the mirror of the earlier bug that kept the tail and hid
+    // every removal. Budget each side separately so the user always sees both
+    // what went and what replaced it.
+    const shown = boundedDiff(lines, 60)
     addMessage({ role: 'system', content: shown.join('\n') })
   } catch (err) {
-    addMessage({ role: 'error', content: `Diff failed: ${describeError(err)}` })
+    // The API answers 400 for a resume with no parent, so ApiClient throws
+    // before the friendly branch above can run. Recognise it here instead of
+    // leaving the user a bare red error with no next step.
+    const msg = describeError(err)
+    if (/no parent/i.test(msg)) {
+      addMessage({
+        role: 'system',
+        content: 'This resume has no parent to compare against — make a variant with /fork first.',
+      })
+      return
+    }
+    addMessage({ role: 'error', content: `Diff failed: ${msg}` })
   }
+}
+
+/**
+ * Trim a diff to *budget* lines while keeping both sides visible.
+ *
+ * Removals and additions are emitted in blocks, so a naive head or tail slice
+ * shows only one of them. This splits the budget between the two.
+ */
+function boundedDiff(lines: string[], budget: number): string[] {
+  if (lines.length <= budget) return lines
+  const header = lines.filter(l => l.startsWith('---') || l.startsWith('+++') || l.startsWith('    '))
+  const removals = lines.filter(l => l.startsWith('- '))
+  const additions = lines.filter(l => l.startsWith('+ '))
+  const each = Math.max(4, Math.floor((budget - header.length - 2) / 2))
+  const out = [...header]
+  out.push(...removals.slice(0, each))
+  if (removals.length > each) out.push(`  … ${removals.length - each} more removed`)
+  out.push(...additions.slice(0, each))
+  if (additions.length > each) out.push(`  … ${additions.length - each} more added`)
+  return out
 }
 
 /** Minimal line diff — enough to see what changed without pulling in a library. */

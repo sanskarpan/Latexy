@@ -89,12 +89,14 @@ const API_HANDLERS: Record<string, (parsed: NonNullable<ReturnType<typeof parseS
   settings:   async p => (await import('../tools/account-commands.js')).runSettings(p),
 
   compile: async (p) => {
-    if ($activeJobId.get() != null) {
-      addMessage({ role: 'error', content: 'A job is already running. Use /cancel to stop it first.' })
-      return
-    }
+    // The bare $activeJobId read here was the same check-then-act shape removed
+    // from the other job commands: compile.ts only sets it after its POST
+    // resolves, so two compiles — or a compile racing an optimize — both got
+    // through and only one could be tracked or cancelled. /compile is the most
+    // used command in the TUI, so it was the worst place to leave it.
+    const { withJobSlot } = await import('../tools/shared.js')
     const { runCompile } = await import('../tools/compile.js')
-    await runCompile(p)
+    await withJobSlot(async () => { await runCompile(p) })
   },
   health: async () => {
     const { getApiClient } = await import('../lib/api-client.js')

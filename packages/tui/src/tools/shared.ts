@@ -123,6 +123,9 @@ export async function resolveJobDescription(parsed: ParsedCommand): Promise<stri
       })
       return null
     } catch (err) {
+      // Set the flag here too, or a genuine exception (5xx, network, timeout)
+      // still draws the follow-up "a job description is required".
+      jdFailureReported = true
       addMessage({ role: 'error', content: `Could not read the job posting: ${describeError(err)}` })
       return null
     }

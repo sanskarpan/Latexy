@@ -160,6 +160,9 @@ export class ApiClient {
       } catch (err) {
         clearTimeout(timer)
         if (err instanceof ApiError) throw err
+        // A deliberate cancellation is not a transient failure. Retrying it made
+        // an aborted export take ~3s to stop while it slept between attempts.
+        if (opts.signal?.aborted === true) throw err
         if (attempt === maxAttempts) throw err
         lastErr = err
         await sleep(retryDelayMs * attempt)

@@ -25,9 +25,21 @@ const cmd = (name: string, positional: string[], args: Record<string, string | b
   ({ name, args, positional, raw: `/${name}` })
 
 ;(LIVE ? describe : describe.skip)('the job slot never wedges', () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     $session.set({ ...$session.get(), token: TOKEN, backendUrl: API, isAuthenticated: true, plan: 'pro' })
     initApiClient(API, TOKEN)
+
+    // The cancelled-picker case only exercises the leak when more than one
+    // resume exists, so guarantee that here rather than depending on fixture
+    // state a concurrent process might have cleaned up.
+    const client = initApiClient(API, TOKEN)
+    const list = await client.get<{ resumes: unknown[] }>('/resumes/?limit=5')
+    if ((list.resumes ?? []).length < 2) {
+      await client.post('/resumes/', {
+        title: 'Slot Fixture Second',
+        latex_content: '\\documentclass{article}\\begin{document}SECOND\\end{document}',
+      })
+    }
   })
 
   beforeEach(() => {

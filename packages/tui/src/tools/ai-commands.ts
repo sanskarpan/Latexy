@@ -95,6 +95,12 @@ export async function runAts(parsed: ParsedCommand): Promise<void> {
   const resumeId = await resolveResumeId(parsed)
   if (!resumeId) return
 
+  // --jd is optional here, but a --jd that FAILED is not the same as none: the
+  // user asked for a JD-targeted analysis and would otherwise silently get a
+  // generic one, after an error message saying the posting could not be read.
+  const jd = await resolveJobDescription(parsed)
+  if (jd == null && jdFailureAlreadyReported()) return
+
   try {
     await submitJob({
       toolName: 'ats_deep_analysis',
@@ -102,7 +108,7 @@ export async function runAts(parsed: ParsedCommand): Promise<void> {
       path: '/ats/deep-analyze',
       body: {
         latex_content: await latexOf(resumeId),
-        job_description: (await resolveJobDescription(parsed)) ?? undefined,
+        job_description: jd ?? undefined,
         industry_override: parsed.args['industry'] as string | undefined,
       },
     })
@@ -191,12 +197,18 @@ export async function runInterview(parsed: ParsedCommand): Promise<void> {
   if (!requireAuth()) return
   const resumeId = await resolveResumeId(parsed)
   if (!resumeId) return
+
+  // Same as /ats: a failed --jd must stop, not degrade into a generic run
+  // announced by a success card immediately after an error.
+  const jd = await resolveJobDescription(parsed)
+  if (jd == null && jdFailureAlreadyReported()) return
+
   try {
     const res = await getApiClient().post<{ job_id?: string; prep_id?: string }>(
       '/interview-prep/generate',
       {
         resume_id: resumeId,
-        job_description: (await resolveJobDescription(parsed)) ?? undefined,
+        job_description: jd ?? undefined,
         company_name: parsed.args['company'] as string | undefined,
         role_title: parsed.args['role'] as string | undefined,
       },
