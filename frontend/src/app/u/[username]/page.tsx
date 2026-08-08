@@ -33,24 +33,24 @@ export default async function PortfolioPage({ params }: PageProps) {
 
   const themeClass =
     theme === 'dark'
-      ? 'bg-bg text-fg'
+      ? 'bg-gray-950 text-gray-100'
       : theme === 'professional'
-        ? 'bg-surface text-fg'
-        : 'bg-surface text-fg'
+        ? 'bg-slate-50 text-slate-900'
+        : 'bg-white text-gray-900'
 
-  const accentClass = 'text-accent-strong'
+  const accentClass = theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
 
   const cardClass =
     theme === 'dark'
-      ? 'bg-surface border-line-2'
+      ? 'bg-gray-900 border-gray-800'
       : theme === 'professional'
-        ? 'bg-surface border-line shadow-sm'
-        : 'bg-surface-2 border-line'
+        ? 'bg-white border-slate-200 shadow-sm'
+        : 'bg-gray-50 border-gray-200'
 
   const headerClass =
     theme === 'dark'
-      ? 'border-line-2 bg-surface backdrop-blur'
-      : 'border-line bg-surface backdrop-blur'
+      ? 'border-gray-800 bg-gray-950/90 backdrop-blur'
+      : 'border-gray-200 bg-white/90 backdrop-blur'
 
   return (
     <div className={`min-h-screen ${themeClass}`}>
@@ -71,7 +71,7 @@ export default async function PortfolioPage({ params }: PageProps) {
           {name || username}
         </h1>
         {tagline && (
-          <p className="mt-4 text-xl text-fg-3 max-w-xl">{tagline}</p>
+          <p className="mt-4 text-xl text-gray-500 max-w-xl">{tagline}</p>
         )}
       </section>
 
@@ -81,16 +81,16 @@ export default async function PortfolioPage({ params }: PageProps) {
           Resumes
         </h2>
         {resumes.length === 0 ? (
-          <p className="text-fg-3">No public resumes yet.</p>
+          <p className="text-gray-500">No public resumes yet.</p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {resumes.map((r) => (
               <div
                 key={r.id}
-                className={`rounded-xl border p-5 transition hover:border-accent ${cardClass}`}
+                className={`rounded-xl border p-5 transition hover:border-blue-500 ${cardClass}`}
               >
                 <p className="font-semibold">{r.title}</p>
-                <p className="text-sm text-fg-3 mt-1">
+                <p className="text-sm text-gray-500 mt-1">
                   Updated{' '}
                   {new Date(r.updated_at).toLocaleDateString('en-US', {
                     month: 'short',
@@ -112,7 +112,7 @@ export default async function PortfolioPage({ params }: PageProps) {
       </section>
 
       {/* Footer */}
-      <footer className="text-center py-8 text-sm text-fg-3">
+      <footer className="text-center py-8 text-sm text-gray-500">
         Powered by{' '}
         <a
           href="https://latexy.io"
