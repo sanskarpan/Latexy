@@ -8,9 +8,8 @@ import { getApiClient } from '../lib/api-client.js'
 import { addMessage } from '../stores/messages.js'
 import type { ParsedCommand } from '../commands/parser.js'
 import {
-  claimJobSlot,
   jdFailureAlreadyReported,
-  releaseJobSlot,
+  withJobSlot,
   describeError,
   report,
   requireAuth,
@@ -25,13 +24,13 @@ async function latexOf(resumeId: string): Promise<string> {
 }
 
 export async function runOptimize(parsed: ParsedCommand): Promise<void> {
-  if (!requireAuth() || !claimJobSlot()) return
+  if (!requireAuth()) return
+  await withJobSlot(async () => {
   const resumeId = await resolveResumeId(parsed)
-  if (!resumeId) { releaseJobSlot(); return }
+  if (!resumeId) return
 
   const jd = await resolveJobDescription(parsed)
   if (!jd) {
-    releaseJobSlot()
     // resolveJobDescription already said why, if it knew.
     if (!jdFailureAlreadyReported()) {
       addMessage({ role: 'error', content: 'A job description is required: /optimize --jd <url|file|text>' })
@@ -53,19 +52,19 @@ export async function runOptimize(parsed: ParsedCommand): Promise<void> {
       },
     })
   } catch (err) {
-    releaseJobSlot()
     addMessage({ role: 'error', content: `Could not start optimization: ${describeError(err)}` })
   }
+  })
 }
 
 export async function runCombined(parsed: ParsedCommand): Promise<void> {
-  if (!requireAuth() || !claimJobSlot()) return
+  if (!requireAuth()) return
+  await withJobSlot(async () => {
   const resumeId = await resolveResumeId(parsed)
-  if (!resumeId) { releaseJobSlot(); return }
+  if (!resumeId) return
 
   const jd = await resolveJobDescription(parsed)
   if (!jd) {
-    releaseJobSlot()
     if (!jdFailureAlreadyReported()) {
       addMessage({ role: 'error', content: 'A job description is required: /combined --jd <url|file|text>' })
     }
@@ -85,15 +84,16 @@ export async function runCombined(parsed: ParsedCommand): Promise<void> {
       },
     })
   } catch (err) {
-    releaseJobSlot()
     addMessage({ role: 'error', content: `Could not start the pipeline: ${describeError(err)}` })
   }
+  })
 }
 
 export async function runAts(parsed: ParsedCommand): Promise<void> {
-  if (!requireAuth() || !claimJobSlot()) return
+  if (!requireAuth()) return
+  await withJobSlot(async () => {
   const resumeId = await resolveResumeId(parsed)
-  if (!resumeId) { releaseJobSlot(); return }
+  if (!resumeId) return
 
   try {
     await submitJob({
@@ -107,9 +107,9 @@ export async function runAts(parsed: ParsedCommand): Promise<void> {
       },
     })
   } catch (err) {
-    releaseJobSlot()
     addMessage({ role: 'error', content: `Could not start ATS analysis: ${describeError(err)}` })
   }
+  })
 }
 
 export async function runQuickAts(parsed: ParsedCommand): Promise<void> {
@@ -152,8 +152,10 @@ export async function runQuickAts(parsed: ParsedCommand): Promise<void> {
 
 export async function runCover(parsed: ParsedCommand): Promise<void> {
   if (!requireAuth()) return
+  // No claimJobSlot() here — /cover does not hold the slot, so it must not
+  // release one either, or it would free a slot a concurrent /optimize owns.
   const resumeId = await resolveResumeId(parsed)
-  if (!resumeId) { releaseJobSlot(); return }
+  if (!resumeId) return
 
   const jd = await resolveJobDescription(parsed)
   if (!jd) {

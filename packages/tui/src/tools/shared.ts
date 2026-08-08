@@ -201,6 +201,26 @@ export function releaseJobSlot(): void {
   jobSlotClaimed = false
 }
 
+/**
+ * Run a job-starting command while holding the single-job slot.
+ *
+ * Releasing per-branch is fragile: every early return, every throw, and every
+ * cancelled picker has to remember, and one that forgets locks the user out of
+ * starting any job until they restart. This releases in a finally unless the
+ * body actually submitted (submitJob hands ownership to $activeJobId), so a
+ * missed branch cannot wedge the slot.
+ */
+export async function withJobSlot(body: () => Promise<void>): Promise<void> {
+  if (!claimJobSlot()) return
+  try {
+    await body()
+  } finally {
+    // submitJob clears the flag once $activeJobId owns the job; if it is still
+    // set here, nothing was submitted and the slot is ours to give back.
+    if (jobSlotClaimed) jobSlotClaimed = false
+  }
+}
+
 /** Kept for callers that only need to ask, without claiming. */
 export function busyWithAnotherJob(): boolean {
   return jobSlotClaimed || $activeJobId.get() != null
