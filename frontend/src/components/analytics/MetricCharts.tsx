@@ -62,7 +62,7 @@ export function ActivityAreaChart({ data, width = 760, height = 280 }: { data: A
           scale={yScale}
           width={xMax}
           height={yMax}
-          stroke="rgba(255,255,255,0.08)"
+          stroke="var(--line)"
           strokeDasharray="2,3"
           pointerEvents="none"
         />
@@ -74,7 +74,7 @@ export function ActivityAreaChart({ data, width = 760, height = 280 }: { data: A
           yScale={yScale}
           curve={curveMonotoneX}
           fill="url(#activityAreaGradient)"
-          stroke="rgba(251, 146, 60, 0.95)"
+          stroke="var(--accent)"
           strokeWidth={2.2}
         />
 
@@ -83,16 +83,16 @@ export function ActivityAreaChart({ data, width = 760, height = 280 }: { data: A
           x={(point) => xScale(point.date) ?? 0}
           y={(point) => yScale(point.value) ?? 0}
           curve={curveMonotoneX}
-          stroke="rgba(255, 222, 197, 0.9)"
+          stroke="var(--fg-3)"
           strokeWidth={1}
         />
 
         <AxisLeft
           scale={yScale}
           numTicks={4}
-          tickStroke="rgba(255,255,255,0.18)"
-          stroke="rgba(255,255,255,0.25)"
-          tickLabelProps={() => ({ fill: 'rgba(161, 161, 170, 0.9)', fontSize: 10, textAnchor: 'end', dx: -4, dy: 3 })}
+          tickStroke="var(--line)"
+          stroke="var(--line-2)"
+          tickLabelProps={() => ({ fill: 'var(--fg-3)', fontSize: 10, textAnchor: 'end', dx: -4, dy: 3 })}
         />
 
         <AxisBottom
@@ -103,16 +103,16 @@ export function ActivityAreaChart({ data, width = 760, height = 280 }: { data: A
             const dt = value as Date
             return `${dt.getMonth() + 1}/${dt.getDate()}`
           }}
-          tickStroke="rgba(255,255,255,0.18)"
-          stroke="rgba(255,255,255,0.25)"
-          tickLabelProps={() => ({ fill: 'rgba(161, 161, 170, 0.9)', fontSize: 10, textAnchor: 'middle', dy: 12 })}
+          tickStroke="var(--line)"
+          stroke="var(--line-2)"
+          tickLabelProps={() => ({ fill: 'var(--fg-3)', fontSize: 10, textAnchor: 'middle', dy: 12 })}
         />
       </Group>
 
       <defs>
         <linearGradient id="activityAreaGradient" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="rgba(251,146,60,0.56)" />
-          <stop offset="100%" stopColor="rgba(251,146,60,0.02)" />
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.56} />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.02} />
         </linearGradient>
       </defs>
     </svg>
@@ -146,7 +146,7 @@ export function FeatureUsageBars({ data, width = 760, height = 260 }: { data: Fe
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="h-[260px] w-full">
       <Group left={chartMargin.left} top={chartMargin.top}>
-        <GridRows scale={yScale} width={xMax} height={yMax} stroke="rgba(255,255,255,0.05)" pointerEvents="none" />
+        <GridRows scale={yScale} width={xMax} height={yMax} stroke="var(--line)" pointerEvents="none" />
 
         {normalized.map((item, index) => {
           const y = yScale(item.name)
@@ -162,12 +162,13 @@ export function FeatureUsageBars({ data, width = 760, height = 260 }: { data: Fe
                 width={barWidth}
                 height={yScale.bandwidth()}
                 rx={8}
-                fill={`rgba(251, 146, 60, ${Math.min(alpha, 0.9)})`}
+                fill="var(--accent)"
+                fillOpacity={Math.min(alpha, 0.9)}
               />
-              <text x={6} y={y + yScale.bandwidth() / 2 + 4} fill="rgba(255,255,255,0.9)" fontSize={10}>
+              <text x={6} y={y + yScale.bandwidth() / 2 + 4} fill="var(--fg)" fontSize={10}>
                 {item.name}
               </text>
-              <text x={Math.max(barWidth - 6, 34)} y={y + yScale.bandwidth() / 2 + 4} textAnchor="end" fill="rgba(20,20,20,0.92)" fontSize={10} fontWeight={700}>
+              <text x={Math.max(barWidth - 6, 34)} y={y + yScale.bandwidth() / 2 + 4} textAnchor="end" fill="var(--accent-fg)" fontSize={10} fontWeight={700}>
                 {item.value}
               </text>
             </Group>
@@ -191,11 +192,11 @@ export function StatusDonutChart({ data, width = 280, height = 280 }: { data: St
   }
 
   const colors: Record<string, string> = {
-    completed: 'rgba(16, 185, 129, 0.85)',
-    processing: 'rgba(251, 146, 60, 0.9)',
-    queued: 'rgba(245, 158, 11, 0.78)',
-    failed: 'rgba(251, 113, 133, 0.82)',
-    cancelled: 'rgba(161, 161, 170, 0.68)',
+    completed: 'var(--ok)',
+    processing: 'var(--accent)',
+    queued: 'var(--warn)',
+    failed: 'var(--err)',
+    cancelled: 'var(--fg-3)',
   }
 
   const radius = Math.min(width, height) / 2
@@ -214,15 +215,15 @@ export function StatusDonutChart({ data, width = 280, height = 280 }: { data: St
             {(pie) =>
               pie.arcs.map((arc) => (
                 <g key={arc.data.name}>
-                  <path d={pie.path(arc) || undefined} fill={colors[arc.data.name] || 'rgba(251,146,60,0.7)'} />
+                  <path d={pie.path(arc) || undefined} fill={colors[arc.data.name] || 'var(--accent)'} />
                 </g>
               ))
             }
           </Pie>
-          <text textAnchor="middle" fill="rgba(255,255,255,0.95)" fontSize={24} fontWeight={700} dy={-4}>
+          <text textAnchor="middle" fill="var(--fg)" fontSize={24} fontWeight={700} dy={-4}>
             {total}
           </text>
-          <text textAnchor="middle" fill="rgba(161,161,170,0.95)" fontSize={10} dy={14}>
+          <text textAnchor="middle" fill="var(--fg-3)" fontSize={10} dy={14}>
             RUNS
           </text>
         </Group>
@@ -232,10 +233,10 @@ export function StatusDonutChart({ data, width = 280, height = 280 }: { data: St
         {filtered.map((item) => (
           <div key={item.name} className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[item.name] || 'rgba(251,146,60,0.7)' }} />
-              <span className="uppercase tracking-[0.12em] text-zinc-400">{item.name}</span>
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[item.name] || 'var(--accent)' }} />
+              <span className="uppercase tracking-[0.12em] text-fg-2">{item.name}</span>
             </div>
-            <span className="font-semibold text-zinc-200">{item.value}</span>
+            <span className="font-semibold text-fg">{item.value}</span>
           </div>
         ))}
       </div>
@@ -245,7 +246,7 @@ export function StatusDonutChart({ data, width = 280, height = 280 }: { data: St
 
 function EmptyChart({ label }: { label: string }) {
   return (
-    <div className="flex h-[240px] items-center justify-center rounded-xl border border-dashed border-white/10 text-sm text-zinc-500">
+    <div className="flex h-[240px] items-center justify-center rounded-[var(--radius-md)] border border-dashed border-line text-sm text-fg-3">
       {label}
     </div>
   )

@@ -106,29 +106,29 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm"
       onClick={handleDismiss}
     >
       <div
-        className="w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl"
+        className="w-full max-w-lg rounded-[var(--radius-lg)] border border-line bg-bg p-6 shadow-[var(--shadow-2)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Zap size={16} className="text-amber-400" />
-            <h3 className="text-base font-semibold text-white">Quick Tailor</h3>
+            <Zap size={16} className="text-accent-strong" />
+            <h3 className="text-base font-semibold text-fg">Quick Tailor</h3>
           </div>
           <button
             onClick={handleDismiss}
-            className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300"
+            className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={16} />
           </button>
         </div>
-        <p className="mb-5 text-xs text-zinc-500">
+        <p className="mb-5 text-xs text-fg-3">
           A tailored copy of{' '}
-          <span className="text-zinc-300">&ldquo;{resumeTitle}&rdquo;</span> will be created and
+          <span className="text-fg-2">&ldquo;{resumeTitle}&rdquo;</span> will be created and
           optimized for the job description. The original is never modified.
         </p>
 
@@ -137,8 +137,8 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-zinc-400">
-                  Company <span className="text-zinc-600">(optional)</span>
+                <label className="mb-1.5 block text-xs font-medium text-fg-2">
+                  Company <span className="text-fg-3">(optional)</span>
                 </label>
                 <input
                   type="text"
@@ -146,12 +146,12 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
                   onChange={(e) => setCompanyName(e.target.value)}
                   placeholder="e.g. Google"
                   maxLength={200}
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-amber-300/40"
+                  className="w-full rounded-[var(--radius-md)] border border-line bg-surface px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-zinc-400">
-                  Role <span className="text-zinc-600">(optional)</span>
+                <label className="mb-1.5 block text-xs font-medium text-fg-2">
+                  Role <span className="text-fg-3">(optional)</span>
                 </label>
                 <input
                   type="text"
@@ -159,13 +159,13 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
                   onChange={(e) => setRoleTitle(e.target.value)}
                   placeholder="e.g. Senior SWE"
                   maxLength={200}
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-amber-300/40"
+                  className="w-full rounded-[var(--radius-md)] border border-line bg-surface px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
                 />
               </div>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-zinc-400">
-                Job Description <span className="text-rose-400">*</span>
+              <label className="mb-1.5 block text-xs font-medium text-fg-2">
+                Job Description <span className="text-err">*</span>
               </label>
               <textarea
                 value={jobDescription}
@@ -174,23 +174,23 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
                 rows={9}
                 maxLength={10000}
                 autoFocus
-                className="w-full resize-none rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-amber-300/40"
+                className="w-full resize-none rounded-[var(--radius-md)] border border-line bg-surface px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
               />
-              <p className="mt-1 text-right text-[10px] text-zinc-600">
+              <p className="mt-1 text-right text-[10px] text-fg-3">
                 {jobDescription.length}/10000
               </p>
             </div>
             <div className="flex justify-end gap-2">
               <button
                 onClick={onClose}
-                className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 transition hover:text-zinc-200"
+                className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={jobDescription.trim().length < 10 || isSubmitting}
-                className="flex items-center gap-1.5 rounded-lg bg-amber-500/20 px-4 py-2 text-xs font-semibold text-amber-300 ring-1 ring-amber-400/30 transition hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSubmitting ? (
                   <Loader2 size={13} className="animate-spin" />
@@ -206,30 +206,30 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
         {/* Step 2: Progress */}
         {step === 'progress' && (
           <div className="space-y-5">
-            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+            <div className="rounded-[var(--radius-md)] border border-line bg-surface p-4">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-medium text-zinc-300">
+                <span className="text-xs font-medium text-fg-2">
                   {state.stage || 'Initializing...'}
                 </span>
-                <span className="text-xs tabular-nums text-zinc-500">{state.percent}%</span>
+                <span className="text-xs tabular-nums text-fg-3">{state.percent}%</span>
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
                 <div
-                  className="h-full rounded-full bg-amber-400 transition-all duration-500"
+                  className="h-full rounded-full bg-accent transition-all duration-500"
                   style={{ width: `${state.percent}%` }}
                 />
               </div>
               {state.message && (
-                <p className="mt-2 text-xs text-zinc-500">{state.message}</p>
+                <p className="mt-2 text-xs text-fg-3">{state.message}</p>
               )}
             </div>
-            <p className="text-center text-xs text-zinc-600">
+            <p className="text-center text-xs text-fg-3">
               This typically takes 30–90 seconds. Don&apos;t close this window.
             </p>
             <div className="flex justify-end">
               <button
                 onClick={handleCancel}
-                className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 transition hover:text-zinc-200"
+                className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
               >
                 Cancel
               </button>
@@ -241,22 +241,22 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
         {step === 'done' && (
           <div className="space-y-5">
             <div className="flex flex-col items-center gap-3 py-4">
-              <CheckCircle size={40} className="text-emerald-400" />
-              <p className="text-base font-semibold text-white">Tailored resume created!</p>
-              <p className="text-center text-xs text-zinc-400">
+              <CheckCircle size={40} className="text-ok" />
+              <p className="text-base font-semibold text-fg">Tailored resume created!</p>
+              <p className="text-center text-xs text-fg-2">
                 The optimized version has been saved as a new variant.
               </p>
             </div>
             <div className="flex justify-end gap-2">
               <button
                 onClick={onClose}
-                className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 transition hover:text-zinc-200"
+                className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
               >
                 Close
               </button>
               <button
                 onClick={() => forkId && router.push(`/workspace/${forkId}/edit`)}
-                className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-400/30 transition hover:bg-emerald-500/30"
+                className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg transition hover:brightness-110"
               >
                 Open Tailored Resume
                 <ArrowRight size={13} />
@@ -269,20 +269,20 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
         {step === 'error' && (
           <div className="space-y-5">
             <div className="flex flex-col items-center gap-3 py-4">
-              <AlertCircle size={40} className="text-rose-400" />
-              <p className="text-base font-semibold text-white">Tailoring failed</p>
-              <p className="text-center text-xs text-zinc-400">{errorMessage}</p>
+              <AlertCircle size={40} className="text-err" />
+              <p className="text-base font-semibold text-fg">Tailoring failed</p>
+              <p className="text-center text-xs text-fg-2">{errorMessage}</p>
             </div>
             <div className="flex justify-end gap-2">
               <button
                 onClick={onClose}
-                className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-400 transition hover:text-zinc-200"
+                className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg"
               >
                 Close
               </button>
               <button
                 onClick={handleTryAgain}
-                className="rounded-lg border border-amber-400/20 bg-amber-500/10 px-4 py-2 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/20"
+                className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-4 py-2 text-xs font-semibold text-accent-strong transition hover:brightness-110"
               >
                 Try Again
               </button>

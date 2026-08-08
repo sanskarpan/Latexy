@@ -84,7 +84,7 @@ export default function WatermarkDownloadPopover({
         onClick={() => setOpen((o) => !o)}
         disabled={loading}
         title="Download with Watermark"
-        className="flex items-center gap-1 px-2 py-1 text-[10px] text-zinc-600 transition hover:text-zinc-300 disabled:opacity-50"
+        className="flex items-center gap-1 px-2 py-1 text-[10px] text-fg-3 transition hover:text-fg-2 disabled:opacity-50"
       >
         {loading ? <Loader2 size={11} className="animate-spin" /> : <Stamp size={11} />}
         Watermark
@@ -98,8 +98,8 @@ export default function WatermarkDownloadPopover({
             onClick={() => setOpen(false)}
           />
           {/* Popover */}
-          <div className="absolute right-0 z-50 mt-1 w-56 rounded-xl border border-white/[0.08] bg-[#0d0d0d] p-3 shadow-2xl">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          <div className="absolute right-0 z-50 mt-1 w-56 rounded-[var(--radius-lg)] border border-line bg-surface p-3 shadow-[var(--shadow-2)]">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-fg-3">
               Watermark text
             </p>
 
@@ -109,7 +109,7 @@ export default function WatermarkDownloadPopover({
                 <button
                   key={preset}
                   onClick={() => triggerDownload(preset)}
-                  className="rounded-md px-2.5 py-1.5 text-left text-[11px] font-medium text-zinc-300 transition hover:bg-white/[0.06]"
+                  className="rounded-[var(--radius-md)] px-2.5 py-1.5 text-left text-[11px] font-medium text-fg-2 transition hover:bg-surface-2"
                 >
                   {preset}
                 </button>
@@ -117,7 +117,7 @@ export default function WatermarkDownloadPopover({
             </div>
 
             {/* Divider */}
-            <div className="my-2 border-t border-white/[0.06]" />
+            <div className="my-2 border-t border-line" />
 
             {/* Custom input */}
             <div className="flex gap-1.5">
@@ -128,17 +128,17 @@ export default function WatermarkDownloadPopover({
                 onChange={(e) => setCustom(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleCustomDownload() }}
                 placeholder="Custom…"
-                className="min-w-0 flex-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[11px] text-zinc-200 placeholder-zinc-600 outline-none focus:border-white/[0.15]"
+                className="min-w-0 flex-1 rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-1 text-[11px] text-fg placeholder-fg-3 outline-none focus:border-line-2"
               />
               <button
                 onClick={handleCustomDownload}
                 disabled={!custom.trim()}
-                className="rounded-md bg-white/[0.06] px-2 py-1 text-[10px] font-semibold text-zinc-300 transition hover:bg-white/[0.10] disabled:opacity-40"
+                className="rounded-[var(--radius-md)] bg-surface-2 px-2 py-1 text-[10px] font-semibold text-fg-2 transition hover:brightness-110 disabled:opacity-40"
               >
                 ↓
               </button>
             </div>
-            <p className="mt-1.5 text-[9px] text-zinc-600">
+            <p className="mt-1.5 text-[9px] text-fg-3">
               Letters, digits, spaces, hyphens, dots · max {MAX_LEN} chars
             </p>
           </div>

@@ -54,27 +54,27 @@ export default function CompileErrorHistory({ onClose }: CompileErrorHistoryProp
   const topError = summaries[0]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4">
+      <div className="w-full max-w-2xl rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)] flex flex-col max-h-[90vh]">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-line shrink-0">
           <div className="flex items-center gap-2.5">
-            <AlertCircle size={18} className="text-orange-400" />
-            <h2 className="text-sm font-semibold text-white">Compile Error History</h2>
+            <AlertCircle size={18} className="text-accent-strong" />
+            <h2 className="text-sm font-semibold text-fg">Compile Error History</h2>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={load}
               disabled={loading}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 disabled:opacity-40 transition"
+              className="p-1.5 rounded-[var(--radius-md)] text-fg-2 hover:text-fg hover:bg-surface-2 disabled:opacity-40 transition"
               title="Refresh"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition"
+              className="p-1.5 rounded-[var(--radius-md)] text-fg-2 hover:text-fg hover:bg-surface-2 transition"
               aria-label="Close"
             >
               <X size={14} />
@@ -87,12 +87,12 @@ export default function CompileErrorHistory({ onClose }: CompileErrorHistoryProp
 
           {/* Most-common error banner */}
           {topError && topError.count > 1 && (
-            <div className="mx-4 mt-4 flex items-start gap-3 rounded-xl border border-orange-500/20 bg-orange-500/[0.07] px-4 py-3">
-              <Trophy size={16} className="mt-0.5 shrink-0 text-orange-400" />
+            <div className="mx-4 mt-4 flex items-start gap-3 rounded-[var(--radius-md)] border border-accent bg-accent-soft px-4 py-3">
+              <Trophy size={16} className="mt-0.5 shrink-0 text-accent-strong" />
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-orange-300">Most common mistake</p>
-                <p className="mt-0.5 truncate text-sm font-mono text-orange-100">{topError.error_type}</p>
-                <p className="mt-0.5 text-xs text-orange-400/70">
+                <p className="text-xs font-semibold text-accent-strong">Most common mistake</p>
+                <p className="mt-0.5 truncate text-sm font-mono text-accent-strong">{topError.error_type}</p>
+                <p className="mt-0.5 text-xs text-accent-strong">
                   Encountered {topError.count} time{topError.count !== 1 ? 's' : ''}
                   {topError.resolved ? ' · resolved' : ' · still recurring'}
                 </p>
@@ -102,7 +102,7 @@ export default function CompileErrorHistory({ onClose }: CompileErrorHistoryProp
 
           {/* Loading */}
           {loading && (
-            <div className="flex items-center justify-center py-16 text-sm text-zinc-500">
+            <div className="flex items-center justify-center py-16 text-sm text-fg-3">
               <RefreshCw size={16} className="mr-2 animate-spin" />
               Loading…
             </div>
@@ -110,12 +110,12 @@ export default function CompileErrorHistory({ onClose }: CompileErrorHistoryProp
 
           {/* Error */}
           {!loading && error && (
-            <div className="flex flex-col items-center gap-3 py-16 text-sm text-zinc-500">
-              <AlertCircle size={24} className="text-red-400" />
+            <div className="flex flex-col items-center gap-3 py-16 text-sm text-fg-3">
+              <AlertCircle size={24} className="text-err" />
               <span>{error}</span>
               <button
                 onClick={load}
-                className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white hover:bg-white/15 transition"
+                className="rounded-[var(--radius-md)] bg-surface-2 px-3 py-1.5 text-xs text-fg hover:bg-surface-2 transition"
               >
                 Retry
               </button>
@@ -125,9 +125,9 @@ export default function CompileErrorHistory({ onClose }: CompileErrorHistoryProp
           {/* Empty state */}
           {!loading && !error && summaries.length === 0 && (
             <div className="flex flex-col items-center gap-3 py-20">
-              <CheckCircle2 size={28} className="text-emerald-400" />
-              <p className="text-sm font-medium text-zinc-300">No compile errors yet — great work!</p>
-              <p className="text-xs text-zinc-500">Error patterns will appear here as you compile your resumes.</p>
+              <CheckCircle2 size={28} className="text-ok" />
+              <p className="text-sm font-medium text-fg-2">No compile errors yet — great work!</p>
+              <p className="text-xs text-fg-3">Error patterns will appear here as you compile your resumes.</p>
             </div>
           )}
 
@@ -135,11 +135,11 @@ export default function CompileErrorHistory({ onClose }: CompileErrorHistoryProp
           {!loading && !error && summaries.length > 0 && (
             <table className="w-full text-sm mt-4">
               <thead>
-                <tr className="border-b border-white/5 text-left">
-                  <th className="px-5 pb-2 text-xs font-medium text-zinc-500 w-1/2">Error Type</th>
-                  <th className="px-3 pb-2 text-xs font-medium text-zinc-500 text-center">Times</th>
-                  <th className="px-3 pb-2 text-xs font-medium text-zinc-500">Last Seen</th>
-                  <th className="px-3 pb-2 text-xs font-medium text-zinc-500 text-center">Status</th>
+                <tr className="border-b border-line text-left">
+                  <th className="px-5 pb-2 text-xs font-medium text-fg-3 w-1/2">Error Type</th>
+                  <th className="px-3 pb-2 text-xs font-medium text-fg-3 text-center">Times</th>
+                  <th className="px-3 pb-2 text-xs font-medium text-fg-3">Last Seen</th>
+                  <th className="px-3 pb-2 text-xs font-medium text-fg-3 text-center">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,38 +149,38 @@ export default function CompileErrorHistory({ onClose }: CompileErrorHistoryProp
                     <>
                       <tr
                         key={s.error_type}
-                        className="group cursor-pointer border-b border-white/5 hover:bg-white/[0.03] transition"
+                        className="group cursor-pointer border-b border-line hover:bg-surface-2 transition"
                         onClick={() => toggle(s.error_type)}
                       >
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <span className="shrink-0 text-zinc-500">
+                            <span className="shrink-0 text-fg-3">
                               {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                             </span>
-                            <span className="font-mono text-xs text-orange-300 truncate max-w-[260px]" title={s.error_type}>
+                            <span className="font-mono text-xs text-accent-strong truncate max-w-[260px]" title={s.error_type}>
                               {s.error_type}
                             </span>
                           </div>
                         </td>
                         <td className="px-3 py-3 text-center">
-                          <span className="rounded-full bg-orange-500/20 px-2 py-0.5 text-xs font-semibold text-orange-300">
+                          <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent-strong">
                             {s.count}×
                           </span>
                         </td>
-                        <td className="px-3 py-3 text-xs text-zinc-400 whitespace-nowrap">
+                        <td className="px-3 py-3 text-xs text-fg-2 whitespace-nowrap">
                           <span className="flex items-center gap-1.5">
-                            <Clock size={11} className="shrink-0 text-zinc-600" />
+                            <Clock size={11} className="shrink-0 text-fg-3" />
                             {formatRelativeDate(s.last_seen)}
                           </span>
                         </td>
                         <td className="px-3 py-3 text-center">
                           {s.resolved ? (
-                            <span className="flex items-center justify-center gap-1 text-xs text-emerald-400">
+                            <span className="flex items-center justify-center gap-1 text-xs text-ok">
                               <CheckCircle2 size={12} />
                               Resolved
                             </span>
                           ) : (
-                            <span className="flex items-center justify-center gap-1 text-xs text-amber-400">
+                            <span className="flex items-center justify-center gap-1 text-xs text-warn">
                               <AlertCircle size={12} />
                               Recurring
                             </span>
@@ -190,20 +190,20 @@ export default function CompileErrorHistory({ onClose }: CompileErrorHistoryProp
 
                       {/* Expanded detail row */}
                       {isExpanded && (
-                        <tr key={`${s.error_type}-detail`} className="border-b border-white/5 bg-white/[0.02]">
+                        <tr key={`${s.error_type}-detail`} className="border-b border-line bg-surface">
                           <td colSpan={4} className="px-6 py-3 space-y-2">
                             <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 mb-1">Example output</p>
-                              <code className="block rounded-md bg-black/50 px-3 py-2 font-mono text-xs text-orange-200 break-all">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-fg-3 mb-1">Example output</p>
+                              <code className="block rounded-[var(--radius-md)] bg-surface-2 px-3 py-2 font-mono text-xs text-accent-strong break-all">
                                 {s.example_line || '(no details)'}
                               </code>
                             </div>
                             {s.last_resume_id && (
-                              <div className="flex items-center gap-2 text-xs text-zinc-400">
+                              <div className="flex items-center gap-2 text-xs text-fg-2">
                                 <span className="shrink-0">Last in:</span>
                                 <Link
                                   href={`/workspace/${s.last_resume_id}/edit`}
-                                  className="text-violet-400 hover:text-violet-300 underline underline-offset-2 truncate"
+                                  className="text-accent-strong hover:brightness-110 underline underline-offset-2 truncate"
                                   onClick={onClose}
                                 >
                                   {s.last_resume_title ?? s.last_resume_id}
@@ -223,15 +223,15 @@ export default function CompileErrorHistory({ onClose }: CompileErrorHistoryProp
         </div>
 
         {/* Footer */}
-        <div className="border-t border-white/10 px-6 py-3 shrink-0 flex items-center justify-between">
-          <p className="text-xs text-zinc-600">
+        <div className="border-t border-line px-6 py-3 shrink-0 flex items-center justify-between">
+          <p className="text-xs text-fg-3">
             {summaries.length > 0
               ? `${summaries.length} error type${summaries.length !== 1 ? 's' : ''} found`
               : 'No errors'}
           </p>
           <button
             onClick={onClose}
-            className="rounded-lg bg-white/10 px-4 py-1.5 text-xs font-medium text-white hover:bg-white/15 transition"
+            className="rounded-[var(--radius-md)] bg-surface-2 px-4 py-1.5 text-xs font-medium text-fg hover:bg-surface-2 transition"
           >
             Close
           </button>

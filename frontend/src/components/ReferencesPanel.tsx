@@ -26,8 +26,8 @@ function TypeBadge({ type }: { type: 'doi' | 'arxiv' | null }) {
   return (
     <span className={`ml-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
       type === 'doi'
-        ? 'bg-sky-500/15 text-sky-400'
-        : 'bg-violet-500/15 text-violet-400'
+        ? 'bg-accent-soft text-accent-strong'
+        : 'bg-surface-2 text-fg-2'
     }`}>
       {type}
     </span>
@@ -44,10 +44,10 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={copy}
-      className="ml-1 rounded p-0.5 text-white/30 transition hover:text-white/60"
+      className="ml-1 rounded p-0.5 text-fg-3 transition hover:text-fg-2"
       title="Copy to clipboard"
     >
-      {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+      {copied ? <Check className="h-3 w-3 text-ok" /> : <Copy className="h-3 w-3" />}
     </button>
   )
 }
@@ -65,12 +65,12 @@ function EntryCard({
 
   if (entry.error) {
     return (
-      <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5">
+      <div className="rounded-[var(--radius-md)] border border-err/20 bg-err/10 px-3 py-2.5">
         <div className="flex items-start gap-2">
-          <span className="mt-0.5 shrink-0 text-red-400">!</span>
+          <span className="mt-0.5 shrink-0 text-err">!</span>
           <div className="min-w-0">
-            <div className="truncate text-[11px] font-medium text-white/60">{entry.identifier}</div>
-            <div className="mt-0.5 text-[11px] text-red-400">{entry.error}</div>
+            <div className="truncate text-[11px] font-medium text-fg-2">{entry.identifier}</div>
+            <div className="mt-0.5 text-[11px] text-err">{entry.error}</div>
           </div>
         </div>
       </div>
@@ -78,29 +78,29 @@ function EntryCard({
   }
 
   return (
-    <div className="rounded-lg border border-white/[0.07] bg-white/[0.03]">
+    <div className="rounded-[var(--radius-md)] border border-line bg-surface">
       {/* Header */}
       <div className="px-3 py-2.5">
         <div className="flex items-start gap-2">
           <TypeBadge type={entry.source_type as 'doi' | 'arxiv' | null} />
           <div className="min-w-0 flex-1">
             {entry.title && (
-              <div className="text-[12px] font-medium leading-snug text-white/85">
+              <div className="text-[12px] font-medium leading-snug text-fg">
                 {entry.title}
               </div>
             )}
             {entry.authors && (
-              <div className="mt-0.5 truncate text-[11px] text-white/40">{entry.authors}</div>
+              <div className="mt-0.5 truncate text-[11px] text-fg-3">{entry.authors}</div>
             )}
             {entry.year && (
-              <div className="mt-0.5 text-[10px] text-white/30">{entry.year}</div>
+              <div className="mt-0.5 text-[10px] text-fg-3">{entry.year}</div>
             )}
           </div>
         </div>
 
         {/* Cite key row */}
         <div className="mt-2 flex items-center gap-1">
-          <code className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-amber-300/80">
+          <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-accent-strong">
             \cite{'{'}
             {entry.cite_key}
             {'}'}
@@ -108,7 +108,7 @@ function EntryCard({
           <CopyButton text={`\\cite{${entry.cite_key}}`} />
           <button
             onClick={() => onInsertCiteKey(`\\cite{${entry.cite_key}}`)}
-            className="ml-auto flex items-center gap-1 rounded px-2 py-0.5 text-[10px] text-white/40 transition hover:bg-white/[0.06] hover:text-white/70"
+            className="ml-auto flex items-center gap-1 rounded px-2 py-0.5 text-[10px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             title="Insert \cite{} at cursor"
           >
             <Plus className="h-3 w-3" />
@@ -118,25 +118,25 @@ function EntryCard({
       </div>
 
       {/* BibTeX toggle */}
-      <div className="border-t border-white/[0.05]">
+      <div className="border-t border-line">
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[10px] text-white/30 transition hover:text-white/50"
+          className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[10px] text-fg-3 transition hover:text-fg-2"
         >
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           BibTeX
         </button>
 
         {expanded && entry.bibtex && (
-          <div className="border-t border-white/[0.05] px-3 pb-2.5 pt-2">
-            <pre className="max-h-40 overflow-auto rounded bg-black/40 p-2 text-[10px] leading-relaxed text-white/60 ring-1 ring-white/[0.06]">
+          <div className="border-t border-line px-3 pb-2.5 pt-2">
+            <pre className="max-h-40 overflow-auto rounded bg-bg p-2 text-[10px] leading-relaxed text-fg-2 ring-1 ring-line">
               {entry.bibtex}
             </pre>
             <div className="mt-2 flex items-center justify-end gap-2">
               <CopyButton text={entry.bibtex} />
               <button
                 onClick={() => onInsertBibTeX(entry.bibtex!)}
-                className="flex items-center gap-1 rounded-md bg-emerald-500/15 px-2.5 py-1 text-[10px] font-medium text-emerald-300 ring-1 ring-emerald-400/25 transition hover:bg-emerald-500/25"
+                className="flex items-center gap-1 rounded-[var(--radius-md)] bg-ok/15 px-2.5 py-1 text-[10px] font-medium text-ok ring-1 ring-ok/25 transition hover:bg-ok/25"
               >
                 <PlusCircle className="h-3 w-3" />
                 Insert BibTeX
@@ -240,23 +240,23 @@ function ZoteroSection({
 
   if (statusLoading) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-white/30">
+      <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-fg-3">
         <Loader2 className="h-3 w-3 animate-spin" /> Checking Zotero…
       </div>
     )
   }
 
   return (
-    <div className="border-t border-white/[0.05]">
+    <div className="border-t border-line">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-white/50 transition hover:text-white/80"
+        className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-fg-2 transition hover:text-fg"
       >
         <span className="flex items-center gap-2">
-          <span className="flex h-4 w-4 items-center justify-center rounded bg-[#CC2936]/20 text-[8px] font-bold text-red-400">Z</span>
+          <span className="flex h-4 w-4 items-center justify-center rounded bg-accent-soft text-[8px] font-bold text-accent-strong">Z</span>
           Zotero
           {status?.connected && (
-            <span className="rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] text-emerald-400">connected</span>
+            <span className="rounded bg-ok/15 px-1 py-0.5 text-[9px] text-ok">connected</span>
           )}
         </span>
         {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -265,16 +265,16 @@ function ZoteroSection({
       {expanded && (
         <div className="space-y-2 px-3 pb-3">
           {success && (
-            <p className="rounded-lg bg-emerald-500/10 px-2 py-1.5 text-[10px] text-emerald-400">{success}</p>
+            <p className="rounded-[var(--radius-md)] bg-ok/10 px-2 py-1.5 text-[10px] text-ok">{success}</p>
           )}
           {error && (
-            <p className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-[10px] text-rose-400">{error}</p>
+            <p className="rounded-[var(--radius-md)] bg-err/10 px-2 py-1.5 text-[10px] text-err">{error}</p>
           )}
 
           {!status?.connected ? (
             <button
               onClick={handleConnect}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#CC2936]/15 py-1.5 text-[11px] font-medium text-red-300 ring-1 ring-red-500/20 transition hover:bg-[#CC2936]/25"
+              className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110"
             >
               <ExternalLink className="h-3 w-3" />
               Connect Zotero
@@ -282,10 +282,10 @@ function ZoteroSection({
           ) : (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[11px]">
-                <span className="text-white/50">@{status.username}</span>
+                <span className="text-fg-2">@{status.username}</span>
                 <button
                   onClick={handleDisconnect}
-                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-white/30 transition hover:text-rose-400"
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-fg-3 transition hover:text-err"
                 >
                   <Unlink className="h-3 w-3" />
                   Disconnect
@@ -297,7 +297,7 @@ function ZoteroSection({
                 <select
                   value={selectedCollection}
                   onChange={e => setSelectedCollection(e.target.value)}
-                  className="flex-1 rounded-md bg-black/30 px-2 py-1 text-[11px] text-white/60 ring-1 ring-white/[0.08] outline-none"
+                  className="flex-1 rounded-[var(--radius-md)] bg-bg px-2 py-1 text-[11px] text-fg-2 ring-1 ring-line outline-none"
                 >
                   <option value="">All items</option>
                   {collections.map(c => (
@@ -307,7 +307,7 @@ function ZoteroSection({
                 <button
                   onClick={loadCollections}
                   disabled={collectionsLoading}
-                  className="rounded-md p-1 text-white/30 transition hover:text-white/60 disabled:opacity-40"
+                  className="rounded-[var(--radius-md)] p-1 text-fg-3 transition hover:text-fg-2 disabled:opacity-40"
                   title="Refresh collections"
                 >
                   <RefreshCw className={`h-3 w-3 ${collectionsLoading ? 'animate-spin' : ''}`} />
@@ -317,13 +317,13 @@ function ZoteroSection({
               <button
                 onClick={handleImport}
                 disabled={importing || !resumeId}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#CC2936]/15 py-1.5 text-[11px] font-medium text-red-300 ring-1 ring-red-500/20 transition hover:bg-[#CC2936]/25 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlusCircle className="h-3 w-3" />}
                 {importing ? 'Importing…' : 'Import BibTeX'}
               </button>
               {!resumeId && (
-                <p className="text-center text-[10px] text-white/25">Open a resume to import</p>
+                <p className="text-center text-[10px] text-fg-3">Open a resume to import</p>
               )}
             </div>
           )}
@@ -406,23 +406,23 @@ function MendeleySection({
 
   if (statusLoading) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-white/30">
+      <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-fg-3">
         <Loader2 className="h-3 w-3 animate-spin" /> Checking Mendeley…
       </div>
     )
   }
 
   return (
-    <div className="border-t border-white/[0.05]">
+    <div className="border-t border-line">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-white/50 transition hover:text-white/80"
+        className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-fg-2 transition hover:text-fg"
       >
         <span className="flex items-center gap-2">
-          <span className="flex h-4 w-4 items-center justify-center rounded bg-[#9D1F30]/20 text-[8px] font-bold text-rose-400">M</span>
+          <span className="flex h-4 w-4 items-center justify-center rounded bg-accent-soft text-[8px] font-bold text-accent-strong">M</span>
           Mendeley
           {status?.connected && (
-            <span className="rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] text-emerald-400">connected</span>
+            <span className="rounded bg-ok/15 px-1 py-0.5 text-[9px] text-ok">connected</span>
           )}
         </span>
         {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -431,16 +431,16 @@ function MendeleySection({
       {expanded && (
         <div className="space-y-2 px-3 pb-3">
           {success && (
-            <p className="rounded-lg bg-emerald-500/10 px-2 py-1.5 text-[10px] text-emerald-400">{success}</p>
+            <p className="rounded-[var(--radius-md)] bg-ok/10 px-2 py-1.5 text-[10px] text-ok">{success}</p>
           )}
           {error && (
-            <p className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-[10px] text-rose-400">{error}</p>
+            <p className="rounded-[var(--radius-md)] bg-err/10 px-2 py-1.5 text-[10px] text-err">{error}</p>
           )}
 
           {!status?.connected ? (
             <button
               onClick={handleConnect}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-rose-500/10 py-1.5 text-[11px] font-medium text-rose-300 ring-1 ring-rose-500/20 transition hover:bg-rose-500/20"
+              className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110"
             >
               <ExternalLink className="h-3 w-3" />
               Connect Mendeley
@@ -448,10 +448,10 @@ function MendeleySection({
           ) : (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-[11px]">
-                <span className="text-white/50">{status.name ?? 'Connected'}</span>
+                <span className="text-fg-2">{status.name ?? 'Connected'}</span>
                 <button
                   onClick={handleDisconnect}
-                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-white/30 transition hover:text-rose-400"
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-fg-3 transition hover:text-err"
                 >
                   <Unlink className="h-3 w-3" />
                   Disconnect
@@ -461,13 +461,13 @@ function MendeleySection({
               <button
                 onClick={handleImport}
                 disabled={importing || !resumeId}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-rose-500/10 py-1.5 text-[11px] font-medium text-rose-300 ring-1 ring-rose-500/20 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlusCircle className="h-3 w-3" />}
                 {importing ? 'Importing…' : 'Import All BibTeX'}
               </button>
               {!resumeId && (
-                <p className="text-center text-[10px] text-white/25">Open a resume to import</p>
+                <p className="text-center text-[10px] text-fg-3">Open a resume to import</p>
               )}
             </div>
           )}
@@ -531,13 +531,13 @@ function OrcidSection({
   }
 
   return (
-    <div className="border-t border-white/[0.05]">
+    <div className="border-t border-line">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-white/50 transition hover:text-white/80"
+        className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-fg-2 transition hover:text-fg"
       >
         <span className="flex items-center gap-2">
-          <span className="flex h-4 w-4 items-center justify-center rounded bg-[#A6CE39]/15 text-[7px] font-black text-[#A6CE39]">iD</span>
+          <span className="flex h-4 w-4 items-center justify-center rounded bg-accent-soft text-[7px] font-black text-accent-strong">iD</span>
           ORCID
         </span>
         {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -545,7 +545,7 @@ function OrcidSection({
 
       {expanded && (
         <div className="space-y-2 px-3 pb-3">
-          <p className="text-[10px] leading-snug text-white/25">
+          <p className="text-[10px] leading-snug text-fg-3">
             Fetch publications from a public ORCID profile
           </p>
 
@@ -556,26 +556,26 @@ function OrcidSection({
               onChange={e => { setInput(e.target.value); setFetched(false); setEntries([]) }}
               onKeyDown={e => e.key === 'Enter' && handleFetch()}
               placeholder="0000-0001-2345-6789"
-              className="flex-1 rounded-lg bg-black/30 px-2.5 py-1.5 font-mono text-[11px] text-white/70 placeholder:text-white/20 ring-1 ring-white/[0.08] outline-none focus:ring-white/[0.15] transition"
+              className="flex-1 rounded-[var(--radius-md)] bg-bg px-2.5 py-1.5 font-mono text-[11px] text-fg placeholder:text-fg-3 ring-1 ring-line outline-none focus:ring-line-2 transition"
             />
             <button
               onClick={handleFetch}
               disabled={!valid || loading}
-              className="flex items-center gap-1 rounded-lg bg-[#A6CE39]/15 px-2.5 py-1.5 text-[11px] font-medium text-[#A6CE39] ring-1 ring-[#A6CE39]/20 transition hover:bg-[#A6CE39]/25 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex items-center gap-1 rounded-[var(--radius-md)] bg-accent-soft px-2.5 py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
             </button>
           </div>
 
           {input && !valid && (
-            <p className="text-[10px] text-amber-400/70">Format: 0000-0001-2345-6789</p>
+            <p className="text-[10px] text-warn">Format: 0000-0001-2345-6789</p>
           )}
 
-          {error && <p className="text-[10px] text-rose-400">{error}</p>}
+          {error && <p className="text-[10px] text-err">{error}</p>}
 
           {entries.length > 0 && (
             <div className="space-y-2">
-              <p className="text-[10px] text-white/30">{entries.length} publication{entries.length !== 1 ? 's' : ''} found</p>
+              <p className="text-[10px] text-fg-3">{entries.length} publication{entries.length !== 1 ? 's' : ''} found</p>
               <div className="max-h-64 space-y-2 overflow-y-auto">
                 {entries.map((entry, i) => (
                   <EntryCard
@@ -589,7 +589,7 @@ function OrcidSection({
               {entries.length > 1 && (
                 <button
                   onClick={handleInsertAll}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-500/10 py-1.5 text-[10px] font-medium text-emerald-300 ring-1 ring-emerald-400/20 transition hover:bg-emerald-500/20"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-ok/10 py-1.5 text-[10px] font-medium text-ok ring-1 ring-ok/20 transition hover:bg-ok/20"
                 >
                   <PlusCircle className="h-3 w-3" />
                   Insert All ({entries.filter(e => e.bibtex).length}) BibTeX entries
@@ -637,11 +637,11 @@ function LibrarySection({
   })
 
   return (
-    <div className="border-t border-white/[0.05]">
-      <div className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-white/50">
+    <div className="border-t border-line">
+      <div className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-fg-2">
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex flex-1 items-center gap-2 transition hover:text-white/80 text-left"
+          className="flex flex-1 items-center gap-2 transition hover:text-fg text-left"
         >
           <BookOpen className="h-3.5 w-3.5" />
           Imported Library ({entries.length})
@@ -649,12 +649,12 @@ function LibrarySection({
         <div className="flex items-center gap-1">
           <button
             onClick={() => onClear()}
-            className="rounded p-0.5 text-white/20 transition hover:text-rose-400"
+            className="rounded p-0.5 text-fg-3 transition hover:text-err"
             title="Clear imported library"
           >
             <X className="h-3 w-3" />
           </button>
-          <button onClick={() => setExpanded(!expanded)} className="rounded p-0.5 transition hover:text-white/80">
+          <button onClick={() => setExpanded(!expanded)} className="rounded p-0.5 transition hover:text-fg">
             {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           </button>
         </div>
@@ -663,22 +663,22 @@ function LibrarySection({
       {expanded && (
         <div className="max-h-64 overflow-y-auto px-3 pb-3 space-y-1.5">
           {parsed.map((p, i) => (
-            <div key={i} className="flex items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5">
+            <div key={i} className="flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-line bg-surface px-2.5 py-1.5">
               <div className="min-w-0 flex-1">
-                <span className="rounded bg-sky-500/10 px-1 py-0.5 text-[9px] text-sky-400 mr-1.5">@{p.type}</span>
-                <code className="text-[11px] text-amber-300/80">{p.key}</code>
+                <span className="rounded bg-accent-soft px-1 py-0.5 text-[9px] text-accent-strong mr-1.5">@{p.type}</span>
+                <code className="text-[11px] text-accent-strong">{p.key}</code>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <button
                   onClick={() => onInsertCiteKey(`\\cite{${p.key}}`)}
-                  className="rounded px-1.5 py-0.5 text-[9px] text-white/30 transition hover:bg-white/[0.06] hover:text-white/60"
+                  className="rounded px-1.5 py-0.5 text-[9px] text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
                   title="Insert \cite{key}"
                 >
                   \cite
                 </button>
                 <button
                   onClick={() => onInsertBibTeX('\n' + p.raw)}
-                  className="rounded px-1.5 py-0.5 text-[9px] text-emerald-400/60 transition hover:bg-emerald-500/10 hover:text-emerald-300"
+                  className="rounded px-1.5 py-0.5 text-[9px] text-ok transition hover:bg-ok/10 hover:text-ok"
                   title="Insert full BibTeX entry"
                 >
                   BibTeX
@@ -689,7 +689,7 @@ function LibrarySection({
 
           <button
             onClick={() => onInsertBibTeX('\n' + bibtex)}
-            className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-500/10 py-1.5 text-[10px] font-medium text-emerald-300 ring-1 ring-emerald-400/20 transition hover:bg-emerald-500/20"
+            className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-ok/10 py-1.5 text-[10px] font-medium text-ok ring-1 ring-ok/20 transition hover:bg-ok/20"
           >
             <PlusCircle className="h-3 w-3" />
             Insert All ({entries.length}) entries
@@ -755,18 +755,18 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 border-b border-white/[0.05] px-3 py-2.5">
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/40">
+      <div className="shrink-0 border-b border-line px-3 py-2.5">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-fg-3">
           <BookOpen className="h-3.5 w-3.5" />
           BibTeX Import
         </div>
-        <p className="mt-1 text-[10px] leading-snug text-white/25">
+        <p className="mt-1 text-[10px] leading-snug text-fg-3">
           Paste DOIs or arXiv IDs, one per line
         </p>
       </div>
 
       {/* Input area */}
-      <div className="shrink-0 border-b border-white/[0.05] p-3">
+      <div className="shrink-0 border-b border-line p-3">
         <div className="relative">
           <textarea
             ref={textareaRef}
@@ -777,7 +777,7 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
             }}
             placeholder={`10.1145/3386569.3392408\n1706.03762\nhttps://doi.org/10.1145/...`}
             rows={4}
-            className="w-full resize-none rounded-lg bg-black/30 p-2.5 font-mono text-[11px] text-white/70 placeholder:text-white/20 ring-1 ring-white/[0.08] outline-none focus:ring-white/[0.15] transition"
+            className="w-full resize-none rounded-[var(--radius-md)] bg-bg p-2.5 font-mono text-[11px] text-fg placeholder:text-fg-3 ring-1 ring-line outline-none focus:ring-line-2 transition"
           />
           {/* Per-line type badges (overlay) */}
           {input && (
@@ -797,7 +797,7 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
         <button
           onClick={handleFetch}
           disabled={!lines.length || loading}
-          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-sky-500/20 py-1.5 text-[11px] font-medium text-sky-300 ring-1 ring-sky-400/25 transition hover:bg-sky-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent py-1.5 text-[11px] font-medium text-accent-fg ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {loading ? (
             <>
@@ -818,9 +818,9 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
         {/* DOI/arXiv results */}
         <div className="p-3">
           {fetchError ? (
-            <p className="text-center text-[11px] text-red-400">{fetchError}</p>
+            <p className="text-center text-[11px] text-err">{fetchError}</p>
           ) : fetched && entries.length === 0 ? (
-            <p className="text-center text-[11px] text-white/25">No results</p>
+            <p className="text-center text-[11px] text-fg-3">No results</p>
           ) : null}
 
           {entries.length > 0 && (
@@ -871,10 +871,10 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
 
       {/* Footer: Insert All DOI/arXiv results */}
       {successCount > 1 && (
-        <div className="shrink-0 border-t border-white/[0.05] p-3">
+        <div className="shrink-0 border-t border-line p-3">
           <button
             onClick={handleInsertAll}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-500/15 py-1.5 text-[11px] font-medium text-emerald-300 ring-1 ring-emerald-400/25 transition hover:bg-emerald-500/25"
+            className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-ok/15 py-1.5 text-[11px] font-medium text-ok ring-1 ring-ok/25 transition hover:bg-ok/25"
           >
             <PlusCircle className="h-3.5 w-3.5" />
             Insert All ({successCount}) BibTeX entries

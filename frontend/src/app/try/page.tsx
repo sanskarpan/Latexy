@@ -1,15 +1,21 @@
 'use client'
 
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
-import { ChevronDown, Link2, Loader2, Upload, X, Zap } from 'lucide-react'
-import { motion } from 'framer-motion'
+import Link from 'next/link'
+import {
+  AlertTriangle, Briefcase, Check, ChevronDown, ChevronRight, Clock, DownloadCloud,
+  FileCode2, Files, Gauge, GitBranch, LayoutTemplate, Link2, Loader2, MapPin,
+  PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, Play, RotateCcw,
+  Sparkles, Upload, X, Zap,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type ExplainErrorResponse, type ScrapeJobResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useTrialStatus } from '@/hooks/useTrialStatus'
 import LaTeXEditor, { LaTeXEditorRef } from '@/components/LaTeXEditor'
+import ModeToggle from '@/components/theme/ModeToggle'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
@@ -21,6 +27,7 @@ const DeepAnalysisPanel = dynamic(() => import('@/components/ats/DeepAnalysisPan
 const MultiFormatUpload = dynamic(() => import('@/components/MultiFormatUpload'))
 const ExportDropdown = dynamic(() => import('@/components/ExportDropdown'))
 const ErrorExplainerPanel = dynamic(() => import('@/components/ErrorExplainerPanel'))
+const ImportProjectsModal = dynamic(() => import('@/components/ImportProjectsModal'))
 
 const CATEGORY_LABELS: Record<string, string> = {
   formatting: 'Formatting',
@@ -29,6 +36,17 @@ const CATEGORY_LABELS: Record<string, string> = {
   keywords: 'Keywords',
   readability: 'Readability',
 }
+
+type Tool = 'files' | 'ai' | 'ats' | 'import' | 'templates'
+type MobilePane = 'tools' | 'editor' | 'pdf'
+
+const RAIL: { id: Tool; icon: typeof Files; label: string }[] = [
+  { id: 'files', icon: Files, label: 'Files' },
+  { id: 'ai', icon: Sparkles, label: 'AI Optimize' },
+  { id: 'ats', icon: Gauge, label: 'ATS Score' },
+  { id: 'import', icon: DownloadCloud, label: 'Import' },
+  { id: 'templates', icon: LayoutTemplate, label: 'Templates' },
+]
 
 export default function TryPage() {
   const flags = useFeatureFlags()
@@ -41,6 +59,7 @@ export default function TryPage() {
   const [logsOpen, setLogsOpen] = useState(false)
   const [deepPanelOpen, setDeepPanelOpen] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showProjectsModal, setShowProjectsModal] = useState(false)
   const [deepAnalysisJobId, setDeepAnalysisJobId] = useState<string | null>(null)
   const [deepAnalysisUsesRemaining, setDeepAnalysisUsesRemaining] = useState<number | null>(null)
   const [isDeepAnalysisRunning, setIsDeepAnalysisRunning] = useState(false)
@@ -57,6 +76,16 @@ export default function TryPage() {
   const [explainerData, setExplainerData] = useState<ExplainErrorResponse | null>(null)
   const [explainerLine, setExplainerLine] = useState<number | null>(null)
 
+  // ── IDE shell layout state ──
+  const [tool, setTool] = useState<Tool>('files')
+  const [leftOpen, setLeftOpen] = useState(true)
+  const [pdfOpen, setPdfOpen] = useState(true)
+  const [split, setSplit] = useState(50) // % width of editor within editor+pdf area
+  const [mobilePane, setMobilePane] = useState<MobilePane>('editor')
+  const [isDesktop, setIsDesktop] = useState(true)
+  const splitAreaRef = useRef<HTMLDivElement>(null)
+  const draggingRef = useRef(false)
+
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent, jobDescription)
   const editorRef = useRef<LaTeXEditorRef>(null)
@@ -71,6 +100,16 @@ export default function TryPage() {
 
   useEffect(() => {
     setHydrated(true)
+  }, [])
+
+  // Track desktop breakpoint so the resizable split (inline width %) applies
+  // only at lg+, while mobile uses a single-pane switch.
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const apply = () => setIsDesktop(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
   }, [])
 
   useEffect(() => {
@@ -130,6 +169,20 @@ export default function TryPage() {
     }
   }, [])
 
+  // Draggable editor/PDF splitter
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      if (!draggingRef.current || !splitAreaRef.current) return
+      const rect = splitAreaRef.current.getBoundingClientRect()
+      const pct = ((e.clientX - rect.left) / rect.width) * 100
+      setSplit(Math.min(72, Math.max(28, pct)))
+    }
+    const up = () => { draggingRef.current = false; document.body.style.cursor = '' }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+  }, [])
+
   const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
   const runCompile = async (mode: 'compile' | 'combined') => {
@@ -151,6 +204,7 @@ export default function TryPage() {
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to submit job')
       setActiveJobId(response.job_id)
       if (!resolvedSession) trialStatus.incrementUsage()
+      if (mobilePane === 'tools') setMobilePane('pdf')
       toast.success('Job submitted. Streaming updates live.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Submission failed')
@@ -274,13 +328,6 @@ export default function TryPage() {
     }
   }, [latexContent, jobDescription, resolvedSession, trialStatus, TRIM_INSTRUCTION, effectiveCanRun])
 
-  const statusTone = useMemo(() => {
-    if (stream.status === 'completed') return 'text-emerald-300'
-    if (stream.status === 'failed') return 'text-rose-300'
-    if (isProcessing) return 'text-orange-300 animate-pulse'
-    return 'text-slate-500'
-  }, [stream.status, isProcessing])
-
   const categoryScores = stream.atsDetails?.category_scores as Record<string, number> | undefined
 
   const handleRunDeepAnalysis = async (industryOverride?: string) => {
@@ -313,355 +360,449 @@ export default function TryPage() {
     }
   }
 
-  return (
-    <div className="content-shell">
-      <div className="space-y-5">
-        {/* KPI strip */}
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            ['Mode', 'Resume Studio'],
-            ['Status', stream.status],
-            ['Active Job', activeJobId ? `${activeJobId.slice(0, 12)}…` : 'None'],
-            ['Trials Left', resolvedSession ? '∞' : hydrated ? String(trialStatus.remaining) : '…'],
-          ].map(([k, v]) => (
-            <article key={k} className="surface-card edge-highlight p-3">
-              <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">{k}</p>
-              <p className={`mt-1 text-base text-white ${k === 'Status' ? statusTone : ''}`}>{v}</p>
-            </article>
-          ))}
-        </section>
+  const resetEditor = () => { setLatexContent(DEMO_RESUME_TEMPLATE); editorRef.current?.setValue(DEMO_RESUME_TEMPLATE) }
+  const clearEditor = () => { setLatexContent(''); editorRef.current?.setValue('') }
+  const openTool = (id: Tool) => { setTool(id); setLeftOpen(true); setMobilePane('tools') }
+  const trialsLabel = resolvedSession ? '∞' : hydrated ? String(trialStatus.remaining) : '…'
+  const atsDisplay = stream.atsScore ?? quickATSScore
 
-        {/* Main two-column grid — editor left, output right */}
-        <div className="grid gap-5 xl:grid-cols-[1fr_1.1fr]">
+  // ────────────────────────── rail panel bodies ──────────────────────────
+  // Rendered inline (not child components) so controlled inputs keep focus.
+  const panelHead = (title: string, action?: React.ReactNode) => (
+    <div className="flex items-center justify-between border-b border-line px-3 py-2">
+      <span className="font-ui text-[11px] font-semibold uppercase tracking-[0.14em] text-fg-3">{title}</span>
+      {action}
+    </div>
+  )
 
-          {/* ── LEFT: editor panel ── */}
-          <section className="surface-panel edge-highlight p-5 flex flex-col h-[820px]">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
-              <div>
-                <h1 className="text-2xl font-semibold text-white">Resume Studio</h1>
-                <p className="mt-1 text-sm text-slate-400">Edit LaTeX source, attach job context, and run compile pipelines.</p>
-              </div>
-              <span className="text-xs font-mono uppercase tracking-[0.24em] text-slate-400">LaTeX Pipeline</span>
-            </div>
+  const filesPanel = (
+    <>
+      {panelHead('Project')}
+      <div className="p-1.5">
+        {[
+          { name: 'resume.tex', icon: FileCode2, active: true },
+          { name: 'latexy-resume.cls', icon: FileCode2, active: false },
+        ].map((f) => (
+          <div
+            key={f.name}
+            className={`flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 font-mono text-[12px] ${
+              f.active ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'
+            }`}
+          >
+            <f.icon size={13} className="flex-shrink-0 opacity-70" /> {f.name}
+          </div>
+        ))}
+      </div>
+      <div className="border-t border-line p-3">
+        <p className="mb-2 font-ui text-[11px] text-fg-3">Source</p>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button onClick={resetEditor} className="flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[11px] text-fg-2 transition hover:text-fg">
+            <RotateCcw size={11} /> Reset
+          </button>
+          <button onClick={clearEditor} className="flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[11px] text-fg-2 transition hover:text-fg">
+            <X size={11} /> Clear
+          </button>
+        </div>
+        <button onClick={() => setShowImportModal(true)} className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[11px] text-fg-2 transition hover:text-fg">
+          <Upload size={11} /> Import file (PDF · DOCX · TEX)
+        </button>
+      </div>
+    </>
+  )
 
-            <div className="mb-3 flex flex-wrap gap-2 flex-shrink-0">
-              <button
-                onClick={() => { setLatexContent(DEMO_RESUME_TEMPLATE); editorRef.current?.setValue(DEMO_RESUME_TEMPLATE) }}
-                className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10"
-              >
-                Reset Sample
-              </button>
-              <button
-                onClick={() => { setLatexContent(''); editorRef.current?.setValue('') }}
-                className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10"
-              >
-                Clear Source
-              </button>
-              <button
-                onClick={() => setShowImportModal(true)}
-                className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/10 flex items-center gap-1.5"
-              >
-                <Upload size={12} />
-                Import File
-              </button>
-            </div>
-
-            <div className="flex-1 min-h-0 flex flex-col gap-4">
-              {/* Page overflow warning banner */}
-              {stream.pageCount !== null && stream.pageCount > 1 && (
-                <div className="flex-shrink-0 flex items-center justify-between rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-2">
-                  <span className="text-xs text-amber-400">
-                    ⚠ Your resume is {stream.pageCount} pages. Most recruiters prefer 1 page.
-                  </span>
-                  <button
-                    onClick={handleTrimToOnePage}
-                    disabled={isSubmitting || isProcessing}
-                    className="ml-3 text-xs text-amber-300 underline hover:text-amber-100 disabled:opacity-50"
-                  >
-                    Trim with AI →
-                  </button>
-                </div>
-              )}
-
-              {/* Compile timeout banner */}
-              {stream.timeoutError && (
-                <div className="flex-shrink-0 flex items-center justify-between rounded-lg border border-orange-500/20 bg-orange-500/10 px-4 py-2">
-                  <span className="text-xs text-orange-300">
-                    ⏱ Compile timed out — {stream.timeoutError.plan} plan limit ({
-                      stream.timeoutError.plan === 'free' ? '30s'
-                      : stream.timeoutError.plan === 'basic' ? '120s'
-                      : '240s'
-                    })
-                  </span>
-                  {flags.upgrade_ctas && (
-                    <a
-                      href="/billing"
-                      className="ml-3 shrink-0 text-xs font-medium text-orange-200 underline hover:text-orange-100"
-                    >
-                      Upgrade for longer timeouts →
-                    </a>
-                  )}
-                </div>
-              )}
-              <div className="relative flex-1 min-h-0 rounded-xl border border-white/10 bg-slate-950/70 overflow-hidden">
-                <LaTeXEditor
-                  ref={editorRef}
-                  value={latexContent}
-                  onChange={setLatexContent}
-                  logLines={stream.logLines}
-                  onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
-                  atsScore={quickATSScore}
-                  atsScoreLoading={quickATSLoading}
-                  onATSBadgeClick={() => setDeepPanelOpen(true)}
-                  onExplainError={handleExplainError}
-                  pageCount={stream.pageCount}
-                />
-                <div className="absolute inset-x-0 bottom-0 z-10">
-                  <ErrorExplainerPanel
-                    isOpen={explainerOpen}
-                    isLoading={explainerLoading}
-                    data={explainerData}
-                    errorLine={explainerLine}
-                    onClose={() => setExplainerOpen(false)}
-                    onApplyFix={handleApplyExplainerFix}
-                  />
-                </div>
-              </div>
-              <div className="min-h-32 flex-shrink-0 flex flex-col">
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="block text-xs uppercase tracking-[0.22em] text-slate-400">Job Description</label>
-                  <span className="text-[10px] text-slate-600">optional</span>
-                </div>
-                <div className="mb-1.5 flex flex-col gap-2 sm:flex-row">
-                  <input
-                    type="url"
-                    value={jobUrl}
-                    onChange={(e) => { setJobUrl(e.target.value); setScrapedMeta(null) }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleScrapeUrl() }}
-                    placeholder="Paste job URL (Greenhouse, Lever, Workday, Indeed…)"
-                    disabled={isProcessing || isScraping}
-                    className="w-full min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-xs text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-orange-300/40 disabled:opacity-50 sm:py-1.5"
-                  />
-                  <button
-                    onClick={handleScrapeUrl}
-                    disabled={!jobUrl.trim() || isProcessing || isScraping}
-                    title="Import job description from URL"
-                    className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:py-1.5"
-                  >
-                    {isScraping ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />}
-                    {isScraping ? 'Importing…' : 'Import'}
-                  </button>
-                </div>
-                {scrapedMeta && !scrapedMeta.error && (
-                  <div className="mb-1.5 flex flex-wrap items-center gap-1">
-                    {scrapedMeta.title && (
-                      <span className="rounded bg-orange-400/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-300">
-                        {scrapedMeta.title}
-                      </span>
-                    )}
-                    {scrapedMeta.company && (
-                      <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-400">
-                        {scrapedMeta.company}
-                      </span>
-                    )}
-                    {scrapedMeta.location && (
-                      <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-500">
-                        📍 {scrapedMeta.location}
-                      </span>
-                    )}
-                    {scrapedMeta.job_type && (
-                      <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-500">
-                        {scrapedMeta.job_type}
-                      </span>
-                    )}
-                    {scrapedMeta.salary && (
-                      <span className="rounded bg-emerald-400/10 px-1.5 py-0.5 text-[10px] text-emerald-400">
-                        {scrapedMeta.salary}
-                      </span>
-                    )}
-                    <span className="ml-auto text-[9px] text-slate-700">via {scrapedMeta.source}</span>
-                  </div>
-                )}
-                <textarea
-                  value={jobDescription}
-                  onChange={(e) => setJobDescription(e.target.value)}
-                  placeholder="Paste a job description to tailor the optimization…"
-                  className="flex-1 w-full rounded-xl border border-white/10 bg-slate-950/70 p-4 text-sm text-slate-100 outline-none transition focus:border-orange-300/50 resize-none scrollbar-subtle"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-3 flex-shrink-0 items-center">
-              <button
-                onClick={toggleAutoCompile}
-                title="Auto-compile on change (2s debounce)"
-                className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition ${
-                  autoCompile
-                    ? 'border-orange-500/30 bg-orange-500/20 text-orange-300'
-                    : 'border-white/15 bg-white/5 text-zinc-500 hover:text-zinc-200 hover:bg-white/10'
-                }`}
-              >
-                <Zap size={12} />
-                Auto
-              </button>
-              <button
-                onClick={() => runCompile('compile')}
-                disabled={isSubmitting || isProcessing || (!resolvedSession && !effectiveCanRun)}
-                className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                {isSubmitting ? 'Compiling…' : 'Compile'}
-              </button>
-              <button
-                onClick={() => runCompile('combined')}
-                disabled={isSubmitting || isProcessing || (!resolvedSession && !effectiveCanRun)}
-                className="rounded-lg bg-orange-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-orange-200 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isSubmitting ? 'Running…' : 'Optimize + Compile'}
-              </button>
-              <ExportDropdown
-                latexContent={editorRef.current?.getValue() || latexContent}
-                onPdfExport={handleDownload}
-              />
-            </div>
-          </section>
-
-          {/* ── RIGHT: output panel ── */}
-          <section className="space-y-3">
-            {/* Progress strip */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="surface-panel edge-highlight px-5 py-4"
+  const aiPanel = (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {panelHead('AI Optimize')}
+      <div className="min-h-0 flex-1 overflow-auto">
+        <div className="border-b border-line p-3">
+          <label className="font-ui text-[11px] text-fg-3">Target job</label>
+          <div className="mt-1.5 flex gap-1.5">
+            <input
+              type="url"
+              value={jobUrl}
+              onChange={(e) => { setJobUrl(e.target.value); setScrapedMeta(null) }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleScrapeUrl() }}
+              placeholder="Paste job URL…"
+              disabled={isProcessing || isScraping}
+              className="min-w-0 flex-1 rounded-[var(--radius-md)] border border-line bg-bg px-2 py-1.5 font-body text-[12px] text-fg outline-none transition placeholder:text-fg-3 focus:border-accent disabled:opacity-50"
+            />
+            <button
+              onClick={handleScrapeUrl}
+              disabled={!jobUrl.trim() || isProcessing || isScraping}
+              title="Import job description from URL"
+              className="flex shrink-0 items-center justify-center rounded-[var(--radius-md)] border border-line bg-surface-2 px-2.5 text-fg-2 transition hover:text-fg disabled:opacity-40"
             >
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className={`text-xs font-semibold uppercase tracking-[0.16em] ${statusTone}`}>
-                    {stream.status}
-                  </span>
-                  <span className="text-sm text-slate-400 truncate">{stream.stage || 'waiting for submission'}</span>
-                </div>
-                <span className="text-xs font-mono text-slate-500 flex-shrink-0">{stream.percent}%</span>
-              </div>
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-                <div className="h-full rounded-full bg-orange-300 transition-all duration-500" style={{ width: `${stream.percent}%` }} />
-              </div>
-              {stream.message && (
-                <p className="mt-2 text-xs text-slate-500 truncate">{stream.message}</p>
-              )}
-            </motion.div>
-
-            {/* PDF viewer + Quality signals side-by-side */}
-            <div className="grid gap-3 grid-cols-[1fr_188px]">
-              {/* PDF viewer — large */}
-              <div className="surface-panel edge-highlight overflow-hidden h-[680px]">
-                <PDFPreview
-                  pdfUrl={pdfUrl}
-                  isLoading={isProcessing}
-                  onDownload={handleDownload}
-                />
-              </div>
-
-              {/* Quality signals sidebar — no box, clean list */}
-              <div className="flex flex-col gap-5 py-1">
-                {/* ATS score */}
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">ATS Score</p>
-                  <p className="mt-1 text-4xl font-bold tabular-nums text-orange-200">
-                    {stream.atsScore != null ? stream.atsScore : '—'}
-                  </p>
-                  {stream.atsScore != null && (
-                    <p className="mt-0.5 text-[10px] text-slate-500">out of 100</p>
-                  )}
-                </div>
-
-                {/* Tokens */}
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Tokens Used</p>
-                  <p className="mt-1 text-xl font-semibold tabular-nums text-slate-200">
-                    {stream.tokensUsed != null ? stream.tokensUsed.toLocaleString() : '—'}
-                  </p>
-                </div>
-
-                {/* Category scores */}
-                {categoryScores && (
-                  <div className="space-y-2">
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Categories</p>
-                    {Object.entries(categoryScores).map(([key, val]) => (
-                      <div key={key}>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[10px] text-slate-400">{CATEGORY_LABELS[key] ?? key}</span>
-                          <span className="text-[10px] font-mono text-slate-300">{val}</span>
-                        </div>
-                        <div className="h-1 w-full rounded-full bg-slate-800">
-                          <div
-                            className="h-full rounded-full bg-orange-300/70 transition-all"
-                            style={{ width: `${val}%` }}
-                          />
-                        </div>
+              {isScraping ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
+            </button>
+          </div>
+          {scrapedMeta && !scrapedMeta.error && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+              {scrapedMeta.title && <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent-strong">{scrapedMeta.title}</span>}
+              {scrapedMeta.company && <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-2">{scrapedMeta.company}</span>}
+              {scrapedMeta.location && <span className="inline-flex items-center gap-1 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-3"><MapPin size={10} /> {scrapedMeta.location}</span>}
+            </div>
+          )}
+          <textarea
+            value={jobDescription}
+            onChange={(e) => setJobDescription(e.target.value)}
+            placeholder="…or paste a job description to tailor the optimization."
+            className="mt-1.5 h-24 w-full resize-none rounded-[var(--radius-md)] border border-line bg-bg p-2 font-body text-[12px] text-fg outline-none transition placeholder:text-fg-3 focus:border-accent scrollbar-subtle"
+          />
+          <button
+            onClick={() => runCompile('combined')}
+            disabled={isSubmitting || isProcessing || (!resolvedSession && !effectiveCanRun)}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-3 py-2 font-ui text-xs font-semibold text-accent-fg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Sparkles size={13} /> {isSubmitting ? 'Running…' : 'Optimize for this role'}
+          </button>
+          <button
+            onClick={handleTrimToOnePage}
+            disabled={isSubmitting || isProcessing || (!resolvedSession && !effectiveCanRun)}
+            className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 px-3 py-1.5 font-ui text-[11px] text-fg-2 transition hover:text-fg disabled:opacity-50"
+          >
+            Trim to one page
+          </button>
+        </div>
+        {stream.changesMade && stream.changesMade.length > 0 && (
+          <div className="p-3">
+            <p className="mb-2 font-ui text-[11px] text-fg-3">{stream.changesMade.length} change{stream.changesMade.length !== 1 ? 's' : ''} applied</p>
+            <ul className="space-y-1.5">
+              {stream.changesMade.map((c, i) => {
+                const ch = (typeof c === 'string' ? { reason: c } : c) as { section?: string; change_type?: string; reason?: string }
+                const tone = ch.change_type === 'added' ? 'text-ok' : ch.change_type === 'removed' ? 'text-err' : 'text-accent-strong'
+                return (
+                  <li key={i} className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-2.5">
+                    {(ch.section || ch.change_type) && (
+                      <div className="mb-1 flex items-center gap-1.5">
+                        {ch.section && <span className="font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-accent-strong">{ch.section}</span>}
+                        {ch.change_type && <span className={`font-ui text-[9px] uppercase tracking-[0.08em] ${tone}`}>· {ch.change_type}</span>}
                       </div>
-                    ))}
-                  </div>
-                )}
+                    )}
+                    <p className="flex gap-1.5 font-body text-[11px] leading-relaxed text-fg-2">
+                      <Check size={12} className={`mt-0.5 shrink-0 ${tone}`} />
+                      <span>{ch.reason || '—'}</span>
+                    </p>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 
-                {/* Changes count */}
-                {stream.changesMade && stream.changesMade.length > 0 && (
-                  <div>
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Changes</p>
-                    <p className="mt-1 text-xl font-semibold tabular-nums text-slate-200">{stream.changesMade.length}</p>
-                    <p className="mt-0.5 text-[10px] text-slate-500">sections modified</p>
-                  </div>
-                )}
-
-                {/* AI Deep Analysis */}
-                <div className="border-t border-white/8 pt-4">
-                  <button
-                    onClick={() => { setDeepPanelOpen(true); if (!deepAnalysisJobId) handleRunDeepAnalysis() }}
-                    disabled={isDeepAnalysisRunning}
-                    className="w-full rounded-lg bg-violet-500/20 px-3 py-2 text-[11px] font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30 disabled:opacity-50"
-                  >
-                    {isDeepAnalysisRunning ? 'Analysing…' : 'AI Analysis'}
-                  </button>
-                  {deepAnalysisUsesRemaining !== null && (
-                    <p className="mt-1.5 text-[10px] text-center text-slate-600">{deepAnalysisUsesRemaining} free uses left</p>
-                  )}
+  const atsPanel = (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {panelHead('ATS Score', (
+        <button onClick={() => { setDeepPanelOpen(true); if (!deepAnalysisJobId) handleRunDeepAnalysis() }} disabled={isDeepAnalysisRunning} className="font-ui text-[11px] text-accent-strong transition hover:brightness-110 disabled:opacity-50">
+          {isDeepAnalysisRunning ? 'Analysing…' : 'Deep scan'}
+        </button>
+      ))}
+      <div className="border-b border-line p-4 text-center">
+        <p className="font-display text-5xl font-bold tabular-nums text-accent-strong">
+          {atsDisplay != null ? atsDisplay : quickATSLoading ? '…' : '—'}
+        </p>
+        <p className="mt-0.5 font-ui text-[11px] text-fg-3">out of 100</p>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto p-3">
+        {categoryScores ? (
+          <div className="space-y-3">
+            {Object.entries(categoryScores).map(([key, val]) => (
+              <div key={key}>
+                <div className="mb-1 flex justify-between font-ui text-[11px]">
+                  <span className="text-fg-2">{CATEGORY_LABELS[key] ?? key}</span>
+                  <span className="tabular-nums text-fg-3">{val}</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-surface-2">
+                  <div className="h-full rounded-full bg-accent" style={{ width: `${val}%` }} />
                 </div>
               </div>
-            </div>
+            ))}
+          </div>
+        ) : (
+          <p className="font-body text-[12px] leading-relaxed text-fg-3">Compile or optimize to see a category breakdown, or run a <b className="text-fg-2">Deep scan</b> for a full AI analysis.</p>
+        )}
+        {stream.tokensUsed != null && (
+          <div className="mt-4 border-t border-line pt-3">
+            <p className="font-ui text-[10px] uppercase tracking-[0.16em] text-fg-3">Tokens used</p>
+            <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-fg">{stream.tokensUsed.toLocaleString()}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 
-            {/* Live logs — collapsed by default */}
-            <div className="surface-panel edge-highlight overflow-hidden">
-              <button
-                onClick={() => setLogsOpen(v => !v)}
-                className="flex w-full items-center justify-between px-5 py-3.5 text-left"
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className="text-sm font-semibold text-white">Live Logs</span>
-                  {stream.logLines.length > 0 && (
-                    <span className="rounded-md bg-white/8 px-1.5 py-0.5 text-[10px] font-mono text-slate-400">
-                      {stream.logLines.length}
-                    </span>
-                  )}
-                </div>
-                <ChevronDown
-                  size={14}
-                  className={`text-slate-500 transition-transform duration-200 ${logsOpen ? 'rotate-180' : ''}`}
-                />
-              </button>
-              {logsOpen && (
-                <div className="border-t border-white/10">
-                  <div className="rounded-b-xl overflow-hidden bg-slate-950/70">
-                    <LogViewer
-                      lines={stream.logLines}
-                      maxHeight="18rem"
-                      className="font-mono text-xs"
-                    />
-                  </div>
-                </div>
-              )}
+  const importPanel = (
+    <>
+      {panelHead('Import')}
+      <div className="space-y-2 p-3">
+        {[
+          { icon: GitBranch, label: 'GitHub', hint: 'Pull top projects', onClick: () => setShowProjectsModal(true) },
+          { icon: Link2, label: 'Portfolio URL', hint: 'Scrape a page', onClick: () => setShowProjectsModal(true) },
+          { icon: Briefcase, label: 'LinkedIn export', hint: 'Upload archive', onClick: () => setShowProjectsModal(true) },
+          { icon: Upload, label: 'Existing file', hint: 'PDF · DOCX · TEX', onClick: () => setShowImportModal(true) },
+        ].map((s) => (
+          <button key={s.label} onClick={s.onClick} className="flex w-full items-center gap-3 rounded-[var(--radius-md)] border border-line bg-surface-2 p-2.5 text-left transition hover:border-accent">
+            <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-[var(--radius-md)] bg-accent-soft text-accent-strong"><s.icon size={15} /></span>
+            <span>
+              <span className="block font-ui text-[12px] font-medium text-fg">{s.label}</span>
+              <span className="block font-ui text-[11px] text-fg-3">{s.hint}</span>
+            </span>
+            <ChevronRight size={14} className="ml-auto text-fg-3" />
+          </button>
+        ))}
+      </div>
+    </>
+  )
+
+  const templatesPanel = (
+    <>
+      {panelHead('Templates', <Link href="/templates" className="font-ui text-[11px] text-accent-strong hover:brightness-110">Browse all</Link>)}
+      <div className="grid grid-cols-2 gap-2 p-3">
+        {['Minimal', 'Two-column', 'Academic', 'ATS-safe'].map((t) => (
+          <Link key={t} href="/templates" className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-2 text-left transition hover:border-accent">
+            <div className="mb-1.5 aspect-[3/4] rounded-[var(--radius-sm)] bg-bg p-1.5">
+              <div className="h-1.5 w-2/3 rounded bg-fg/20" />
+              <div className="mt-1 h-1 w-full rounded bg-fg/10" />
+              <div className="mt-0.5 h-1 w-4/5 rounded bg-fg/10" />
+              <div className="mt-2 h-1 w-1/2 rounded bg-accent/40" />
+              <div className="mt-1 h-1 w-full rounded bg-fg/10" />
             </div>
-          </section>
+            <span className="font-ui text-[11px] text-fg-2">{t}</span>
+          </Link>
+        ))}
+      </div>
+    </>
+  )
+
+  const activePanel = tool === 'files' ? filesPanel : tool === 'ai' ? aiPanel : tool === 'ats' ? atsPanel : tool === 'import' ? importPanel : templatesPanel
+
+  // ────────────────────────── editor + pdf panes ──────────────────────────
+  const editorPane = (
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface">
+      <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-line bg-surface-2 px-3">
+        <FileCode2 size={13} className="text-fg-3" />
+        <span className="font-mono text-xs text-fg-2">resume.tex</span>
+        <span className="ml-auto font-ui text-[10px] text-fg-3">⌘F to find</span>
+      </div>
+      <div className="relative min-h-0 flex-1">
+        <LaTeXEditor
+          ref={editorRef}
+          value={latexContent}
+          onChange={setLatexContent}
+          logLines={stream.logLines}
+          onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
+          atsScore={quickATSScore}
+          atsScoreLoading={quickATSLoading}
+          onATSBadgeClick={() => openTool('ats')}
+          onExplainError={handleExplainError}
+          pageCount={stream.pageCount}
+        />
+        <div className="absolute inset-x-0 bottom-0 z-10">
+          <ErrorExplainerPanel
+            isOpen={explainerOpen}
+            isLoading={explainerLoading}
+            data={explainerData}
+            errorLine={explainerLine}
+            onClose={() => setExplainerOpen(false)}
+            onApplyFix={handleApplyExplainerFix}
+          />
         </div>
       </div>
+    </section>
+  )
+
+  const pdfPane = (
+    <section className="flex min-h-0 flex-1 flex-col bg-surface-2">
+      {/* progress strip */}
+      {(isProcessing || stream.stage) && (
+        <div className="flex-shrink-0 border-b border-line bg-surface px-4 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="truncate font-ui text-[11px] text-fg-2">{stream.stage || 'waiting'}</span>
+            <span className="font-mono text-[11px] text-fg-3">{stream.percent}%</span>
+          </div>
+          <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-surface-2">
+            <div className="h-full rounded-full bg-accent transition-all duration-500" style={{ width: `${stream.percent}%` }} />
+          </div>
+        </div>
+      )}
+
+      {/* page-overflow + timeout banners */}
+      {stream.pageCount !== null && stream.pageCount > 1 && (
+        <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-warn/20 bg-warn/10 px-4 py-2">
+          <span className="font-ui text-[11px] text-warn"><AlertTriangle size={11} className="mr-1 -mt-0.5 inline" /> {stream.pageCount} pages — most recruiters prefer 1.</span>
+          <button onClick={handleTrimToOnePage} disabled={isSubmitting || isProcessing} className="shrink-0 font-ui text-[11px] text-warn underline hover:brightness-110 disabled:opacity-50">Trim with AI →</button>
+        </div>
+      )}
+      {stream.timeoutError && (
+        <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-accent/20 bg-accent-soft px-4 py-2">
+          <span className="font-ui text-[11px] text-accent-strong"><Clock size={11} className="mr-1 -mt-0.5 inline" /> Compile timed out — {stream.timeoutError.plan} plan limit ({stream.timeoutError.plan === 'free' ? '30s' : stream.timeoutError.plan === 'basic' ? '120s' : '240s'})</span>
+          {flags.upgrade_ctas && <a href="/billing" className="shrink-0 font-ui text-[11px] font-medium text-accent-strong underline hover:brightness-110">Upgrade →</a>}
+        </div>
+      )}
+
+      <div className="relative min-h-0 flex-1">
+        <PDFPreview pdfUrl={pdfUrl} isLoading={isProcessing} onDownload={handleDownload} />
+      </div>
+
+      {/* compile status / logs footer — only once there's something to report */}
+      {(stream.logLines.length > 0 || isProcessing || stream.status === 'completed' || stream.status === 'failed') && (
+        <div className="flex-shrink-0 border-t border-line bg-surface">
+          <button onClick={() => setLogsOpen((v) => !v)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left">
+            <span className={`flex items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[10px] font-semibold ${
+              stream.status === 'completed' ? 'bg-ok/10 text-ok' : stream.status === 'failed' ? 'bg-err/10 text-err' : 'bg-surface-2 text-fg-3'
+            }`}>
+              {stream.status === 'completed' ? <Check size={10} /> : null}
+              {stream.status === 'completed' ? 'Compiled' : stream.status === 'failed' ? 'Failed' : isProcessing ? 'Compiling…' : 'Ready'}
+            </span>
+            {stream.logLines.length > 0 && <span className="font-ui text-[11px] text-fg-3">{stream.logLines.length} log lines</span>}
+            <ChevronDown size={13} className={`ml-auto text-fg-3 transition-transform ${logsOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {logsOpen && (
+            <div className="border-t border-line bg-bg">
+              <LogViewer lines={stream.logLines} maxHeight="14rem" className="font-mono text-xs" />
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+
+  return (
+    <div className="fixed inset-0 top-0 flex flex-col bg-bg text-fg">
+      {/* ── top project bar ── */}
+      <header className="flex h-12 flex-shrink-0 items-center gap-2 border-b border-line bg-surface px-3 sm:gap-3">
+        <Link href="/" className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-[var(--radius-sm)] bg-accent font-display text-sm font-bold text-accent-fg" title="Home">L</Link>
+        <span className="hidden font-display text-sm font-semibold text-fg sm:inline">Résumé Studio</span>
+        <span className="hidden rounded-[var(--radius-sm)] bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-3 md:inline">resume.tex</span>
+
+        <div className="ml-1 flex items-center sm:ml-2">
+          <button
+            onClick={() => runCompile('compile')}
+            disabled={isSubmitting || isProcessing || (!resolvedSession && !effectiveCanRun)}
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-3.5 py-1.5 font-ui text-xs font-semibold text-accent-fg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isProcessing || isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Play size={12} className="fill-current" />}
+            {isProcessing || isSubmitting ? 'Compiling…' : 'Recompile'}
+          </button>
+        </div>
+        <button
+          onClick={toggleAutoCompile}
+          title="Auto-compile on change"
+          className={`hidden select-none items-center gap-1.5 rounded-[var(--radius-md)] border px-2 py-1.5 font-ui text-[11px] transition sm:flex ${
+            autoCompile ? 'border-accent bg-accent-soft text-accent-strong' : 'border-line-2 text-fg-3 hover:text-fg'
+          }`}
+        >
+          <Zap size={12} /> Auto
+        </button>
+
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => openTool('ats')} className="hidden items-center gap-1.5 rounded-[var(--radius-pill)] border border-line bg-surface-2 px-2.5 py-1 font-ui text-[11px] text-fg-2 transition hover:border-accent sm:flex">
+            <Gauge size={12} className="text-accent-strong" /> ATS <b className="tabular-nums text-accent-strong">{atsDisplay ?? '—'}</b>
+          </button>
+          <button
+            onClick={() => setPdfOpen((v) => !v)}
+            title={pdfOpen ? 'Editor only' : 'Show preview'}
+            className="hidden h-8 w-8 place-items-center rounded-[var(--radius-md)] border border-line-2 text-fg-3 transition hover:border-accent hover:text-fg lg:grid"
+          >
+            {pdfOpen ? <PanelRightClose size={15} /> : <PanelRight size={15} />}
+          </button>
+          <ModeToggle />
+          <ExportDropdown latexContent={editorRef.current?.getValue() || latexContent} onPdfExport={handleDownload} />
+          {resolvedSession ? (
+            <Link href="/dashboard" title="Dashboard" className="grid h-7 w-7 place-items-center rounded-[var(--radius-pill)] bg-accent-soft font-ui text-[11px] font-semibold text-accent-strong">
+              {(resolvedSession.user?.name || resolvedSession.user?.email || 'A').charAt(0).toUpperCase()}
+            </Link>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="hidden font-ui text-[11px] text-fg-3 sm:inline">trials <b className="text-accent-strong">{trialsLabel}</b></span>
+              <Link href="/login" className="whitespace-nowrap rounded-[var(--radius-md)] border border-line-2 px-2.5 py-1.5 font-ui text-[11px] font-semibold text-fg transition hover:border-accent hover:text-accent-strong">Log in</Link>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* ── mobile pane switch (< lg) ── */}
+      <div className="flex flex-shrink-0 items-center gap-1 border-b border-line bg-surface px-2 py-1.5 lg:hidden">
+        {([['tools', 'Tools'], ['editor', 'Editor'], ['pdf', 'PDF']] as [MobilePane, string][]).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setMobilePane(id)}
+            className={`flex-1 rounded-[var(--radius-md)] px-3 py-1.5 font-ui text-xs font-medium transition ${
+              mobilePane === id ? 'bg-accent-soft text-accent-strong' : 'text-fg-3 hover:text-fg'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── body ── */}
+      <div className="flex min-h-0 flex-1">
+        {/* icon rail (lg+) */}
+        <nav className="hidden w-12 flex-shrink-0 flex-col items-center gap-1 border-r border-line bg-surface py-2 lg:flex">
+          {RAIL.map(({ id, icon: Icon, label }) => (
+            <button
+              key={id}
+              onClick={() => { setTool(id); setLeftOpen(true) }}
+              title={label}
+              className={`grid h-9 w-9 place-items-center rounded-[var(--radius-md)] transition ${
+                tool === id && leftOpen ? 'bg-accent-soft text-accent-strong' : 'text-fg-3 hover:bg-surface-2 hover:text-fg'
+              }`}
+            >
+              <Icon size={17} />
+            </button>
+          ))}
+          <button onClick={() => setLeftOpen((v) => !v)} title="Toggle panel" className="mt-auto grid h-9 w-9 place-items-center rounded-[var(--radius-md)] text-fg-3 transition hover:bg-surface-2 hover:text-fg">
+            {leftOpen ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
+          </button>
+        </nav>
+
+        {/* left context panel */}
+        <aside className={`${mobilePane === 'tools' ? 'flex' : 'hidden'} ${leftOpen ? 'lg:flex' : 'lg:hidden'} w-full flex-shrink-0 flex-col border-r border-line bg-surface lg:w-64`}>
+          {/* mobile rail (horizontal) */}
+          <div className="flex items-center gap-1 border-b border-line px-2 py-1.5 lg:hidden">
+            {RAIL.map(({ id, icon: Icon, label }) => (
+              <button key={id} onClick={() => setTool(id)} title={label} className={`grid h-8 w-8 place-items-center rounded-[var(--radius-md)] transition ${tool === id ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'}`}>
+                <Icon size={16} />
+              </button>
+            ))}
+          </div>
+          {activePanel}
+        </aside>
+
+        {/* editor + pdf split area */}
+        <div ref={splitAreaRef} className="flex min-h-0 min-w-0 flex-1">
+          {/* editor */}
+          <div
+            className={`${mobilePane === 'editor' ? 'flex' : 'hidden'} min-h-0 min-w-0 flex-col lg:flex ${isDesktop ? 'lg:flex-none' : 'flex-1'}`}
+            style={isDesktop ? { width: `${pdfOpen ? split : 100}%` } : undefined}
+          >
+            {editorPane}
+          </div>
+
+          {/* splitter (lg+) */}
+          {pdfOpen && (
+            <div
+              onMouseDown={() => { draggingRef.current = true; document.body.style.cursor = 'col-resize' }}
+              className="hidden w-1 flex-shrink-0 cursor-col-resize bg-line transition-colors hover:bg-accent lg:block"
+            />
+          )}
+
+          {/* pdf */}
+          {pdfOpen && (
+            <div
+              className={`${mobilePane === 'pdf' ? 'flex' : 'hidden'} min-h-0 min-w-0 flex-col lg:flex ${isDesktop ? 'lg:flex-none' : 'flex-1'}`}
+              style={isDesktop ? { width: `${100 - split}%` } : undefined}
+            >
+              {pdfPane}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── modals ── */}
       <DeepAnalysisPanel
         isOpen={deepPanelOpen}
         onClose={() => setDeepPanelOpen(false)}
@@ -674,22 +815,27 @@ export default function TryPage() {
         hideUpgradeCtas={!flags.upgrade_ctas}
       />
 
-      {/* Import modal */}
+      <ImportProjectsModal
+        isOpen={showProjectsModal}
+        onClose={() => setShowProjectsModal(false)}
+        onInsert={(latex: string) => {
+          editorRef.current?.setValue(latex)
+          setLatexContent(latex)
+          setShowProjectsModal(false)
+          toast.success('Imported into editor')
+        }}
+      />
+
       {showImportModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl shadow-black/60 p-6">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-base font-semibold text-zinc-100">Import Resume File</h3>
-              <button
-                onClick={() => setShowImportModal(false)}
-                className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300"
-              >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4">
+          <div className="w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)]">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-fg">Import Resume File</h3>
+              <button onClick={() => setShowImportModal(false)} className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg">
                 <X size={16} />
               </button>
             </div>
-            <p className="text-xs text-zinc-500 mb-5">
-              This will replace the current editor content.
-            </p>
+            <p className="mb-5 text-xs text-fg-3">This will replace the current editor content.</p>
             <MultiFormatUpload
               onFileUpload={(content) => {
                 if (content) {

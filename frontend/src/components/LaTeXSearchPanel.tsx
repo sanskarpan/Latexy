@@ -54,10 +54,10 @@ export default function LaTeXSearchPanel({ presets, onPresetSelect, isOpen, onTo
         ref={triggerRef}
         onClick={onToggle}
         title="LaTeX search presets (⌘⇧H)"
-        className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+        className={`flex items-center gap-1 rounded-[var(--radius-md)] border px-2 py-1 text-[11px] font-medium transition ${
           isOpen
-            ? 'border-orange-400/30 bg-orange-400/15 text-orange-300'
-            : 'border-white/10 bg-black/40 text-zinc-500 hover:border-white/20 hover:text-zinc-300'
+            ? 'border-accent bg-accent-soft text-accent-strong'
+            : 'border-line bg-surface text-fg-3 hover:border-line-2 hover:text-fg-2'
         }`}
       >
         <Search size={11} />
@@ -66,14 +66,14 @@ export default function LaTeXSearchPanel({ presets, onPresetSelect, isOpen, onTo
       </button>
 
       {isOpen && (
-        <div className={`absolute right-0 flex max-h-[min(24rem,calc(100vh-6rem))] w-[min(18rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-white/10 bg-zinc-900 shadow-2xl ${
+        <div className={`absolute right-0 flex max-h-[min(24rem,calc(100vh-6rem))] w-[min(18rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-[var(--radius-md)] border border-line bg-surface shadow-[var(--shadow-2)] ${
           flipUp ? 'bottom-full mb-1' : 'top-full mt-1'
         }`}>
-          <div className="flex shrink-0 items-center justify-between border-b border-white/5 px-3 py-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          <div className="flex shrink-0 items-center justify-between border-b border-line px-3 py-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">
               LaTeX Patterns
             </span>
-            <button onClick={onClose} className="text-zinc-600 transition hover:text-zinc-400">
+            <button onClick={onClose} className="text-fg-3 transition hover:text-fg-2">
               <X size={12} />
             </button>
           </div>
@@ -82,20 +82,20 @@ export default function LaTeXSearchPanel({ presets, onPresetSelect, isOpen, onTo
               <button
                 key={preset.label}
                 onClick={() => { onPresetSelect(preset); onClose() }}
-                className="flex w-full flex-col gap-0.5 px-3 py-2 text-left transition hover:bg-white/5"
+                className="flex w-full flex-col gap-0.5 px-3 py-2 text-left transition hover:bg-surface-2"
               >
-                <span className="text-xs text-zinc-200">{preset.label}</span>
+                <span className="text-xs text-fg">{preset.label}</span>
                 {preset.description && (
-                  <span className="text-[10px] text-zinc-600">{preset.description}</span>
+                  <span className="text-[10px] text-fg-3">{preset.description}</span>
                 )}
-                <code className="mt-0.5 truncate rounded bg-white/5 px-1.5 py-0.5 text-[9px] font-mono text-orange-300/70">
+                <code className="mt-0.5 truncate rounded bg-surface-2 px-1.5 py-0.5 text-[9px] font-mono text-accent-strong">
                   {preset.pattern}
                 </code>
               </button>
             ))}
           </div>
-          <div className="shrink-0 border-t border-white/5 px-3 py-1.5">
-            <p className="text-[9px] text-zinc-700">Tip: use capture groups (…) for replace-all</p>
+          <div className="shrink-0 border-t border-line px-3 py-1.5">
+            <p className="text-[9px] text-fg-3">Tip: use capture groups (…) for replace-all</p>
           </div>
         </div>
       )}
