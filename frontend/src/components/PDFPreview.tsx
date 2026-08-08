@@ -298,19 +298,41 @@ export default function PDFPreview({
 
   if (isLoading) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 bg-bg">
-        <div className="h-7 w-7 animate-spin rounded-full border-2 border-line border-t-accent" />
-        <p className="text-xs text-fg-3">Compiling…</p>
+      <div className="flex h-full flex-col items-center justify-center gap-4 bg-surface-2 px-6">
+        {/* a page materializing */}
+        <div className="h-44 w-[8.5rem] animate-pulse rounded-[3px] border border-line bg-surface shadow-sm" />
+        <p className="flex items-center gap-2 font-ui text-xs text-fg-3">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-line border-t-accent" />
+          Compiling…
+        </p>
       </div>
     )
   }
 
   if (!pdfUrl) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 bg-bg">
-        <FileText className="h-9 w-9 text-fg-3" />
-        <p className="text-xs text-fg-3">No preview yet</p>
-        <p className="text-[10px] text-fg-3">Compile your LaTeX to see the PDF</p>
+      <div className="flex h-full flex-col items-center justify-center gap-5 bg-surface-2 px-6">
+        {/* faux page silhouette so the empty pane reads as "a page goes here" */}
+        <div className="relative">
+          <div className="h-44 w-[8.5rem] rounded-[3px] border border-line bg-surface shadow-sm">
+            <div className="space-y-1.5 p-3.5">
+              <div className="h-1.5 w-2/3 rounded-full bg-fg/15" />
+              <div className="h-1 w-full rounded-full bg-fg/[0.07]" />
+              <div className="h-1 w-4/5 rounded-full bg-fg/[0.07]" />
+              <div className="mt-3 h-1.5 w-1/2 rounded-full bg-accent/25" />
+              <div className="h-1 w-full rounded-full bg-fg/[0.07]" />
+              <div className="h-1 w-11/12 rounded-full bg-fg/[0.07]" />
+              <div className="h-1 w-3/4 rounded-full bg-fg/[0.07]" />
+            </div>
+          </div>
+          <span className="absolute -bottom-2 -right-2 grid h-7 w-7 place-items-center rounded-full border border-line bg-surface text-fg-3 shadow-sm">
+            <FileText size={13} />
+          </span>
+        </div>
+        <div className="text-center">
+          <p className="font-ui text-sm font-medium text-fg-2">Your PDF will appear here</p>
+          <p className="mt-1 font-ui text-xs text-fg-3">Compile to render a live preview</p>
+        </div>
       </div>
     )
   }
