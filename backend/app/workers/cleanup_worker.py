@@ -374,6 +374,27 @@ def _prune_orphaned_compilation_objects() -> Dict[str, int]:
     return stats
 
 
+
+def _scan_job_state_keys(r, count: int = 500) -> list:
+    """List job-state keys without blocking Redis.
+
+    KEYS is O(N) over the whole keyspace and blocks the server for its entire
+    duration — every other client waits, including the API's job-state reads,
+    quota checks and rate limiters. On a production keyspace that is long enough
+    for user-facing requests to time out.
+
+    These tasks only ever run on a schedule, so paying a few extra round-trips
+    for SCAN's incremental cursor costs nothing and keeps Redis responsive.
+    """
+    keys = []
+    cursor = 0
+    while True:
+        cursor, batch = r.scan(cursor=cursor, match="latexy:job:*:state", count=count)
+        keys.extend(batch)
+        if cursor == 0:
+            return keys
+
+
 @celery_app.task(bind=True, name="app.workers.cleanup_worker.cleanup_expired_jobs_task")
 def cleanup_expired_jobs_task(
     self,
@@ -422,7 +443,7 @@ def cleanup_expired_jobs_task(
         # get_active_jobs_sync() uses an old job_status: prefix that does not match
         # the keys written by publish_event / _update_state_snapshot.
         r = get_worker_redis()
-        state_keys = r.keys("latexy:job:*:state")
+        state_keys = _scan_job_state_keys(r)
         # Derive job IDs by stripping the trailing ":state" suffix.
         active_jobs = [k[len("latexy:job:"):-len(":state")] for k in state_keys]
 
@@ -493,6 +514,13 @@ def cleanup_expired_jobs_task(
 
                     # Detect stuck "processing" jobs older than 10 minutes and
                     # transition them to "failed" so the frontend gets a clear signal.
+                    # Internal probes (health_check_*, cleanup_*) publish job
+                    # lifecycle events under synthetic ids. They are not user
+                    # work, and treating them as stuck filled the logs with
+                    # "marking failed" for jobs nobody submitted.
+                    if job_id_to_check.startswith(("health_check_", "cleanup_", "job_cleanup_")):
+                        continue
+
                     if job_status_value == "processing":
                         raw_meta = r.get(f"latexy:job:{job_id_to_check}:meta")
                         if raw_meta:
@@ -668,7 +696,7 @@ def health_check_task(
         })
 
         _r = get_worker_redis()
-        active_jobs_count = len(_r.keys("latexy:job:*:state"))
+        active_jobs_count = len(_scan_job_state_keys(_r))
 
         # Determine overall health
         health_issues = []
