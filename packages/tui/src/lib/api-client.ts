@@ -13,7 +13,16 @@ interface RequestOptions {
   retryDelayMs?: number
   timeoutMs?: number
   signal?: AbortSignal
+  /**
+   * Force retry on or off. Defaults to true only for idempotent methods, so a
+   * POST is never silently replayed. Set explicitly where a non-idempotent call
+   * is genuinely safe to repeat.
+   */
+  retry?: boolean
 }
+
+/** Methods that are safe to replay. Everything else runs exactly once. */
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 export class ApiClient {
   private token: string | null = null
@@ -45,7 +54,15 @@ export class ApiClient {
   ): Promise<T> {
     const { retryDelayMs = 1000, timeoutMs = 30_000 } = opts
     const url = `${this.baseUrl}${path}`
-    const maxAttempts = 3
+    // Only replay requests that are safe to replay. A 5xx can be returned after
+    // the server already did the work, and a network timeout says nothing about
+    // whether it was processed — so retrying POST /jobs/submit could enqueue the
+    // same job up to three times, and since #998 each one is a separate charge
+    // against the caller's plan allowance. Callers that know a POST is safe to
+    // repeat can opt in with `retry: true`.
+    const idempotent = IDEMPOTENT_METHODS.has(method.toUpperCase())
+    const mayRetry = opts.retry ?? idempotent
+    const maxAttempts = mayRetry ? 3 : 1
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const controller = new AbortController()
@@ -97,6 +114,64 @@ export class ApiClient {
     return this.request<T>('GET', path, undefined, opts)
   }
 
+  /**
+   * Fetch raw bytes, authenticated.
+   *
+   * request() decodes anything non-JSON with res.text(), which mangles binary:
+   * a .docx round-tripped through a UTF-8 string grew from 36,666 to 65,425
+   * bytes and no longer unzipped. Exports and PDF downloads must not go through
+   * that path.
+   */
+  async getBinary(path: string, opts: RequestOptions = {}): Promise<Buffer> {
+    const { timeoutMs = 60_000, retryDelayMs = 1000 } = opts
+    // Binary GETs are idempotent, so they retry like every other GET. Skipping
+    // the loop made a single transient 5xx fail an export outright.
+    const maxAttempts = (opts.retry ?? true) ? 3 : 1
+    let lastErr: unknown
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      // Honour the caller's signal too — hardcoding our own meant a download
+      // could not be cancelled.
+      const signal = opts.signal
+        ? AbortSignal.any([opts.signal, controller.signal])
+        : controller.signal
+
+      try {
+        const headers = new Headers()
+        if (this.token) headers.set('Authorization', `Bearer ${this.token}`)
+        const res = await fetch(`${this.baseUrl}${path}`, { headers, signal })
+        clearTimeout(timer)
+
+        if (res.status >= 500 && attempt < maxAttempts) {
+          await sleep(retryDelayMs * attempt)
+          continue
+        }
+        if (!res.ok) throw await binaryError(res)
+
+        const buf = Buffer.from(await res.arrayBuffer())
+        // A zero-byte 200 is not a successful download. Writing it produced an
+        // empty .docx that was reported as a completed export.
+        if (buf.length === 0) {
+          throw new ApiError('The server returned an empty file.', res.status, null)
+        }
+        return buf
+      } catch (err) {
+        clearTimeout(timer)
+        if (err instanceof ApiError) throw err
+        // A deliberate cancellation is not a transient failure. Retrying it made
+        // an aborted export take ~3s to stop while it slept between attempts.
+        if (opts.signal?.aborted === true) throw err
+        if (attempt === maxAttempts) throw err
+        lastErr = err
+        await sleep(retryDelayMs * attempt)
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new ApiError('Download failed', 0, null)
+  }
+
+
   post<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
     return this.request<T>('POST', path, body, opts)
   }
@@ -127,6 +202,29 @@ export class ApiClient {
     }
     return res.json() as Promise<T>
   }
+}
+
+/**
+ * Turn a failed binary response into a readable ApiError.
+ *
+ * getBinary used to surface `res.text().slice(0, 200)`, so an export failure
+ * printed the whole JSON envelope truncated mid-token — and a proxy's HTML 502
+ * became the entire page as the message. request() reads `detail`; this matches.
+ */
+async function binaryError(res: Response): Promise<ApiError> {
+  const raw = await res.text().catch(() => '')
+  let message = res.statusText || `HTTP ${res.status}`
+  try {
+    const body = JSON.parse(raw) as Record<string, unknown>
+    const detail = body['detail']
+    const nested = (body['error'] as Record<string, unknown> | undefined)?.['message']
+    if (typeof detail === 'string' && detail !== '') message = detail
+    else if (typeof nested === 'string' && nested !== '') message = nested
+  } catch {
+    // Not JSON (an HTML error page from a proxy) — do not dump the markup.
+    if (res.status === 401 || res.status === 403) message = 'Unauthorized'
+  }
+  return new ApiError(message, res.status, raw.slice(0, 500))
 }
 
 function sleep(ms: number): Promise<void> {

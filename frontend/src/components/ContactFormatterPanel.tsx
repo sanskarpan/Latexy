@@ -74,29 +74,29 @@ export default function ContactFormatterPanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)]"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-md rounded-xl border border-white/[0.08] bg-[#0d0d0d] shadow-2xl">
+      <div className="w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-surface shadow-[var(--shadow-2)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+        <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500/15">
-              <Phone size={13} className="text-emerald-300" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] bg-ok/15">
+              <Phone size={13} className="text-ok" />
             </div>
-            <h2 className="text-sm font-semibold text-zinc-100">Normalize Contacts</h2>
+            <h2 className="text-sm font-semibold text-fg">Normalize Contacts</h2>
           </div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-lg p-1.5 text-zinc-600 transition hover:bg-white/[0.06] hover:text-zinc-300"
+            className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={14} />
           </button>
         </div>
 
         <div className="space-y-4 p-4">
-          <p className="text-[12px] text-zinc-500">
+          <p className="text-[12px] text-fg-3">
             Normalizes phone numbers, LinkedIn / GitHub URLs, and emails to a consistent format.
           </p>
 
@@ -104,7 +104,7 @@ export default function ContactFormatterPanel({
           <button
             onClick={handleDetect}
             disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.03] py-2 text-xs font-semibold text-zinc-300 transition hover:bg-white/[0.06] disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-line bg-surface-2 py-2 text-xs font-semibold text-fg-2 transition hover:bg-surface-2 disabled:opacity-50"
           >
             {loading ? (
               <><Loader2 size={12} className="animate-spin" /> Detecting…</>
@@ -117,34 +117,34 @@ export default function ContactFormatterPanel({
           {changes !== null && (
             <>
               {changes.length === 0 ? (
-                <div className="rounded-lg border border-white/[0.06] bg-black/20 px-3 py-3 text-center">
-                  <p className="text-[12px] text-zinc-500">All contacts are already normalized</p>
+                <div className="rounded-[var(--radius-md)] border border-line bg-bg px-3 py-3 text-center">
+                  <p className="text-[12px] text-fg-3">All contacts are already normalized</p>
                 </div>
               ) : (
-                <div className="rounded-lg border border-white/[0.06] bg-black/20">
+                <div className="rounded-[var(--radius-md)] border border-line bg-bg">
                   <button
                     onClick={() => setPreviewOpen((o) => !o)}
-                    className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500"
+                    className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-fg-3"
                   >
                     <span>{changes.length} change{changes.length !== 1 ? 's' : ''} found</span>
                     {previewOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   </button>
                   {previewOpen && (
-                    <div className="max-h-52 divide-y divide-white/[0.04] overflow-y-auto">
+                    <div className="max-h-52 divide-y divide-line overflow-y-auto">
                       {changes.map((c, i) => (
                         <div key={i} className="px-3 py-1.5">
                           <div className="mb-0.5 flex items-center gap-1.5">
-                            <span className="w-8 shrink-0 text-[10px] text-zinc-700">L{c.line}</span>
-                            <span className="rounded bg-white/[0.04] px-1 py-0.5 text-[9px] uppercase tracking-wider text-zinc-600">
+                            <span className="w-8 shrink-0 text-[10px] text-fg-3">L{c.line}</span>
+                            <span className="rounded bg-surface-2 px-1 py-0.5 text-[9px] uppercase tracking-wider text-fg-3">
                               {TYPE_LABELS[c.type] ?? c.type}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 pl-9">
-                            <span className="flex-1 truncate font-mono text-[11px] text-rose-400/80 line-through">
+                            <span className="flex-1 truncate font-mono text-[11px] text-err line-through">
                               {c.original}
                             </span>
-                            <span className="shrink-0 text-zinc-700">→</span>
-                            <span className="flex-1 truncate font-mono text-[11px] text-emerald-400/80">
+                            <span className="shrink-0 text-fg-3">→</span>
+                            <span className="flex-1 truncate font-mono text-[11px] text-ok">
                               {c.normalized}
                             </span>
                           </div>
@@ -159,13 +159,13 @@ export default function ContactFormatterPanel({
                 <div className="flex gap-2">
                   <button
                     onClick={onClose}
-                    className="flex-1 rounded-lg border border-white/[0.06] py-2 text-xs font-semibold text-zinc-500 transition hover:text-zinc-300"
+                    className="flex-1 rounded-[var(--radius-md)] border border-line py-2 text-xs font-semibold text-fg-3 transition hover:text-fg-2"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleApply}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-500/20 py-2 text-xs font-semibold text-emerald-200 ring-1 ring-emerald-400/20 transition hover:bg-emerald-500/30"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-ok/20 py-2 text-xs font-semibold text-ok ring-1 ring-ok/20 transition hover:bg-ok/30"
                   >
                     <Check size={12} />
                     Apply All

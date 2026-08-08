@@ -324,22 +324,22 @@ export default function CoverLetterPage() {
     <div className="content-shell min-h-screen space-y-6 pb-12">
       <header className="flex items-end justify-between gap-4">
         <div>
-          <p className="overline">Cover Letter</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Cover Letter</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">
             AI Cover Letter Generator
           </h1>
-          <p className="mt-1 text-sm text-zinc-400">
+          <p className="mt-1 text-sm text-fg-2">
             Generate a tailored cover letter for &quot;{resume?.title}&quot; — matching your resume&apos;s style.
           </p>
         </div>
         <div className="flex gap-2">
           <Link
             href={`/workspace/${resumeId}/edit`}
-            className="btn-ghost px-4 py-2 text-xs"
+            className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2"
           >
             Back to Editor
           </Link>
-          <span className="rounded-lg border border-violet-300/25 bg-violet-300/10 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-200">
+          <span className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-accent-strong">
             <Mail size={10} className="mr-1 inline" />
             Cover Letter
           </span>
@@ -350,29 +350,29 @@ export default function CoverLetterPage() {
         {/* Left sidebar — configuration */}
         <aside className="space-y-6">
           {/* Job Description */}
-          <section className="surface-panel edge-highlight p-5">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
                 Job Description
               </h2>
-              <span className="text-[10px] text-zinc-600">required</span>
+              <span className="text-[10px] text-fg-3">required</span>
             </div>
             <textarea
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
               placeholder="Paste the job description to tailor the cover letter to a specific role..."
               disabled={isProcessing}
-              className="scrollbar-subtle mt-3 h-40 w-full resize-none rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-zinc-100 outline-none transition focus:border-violet-300/50"
+              className="scrollbar-subtle mt-3 h-40 w-full resize-none rounded-[var(--radius-lg)] border border-line bg-bg p-4 text-sm text-fg outline-none transition focus:border-accent"
             />
-            <p className="mt-1 text-right text-[10px] text-zinc-600">
+            <p className="mt-1 text-right text-[10px] text-fg-3">
               {jobDescription.length.toLocaleString()} chars
             </p>
           </section>
 
           {/* Company & Role */}
-          <section className="surface-panel edge-highlight p-5 space-y-3">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
-              Details <span className="text-zinc-600 font-normal">(optional)</span>
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 space-y-3">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
+              Details <span className="text-fg-3 font-normal">(optional)</span>
             </h2>
             <input
               type="text"
@@ -380,7 +380,7 @@ export default function CoverLetterPage() {
               onChange={(e) => setCompanyName(e.target.value)}
               placeholder="Company name"
               disabled={isProcessing}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-violet-300/50"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
             />
             <input
               type="text"
@@ -388,13 +388,13 @@ export default function CoverLetterPage() {
               onChange={(e) => setRoleTitle(e.target.value)}
               placeholder="Role title"
               disabled={isProcessing}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-violet-300/50"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
             />
           </section>
 
           {/* Tone */}
-          <section className="surface-panel edge-highlight p-5">
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
               Tone
             </h2>
             <div className="flex gap-2">
@@ -404,10 +404,10 @@ export default function CoverLetterPage() {
                   onClick={() => setTone(opt.value)}
                   disabled={isProcessing}
                   title={opt.desc}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                  className={`flex-1 rounded-[var(--radius-md)] border px-3 py-2 text-xs font-medium transition ${
                     tone === opt.value
-                      ? 'border-violet-400/40 bg-violet-500/20 text-violet-200'
-                      : 'border-white/10 text-zinc-500 hover:text-zinc-300'
+                      ? 'border-accent bg-accent-soft text-accent-strong'
+                      : 'border-line text-fg-3 hover:text-fg-2'
                   }`}
                 >
                   {opt.label}
@@ -417,8 +417,8 @@ export default function CoverLetterPage() {
           </section>
 
           {/* Length */}
-          <section className="surface-panel edge-highlight p-5">
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
               Length
             </h2>
             <div className="flex gap-2">
@@ -428,10 +428,10 @@ export default function CoverLetterPage() {
                   onClick={() => setLengthPref(opt.value)}
                   disabled={isProcessing}
                   title={opt.desc}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                  className={`flex-1 rounded-[var(--radius-md)] border px-3 py-2 text-xs font-medium transition ${
                     lengthPref === opt.value
-                      ? 'border-violet-400/40 bg-violet-500/20 text-violet-200'
-                      : 'border-white/10 text-zinc-500 hover:text-zinc-300'
+                      ? 'border-accent bg-accent-soft text-accent-strong'
+                      : 'border-line text-fg-3 hover:text-fg-2'
                   }`}
                 >
                   {opt.label}
@@ -444,7 +444,7 @@ export default function CoverLetterPage() {
           <button
             onClick={runGeneration}
             disabled={isProcessing || isSubmitting || !jobDescription.trim()}
-            className="btn-accent w-full py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-[var(--radius-md)] bg-accent py-3 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isProcessing || isSubmitting ? 'Generating...' : 'Generate Cover Letter'}
           </button>
@@ -456,26 +456,26 @@ export default function CoverLetterPage() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                className="surface-panel edge-highlight p-5"
+                className="rounded-[var(--radius-lg)] border border-line bg-surface p-5"
               >
                 <div className="mb-4 flex items-start justify-between gap-3">
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
                     Generation Status
                   </h2>
-                  <span className="font-mono text-[10px] text-zinc-500">
+                  <span className="font-mono text-[10px] text-fg-3">
                     {activeJobId.slice(0, 8)}
                   </span>
                 </div>
-                <div className="h-2 rounded-full bg-white/10">
+                <div className="h-2 rounded-full bg-surface-2">
                   <div
-                    className="h-full rounded-full bg-violet-400 transition-all"
+                    className="h-full rounded-full bg-accent transition-all"
                     style={{ width: `${stream.percent}%` }}
                   />
                 </div>
-                <p className="mt-3 text-sm capitalize text-zinc-200">
+                <p className="mt-3 text-sm capitalize text-fg">
                   {stream.stage || 'Initializing'}
                 </p>
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="mt-1 text-xs text-fg-3">
                   {stream.message || 'Connecting to workers...'}
                 </p>
               </motion.section>
@@ -483,11 +483,11 @@ export default function CoverLetterPage() {
           </AnimatePresence>
 
           {/* Live Logs */}
-          <section className="surface-panel edge-highlight p-5">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
               Live Logs
             </h2>
-            <div className="mt-4 h-40 overflow-hidden rounded-lg bg-black/60">
+            <div className="mt-4 h-40 overflow-hidden rounded-[var(--radius-md)] bg-bg">
               <LogViewer
                 lines={stream.logLines}
                 maxHeight="100%"
@@ -498,34 +498,34 @@ export default function CoverLetterPage() {
 
           {/* Existing Cover Letters */}
           {existingCoverLetters.length > 0 && (
-            <section className="surface-panel edge-highlight p-5">
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+            <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
                 Previous Cover Letters ({existingCoverLetters.length})
               </h2>
               <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-subtle">
                 {existingCoverLetters.map((cl) => (
                   <div
                     key={cl.id}
-                    className={`flex items-center justify-between rounded-lg border p-3 transition ${
+                    className={`flex items-center justify-between rounded-[var(--radius-md)] border p-3 transition ${
                       activeCoverLetterId === cl.id
-                        ? 'border-violet-400/40 bg-violet-500/10'
-                        : 'border-white/10 hover:border-white/20'
+                        ? 'border-accent bg-accent-soft'
+                        : 'border-line hover:border-line-2'
                     }`}
                   >
                     <button
                       onClick={() => loadCoverLetter(cl)}
                       className="flex-1 text-left"
                     >
-                      <p className="text-xs font-medium text-zinc-200 truncate">
+                      <p className="text-xs font-medium text-fg truncate">
                         {cl.company_name || cl.role_title || 'Cover Letter'}
                       </p>
-                      <p className="text-[10px] text-zinc-500">
+                      <p className="text-[10px] text-fg-3">
                         {new Date(cl.created_at).toLocaleDateString()}
                       </p>
                     </button>
                     <button
                       onClick={() => deleteCoverLetter(cl.id)}
-                      className="ml-2 text-[10px] text-zinc-600 hover:text-rose-400 transition"
+                      className="ml-2 text-[10px] text-fg-3 hover:text-err transition"
                     >
                       Delete
                     </button>
@@ -540,20 +540,20 @@ export default function CoverLetterPage() {
         <main className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-2">
             {/* LaTeX Editor */}
-            <section className="surface-panel edge-highlight flex h-[620px] flex-col overflow-hidden">
-              <div className="flex h-11 items-center justify-between border-b border-white/10 bg-white/[0.03] px-4">
+            <section className="rounded-[var(--radius-lg)] border border-line bg-surface flex h-[620px] flex-col overflow-hidden">
+              <div className="flex h-11 items-center justify-between border-b border-line bg-surface-2 px-4">
                 <div className="flex items-center gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
                     <FileText size={12} className="mr-1 inline" />
                     Cover Letter LaTeX
                   </p>
                   <button
                     onClick={toggleAutoCompile}
                     title="Auto-compile on change (2s debounce)"
-                    className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition ${
+                    className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium transition ${
                       autoCompile
-                        ? 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/30'
-                        : 'text-zinc-600 hover:text-zinc-300'
+                        ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
+                        : 'text-fg-3 hover:text-fg-2'
                     }`}
                   >
                     <Zap size={10} />
@@ -564,7 +564,7 @@ export default function CoverLetterPage() {
                   {hasUnsavedEdits && activeCoverLetterId && (
                     <button
                       onClick={saveChanges}
-                      className="text-xs font-semibold text-violet-300 transition hover:text-white"
+                      className="text-xs font-semibold text-accent-strong transition hover:text-fg"
                     >
                       Save Changes
                     </button>
@@ -572,13 +572,13 @@ export default function CoverLetterPage() {
                   <button
                     onClick={compileCurrentContent}
                     disabled={isProcessing || isSubmitting}
-                    className="text-xs font-semibold text-zinc-300 transition hover:text-white disabled:opacity-50"
+                    className="text-xs font-semibold text-fg-2 transition hover:text-fg disabled:opacity-50"
                   >
                     Compile PDF
                   </button>
                 </div>
               </div>
-              <div className="min-h-0 flex-1 bg-black/20">
+              <div className="min-h-0 flex-1 bg-bg">
                 <LaTeXEditor
                   ref={editorRef}
                   value=""
@@ -591,22 +591,22 @@ export default function CoverLetterPage() {
             </section>
 
             {/* PDF Preview */}
-            <section className="surface-panel edge-highlight flex h-[620px] flex-col overflow-hidden">
-              <div className="flex h-11 items-center justify-between border-b border-white/10 bg-white/[0.03] px-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+            <section className="rounded-[var(--radius-lg)] border border-line bg-surface flex h-[620px] flex-col overflow-hidden">
+              <div className="flex h-11 items-center justify-between border-b border-line bg-surface-2 px-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
                   Output Preview
                 </p>
                 {pdfUrl && (
                   <a
                     href={pdfUrl}
                     download="cover_letter.pdf"
-                    className="text-xs font-semibold text-zinc-300 transition hover:text-white"
+                    className="text-xs font-semibold text-fg-2 transition hover:text-fg"
                   >
                     Download PDF
                   </a>
                 )}
               </div>
-              <div className="min-h-0 flex-1 bg-black/30">
+              <div className="min-h-0 flex-1 bg-bg">
                 <PDFPreview
                   pdfUrl={pdfUrl}
                   isLoading={isProcessing && stream.percent > 40}
@@ -621,14 +621,14 @@ export default function CoverLetterPage() {
               <motion.section
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="surface-panel edge-highlight p-6"
+                className="rounded-[var(--radius-lg)] border border-line bg-surface p-6"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-semibold text-white">
+                    <h2 className="text-lg font-semibold text-fg">
                       Cover Letter Ready
                     </h2>
-                    <p className="text-sm text-zinc-400">
+                    <p className="text-sm text-fg-2">
                       {stream.tokensUsed ? `${stream.tokensUsed} tokens` : ''}
                       {stream.optimizationTime
                         ? ` in ${stream.optimizationTime.toFixed(1)}s`
@@ -638,12 +638,12 @@ export default function CoverLetterPage() {
                   <div className="flex gap-2">
                     <button
                       onClick={saveChanges}
-                      className="btn-ghost px-4 py-2 text-xs"
+                      className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2"
                     >
                       Save to Resume
                     </button>
                     <button
-                      className="btn-accent px-4 py-2 text-xs"
+                      className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110"
                       onClick={async () => {
                         if (!stream.pdfJobId) return
                         try {

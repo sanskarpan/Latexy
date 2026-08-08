@@ -15,20 +15,20 @@ interface BuilderPreviewProps {
 function headerAccent(templateFamily: string) {
   switch (templateFamily) {
     case 'executive':
-      return 'from-zinc-100/70 via-zinc-200/35 to-transparent'
+      return 'from-black/10 via-black/[0.04] to-transparent'
     case 'ats':
-      return 'from-emerald-200/80 via-emerald-300/35 to-transparent'
+      return 'from-[var(--accent-soft)] via-[var(--accent-soft)] to-transparent'
     case 'minimal':
-      return 'from-orange-200/70 via-orange-300/35 to-transparent'
+      return 'from-[var(--accent-soft)] via-[var(--accent-soft)] to-transparent'
     default:
-      return 'from-sky-200/70 via-sky-300/35 to-transparent'
+      return 'from-[var(--accent-soft)] via-[var(--accent-soft)] to-transparent'
   }
 }
 
 function statTone(value: number) {
-  if (value >= 85) return 'text-emerald-200 border-emerald-300/20 bg-emerald-300/[0.08]'
-  if (value >= 65) return 'text-amber-100 border-amber-300/20 bg-amber-300/[0.08]'
-  return 'text-rose-100 border-rose-300/20 bg-rose-300/[0.08]'
+  if (value >= 85) return 'text-ok border-ok bg-surface-2'
+  if (value >= 65) return 'text-warn border-warn bg-surface-2'
+  return 'text-err border-err bg-surface-2'
 }
 
 export default function BuilderPreview({
@@ -45,12 +45,12 @@ export default function BuilderPreview({
   const activeSections = structured.section_order.filter(section => !structured.hidden_sections.includes(section))
 
   return (
-    <div className="surface-panel edge-highlight sticky top-24 overflow-hidden">
-      <div className="border-b border-white/10 px-5 py-4">
+    <div className="rounded-[var(--radius-lg)] border border-line bg-surface sticky top-24 overflow-hidden">
+      <div className="border-b border-line px-5 py-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Live Preview</p>
-            <p className="mt-2 text-sm text-zinc-300">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-fg-3">Live Preview</p>
+            <p className="mt-2 text-sm text-fg-2">
               Render-safe snapshot of the structured resume that will drive generated LaTeX.
             </p>
           </div>
@@ -60,17 +60,17 @@ export default function BuilderPreview({
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-white/8 bg-black/20 px-3 py-3">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Template</p>
-            <p className="mt-2 text-sm font-semibold text-white">{templateFamily}</p>
+          <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 px-3 py-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-fg-3">Template</p>
+            <p className="mt-2 text-sm font-semibold text-fg">{templateFamily}</p>
           </div>
-          <div className="rounded-2xl border border-white/8 bg-black/20 px-3 py-3">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Page Target</p>
-            <p className="mt-2 text-sm font-semibold text-white">{pageEstimate} page{pageEstimate === 1 ? '' : 's'}</p>
+          <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 px-3 py-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-fg-3">Page Target</p>
+            <p className="mt-2 text-sm font-semibold text-fg">{pageEstimate} page{pageEstimate === 1 ? '' : 's'}</p>
           </div>
-          <div className="rounded-2xl border border-white/8 bg-black/20 px-3 py-3">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Visible Sections</p>
-            <p className="mt-2 text-sm font-semibold text-white">{sectionCount || activeSections.length}</p>
+          <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 px-3 py-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-fg-3">Visible Sections</p>
+            <p className="mt-2 text-sm font-semibold text-fg">{sectionCount || activeSections.length}</p>
           </div>
         </div>
 
@@ -79,7 +79,7 @@ export default function BuilderPreview({
             {activeSections.map(section => (
               <span
                 key={section}
-                className="rounded-full border border-white/8 bg-white/[0.04] px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-400"
+                className="rounded-full border border-line bg-surface-2 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-fg-2"
               >
                 {section.replace('_', ' ')}
               </span>
@@ -88,9 +88,9 @@ export default function BuilderPreview({
         ) : null}
 
         {!!warnings.length && (
-          <div className="mt-4 rounded-2xl border border-amber-300/15 bg-amber-300/[0.06] px-4 py-3">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-amber-100/75">Preview warnings</p>
-            <ul className="mt-2 space-y-1 text-xs text-amber-50/90">
+          <div className="mt-4 rounded-[var(--radius-lg)] border border-warn bg-surface-2 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-warn">Preview warnings</p>
+            <ul className="mt-2 space-y-1 text-xs text-fg-2">
               {warnings.slice(0, 2).map(warning => (
                 <li key={warning}>• {warning}</li>
               ))}
@@ -98,7 +98,7 @@ export default function BuilderPreview({
           </div>
         )}
 
-        <div className="mt-5 rounded-[28px] border border-white/8 bg-[#f7f4ef] p-6 text-[#171717] shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
+        <div className="mt-5 rounded-[var(--radius-lg)] border border-line bg-[#f7f4ef] p-6 text-[#171717] shadow-[var(--shadow-2)]">
           <div className={`border-b border-black/8 bg-gradient-to-r ${headerAccent(templateFamily)} pb-4`}>
             <h2 className="text-2xl font-semibold tracking-tight text-[#111111]">
               {basics.name || title || 'Untitled Resume'}
@@ -142,7 +142,7 @@ export default function BuilderPreview({
                 </section>
               ))
             ) : (
-              <div className="rounded-2xl border border-dashed border-black/10 bg-white/50 px-4 py-6 text-center text-sm text-[#696969]">
+              <div className="rounded-[var(--radius-lg)] border border-dashed border-black/10 bg-white/50 px-4 py-6 text-center text-sm text-[#696969]">
                 Start filling the builder to generate a live preview.
               </div>
             )}

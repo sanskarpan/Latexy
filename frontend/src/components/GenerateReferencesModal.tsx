@@ -95,32 +95,32 @@ export default function GenerateReferencesModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-xl rounded-xl border border-white/[0.08] bg-[#0d0d0d] shadow-2xl">
+      <div className="w-full max-w-xl rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+        <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-500/15">
-              <BookUser size={13} className="text-violet-300" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <BookUser size={13} className="text-accent-strong" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-zinc-100">Generate References Page</h2>
-              <p className="text-[10px] text-zinc-600">{resumeTitle}</p>
+              <h2 className="text-sm font-semibold text-fg">Generate References Page</h2>
+              <p className="text-[10px] text-fg-3">{resumeTitle}</p>
             </div>
           </div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-lg p-1.5 text-zinc-600 transition hover:bg-white/[0.06] hover:text-zinc-300"
+            className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={14} />
           </button>
         </div>
 
         <div className="max-h-[70vh] overflow-y-auto p-4">
-          <p className="mb-4 text-[12px] text-zinc-500">
+          <p className="mb-4 text-[12px] text-fg-3">
             Add up to 5 references. The LaTeX will match your resume&apos;s document class and style.
           </p>
 
@@ -128,16 +128,16 @@ export default function GenerateReferencesModal({
             {refs.map((ref, idx) => (
               <div
                 key={idx}
-                className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3"
+                className="rounded-[var(--radius-md)] border border-line bg-surface p-3"
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-3">
                     Reference {idx + 1}
                   </span>
                   {refs.length > 1 && (
                     <button
                       onClick={() => handleRemove(idx)}
-                      className="rounded p-1 text-zinc-700 transition hover:bg-white/[0.06] hover:text-rose-400"
+                      className="rounded p-1 text-fg-3 transition hover:bg-surface-2 hover:text-err"
                     >
                       <Trash2 size={12} />
                     </button>
@@ -151,7 +151,7 @@ export default function GenerateReferencesModal({
                       placeholder="Full name *"
                       value={ref.name}
                       onChange={(e) => handleChange(idx, 'name', e.target.value)}
-                      className="w-full rounded-md border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-[12px] text-zinc-200 placeholder-zinc-700 outline-none transition focus:border-white/[0.15]"
+                      className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-2.5 py-1.5 text-[12px] text-fg placeholder-fg-3 outline-none transition focus:border-line-2"
                     />
                   </div>
                   <input
@@ -159,35 +159,35 @@ export default function GenerateReferencesModal({
                     placeholder="Job title *"
                     value={ref.title}
                     onChange={(e) => handleChange(idx, 'title', e.target.value)}
-                    className="rounded-md border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-[12px] text-zinc-200 placeholder-zinc-700 outline-none transition focus:border-white/[0.15]"
+                    className="rounded-[var(--radius-md)] border border-line bg-bg px-2.5 py-1.5 text-[12px] text-fg placeholder-fg-3 outline-none transition focus:border-line-2"
                   />
                   <input
                     type="text"
                     placeholder="Company *"
                     value={ref.company}
                     onChange={(e) => handleChange(idx, 'company', e.target.value)}
-                    className="rounded-md border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-[12px] text-zinc-200 placeholder-zinc-700 outline-none transition focus:border-white/[0.15]"
+                    className="rounded-[var(--radius-md)] border border-line bg-bg px-2.5 py-1.5 text-[12px] text-fg placeholder-fg-3 outline-none transition focus:border-line-2"
                   />
                   <input
                     type="text"
                     placeholder="Relationship (e.g. Direct Manager) *"
                     value={ref.relationship}
                     onChange={(e) => handleChange(idx, 'relationship', e.target.value)}
-                    className="col-span-2 rounded-md border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-[12px] text-zinc-200 placeholder-zinc-700 outline-none transition focus:border-white/[0.15]"
+                    className="col-span-2 rounded-[var(--radius-md)] border border-line bg-bg px-2.5 py-1.5 text-[12px] text-fg placeholder-fg-3 outline-none transition focus:border-line-2"
                   />
                   <input
                     type="email"
                     placeholder="Email (optional)"
                     value={ref.email ?? ''}
                     onChange={(e) => handleChange(idx, 'email', e.target.value)}
-                    className="rounded-md border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-[12px] text-zinc-200 placeholder-zinc-700 outline-none transition focus:border-white/[0.15]"
+                    className="rounded-[var(--radius-md)] border border-line bg-bg px-2.5 py-1.5 text-[12px] text-fg placeholder-fg-3 outline-none transition focus:border-line-2"
                   />
                   <input
                     type="tel"
                     placeholder="Phone (optional)"
                     value={ref.phone ?? ''}
                     onChange={(e) => handleChange(idx, 'phone', e.target.value)}
-                    className="rounded-md border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-[12px] text-zinc-200 placeholder-zinc-700 outline-none transition focus:border-white/[0.15]"
+                    className="rounded-[var(--radius-md)] border border-line bg-bg px-2.5 py-1.5 text-[12px] text-fg placeholder-fg-3 outline-none transition focus:border-line-2"
                   />
                 </div>
               </div>
@@ -197,7 +197,7 @@ export default function GenerateReferencesModal({
           {refs.length < 5 && (
             <button
               onClick={handleAdd}
-              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-white/[0.08] py-2 text-xs font-medium text-zinc-600 transition hover:border-white/[0.14] hover:text-zinc-400"
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-dashed border-line py-2 text-xs font-medium text-fg-3 transition hover:border-line-2 hover:text-fg-2"
             >
               <Plus size={12} />
               Add reference
@@ -206,17 +206,17 @@ export default function GenerateReferencesModal({
         </div>
 
         {/* Footer */}
-        <div className="flex gap-2 border-t border-white/[0.06] px-4 py-3">
+        <div className="flex gap-2 border-t border-line px-4 py-3">
           <button
             onClick={onClose}
-            className="flex-1 rounded-lg border border-white/[0.06] py-2 text-xs font-semibold text-zinc-500 transition hover:text-zinc-300"
+            className="flex-1 rounded-[var(--radius-md)] border border-line py-2 text-xs font-semibold text-fg-3 transition hover:text-fg-2"
           >
             Cancel
           </button>
           <button
             onClick={handleGenerate}
             disabled={loading}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-violet-500/20 py-2 text-xs font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30 disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-2 text-xs font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:opacity-50"
           >
             {loading ? (
               <><Loader2 size={12} className="animate-spin" /> Generating…</>

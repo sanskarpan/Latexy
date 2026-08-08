@@ -40,12 +40,12 @@ function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
   const r = 15.9
   const circumference = 2 * Math.PI * r
   const dashArray = `${(score / 100) * circumference} ${circumference}`
-  const color = score >= 80 ? '#34d399' : score >= 60 ? '#f59e0b' : '#f87171'
+  const color = score >= 80 ? 'var(--ok)' : score >= 60 ? 'var(--warn)' : 'var(--err)'
 
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg className="-rotate-90" width={size} height={size} viewBox="0 0 36 36">
-        <circle cx="18" cy="18" r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3" />
+        <circle cx="18" cy="18" r={r} fill="none" stroke="var(--line)" strokeWidth="3" />
         <circle
           cx="18" cy="18" r={r} fill="none"
           stroke={color}
@@ -66,12 +66,12 @@ function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
 
 function SectionCard({ section }: { section: ATSDeepSection }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-black/30 p-3 space-y-2">
+    <div className="rounded-[var(--radius-md)] border border-line bg-surface p-3 space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold text-zinc-200">{section.name}</span>
+        <span className="text-[11px] font-semibold text-fg">{section.name}</span>
         <span className={`text-[10px] font-bold tabular-nums ${
-          section.score >= 80 ? 'text-emerald-400' :
-          section.score >= 60 ? 'text-amber-400' : 'text-rose-400'
+          section.score >= 80 ? 'text-ok' :
+          section.score >= 60 ? 'text-warn' : 'text-err'
         }`}>{section.score}/100</span>
       </div>
 
@@ -79,8 +79,8 @@ function SectionCard({ section }: { section: ATSDeepSection }) {
         <div className="space-y-0.5">
           {section.strengths.slice(0, 2).map((s, i) => (
             <div key={i} className="flex items-start gap-1.5">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-              <span className="text-[10px] text-zinc-400">{s}</span>
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
+              <span className="text-[10px] text-fg-2">{s}</span>
             </div>
           ))}
         </div>
@@ -90,8 +90,8 @@ function SectionCard({ section }: { section: ATSDeepSection }) {
         <div className="space-y-0.5">
           {section.improvements.slice(0, 2).map((imp, i) => (
             <div key={i} className="flex items-start gap-1.5">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-              <span className="text-[10px] text-zinc-400">{imp}</span>
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />
+              <span className="text-[10px] text-fg-2">{imp}</span>
             </div>
           ))}
         </div>
@@ -101,20 +101,20 @@ function SectionCard({ section }: { section: ATSDeepSection }) {
 }
 
 function DimensionBar({ label, description, score }: { label: string; description: string; score: number }) {
-  const color = score >= 80 ? '#34d399' : score >= 60 ? '#f59e0b' : '#f87171'
+  const color = score >= 80 ? 'var(--ok)' : score >= 60 ? 'var(--warn)' : 'var(--err)'
   return (
     <div className="space-y-0.5">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-medium text-zinc-300">{label}</span>
+        <span className="text-[10px] font-medium text-fg-2">{label}</span>
         <span className="text-[10px] font-bold tabular-nums" style={{ color }}>{Math.round(score)}</span>
       </div>
-      <div className="h-1 rounded-full bg-white/[0.05]">
+      <div className="h-1 rounded-full bg-surface-2">
         <div
           className="h-1 rounded-full transition-all duration-700"
           style={{ width: `${score}%`, background: color }}
         />
       </div>
-      <p className="text-[9px] text-zinc-600">{description}</p>
+      <p className="text-[9px] text-fg-3">{description}</p>
     </div>
   )
 }
@@ -196,7 +196,7 @@ export default function DeepAnalysisPanel({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+        className="fixed inset-0 z-40 bg-[var(--overlay)]"
         onClick={onClose}
       />
 
@@ -205,17 +205,17 @@ export default function DeepAnalysisPanel({
         role="dialog"
         aria-modal="true"
         aria-label="Deep AI Analysis"
-        className="fixed right-0 top-0 z-50 flex h-full w-[480px] flex-col border-l border-white/[0.07] bg-[#0d0d0d] shadow-2xl"
+        className="fixed right-0 top-0 z-50 flex h-full w-[480px] flex-col border-l border-line bg-bg shadow-[var(--shadow-2)]"
       >
         {/* Header */}
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.07] px-4">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-line px-4">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-violet-500/20">
-              <Brain size={13} className="text-violet-300" />
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <Brain size={13} className="text-accent-strong" />
             </div>
-            <span className="text-sm font-semibold text-zinc-100">Deep AI Analysis</span>
+            <span className="text-sm font-semibold text-fg">Deep AI Analysis</span>
             {displayedIndustryLabel && (
-              <span className="flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-300 ring-1 ring-violet-400/20 shrink-0">
+              <span className="flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-medium text-accent-strong ring-1 ring-accent shrink-0">
                 <Tag size={8} />
                 {displayedIndustryLabel}
               </span>
@@ -224,7 +224,7 @@ export default function DeepAnalysisPanel({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md p-1.5 text-zinc-600 transition hover:bg-white/[0.05] hover:text-zinc-200"
+            className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <X size={14} />
           </button>
@@ -235,12 +235,12 @@ export default function DeepAnalysisPanel({
           {/* Idle state */}
           {!isLoading && !analysis && !error && !isRunning && (
             <div className="space-y-5 p-5">
-              <div className="rounded-xl border border-white/[0.06] bg-black/30 p-4">
+              <div className="rounded-[var(--radius-md)] border border-line bg-surface p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Zap size={14} className="text-violet-300" />
-                  <span className="text-sm font-semibold text-zinc-200">AI-Powered Section Analysis</span>
+                  <Zap size={14} className="text-accent-strong" />
+                  <span className="text-sm font-semibold text-fg">AI-Powered Section Analysis</span>
                 </div>
-                <p className="text-[12px] leading-relaxed text-zinc-500">
+                <p className="text-[12px] leading-relaxed text-fg-3">
                   Get detailed feedback on each section of your resume from GPT-4o mini.
                   Includes scores, specific improvements, and ATS compatibility analysis.
                 </p>
@@ -252,15 +252,15 @@ export default function DeepAnalysisPanel({
                   ref={industryTriggerRef}
                   type="button"
                   onClick={() => (industryDropdownOpen ? setIndustryDropdownOpen(false) : openIndustryDropdown())}
-                  className="flex w-full items-center justify-between rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-left text-[11px] text-zinc-400 transition hover:border-white/[0.12] hover:bg-white/[0.05]"
+                  className="flex w-full items-center justify-between rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-left text-[11px] text-fg-2 transition hover:border-line-2 hover:bg-surface-2"
                 >
                   <span className="flex items-center gap-1.5">
-                    <Tag size={11} className="text-violet-400/70" />
+                    <Tag size={11} className="text-accent-strong" />
                     <span>
                       {INDUSTRY_OPTIONS.find((o) => o.key === industryOverride)?.label ?? 'General (auto-detect)'}
                     </span>
                   </span>
-                  <ChevronDown size={11} className={`text-zinc-600 transition-transform ${industryDropdownOpen ? 'rotate-180' : ''}`} />
+                  <ChevronDown size={11} className={`text-fg-3 transition-transform ${industryDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {mounted && industryDropdownOpen && industryDropdownPos && createPortal(
                   <>
@@ -271,7 +271,7 @@ export default function DeepAnalysisPanel({
                     />
                     {/* Dropdown — fixed positioning so it escapes the panel's overflow-y-auto */}
                     <div
-                      className="z-[201] overflow-y-auto overscroll-contain rounded-lg border border-white/[0.08] bg-[#111] py-1 shadow-2xl shadow-black/60"
+                      className="z-[201] overflow-y-auto overscroll-contain rounded-[var(--radius-md)] border border-line bg-surface py-1 shadow-[var(--shadow-2)]"
                       style={{
                         position: 'fixed',
                         top: industryDropdownPos.top,
@@ -286,8 +286,8 @@ export default function DeepAnalysisPanel({
                           key={opt.key}
                           type="button"
                           onClick={() => { setIndustryOverride(opt.key); setIndustryDropdownOpen(false) }}
-                          className={`flex w-full items-center px-3 py-2 text-left text-[11px] transition hover:bg-white/[0.05] ${
-                            industryOverride === opt.key ? 'text-violet-300' : 'text-zinc-400'
+                          className={`flex w-full items-center px-3 py-2 text-left text-[11px] transition hover:bg-surface-2 ${
+                            industryOverride === opt.key ? 'text-accent-strong' : 'text-fg-2'
                           }`}
                         >
                           {opt.label}
@@ -300,8 +300,8 @@ export default function DeepAnalysisPanel({
               </div>
 
               {usesRemaining !== null && !hideUpgradeCtas && (
-                <div className="flex items-center gap-2 rounded-lg border border-amber-400/20 bg-amber-500/[0.06] px-3 py-2">
-                  <span className="text-[11px] text-amber-300">
+                <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-warn/20 bg-warn/[0.06] px-3 py-2">
+                  <span className="text-[11px] text-warn">
                     {usesRemaining > 0
                       ? `${usesRemaining} free ${usesRemaining === 1 ? 'use' : 'uses'} remaining`
                       : 'Trial limit reached — sign in for unlimited access'}
@@ -312,7 +312,7 @@ export default function DeepAnalysisPanel({
               <button
                 onClick={() => onRun(industryOverride !== 'generic' ? industryOverride : undefined)}
                 disabled={!hideUpgradeCtas && usesRemaining === 0}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600/80 to-violet-500/60 py-3 text-sm font-semibold text-white ring-1 ring-violet-400/20 transition hover:from-violet-600 hover:to-violet-500/80 disabled:opacity-40"
+                className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-lg)] bg-accent py-3 text-sm font-semibold text-accent-fg transition hover:brightness-110 disabled:opacity-40"
               >
                 <Brain size={14} />
                 Run Deep Analysis
@@ -324,18 +324,18 @@ export default function DeepAnalysisPanel({
           {(isLoading || isRunning) && (
             <div className="flex flex-col items-center justify-center gap-4 p-8">
               <div className="relative">
-                <div className="h-14 w-14 rounded-full border-2 border-violet-400/20" />
-                <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-violet-400" />
-                <Brain size={20} className="absolute inset-0 m-auto text-violet-400" />
+                <div className="h-14 w-14 rounded-full border-2 border-accent/20" />
+                <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-accent" />
+                <Brain size={20} className="absolute inset-0 m-auto text-accent-strong" />
               </div>
               <div className="space-y-1 text-center">
-                <p className="text-sm font-semibold text-zinc-200">Analysing your resume…</p>
-                <p className="text-[11px] text-zinc-600">GPT-4o mini · section-by-section review</p>
+                <p className="text-sm font-semibold text-fg">Analysing your resume…</p>
+                <p className="text-[11px] text-fg-3">GPT-4o mini · section-by-section review</p>
               </div>
               {/* Skeleton cards */}
               <div className="w-full space-y-3">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-16 animate-pulse rounded-xl bg-white/[0.03]" />
+                  <div key={i} className="h-16 animate-pulse rounded-[var(--radius-md)] bg-surface-2" />
                 ))}
               </div>
             </div>
@@ -344,16 +344,16 @@ export default function DeepAnalysisPanel({
           {/* Error state */}
           {error && !isLoading && !isRunning && (
             <div className="space-y-4 p-5">
-              <div className="flex items-start gap-3 rounded-xl border border-rose-400/20 bg-rose-500/[0.07] p-4">
-                <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-400" />
+              <div className="flex items-start gap-3 rounded-[var(--radius-md)] border border-err/20 bg-err/[0.07] p-4">
+                <AlertCircle size={15} className="mt-0.5 shrink-0 text-err" />
                 <div>
-                  <p className="text-sm font-semibold text-rose-300">Analysis failed</p>
-                  <p className="mt-0.5 text-[11px] text-zinc-500">{error}</p>
+                  <p className="text-sm font-semibold text-err">Analysis failed</p>
+                  <p className="mt-0.5 text-[11px] text-fg-3">{error}</p>
                 </div>
               </div>
               <button
                 onClick={() => onRun(industryOverride !== 'generic' ? industryOverride : undefined)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500/20 py-2.5 text-sm font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
+                className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-accent-soft py-2.5 text-sm font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110"
               >
                 <Brain size={13} /> Try again
               </button>
@@ -364,11 +364,11 @@ export default function DeepAnalysisPanel({
           {analysis && !isLoading && !isRunning && (
             <div className="space-y-4 p-4">
               {/* Overall score */}
-              <div className="flex items-center gap-4 rounded-xl border border-white/[0.06] bg-black/40 p-4">
+              <div className="flex items-center gap-4 rounded-[var(--radius-md)] border border-line bg-surface p-4">
                 <ScoreRing score={analysis.overall_score} />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-zinc-200">Overall ATS Score</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                  <p className="text-sm font-semibold text-fg">Overall ATS Score</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-fg-3">
                     {analysis.overall_feedback}
                   </p>
                 </div>
@@ -376,8 +376,8 @@ export default function DeepAnalysisPanel({
 
               {/* Multi-dimensional score breakdown */}
               {analysis.multi_dim_scores && Object.keys(analysis.multi_dim_scores).length > 0 && (
-                <div className="space-y-3 rounded-xl border border-white/[0.06] bg-black/30 p-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+                <div className="space-y-3 rounded-[var(--radius-md)] border border-line bg-surface p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
                     Score Breakdown
                   </p>
                   <div className="flex justify-center">
@@ -402,7 +402,7 @@ export default function DeepAnalysisPanel({
               {/* Sections */}
               {analysis.sections.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
                     Section Breakdown
                   </p>
                   {analysis.sections.map((section, i) => (
@@ -413,25 +413,25 @@ export default function DeepAnalysisPanel({
 
               {/* ATS compatibility */}
               {analysis.ats_compatibility && (
-                <div className="rounded-xl border border-white/[0.06] bg-black/30 p-3 space-y-2">
+                <div className="rounded-[var(--radius-md)] border border-line bg-surface p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-semibold text-zinc-200">ATS Compatibility</p>
+                    <p className="text-[11px] font-semibold text-fg">ATS Compatibility</p>
                     <span className={`text-[10px] font-bold ${
-                      analysis.ats_compatibility.score >= 80 ? 'text-emerald-400' :
-                      analysis.ats_compatibility.score >= 60 ? 'text-amber-400' : 'text-rose-400'
+                      analysis.ats_compatibility.score >= 80 ? 'text-ok' :
+                      analysis.ats_compatibility.score >= 60 ? 'text-warn' : 'text-err'
                     }`}>{analysis.ats_compatibility.score}/100</span>
                   </div>
                   {analysis.ats_compatibility.issues.length > 0 && (
                     <div className="space-y-1">
                       {analysis.ats_compatibility.issues.map((issue, i) => (
-                        <p key={i} className="text-[10px] text-zinc-500">• {issue}</p>
+                        <p key={i} className="text-[10px] text-fg-3">• {issue}</p>
                       ))}
                     </div>
                   )}
                   {analysis.ats_compatibility.keyword_gaps.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       {analysis.ats_compatibility.keyword_gaps.slice(0, 8).map((kw, i) => (
-                        <span key={i} className="rounded-md bg-rose-500/10 px-2 py-0.5 text-[10px] text-rose-300 ring-1 ring-rose-500/20">
+                        <span key={i} className="rounded-[var(--radius-md)] bg-err/10 px-2 py-0.5 text-[10px] text-err ring-1 ring-err/20">
                           {kw}
                         </span>
                       ))}
@@ -442,19 +442,19 @@ export default function DeepAnalysisPanel({
 
               {/* Job match */}
               {analysis.job_match && (
-                <div className="rounded-xl border border-white/[0.06] bg-black/30 p-3 space-y-2">
+                <div className="rounded-[var(--radius-md)] border border-line bg-surface p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-semibold text-zinc-200">Job Match</p>
+                    <p className="text-[11px] font-semibold text-fg">Job Match</p>
                     <span className={`text-[10px] font-bold ${
-                      analysis.job_match.score >= 80 ? 'text-emerald-400' :
-                      analysis.job_match.score >= 60 ? 'text-amber-400' : 'text-rose-400'
+                      analysis.job_match.score >= 80 ? 'text-ok' :
+                      analysis.job_match.score >= 60 ? 'text-warn' : 'text-err'
                     }`}>{analysis.job_match.score}%</span>
                   </div>
-                  <p className="text-[10px] text-zinc-500">{analysis.job_match.recommendation}</p>
+                  <p className="text-[10px] text-fg-3">{analysis.job_match.recommendation}</p>
                   {analysis.job_match.missing_requirements.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {analysis.job_match.missing_requirements.slice(0, 6).map((req, i) => (
-                        <span key={i} className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300 ring-1 ring-amber-500/20">
+                        <span key={i} className="rounded-[var(--radius-md)] bg-warn/10 px-2 py-0.5 text-[10px] text-warn ring-1 ring-warn/20">
                           {req}
                         </span>
                       ))}
@@ -464,13 +464,13 @@ export default function DeepAnalysisPanel({
               )}
 
               {/* Footer */}
-              <div className="flex items-center justify-between border-t border-white/[0.05] pt-3">
-                <span className="text-[10px] text-zinc-700">
+              <div className="flex items-center justify-between border-t border-line pt-3">
+                <span className="text-[10px] text-fg-3">
                   {analysis.tokens_used.toLocaleString()} tokens · {analysis.analysis_time.toFixed(1)}s
                 </span>
                 <button
                   onClick={() => onRun(industryOverride !== 'generic' ? industryOverride : undefined)}
-                  className="flex items-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-[11px] font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/25"
+                  className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft px-3 py-1.5 text-[11px] font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110"
                 >
                   <Brain size={11} /> Re-analyse
                 </button>
@@ -479,20 +479,20 @@ export default function DeepAnalysisPanel({
           )}
           {/* Score History — always visible when resumeId is provided */}
           {resumeId && (
-            <div className="border-t border-white/[0.06] mx-4 mt-2">
+            <div className="border-t border-line mx-4 mt-2">
               <button
                 onClick={() => setHistoryOpen((v) => !v)}
                 className="flex w-full items-center justify-between py-3 text-left"
               >
                 <div className="flex items-center gap-2">
-                  <TrendingUp size={13} className="text-orange-300/70" />
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                  <TrendingUp size={13} className="text-accent-strong" />
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fg-3">
                     Score History
                   </span>
                 </div>
                 <ChevronDown
                   size={13}
-                  className={`text-zinc-600 transition-transform ${historyOpen ? 'rotate-180' : ''}`}
+                  className={`text-fg-3 transition-transform ${historyOpen ? 'rotate-180' : ''}`}
                 />
               </button>
               {historyOpen && (

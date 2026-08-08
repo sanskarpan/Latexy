@@ -23,14 +23,14 @@
 
   /* ---- SPINE: reading measure + font role fallbacks ---- */
   --measure: 66ch;
-  --serif: var(--font-fraunces), "Hoefler Text", "Iowan Old Style", Charter, Palatino, Georgia, serif;
+  --grotesque: var(--font-bricolage), "Hanken Grotesk", "Helvetica Neue", system-ui, sans-serif;
   --mono: var(--font-jetbrains), "SF Mono", ui-monospace, Menlo, Monaco, monospace;
   --sans: var(--font-geist-sans), "Avenir Next", "Helvetica Neue", system-ui, sans-serif;
 
   /* Aesthetic defaults (typeset) so tokens resolve before attributes are set. */
-  --font-display: var(--serif); --font-body: var(--serif); --font-ui: var(--mono);
+  --font-display: var(--grotesque); --font-body: var(--sans); --font-ui: var(--mono);
   --radius-sm: 2px; --radius-md: 3px; --radius-lg: 4px; --radius-pill: 999px;
-  --track-label: .2em; --display-tracking: -.025em;
+  --track-label: .2em; --display-tracking: -.035em;
   --shadow-1: 0 1px 0 rgba(0,0,0,.04);
   --shadow-2: 0 22px 44px -30px rgba(0,0,0,.4);
 
@@ -50,9 +50,9 @@
 
 /* ---- AESTHETIC LAYER: fonts + radius + rhythm (colors come from THEME) ---- */
 :root[data-aesthetic="typeset"] {
-  --font-display: var(--serif); --font-body: var(--serif); --font-ui: var(--mono);
+  --font-display: var(--grotesque); --font-body: var(--sans); --font-ui: var(--mono);
   --radius-sm: 2px; --radius-md: 3px; --radius-lg: 4px; --radius-pill: 999px;
-  --track-label: .2em; --display-tracking: -.025em;
+  --track-label: .2em; --display-tracking: -.035em;
   --shadow-2: 0 22px 44px -30px rgba(0,0,0,.4);
 }
 :root[data-aesthetic="compiler"] {

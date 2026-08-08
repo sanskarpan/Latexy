@@ -134,7 +134,7 @@ export default function DesignPanel({
 
   function SectionLabel({ label }: { label: string }) {
     return (
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
         {label}
       </p>
     )
@@ -150,11 +150,11 @@ export default function DesignPanel({
         <div className="space-y-2">
           <SectionLabel label="Font Family" />
           <div
-            className="max-h-[200px] overflow-y-auto rounded-xl border border-white/[0.06] bg-black/30"
+            className="max-h-[200px] overflow-y-auto rounded-[var(--radius-lg)] border border-line bg-surface-2"
           >
             {/* Serif group */}
             <div className="px-2 pt-2 pb-1">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-800 px-1 mb-1">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-fg-3 px-1 mb-1">
                 Serif
               </p>
               {LATEX_FONTS.filter((f) => f.category === 'serif').map((font) => (
@@ -168,8 +168,8 @@ export default function DesignPanel({
             </div>
 
             {/* Sans-serif group */}
-            <div className="border-t border-white/[0.04] px-2 pt-2 pb-1">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-800 px-1 mb-1">
+            <div className="border-t border-line px-2 pt-2 pb-1">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-fg-3 px-1 mb-1">
                 Sans-Serif
               </p>
               {LATEX_FONTS.filter((f) => f.category === 'sans-serif').map((font) => (
@@ -183,8 +183,8 @@ export default function DesignPanel({
             </div>
 
             {/* Monospace group */}
-            <div className="border-t border-white/[0.04] px-2 pt-2 pb-2">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-zinc-800 px-1 mb-1">
+            <div className="border-t border-line px-2 pt-2 pb-2">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-fg-3 px-1 mb-1">
                 Monospace
               </p>
               {LATEX_FONTS.filter((f) => f.category === 'monospace').map((font) => (
@@ -212,7 +212,7 @@ export default function DesignPanel({
                 style={{ backgroundColor: `#${hex}` }}
               >
                 {accentColor.toUpperCase() === hex && (
-                  <span className="absolute inset-0 rounded-full ring-2 ring-white/60 ring-offset-1 ring-offset-black" />
+                  <span className="absolute inset-0 rounded-full ring-2 ring-fg ring-offset-1 ring-offset-bg" />
                 )}
               </button>
             ))}
@@ -220,9 +220,9 @@ export default function DesignPanel({
             {/* Custom color picker */}
             <label
               title="Custom color"
-              className="relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-white/10 bg-white/[0.04] transition hover:bg-white/[0.08]"
+              className="relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-line bg-surface-2 transition hover:brightness-110"
             >
-              <span className="text-[10px] text-zinc-500">+</span>
+              <span className="text-[10px] text-fg-3">+</span>
               <input
                 type="color"
                 value={`#${accentColor}`}
@@ -236,7 +236,7 @@ export default function DesignPanel({
           </div>
 
           {!hasAccentDefined && (
-            <div className="flex items-start gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-2 text-[10px] text-amber-400 ring-1 ring-amber-500/20">
+            <div className="flex items-start gap-1.5 rounded-[var(--radius-md)] bg-warn/10 px-2.5 py-2 text-[10px] text-warn ring-1 ring-warn/20">
               <AlertTriangle size={11} className="mt-px shrink-0" />
               <span>
                 No <code className="opacity-70">\definecolor&#123;accent&#125;</code> found. Applying will
@@ -249,15 +249,15 @@ export default function DesignPanel({
         {/* ── Font Size ──────────────────────────────────────────────── */}
         <div className="space-y-2">
           <SectionLabel label="Base Font Size" />
-          <div className="grid grid-cols-3 gap-1 rounded-xl border border-white/[0.06] bg-black/30 p-1">
+          <div className="grid grid-cols-3 gap-1 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-1">
             {(['10pt', '11pt', '12pt'] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => handleFontSizeChange(s)}
-                className={`rounded-lg py-2 text-[11px] font-medium transition ${
+                className={`rounded-[var(--radius-md)] py-2 text-[11px] font-medium transition ${
                   fontSize === s
-                    ? 'bg-violet-500/25 text-violet-200 ring-1 ring-violet-400/30'
-                    : 'text-zinc-600 hover:text-zinc-300'
+                    ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
+                    : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 {s}
@@ -269,7 +269,7 @@ export default function DesignPanel({
         {/* ── Margins ────────────────────────────────────────────────── */}
         <div className="space-y-2">
           <SectionLabel label="Margins" />
-          <div className="grid grid-cols-3 gap-1 rounded-xl border border-white/[0.06] bg-black/30 p-1">
+          <div className="grid grid-cols-3 gap-1 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-1">
             {([
               { label: 'Tight', value: '0.5in' },
               { label: 'Normal', value: '0.75in' },
@@ -278,17 +278,17 @@ export default function DesignPanel({
               <button
                 key={value}
                 onClick={() => handleMarginChange(value)}
-                className={`rounded-lg py-2 text-[11px] font-medium transition ${
+                className={`rounded-[var(--radius-md)] py-2 text-[11px] font-medium transition ${
                   margin === value
-                    ? 'bg-violet-500/25 text-violet-200 ring-1 ring-violet-400/30'
-                    : 'text-zinc-600 hover:text-zinc-300'
+                    ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
+                    : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <p className="text-[10px] text-zinc-700">
+          <p className="text-[10px] text-fg-3">
             {margin === '0.5in'
               ? '0.5 in — compact, maximizes content area'
               : margin === '0.75in'
@@ -298,22 +298,22 @@ export default function DesignPanel({
         </div>
 
         {/* ── Reset ──────────────────────────────────────────────────── */}
-        <div className="border-t border-white/[0.05] pt-4">
+        <div className="border-t border-line pt-4">
           {showResetConfirm ? (
-            <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3 space-y-2">
-              <p className="text-[11px] text-rose-300">
+            <div className="rounded-[var(--radius-lg)] border border-err/20 bg-err/5 p-3 space-y-2">
+              <p className="text-[11px] text-err">
                 Reset to Computer Modern, 11pt, 0.75in margins, and remove accent color?
               </p>
               <div className="flex gap-2">
                 <button
                   onClick={handleReset}
-                  className="rounded-lg bg-rose-500/20 px-3 py-1.5 text-[11px] font-semibold text-rose-300 ring-1 ring-rose-500/30 transition hover:bg-rose-500/30"
+                  className="rounded-[var(--radius-md)] bg-err/20 px-3 py-1.5 text-[11px] font-semibold text-err ring-1 ring-err/30 transition hover:bg-err/30"
                 >
                   Reset
                 </button>
                 <button
                   onClick={() => setShowResetConfirm(false)}
-                  className="rounded-lg px-3 py-1.5 text-[11px] text-zinc-500 transition hover:text-zinc-300"
+                  className="rounded-[var(--radius-md)] px-3 py-1.5 text-[11px] text-fg-3 transition hover:text-fg-2"
                 >
                   Cancel
                 </button>
@@ -322,7 +322,7 @@ export default function DesignPanel({
           ) : (
             <button
               onClick={() => setShowResetConfirm(true)}
-              className="flex items-center gap-1.5 text-[11px] text-zinc-700 transition hover:text-zinc-400"
+              className="flex items-center gap-1.5 text-[11px] text-fg-3 transition hover:text-fg-2"
             >
               <RotateCcw size={11} />
               Reset to defaults
@@ -348,10 +348,10 @@ function FontRow({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition ${
+      className={`flex w-full items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-left transition ${
         active
-          ? 'bg-violet-500/20 text-violet-200'
-          : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200'
+          ? 'bg-accent-soft text-accent-strong'
+          : 'text-fg-3 hover:bg-surface-2 hover:text-fg'
       }`}
     >
       <span
@@ -361,7 +361,7 @@ function FontRow({
         {font.name}
       </span>
       {active && (
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
       )}
     </button>
   )

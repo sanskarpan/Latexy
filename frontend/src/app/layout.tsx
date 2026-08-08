@@ -67,7 +67,7 @@ export default function RootLayout({
             <AuthSync />
             <TenantThemeSync />
             <WebVitalsReporter />
-            <div className="min-h-screen enterprise-grid noise-overlay flex flex-col">
+            <div className="min-h-screen flex flex-col">
               <EmailVerifyBanner />
               <GlobalHeader />
               <main className="flex-1">
@@ -80,7 +80,7 @@ export default function RootLayout({
               position="bottom-right"
               duration={1500}
               toastOptions={{
-                className: 'border border-white/10 bg-zinc-950 text-zinc-100',
+                className: 'border border-line bg-surface text-fg',
               }}
             />
           </WebSocketProvider>

@@ -27,7 +27,7 @@ export default function LogViewer({
   if (lines.length === 0) {
     return (
       <div
-        className={`flex items-center justify-center rounded-lg bg-black/60 text-sm font-mono text-zinc-500 ${className}`}
+        className={`flex items-center justify-center rounded-[var(--radius-md)] bg-[var(--code-bg)] text-sm font-mono text-fg-3 ${className}`}
         style={{ minHeight: '80px' }}
       >
         No log output yet
@@ -37,7 +37,7 @@ export default function LogViewer({
 
   return (
     <div
-      className={`scrollbar-subtle overflow-y-auto rounded-lg bg-black/60 font-mono text-xs text-zinc-100 ${className}`}
+      className={`scrollbar-subtle overflow-y-auto rounded-[var(--radius-md)] bg-[var(--code-bg)] font-mono text-xs text-fg ${className}`}
       style={{ maxHeight }}
     >
       <div className="p-3 space-y-0.5">
@@ -45,11 +45,11 @@ export default function LogViewer({
           <div
             key={`${i}-${entry.source}-${entry.line?.substring(0, 20) ?? ''}`}
             className={`leading-5 whitespace-pre-wrap break-all ${
-              entry.is_error ? 'text-rose-300' : 'text-zinc-300'
+              entry.is_error ? 'text-err' : 'text-fg-2'
             }`}
           >
             {showLineNumbers && (
-              <span className="mr-2 inline-block w-8 select-none text-right text-zinc-600">
+              <span className="mr-2 inline-block w-8 select-none text-right text-fg-3">
                 {i + 1}
               </span>
             )}
