@@ -20,7 +20,7 @@ const xMax = W - margin.left - margin.right
 const yMax = H - margin.top - margin.bottom
 
 function scoreColor(score: number) {
-  return score >= 80 ? '#34d399' : score >= 60 ? '#f59e0b' : '#f87171'
+  return score >= 80 ? 'var(--ok)' : score >= 60 ? 'var(--warn)' : 'var(--err)'
 }
 
 export default function ScoreHistoryChart({ resumeId }: ScoreHistoryChartProps) {
@@ -38,12 +38,12 @@ export default function ScoreHistoryChart({ resumeId }: ScoreHistoryChartProps) 
   }, [resumeId])
 
   if (loading) {
-    return <div className="h-10 animate-pulse rounded-lg bg-white/[0.03]" />
+    return <div className="h-10 animate-pulse rounded-[var(--radius-md)] bg-surface-2" />
   }
 
   if (points.length === 0) {
     return (
-      <p className="text-[11px] text-zinc-600">
+      <p className="text-[11px] text-fg-3">
         No score history yet — optimize this resume to track progress.
       </p>
     )
@@ -56,7 +56,7 @@ export default function ScoreHistoryChart({ resumeId }: ScoreHistoryChartProps) 
         <span className="text-2xl font-bold tabular-nums" style={{ color: scoreColor(score) }}>
           {Math.round(score)}
         </span>
-        <p className="text-[11px] text-zinc-500">Optimize more to see progress over time.</p>
+        <p className="text-[11px] text-fg-3">Optimize more to see progress over time.</p>
       </div>
     )
   }
@@ -85,7 +85,7 @@ export default function ScoreHistoryChart({ resumeId }: ScoreHistoryChartProps) 
           {Math.round(last)}
         </span>
         {delta !== 0 && (
-          <span className={`text-[11px] font-semibold ${delta > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+          <span className={`text-[11px] font-semibold ${delta > 0 ? 'text-ok' : 'text-err'}`}>
             {delta > 0 ? '↑' : '↓'} {Math.abs(delta)} pts since first optimization
           </span>
         )}
@@ -103,7 +103,7 @@ export default function ScoreHistoryChart({ resumeId }: ScoreHistoryChartProps) 
             scale={yScale}
             width={xMax}
             height={yMax}
-            stroke="rgba(255,255,255,0.05)"
+            stroke="var(--line)"
             strokeDasharray="2,3"
             pointerEvents="none"
           />
@@ -130,10 +130,10 @@ export default function ScoreHistoryChart({ resumeId }: ScoreHistoryChartProps) 
               const date = d as Date
               return `${date.getMonth() + 1}/${date.getDate()}`
             }}
-            stroke="rgba(255,255,255,0.08)"
-            tickStroke="rgba(255,255,255,0.08)"
+            stroke="var(--line)"
+            tickStroke="var(--line)"
             tickLabelProps={() => ({
-              fill: 'rgba(255,255,255,0.3)',
+              fill: 'var(--fg-3)',
               fontSize: 9,
               textAnchor: 'middle',
             })}
@@ -141,10 +141,10 @@ export default function ScoreHistoryChart({ resumeId }: ScoreHistoryChartProps) 
           <AxisLeft
             scale={yScale}
             numTicks={4}
-            stroke="rgba(255,255,255,0.08)"
-            tickStroke="rgba(255,255,255,0.08)"
+            stroke="var(--line)"
+            tickStroke="var(--line)"
             tickLabelProps={() => ({
-              fill: 'rgba(255,255,255,0.3)',
+              fill: 'var(--fg-3)',
               fontSize: 9,
               textAnchor: 'end',
               dy: '0.33em',

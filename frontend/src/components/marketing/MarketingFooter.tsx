@@ -5,23 +5,34 @@ import { usePathname } from 'next/navigation'
 
 export default function MarketingFooter() {
   const pathname = usePathname()
-  const hidden = /^\/workspace\/[^/]+\/(edit|optimize)$/.test(pathname)
+  // The marketing footer belongs only on public/marketing + auth surfaces.
+  // App surfaces (the authenticated product) must never show it.
+  const APP_PREFIXES = [
+    '/try', '/dashboard', '/workspace', '/workspaces', '/billing',
+    '/byok', '/settings', '/admin', '/tracker',
+  ]
+  const hidden = APP_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'))
   if (hidden) return null
 
   return (
-    <footer className="mt-6 surface-panel edge-highlight px-5 py-6 sm:px-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <footer className="mt-10 border-t border-line bg-surface-2">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-8 sm:px-8">
         <div>
-          <p className="text-lg font-semibold text-white">Latexy</p>
-          <p className="text-sm text-zinc-400">Precision resume intelligence for modern applicants.</p>
+          <p className="font-display text-lg font-semibold text-fg">Latexy</p>
+          <p className="mt-0.5 font-body text-sm text-fg-2">Résumés, typeset — precision for modern applicants.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-300">
-          <Link href="/platform" className="hover:text-white">Platform</Link>
-          <Link href="/resources" className="hover:text-white">Resources</Link>
-          <Link href="/updates" className="hover:text-white">Updates</Link>
-          <Link href="/faq" className="hover:text-white">FAQ</Link>
-          <Link href="/try" className="btn-accent">Open Studio</Link>
-        </div>
+        <nav className="flex flex-wrap items-center gap-5 font-ui text-sm text-fg-2">
+          <Link href="/platform" className="transition hover:text-fg">Platform</Link>
+          <Link href="/resources" className="transition hover:text-fg">Resources</Link>
+          <Link href="/updates" className="transition hover:text-fg">Updates</Link>
+          <Link href="/faq" className="transition hover:text-fg">FAQ</Link>
+          <Link
+            href="/try"
+            className="rounded-[var(--radius-md)] bg-accent px-4 py-1.5 font-semibold text-accent-fg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+          >
+            Open Studio
+          </Link>
+        </nav>
       </div>
     </footer>
   )

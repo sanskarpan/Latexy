@@ -49,22 +49,22 @@ function SnippetCard({
   onUpvote: () => void
 }) {
   return (
-    <div className="group rounded-lg border border-white/[0.05] bg-white/[0.02] p-3 transition hover:border-white/[0.08]">
+    <div className="group rounded-[var(--radius-md)] border border-line bg-surface p-3 transition hover:border-line-2">
       <div className="mb-1 flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             {snippet.is_official && (
-              <Star size={10} className="shrink-0 text-amber-400" fill="currentColor" />
+              <Star size={10} className="shrink-0 text-warn" fill="currentColor" />
             )}
-            <span className="truncate text-[11px] font-semibold text-zinc-200">
+            <span className="truncate text-[11px] font-semibold text-fg">
               {snippet.title}
             </span>
           </div>
-          <p className="mt-0.5 line-clamp-2 text-[10px] text-zinc-600">
+          <p className="mt-0.5 line-clamp-2 text-[10px] text-fg-3">
             {snippet.description}
           </p>
         </div>
-        <span className="shrink-0 rounded bg-white/[0.04] px-1.5 py-0.5 text-[9px] capitalize text-zinc-600">
+        <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[9px] capitalize text-fg-3">
           {snippet.category}
         </span>
       </div>
@@ -74,7 +74,7 @@ function SnippetCard({
           {snippet.tags.slice(0, 3).map((tag) => (
             <span
               key={tag}
-              className="rounded bg-violet-500/10 px-1 py-0.5 text-[8px] text-violet-500"
+              className="rounded bg-accent-soft px-1 py-0.5 text-[8px] text-accent-strong"
             >
               #{tag}
             </span>
@@ -83,11 +83,11 @@ function SnippetCard({
       )}
 
       <div className="flex items-center gap-2">
-        <span className="flex items-center gap-0.5 text-[9px] text-zinc-700">
+        <span className="flex items-center gap-0.5 text-[9px] text-fg-3">
           <Download size={9} />
           {snippet.installs_count}
         </span>
-        <span className="flex items-center gap-0.5 text-[9px] text-zinc-700">
+        <span className="flex items-center gap-0.5 text-[9px] text-fg-3">
           <ThumbsUp size={9} />
           {snippet.upvotes_count}
         </span>
@@ -96,8 +96,8 @@ function SnippetCard({
             onClick={onUpvote}
             className={`rounded p-1 text-[10px] transition ${
               snippet.upvoted_by_me
-                ? 'text-violet-400 hover:text-violet-300'
-                : 'text-zinc-700 hover:text-zinc-400'
+                ? 'text-accent-strong hover:text-accent'
+                : 'text-fg-3 hover:text-fg-2'
             }`}
             title={snippet.upvoted_by_me ? 'Remove upvote' : 'Upvote'}
           >
@@ -105,7 +105,7 @@ function SnippetCard({
           </button>
           <button
             onClick={onPreview}
-            className="flex items-center gap-0.5 rounded px-1.5 py-1 text-[9px] text-zinc-600 transition hover:bg-white/[0.06] hover:text-zinc-300"
+            className="flex items-center gap-0.5 rounded px-1.5 py-1 text-[9px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <Eye size={10} />
             Preview
@@ -114,8 +114,8 @@ function SnippetCard({
             onClick={onInstall}
             className={`flex items-center gap-0.5 rounded px-1.5 py-1 text-[9px] font-medium transition ${
               snippet.installed_by_me
-                ? 'text-emerald-500 hover:text-emerald-300'
-                : 'bg-violet-500/15 text-violet-300 ring-1 ring-violet-400/20 hover:bg-violet-500/25'
+                ? 'text-ok hover:brightness-110'
+                : 'bg-accent-soft text-accent-strong ring-1 ring-accent hover:brightness-110'
             }`}
           >
             <Package size={10} />
@@ -227,12 +227,12 @@ export default function SnippetMarketplace({ onInsert }: SnippetMarketplaceProps
     <div className="flex h-full flex-col gap-3 p-3">
       {/* Search */}
       <div className="relative">
-        <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600" />
+        <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-3" />
         <input
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
           placeholder="Search snippets…"
-          className="w-full rounded-lg border border-white/[0.06] bg-black/30 py-1.5 pl-7 pr-3 text-[11px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-violet-500/30"
+          className="w-full rounded-[var(--radius-md)] border border-line bg-surface py-1.5 pl-7 pr-3 text-[11px] text-fg outline-none placeholder:text-fg-3 focus:border-accent"
         />
       </div>
 
@@ -244,8 +244,8 @@ export default function SnippetMarketplace({ onInsert }: SnippetMarketplaceProps
             onClick={() => setCategory(cat.id)}
             className={`rounded px-2 py-0.5 text-[10px] font-medium transition ${
               category === cat.id
-                ? 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-400/20'
-                : 'text-zinc-600 hover:text-zinc-400'
+                ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
+                : 'text-fg-3 hover:text-fg-2'
             }`}
           >
             {cat.label}
@@ -255,13 +255,13 @@ export default function SnippetMarketplace({ onInsert }: SnippetMarketplaceProps
 
       {/* Sort */}
       <div className="flex items-center gap-2">
-        <span className="text-[9px] text-zinc-700">Sort:</span>
+        <span className="text-[9px] text-fg-3">Sort:</span>
         {(['popular', 'newest', 'official'] as SortOrder[]).map((s) => (
           <button
             key={s}
             onClick={() => setSort(s)}
             className={`text-[9px] capitalize transition ${
-              sort === s ? 'font-semibold text-zinc-300' : 'text-zinc-700 hover:text-zinc-500'
+              sort === s ? 'font-semibold text-fg' : 'text-fg-3 hover:text-fg-2'
             }`}
           >
             {s}
@@ -273,10 +273,10 @@ export default function SnippetMarketplace({ onInsert }: SnippetMarketplaceProps
       <div className="flex-1 space-y-2 overflow-y-auto">
         {loading && snippets.length === 0 ? (
           <div className="flex justify-center py-8">
-            <Loader2 size={16} className="animate-spin text-zinc-700" />
+            <Loader2 size={16} className="animate-spin text-fg-3" />
           </div>
         ) : snippets.length === 0 ? (
-          <div className="py-8 text-center text-[11px] text-zinc-700">
+          <div className="py-8 text-center text-[11px] text-fg-3">
             No snippets found. Try a different search.
           </div>
         ) : (
@@ -294,7 +294,7 @@ export default function SnippetMarketplace({ onInsert }: SnippetMarketplaceProps
               <button
                 onClick={() => load()}
                 disabled={loading}
-                className="w-full py-2 text-[10px] text-zinc-700 transition hover:text-zinc-400 disabled:opacity-40"
+                className="w-full py-2 text-[10px] text-fg-3 transition hover:text-fg-2 disabled:opacity-40"
               >
                 {loading ? <Loader2 size={12} className="mx-auto animate-spin" /> : 'Load more'}
               </button>

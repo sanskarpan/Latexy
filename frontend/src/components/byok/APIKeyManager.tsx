@@ -128,19 +128,19 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
   }
 
   if (loading) {
-    return <div className="rounded-xl border border-white/10 bg-slate-950/60 p-4 text-slate-300">Loading provider configuration...</div>
+    return <div className="rounded-[var(--radius-lg)] border border-line bg-bg p-4 text-fg-2">Loading provider configuration...</div>
   }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-white">API Key Management</h2>
-          <p className="text-sm text-slate-400">Encrypted BYOK credential management with provider validation.</p>
+          <h2 className="text-xl font-semibold text-fg">API Key Management</h2>
+          <p className="text-sm text-fg-2">Encrypted BYOK credential management with provider validation.</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="rounded-lg bg-orange-300 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-orange-200"
+          className="rounded-[var(--radius-md)] bg-accent px-3 py-2 text-sm font-semibold text-accent-fg hover:brightness-110"
         >
           Add Key
         </button>
@@ -148,53 +148,53 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
 
       <div className="space-y-3">
         {apiKeys.length === 0 ? (
-          <div className="surface-card p-8 text-center">
-            <h3 className="text-lg font-semibold text-white">No API Keys Yet</h3>
-            <p className="mt-1 text-sm text-slate-400">Add your first provider key to enable BYOK execution.</p>
+          <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-8 text-center">
+            <h3 className="text-lg font-semibold text-fg">No API Keys Yet</h3>
+            <p className="mt-1 text-sm text-fg-2">Add your first provider key to enable BYOK execution.</p>
           </div>
         ) : (
           apiKeys.map((key) => (
-            <article key={key.id} className="surface-card p-4">
+            <article key={key.id} className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-white">{key.key_name || `${key.provider} key`}</p>
-                  <p className="text-sm text-slate-400">Provider: {key.provider}</p>
+                  <p className="font-semibold text-fg">{key.key_name || `${key.provider} key`}</p>
+                  <p className="text-sm text-fg-2">Provider: {key.provider}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setShowKey((prev) => ({ ...prev, [key.id]: !prev[key.id] }))}
-                    className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/10"
+                    className="rounded-[var(--radius-md)] border border-line px-3 py-2 text-xs text-fg-2 hover:bg-surface-2"
                   >
                     {showKey[key.id] ? 'Hide' : 'Show'}
                   </button>
                   <button
                     onClick={() => deleteAPIKey(key.id)}
-                    className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs text-rose-200 hover:bg-rose-300/20"
+                    className="rounded-[var(--radius-md)] border border-err/30 bg-err/10 px-3 py-2 text-xs text-err hover:bg-err/20"
                   >
                     Delete
                   </button>
                 </div>
               </div>
 
-              <div className="mt-3 grid gap-2 text-xs text-slate-300 sm:grid-cols-3">
+              <div className="mt-3 grid gap-2 text-xs text-fg-2 sm:grid-cols-3">
                 <p>
                   Status:{' '}
-                  <span className={key.is_active ? 'text-emerald-300' : 'text-rose-300'}>
+                  <span className={key.is_active ? 'text-ok' : 'text-err'}>
                     {key.is_active ? 'active' : 'inactive'}
                   </span>
                 </p>
                 <p>Created: {new Date(key.created_at).toLocaleDateString()}</p>
                 <p>
-                  Models: <span className="text-orange-200">{providers[key.provider]?.length || 0}</span>
+                  Models: <span className="text-accent-strong">{providers[key.provider]?.length || 0}</span>
                 </p>
               </div>
 
-              <div className="mt-2 rounded-lg border border-white/10 bg-slate-950/65 p-2 text-xs font-mono text-slate-400">
+              <div className="mt-2 rounded-[var(--radius-md)] border border-line bg-bg p-2 text-xs font-mono text-fg-3">
                 {showKey[key.id] ? '•••••••••••••••••••••••••••••' : 'hidden'}
               </div>
 
               {key.last_validated && (
-                <p className="mt-2 text-xs text-emerald-300">
+                <p className="mt-2 text-xs text-ok">
                   Last validated {new Date(key.last_validated).toLocaleString()}
                 </p>
               )}
@@ -204,16 +204,16 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
       </div>
 
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4">
-          <div className="surface-panel edge-highlight w-full max-w-lg p-5">
-            <h3 className="text-lg font-semibold text-white">Add Provider Key</h3>
-            <p className="mt-1 text-sm text-slate-400">Validate and store encrypted credentials for runtime usage.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4">
+          <div className="rounded-[var(--radius-lg)] border border-line bg-surface w-full max-w-lg p-5">
+            <h3 className="text-lg font-semibold text-fg">Add Provider Key</h3>
+            <p className="mt-1 text-sm text-fg-2">Validate and store encrypted credentials for runtime usage.</p>
 
             <div className="mt-4 space-y-3">
               <select
                 value={newKey.provider}
                 onChange={(e) => setNewKey((prev) => ({ ...prev, provider: e.target.value }))}
-                className="w-full rounded-lg border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-orange-300/50"
+                className="w-full rounded-[var(--radius-md)] border border-line-2 bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent"
               >
                 <option value="">Select provider</option>
                 {Object.keys(providers).map((provider) => (
@@ -228,7 +228,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
                 placeholder="Friendly key name (optional)"
                 value={newKey.key_name}
                 onChange={(e) => setNewKey((prev) => ({ ...prev, key_name: e.target.value }))}
-                className="w-full rounded-lg border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-orange-300/50"
+                className="w-full rounded-[var(--radius-md)] border border-line-2 bg-bg px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-3 focus:border-accent"
               />
 
               <input
@@ -236,7 +236,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
                 placeholder="Paste API key"
                 value={newKey.api_key}
                 onChange={(e) => setNewKey((prev) => ({ ...prev, api_key: e.target.value }))}
-                className="w-full rounded-lg border border-white/15 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-orange-300/50"
+                className="w-full rounded-[var(--radius-md)] border border-line-2 bg-bg px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-3 focus:border-accent"
               />
             </div>
 
@@ -246,14 +246,14 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
                   setShowAddModal(false)
                   setNewKey(initialKey)
                 }}
-                className="rounded-lg border border-white/15 px-3 py-2 text-sm text-slate-200 hover:bg-white/10"
+                className="rounded-[var(--radius-md)] border border-line-2 px-3 py-2 text-sm text-fg hover:bg-surface-2"
               >
                 Cancel
               </button>
               <button
                 onClick={addAPIKey}
                 disabled={validating}
-                className="rounded-lg bg-orange-300 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-orange-200 disabled:opacity-60"
+                className="rounded-[var(--radius-md)] bg-accent px-3 py-2 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:opacity-60"
               >
                 {validating ? 'Validating...' : 'Validate and Save'}
               </button>

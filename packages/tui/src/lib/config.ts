@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, chmod, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import TOML from '@iarna/toml'
@@ -54,11 +54,27 @@ function configPath(): string {
 /** On-disk config only, no env overlay — writeConfig() uses this so ephemeral env values
  *  (LATEXY_API_URL/LATEXY_APP_URL) are never baked permanently into config.toml. */
 async function readDiskConfig(): Promise<LatexyConfig> {
+  let raw: string
   try {
-    const raw = await readFile(configPath(), 'utf-8')
+    raw = await readFile(configPath(), 'utf-8')
+  } catch {
+    // No config yet — a first run, not a problem.
+    return { ...DEFAULT_CONFIG }
+  }
+
+  try {
     const parsed = TOML.parse(raw) as Partial<LatexyConfig>
     return { ...DEFAULT_CONFIG, ...parsed }
-  } catch {
+  } catch (err) {
+    // A config that exists but will not parse is different from having none:
+    // falling back to defaults silently presents as being logged out, with
+    // nothing to explain why. Say so, and leave the bad file in place rather
+    // than overwriting the only copy of whatever is in it.
+    process.stderr.write(
+      `latexy: ${configPath()} could not be parsed (${String(err)}). ` +
+        'Continuing with defaults — you will need to sign in again. ' +
+        'Move or delete the file to silence this.\n',
+    )
     return { ...DEFAULT_CONFIG }
   }
 }
@@ -68,14 +84,29 @@ export async function readConfig(): Promise<LatexyConfig> {
 }
 
 export async function writeConfig(patch: Partial<LatexyConfig>): Promise<void> {
-  await mkdir(configDir(), { recursive: true })
+  // 0o700: the token file itself is 0600, but the directory was being created
+  // with the ambient umask (0755 by default), which is world-traversable.
+  await mkdir(configDir(), { recursive: true, mode: 0o700 })
   const current = await readDiskConfig()
   const next = { ...current, ...patch }
   // @iarna/toml does not support null — strip null fields before serialising
   const toWrite = Object.fromEntries(Object.entries(next).filter(([, v]) => v !== null))
   const toml = TOML.stringify(toWrite as TOML.JsonMap)
-  await writeFile(configPath(), toml, { encoding: 'utf-8', mode: 0o600 })
-  await chmod(configPath(), 0o600)
+
+  // Write-then-rename. writeFile() truncates first, so an interruption between
+  // truncate and write left a half-written config that readDiskConfig could not
+  // parse — which presents to the user as being mysteriously logged out. rename()
+  // is atomic on POSIX, so a reader sees either the old file or the new one.
+  const target = configPath()
+  const tmp = `${target}.${process.pid}.tmp`
+  try {
+    await writeFile(tmp, toml, { encoding: 'utf-8', mode: 0o600 })
+    await chmod(tmp, 0o600)
+    await rename(tmp, target)
+  } catch (err) {
+    await rm(tmp, { force: true }).catch(() => {})
+    throw err
+  }
 }
 
 export async function clearConfig(): Promise<void> {

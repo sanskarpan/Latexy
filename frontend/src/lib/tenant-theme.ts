@@ -28,6 +28,14 @@ export function applyTenantTheme(tenant: TenantBranding): void {
   if (tenant.primary_color) {
     root.style.setProperty('--tenant-primary', tenant.primary_color)
     root.style.setProperty('--tenant-primary-rgb', hexToRgb(tenant.primary_color))
+    // Map tenant branding onto the redesign accent token so white-label
+    // branding actually themes the UI. Inline style on :root wins over the
+    // stylesheet's [data-aesthetic][data-mode] accent rules.
+    const rgb = hexToRgb(tenant.primary_color)
+    root.style.setProperty('--accent', tenant.primary_color)
+    root.style.setProperty('--accent-strong', tenant.primary_color)
+    root.style.setProperty('--accent-soft', `rgba(${rgb}, 0.12)`)
+    root.style.setProperty('--focus', tenant.primary_color)
   }
 
   if (tenant.logo_url) {
@@ -46,6 +54,11 @@ export function clearTenantTheme(): void {
   const root = document.documentElement
   root.style.removeProperty('--tenant-primary')
   root.style.removeProperty('--tenant-primary-rgb')
+  // Restore the token-driven accent (remove tenant overrides).
+  root.style.removeProperty('--accent')
+  root.style.removeProperty('--accent-strong')
+  root.style.removeProperty('--accent-soft')
+  root.style.removeProperty('--focus')
   root.removeAttribute('data-tenant-logo')
   root.removeAttribute('data-tenant-slug')
 }

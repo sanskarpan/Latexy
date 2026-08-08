@@ -24,15 +24,15 @@ function QuestionCard({ q, index }: { q: InterviewQuestion; index: number }) {
   const [notes, setNotes] = useState('')
 
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-black/30 p-3 space-y-2">
+    <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-3 space-y-2">
       <div className="flex items-start gap-2">
-        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[10px] font-bold text-zinc-500">
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-surface-2 text-[10px] font-bold text-fg-3">
           {index + 1}
         </span>
-        <p className="text-[12px] font-semibold leading-relaxed text-zinc-100">{q.question}</p>
+        <p className="text-[12px] font-semibold leading-relaxed text-fg">{q.question}</p>
       </div>
       {q.what_interviewer_assesses && (
-        <p className="ml-7 text-[11px] italic text-zinc-500 leading-relaxed">
+        <p className="ml-7 text-[11px] italic text-fg-3 leading-relaxed">
           {q.what_interviewer_assesses}
         </p>
       )}
@@ -40,16 +40,16 @@ function QuestionCard({ q, index }: { q: InterviewQuestion; index: number }) {
         <div className="ml-7">
           <button
             onClick={() => setStarExpanded(v => !v)}
-            className="flex items-center gap-1 text-[10px] font-medium text-violet-400/80 hover:text-violet-300 transition"
+            className="flex items-center gap-1 text-[10px] font-medium text-accent-strong hover:text-accent-strong transition"
           >
             {starExpanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
             STAR Hint
           </button>
           {starExpanded && (
-            <div className="mt-1.5 rounded-lg border border-violet-400/15 bg-violet-500/[0.06] p-2.5 text-[11px] text-zinc-400 leading-relaxed whitespace-pre-line">
+            <div className="mt-1.5 rounded-[var(--radius-md)] border border-accent bg-accent-soft p-2.5 text-[11px] text-fg-2 leading-relaxed whitespace-pre-line">
               {q.star_hint.split(' | ').map((part, i) => (
                 <p key={i} className={i > 0 ? 'mt-1' : ''}>
-                  <span className="font-semibold text-violet-400/70">{part.split(':')[0]}:</span>
+                  <span className="font-semibold text-accent-strong">{part.split(':')[0]}:</span>
                   {part.substring(part.indexOf(':') + 1)}
                 </p>
               ))}
@@ -62,7 +62,7 @@ function QuestionCard({ q, index }: { q: InterviewQuestion; index: number }) {
         onChange={e => setNotes(e.target.value)}
         placeholder="Add notes (session only)…"
         rows={1}
-        className="ml-7 w-[calc(100%-1.75rem)] resize-none rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[11px] text-zinc-400 outline-none placeholder:text-zinc-700 focus:border-white/[0.12] transition"
+        className="ml-7 w-[calc(100%-1.75rem)] resize-none rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-1.5 text-[11px] text-fg-2 outline-none placeholder:text-fg-3 focus:border-line-2 transition"
       />
     </div>
   )
@@ -201,12 +201,12 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header: session selector + controls */}
-      <div className="shrink-0 border-b border-white/[0.05] bg-black/20 px-3 py-2 space-y-2">
+      <div className="shrink-0 border-b border-line bg-surface px-3 py-2 space-y-2">
         {sessions.length > 0 && (
           <select
             value={selectedSessionId ?? ''}
             onChange={e => setSelectedSessionId(e.target.value)}
-            className="w-full rounded-lg border border-white/[0.08] bg-black/40 px-2 py-1.5 text-[11px] text-zinc-300 outline-none"
+            className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-1.5 text-[11px] text-fg-2 outline-none"
           >
             {sessions.map((s, i) => (
               <option key={s.id} value={s.id}>
@@ -218,7 +218,7 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
         <div className="flex items-center gap-2">
           <button
             onClick={() => setSelectedSessionId(null)}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-300"
+            className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
             title="Generate new set"
           >
             <RefreshCw size={10} />
@@ -227,7 +227,7 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
           {currentSession && (
             <button
               onClick={() => handleDelete(currentSession.id)}
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-zinc-600 transition hover:bg-rose-500/10 hover:text-rose-400"
+              className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium text-fg-3 transition hover:bg-err/10 hover:text-err"
               title="Delete this session"
             >
               <Trash2 size={10} />
@@ -239,15 +239,15 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
 
       {/* Progress bar when generating */}
       {isJobRunning && (
-        <div className="shrink-0 border-b border-white/[0.05] px-3 py-2.5 space-y-1.5">
-          <div className="flex items-center gap-2 text-[11px] text-zinc-400">
-            <Loader2 size={11} className="animate-spin text-violet-400" />
+        <div className="shrink-0 border-b border-line px-3 py-2.5 space-y-1.5">
+          <div className="flex items-center gap-2 text-[11px] text-fg-2">
+            <Loader2 size={11} className="animate-spin text-accent-strong" />
             <span>{jobStream.message || 'Generating questions…'}</span>
-            <span className="ml-auto tabular-nums text-zinc-600">{jobStream.percent}%</span>
+            <span className="ml-auto tabular-nums text-fg-3">{jobStream.percent}%</span>
           </div>
-          <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/[0.05]">
+          <div className="h-[3px] w-full overflow-hidden rounded-full bg-surface-2">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-violet-500 to-orange-400 transition-all duration-500"
+              className="h-full rounded-full bg-accent transition-all duration-500"
               style={{ width: `${jobStream.percent}%` }}
             />
           </div>
@@ -272,22 +272,22 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
       {currentSession && currentSession.questions.length > 0 && (
         <>
           {/* Category tabs */}
-          <div className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-white/[0.05] bg-black/10 px-2 py-1.5">
+          <div className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-line bg-surface px-2 py-1.5">
             {CATEGORIES.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 onClick={() => setActiveCategory(key)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-medium transition whitespace-nowrap ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1 text-[10px] font-medium transition whitespace-nowrap ${
                   activeCategory === key
-                    ? 'bg-white/[0.08] text-zinc-100'
-                    : 'text-zinc-600 hover:text-zinc-400'
+                    ? 'bg-surface-2 text-fg'
+                    : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 <Icon size={10} />
                 {label}
                 {categoryCount(key) > 0 && (
                   <span className={`rounded-full px-1 text-[9px] font-bold ${
-                    activeCategory === key ? 'bg-white/10 text-zinc-300' : 'bg-white/[0.05] text-zinc-600'
+                    activeCategory === key ? 'bg-surface-2 text-fg-2' : 'bg-surface-2 text-fg-3'
                   }`}>
                     {categoryCount(key)}
                   </span>
@@ -299,7 +299,7 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
           {/* Questions list */}
           <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-3">
             {(questionsByCategory[activeCategory] ?? []).length === 0 ? (
-              <p className="text-center text-[11px] text-zinc-700 py-6">No questions in this category</p>
+              <p className="text-center text-[11px] text-fg-3 py-6">No questions in this category</p>
             ) : (
               (questionsByCategory[activeCategory] ?? []).map((q, i) => (
                 <QuestionCard key={q.question} q={q} index={i} />
@@ -312,7 +312,7 @@ export default function InterviewPrepPanel({ resumeId, defaultJobDescription = '
       {/* Empty questions state for existing session */}
       {currentSession && currentSession.questions.length === 0 && !isJobRunning && (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-8">
-          <p className="text-center text-[11px] text-zinc-600">No questions yet — try generating again.</p>
+          <p className="text-center text-[11px] text-fg-3">No questions yet — try generating again.</p>
         </div>
       )}
     </div>
@@ -339,22 +339,22 @@ function GenerateForm({
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-orange-500/10 ring-1 ring-violet-400/20">
-          <BrainCircuit size={16} className="text-violet-300" />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-lg)] bg-accent-soft ring-1 ring-accent">
+          <BrainCircuit size={16} className="text-accent-strong" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-zinc-100">Interview Prep</p>
-          <p className="text-[10px] text-zinc-600">AI-generated questions with STAR hints</p>
+          <p className="text-sm font-semibold text-fg">Interview Prep</p>
+          <p className="text-[10px] text-fg-3">AI-generated questions with STAR hints</p>
         </div>
       </div>
 
-      <p className="text-[12px] leading-relaxed text-zinc-500">
+      <p className="text-[12px] leading-relaxed text-fg-3">
         Generate role-specific interview questions based on your resume and the job description.
         Includes behavioral, technical, motivational, and difficult questions.
       </p>
 
       <div className="space-y-2">
-        <label className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+        <label className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
           Job Description (optional)
         </label>
         <textarea
@@ -362,13 +362,13 @@ function GenerateForm({
           onChange={e => setJobDescription(e.target.value)}
           placeholder="Paste the job description here for tailored questions…"
           rows={5}
-          className="w-full resize-none rounded-xl border border-white/[0.08] bg-black/40 px-3 py-2.5 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-white/[0.15] transition"
+          className="w-full resize-none rounded-[var(--radius-lg)] border border-line bg-surface-2 px-3 py-2.5 text-[12px] text-fg-2 outline-none placeholder:text-fg-3 focus:border-line-2 transition"
         />
       </div>
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600 mb-1">
+          <label className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3 mb-1">
             Company
           </label>
           <input
@@ -376,11 +376,11 @@ function GenerateForm({
             value={companyName}
             onChange={e => setCompanyName(e.target.value)}
             placeholder="e.g. Google"
-            className="w-full rounded-xl border border-white/[0.08] bg-black/40 px-3 py-2 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-white/[0.15] transition"
+            className="w-full rounded-[var(--radius-lg)] border border-line bg-surface-2 px-3 py-2 text-[12px] text-fg-2 outline-none placeholder:text-fg-3 focus:border-line-2 transition"
           />
         </div>
         <div>
-          <label className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600 mb-1">
+          <label className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3 mb-1">
             Role
           </label>
           <input
@@ -388,7 +388,7 @@ function GenerateForm({
             value={roleTitle}
             onChange={e => setRoleTitle(e.target.value)}
             placeholder="e.g. SWE"
-            className="w-full rounded-xl border border-white/[0.08] bg-black/40 px-3 py-2 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 focus:border-white/[0.15] transition"
+            className="w-full rounded-[var(--radius-lg)] border border-line bg-surface-2 px-3 py-2 text-[12px] text-fg-2 outline-none placeholder:text-fg-3 focus:border-line-2 transition"
           />
         </div>
       </div>
@@ -396,7 +396,7 @@ function GenerateForm({
       <button
         onClick={onGenerate}
         disabled={isGenerating}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500/20 py-2.5 text-xs font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30 disabled:opacity-50"
+        className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-lg)] bg-accent-soft py-2.5 text-xs font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:opacity-50"
       >
         {isGenerating ? (
           <><Loader2 size={12} className="animate-spin" /> Generating…</>

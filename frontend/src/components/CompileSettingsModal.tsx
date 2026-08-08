@@ -147,21 +147,21 @@ export default function CompileSettingsModal({
   return (
     <div
       ref={backdropRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm"
       onClick={(e) => { if (e.target === backdropRef.current) onClose() }}
     >
-      <div className="relative w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#0d0d0d] shadow-2xl">
+      <div className="relative w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
+        <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15">
-              <Settings2 size={14} className="text-violet-300" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <Settings2 size={14} className="text-accent-strong" />
             </div>
-            <h2 className="text-sm font-semibold text-zinc-100">Compile Settings</h2>
+            <h2 className="text-sm font-semibold text-fg">Compile Settings</h2>
           </div>
           <button
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <X size={14} />
           </button>
@@ -171,7 +171,7 @@ export default function CompileSettingsModal({
         <div className="space-y-5 px-5 py-5">
           {/* Compiler */}
           <div className="space-y-2">
-            <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            <label className="text-[11px] font-medium uppercase tracking-wider text-fg-3">
               Compiler Engine
             </label>
             <div className="grid grid-cols-3 gap-1.5">
@@ -179,14 +179,14 @@ export default function CompileSettingsModal({
                 <button
                   key={opt.id}
                   onClick={() => setCompiler(opt.id)}
-                  className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2.5 text-left transition ${
+                  className={`flex flex-col items-start gap-0.5 rounded-[var(--radius-md)] border px-3 py-2.5 text-left transition ${
                     compiler === opt.id
-                      ? 'border-violet-500/40 bg-violet-500/10 text-violet-200'
-                      : 'border-white/[0.07] text-zinc-400 hover:border-white/[0.12] hover:text-zinc-200'
+                      ? 'border-accent bg-accent-soft text-accent-strong'
+                      : 'border-line text-fg-2 hover:border-line-2 hover:text-fg'
                   }`}
                 >
                   <span className="text-[12px] font-semibold">{opt.label}</span>
-                  <span className="text-[10px] text-zinc-600 leading-tight">{opt.desc}</span>
+                  <span className="text-[10px] text-fg-3 leading-tight">{opt.desc}</span>
                 </button>
               ))}
             </div>
@@ -194,13 +194,13 @@ export default function CompileSettingsModal({
 
           {/* TeX Live Version */}
           <div className="space-y-2">
-            <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            <label className="text-[11px] font-medium uppercase tracking-wider text-fg-3">
               TeX Live Version
             </label>
             <select
               value={texliveVersion}
               onChange={(e) => setTexliveVersion(e.target.value)}
-              className="w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-[12px] text-zinc-200 outline-none focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-[12px] text-fg outline-none focus:border-accent focus:ring-1 focus:ring-accent"
             >
               {TEXLIVE_VERSIONS.map((v) => (
                 <option key={v.value} value={v.value}>
@@ -212,7 +212,7 @@ export default function CompileSettingsModal({
 
           {/* Main .tex file */}
           <div className="space-y-2">
-            <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            <label className="text-[11px] font-medium uppercase tracking-wider text-fg-3">
               Main .tex File
             </label>
             <input
@@ -220,16 +220,16 @@ export default function CompileSettingsModal({
               value={mainFile}
               onChange={(e) => setMainFile(e.target.value)}
               placeholder="resume.tex"
-              className="w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 font-mono text-[12px] text-zinc-200 outline-none focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 font-mono text-[12px] text-fg outline-none focus:border-accent focus:ring-1 focus:ring-accent"
             />
-            <p className="text-[10px] text-zinc-600">
+            <p className="text-[10px] text-fg-3">
               Only alphanumeric, underscores, hyphens + .tex extension allowed
             </p>
           </div>
 
           {/* Extra packages */}
           <div className="space-y-2">
-            <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            <label className="text-[11px] font-medium uppercase tracking-wider text-fg-3">
               Extra Packages
             </label>
             <input
@@ -237,16 +237,16 @@ export default function CompileSettingsModal({
               value={packagesInput}
               onChange={(e) => setPackagesInput(e.target.value)}
               placeholder="xcolor, multicol, fontawesome5"
-              className="w-full rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 font-mono text-[12px] text-zinc-200 outline-none focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 font-mono text-[12px] text-fg outline-none focus:border-accent focus:ring-1 focus:ring-accent"
             />
-            <p className="text-[10px] text-zinc-600">
+            <p className="text-[10px] text-fg-3">
               Comma-separated. Injected via \usepackage if not already in source.
             </p>
           </div>
 
           {/* Custom flags */}
           <div className="space-y-2">
-            <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            <label className="text-[11px] font-medium uppercase tracking-wider text-fg-3">
               Compiler Flags
             </label>
             <div className="space-y-1.5">
@@ -255,10 +255,10 @@ export default function CompileSettingsModal({
                 return (
                   <label
                     key={flag}
-                    className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 ${
+                    className={`flex items-center gap-2.5 rounded-[var(--radius-md)] border px-3 py-2 ${
                       isHardcoded
-                        ? 'cursor-not-allowed border-white/[0.04] opacity-50'
-                        : 'cursor-pointer border-white/[0.07] hover:border-white/[0.12]'
+                        ? 'cursor-not-allowed border-line opacity-50'
+                        : 'cursor-pointer border-line hover:border-line-2'
                     }`}
                   >
                     <input
@@ -266,14 +266,14 @@ export default function CompileSettingsModal({
                       checked={isHardcoded || flags.has(flag)}
                       disabled={isHardcoded}
                       onChange={() => !isHardcoded && toggleFlag(flag)}
-                      className="h-3 w-3 rounded accent-violet-500"
+                      className="h-3 w-3 rounded accent-accent"
                     />
                     <div className="flex flex-1 items-center justify-between gap-2">
-                      <code className="text-[11px] text-zinc-300">{flag}</code>
-                      <span className="text-[10px] text-zinc-600">{FLAG_LABELS[flag]}</span>
+                      <code className="text-[11px] text-fg-2">{flag}</code>
+                      <span className="text-[10px] text-fg-3">{FLAG_LABELS[flag]}</span>
                     </div>
                     {isHardcoded && (
-                      <span className="text-[9px] text-zinc-600 ml-1">(always on)</span>
+                      <span className="text-[9px] text-fg-3 ml-1">(always on)</span>
                     )}
                   </label>
                 )
@@ -283,10 +283,10 @@ export default function CompileSettingsModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-white/[0.06] px-5 py-4">
+        <div className="flex items-center justify-between border-t border-line px-5 py-4">
           <button
             onClick={handleReset}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-300"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <RotateCcw size={11} />
             Reset to Defaults
@@ -294,7 +294,7 @@ export default function CompileSettingsModal({
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-1.5 rounded-lg bg-violet-600/80 px-4 py-1.5 text-[11px] font-semibold text-white ring-1 ring-violet-500/30 transition hover:bg-violet-600 disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-4 py-1.5 text-[11px] font-semibold text-accent-fg ring-1 ring-accent transition hover:brightness-110 disabled:opacity-40"
           >
             {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
             {saving ? 'Saving…' : 'Save Settings'}

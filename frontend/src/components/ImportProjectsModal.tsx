@@ -228,36 +228,36 @@ export default function ImportProjectsModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-sm"
         onClick={onClose}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.97, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.97 }}
-          className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl"
+          className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)]"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+          <div className="flex items-center justify-between border-b border-line px-5 py-4">
             <div>
-              <h2 className="text-sm font-semibold text-zinc-100">Import projects</h2>
-              <p className="mt-0.5 text-[11px] text-zinc-500">
+              <h2 className="text-sm font-semibold text-fg">Import projects</h2>
+              <p className="mt-0.5 text-[11px] text-fg-3">
                 Pull projects from a source, review them, and insert the ones you pick.
               </p>
             </div>
-            <button onClick={onClose} className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/5 hover:text-zinc-200">
+            <button onClick={onClose} className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg">
               <X size={16} />
             </button>
           </div>
 
           {/* Source tabs */}
-          <div className="flex gap-1 border-b border-white/5 px-4 py-2">
+          <div className="flex gap-1 border-b border-line px-4 py-2">
             {SOURCES.map((s) => (
               <button
                 key={s.key}
                 onClick={() => switchSource(s.key)}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  source === s.key ? 'bg-white/[0.07] text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+                className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-xs font-medium transition ${
+                  source === s.key ? 'bg-surface-2 text-fg' : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 {s.icon}
@@ -270,7 +270,7 @@ export default function ImportProjectsModal({
             {/* Per-source input (only before results are ready) */}
             {phase === 'input' && source === 'url' && (
               <div className="py-6">
-                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Portfolio / project URL</label>
+                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fg-2">Portfolio / project URL</label>
                 <div className="mt-2 flex gap-2">
                   <input
                     type="url"
@@ -278,13 +278,13 @@ export default function ImportProjectsModal({
                     onChange={(e) => setUrlInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') runUrlImport() }}
                     placeholder="https://yoursite.com/projects"
-                    className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-orange-300/40"
+                    className="flex-1 rounded-[var(--radius-md)] border border-line bg-surface px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-3 focus:border-accent"
                   />
-                  <button onClick={runUrlImport} disabled={!urlInput.trim()} className="btn-accent px-4 py-2 text-xs font-semibold disabled:opacity-40">
+                  <button onClick={runUrlImport} disabled={!urlInput.trim()} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110 disabled:opacity-40">
                     Import
                   </button>
                 </div>
-                <p className="mt-2 text-[10px] text-zinc-600">Public pages only. We fetch the page once (no scripts) and summarize it.</p>
+                <p className="mt-2 text-[10px] text-fg-3">Public pages only. We fetch the page once (no scripts) and summarize it.</p>
               </div>
             )}
 
@@ -302,13 +302,13 @@ export default function ImportProjectsModal({
                 />
                 <button
                   onClick={() => fileRef.current?.click()}
-                  className="mx-auto flex flex-col items-center gap-2 rounded-xl border border-dashed border-white/15 bg-white/[0.02] px-8 py-8 text-zinc-400 transition hover:border-orange-300/30 hover:text-zinc-200"
+                  className="mx-auto flex flex-col items-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-line-2 bg-surface px-8 py-8 text-fg-2 transition hover:border-accent hover:text-fg"
                 >
                   <FileUp size={22} />
                   <span className="text-sm font-medium">Upload LinkedIn export or resume</span>
-                  <span className="text-[10px] text-zinc-600">.zip (LinkedIn “Get a copy of your data”) · .pdf · .docx</span>
+                  <span className="text-[10px] text-fg-3">.zip (LinkedIn “Get a copy of your data”) · .pdf · .docx</span>
                 </button>
-                <p className="mx-auto mt-3 max-w-sm text-[10px] leading-relaxed text-zinc-600">
+                <p className="mx-auto mt-3 max-w-sm text-[10px] leading-relaxed text-fg-3">
                   Compliant by design — we never scrape LinkedIn. Your file is parsed in the request and not stored.
                 </p>
               </div>
@@ -316,34 +316,34 @@ export default function ImportProjectsModal({
 
             {/* Shared status states */}
             {phase === 'checking' && (
-              <div className="flex items-center justify-center gap-2 py-16 text-sm text-zinc-500">
+              <div className="flex items-center justify-center gap-2 py-16 text-sm text-fg-3">
                 <Loader2 size={16} className="animate-spin" /> Checking GitHub connection…
               </div>
             )}
             {phase === 'importing' && (
               <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-                <Loader2 size={20} className="animate-spin text-orange-300" />
-                <p className="text-sm text-zinc-300">Fetching and summarizing…</p>
-                <p className="text-[11px] text-zinc-600">This can take up to a minute.</p>
+                <Loader2 size={20} className="animate-spin text-accent-strong" />
+                <p className="text-sm text-fg-2">Fetching and summarizing…</p>
+                <p className="text-[11px] text-fg-3">This can take up to a minute.</p>
               </div>
             )}
             {phase === 'disconnected' && (
               <div className="py-12 text-center">
-                <p className="text-sm text-zinc-300">GitHub isn&apos;t connected yet.</p>
-                <p className="mx-auto mt-1 max-w-sm text-[11px] text-zinc-500">
+                <p className="text-sm text-fg-2">GitHub isn&apos;t connected yet.</p>
+                <p className="mx-auto mt-1 max-w-sm text-[11px] text-fg-3">
                   Connect your account in Settings → GitHub Integration, then reopen this import.
                 </p>
-                <a href="/settings" className="mt-4 inline-block rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-zinc-200 transition hover:bg-white/10">
+                <a href="/settings" className="mt-4 inline-block rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-semibold text-fg transition hover:bg-surface-2">
                   Go to Settings
                 </a>
               </div>
             )}
             {phase === 'error' && (
               <div className="py-12 text-center">
-                <div className="mx-auto max-w-md rounded-lg border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                <div className="mx-auto max-w-md rounded-[var(--radius-md)] border border-err/20 bg-err/10 px-4 py-3 text-sm text-err">
                   {error || 'Something went wrong.'}
                 </div>
-                <button onClick={reset} className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-zinc-200 transition hover:bg-white/10">
+                <button onClick={reset} className="mt-4 rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-semibold text-fg transition hover:bg-surface-2">
                   Try again
                 </button>
               </div>
@@ -358,35 +358,35 @@ export default function ImportProjectsModal({
                   return (
                     <li
                       key={`${p.title}-${i}`}
-                      className={`rounded-xl border p-3 transition ${
-                        sel.included ? 'border-white/10 bg-white/[0.02]' : 'border-white/5 opacity-55'
+                      className={`rounded-[var(--radius-lg)] border p-3 transition ${
+                        sel.included ? 'border-line bg-surface' : 'border-line opacity-55'
                       }`}
                     >
                       <div className="flex items-start gap-2.5">
-                        <input type="checkbox" checked={sel.included} onChange={() => toggleProject(i)} className="mt-1 h-3.5 w-3.5 accent-orange-400" />
+                        <input type="checkbox" checked={sel.included} onChange={() => toggleProject(i)} className="mt-1 h-3.5 w-3.5 accent-accent" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <p className="truncate text-sm font-semibold text-zinc-100">{p.title}</p>
+                            <p className="truncate text-sm font-semibold text-fg">{p.title}</p>
                             {p.metrics?.stars > 0 && (
-                              <span className="flex items-center gap-0.5 text-[10px] text-zinc-500"><Star size={10} /> {p.metrics.stars}</span>
+                              <span className="flex items-center gap-0.5 text-[10px] text-fg-3"><Star size={10} /> {p.metrics.stars}</span>
                             )}
                             {p.url && (
-                              <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-zinc-300"><ExternalLink size={11} /></a>
+                              <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-fg-3 hover:text-fg-2"><ExternalLink size={11} /></a>
                             )}
                           </div>
-                          {p.description && <p className="mt-0.5 text-[11px] leading-relaxed text-zinc-400">{p.description}</p>}
+                          {p.description && <p className="mt-0.5 text-[11px] leading-relaxed text-fg-2">{p.description}</p>}
                           {p.tech?.length > 0 && (
                             <div className="mt-1 flex flex-wrap gap-1">
                               {p.tech.slice(0, 8).map((t) => (
-                                <span key={t} className="rounded bg-white/[0.05] px-1.5 py-0.5 text-[9px] text-zinc-400">{t}</span>
+                                <span key={t} className="rounded bg-surface-2 px-1.5 py-0.5 text-[9px] text-fg-2">{t}</span>
                               ))}
                             </div>
                           )}
                           {sel.included && p.suggested_bullets.length > 0 && (
                             <div className="mt-2 space-y-1">
                               {p.suggested_bullets.map((b, bi) => (
-                                <label key={bi} className="flex cursor-pointer items-start gap-2 text-[11px] text-zinc-300">
-                                  <input type="checkbox" checked={sel.bullets.has(bi)} onChange={() => toggleBullet(i, bi)} className="mt-0.5 h-3 w-3 accent-emerald-400" />
+                                <label key={bi} className="flex cursor-pointer items-start gap-2 text-[11px] text-fg-2">
+                                  <input type="checkbox" checked={sel.bullets.has(bi)} onChange={() => toggleBullet(i, bi)} className="mt-0.5 h-3 w-3 accent-accent" />
                                   <span className="leading-relaxed">{b}</span>
                                 </label>
                               ))}
@@ -401,16 +401,16 @@ export default function ImportProjectsModal({
             )}
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-t border-white/10 px-5 py-3.5">
-            <span className="text-[11px] text-zinc-500">
+          <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3.5">
+            <span className="text-[11px] text-fg-3">
               {phase === 'ready' ? `${selectedCount} of ${projects.length} selected` : ''}
             </span>
             <div className="flex items-center gap-3">
-              <button onClick={onClose} className="text-xs font-semibold text-zinc-400 transition hover:text-zinc-200">Cancel</button>
+              <button onClick={onClose} className="text-xs font-semibold text-fg-2 transition hover:text-fg">Cancel</button>
               <button
                 onClick={handleInsert}
                 disabled={phase !== 'ready' || selectedCount === 0}
-                className="btn-accent px-4 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Insert into resume
               </button>

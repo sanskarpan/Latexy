@@ -71,20 +71,20 @@ function layoutNodes(roles: CareerRoleResponse[]): LayoutNode[] {
 
 function nodeColors(state: NodeData['state']) {
   switch (state) {
-    case 'current': return { fill: 'rgba(124,58,237,0.15)', stroke: '#7c3aed', text: '#c4b5fd' }
-    case 'target':  return { fill: 'rgba(16,185,129,0.15)', stroke: '#10b981', text: '#6ee7b7' }
-    case 'path':    return { fill: 'rgba(255,255,255,0.05)', stroke: 'rgba(255,255,255,0.15)', text: '#d4d4d8' }
-    default:        return { fill: 'rgba(255,255,255,0.03)', stroke: 'rgba(255,255,255,0.08)', text: '#71717a' }
+    case 'current': return { fill: 'color-mix(in srgb, var(--accent) 15%, transparent)', stroke: 'var(--accent)', text: 'var(--accent-strong)' }
+    case 'target':  return { fill: 'color-mix(in srgb, var(--ok) 15%, transparent)', stroke: 'var(--ok)', text: 'var(--ok)' }
+    case 'path':    return { fill: 'var(--surface-2)', stroke: 'var(--line)', text: 'var(--fg-2)' }
+    default:        return { fill: 'var(--surface)', stroke: 'var(--line)', text: 'var(--fg-3)' }
   }
 }
 
 function levelBadgeColor(level: string) {
   const map: Record<string, string> = {
-    intern: '#374151', junior: '#1e3a5f', mid: '#1c3748', senior: '#2d3748',
-    staff: '#3d2a5c', principal: '#4c1d95', director: '#7c1f39', vp: '#7c1d1d',
-    'c-suite': '#7c2d12',
+    intern: 'var(--surface-2)', junior: 'var(--surface-2)', mid: 'var(--surface-2)', senior: 'var(--surface-2)',
+    staff: 'var(--surface-2)', principal: 'var(--surface-2)', director: 'var(--surface-2)', vp: 'var(--surface-2)',
+    'c-suite': 'var(--surface-2)',
   }
-  return map[level] ?? '#27272a'
+  return map[level] ?? 'var(--surface-2)'
 }
 
 // ── Arrow marker ──────────────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ function ArrowMarker() {
         refY="3"
         orient="auto"
       >
-        <path d="M0,0 L0,6 L8,3 z" fill="rgba(255,255,255,0.25)" />
+        <path d="M0,0 L0,6 L8,3 z" fill="var(--fg-3)" />
       </marker>
     </defs>
   )
@@ -128,7 +128,7 @@ function Edge({
     <path
       d={d}
       fill="none"
-      stroke={isOnPath ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.1)'}
+      stroke={isOnPath ? 'var(--accent)' : 'var(--line)'}
       strokeWidth={isOnPath ? 2 : 1}
       strokeDasharray={isOnPath ? undefined : '4,3'}
       markerEnd={`url(#${ARROW_ID})`}
@@ -160,7 +160,7 @@ function CareerNode({
         height={NODE_H}
         rx={6}
         fill={fill}
-        stroke={isSelected ? '#818cf8' : stroke}
+        stroke={isSelected ? 'var(--accent)' : stroke}
         strokeWidth={isSelected ? 2 : 1}
       />
       {/* Level badge */}
@@ -177,7 +177,7 @@ function CareerNode({
         y={y + 16}
         textAnchor="middle"
         fontSize={8}
-        fill="#94a3b8"
+        fill="var(--fg-3)"
         fontFamily="system-ui"
         fontWeight={600}
       >
@@ -236,7 +236,7 @@ export default function CareerPathChart({
 
   if (nodes.length === 0) {
     return (
-      <div className="flex h-32 items-center justify-center text-[12px] text-zinc-600">
+      <div className="flex h-32 items-center justify-center text-[12px] text-fg-3">
         No path data available.
       </div>
     )
@@ -250,7 +250,7 @@ export default function CareerPathChart({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="overflow-x-auto rounded-xl border border-white/[0.06] bg-[#0d0d0d] p-4">
+      <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-line bg-bg p-4">
         <svg width={svgW} height={svgH} style={{ overflow: 'visible' }}>
           <ArrowMarker />
           <Group>
@@ -285,35 +285,35 @@ export default function CareerPathChart({
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-3 text-[10px] text-zinc-600">
+      <div className="flex flex-wrap gap-3 text-[10px] text-fg-3">
         <span className="flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full bg-violet-500" />Current role
+          <span className="h-2 w-2 rounded-full bg-accent" />Current role
         </span>
         <span className="flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full bg-white/20" />Path
+          <span className="h-2 w-2 rounded-full bg-fg-3" />Path
         </span>
         <span className="flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" />Target role
+          <span className="h-2 w-2 rounded-full bg-ok" />Target role
         </span>
       </div>
 
       {/* Selected node detail */}
       {selectedNode && (
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-[11px]">
-          <div className="mb-1 font-semibold text-zinc-200">{selectedNode.title}</div>
-          <div className="mb-2 text-zinc-600">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-3 text-[11px]">
+          <div className="mb-1 font-semibold text-fg">{selectedNode.title}</div>
+          <div className="mb-2 text-fg-3">
             {selectedNode.level} · {pathRoles.find((r) => r.id === selectedNode.id)?.industry?.replace(/_/g, ' ')}
           </div>
           {selectedNode.required_skills.length > 0 && (
             <>
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-700">
+              <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">
                 Required skills
               </div>
               <div className="flex flex-wrap gap-1">
                 {selectedNode.required_skills.map((s) => (
                   <span
                     key={s}
-                    className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-zinc-400"
+                    className="rounded-[var(--radius-md)] bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-2"
                   >
                     {s}
                   </span>

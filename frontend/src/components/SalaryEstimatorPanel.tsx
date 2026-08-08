@@ -89,7 +89,7 @@ export default function SalaryEstimatorPanel({
       aria-modal="true"
       aria-labelledby="salary-estimator-title"
       tabIndex={-1}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)]"
       onKeyDown={(e) => {
         if (e.key === 'Escape') onClose()
       }}
@@ -97,18 +97,18 @@ export default function SalaryEstimatorPanel({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="w-full max-w-lg rounded-xl border border-white/[0.08] bg-[#0d0d0d] shadow-2xl">
+      <div className="w-full max-w-lg rounded-[var(--radius-lg)] border border-line bg-surface shadow-[var(--shadow-2)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+        <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500/15">
-              <DollarSign size={13} className="text-emerald-300" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <DollarSign size={13} className="text-accent-strong" />
             </div>
-            <span id="salary-estimator-title" className="text-sm font-medium text-white/90">Salary Estimator</span>
+            <span id="salary-estimator-title" className="text-sm font-medium text-fg">Salary Estimator</span>
           </div>
           <button
             onClick={onClose}
-            className="rounded-md p-1 text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/70"
+            className="rounded-[var(--radius-md)] p-1 text-fg-3 transition-colors hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={14} />
           </button>
@@ -119,28 +119,28 @@ export default function SalaryEstimatorPanel({
           {/* Inputs */}
           <div className="space-y-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-white/50">Target Role</label>
+              <label className="mb-1 block text-xs font-medium text-fg-3">Target Role</label>
               <input
                 type="text"
                 value={targetRole}
                 onChange={(e) => setTargetRole(e.target.value)}
                 placeholder="e.g. Senior Software Engineer"
                 maxLength={200}
-                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-sm text-white/90 placeholder:text-white/25 focus:border-emerald-500/40 focus:outline-none focus:ring-0"
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none focus:ring-0"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleEstimate()
                 }}
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-white/50">Location</label>
+              <label className="mb-1 block text-xs font-medium text-fg-3">Location</label>
               <input
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="e.g. San Francisco, CA or London, UK"
                 maxLength={200}
-                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-sm text-white/90 placeholder:text-white/25 focus:border-emerald-500/40 focus:outline-none focus:ring-0"
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none focus:ring-0"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleEstimate()
                 }}
@@ -152,7 +152,7 @@ export default function SalaryEstimatorPanel({
           <button
             onClick={handleEstimate}
             disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
               <>
@@ -169,34 +169,34 @@ export default function SalaryEstimatorPanel({
 
           {/* Results */}
           {result && result.median > 0 && (
-            <div className="space-y-4 rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+            <div className="space-y-4 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">
               {/* Range numbers */}
               <div className="flex items-end justify-between">
                 <div className="text-center">
-                  <div className="text-xs text-white/40">Low</div>
-                  <div className="text-base font-semibold text-white/70">
+                  <div className="text-xs text-fg-3">Low</div>
+                  <div className="text-base font-semibold text-fg-2">
                     {formatCurrency(result.low, result.currency)}
                   </div>
                 </div>
                 <div className="text-center">
-                  <div className="text-xs text-white/40">Median</div>
-                  <div className="text-xl font-bold text-emerald-400">
+                  <div className="text-xs text-fg-3">Median</div>
+                  <div className="text-xl font-bold text-accent">
                     {formatCurrency(result.median, result.currency)}
                   </div>
                 </div>
                 <div className="text-center">
-                  <div className="text-xs text-white/40">High</div>
-                  <div className="text-base font-semibold text-white/70">
+                  <div className="text-xs text-fg-3">High</div>
+                  <div className="text-base font-semibold text-fg-2">
                     {formatCurrency(result.high, result.currency)}
                   </div>
                 </div>
               </div>
 
               {/* Range bar */}
-              <div className="relative h-3 rounded-full bg-white/[0.06]">
+              <div className="relative h-3 rounded-full bg-surface-2">
                 {/* Filled portion from low to high */}
                 <div
-                  className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-emerald-900/60 via-emerald-500/70 to-emerald-900/60"
+                  className="absolute inset-y-0 left-0 rounded-full bg-accent"
                   style={{ width: '100%' }}
                 />
                 {/* Candidate marker at median */}
@@ -204,27 +204,27 @@ export default function SalaryEstimatorPanel({
                   className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
                   style={{ left: `${markerPct}%` }}
                 >
-                  <div className="h-5 w-2 rounded-full border-2 border-emerald-400 bg-[#0d0d0d] shadow-lg shadow-emerald-500/30" />
+                  <div className="h-5 w-2 rounded-full border-2 border-accent bg-surface shadow-[var(--shadow-2)]" />
                 </div>
               </div>
 
               {/* Percentile */}
-              <p className="text-center text-xs text-white/50">
+              <p className="text-center text-xs text-fg-3">
                 Estimated at{' '}
-                <span className="font-semibold text-emerald-400">{result.percentile}th percentile</span>{' '}
-                for <span className="text-white/70">{targetRole}</span> in{' '}
-                <span className="text-white/70">{location}</span>
+                <span className="font-semibold text-accent-strong">{result.percentile}th percentile</span>{' '}
+                for <span className="text-fg-2">{targetRole}</span> in{' '}
+                <span className="text-fg-2">{location}</span>
               </p>
 
               {/* Key skills */}
               {result.key_skills.length > 0 && (
                 <div className="space-y-1.5">
-                  <div className="text-xs font-medium text-white/40">Skills contributing to estimate</div>
+                  <div className="text-xs font-medium text-fg-3">Skills contributing to estimate</div>
                   <div className="flex flex-wrap gap-1.5">
                     {result.key_skills.map((skill) => (
                       <span
                         key={skill}
-                        className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-300"
+                        className="rounded-full border border-accent bg-accent-soft px-2 py-0.5 text-xs text-accent-strong"
                       >
                         {skill}
                       </span>
@@ -234,13 +234,13 @@ export default function SalaryEstimatorPanel({
               )}
 
               {/* Disclaimer */}
-              <p className="text-[10px] leading-relaxed text-white/25">{result.disclaimer}</p>
+              <p className="text-[10px] leading-relaxed text-fg-3">{result.disclaimer}</p>
             </div>
           )}
 
           {/* Edge case: zero estimate */}
           {result && result.median === 0 && (
-            <p className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3 text-center text-xs text-white/40">
+            <p className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-3 text-center text-xs text-fg-3">
               {result.disclaimer || 'Unable to generate an estimate right now.'}
             </p>
           )}

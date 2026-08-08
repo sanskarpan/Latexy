@@ -37,6 +37,11 @@ function SettingsContent() {
   const [error, setError] = useState<string | null>(null)
   const [desktopNotifs, setDesktopNotifs] = useState(true)
 
+  // Gate client-only UI (e.g. Notification.permission) until after hydration so
+  // the first client render matches the server and doesn't mismatch.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+
   // Load desktop notification preference from localStorage
   useEffect(() => {
     setDesktopNotifs(getNotificationPref())
@@ -249,31 +254,31 @@ function SettingsContent() {
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#080808] px-4 py-10">
+    <div className="min-h-screen overflow-x-hidden bg-bg px-4 py-10">
       <div className="mx-auto max-w-xl space-y-8">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-100">Settings</h1>
-          <p className="mt-1 text-sm text-zinc-500">Manage your account preferences</p>
+          <h1 className="text-2xl font-semibold text-fg">Settings</h1>
+          <p className="mt-1 text-sm text-fg-3">Manage your account preferences</p>
         </div>
 
         {/* GitHub Integration card */}
-        <div className="rounded-xl border border-white/[0.07] bg-[#0d0d0d] p-6 space-y-6">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-800">
-              <Github size={14} className="text-zinc-200" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-surface-2">
+              <Github size={14} className="text-fg" />
             </div>
-            <h2 className="text-base font-semibold text-zinc-100">GitHub Integration</h2>
+            <h2 className="text-base font-semibold text-fg">GitHub Integration</h2>
           </div>
 
           {ghSuccess && (
-            <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-400 ring-1 ring-emerald-500/20">
+            <p className="rounded-[var(--radius-md)] bg-ok/10 px-3 py-2 text-[11px] text-ok ring-1 ring-ok/20">
               {ghSuccess}
             </p>
           )}
 
           {ghLoading ? (
-            <div className="flex items-center gap-2 text-zinc-500 text-sm">
+            <div className="flex items-center gap-2 text-fg-3 text-sm">
               <Loader2 size={14} className="animate-spin" />
               Checking GitHub status…
             </div>
@@ -281,12 +286,12 @@ function SettingsContent() {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
-                    <CheckCircle size={14} className="text-emerald-400" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ok/15">
+                    <CheckCircle size={14} className="text-ok" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-zinc-200 break-words">Connected as <span className="text-emerald-300">{ghStatus.username}</span></p>
-                    <p className="text-[11px] text-zinc-500">
+                    <p className="text-sm font-medium text-fg break-words">Connected as <span className="text-ok">{ghStatus.username}</span></p>
+                    <p className="text-[11px] text-fg-3">
                       Resume sync enabled. Toggle per-resume in the editor.
                     </p>
                   </div>
@@ -298,7 +303,7 @@ function SettingsContent() {
                   href={`https://github.com/${ghStatus.username}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] px-3 py-1.5 text-[11px] font-medium text-zinc-400 transition hover:text-zinc-200"
+                  className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-[11px] font-medium text-fg-2 transition hover:text-fg"
                 >
                   <ExternalLink size={11} />
                   View Profile
@@ -306,7 +311,7 @@ function SettingsContent() {
                 <button
                   onClick={handleDisconnectGitHub}
                   disabled={ghDisconnecting}
-                  className="flex items-center gap-1.5 rounded-lg border border-rose-500/20 px-3 py-1.5 text-[11px] font-medium text-rose-400 transition hover:bg-rose-500/10 disabled:opacity-40"
+                  className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-err/20 px-3 py-1.5 text-[11px] font-medium text-err transition hover:bg-err/10 disabled:opacity-40"
                 >
                   {ghDisconnecting ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
                   {ghDisconnecting ? 'Disconnecting…' : 'Disconnect'}
@@ -315,13 +320,13 @@ function SettingsContent() {
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-[12px] text-zinc-500">
+              <p className="text-[12px] text-fg-3">
                 Connect your GitHub account to sync resume LaTeX source to a private repository.
                 Push from the editor manually to save a version in Git.
               </p>
               <button
                 onClick={handleConnectGitHub}
-                className="flex items-center gap-2 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-100 ring-1 ring-white/[0.1] transition hover:bg-zinc-700"
+                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-surface-2 px-4 py-2 text-sm font-semibold text-fg ring-1 ring-line transition hover:bg-surface-2 hover:brightness-110"
               >
                 <Github size={14} />
                 Connect GitHub
@@ -330,29 +335,29 @@ function SettingsContent() {
           )}
 
           {ghError && (
-            <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-400 ring-1 ring-rose-500/20">
+            <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
               {ghError}
             </p>
           )}
         </div>
 
         {/* Zotero Integration card (Feature 42) */}
-        <div className="rounded-xl border border-white/[0.07] bg-[#0d0d0d] p-6 space-y-6">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#CC2936]/15">
-              <BookOpen size={14} className="text-red-300" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <BookOpen size={14} className="text-accent-strong" />
             </div>
-            <h2 className="text-base font-semibold text-zinc-100">Zotero Integration</h2>
+            <h2 className="text-base font-semibold text-fg">Zotero Integration</h2>
           </div>
 
           {zotSuccess && (
-            <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-400 ring-1 ring-emerald-500/20">
+            <p className="rounded-[var(--radius-md)] bg-ok/10 px-3 py-2 text-[11px] text-ok ring-1 ring-ok/20">
               {zotSuccess}
             </p>
           )}
 
           {zotLoading ? (
-            <div className="flex items-center gap-2 text-zinc-500 text-sm">
+            <div className="flex items-center gap-2 text-fg-3 text-sm">
               <Loader2 size={14} className="animate-spin" />
               Checking Zotero status…
             </div>
@@ -360,14 +365,14 @@ function SettingsContent() {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
-                    <CheckCircle size={14} className="text-emerald-400" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ok/15">
+                    <CheckCircle size={14} className="text-ok" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-zinc-200 break-words">
-                      Connected as <span className="text-emerald-300">@{zotStatus.username}</span>
+                    <p className="text-sm font-medium text-fg break-words">
+                      Connected as <span className="text-ok">@{zotStatus.username}</span>
                     </p>
-                    <p className="text-[11px] text-zinc-500">
+                    <p className="text-[11px] text-fg-3">
                       Import your library from the References panel in the editor.
                     </p>
                   </div>
@@ -376,7 +381,7 @@ function SettingsContent() {
               <button
                 onClick={handleDisconnectZotero}
                 disabled={zotDisconnecting}
-                className="flex items-center gap-1.5 rounded-lg border border-rose-500/20 px-3 py-1.5 text-[11px] font-medium text-rose-400 transition hover:bg-rose-500/10 disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-err/20 px-3 py-1.5 text-[11px] font-medium text-err transition hover:bg-err/10 disabled:opacity-40"
               >
                 {zotDisconnecting ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
                 {zotDisconnecting ? 'Disconnecting…' : 'Disconnect Zotero'}
@@ -384,12 +389,12 @@ function SettingsContent() {
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-[12px] text-zinc-500">
+              <p className="text-[12px] text-fg-3">
                 Connect your Zotero account to import your reference library as BibTeX directly into any resume.
               </p>
               <button
                 onClick={handleConnectZotero}
-                className="flex items-center gap-2 rounded-lg bg-[#CC2936]/15 px-4 py-2 text-sm font-semibold text-red-200 ring-1 ring-red-500/20 transition hover:bg-[#CC2936]/25"
+                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110"
               >
                 <ExternalLink size={14} />
                 Connect Zotero
@@ -398,29 +403,29 @@ function SettingsContent() {
           )}
 
           {zotError && (
-            <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-400 ring-1 ring-rose-500/20">
+            <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
               {zotError}
             </p>
           )}
         </div>
 
         {/* Mendeley Integration card (Feature 42) */}
-        <div className="rounded-xl border border-white/[0.07] bg-[#0d0d0d] p-6 space-y-6">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/10">
-              <BookOpen size={14} className="text-rose-300" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <BookOpen size={14} className="text-accent-strong" />
             </div>
-            <h2 className="text-base font-semibold text-zinc-100">Mendeley Integration</h2>
+            <h2 className="text-base font-semibold text-fg">Mendeley Integration</h2>
           </div>
 
           {menSuccess && (
-            <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-400 ring-1 ring-emerald-500/20">
+            <p className="rounded-[var(--radius-md)] bg-ok/10 px-3 py-2 text-[11px] text-ok ring-1 ring-ok/20">
               {menSuccess}
             </p>
           )}
 
           {menLoading ? (
-            <div className="flex items-center gap-2 text-zinc-500 text-sm">
+            <div className="flex items-center gap-2 text-fg-3 text-sm">
               <Loader2 size={14} className="animate-spin" />
               Checking Mendeley status…
             </div>
@@ -428,14 +433,14 @@ function SettingsContent() {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
-                    <CheckCircle size={14} className="text-emerald-400" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ok/15">
+                    <CheckCircle size={14} className="text-ok" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-zinc-200 break-words">
-                      Connected as <span className="text-emerald-300">{menStatus.name ?? 'Mendeley User'}</span>
+                    <p className="text-sm font-medium text-fg break-words">
+                      Connected as <span className="text-ok">{menStatus.name ?? 'Mendeley User'}</span>
                     </p>
-                    <p className="text-[11px] text-zinc-500">
+                    <p className="text-[11px] text-fg-3">
                       Import your library from the References panel in the editor.
                     </p>
                   </div>
@@ -444,7 +449,7 @@ function SettingsContent() {
               <button
                 onClick={handleDisconnectMendeley}
                 disabled={menDisconnecting}
-                className="flex items-center gap-1.5 rounded-lg border border-rose-500/20 px-3 py-1.5 text-[11px] font-medium text-rose-400 transition hover:bg-rose-500/10 disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-err/20 px-3 py-1.5 text-[11px] font-medium text-err transition hover:bg-err/10 disabled:opacity-40"
               >
                 {menDisconnecting ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
                 {menDisconnecting ? 'Disconnecting…' : 'Disconnect Mendeley'}
@@ -452,12 +457,12 @@ function SettingsContent() {
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-[12px] text-zinc-500">
+              <p className="text-[12px] text-fg-3">
                 Connect your Mendeley account to import your research library as BibTeX directly into any resume.
               </p>
               <button
                 onClick={handleConnectMendeley}
-                className="flex items-center gap-2 rounded-lg bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 ring-1 ring-rose-500/20 transition hover:bg-rose-500/20"
+                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110"
               >
                 <ExternalLink size={14} />
                 Connect Mendeley
@@ -466,41 +471,41 @@ function SettingsContent() {
           )}
 
           {menError && (
-            <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-400 ring-1 ring-rose-500/20">
+            <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
               {menError}
             </p>
           )}
         </div>
 
         {/* Dropbox Integration card (Feature 77) */}
-        <div className="rounded-xl border border-white/[0.07] bg-[#0d0d0d] p-6 space-y-6">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/15">
-              <Cloud size={14} className="text-blue-300" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <Cloud size={14} className="text-accent-strong" />
             </div>
-            <h2 className="text-base font-semibold text-zinc-100">Dropbox Integration</h2>
+            <h2 className="text-base font-semibold text-fg">Dropbox Integration</h2>
           </div>
 
           {dbxSuccess && (
-            <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-400 ring-1 ring-emerald-500/20">
+            <p className="rounded-[var(--radius-md)] bg-ok/10 px-3 py-2 text-[11px] text-ok ring-1 ring-ok/20">
               {dbxSuccess}
             </p>
           )}
 
           {dbxLoading ? (
-            <div className="flex items-center gap-2 text-zinc-500 text-sm">
+            <div className="flex items-center gap-2 text-fg-3 text-sm">
               <Loader2 size={14} className="animate-spin" />
               Checking Dropbox status…
             </div>
           ) : dbxStatus.connected ? (
             <div className="space-y-4">
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/15">
-                  <CheckCircle size={14} className="text-emerald-400" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ok/15">
+                  <CheckCircle size={14} className="text-ok" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-zinc-200">Dropbox connected</p>
-                  <p className="text-[11px] text-zinc-500">
+                  <p className="text-sm font-medium text-fg">Dropbox connected</p>
+                  <p className="text-[11px] text-fg-3">
                     Sync is enabled. Toggle per-resume sync from the editor toolbar.
                   </p>
                 </div>
@@ -508,7 +513,7 @@ function SettingsContent() {
               <button
                 onClick={handleDisconnectDropbox}
                 disabled={dbxDisconnecting}
-                className="flex items-center gap-1.5 rounded-lg border border-rose-500/20 px-3 py-1.5 text-[11px] font-medium text-rose-400 transition hover:bg-rose-500/10 disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-err/20 px-3 py-1.5 text-[11px] font-medium text-err transition hover:bg-err/10 disabled:opacity-40"
               >
                 {dbxDisconnecting ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
                 {dbxDisconnecting ? 'Disconnecting…' : 'Disconnect Dropbox'}
@@ -516,14 +521,14 @@ function SettingsContent() {
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-[12px] text-zinc-500">
+              <p className="text-[12px] text-fg-3">
                 Connect your Dropbox account to sync resume LaTeX source to{' '}
-                <span className="font-mono text-zinc-400">/Latexy/</span> in your Dropbox.
+                <span className="font-mono text-fg-2">/Latexy/</span> in your Dropbox.
                 Push and pull from the editor toolbar per resume.
               </p>
               <button
                 onClick={handleConnectDropbox}
-                className="flex items-center gap-2 rounded-lg bg-blue-500/15 px-4 py-2 text-sm font-semibold text-blue-200 ring-1 ring-blue-500/20 transition hover:bg-blue-500/25"
+                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110"
               >
                 <Cloud size={14} />
                 Connect Dropbox
@@ -532,23 +537,23 @@ function SettingsContent() {
           )}
 
           {dbxError && (
-            <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-400 ring-1 ring-rose-500/20">
+            <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
               {dbxError}
             </p>
           )}
         </div>
 
         {/* Notification preferences card */}
-        <div className="rounded-xl border border-white/[0.07] bg-[#0d0d0d] p-6 space-y-6">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15">
-              <Bell size={14} className="text-violet-300" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <Bell size={14} className="text-accent-strong" />
             </div>
-            <h2 className="text-base font-semibold text-zinc-100">Email Notifications</h2>
+            <h2 className="text-base font-semibold text-fg">Email Notifications</h2>
           </div>
 
           {loading ? (
-            <div className="flex items-center gap-2 text-zinc-500 text-sm">
+            <div className="flex items-center gap-2 text-fg-3 text-sm">
               <Loader2 size={14} className="animate-spin" />
               Loading preferences…
             </div>
@@ -557,12 +562,12 @@ function SettingsContent() {
               {/* Job completed toggle */}
               <label className="flex items-start justify-between gap-4 cursor-pointer">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
-                    <Mail size={13} className="text-emerald-400" />
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+                    <Mail size={13} className="text-accent-strong" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-zinc-200">Job completion emails</p>
-                    <p className="mt-0.5 text-[11px] text-zinc-500">
+                    <p className="text-sm font-medium text-fg">Job completion emails</p>
+                    <p className="mt-0.5 text-[11px] text-fg-3">
                       Receive an email when your resume optimization or compilation finishes
                     </p>
                   </div>
@@ -578,28 +583,28 @@ function SettingsContent() {
                     }
                   }}
                   className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
-                    prefs.job_completed ? 'bg-violet-600' : 'bg-white/10'
+                    prefs.job_completed ? 'bg-accent' : 'bg-surface-2'
                   }`}
                 >
                   <span
-                    className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                    className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-fg shadow transition-transform ${
                       prefs.job_completed ? 'translate-x-4' : 'translate-x-0'
                     }`}
                   />
                 </button>
               </label>
 
-              <div className="border-t border-white/[0.05]" />
+              <div className="border-t border-line" />
 
               {/* Weekly digest toggle */}
               <label className="flex items-start justify-between gap-4 cursor-pointer">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10">
-                    <Calendar size={13} className="text-blue-400" />
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+                    <Calendar size={13} className="text-accent-strong" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-zinc-200">Weekly digest</p>
-                    <p className="mt-0.5 text-[11px] text-zinc-500">
+                    <p className="text-sm font-medium text-fg">Weekly digest</p>
+                    <p className="mt-0.5 text-[11px] text-fg-3">
                       A Monday morning summary of your resume activity and ATS score trends
                     </p>
                   </div>
@@ -615,11 +620,11 @@ function SettingsContent() {
                     }
                   }}
                   className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
-                    prefs.weekly_digest ? 'bg-violet-600' : 'bg-white/10'
+                    prefs.weekly_digest ? 'bg-accent' : 'bg-surface-2'
                   }`}
                 >
                   <span
-                    className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                    className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-fg shadow transition-transform ${
                       prefs.weekly_digest ? 'translate-x-4' : 'translate-x-0'
                     }`}
                   />
@@ -629,7 +634,7 @@ function SettingsContent() {
           )}
 
           {error && (
-            <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-400 ring-1 ring-rose-500/20">
+            <p className="rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
               {error}
             </p>
           )}
@@ -638,12 +643,12 @@ function SettingsContent() {
             <button
               onClick={handleSave}
               disabled={saving || loading}
-              className="flex items-center gap-2 rounded-lg bg-violet-600/80 px-4 py-2 text-sm font-semibold text-white ring-1 ring-violet-500/30 transition hover:bg-violet-600 disabled:opacity-40"
+              className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg transition hover:brightness-110 disabled:opacity-40"
             >
               {saving ? (
                 <Loader2 size={13} className="animate-spin" />
               ) : saved ? (
-                <CheckCircle size={13} className="text-emerald-300" />
+                <CheckCircle size={13} className="text-accent-fg" />
               ) : (
                 <Save size={13} />
               )}
@@ -653,22 +658,22 @@ function SettingsContent() {
         </div>
 
         {/* Desktop notifications card */}
-        <div className="rounded-xl border border-white/[0.07] bg-[#0d0d0d] p-6 space-y-6">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/15">
-              <Monitor size={14} className="text-orange-300" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <Monitor size={14} className="text-accent-strong" />
             </div>
-            <h2 className="text-base font-semibold text-zinc-100">Desktop Notifications</h2>
+            <h2 className="text-base font-semibold text-fg">Desktop Notifications</h2>
           </div>
 
           <label className="flex items-start justify-between gap-4 cursor-pointer">
             <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-500/10">
-                <Bell size={13} className="text-orange-400" />
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+                <Bell size={13} className="text-accent-strong" />
               </div>
               <div>
-                <p className="text-sm font-medium text-zinc-200">Browser notifications</p>
-                <p className="mt-0.5 text-[11px] text-zinc-500">
+                <p className="text-sm font-medium text-fg">Browser notifications</p>
+                <p className="mt-0.5 text-[11px] text-fg-3">
                   Get notified when compilation or optimization finishes while the tab is in the background
                 </p>
               </div>
@@ -690,19 +695,19 @@ function SettingsContent() {
                 }
               }}
               className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
-                desktopNotifs ? 'bg-orange-600' : 'bg-white/10'
+                desktopNotifs ? 'bg-accent' : 'bg-surface-2'
               }`}
             >
               <span
-                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-fg shadow transition-transform ${
                   desktopNotifs ? 'translate-x-4' : 'translate-x-0'
                 }`}
               />
             </button>
           </label>
 
-          {typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'denied' && (
-            <p className="rounded-lg bg-yellow-500/10 px-3 py-2 text-[11px] text-yellow-400 ring-1 ring-yellow-500/20">
+          {mounted && 'Notification' in window && Notification.permission === 'denied' && (
+            <p className="rounded-[var(--radius-md)] bg-warn/10 px-3 py-2 text-[11px] text-warn ring-1 ring-warn/20">
               Notifications are blocked by your browser. Update your site permissions to enable them.
             </p>
           )}
