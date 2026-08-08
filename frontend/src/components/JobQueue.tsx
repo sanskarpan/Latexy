@@ -11,11 +11,9 @@ import {
   Square,
   RefreshCw,
   Search,
-  MoreHorizontal,
   FileText,
   Zap,
   Target,
-  Eye,
 } from 'lucide-react'
 import { useJobManagement } from '@/hooks/useJobManagement'
 import { useJobStatus } from '@/hooks/useJobStatus'
@@ -137,7 +135,7 @@ const JobItem: React.FC<JobItemProps> = ({ job, onJobClick, onJobComplete }) => 
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -12 }}
-      className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 transition hover:border-line-2 cursor-pointer"
+      className={`rounded-[var(--radius-lg)] border border-line bg-surface p-4 transition hover:border-line-2 ${onJobClick ? 'cursor-pointer' : ''}`}
       onClick={() => onJobClick?.(job.job_id)}
     >
       <div className="flex items-center justify-between">
@@ -169,35 +167,21 @@ const JobItem: React.FC<JobItemProps> = ({ job, onJobClick, onJobComplete }) => 
           </div>
         </div>
 
-        <div className="flex items-center gap-1 ml-3 shrink-0">
-          {job.status === 'completed' && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-              }}
-              className="rounded-[var(--radius-md)] p-2 text-fg-3 transition hover:bg-surface-2 hover:text-fg"
-            >
-              <Eye className="w-4 h-4" />
-            </button>
-          )}
-          {canCancel && (
+        {canCancel && (
+          <div className="flex items-center gap-1 ml-3 shrink-0">
             <button
               onClick={(e) => {
                 e.stopPropagation()
                 cancel()
               }}
+              aria-label="Cancel job"
+              title="Cancel job"
               className="rounded-[var(--radius-md)] p-2 text-fg-3 transition hover:bg-err/10 hover:text-err"
             >
               <Square className="w-3.5 h-3.5" />
             </button>
-          )}
-          <button
-            onClick={(e) => e.stopPropagation()}
-            className="rounded-[var(--radius-md)] p-2 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
-          >
-            <MoreHorizontal className="w-4 h-4" />
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
       {job.progress !== undefined && job.status === 'processing' && (
@@ -267,7 +251,7 @@ export const JobQueue: React.FC<JobQueueProps> = ({
             Job Queue
           </h2>
           <p className="text-xs text-fg-3">
-            {jobs ? `${jobs.total_count} total jobs` : 'Loading jobs\u2026'}
+            {jobs ? `${jobs.total_count} total jobs` : 'Loading jobs…'}
           </p>
         </div>
 
@@ -310,7 +294,7 @@ export const JobQueue: React.FC<JobQueueProps> = ({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fg-3" />
               <input
                 type="text"
-                placeholder="Search jobs\u2026"
+                placeholder="Search jobs…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full rounded-[var(--radius-md)] border border-line bg-bg pl-9 pr-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-3 focus:border-accent"
