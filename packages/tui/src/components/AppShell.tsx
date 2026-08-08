@@ -4,9 +4,11 @@ import { useStore } from '@nanostores/react'
 import { $session } from '../stores/session.js'
 import { $overlay, $isBlocked, closeOverlay } from '../stores/overlay.js'
 import { $ui } from '../stores/ui.js'
+import { $workbench } from '../stores/workbench.js'
 import { clearMessages } from '../stores/messages.js'
 import { StatusBar } from './StatusBar.js'
 import { TranscriptView } from './TranscriptView.js'
+import { Workbench } from './workbench/Workbench.js'
 import { PromptInput } from './PromptInput.js'
 import { KeyboardHints } from './KeyboardHints.js'
 import { useWSEventRouter } from '../hooks/useJobStream.js'
@@ -20,6 +22,7 @@ export function AppShell(): React.ReactElement {
   const session = useStore($session)
   const overlay = useStore($overlay)
   const ui = useStore($ui)
+  const wb = useStore($workbench)
   const isBlocked = useStore($isBlocked)
   const { exit } = useApp()
 
@@ -49,15 +52,15 @@ export function AppShell(): React.ReactElement {
         wsConnected={ui.wsConnected}
       />
       <Box flexGrow={1} flexDirection="column" overflow="hidden">
-        <TranscriptView />
+        {wb.active ? <Workbench /> : <TranscriptView />}
       </Box>
       {overlay != null && (
         <Box flexDirection="column" marginX={4} marginY={1}>
           {overlay as React.ReactElement}
         </Box>
       )}
-      <PromptInput onSubmit={(input) => { void lazyDispatch(input) }} />
-      <KeyboardHints />
+      {!wb.active && <PromptInput onSubmit={(input) => { void lazyDispatch(input) }} />}
+      {!wb.active && <KeyboardHints />}
     </Box>
   )
 }
