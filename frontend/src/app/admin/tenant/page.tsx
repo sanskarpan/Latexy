@@ -435,7 +435,7 @@ export default function TenantAdminPage() {
                   disabled={inviting || !inviteEmail.trim()}
                   className="rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-medium text-accent-strong transition hover:brightness-110 disabled:opacity-40"
                 >
-                  {inviting ? '…' : 'Invite'}
+                  {inviting ? 'Inviting…' : 'Invite'}
                 </button>
               </div>
 
