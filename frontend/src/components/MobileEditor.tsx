@@ -40,8 +40,8 @@ interface MobileEditorProps {
 const darkTheme = EditorView.theme(
   {
     '&': {
-      backgroundColor: '#09090b',
-      color: '#e4e4e7',
+      backgroundColor: 'var(--code-bg)',
+      color: 'var(--code-fg)',
       height: '100%',
       fontSize: '14px',
     },
@@ -50,7 +50,7 @@ const darkTheme = EditorView.theme(
       fontFamily: "ui-monospace, 'Cascadia Code', monospace",
     },
     '.cm-gutters': {
-      backgroundColor: '#09090b',
+      backgroundColor: 'var(--code-bg)',
       borderRight: '1px solid rgba(255,255,255,0.06)',
       color: '#52525b',
     },
@@ -58,14 +58,14 @@ const darkTheme = EditorView.theme(
       minWidth: '2.5em',
       paddingRight: '0.5em',
     },
-    '.cm-cursor': { borderLeftColor: '#a855f7' },
+    '.cm-cursor': { borderLeftColor: 'var(--accent)' },
     '.cm-selectionBackground': {
       backgroundColor: 'rgba(168,85,247,0.15) !important',
     },
     '.cm-activeLine': { backgroundColor: 'rgba(255,255,255,0.03)' },
     '.cm-activeLineGutter': { backgroundColor: 'rgba(168,85,247,0.08)' },
     '.cm-line': { padding: '0 8px' },
-    '&.cm-focused .cm-cursor': { borderLeftColor: '#a855f7' },
+    '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--accent)' },
   },
   { dark: true },
 )
@@ -187,25 +187,25 @@ const MobileEditor = forwardRef<LaTeXEditorRef, MobileEditorProps>(
     )
 
     return (
-      <div className="flex h-full flex-col bg-[#09090b]">
+      <div className="flex h-full flex-col bg-bg">
         {/* Toolbar strip — sits above the virtual keyboard */}
-        <div className="flex shrink-0 items-center gap-1 border-b border-white/[0.06] bg-zinc-950 px-2 py-1.5">
+        <div className="flex shrink-0 items-center gap-1 border-b border-line bg-bg px-2 py-1.5">
           {TOOLBAR_ITEMS.map(({ icon: Icon, label, insert, cursorOffset }) => (
             <button
               key={label}
               title={label}
               onClick={() => insertSnippet(insert, cursorOffset)}
-              className="flex h-7 w-7 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+              className="flex h-7 w-7 items-center justify-center rounded text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             >
               <Icon size={14} />
             </button>
           ))}
-          <div className="mx-1 h-4 w-px bg-white/[0.08]" />
+          <div className="mx-1 h-4 w-px bg-line" />
           {onCompile && (
             <button
               title="Compile"
               onClick={onCompile}
-              className="flex h-7 items-center gap-1 rounded px-2 text-[11px] font-medium text-violet-400 transition hover:bg-violet-500/10"
+              className="flex h-7 items-center gap-1 rounded px-2 text-[11px] font-medium text-accent-strong transition hover:bg-accent-soft"
             >
               <Play size={12} />
               Compile
@@ -215,7 +215,7 @@ const MobileEditor = forwardRef<LaTeXEditorRef, MobileEditorProps>(
             <button
               title="Save"
               onClick={onSave}
-              className="flex h-7 items-center gap-1 rounded px-2 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+              className="flex h-7 items-center gap-1 rounded px-2 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             >
               <Save size={12} />
               Save

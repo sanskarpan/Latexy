@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react'
 import { Box, Text, useInput } from 'ink'
-import { SLASH_COMMANDS } from '../commands/registry.js'
+import { IMPLEMENTED_COMMANDS } from '../commands/registry.js'
 
 interface Props {
   query: string
@@ -14,7 +14,7 @@ export function SlashSuggestions({ query, maxItems = 7, onComplete, isActive = t
 
   const matches = useMemo(() => {
     const q = query.toLowerCase()
-    return SLASH_COMMANDS.filter(c =>
+    return IMPLEMENTED_COMMANDS.filter(c =>
       c.name.startsWith(q) || c.description.toLowerCase().includes(q)
     ).slice(0, maxItems)
   }, [query, maxItems])
@@ -45,7 +45,7 @@ export function SlashSuggestions({ query, maxItems = 7, onComplete, isActive = t
 
   if (matches.length === 0) return null
 
-  const totalMatches = SLASH_COMMANDS.filter(c => {
+  const totalMatches = IMPLEMENTED_COMMANDS.filter(c => {
     const q = query.toLowerCase()
     return c.name.startsWith(q) || c.description.toLowerCase().includes(q)
   }).length

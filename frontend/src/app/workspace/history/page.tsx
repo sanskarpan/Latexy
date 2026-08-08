@@ -51,10 +51,10 @@ export default function WorkspaceHistoryPage() {
   if (!session) {
     return (
       <div className="content-shell">
-        <section className="surface-panel edge-highlight mx-auto max-w-2xl p-8 text-center">
-          <h1 className="text-2xl font-semibold text-white">Sign in to view history</h1>
-          <p className="mt-2 text-zinc-400">Execution history is available only for authenticated workspaces.</p>
-          <Link href="/login" className="btn-accent mt-6">
+        <section className="rounded-[var(--radius-lg)] border border-line bg-surface mx-auto max-w-2xl p-8 text-center">
+          <h1 className="text-2xl font-semibold text-fg">Sign in to view history</h1>
+          <p className="mt-2 text-fg-2">Execution history is available only for authenticated workspaces.</p>
+          <Link href="/login" className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110 mt-6 inline-block">
             Continue to Login
           </Link>
         </section>
@@ -66,30 +66,30 @@ export default function WorkspaceHistoryPage() {
     <div className="content-shell space-y-6">
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="overline">Workspace</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">Run History</h1>
-          <p className="mt-1 text-sm text-zinc-400">Inspect pipeline runs, status changes, and recent execution timelines.</p>
+          <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Workspace</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">Run History</h1>
+          <p className="mt-1 text-sm text-fg-2">Inspect pipeline runs, status changes, and recent execution timelines.</p>
         </div>
         <div className="flex gap-2">
-          <Link href="/workspace" className="btn-ghost px-4 py-2 text-xs">
+          <Link href="/workspace" className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2">
             Back to Workspace
           </Link>
-          <Link href="/workspace/new" className="btn-accent px-4 py-2 text-xs">
+          <Link href="/workspace/new" className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110">
             New Resume
           </Link>
         </div>
       </section>
 
-      <section className="surface-panel edge-highlight p-4 sm:p-5">
+      <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 sm:p-5">
         <div className="flex flex-wrap gap-2">
           {statusFilters.map((filter) => (
             <button
               key={filter}
               onClick={() => setStatus(filter)}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] transition ${
+              className={`rounded-[var(--radius-md)] border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] transition ${
                 status === filter
-                  ? 'border-orange-300/50 bg-orange-300/10 text-orange-200'
-                  : 'border-white/10 bg-white/5 text-zinc-400 hover:border-white/20 hover:text-white'
+                  ? 'border-accent bg-accent-soft text-accent-strong'
+                  : 'border-line bg-surface-2 text-fg-2 hover:border-line-2 hover:text-fg'
               }`}
             >
               {filter}
@@ -98,21 +98,21 @@ export default function WorkspaceHistoryPage() {
         </div>
       </section>
 
-      <section className="surface-panel edge-highlight overflow-hidden">
+      <section className="rounded-[var(--radius-lg)] border border-line bg-surface overflow-hidden">
         {isLoading ? (
           <div className="flex h-64 items-center justify-center">
             <LoadingSpinner />
           </div>
         ) : filteredJobs.length === 0 ? (
           <div className="px-6 py-16 text-center">
-            <p className="text-base text-white">No runs found for this filter.</p>
-            <p className="mt-2 text-sm text-zinc-500">Start a compile or optimization run to populate history.</p>
+            <p className="text-base text-fg">No runs found for this filter.</p>
+            <p className="mt-2 text-sm text-fg-3">Start a compile or optimization run to populate history.</p>
           </div>
         ) : (
           <div className="overflow-x-auto scrollbar-subtle">
             <table className="w-full min-w-[760px] text-left">
               <thead>
-                <tr className="border-b border-white/10 bg-white/[0.03] text-[11px] uppercase tracking-[0.14em] text-zinc-500">
+                <tr className="border-b border-line bg-surface-2 text-[11px] uppercase tracking-[0.14em] text-fg-3">
                   <th className="px-5 py-3 font-semibold">Run ID</th>
                   <th className="px-5 py-3 font-semibold">Status</th>
                   <th className="px-5 py-3 font-semibold">Stage</th>
@@ -120,19 +120,19 @@ export default function WorkspaceHistoryPage() {
                   <th className="px-5 py-3 font-semibold">Updated</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/10">
+              <tbody className="divide-y divide-line">
                 {filteredJobs.map((job, index) => (
-                  <tr key={job.job_id ?? `${job.last_updated}-${index}`} className="bg-black/10">
-                    <td className="px-5 py-4 text-sm font-medium text-zinc-200">{job.job_id ? job.job_id.slice(0, 12) : 'N/A'}</td>
-                    <td className="px-5 py-4 text-sm capitalize text-zinc-300">{job.status}</td>
-                    <td className="px-5 py-4 text-sm text-zinc-400">{job.stage || 'waiting'}</td>
+                  <tr key={job.job_id ?? `${job.last_updated}-${index}`} className="bg-bg/10">
+                    <td className="px-5 py-4 text-sm font-medium text-fg">{job.job_id ? job.job_id.slice(0, 12) : 'N/A'}</td>
+                    <td className="px-5 py-4 text-sm capitalize text-fg-2">{job.status}</td>
+                    <td className="px-5 py-4 text-sm text-fg-2">{job.stage || 'waiting'}</td>
                     <td className="px-5 py-4">
-                      <div className="w-full max-w-[180px] rounded-full bg-white/10">
-                        <div className="h-2 rounded-full bg-orange-300" style={{ width: `${Math.max(2, job.percent)}%` }} />
+                      <div className="w-full max-w-[180px] rounded-full bg-surface-2">
+                        <div className="h-2 rounded-full bg-accent" style={{ width: `${Math.max(2, job.percent)}%` }} />
                       </div>
-                      <p className="mt-1 text-xs text-zinc-500">{job.percent}%</p>
+                      <p className="mt-1 text-xs text-fg-3">{job.percent}%</p>
                     </td>
-                    <td className="px-5 py-4 text-sm text-zinc-400">
+                    <td className="px-5 py-4 text-sm text-fg-2">
                       {new Date(job.last_updated * 1000).toLocaleString([], {
                         year: 'numeric',
                         month: 'short',

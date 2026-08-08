@@ -180,22 +180,22 @@ export default function DiffViewerModal({
   if (!checkpointA && !isParentDiffMode) return null
 
   const modalClasses = isFullscreen
-    ? 'relative flex h-screen w-screen flex-col bg-zinc-950'
-    : 'relative flex h-[85vh] w-[95vw] max-w-7xl flex-col rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl'
+    ? 'relative flex h-screen w-screen flex-col bg-bg'
+    : 'relative flex h-[85vh] w-[95vw] max-w-7xl flex-col rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)]'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm">
       <div className={modalClasses}>
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+        <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <div className="flex items-center gap-3">
-            <h2 className="text-sm font-semibold text-white">Compare Versions</h2>
+            <h2 className="text-sm font-semibold text-fg">Compare Versions</h2>
             {diffStats && (
               <div className="flex items-center gap-2 text-[11px]">
-                <span className="text-emerald-400">+{diffStats.added}</span>
-                <span className="text-rose-400">−{diffStats.removed}</span>
-                <span className="text-zinc-600">·</span>
-                <span className="text-zinc-500">{diffStats.changed} section{diffStats.changed !== 1 ? 's' : ''} changed</span>
+                <span className="text-ok">+{diffStats.added}</span>
+                <span className="text-err">−{diffStats.removed}</span>
+                <span className="text-fg-3">·</span>
+                <span className="text-fg-3">{diffStats.changed} section{diffStats.changed !== 1 ? 's' : ''} changed</span>
               </div>
             )}
           </div>
@@ -203,7 +203,7 @@ export default function DiffViewerModal({
             <button
               onClick={handleRestoreLeft}
               disabled={!leftLatex}
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-white/20 hover:text-white disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs text-fg-2 transition hover:border-line-2 hover:text-fg disabled:opacity-40"
             >
               <RotateCcw size={12} />
               {isParentDiffMode ? 'Restore to Parent' : 'Restore Left'}
@@ -211,7 +211,7 @@ export default function DiffViewerModal({
             <button
               onClick={handleRestoreRight}
               disabled={!rightLatex || (!checkpointB && !isParentDiffMode)}
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-white/20 hover:text-white disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs text-fg-2 transition hover:border-line-2 hover:text-fg disabled:opacity-40"
             >
               <RotateCcw size={12} />
               {isParentDiffMode ? 'Keep Variant' : 'Restore Right'}
@@ -219,7 +219,7 @@ export default function DiffViewerModal({
             <button
               type="button"
               onClick={() => setIsFullscreen((v) => !v)}
-              className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/5 hover:text-white"
+              className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg"
               title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
               aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             >
@@ -227,7 +227,7 @@ export default function DiffViewerModal({
             </button>
             <button
               onClick={onClose}
-              className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/5 hover:text-white"
+              className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             >
               <X size={16} />
             </button>
@@ -235,11 +235,11 @@ export default function DiffViewerModal({
         </div>
 
         {/* Labels */}
-        <div className="grid grid-cols-2 border-b border-white/5 text-[11px]">
-          <div className="truncate border-r border-white/5 px-4 py-1.5 text-zinc-500">
+        <div className="grid grid-cols-2 border-b border-line text-[11px]">
+          <div className="truncate border-r border-line px-4 py-1.5 text-fg-3">
             {leftLabel}
           </div>
-          <div className="truncate px-4 py-1.5 text-zinc-500">
+          <div className="truncate px-4 py-1.5 text-fg-3">
             {rightLabel}
           </div>
         </div>
@@ -248,14 +248,14 @@ export default function DiffViewerModal({
         <div className="relative flex-1 overflow-hidden">
           {loading ? (
             <div className="flex h-full items-center justify-center">
-              <div className="flex items-center gap-2 text-xs text-zinc-500">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-700 border-t-orange-300" />
+              <div className="flex items-center gap-2 text-xs text-fg-3">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-line-2 border-t-accent" />
                 Loading versions…
               </div>
             </div>
           ) : error ? (
             <div className="flex h-full items-center justify-center">
-              <p className="text-xs text-rose-400">Failed to load version content. Please close and try again.</p>
+              <p className="text-xs text-err">Failed to load version content. Please close and try again.</p>
             </div>
           ) : (
             <DiffEditor
@@ -282,22 +282,22 @@ export default function DiffViewerModal({
 
           {/* Restore confirmation overlay */}
           {confirmRestore !== null && (
-            <div role="dialog" aria-modal="true" aria-labelledby="confirm-restore-title" className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 backdrop-blur-[2px]">
-              <div className="w-80 rounded-xl border border-white/10 bg-zinc-900 p-5 shadow-2xl">
-                <p id="confirm-restore-title" className="text-sm font-semibold text-zinc-100">Restore this version?</p>
-                <p className="mt-1.5 text-xs text-zinc-500">
+            <div role="dialog" aria-modal="true" aria-labelledby="confirm-restore-title" className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-[2px]">
+              <div className="w-80 rounded-[var(--radius-lg)] border border-line bg-surface p-5 shadow-[var(--shadow-2)]">
+                <p id="confirm-restore-title" className="text-sm font-semibold text-fg">Restore this version?</p>
+                <p className="mt-1.5 text-xs text-fg-3">
                   This will replace your current editor content. You can undo after closing.
                 </p>
                 <div className="mt-4 flex justify-end gap-2">
                   <button
                     onClick={() => setConfirmRestore(null)}
-                    className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-white/20 hover:text-white"
+                    className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs text-fg-2 transition hover:border-line-2 hover:text-fg"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={confirmAndRestore}
-                    className="rounded-lg bg-orange-500/20 px-3 py-1.5 text-xs font-semibold text-orange-200 ring-1 ring-orange-400/20 transition hover:bg-orange-500/30"
+                    className="rounded-[var(--radius-md)] bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110"
                   >
                     Restore
                   </button>

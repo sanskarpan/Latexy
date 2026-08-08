@@ -54,7 +54,7 @@ export default function JobDescriptionInput({ value, onChange }: JobDescriptionI
             <p className="text-secondary-500 mb-4">No job description yet</p>
             <button
               onClick={insertSample}
-              className="btn-primary px-4 py-2 text-sm"
+              className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg transition hover:brightness-110"
             >
               Insert Sample Job Description
             </button>

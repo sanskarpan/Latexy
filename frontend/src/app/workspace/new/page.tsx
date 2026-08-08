@@ -223,18 +223,18 @@ export default function NewResumePage() {
         {/* Header */}
         <header className="flex items-end justify-between gap-4">
           <div>
-            <p className="overline">Workspace</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">Create Resume</h1>
-            <p className="mt-1 text-sm text-zinc-400">Choose a template or import an existing file.</p>
+            <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Workspace</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">Create Resume</h1>
+            <p className="mt-1 text-sm text-fg-2">Choose a template or import an existing file.</p>
           </div>
-          <Link href="/workspace" className="btn-ghost px-4 py-2 text-xs">
+          <Link href="/workspace" className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2">
             Back to Workspace
           </Link>
         </header>
 
         {/* Title input */}
-        <section className="surface-panel edge-highlight p-6">
-          <label className="mb-2 block text-xs uppercase tracking-[0.14em] text-zinc-500">
+        <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
+          <label className="mb-2 block text-xs uppercase tracking-[0.14em] text-fg-3">
             Resume Title
           </label>
           <input
@@ -243,23 +243,23 @@ export default function NewResumePage() {
             value={title}
             onChange={e => setTitle(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && canCreate) handleCreate() }}
-            className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-base text-white outline-none transition focus:border-orange-300/50"
+            className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-4 py-3 text-base text-fg outline-none transition focus:border-accent"
           />
         </section>
 
-        <section className="surface-panel edge-highlight flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
+        <section className="rounded-[var(--radius-lg)] border border-line bg-surface flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">Recommended</p>
-            <h2 className="mt-2 flex items-center gap-2 text-xl font-semibold text-white">
-              <Sparkles className="h-4 w-4 text-orange-300" />
+            <p className="text-xs uppercase tracking-[0.14em] text-fg-3">Recommended</p>
+            <h2 className="mt-2 flex items-center gap-2 text-xl font-semibold text-fg">
+              <Sparkles className="h-4 w-4 text-accent" />
               Guided Builder
             </h2>
-            <p className="mt-2 max-w-2xl text-sm text-zinc-400">
+            <p className="mt-2 max-w-2xl text-sm text-fg-2">
               Use the new structured builder if you want live preview, section forms, template swapping, and a safer
               path than starting directly in LaTeX.
             </p>
           </div>
-          <Link href="/workspace/builder/new" className="btn-accent px-5 py-3 text-sm">
+          <Link href="/workspace/builder/new" className="rounded-[var(--radius-md)] bg-accent px-5 py-3 text-sm font-semibold text-accent-fg hover:brightness-110">
             Open Guided Builder
           </Link>
         </section>
@@ -268,71 +268,71 @@ export default function NewResumePage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <button
             onClick={() => { setMode('template'); setImportedContent('') }}
-            className={`surface-panel edge-highlight flex items-start gap-3 p-5 text-left transition ${
+            className={`rounded-[var(--radius-lg)] border border-line bg-surface flex items-start gap-3 p-5 text-left transition ${
               mode === 'template'
-                ? 'border-orange-300/35 bg-orange-300/[0.05]'
-                : 'hover:bg-white/[0.03]'
+                ? 'border-accent bg-accent-soft'
+                : 'hover:bg-surface-2'
             }`}
           >
-            <LayoutTemplate className="mt-0.5 h-5 w-5 shrink-0 text-orange-300/70" />
+            <LayoutTemplate className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
             <div>
-              <h2 className="text-sm font-semibold text-white">Use Template</h2>
-              <p className="mt-0.5 text-xs text-zinc-400">Pick from 50+ LaTeX templates, ready to edit.</p>
+              <h2 className="text-sm font-semibold text-fg">Use Template</h2>
+              <p className="mt-0.5 text-xs text-fg-2">Pick from 50+ LaTeX templates, ready to edit.</p>
             </div>
           </button>
 
           <button
             onClick={() => { setMode('import'); setImportedContent('') }}
-            className={`surface-panel edge-highlight flex items-start gap-3 p-5 text-left transition ${
+            className={`rounded-[var(--radius-lg)] border border-line bg-surface flex items-start gap-3 p-5 text-left transition ${
               mode === 'import'
-                ? 'border-orange-300/35 bg-orange-300/[0.05]'
-                : 'hover:bg-white/[0.03]'
+                ? 'border-accent bg-accent-soft'
+                : 'hover:bg-surface-2'
             }`}
           >
-            <Upload className="mt-0.5 h-5 w-5 shrink-0 text-orange-300/70" />
+            <Upload className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
             <div>
-              <h2 className="text-sm font-semibold text-white">Import File</h2>
-              <p className="mt-0.5 text-xs text-zinc-400">Upload PDF, Word, Markdown, LaTeX, or more.</p>
+              <h2 className="text-sm font-semibold text-fg">Import File</h2>
+              <p className="mt-0.5 text-xs text-fg-2">Upload PDF, Word, Markdown, LaTeX, or more.</p>
             </div>
           </button>
 
           <button
             onClick={() => { setMode('linkedin'); setImportedContent('') }}
-            className={`surface-panel edge-highlight flex items-start gap-3 p-5 text-left transition ${
+            className={`rounded-[var(--radius-lg)] border border-line bg-surface flex items-start gap-3 p-5 text-left transition ${
               mode === 'linkedin'
-                ? 'border-sky-400/35 bg-sky-400/[0.05]'
-                : 'hover:bg-white/[0.03]'
+                ? 'border-accent bg-accent-soft'
+                : 'hover:bg-surface-2'
             }`}
           >
-            <Linkedin className="mt-0.5 h-5 w-5 shrink-0 text-sky-400/80" />
+            <Linkedin className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
             <div>
-              <h2 className="text-sm font-semibold text-white">Import from LinkedIn</h2>
-              <p className="mt-0.5 text-xs text-zinc-400">Export your LinkedIn profile as PDF and import it.</p>
+              <h2 className="text-sm font-semibold text-fg">Import from LinkedIn</h2>
+              <p className="mt-0.5 text-xs text-fg-2">Export your LinkedIn profile as PDF and import it.</p>
             </div>
           </button>
 
           <button
             onClick={() => { setMode('builder'); setImportedContent('') }}
-            className={`surface-panel edge-highlight flex items-start gap-3 p-5 text-left transition ${
+            className={`rounded-[var(--radius-lg)] border border-line bg-surface flex items-start gap-3 p-5 text-left transition ${
               mode === 'builder'
-                ? 'border-violet-400/35 bg-violet-400/[0.05]'
-                : 'hover:bg-white/[0.03]'
+                ? 'border-accent bg-accent-soft'
+                : 'hover:bg-surface-2'
             }`}
           >
-            <PackageOpen className="mt-0.5 h-5 w-5 shrink-0 text-violet-400/80" />
+            <PackageOpen className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
             <div>
-              <h2 className="text-sm font-semibold text-white">Import Builder Export</h2>
-              <p className="mt-0.5 text-xs text-zinc-400">Bring in content from Kickresume, Resume.io, Novoresume, and similar tools.</p>
+              <h2 className="text-sm font-semibold text-fg">Import Builder Export</h2>
+              <p className="mt-0.5 text-xs text-fg-2">Bring in content from Kickresume, Resume.io, Novoresume, and similar tools.</p>
             </div>
           </button>
         </div>
 
         {/* --- IMPORT MODE --- */}
         {mode === 'import' && (
-          <section className="surface-panel edge-highlight p-6">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
             <MultiFormatUpload onFileUpload={setImportedContent} />
             {importedContent && (
-              <p className="mt-3 text-xs uppercase tracking-[0.12em] text-emerald-300">
+              <p className="mt-3 text-xs uppercase tracking-[0.12em] text-ok">
                 File parsed — {importedContent.length.toLocaleString()} characters ready
               </p>
             )}
@@ -341,28 +341,28 @@ export default function NewResumePage() {
 
         {/* --- LINKEDIN MODE --- */}
         {mode === 'linkedin' && (
-          <section className="surface-panel edge-highlight p-6 space-y-5">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-5">
             {/* Step-by-step instructions */}
-            <div className="rounded-xl border border-sky-400/15 bg-sky-400/[0.04] p-4">
-              <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-sky-300/80">
+            <div className="rounded-[var(--radius-md)] border border-accent bg-accent-soft p-4">
+              <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-accent-strong">
                 <Linkedin className="h-3.5 w-3.5" />
                 How to export your LinkedIn profile
               </h3>
-              <ol className="mt-3 space-y-1.5 text-xs text-zinc-400">
+              <ol className="mt-3 space-y-1.5 text-xs text-fg-2">
                 <li className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-400/15 text-[10px] font-bold text-sky-300">1</span>
-                  Go to <span className="text-sky-300">linkedin.com</span> and open your profile
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[10px] font-bold text-accent-strong">1</span>
+                  Go to <span className="text-accent-strong">linkedin.com</span> and open your profile
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-400/15 text-[10px] font-bold text-sky-300">2</span>
-                  Click <span className="font-medium text-zinc-300">&ldquo;More&rdquo; (•••)</span> under your profile photo
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[10px] font-bold text-accent-strong">2</span>
+                  Click <span className="font-medium text-fg-2">&ldquo;More&rdquo; (•••)</span> under your profile photo
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-400/15 text-[10px] font-bold text-sky-300">3</span>
-                  Click <span className="font-medium text-zinc-300">&ldquo;Save to PDF&rdquo;</span>
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[10px] font-bold text-accent-strong">3</span>
+                  Click <span className="font-medium text-fg-2">&ldquo;Save to PDF&rdquo;</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-400/15 text-[10px] font-bold text-sky-300">4</span>
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[10px] font-bold text-accent-strong">4</span>
                   Upload the downloaded PDF below
                 </li>
               </ol>
@@ -371,7 +371,7 @@ export default function NewResumePage() {
             {/* Upload area — PDF only, LinkedIn-optimised prompt */}
             <MultiFormatUpload onFileUpload={setImportedContent} sourceHint="linkedin" />
             {importedContent && (
-              <p className="text-xs uppercase tracking-[0.12em] text-emerald-300">
+              <p className="text-xs uppercase tracking-[0.12em] text-ok">
                 Profile parsed — {importedContent.length.toLocaleString()} characters ready
               </p>
             )}
@@ -380,9 +380,9 @@ export default function NewResumePage() {
 
         {/* --- BUILDER MODE --- */}
         {mode === 'builder' && (
-          <section className="surface-panel edge-highlight p-6">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
             {importedContent ? (
-              <p className="text-xs uppercase tracking-[0.12em] text-emerald-300">
+              <p className="text-xs uppercase tracking-[0.12em] text-ok">
                 Resume imported — {importedContent.length.toLocaleString()} characters ready
               </p>
             ) : (
@@ -398,18 +398,18 @@ export default function NewResumePage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               {/* Search */}
               <div className="relative w-full sm:max-w-xs">
-                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-fg-3" />
                 <input
                   type="text"
                   placeholder="Search templates…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="w-full rounded-xl border border-white/10 bg-black/40 py-2 pl-9 pr-9 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-orange-300/40"
+                  className="w-full rounded-[var(--radius-md)] border border-line bg-bg py-2 pl-9 pr-9 text-sm text-fg outline-none transition placeholder:text-fg-3 focus:border-accent"
                 />
                 {search && (
                   <button
                     onClick={() => setSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg-2"
                   >
                     <X size={13} />
                   </button>
@@ -420,7 +420,7 @@ export default function NewResumePage() {
               <button
                 onClick={handleCreate}
                 disabled={isCreating}
-                className="shrink-0 rounded-xl border border-white/10 px-4 py-2 text-xs font-medium text-zinc-500 transition hover:border-white/20 hover:text-zinc-300 disabled:opacity-40"
+                className="shrink-0 rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-medium text-fg-3 transition hover:border-line-2 hover:text-fg-2 disabled:opacity-40"
               >
                 Start from Blank
               </button>
@@ -432,8 +432,8 @@ export default function NewResumePage() {
                 onClick={() => setActiveCategory('all')}
                 className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
                   activeCategory === 'all'
-                    ? 'border-orange-300/40 bg-orange-300/10 text-orange-200'
-                    : 'border-white/10 text-zinc-500 hover:border-white/20 hover:text-zinc-300'
+                    ? 'border-accent bg-accent-soft text-accent-strong'
+                    : 'border-line text-fg-3 hover:border-line-2 hover:text-fg-2'
                 }`}
               >
                 All ({templates.length})
@@ -444,8 +444,8 @@ export default function NewResumePage() {
                   onClick={() => setActiveCategory(cat.category)}
                   className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
                     activeCategory === cat.category
-                      ? 'border-orange-300/40 bg-orange-300/10 text-orange-200'
-                      : 'border-white/10 text-zinc-500 hover:border-white/20 hover:text-zinc-300'
+                      ? 'border-accent bg-accent-soft text-accent-strong'
+                      : 'border-line text-fg-3 hover:border-line-2 hover:text-fg-2'
                   }`}
                 >
                   {cat.label} ({cat.count})
@@ -458,14 +458,14 @@ export default function NewResumePage() {
               /* Skeleton */
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="h-64 animate-pulse rounded-xl bg-white/5" />
+                  <div key={i} className="h-64 animate-pulse rounded-[var(--radius-md)] bg-surface-2" />
                 ))}
               </div>
             ) : filteredTemplates.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-16 text-center">
-                <p className="text-sm text-zinc-500">No templates found</p>
+                <p className="text-sm text-fg-3">No templates found</p>
                 {search && (
-                  <button onClick={() => setSearch('')} className="text-xs text-orange-300 hover:underline">
+                  <button onClick={() => setSearch('')} className="text-xs text-accent-strong hover:underline">
                     Clear search
                   </button>
                 )}
@@ -492,7 +492,7 @@ export default function NewResumePage() {
             <button
               onClick={handleCreate}
               disabled={!canCreate}
-              className="btn-accent px-8 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-[var(--radius-md)] bg-accent px-8 py-3 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isCreating ? 'Creating…' : 'Create Resume'}
             </button>
