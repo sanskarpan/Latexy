@@ -33,6 +33,10 @@ const LOCAL_HANDLERS: Record<string, (parsed: ReturnType<typeof parseSlashComman
   clear: async () => {
     clearMessages()
   },
+  workbench: async () => {
+    const { openWorkbench } = await import('../stores/workbench.js')
+    openWorkbench()
+  },
   help: async (p) => {
     const cmdName = p?.positional[0]
     const cmd = cmdName ? COMMAND_MAP.get(cmdName) : null
