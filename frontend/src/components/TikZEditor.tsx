@@ -104,8 +104,8 @@ function TabBtn({
     <button
       key={id}
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition ${
-        active ? 'bg-violet-500/20 text-violet-300' : 'text-zinc-500 hover:text-zinc-300'
+      className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-[11px] font-medium transition ${
+        active ? 'bg-accent-soft text-accent-strong' : 'text-fg-3 hover:text-fg-2'
       }`}
     >
       <Icon size={11} />
@@ -144,17 +144,17 @@ function TimelineTab({
       {entries.map((e, i) => (
         <div
           key={i}
-          className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3"
+          className="rounded-[var(--radius-md)] border border-line bg-surface p-3"
         >
           <div className="mb-2 flex items-center gap-1">
-            <button onClick={() => move(i, -1)} className="rounded p-0.5 text-zinc-600 hover:text-zinc-300">
+            <button onClick={() => move(i, -1)} className="rounded p-0.5 text-fg-3 hover:text-fg-2">
               <ChevronUp size={11} />
             </button>
-            <button onClick={() => move(i, 1)} className="rounded p-0.5 text-zinc-600 hover:text-zinc-300">
+            <button onClick={() => move(i, 1)} className="rounded p-0.5 text-fg-3 hover:text-fg-2">
               <ChevronDown size={11} />
             </button>
             <span className="ml-auto">
-              <button onClick={() => remove(i)} className="rounded p-0.5 text-zinc-700 hover:text-red-400">
+              <button onClick={() => remove(i)} className="rounded p-0.5 text-fg-3 hover:text-err">
                 <Trash2 size={11} />
               </button>
             </span>
@@ -224,11 +224,11 @@ function SkillBarsTab({
               step={1}
               value={s.level}
               onChange={(e) => update(i, { level: Number(e.target.value) })}
-              className="w-20 accent-violet-500"
+              className="w-20 accent-accent"
             />
-            <span className="w-5 text-center text-[10px] tabular-nums text-zinc-400">{s.level}</span>
+            <span className="w-5 text-center text-[10px] tabular-nums text-fg-2">{s.level}</span>
           </div>
-          <button onClick={() => remove(i)} className="text-zinc-700 hover:text-red-400">
+          <button onClick={() => remove(i)} className="text-fg-3 hover:text-err">
             <Trash2 size={11} />
           </button>
         </div>
@@ -275,25 +275,25 @@ function FlowCanvas({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <span className="text-[10px] text-zinc-500">Add:</span>
+        <span className="text-[10px] text-fg-3">Add:</span>
         {(['rect', 'diamond', 'circle'] as ShapeType[]).map((s) => (
           <button
             key={s}
             onClick={() => setNextShape(s)}
             className={`rounded px-2 py-0.5 text-[9px] font-medium transition ${
               nextShape === s
-                ? 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-400/30'
-                : 'text-zinc-500 hover:text-zinc-300'
+                ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
+                : 'text-fg-3 hover:text-fg-2'
             }`}
           >
             {s}
           </button>
         ))}
-        <button onClick={addNode} className="ml-auto flex items-center gap-1 rounded bg-violet-500/15 px-2 py-0.5 text-[9px] text-violet-300 ring-1 ring-violet-400/20 hover:bg-violet-500/25">
+        <button onClick={addNode} className="ml-auto flex items-center gap-1 rounded bg-accent-soft px-2 py-0.5 text-[9px] text-accent-strong ring-1 ring-accent hover:brightness-110">
           <Plus size={9} /> Add node
         </button>
       </div>
-      <div className="h-[240px] rounded-lg border border-white/[0.06] bg-zinc-950 overflow-hidden">
+      <div className="h-[240px] rounded-[var(--radius-md)] border border-line bg-bg overflow-hidden">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -308,7 +308,7 @@ function FlowCanvas({
         </ReactFlow>
       </div>
       {bidirectional && (
-        <p className="text-[9px] text-zinc-600">Network mode: all edges are bidirectional.</p>
+        <p className="text-[9px] text-fg-3">Network mode: all edges are bidirectional.</p>
       )}
     </div>
   )
@@ -317,10 +317,10 @@ function FlowCanvas({
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const inputCls =
-  'rounded border border-white/[0.06] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none focus:border-violet-500/30 w-full'
+  'rounded border border-line bg-surface-2 px-2 py-1 text-[11px] text-fg outline-none focus:border-accent w-full'
 
 const addBtnCls =
-  'flex items-center gap-1 rounded border border-dashed border-white/[0.08] px-3 py-1.5 text-[10px] text-zinc-600 transition hover:border-violet-400/30 hover:text-violet-300'
+  'flex items-center gap-1 rounded border border-dashed border-line px-3 py-1.5 text-[10px] text-fg-3 transition hover:border-accent hover:text-accent-strong'
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -420,7 +420,7 @@ export default function TikZEditor({ onInsert, onPreview }: Props) {
   return (
     <div className="flex h-full flex-col gap-0 overflow-hidden">
       {/* Tab strip */}
-      <div className="flex shrink-0 gap-0.5 border-b border-white/[0.05] bg-black/10 px-2 py-1.5">
+      <div className="flex shrink-0 gap-0.5 border-b border-line bg-surface px-2 py-1.5">
         {tabs.map((t) => (
           <TabBtn
             key={t.id}
@@ -464,10 +464,10 @@ export default function TikZEditor({ onInsert, onPreview }: Props) {
       </div>
 
       {/* Live TikZ code preview */}
-      <div className="shrink-0 border-t border-white/[0.05]">
-        <div className="flex items-center gap-1.5 bg-black/20 px-3 py-1.5">
-          <Code2 size={10} className="text-zinc-600" />
-          <span className="text-[10px] text-zinc-500">Generated TikZ</span>
+      <div className="shrink-0 border-t border-line">
+        <div className="flex items-center gap-1.5 bg-surface px-3 py-1.5">
+          <Code2 size={10} className="text-fg-3" />
+          <span className="text-[10px] text-fg-3">Generated TikZ</span>
         </div>
         <div className="h-[160px]">
           <Editor
@@ -492,19 +492,19 @@ export default function TikZEditor({ onInsert, onPreview }: Props) {
       </div>
 
       {/* Action buttons */}
-      <div className="flex shrink-0 items-center gap-2 border-t border-white/[0.05] px-3 py-2">
+      <div className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-2">
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 rounded px-2.5 py-1 text-[10px] text-zinc-500 transition hover:text-zinc-300"
+          className="flex items-center gap-1.5 rounded px-2.5 py-1 text-[10px] text-fg-3 transition hover:text-fg-2"
         >
-          {copied ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
+          {copied ? <Check size={10} className="text-ok" /> : <Copy size={10} />}
           {copied ? 'Copied!' : 'Copy TikZ'}
         </button>
         {onPreview && (
           <button
             onClick={handlePreview}
             disabled={previewing}
-            className="flex items-center gap-1.5 rounded px-2.5 py-1 text-[10px] text-zinc-500 transition hover:text-zinc-300 disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded px-2.5 py-1 text-[10px] text-fg-3 transition hover:text-fg-2 disabled:opacity-40"
           >
             {previewing ? <Loader2 size={10} className="animate-spin" /> : null}
             Preview
@@ -512,7 +512,7 @@ export default function TikZEditor({ onInsert, onPreview }: Props) {
         )}
         <button
           onClick={() => onInsert(`\n${tikzCode}\n`)}
-          className="ml-auto flex items-center gap-1.5 rounded bg-violet-500/20 px-3 py-1 text-[10px] font-medium text-violet-300 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
+          className="ml-auto flex items-center gap-1.5 rounded bg-accent-soft px-3 py-1 text-[10px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110"
         >
           Insert into Document
         </button>

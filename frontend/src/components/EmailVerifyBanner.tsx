@@ -70,9 +70,9 @@ export default function EmailVerifyBanner() {
   }
 
   return (
-    <div className="border-b border-amber-400/20 bg-amber-500/10">
+    <div className="border-b border-warn/20 bg-warn/10">
       <div className="content-shell flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm">
-        <div className="flex items-center gap-2 text-amber-200">
+        <div className="flex items-center gap-2 text-warn" role="status" aria-live="polite">
           <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86l-8.18 14.14A1 1 0 003 19.5h18a1 1 0 00.87-1.5L13.7 3.86a1 1 0 00-1.72 0z" />
           </svg>
@@ -90,16 +90,16 @@ export default function EmailVerifyBanner() {
               type="button"
               onClick={handleResend}
               disabled={resending}
-              className="font-semibold text-amber-100 underline-offset-2 hover:underline disabled:opacity-50"
+              className="font-semibold text-warn underline-offset-2 hover:underline disabled:opacity-50"
             >
-              {resending ? 'Sending...' : 'Resend verification'}
+              {resending ? 'Sending…' : 'Resend verification'}
             </button>
           )}
           <button
             type="button"
             onClick={handleDismiss}
             aria-label="Dismiss"
-            className="rounded-md p-1 text-amber-200/70 transition hover:bg-amber-500/10 hover:text-amber-100"
+            className="rounded-[var(--radius-sm)] p-1 text-warn/70 transition hover:bg-warn/10 hover:text-warn"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

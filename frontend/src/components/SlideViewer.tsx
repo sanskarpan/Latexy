@@ -46,7 +46,7 @@ export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
 
   if (isLoading) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-600">
+      <div className="flex h-full flex-col items-center justify-center gap-3 text-fg-3">
         <Loader2 size={28} className="animate-spin" />
         <p className="text-xs">Compiling presentation…</p>
       </div>
@@ -55,10 +55,10 @@ export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
 
   if (!pdfUrl) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 text-zinc-700">
+      <div className="flex h-full flex-col items-center justify-center gap-3 text-fg-3">
         <Presentation size={32} />
         <p className="text-xs text-center leading-5">
-          Click <span className="text-orange-300">Compile</span> to preview your slides.
+          Click <span className="text-accent-strong">Compile</span> to preview your slides.
         </p>
       </div>
     )
@@ -73,36 +73,36 @@ export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
         <iframe
           key={pagedUrl}
           src={pagedUrl ?? ''}
-          className="h-full w-full border-0 bg-zinc-950"
+          className="h-full w-full border-0 bg-bg"
           title={`Slide ${currentSlide}`}
         />
       </div>
 
       {/* Navigation bar */}
-      <div className="flex shrink-0 items-center justify-between border-t border-white/[0.06] bg-[#0a0a0a] px-3 py-1.5">
+      <div className="flex shrink-0 items-center justify-between border-t border-line bg-bg px-3 py-1.5">
         {/* Prev */}
         <button
           onClick={prevSlide}
           disabled={currentSlide <= 1}
-          className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-30"
           aria-label="Previous slide"
         >
           <ChevronLeft size={14} />
         </button>
 
         {/* Slide counter */}
-        <span className="tabular-nums text-[11px] text-zinc-500">
+        <span className="tabular-nums text-[11px] text-fg-3">
           {total ? (
             <>
-              <span className="text-zinc-300">{currentSlide}</span>
-              <span className="mx-1 text-zinc-700">/</span>
+              <span className="text-fg-2">{currentSlide}</span>
+              <span className="mx-1 text-fg-3">/</span>
               <span>{total}</span>
             </>
           ) : (
-            <span className="text-zinc-300">{currentSlide}</span>
+            <span className="text-fg-2">{currentSlide}</span>
           )}
           {total && (
-            <span className="ml-2 text-zinc-700">
+            <span className="ml-2 text-fg-3">
               {total === 1 ? 'slide' : 'slides'}
             </span>
           )}
@@ -113,7 +113,7 @@ export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
           <button
             onClick={nextSlide}
             disabled={!!total && currentSlide >= total}
-            className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-30"
+            className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-30"
             aria-label="Next slide"
           >
             <ChevronRight size={14} />
@@ -122,7 +122,7 @@ export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
           {/* Open in new tab */}
           <button
             onClick={openFullscreen}
-            className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             aria-label="Open PDF in new tab"
           >
             <Maximize2 size={12} />

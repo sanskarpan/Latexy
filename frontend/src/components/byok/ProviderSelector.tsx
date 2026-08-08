@@ -70,9 +70,9 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="animate-pulse rounded-xl border border-white/5 bg-white/[0.02] p-5">
-            <div className="h-4 w-28 rounded bg-white/10" />
-            <div className="mt-3 h-3 w-48 rounded bg-white/5" />
+          <div key={i} className="animate-pulse rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+            <div className="h-4 w-28 rounded bg-surface-2" />
+            <div className="mt-3 h-3 w-48 rounded bg-surface-2" />
           </div>
         ))}
       </div>
@@ -81,7 +81,7 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
 
   if (providers.length === 0) {
     return (
-      <p className="text-sm text-zinc-500">No providers available.</p>
+      <p className="text-sm text-fg-3">No providers available.</p>
     );
   }
 
@@ -97,29 +97,29 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
             key={provider.name}
             type="button"
             onClick={() => setExpandedProvider(isExpanded ? null : provider.name)}
-            className={`w-full text-left rounded-xl border p-5 transition ${
+            className={`w-full text-left rounded-[var(--radius-lg)] border p-5 transition ${
               isExpanded
-                ? 'border-orange-300/25 bg-orange-300/[0.04]'
-                : 'border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.04]'
+                ? 'border-accent bg-accent-soft'
+                : 'border-line bg-surface hover:border-line-2 hover:bg-surface-2'
             }`}
           >
             {/* Header row */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                <h3 className="text-sm font-bold text-fg uppercase tracking-wider">
                   {provider.display_name}
                 </h3>
                 {hasKey ? (
-                  <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-300 ring-1 ring-emerald-400/20">
+                  <span className="rounded-[var(--radius-md)] bg-ok-soft px-2 py-0.5 text-[10px] font-bold text-ok ring-1 ring-ok">
                     Your Key
                   </span>
                 ) : (
-                  <span className="rounded-md bg-sky-500/10 px-2 py-0.5 text-[10px] font-bold text-sky-300 ring-1 ring-sky-400/20">
+                  <span className="rounded-[var(--radius-md)] bg-accent-soft px-2 py-0.5 text-[10px] font-bold text-accent-strong ring-1 ring-accent">
                     Default
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-3 text-xs text-zinc-500">
+              <div className="flex items-center gap-3 text-xs text-fg-3">
                 <span>{provider.available_models.length} models</span>
                 <span>{formatCtx(cap.max_context_length)} ctx</span>
                 <span className={`transition ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
@@ -129,17 +129,17 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
             {/* Feature badges */}
             <div className="mt-3 flex flex-wrap gap-1.5">
               {cap.supports_streaming && (
-                <span className="rounded-md bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-300 ring-1 ring-violet-400/20">
+                <span className="rounded-[var(--radius-md)] bg-surface-2 px-2 py-0.5 text-[10px] font-semibold text-fg-2 ring-1 ring-line">
                   Streaming
                 </span>
               )}
               {cap.supports_function_calling && (
-                <span className="rounded-md bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-300 ring-1 ring-blue-400/20">
+                <span className="rounded-[var(--radius-md)] bg-surface-2 px-2 py-0.5 text-[10px] font-semibold text-fg-2 ring-1 ring-line">
                   Function Calling
                 </span>
               )}
               {cap.supports_vision && (
-                <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300 ring-1 ring-amber-400/20">
+                <span className="rounded-[var(--radius-md)] bg-surface-2 px-2 py-0.5 text-[10px] font-semibold text-fg-2 ring-1 ring-line">
                   Vision
                 </span>
               )}
@@ -147,39 +147,39 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
 
             {/* Expanded details */}
             {isExpanded && (
-              <div className="mt-4 space-y-4 border-t border-white/5 pt-4" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-4 space-y-4 border-t border-line pt-4" onClick={(e) => e.stopPropagation()}>
                 {/* Pricing */}
                 <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="rounded-lg border border-white/5 bg-black/25 p-3">
-                    <p className="text-zinc-500">Input cost</p>
-                    <p className="mt-0.5 font-semibold text-zinc-200">
-                      ${cap.cost_per_1k_input_tokens.toFixed(4)}<span className="text-zinc-500 font-normal"> /1K tokens</span>
+                  <div className="rounded-[var(--radius-md)] border border-line bg-bg p-3">
+                    <p className="text-fg-3">Input cost</p>
+                    <p className="mt-0.5 font-semibold text-fg">
+                      ${cap.cost_per_1k_input_tokens.toFixed(4)}<span className="text-fg-3 font-normal"> /1K tokens</span>
                     </p>
                   </div>
-                  <div className="rounded-lg border border-white/5 bg-black/25 p-3">
-                    <p className="text-zinc-500">Output cost</p>
-                    <p className="mt-0.5 font-semibold text-zinc-200">
-                      ${cap.cost_per_1k_output_tokens.toFixed(4)}<span className="text-zinc-500 font-normal"> /1K tokens</span>
+                  <div className="rounded-[var(--radius-md)] border border-line bg-bg p-3">
+                    <p className="text-fg-3">Output cost</p>
+                    <p className="mt-0.5 font-semibold text-fg">
+                      ${cap.cost_per_1k_output_tokens.toFixed(4)}<span className="text-fg-3 font-normal"> /1K tokens</span>
                     </p>
                   </div>
                 </div>
 
                 {/* Models list */}
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-fg-3 mb-2">
                     Available Models
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {provider.available_models.slice(0, 10).map((model) => (
                       <span
                         key={model}
-                        className="rounded-md border border-white/5 bg-black/25 px-2 py-1 text-[11px] font-mono text-zinc-300"
+                        className="rounded-[var(--radius-md)] border border-line bg-bg px-2 py-1 text-[11px] font-mono text-fg-2"
                       >
                         {model}
                       </span>
                     ))}
                     {provider.available_models.length > 10 && (
-                      <span className="rounded-md px-2 py-1 text-[11px] text-zinc-500">
+                      <span className="rounded-[var(--radius-md)] px-2 py-1 text-[11px] text-fg-3">
                         +{provider.available_models.length - 10} more
                       </span>
                     )}
@@ -187,18 +187,18 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                 </div>
 
                 {/* Key format */}
-                <div className="rounded-lg border border-white/5 bg-black/25 p-3 text-xs">
-                  <p className="text-zinc-500">{provider.key_format.description}</p>
-                  <p className="mt-1 font-mono text-zinc-400">
-                    Example: <span className="text-zinc-300">{provider.key_format.example}</span>
+                <div className="rounded-[var(--radius-md)] border border-line bg-bg p-3 text-xs">
+                  <p className="text-fg-3">{provider.key_format.description}</p>
+                  <p className="mt-1 font-mono text-fg-2">
+                    Example: <span className="text-fg-2">{provider.key_format.example}</span>
                   </p>
                 </div>
 
                 {/* CTA for users without a key */}
                 {!hasKey && (
-                  <div className="rounded-lg border border-sky-500/15 bg-sky-500/[0.06] p-3 text-xs">
-                    <p className="font-semibold text-sky-300">Using Default API Key</p>
-                    <p className="mt-0.5 text-sky-400/80">
+                  <div className="rounded-[var(--radius-md)] border border-accent bg-accent-soft p-3 text-xs">
+                    <p className="font-semibold text-accent-strong">Using Default API Key</p>
+                    <p className="mt-0.5 text-accent-strong">
                       Add your own {provider.display_name} key above to skip usage limits.
                     </p>
                   </div>

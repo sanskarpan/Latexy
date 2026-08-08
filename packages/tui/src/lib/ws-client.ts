@@ -25,9 +25,23 @@ export class LatexyWSClient extends EventEmitter {
   private destroyed = false
   private subscriptions = new Map<string, string>()
 
+  constructor() {
+    super()
+    // EventEmitter throws when an 'error' event is emitted with no listener, so a
+    // socket failure used to take the whole TUI down with ERR_UNHANDLED_ERROR.
+    // Socket errors are emitted on 'socket_error' now, but this default keeps a
+    // stray 'error' from any other source from being fatal.
+    this.on('error', () => {})
+  }
+
   connect(url: string, token: string): void {
     this.url = url
     this.token = token
+    // destroy() means "tear down the current connection", not "disable this object
+    // forever". It is a module-level singleton, so leaving `destroyed` latched made
+    // every reconnect after /logout a silent no-op: logging back in produced no job
+    // events at all until the process was restarted.
+    this.destroyed = false
     this.openSocket()
   }
 
@@ -40,8 +54,35 @@ export class LatexyWSClient extends EventEmitter {
     return url.toString()
   }
 
+  /** Detach and close any live socket so it cannot keep emitting into this client. */
+  private teardownSocket(code = 1000, reason = 'Replaced'): void {
+    const old = this.ws
+    if (!old) return
+    this.ws = null
+    old.removeAllListeners()
+    // Closing a socket that is still CONNECTING makes ws emit an error, and with
+    // every listener just removed that would surface as an unhandled 'error' —
+    // the exact crash this class is being fixed for. Keep a sink attached.
+    old.on('error', () => {})
+    try {
+      if (old.readyState === WS.CONNECTING) {
+        // close() on a pending handshake is what produces "WebSocket was closed
+        // before the connection was established"; terminate() drops it outright.
+        old.terminate()
+      } else {
+        old.close(code, reason)
+      }
+    } catch {
+      /* already gone */
+    }
+  }
+
   private openSocket(): void {
     if (this.destroyed) return
+    // Replace, never stack. Without this the previous socket kept its 'message'
+    // handler and went on publishing into the same client, so every event arrived
+    // twice and the old socket stayed open until the server timed it out.
+    this.teardownSocket()
     this.ws = new WS(this.socketUrl(), {
       headers: { Authorization: `Bearer ${this.token}` },
     })
@@ -86,7 +127,9 @@ export class LatexyWSClient extends EventEmitter {
     })
 
     this.ws.on('error', (err) => {
-      this.emit('error', { message: err.message })
+      // NOT 'error': EventEmitter throws when that channel has no listener, and a
+      // backend being down would otherwise crash the whole TUI.
+      this.emit('socket_error', { message: err.message })
     })
   }
 
@@ -127,12 +170,17 @@ export class LatexyWSClient extends EventEmitter {
   }
 
   private scheduleReconnect(): void {
+    // A double 'close' would otherwise leave two timers racing to open two sockets.
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.reconnectAttempt++
     const delay = Math.min(MIN_BACKOFF * 2 ** (this.reconnectAttempt - 1), MAX_BACKOFF)
     this.reconnectTimer = setTimeout(() => this.openSocket(), delay)
   }
 
   private startHeartbeat(): void {
+    // Same hazard as the reconnect timer: a second 'open' would strand the first
+    // interval, leaving it pinging a socket this client no longer owns.
+    this.stopHeartbeat()
     this.heartbeatTimer = setInterval(() => {
       if (this.ws?.readyState === WS.OPEN) this.ws.ping()
     }, 25_000)
@@ -147,10 +195,14 @@ export class LatexyWSClient extends EventEmitter {
 
   destroy(): void {
     this.destroyed = true
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
     this.stopHeartbeat()
-    this.ws?.close(1000, 'Client destroy')
-    this.ws = null
+    this.teardownSocket(1000, 'Client destroy')
+    this.subscriptions.clear()
+    this.buffered = []
   }
 
   get connected(): boolean {

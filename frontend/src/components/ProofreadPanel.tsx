@@ -23,17 +23,17 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  weak_verb: 'text-amber-400',
-  passive_voice: 'text-blue-400',
-  buzzword: 'text-violet-400',
-  vague: 'text-rose-400',
+  weak_verb: 'text-fg-2',
+  passive_voice: 'text-fg-2',
+  buzzword: 'text-fg-2',
+  vague: 'text-fg-2',
 }
 
 const CATEGORY_BG: Record<string, string> = {
-  weak_verb: 'bg-amber-500/10',
-  passive_voice: 'bg-blue-500/10',
-  buzzword: 'bg-violet-500/10',
-  vague: 'bg-rose-500/10',
+  weak_verb: 'bg-surface-2',
+  passive_voice: 'bg-surface-2',
+  buzzword: 'bg-surface-2',
+  vague: 'bg-surface-2',
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -55,15 +55,15 @@ function issueId(issue: ProofreadIssue): string {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 80) return 'text-emerald-400'
-  if (score >= 60) return 'text-amber-400'
-  return 'text-rose-400'
+  if (score >= 80) return 'text-ok'
+  if (score >= 60) return 'text-warn'
+  return 'text-err'
 }
 
 function scoreBg(score: number): string {
-  if (score >= 80) return 'border-emerald-400/30 bg-emerald-500/10'
-  if (score >= 60) return 'border-amber-400/30 bg-amber-500/10'
-  return 'border-rose-400/30 bg-rose-500/10'
+  if (score >= 80) return 'border-ok/30 bg-ok/10'
+  if (score >= 60) return 'border-warn/30 bg-warn/10'
+  return 'border-err/30 bg-err/10'
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -120,14 +120,14 @@ export default function ProofreadPanel({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* ── Header / Run button ── */}
-      <div className="shrink-0 space-y-3 border-b border-white/[0.05] p-4">
+      <div className="shrink-0 space-y-3 border-b border-line p-4">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
             Writing Quality
           </span>
           {result && (
             <span
-              className={`rounded-md border px-2 py-0.5 text-[11px] font-bold tabular-nums ${scoreBg(result.overall_score)} ${scoreColor(result.overall_score)}`}
+              className={`rounded-[var(--radius-md)] border px-2 py-0.5 text-[11px] font-bold tabular-nums ${scoreBg(result.overall_score)} ${scoreColor(result.overall_score)}`}
             >
               {result.overall_score}/100
             </span>
@@ -137,7 +137,7 @@ export default function ProofreadPanel({
         <button
           onClick={handleRunProofread}
           disabled={isLoading}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500/20 py-2.5 text-[12px] font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30 disabled:opacity-40"
+          className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-lg)] bg-accent py-2.5 text-[12px] font-semibold text-accent-fg ring-1 ring-accent/20 transition hover:brightness-110 disabled:opacity-40"
         >
           {isLoading ? (
             <>
@@ -162,7 +162,7 @@ export default function ProofreadPanel({
               {Object.entries(result.summary).map(([cat, count]) => (
                 <span
                   key={cat}
-                  className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${CATEGORY_COLORS[cat] ?? 'text-zinc-400'} ${CATEGORY_BG[cat] ?? 'bg-white/[0.04]'}`}
+                  className={`rounded-[var(--radius-md)] px-2 py-0.5 text-[10px] font-semibold ${CATEGORY_COLORS[cat] ?? 'text-fg-2'} ${CATEGORY_BG[cat] ?? 'bg-surface-2'}`}
                 >
                   {count} {(CATEGORY_LABELS[cat] ?? cat).toLowerCase()}
                 </span>
@@ -173,8 +173,8 @@ export default function ProofreadPanel({
           {/* Clean state */}
           {activeIssues.length === 0 && (
             <div className="flex flex-col items-center gap-3 py-8">
-              <CheckCircle2 size={24} className="text-emerald-400" />
-              <p className="text-center text-[11px] text-zinc-500">
+              <CheckCircle2 size={24} className="text-ok" />
+              <p className="text-center text-[11px] text-fg-3">
                 {result.issues.length === 0
                   ? 'No writing issues found. Excellent work!'
                   : 'All issues resolved or ignored.'}
@@ -193,7 +193,7 @@ export default function ProofreadPanel({
                   return next
                 })
               }}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.07] py-2 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-500/10"
+              className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-ok/20 bg-ok/[0.07] py-2 text-[11px] font-semibold text-ok transition hover:bg-ok/10"
             >
               <Wand2 size={12} />
               Auto-fix {safeFixIssues.length} safe issue
@@ -210,16 +210,16 @@ export default function ProofreadPanel({
                 className="flex w-full items-center gap-2 py-1 text-left"
               >
                 {expandedCategories.has(category) ? (
-                  <ChevronDown size={11} className="shrink-0 text-zinc-600" />
+                  <ChevronDown size={11} className="shrink-0 text-fg-3" />
                 ) : (
-                  <ChevronRight size={11} className="shrink-0 text-zinc-600" />
+                  <ChevronRight size={11} className="shrink-0 text-fg-3" />
                 )}
                 <span
-                  className={`text-[10px] font-bold uppercase tracking-[0.1em] ${CATEGORY_COLORS[category] ?? 'text-zinc-400'}`}
+                  className={`text-[10px] font-bold uppercase tracking-[0.1em] ${CATEGORY_COLORS[category] ?? 'text-fg-2'}`}
                 >
                   {CATEGORY_LABELS[category] ?? category}
                 </span>
-                <span className="ml-auto text-[10px] text-zinc-700">{issues.length}</span>
+                <span className="ml-auto text-[10px] text-fg-3">{issues.length}</span>
               </button>
 
               {/* Issue cards */}
@@ -228,27 +228,27 @@ export default function ProofreadPanel({
                   {issues.map(issue => (
                     <div
                       key={issueId(issue)}
-                      className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5"
+                      className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-2.5"
                     >
                       {/* Top row: line number + ignore */}
                       <div className="mb-1.5 flex items-center justify-between">
-                        <span className="text-[10px] text-zinc-600">Line {issue.line}</span>
+                        <span className="text-[10px] text-fg-3">Line {issue.line}</span>
                         <button
                           onClick={() => ignoreIssue(issue)}
                           title="Ignore this issue"
-                          className="rounded p-0.5 text-zinc-700 transition hover:bg-white/[0.06] hover:text-zinc-400"
+                          className="rounded p-0.5 text-fg-3 transition hover:bg-surface hover:text-fg-2"
                         >
                           <X size={10} />
                         </button>
                       </div>
 
                       {/* Offending text */}
-                      <p className="mb-1 font-mono text-[11px] text-amber-300/80">
+                      <p className="mb-1 font-mono text-[11px] text-warn">
                         &quot;{issue.original_text}&quot;
                       </p>
 
                       {/* Message */}
-                      <p className="mb-2 text-[10px] leading-relaxed text-zinc-500">
+                      <p className="mb-2 text-[10px] leading-relaxed text-fg-3">
                         {issue.message}
                       </p>
 
@@ -259,7 +259,7 @@ export default function ProofreadPanel({
                             onApplyFix(issue)
                             ignoreIssue(issue)
                           }}
-                          className="flex items-center gap-1.5 rounded-md bg-white/[0.05] px-2 py-1 text-[10px] text-zinc-300 transition hover:bg-white/[0.08]"
+                          className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-surface-2 px-2 py-1 text-[10px] text-fg-2 transition hover:bg-surface"
                         >
                           Apply: &quot;{issue.suggested_text}&quot;
                         </button>
@@ -276,8 +276,8 @@ export default function ProofreadPanel({
       {/* ── Idle state ── */}
       {!result && !isLoading && (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 pb-6 text-center">
-          <AlertTriangle size={20} className="text-zinc-700" />
-          <p className="text-[11px] leading-relaxed text-zinc-600">
+          <AlertTriangle size={20} className="text-fg-3" />
+          <p className="text-[11px] leading-relaxed text-fg-3">
             Scan your resume for weak verbs, passive voice, buzzwords, and vague language.
           </p>
         </div>

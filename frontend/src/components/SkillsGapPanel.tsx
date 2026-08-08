@@ -20,25 +20,25 @@ function renderMarkdown(md: string) {
 
   for (const line of lines) {
     if (line.startsWith('## ')) {
-      elements.push(<h2 key={key++} className="mb-2 mt-4 text-[13px] font-bold text-zinc-200">{line.slice(3)}</h2>)
+      elements.push(<h2 key={key++} className="mb-2 mt-4 text-[13px] font-bold text-fg">{line.slice(3)}</h2>)
     } else if (line.startsWith('### ')) {
-      elements.push(<h3 key={key++} className="mb-1 mt-3 text-[12px] font-semibold text-zinc-300">{line.slice(4)}</h3>)
+      elements.push(<h3 key={key++} className="mb-1 mt-3 text-[12px] font-semibold text-fg-2">{line.slice(4)}</h3>)
     } else if (line.startsWith('**') && line.endsWith('**')) {
-      elements.push(<p key={key++} className="mb-1 text-[11px] font-semibold text-zinc-200">{line.slice(2, -2)}</p>)
+      elements.push(<p key={key++} className="mb-1 text-[11px] font-semibold text-fg">{line.slice(2, -2)}</p>)
     } else if (line.startsWith('- ') || line.startsWith('* ')) {
       elements.push(
-        <li key={key++} className="mb-0.5 ml-3 list-disc text-[11px] text-zinc-400">
+        <li key={key++} className="mb-0.5 ml-3 list-disc text-[11px] text-fg-2">
           {line.slice(2)}
         </li>
       )
     } else if (/^\d+\. /.test(line)) {
       elements.push(
-        <li key={key++} className="mb-0.5 ml-3 list-decimal text-[11px] text-zinc-400">
+        <li key={key++} className="mb-0.5 ml-3 list-decimal text-[11px] text-fg-2">
           {line.replace(/^\d+\. /, '')}
         </li>
       )
     } else if (line.trim()) {
-      elements.push(<p key={key++} className="mb-1 text-[11px] text-zinc-400">{line}</p>)
+      elements.push(<p key={key++} className="mb-1 text-[11px] text-fg-2">{line}</p>)
     }
   }
   return elements
@@ -55,10 +55,10 @@ function SkillChip({
 }) {
   const cls =
     variant === 'have'
-      ? 'bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/20'
-      : 'bg-amber-500/10 text-amber-300 ring-1 ring-amber-500/20'
+      ? 'bg-ok/10 text-ok ring-1 ring-ok/20'
+      : 'bg-warn/10 text-warn ring-1 ring-warn/20'
   return (
-    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium ${cls}`}>
+    <span className={`inline-flex items-center rounded-[var(--radius-md)] px-2 py-0.5 text-[10px] font-medium ${cls}`}>
       {label}
     </span>
   )
@@ -83,17 +83,17 @@ export default function SkillsGapPanel({ analysis }: SkillsGapPanelProps) {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-700">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">
             Career Gap Analysis
           </div>
-          <div className="mt-0.5 text-[13px] font-bold text-zinc-200">
+          <div className="mt-0.5 text-[13px] font-bold text-fg">
             → {targetTitle}
           </div>
         </div>
         {timelineYears !== null && (
-          <div className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[11px]">
-            <Clock size={12} className="text-zinc-600" />
-            <span className="text-zinc-400">
+          <div className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-[11px]">
+            <Clock size={12} className="text-fg-3" />
+            <span className="text-fg-2">
               ~{timelineYears} yr{timelineYears !== 1 ? 's' : ''}
             </span>
           </div>
@@ -104,7 +104,7 @@ export default function SkillsGapPanel({ analysis }: SkillsGapPanelProps) {
       <div className="grid grid-cols-2 gap-4">
         {/* Skills you have */}
         <div>
-          <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-600">
+          <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ok">
             <CheckCircle2 size={11} />
             Skills You Have
           </div>
@@ -113,14 +113,14 @@ export default function SkillsGapPanel({ analysis }: SkillsGapPanelProps) {
               ? analysis.current_skills.map((s) => (
                   <SkillChip key={s} label={s} variant="have" />
                 ))
-              : <span className="text-[11px] text-zinc-700">Not detected</span>
+              : <span className="text-[11px] text-fg-3">Not detected</span>
             }
           </div>
         </div>
 
         {/* Skills to develop */}
         <div>
-          <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-600">
+          <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-warn">
             <Target size={11} />
             Skills to Develop
           </div>
@@ -130,7 +130,7 @@ export default function SkillsGapPanel({ analysis }: SkillsGapPanelProps) {
                   <SkillChip key={s} label={s} variant="gap" />
                 ))
               : (
-                <span className="text-[11px] text-emerald-500">
+                <span className="text-[11px] text-ok">
                   Already qualified!
                 </span>
               )
@@ -141,8 +141,8 @@ export default function SkillsGapPanel({ analysis }: SkillsGapPanelProps) {
 
       {/* LLM Analysis */}
       {analysis.llm_analysis && (
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-          <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-700">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">
+          <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">
             Career Development Plan
           </div>
           <div className="prose prose-invert max-w-none">

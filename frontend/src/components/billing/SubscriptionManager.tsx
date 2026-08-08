@@ -60,14 +60,14 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
   }
 
   if (isLoading) {
-    return <div className="surface-card p-4 text-slate-300">Loading subscription state...</div>
+    return <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 text-fg-2">Loading subscription state...</div>
   }
 
   if (error) {
     return (
-      <div className="surface-card p-4">
-        <p className="text-sm text-rose-300">{error}</p>
-        <button onClick={fetchSubscription} className="mt-3 rounded-lg border border-white/15 px-3 py-2 text-sm text-slate-100 hover:bg-white/10">
+      <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
+        <p className="text-sm text-err">{error}</p>
+        <button onClick={fetchSubscription} className="mt-3 rounded-[var(--radius-md)] border border-line-2 px-3 py-2 text-sm text-fg hover:bg-surface-2">
           Retry
         </button>
       </div>
@@ -76,17 +76,17 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
 
   if (!subscription || (subscription.planId === 'free' && !subscription.subscriptionId)) {
     return (
-      <div className="surface-card p-5 text-center">
-        <h3 className="text-lg font-semibold text-white">
+      <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 text-center">
+        <h3 className="text-lg font-semibold text-fg">
           {subscription?.planName ?? 'Free Tier'}
         </h3>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-fg-2">
           {billingStatus?.available
             ? 'You are on the free tier.'
             : billingStatus?.message || 'Billing is unavailable in this environment.'}
         </p>
         {billingStatus?.available && (
-          <button onClick={onUpgrade} className="mt-4 rounded-lg bg-orange-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-orange-200">
+          <button onClick={onUpgrade} className="mt-4 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110">
             Browse Plans
           </button>
         )}
@@ -96,19 +96,19 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
 
   const statusClass =
     subscription.status === 'active'
-      ? 'text-emerald-200 border-emerald-300/30 bg-emerald-300/10'
-      : 'text-amber-200 border-amber-300/30 bg-amber-300/10'
+      ? 'text-ok border-ok/30 bg-ok/10'
+      : 'text-warn border-warn/30 bg-warn/10'
 
   return (
-    <div className="surface-card p-5">
+    <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-lg font-semibold text-white">{subscription.planName}</h3>
+        <h3 className="text-lg font-semibold text-fg">{subscription.planName}</h3>
         <span className={`rounded-full border px-2 py-1 text-xs uppercase tracking-wider ${statusClass}`}>
           {subscription.status}
         </span>
       </div>
 
-      <div className="mt-2 text-sm text-slate-400">
+      <div className="mt-2 text-sm text-fg-2">
         {subscription.currentPeriodEnd
           ? `Renews on ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
           : 'No renewal date'}
@@ -121,14 +121,14 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
           label="History"
           value={subscription.features.historyRetention === 0 ? 'None' : `${subscription.features.historyRetention} days`}
         />
-        <div className="surface-card p-3">
-          <p className="text-xs uppercase tracking-wider text-slate-500">Enabled Features</p>
-          <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-200">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-3">
+          <p className="text-xs uppercase tracking-wider text-fg-3">Enabled Features</p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-fg">
             {subscription.features.prioritySupport && <Tag text="Priority" />}
             {subscription.features.apiAccess && <Tag text="API" />}
             {subscription.features.customModels && <Tag text="Custom Models" />}
             {!subscription.features.prioritySupport && !subscription.features.apiAccess && !subscription.features.customModels && (
-              <span className="text-slate-500">None</span>
+              <span className="text-fg-3">None</span>
             )}
           </div>
         </div>
@@ -138,7 +138,7 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
         <button
           onClick={onUpgrade}
           disabled={!billingStatus?.available}
-          className="rounded-lg border border-white/15 px-3 py-2 text-sm text-slate-100 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-[var(--radius-md)] border border-line-2 px-3 py-2 text-sm text-fg hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Change Plan
         </button>
@@ -146,17 +146,17 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
           <button
             onClick={handleCancel}
             disabled={isCancelling || !billingStatus?.available}
-            className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-sm text-rose-100 hover:bg-rose-300/20 disabled:opacity-60"
+            className="rounded-[var(--radius-md)] border border-err/30 bg-err/10 px-3 py-2 text-sm text-err hover:bg-err/20 disabled:opacity-60"
           >
             {isCancelling ? 'Cancelling...' : 'Cancel'}
           </button>
         )}
       </div>
 
-      {cancelError && <p className="mt-4 text-sm text-rose-300">{cancelError}</p>}
+      {cancelError && <p className="mt-4 text-sm text-err">{cancelError}</p>}
 
       {billingStatus && !billingStatus.available && (
-        <p className="mt-4 text-sm text-amber-200">{billingStatus.message}</p>
+        <p className="mt-4 text-sm text-warn">{billingStatus.message}</p>
       )}
     </div>
   )
@@ -164,13 +164,13 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="surface-card p-3">
-      <p className="text-xs uppercase tracking-wider text-slate-500">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-orange-200">{value}</p>
+    <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-3">
+      <p className="text-xs uppercase tracking-wider text-fg-3">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-accent-strong">{value}</p>
     </div>
   )
 }
 
 function Tag({ text }: { text: string }) {
-  return <span className="rounded-full border border-orange-200/25 bg-orange-300/10 px-2 py-1 text-orange-100">{text}</span>
+  return <span className="rounded-full border border-accent bg-accent-soft px-2 py-1 text-accent-strong">{text}</span>
 }

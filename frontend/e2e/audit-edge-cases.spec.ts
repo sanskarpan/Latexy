@@ -128,7 +128,7 @@ test('trial system: anonymous compile limit and whether it is bypassable', async
 
   // Compile repeatedly and watch the counter / the block
   for (let i = 1; i <= 5; i++) {
-    const btn = page.getByRole('button', { name: /^Compile/i }).first()
+    const btn = page.getByRole('button', { name: /recompile/i }).first()
     if (await btn.count() === 0) { console.log('no compile button'); break }
     const disabled = await btn.isDisabled().catch(() => false)
     console.log(`\nattempt ${i}: button disabled=${disabled}, trials left=${await readTrials()}`)

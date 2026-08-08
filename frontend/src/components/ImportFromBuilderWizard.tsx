@@ -32,7 +32,7 @@ const PLATFORMS: Platform[] = [
       'Download and upload the .json file below',
     ],
     acceptedExtensions: ['.json'],
-    color: 'text-violet-400 bg-violet-500/10 border-violet-400/20',
+    color: 'text-accent-strong bg-accent-soft border-accent',
   },
   {
     id: 'resumeio',
@@ -46,7 +46,7 @@ const PLATFORMS: Platform[] = [
       'Upload the downloaded .json file below',
     ],
     acceptedExtensions: ['.json'],
-    color: 'text-blue-400 bg-blue-500/10 border-blue-400/20',
+    color: 'text-accent-strong bg-accent-soft border-accent',
   },
   {
     id: 'novoresume',
@@ -60,7 +60,7 @@ const PLATFORMS: Platform[] = [
       'Upload the downloaded .json file below',
     ],
     acceptedExtensions: ['.json'],
-    color: 'text-emerald-400 bg-emerald-500/10 border-emerald-400/20',
+    color: 'text-accent-strong bg-accent-soft border-accent',
   },
   {
     id: 'generic',
@@ -72,7 +72,7 @@ const PLATFORMS: Platform[] = [
       'Upload the file below',
     ],
     acceptedExtensions: ['.json', '.pdf', '.docx', '.doc'],
-    color: 'text-zinc-400 bg-zinc-500/10 border-zinc-400/20',
+    color: 'text-fg-2 bg-surface-2 border-line',
   },
 ]
 
@@ -83,10 +83,10 @@ function StepDot({ active, done, n }: { active: boolean; done: boolean; n: numbe
     <div
       className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold transition-all ${
         done
-          ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-400/40'
+          ? 'bg-ok/20 text-ok ring-1 ring-ok/40'
           : active
-            ? 'bg-orange-400/20 text-orange-300 ring-1 ring-orange-300/40'
-            : 'bg-white/[0.04] text-zinc-600'
+            ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
+            : 'bg-surface-2 text-fg-3'
       }`}
     >
       {done ? <Check className="h-3 w-3" /> : n}
@@ -107,23 +107,23 @@ function PlatformCard({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-start gap-3 rounded-xl border p-4 text-left transition hover:brightness-110 ${
+      className={`flex items-start gap-3 rounded-[var(--radius-lg)] border p-4 text-left transition hover:brightness-110 ${
         selected
           ? `${platform.color} ring-1 ring-current/30`
-          : 'border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04]'
+          : 'border-line bg-surface hover:bg-surface-2'
       }`}
     >
-      <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${selected ? platform.color : 'bg-white/[0.05] text-zinc-500'}`}>
+      <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-md)] text-xs font-bold ${selected ? platform.color : 'bg-surface-2 text-fg-3'}`}>
         {platform.name[0]}
       </div>
       <div>
-        <p className="text-sm font-semibold text-white">{platform.name}</p>
-        <p className="mt-0.5 text-xs text-zinc-500">{platform.description}</p>
-        <p className={`mt-1 text-[10px] font-medium ${selected ? '' : 'text-zinc-600'}`}>
+        <p className="text-sm font-semibold text-fg">{platform.name}</p>
+        <p className="mt-0.5 text-xs text-fg-3">{platform.description}</p>
+        <p className={`mt-1 text-[10px] font-medium ${selected ? '' : 'text-fg-3'}`}>
           {platform.exportFormat}
         </p>
       </div>
-      {selected && <Check className="ml-auto mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />}
+      {selected && <Check className="ml-auto mt-0.5 h-4 w-4 shrink-0 text-ok" />}
     </button>
   )
 }
@@ -204,12 +204,12 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
           <div key={label} className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
               <StepDot active={step === i + 1} done={step > i + 1} n={i + 1} />
-              <span className={`hidden text-[11px] sm:inline ${step === i + 1 ? 'text-zinc-300' : step > i + 1 ? 'text-emerald-400/70' : 'text-zinc-600'}`}>
+              <span className={`hidden text-[11px] sm:inline ${step === i + 1 ? 'text-fg-2' : step > i + 1 ? 'text-ok' : 'text-fg-3'}`}>
                 {label}
               </span>
             </div>
             {i < STEPS.length - 1 && (
-              <div className={`h-px w-6 rounded ${step > i + 1 ? 'bg-emerald-400/30' : 'bg-white/[0.06]'}`} />
+              <div className={`h-px w-6 rounded ${step > i + 1 ? 'bg-ok/30' : 'bg-surface-2'}`} />
             )}
           </div>
         ))}
@@ -218,7 +218,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
       {/* ── Step 1: Platform selector ── */}
       {step === 1 && (
         <div className="space-y-4">
-          <p className="text-xs text-zinc-500">Which resume builder are you importing from?</p>
+          <p className="text-xs text-fg-3">Which resume builder are you importing from?</p>
           <div className="grid gap-3 sm:grid-cols-2">
             {PLATFORMS.map((p) => (
               <PlatformCard
@@ -234,7 +234,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
               type="button"
               disabled={!platform}
               onClick={() => setStep(2)}
-              className="flex items-center gap-1.5 rounded-lg bg-orange-400/10 px-4 py-2 text-xs font-medium text-orange-300 transition hover:bg-orange-400/20 disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-xs font-medium text-accent-strong transition hover:brightness-110 disabled:opacity-40"
             >
               Next <ChevronRight className="h-3.5 w-3.5" />
             </button>
@@ -245,13 +245,13 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
       {/* ── Step 2: Export instructions ── */}
       {step === 2 && platform && (
         <div className="space-y-4">
-          <div className={`rounded-xl border p-4 ${platform.color}`}>
+          <div className={`rounded-[var(--radius-lg)] border p-4 ${platform.color}`}>
             <p className="text-xs font-semibold uppercase tracking-[0.12em]">
               How to export from {platform.name}
             </p>
             <ol className="mt-3 space-y-2">
               {platform.steps.map((s, i) => (
-                <li key={i} className="flex items-start gap-2 text-xs text-zinc-300">
+                <li key={i} className="flex items-start gap-2 text-xs text-fg-2">
                   <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${platform.color}`}>
                     {i + 1}
                   </span>
@@ -264,14 +264,14 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
             <button
               type="button"
               onClick={() => setStep(1)}
-              className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs text-zinc-500 transition hover:text-zinc-300"
+              className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-4 py-2 text-xs text-fg-3 transition hover:text-fg-2"
             >
               <ChevronLeft className="h-3.5 w-3.5" /> Back
             </button>
             <button
               type="button"
               onClick={() => setStep(3)}
-              className="flex items-center gap-1.5 rounded-lg bg-orange-400/10 px-4 py-2 text-xs font-medium text-orange-300 transition hover:bg-orange-400/20"
+              className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-xs font-medium text-accent-strong transition hover:brightness-110"
             >
               Next <ChevronRight className="h-3.5 w-3.5" />
             </button>
@@ -282,7 +282,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
       {/* ── Step 3: File upload ── */}
       {step === 3 && platform && (
         <div className="space-y-4">
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-fg-3">
             Drop your {platform.exportFormat} file below ({platform.acceptedExtensions.join(', ')})
           </p>
           <div
@@ -290,16 +290,16 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed p-8 text-center transition ${
+            className={`flex cursor-pointer flex-col items-center gap-3 rounded-[var(--radius-lg)] border-2 border-dashed p-8 text-center transition ${
               dragOver
-                ? 'border-orange-300/50 bg-orange-300/[0.04]'
-                : 'border-white/[0.08] hover:border-white/20 hover:bg-white/[0.02]'
+                ? 'border-accent bg-accent-soft'
+                : 'border-line hover:border-line-2 hover:bg-surface-2'
             }`}
           >
-            <Upload className="h-8 w-8 text-zinc-600" />
+            <Upload className="h-8 w-8 text-fg-3" />
             <div>
-              <p className="text-sm font-medium text-zinc-300">Drop file here or click to browse</p>
-              <p className="mt-1 text-xs text-zinc-600">{platform.acceptedExtensions.join(', ')} · max 10 MB</p>
+              <p className="text-sm font-medium text-fg-2">Drop file here or click to browse</p>
+              <p className="mt-1 text-xs text-fg-3">{platform.acceptedExtensions.join(', ')} · max 10 MB</p>
             </div>
           </div>
           <input
@@ -316,7 +316,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
             <button
               type="button"
               onClick={() => setStep(2)}
-              className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs text-zinc-500 transition hover:text-zinc-300"
+              className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-4 py-2 text-xs text-fg-3 transition hover:text-fg-2"
             >
               <ChevronLeft className="h-3.5 w-3.5" /> Back
             </button>
@@ -328,48 +328,48 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
       {step === 4 && file && (
         <div className="space-y-4">
           {previewLoading && (
-            <div className="flex items-center gap-2 text-xs text-zinc-500">
+            <div className="flex items-center gap-2 text-xs text-fg-3">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Parsing file…
             </div>
           )}
 
           {!previewLoading && previewError && (
-            <div className="flex items-start gap-2 rounded-lg border border-rose-400/20 bg-rose-400/[0.05] p-3 text-xs text-rose-300">
+            <div className="flex items-start gap-2 rounded-[var(--radius-md)] border border-err/20 bg-err/5 p-3 text-xs text-err">
               <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" />
               {previewError}
             </div>
           )}
 
           {!previewLoading && preview && (
-            <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 space-y-3">
-              <p className="text-[10px] uppercase tracking-widest text-zinc-600">Parsed preview</p>
+            <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 space-y-3">
+              <p className="text-[10px] uppercase tracking-widest text-fg-3">Parsed preview</p>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {preview.name && (
                   <div>
-                    <span className="text-zinc-600">Name</span>
-                    <p className="mt-0.5 font-medium text-zinc-200">{preview.name}</p>
+                    <span className="text-fg-3">Name</span>
+                    <p className="mt-0.5 font-medium text-fg">{preview.name}</p>
                   </div>
                 )}
                 {preview.email && (
                   <div>
-                    <span className="text-zinc-600">Email</span>
-                    <p className="mt-0.5 font-medium text-zinc-200">{preview.email}</p>
+                    <span className="text-fg-3">Email</span>
+                    <p className="mt-0.5 font-medium text-fg">{preview.email}</p>
                   </div>
                 )}
                 <div>
-                  <span className="text-zinc-600">Experience</span>
-                  <p className="mt-0.5 font-medium text-zinc-200">{preview.experience_count} {preview.experience_count === 1 ? 'entry' : 'entries'}</p>
+                  <span className="text-fg-3">Experience</span>
+                  <p className="mt-0.5 font-medium text-fg">{preview.experience_count} {preview.experience_count === 1 ? 'entry' : 'entries'}</p>
                 </div>
                 <div>
-                  <span className="text-zinc-600">Education</span>
-                  <p className="mt-0.5 font-medium text-zinc-200">{preview.education_count} {preview.education_count === 1 ? 'entry' : 'entries'}</p>
+                  <span className="text-fg-3">Education</span>
+                  <p className="mt-0.5 font-medium text-fg">{preview.education_count} {preview.education_count === 1 ? 'entry' : 'entries'}</p>
                 </div>
               </div>
               {preview.skills.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-zinc-600">Skills</p>
-                  <p className="mt-0.5 text-xs text-zinc-400">{preview.skills.join(', ')}</p>
+                  <p className="text-[10px] text-fg-3">Skills</p>
+                  <p className="mt-0.5 text-xs text-fg-2">{preview.skills.join(', ')}</p>
                 </div>
               )}
             </div>
@@ -377,13 +377,13 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
 
           {/* File info */}
           {!previewLoading && (
-            <div className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-xs text-zinc-400">
-              <Upload className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+            <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-line bg-surface px-3 py-2 text-xs text-fg-2">
+              <Upload className="h-3.5 w-3.5 shrink-0 text-fg-3" />
               <span className="flex-1 truncate">{file.name}</span>
               <button
                 type="button"
                 onClick={() => { setFile(null); setPreview(null); setPreviewError(null); setStep(3) }}
-                className="shrink-0 text-zinc-600 hover:text-zinc-300"
+                className="shrink-0 text-fg-3 hover:text-fg-2"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -393,14 +393,14 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
           {/* Conversion progress */}
           {converting && (
             <div className="space-y-1.5">
-              <div className="flex items-center gap-2 text-xs text-zinc-400">
+              <div className="flex items-center gap-2 text-xs text-fg-2">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 {status === 'uploading' ? 'Uploading…' : `Converting to LaTeX… ${progress}%`}
               </div>
               {status === 'converting' && (
-                <div className="h-1 w-full overflow-hidden rounded-full bg-white/[0.05]">
+                <div className="h-1 w-full overflow-hidden rounded-full bg-surface-2">
                   <div
-                    className="h-full rounded-full bg-orange-400/60 transition-all duration-500"
+                    className="h-full rounded-full bg-accent transition-all duration-500"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
@@ -409,7 +409,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
           )}
 
           {conversionError && (
-            <div className="flex items-start gap-2 rounded-lg border border-rose-400/20 bg-rose-400/[0.05] p-3 text-xs text-rose-300">
+            <div className="flex items-start gap-2 rounded-[var(--radius-md)] border border-err/20 bg-err/5 p-3 text-xs text-err">
               <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" />
               {conversionError}
             </div>
@@ -420,7 +420,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
               type="button"
               onClick={() => { resetConversion(); setStep(3) }}
               disabled={converting}
-              className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs text-zinc-500 transition hover:text-zinc-300 disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-4 py-2 text-xs text-fg-3 transition hover:text-fg-2 disabled:opacity-40"
             >
               <ChevronLeft className="h-3.5 w-3.5" /> Back
             </button>
@@ -428,7 +428,7 @@ export default function ImportFromBuilderWizard({ onComplete }: ImportFromBuilde
               type="button"
               onClick={handleConvert}
               disabled={converting || previewLoading || !file}
-              className="flex items-center gap-1.5 rounded-lg bg-orange-400/10 px-4 py-2 text-xs font-medium text-orange-300 transition hover:bg-orange-400/20 disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-xs font-medium text-accent-strong transition hover:brightness-110 disabled:opacity-40"
             >
               {converting ? (
                 <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Converting…</>

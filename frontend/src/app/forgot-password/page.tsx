@@ -2,7 +2,10 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { CheckCircle2 } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -32,66 +35,93 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="content-shell flex min-h-[80vh] items-center justify-center">
+    <div className="flex min-h-[80vh] items-center justify-center bg-bg px-5 py-16 sm:px-8">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Forgot password</h1>
-          <p className="mt-2 text-zinc-400">Enter your email and we&apos;ll send you a reset link</p>
+          <span className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">
+            Account recovery
+          </span>
+          <h1 className="mt-4 font-display text-[clamp(2rem,5vw,2.6rem)] font-semibold tracking-[-0.02em] text-fg">
+            Forgot password
+          </h1>
+          <p className="mt-3 font-body text-fg-2">
+            Enter your email and we&apos;ll send you a reset link.
+          </p>
         </div>
 
-        <div className="surface-panel edge-highlight p-6 sm:p-8">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)] sm:p-8">
           {sent ? (
-            <div className="space-y-4 text-center">
-              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
-                If an account exists for <span className="font-semibold">{email}</span>, a password reset
-                link is on its way. Check your inbox.
+            <div className="space-y-6 text-center">
+              <div
+                className="flex items-start gap-3 rounded-[var(--radius-md)] border border-line-2 bg-accent-soft px-4 py-3 text-left font-body text-sm text-fg-2"
+                role="status"
+                aria-live="polite"
+              >
+                <CheckCircle2
+                  className="mt-0.5 h-5 w-5 flex-shrink-0 text-ok"
+                  aria-hidden="true"
+                />
+                <span>
+                  If an account exists for{' '}
+                  <span className="font-semibold text-fg">{email}</span>, a password reset link
+                  is on its way. Check your inbox.
+                </span>
               </div>
               <Link
                 href="/login"
-                className="inline-block text-sm font-semibold text-orange-200 hover:text-orange-100"
+                className="inline-flex items-center rounded-[var(--radius-sm)] font-ui text-sm font-semibold text-accent-strong transition duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
               >
                 Back to sign in
               </Link>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-5">
               <div>
                 <label
                   htmlFor="email"
-                  className="block text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400"
+                  className="block font-ui text-xs font-medium uppercase tracking-[0.16em] text-fg-3"
                 >
                   Email
                 </label>
-                <input
+                <Input
                   type="email"
                   id="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="mt-2 block w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-zinc-100 outline-none transition focus:border-orange-300/50"
+                  autoComplete="email"
+                  className="mt-2 h-11"
                 />
               </div>
 
               {error && (
-                <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+                <div
+                  className="rounded-[var(--radius-md)] border border-err/40 bg-surface-2 px-3 py-2 font-body text-sm text-err"
+                  role="alert"
+                  aria-live="assertive"
+                >
                   {error}
                 </div>
               )}
 
-              <button
+              <Button
                 type="submit"
-                disabled={isLoading}
-                className="btn-accent w-full py-2.5 text-sm disabled:opacity-50"
+                size="lg"
+                loading={isLoading}
+                className="w-full uppercase tracking-[0.06em]"
               >
-                {isLoading ? 'Sending...' : 'Send reset link'}
-              </button>
+                Send reset link
+              </Button>
             </form>
           )}
         </div>
 
-        <p className="text-center text-sm text-zinc-500">
+        <p className="text-center font-body text-sm text-fg-3">
           Remembered it?{' '}
-          <Link href="/login" className="font-semibold text-orange-200 hover:text-orange-100">
+          <Link
+            href="/login"
+            className="font-semibold text-accent-strong transition duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+          >
             Sign in
           </Link>
         </p>

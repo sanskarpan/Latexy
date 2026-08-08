@@ -1,5 +1,6 @@
 import './globals.css'
 import type { Metadata, Viewport } from 'next'
+import { fontVariables } from './fonts'
 import { NotificationProvider } from '@/components/NotificationProvider'
 import { WebSocketProvider } from '@/components/WebSocketProvider'
 import { AuthSync } from '@/components/AuthSync'
@@ -8,6 +9,8 @@ import EmailVerifyBanner from '@/components/EmailVerifyBanner'
 import MarketingFooter from '@/components/marketing/MarketingFooter'
 import TenantThemeSync from '@/components/TenantThemeSync'
 import WebVitalsReporter from '@/components/WebVitalsReporter'
+import { ThemeProvider } from '@/components/theme/ThemeProvider'
+import AestheticController from '@/components/theme/AestheticController'
 import { Toaster } from 'sonner'
 import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext'
 import { EntitlementsProvider } from '@/contexts/EntitlementsContext'
@@ -25,8 +28,26 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#ff845d',
+  // Mode-aware browser chrome (Typeset grounds — the default marketing surface).
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#FBFAF6' },
+    { media: '(prefers-color-scheme: dark)', color: '#141310' },
+  ],
 }
+
+// Runs before first paint so the theme is set with no flash. Reads the dedicated
+// theme cookie (distinct from the auth cookie), else the OS preference. Aesthetic
+// defaults to 'typeset'; route-group layouts override it per surface.
+const THEME_BOOTSTRAP = `(function(){try{
+var r=document.documentElement;
+var m=document.cookie.match(/(?:^|; )latexy-theme=(light|dark)/);
+var mode=m?m[1]:(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+r.setAttribute('data-mode',mode);
+var p=location.pathname;
+var TS=['/','/platform','/pricing','/templates','/resources','/faq','/updates','/developer','/login','/signup','/forgot-password','/reset-password','/verify-email'];
+var aes=(TS.indexOf(p)>=0||p.indexOf('/u/')===0||p.indexOf('/r/')===0)?'typeset':'compiler';
+r.setAttribute('data-aesthetic',aes);
+}catch(e){}})();`
 
 export default function RootLayout({
   children,
@@ -34,8 +55,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-aesthetic="typeset" className={fontVariables} suppressHydrationWarning>
       <body className="font-sans antialiased">
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+        <ThemeProvider>
+        <AestheticController />
         <FeatureFlagsProvider>
         <EntitlementsProvider>
         <NotificationProvider>
@@ -43,7 +67,7 @@ export default function RootLayout({
             <AuthSync />
             <TenantThemeSync />
             <WebVitalsReporter />
-            <div className="min-h-screen enterprise-grid noise-overlay flex flex-col">
+            <div className="min-h-screen flex flex-col">
               <EmailVerifyBanner />
               <GlobalHeader />
               <main className="flex-1">
@@ -56,13 +80,14 @@ export default function RootLayout({
               position="bottom-right"
               duration={1500}
               toastOptions={{
-                className: 'border border-white/10 bg-zinc-950 text-zinc-100',
+                className: 'border border-line bg-surface text-fg',
               }}
             />
           </WebSocketProvider>
         </NotificationProvider>
         </EntitlementsProvider>
         </FeatureFlagsProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

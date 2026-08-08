@@ -75,22 +75,22 @@ export default function PackageManagerPanel({
     <div className="flex h-full flex-col overflow-hidden">
 
       {/* ── Search ── */}
-      <div className="shrink-0 space-y-2 border-b border-white/[0.05] p-3">
+      <div className="shrink-0 space-y-2 border-b border-line p-3">
         <div className="relative">
           <Search
             size={12}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-3"
           />
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search packages…"
-            className="w-full rounded-lg bg-white/[0.04] py-2 pl-7 pr-3 text-[12px] text-zinc-200 placeholder-zinc-700 outline-none ring-1 ring-white/[0.06] focus:ring-violet-500/40"
+            className="w-full rounded-[var(--radius-md)] bg-surface-2 py-2 pl-7 pr-3 text-[12px] text-fg placeholder-fg-3 outline-none ring-1 ring-line focus:ring-accent"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg-2"
             >
               <X size={11} />
             </button>
@@ -117,8 +117,8 @@ export default function PackageManagerPanel({
 
       {/* ── Installed packages strip ── */}
       {(installedCurated.length > 0 || unknownInstalled.length > 0) && !searchQuery && selectedCategory === 'all' && (
-        <div className="shrink-0 border-b border-white/[0.05] p-3 space-y-1.5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+        <div className="shrink-0 border-b border-line p-3 space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
             Installed ({installedPackages.size})
           </p>
           <div className="flex flex-wrap gap-1">
@@ -136,11 +136,11 @@ export default function PackageManagerPanel({
       <div className="flex-1 overflow-y-auto">
         {filteredPackages.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-            <Package size={20} className="text-zinc-700" />
-            <p className="text-[11px] text-zinc-600">No packages match your search.</p>
+            <Package size={20} className="text-fg-3" />
+            <p className="text-[11px] text-fg-3">No packages match your search.</p>
           </div>
         ) : (
-          <div className="divide-y divide-white/[0.03]">
+          <div className="divide-y divide-line">
             {filteredPackages.map((pkg) => {
               const installed = installedPackages.has(pkg.name)
               const expanded = expandedPackage === pkg.name
@@ -155,11 +155,11 @@ export default function PackageManagerPanel({
                       className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     >
                       {expanded ? (
-                        <ChevronDown size={10} className="shrink-0 text-zinc-600" />
+                        <ChevronDown size={10} className="shrink-0 text-fg-3" />
                       ) : (
-                        <ChevronRight size={10} className="shrink-0 text-zinc-600" />
+                        <ChevronRight size={10} className="shrink-0 text-fg-3" />
                       )}
-                      <span className="font-mono text-[12px] text-zinc-200">{pkg.name}</span>
+                      <span className="font-mono text-[12px] text-fg">{pkg.name}</span>
                       <span
                         className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${CATEGORY_BADGE[pkg.category]}`}
                       >
@@ -171,7 +171,7 @@ export default function PackageManagerPanel({
                       <button
                         onClick={() => handleRemove(pkg.name)}
                         title="Remove from preamble"
-                        className="flex shrink-0 items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-400 ring-1 ring-emerald-500/20 transition hover:bg-rose-500/10 hover:text-rose-400 hover:ring-rose-500/20"
+                        className="flex shrink-0 items-center gap-1 rounded-[var(--radius-md)] bg-surface-2 px-2 py-1 text-[10px] text-ok ring-1 ring-line transition hover:text-err"
                       >
                         <X size={9} />
                         Installed
@@ -180,7 +180,7 @@ export default function PackageManagerPanel({
                       <button
                         onClick={() => handleAdd(pkg)}
                         title="Add to preamble"
-                        className="flex shrink-0 items-center gap-1 rounded-md bg-white/[0.04] px-2 py-1 text-[10px] text-zinc-400 ring-1 ring-white/[0.06] transition hover:bg-violet-500/15 hover:text-violet-300 hover:ring-violet-500/25"
+                        className="flex shrink-0 items-center gap-1 rounded-[var(--radius-md)] bg-surface-2 px-2 py-1 text-[10px] text-fg-2 ring-1 ring-line transition hover:bg-accent-soft hover:text-accent-strong hover:ring-accent"
                       >
                         <Plus size={9} />
                         Add
@@ -189,7 +189,7 @@ export default function PackageManagerPanel({
                   </div>
 
                   {/* Description (always visible) */}
-                  <p className="mb-2 pl-4 text-[11px] leading-relaxed text-zinc-600">
+                  <p className="mb-2 pl-4 text-[11px] leading-relaxed text-fg-3">
                     {pkg.description}
                   </p>
 
@@ -198,10 +198,10 @@ export default function PackageManagerPanel({
                     <div className="mb-2.5 ml-4 space-y-2">
                       {/* Usage */}
                       <div>
-                        <p className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-700">
+                        <p className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-fg-3">
                           Usage
                         </p>
-                        <pre className="overflow-x-auto rounded bg-black/30 p-2 font-mono text-[10px] text-violet-300">
+                        <pre className="overflow-x-auto rounded bg-surface-2 p-2 font-mono text-[10px] text-accent-strong">
                           {pkg.usage}
                         </pre>
                       </div>
@@ -209,10 +209,10 @@ export default function PackageManagerPanel({
                       {/* Example */}
                       {pkg.example && (
                         <div>
-                          <p className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-700">
+                          <p className="mb-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-fg-3">
                             Example
                           </p>
-                          <pre className="overflow-x-auto rounded bg-black/30 p-2 font-mono text-[10px] text-zinc-400">
+                          <pre className="overflow-x-auto rounded bg-surface-2 p-2 font-mono text-[10px] text-fg-2">
                             {pkg.example}
                           </pre>
                         </div>
@@ -220,14 +220,14 @@ export default function PackageManagerPanel({
 
                       {/* Note */}
                       {pkg.note && (
-                        <p className="rounded bg-amber-500/5 px-2 py-1.5 text-[10px] leading-relaxed text-amber-400/80 ring-1 ring-amber-500/15">
+                        <p className="rounded bg-surface-2 px-2 py-1.5 text-[10px] leading-relaxed text-warn ring-1 ring-line">
                           {pkg.note}
                         </p>
                       )}
 
                       {/* Conflict warning */}
                       {pkg.conflicts && pkg.conflicts.some((c) => installedPackages.has(c)) && (
-                        <p className="rounded bg-rose-500/5 px-2 py-1.5 text-[10px] leading-relaxed text-rose-400 ring-1 ring-rose-500/15">
+                        <p className="rounded bg-surface-2 px-2 py-1.5 text-[10px] leading-relaxed text-err ring-1 ring-line">
                           Conflicts with installed:{' '}
                           {pkg.conflicts.filter((c) => installedPackages.has(c)).join(', ')}
                         </p>
@@ -235,10 +235,10 @@ export default function PackageManagerPanel({
 
                       {/* Related */}
                       {pkg.related && pkg.related.length > 0 && (
-                        <p className="text-[10px] text-zinc-700">
+                        <p className="text-[10px] text-fg-3">
                           Related:{' '}
                           {pkg.related.map((r) => (
-                            <code key={r} className="font-mono text-zinc-500">
+                            <code key={r} className="font-mono text-fg-3">
                               {r}{' '}
                             </code>
                           ))}
@@ -254,12 +254,12 @@ export default function PackageManagerPanel({
       </div>
 
       {/* ── Footer count ── */}
-      <div className="shrink-0 border-t border-white/[0.04] px-3 py-2">
-        <p className="text-[10px] text-zinc-700">
+      <div className="shrink-0 border-t border-line px-3 py-2">
+        <p className="text-[10px] text-fg-3">
           {filteredPackages.length} package{filteredPackages.length === 1 ? '' : 's'}
           {searchQuery || selectedCategory !== 'all' ? ' matching' : ' in database'}
           {installedPackages.size > 0 && (
-            <span className="ml-2 text-emerald-500/60">
+            <span className="ml-2 text-ok">
               · {installedPackages.size} installed
             </span>
           )}
@@ -279,12 +279,12 @@ function InstalledChip({
   onRemove: (name: string) => void
 }) {
   return (
-    <span className="flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300 ring-1 ring-emerald-500/20">
+    <span className="flex items-center gap-1 rounded-[var(--radius-md)] bg-surface-2 px-2 py-0.5 text-[10px] font-medium text-ok ring-1 ring-line">
       <span className="font-mono">{name}</span>
       <button
         onClick={() => onRemove(name)}
         title={`Remove ${name}`}
-        className="rounded transition hover:text-emerald-100"
+        className="rounded transition hover:text-err"
       >
         <X size={9} />
       </button>
@@ -306,10 +306,10 @@ function CategoryChip({
   return (
     <button
       onClick={onClick}
-      className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-medium transition ${
+      className={`shrink-0 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium transition ${
         active
-          ? 'bg-violet-500/20 text-violet-200 ring-1 ring-violet-400/25'
-          : 'text-zinc-600 hover:text-zinc-300'
+          ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
+          : 'text-fg-3 hover:text-fg'
       }`}
     >
       {label}
@@ -320,13 +320,13 @@ function CategoryChip({
 // ─── Category badge colors ────────────────────────────────────────────────────
 
 const CATEGORY_BADGE: Record<PackageCategory, string> = {
-  layout: 'bg-sky-500/10 text-sky-400',
-  fonts: 'bg-purple-500/10 text-purple-400',
-  math: 'bg-blue-500/10 text-blue-400',
-  tables: 'bg-teal-500/10 text-teal-400',
-  graphics: 'bg-orange-500/10 text-orange-400',
-  colors: 'bg-rose-500/10 text-rose-400',
-  links: 'bg-cyan-500/10 text-cyan-400',
-  bibliography: 'bg-amber-500/10 text-amber-400',
-  utils: 'bg-zinc-500/10 text-zinc-400',
+  layout: 'bg-surface-2 text-fg-3',
+  fonts: 'bg-surface-2 text-fg-3',
+  math: 'bg-surface-2 text-fg-3',
+  tables: 'bg-surface-2 text-fg-3',
+  graphics: 'bg-surface-2 text-fg-3',
+  colors: 'bg-surface-2 text-fg-3',
+  links: 'bg-surface-2 text-fg-3',
+  bibliography: 'bg-surface-2 text-fg-3',
+  utils: 'bg-surface-2 text-fg-3',
 }

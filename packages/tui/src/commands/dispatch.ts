@@ -1,6 +1,6 @@
 import React from 'react'
 import { parseSlashCommand } from './parser.js'
-import { COMMAND_MAP } from './registry.js'
+import { COMMAND_MAP, IMPLEMENTED_COMMANDS } from './registry.js'
 import { addMessage, $activeJobId, clearMessages } from '../stores/messages.js'
 import { openOverlay, closeOverlay } from '../stores/overlay.js'
 import { $session } from '../stores/session.js'
@@ -13,15 +13,22 @@ async function getLoginOverlay(): Promise<React.ReactElement> {
   return React.createElement(LoginOverlay)
 }
 
-async function getResumePicker(): Promise<React.ReactElement> {
+async function getResumePicker(
+  opts: { archived?: boolean; documentType?: string } = {},
+): Promise<React.ReactElement> {
   const { ResumePicker } = await import('../components/overlays/ResumePicker.js')
-  return React.createElement(ResumePicker)
+  return React.createElement(ResumePicker, { ...opts })
 }
 
 // Tier 1: local handlers (no API call, just UI changes)
 const LOCAL_HANDLERS: Record<string, (parsed: ReturnType<typeof parseSlashCommand>) => Promise<void>> = {
-  list: async () => {
-    openOverlay(await getResumePicker())
+  list: async (p) => {
+    // The flags were documented in the registry and thrown away here — `parsed`
+    // was discarded entirely, so /list --archived listed active resumes.
+    openOverlay(await getResumePicker({
+      archived: p?.args['archived'] === true,
+      documentType: typeof p?.args['type'] === 'string' ? p.args['type'] : undefined,
+    }))
   },
   clear: async () => {
     clearMessages()
@@ -32,8 +39,10 @@ const LOCAL_HANDLERS: Record<string, (parsed: ReturnType<typeof parseSlashComman
     addMessage({
       role: 'system',
       content: cmd
-        ? `/${cmd.name} — ${cmd.description}\nUsage: ${cmd.usage}`
-        : `Available commands:\n${[...COMMAND_MAP.keys()].map(k => `  /${k}`).join('\n')}`,
+        ? cmd.implemented
+          ? `/${cmd.name} — ${cmd.description}\nUsage: ${cmd.usage}`
+          : `/${cmd.name} — ${cmd.description}\nUsage: ${cmd.usage}\n\nNot implemented yet — this command is planned but has no handler, so running it will not do anything.`
+        : `Available commands:\n${IMPLEMENTED_COMMANDS.map(c => `  /${c.name.padEnd(10)} ${c.description}`).join('\n')}`,
     })
   },
   logout: async () => {
@@ -48,13 +57,46 @@ const LOCAL_HANDLERS: Record<string, (parsed: ReturnType<typeof parseSlashComman
 
 // Tier 2: API handlers (REST calls, job submission)
 const API_HANDLERS: Record<string, (parsed: NonNullable<ReturnType<typeof parseSlashCommand>>) => Promise<void>> = {
+  // Resume lifecycle
+  new:        async p => (await import('../tools/resume-commands.js')).runNew(p),
+  edit:       async p => (await import('../tools/resume-commands.js')).runEdit(p),
+  fork:       async p => (await import('../tools/resume-commands.js')).runFork(p),
+  diff:       async p => (await import('../tools/resume-commands.js')).runDiff(p),
+  share:      async p => (await import('../tools/resume-commands.js')).runShare(p),
+  export:     async p => (await import('../tools/resume-commands.js')).runExport(p),
+  checkpoint: async p => (await import('../tools/resume-commands.js')).runCheckpoint(p),
+  history:    async p => (await import('../tools/resume-commands.js')).runHistory(p),
+  restore:    async p => (await import('../tools/account-commands.js')).runRestore(p),
+
+  // AI
+  optimize:   async p => (await import('../tools/ai-commands.js')).runOptimize(p),
+  combined:   async p => (await import('../tools/ai-commands.js')).runCombined(p),
+  ats:        async p => (await import('../tools/ai-commands.js')).runAts(p),
+  'quick-ats': async p => (await import('../tools/ai-commands.js')).runQuickAts(p),
+  cover:      async p => (await import('../tools/ai-commands.js')).runCover(p),
+  interview:  async p => (await import('../tools/ai-commands.js')).runInterview(p),
+
+  // Account / artefacts
+  jobs:       async () => (await import('../tools/account-commands.js')).runJobs(),
+  pdf:        async p => (await import('../tools/account-commands.js')).runPdf(p),
+  log:        async p => (await import('../tools/account-commands.js')).runLog(p),
+  analytics:  async p => (await import('../tools/account-commands.js')).runAnalytics(p),
+  billing:    async () => (await import('../tools/account-commands.js')).runBilling(),
+  tracker:    async p => (await import('../tools/account-commands.js')).runTracker(p),
+  snippets:   async p => (await import('../tools/account-commands.js')).runSnippets(p),
+  byok:       async () => (await import('../tools/account-commands.js')).runByok(),
+  model:      async () => (await import('../tools/account-commands.js')).runModel(),
+  settings:   async p => (await import('../tools/account-commands.js')).runSettings(p),
+
   compile: async (p) => {
-    if ($activeJobId.get() != null) {
-      addMessage({ role: 'error', content: 'A job is already running. Use /cancel to stop it first.' })
-      return
-    }
+    // The bare $activeJobId read here was the same check-then-act shape removed
+    // from the other job commands: compile.ts only sets it after its POST
+    // resolves, so two compiles — or a compile racing an optimize — both got
+    // through and only one could be tracked or cancelled. /compile is the most
+    // used command in the TUI, so it was the worst place to leave it.
+    const { withJobSlot } = await import('../tools/shared.js')
     const { runCompile } = await import('../tools/compile.js')
-    await runCompile(p)
+    await withJobSlot(async () => { await runCompile(p) })
   },
   health: async () => {
     const { getApiClient } = await import('../lib/api-client.js')
@@ -73,7 +115,18 @@ const API_HANDLERS: Record<string, (parsed: NonNullable<ReturnType<typeof parseS
     }
     const { getApiClient } = await import('../lib/api-client.js')
     try {
-      await getApiClient().delete(`/jobs/${jobId}`)
+      // DELETE /jobs/{id} answers 200 {"success":true} even for an id that was
+      // never a job, so the response cannot distinguish a real cancellation from
+      // a no-op. Confirm the job exists first, otherwise any typo was reported
+      // back as a successful cancellation.
+      const client = getApiClient()
+      try {
+        await client.get(`/jobs/${jobId}/state`)
+      } catch {
+        addMessage({ role: 'error', content: `No job with id ${jobId} — see /jobs for recent ones.` })
+        return
+      }
+      await client.delete(`/jobs/${jobId}`)
       addMessage({ role: 'system', content: `Job ${jobId} cancellation requested.` })
     } catch (err) {
       addMessage({ role: 'error', content: `Cancel failed: ${String(err)}` })
@@ -100,10 +153,15 @@ export async function dispatch(input: string): Promise<void> {
       return
     }
 
-    // Unknown command
+    // Distinguish "no such command" from "planned but not built". Telling a user
+    // that /optimize is unknown when it is listed in the registry and described
+    // in /help is simply misleading.
+    const known = COMMAND_MAP.get(parsed.name)
     addMessage({
       role: 'error',
-      content: `Unknown command: /${parsed.name}. Type /help to see available commands.`,
+      content: known
+        ? `/${parsed.name} is not implemented yet. Type /help to see what you can run today.`
+        : `Unknown command: /${parsed.name}. Type /help to see available commands.`,
     })
     return
   }
@@ -114,4 +172,15 @@ export async function dispatch(input: string): Promise<void> {
     role: 'system',
     content: 'No model configured — run /byok to add an API key or /model to select a provider.',
   })
+}
+
+/**
+ * Names dispatch will actually route.
+ *
+ * Exported so the parity test can compare it against the advertised registry
+ * without executing anything — the two lists silently diverging is what left 25
+ * commands answering "Unknown command".
+ */
+export function handlerNames(): Set<string> {
+  return new Set([...Object.keys(LOCAL_HANDLERS), ...Object.keys(API_HANDLERS)])
 }

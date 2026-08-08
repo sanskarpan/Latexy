@@ -328,9 +328,9 @@ function BillingPageContent() {
   if (!flags.billing) {
     return (
       <div className="content-shell">
-        <div className="surface-panel edge-highlight p-6 sm:p-8">
-          <h1 className="text-3xl font-bold text-white tracking-tight">All Features Included</h1>
-          <p className="mt-2 max-w-2xl text-zinc-400">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 sm:p-8">
+          <h1 className="text-3xl font-bold text-fg tracking-tight">All Features Included</h1>
+          <p className="mt-2 max-w-2xl text-fg-2">
             All features are available to everyone — no billing or subscription required.
           </p>
         </div>
@@ -341,47 +341,47 @@ function BillingPageContent() {
   return (
     <div className="content-shell">
       <div className="space-y-6">
-        <section className="surface-panel edge-highlight p-6 sm:p-8">
-          <h1 className="text-3xl font-bold text-white tracking-tight">Pricing & Billing</h1>
-          <p className="mt-2 max-w-2xl text-zinc-400">
+        <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 sm:p-8">
+          <h1 className="text-3xl font-bold text-fg tracking-tight">Pricing & Billing</h1>
+          <p className="mt-2 max-w-2xl text-fg-2">
             Compare monthly and annual plans, unlock the student discount, and manage seats for team subscriptions.
           </p>
           {billingStatus && !billingStatus.available && (
-            <div className="mt-4 rounded-xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100">
+            <div className="mt-4 rounded-[var(--radius-lg)] border border-warn/30 bg-warn/10 p-4 text-sm text-warn">
               <p className="font-semibold">
                 {billingStatus.mode === 'disabled' ? 'Billing Disabled' : 'Billing Unavailable'}
               </p>
-              <p className="mt-1 text-amber-100/80">{billingStatus.message}</p>
+              <p className="mt-1 text-warn/80">{billingStatus.message}</p>
             </div>
           )}
           {studentVerifyToken && !sessionToken && !isPending && (
-            <div className="mt-4 rounded-xl border border-sky-300/30 bg-sky-300/10 p-4 text-sm text-sky-100">
+            <div className="mt-4 rounded-[var(--radius-lg)] border border-accent/30 bg-accent-soft p-4 text-sm text-accent-strong">
               Sign in first to finish student verification.
             </div>
           )}
           {teamInviteToken && !sessionToken && !isPending && (
-            <div className="mt-4 rounded-xl border border-sky-300/30 bg-sky-300/10 p-4 text-sm text-sky-100">
+            <div className="mt-4 rounded-[var(--radius-lg)] border border-accent/30 bg-accent-soft p-4 text-sm text-accent-strong">
               Sign in with the invited email address to activate your team seat.
             </div>
           )}
         </section>
 
-        <section className="surface-panel edge-highlight p-5 sm:p-6">
+        <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 sm:p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-white">Choose a plan</h2>
-              <p className="mt-1 text-sm text-slate-400">Annual billing saves 20% on Basic, Pro, and BYOK.</p>
+              <h2 className="text-lg font-semibold text-fg">Choose a plan</h2>
+              <p className="mt-1 text-sm text-fg-2">Annual billing saves 20% on Basic, Pro, and BYOK.</p>
             </div>
-            <div className="inline-flex rounded-xl border border-white/10 bg-slate-950/70 p-1">
+            <div className="inline-flex rounded-[var(--radius-lg)] border border-line bg-bg p-1">
               <button
                 onClick={() => setBillingPeriod('monthly')}
-                className={`rounded-lg px-4 py-2 text-sm ${billingPeriod === 'monthly' ? 'bg-orange-300 text-slate-950' : 'text-slate-300'}`}
+                className={`rounded-[var(--radius-md)] px-4 py-2 text-sm ${billingPeriod === 'monthly' ? 'bg-accent text-accent-fg' : 'text-fg-2'}`}
               >
                 Monthly
               </button>
               <button
                 onClick={() => setBillingPeriod('annual')}
-                className={`rounded-lg px-4 py-2 text-sm ${billingPeriod === 'annual' ? 'bg-orange-300 text-slate-950' : 'text-slate-300'}`}
+                className={`rounded-[var(--radius-md)] px-4 py-2 text-sm ${billingPeriod === 'annual' ? 'bg-accent text-accent-fg' : 'text-fg-2'}`}
               >
                 Annual
               </button>
@@ -389,46 +389,46 @@ function BillingPageContent() {
           </div>
 
           <div className="mb-5 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
-            <div className="rounded-xl border border-white/10 bg-slate-950/60 p-4">
-              <p className="text-sm font-medium text-white">Have a coupon code?</p>
+            <div className="rounded-[var(--radius-lg)] border border-line bg-bg p-4">
+              <p className="text-sm font-medium text-fg">Have a coupon code?</p>
               <div className="mt-3 flex flex-col gap-3 sm:flex-row">
                 <input
                   value={couponCode}
                   onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
                   placeholder="SAVE20"
-                  className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500"
+                  className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-3"
                 />
                 <button
                   onClick={handleApplyCoupon}
                   disabled={couponLoading || !couponCode.trim()}
-                  className="rounded-lg border border-white/15 px-4 py-2 text-sm text-slate-100 hover:bg-white/10 disabled:opacity-60"
+                  className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-sm text-fg hover:bg-surface-2 disabled:opacity-60"
                 >
                   {couponLoading ? 'Applying...' : 'Apply'}
                 </button>
               </div>
               {couponState && (
-                <p className={`mt-3 text-sm ${couponState.valid ? 'text-emerald-200' : 'text-rose-300'}`}>
+                <p className={`mt-3 text-sm ${couponState.valid ? 'text-ok' : 'text-err'}`}>
                   {couponState.message}
                   {couponState.valid && couponState.discountPercent ? ` (${couponState.discountPercent}% off)` : ''}
                 </p>
               )}
             </div>
 
-            <div className="rounded-xl border border-sky-300/20 bg-sky-300/10 p-4">
-              <p className="text-sm font-semibold text-sky-100">Student plan</p>
-              <p className="mt-2 text-sm text-sky-50/80">
+            <div className="rounded-[var(--radius-lg)] border border-accent/20 bg-accent-soft p-4">
+              <p className="text-sm font-semibold text-accent-strong">Student plan</p>
+              <p className="mt-2 text-sm text-fg-2">
                 Get Pro-level features at 50% off after verifying an academic email address.
               </p>
             </div>
           </div>
 
           {loading ? (
-            <div className="rounded-xl border border-white/10 bg-slate-950/60 p-4 text-slate-300">Loading plans...</div>
+            <div className="rounded-[var(--radius-lg)] border border-line bg-bg p-4 text-fg-2">Loading plans...</div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {visiblePlans.map((plan) => (
+              {visiblePlans.map((plan, idx) => (
                 <PricingCard
-                  key={plan.id}
+                  key={`${plan.id ?? 'plan'}-${idx}`}
                   plan={plan}
                   isPopular={plan.id === (billingPeriod === 'annual' ? 'pro_annual' : 'pro')}
                   onSelectPlan={handleSelectPlan}
@@ -441,11 +441,11 @@ function BillingPageContent() {
           )}
         </section>
 
-        <section className="surface-panel edge-highlight p-5 sm:p-6">
-          <h2 className="text-lg font-semibold text-white">Current subscription</h2>
+        <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 sm:p-6">
+          <h2 className="text-lg font-semibold text-fg">Current subscription</h2>
           <div className="mt-4">
             {isPending ? (
-              <div className="surface-card p-4 text-slate-300">Loading subscription state...</div>
+              <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 text-fg-2">Loading subscription state...</div>
             ) : isAuthenticated ? (
               <SubscriptionManager
                 authToken={sessionToken}
@@ -454,14 +454,14 @@ function BillingPageContent() {
                 onLoaded={setCurrentSubscription}
               />
             ) : (
-              <div className="surface-card p-5">
-                <h3 className="text-lg font-semibold text-white">Public pricing view</h3>
-                <p className="mt-2 text-sm text-slate-400">
+              <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
+                <h3 className="text-lg font-semibold text-fg">Public pricing view</h3>
+                <p className="mt-2 text-sm text-fg-2">
                   Sign in to subscribe, manage billing, or redeem team invitations.
                 </p>
                 <button
                   onClick={() => router.push('/login?next=/billing')}
-                  className="mt-4 rounded-lg bg-orange-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-orange-200"
+                  className="mt-4 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110"
                 >
                   Sign In to Subscribe
                 </button>
@@ -471,11 +471,11 @@ function BillingPageContent() {
         </section>
 
         {currentSubscription?.planId === 'team' && (
-          <section className="surface-panel edge-highlight p-5 sm:p-6">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 sm:p-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-white">Team seats</h2>
-                <p className="mt-1 text-sm text-slate-400">Invite up to 5 teammates and manage active seats.</p>
+                <h2 className="text-lg font-semibold text-fg">Team seats</h2>
+                <p className="mt-1 text-sm text-fg-2">Invite up to 5 teammates and manage active seats.</p>
               </div>
             </div>
 
@@ -484,12 +484,12 @@ function BillingPageContent() {
                 value={inviteEmail}
                 onChange={(event) => setInviteEmail(event.target.value)}
                 placeholder="teammate@company.com"
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500"
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-3"
               />
               <button
                 onClick={handleInviteSeat}
                 disabled={teamLoading || !inviteEmail.trim()}
-                className="rounded-lg border border-white/15 px-4 py-2 text-sm text-slate-100 hover:bg-white/10 disabled:opacity-60"
+                className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-sm text-fg hover:bg-surface-2 disabled:opacity-60"
               >
                 {teamLoading ? 'Inviting...' : 'Invite teammate'}
               </button>
@@ -497,21 +497,21 @@ function BillingPageContent() {
 
             <div className="space-y-3">
               {teamSeats.length === 0 ? (
-                <div className="rounded-xl border border-white/10 bg-slate-950/60 p-4 text-sm text-slate-400">
+                <div className="rounded-[var(--radius-lg)] border border-line bg-bg p-4 text-sm text-fg-2">
                   No team seats assigned yet.
                 </div>
               ) : (
                 teamSeats.map((seat) => (
-                  <div key={seat.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/60 p-4">
+                  <div key={seat.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-line bg-bg p-4">
                     <div>
-                      <p className="text-sm font-medium text-white">{seat.member_email}</p>
-                      <p className="mt-1 text-xs text-slate-400">
+                      <p className="text-sm font-medium text-fg">{seat.member_email}</p>
+                      <p className="mt-1 text-xs text-fg-2">
                         {seat.status} • invited {new Date(seat.invited_at).toLocaleDateString()}
                       </p>
                     </div>
                     <button
                       onClick={() => handleRemoveSeat(seat.id)}
-                      className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-sm text-rose-100 hover:bg-rose-300/20"
+                      className="rounded-[var(--radius-md)] border border-err/30 bg-err/10 px-3 py-2 text-sm text-err hover:bg-err/20"
                     >
                       Remove
                     </button>
@@ -523,9 +523,9 @@ function BillingPageContent() {
         )}
 
         {studentCheckoutPlan && (
-          <section className="surface-panel edge-highlight p-5 sm:p-6">
-            <h2 className="text-lg font-semibold text-white">Verify student plan</h2>
-            <p className="mt-2 max-w-2xl text-sm text-slate-400">
+          <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-5 sm:p-6">
+            <h2 className="text-lg font-semibold text-fg">Verify student plan</h2>
+            <p className="mt-2 max-w-2xl text-sm text-fg-2">
               Enter your academic email address. We’ll send a verification link before activating the discounted student plan.
             </p>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -533,12 +533,12 @@ function BillingPageContent() {
                 value={studentEmail}
                 onChange={(event) => setStudentEmail(event.target.value)}
                 placeholder="you@university.edu"
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500"
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-3"
               />
               <button
                 onClick={handleStudentCheckout}
                 disabled={!studentEmail.trim() || activePlan === studentCheckoutPlan}
-                className="rounded-lg bg-orange-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-orange-200 disabled:opacity-60"
+                className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:opacity-60"
               >
                 {activePlan === studentCheckoutPlan ? 'Sending...' : 'Send Verification'}
               </button>
@@ -547,7 +547,7 @@ function BillingPageContent() {
                   setStudentCheckoutPlan(null)
                   setStudentEmail('')
                 }}
-                className="rounded-lg border border-white/15 px-4 py-2 text-sm text-slate-100 hover:bg-white/10"
+                className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-sm text-fg hover:bg-surface-2"
               >
                 Cancel
               </button>
@@ -564,7 +564,7 @@ export default function BillingPage() {
     <Suspense
       fallback={(
         <div className="content-shell">
-          <div className="surface-panel edge-highlight p-6 sm:p-8 text-slate-300">
+          <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 sm:p-8 text-fg-2">
             Loading billing page...
           </div>
         </div>

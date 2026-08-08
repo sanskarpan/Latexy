@@ -193,6 +193,11 @@ export function useWSEventRouter(): void {
     if (mounted.current) return
     mounted.current = true
 
+    const releaseJob = (jobId: string) => {
+      controllers.delete(jobId)
+      wsClient.unsubscribe(jobId)
+    }
+
     const handleEvent = (ev: AnyEvent) => {
       const ctrl = controllers.get(ev.job_id)
       if (!ctrl) return
@@ -200,9 +205,13 @@ export function useWSEventRouter(): void {
         case 'log.line':      ctrl.onLogLine(ev); break
         case 'llm.token':     ctrl.onLLMToken(ev.token); break
         case 'job.progress':  ctrl.onProgress(ev); break
-        case 'job.completed': ctrl.onComplete(ev); controllers.delete(ev.job_id); break
-        case 'job.failed':    ctrl.onFailed(ev); controllers.delete(ev.job_id); break
-        case 'job.cancelled': ctrl.onCancelled(ev); controllers.delete(ev.job_id); break
+        // Release the websocket subscription alongside the controller. Without
+        // this the subscription map grew for the whole session, and every
+        // reconnect re-subscribed to every job ever run — replaying long-finished
+        // jobs back to a client that has nothing left to do with them.
+        case 'job.completed': ctrl.onComplete(ev); releaseJob(ev.job_id); break
+        case 'job.failed':    ctrl.onFailed(ev); releaseJob(ev.job_id); break
+        case 'job.cancelled': ctrl.onCancelled(ev); releaseJob(ev.job_id); break
       }
     }
 
