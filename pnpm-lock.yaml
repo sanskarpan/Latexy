@@ -301,8 +301,8 @@ importers:
         specifier: ^2.0.0
         version: 2.0.0(ink@5.2.1(@types/react@18.3.31)(react@18.3.1))
       '@nanostores/react':
-        specifier: ^0.8.0
-        version: 0.8.4(nanostores@0.11.4)(react@18.3.1)
+        specifier: ^1.1.0
+        version: 1.1.0(nanostores@0.11.4)(react@18.3.1)
       clipboardy:
         specifier: ^5.3.2
         version: 5.3.2
@@ -1473,11 +1473,11 @@ packages:
     peerDependencies:
       three: '>= 0.159.0'
 
-  '@nanostores/react@0.8.4':
-    resolution: {integrity: sha512-EciHSzDXg7GmGODjegGG1VldPEinbAK+12/Uz5+MAdHmxf082Rl6eXqKFxAAu4pZAcr5dNTpv6wMfEe7XacjkQ==}
-    engines: {node: ^18.0.0 || >=20.0.0}
+  '@nanostores/react@1.1.0':
+    resolution: {integrity: sha512-MbH35fjhcf7LAubYX5vhOChYUfTLzNLqH/mBGLVsHkcvjy0F8crO1WQwdmQ2xKbAmtpalDa2zBt3Hlg5kqr8iw==}
+    engines: {node: ^20.0.0 || >=22.0.0}
     peerDependencies:
-      nanostores: ^0.9.0 || ^0.10.0 || ^0.11.0
+      nanostores: ^1.2.0
       react: '>=18.0.0'
 
   '@napi-rs/wasm-runtime@1.1.5':
@@ -8123,7 +8123,7 @@ snapshots:
       promise-worker-transferable: 1.0.4
       three: 0.185.1
 
-  '@nanostores/react@0.8.4(nanostores@0.11.4)(react@18.3.1)':
+  '@nanostores/react@1.1.0(nanostores@0.11.4)(react@18.3.1)':
     dependencies:
       nanostores: 0.11.4
       react: 18.3.1
