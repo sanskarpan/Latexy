@@ -34,31 +34,31 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
       }
 
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
+        <div className="min-h-screen flex items-center justify-center bg-bg">
           <div className="max-w-md w-full mx-4">
-            <div className="card">
-              <div className="card-content text-center py-8">
-                <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-                <h2 className="text-lg font-semibold text-secondary-900 mb-2">
+            <div className="rounded-[var(--radius-lg)] border border-line bg-surface">
+              <div className="text-center p-8">
+                <AlertTriangle className="w-12 h-12 text-warn mx-auto mb-4" />
+                <h2 className="text-lg font-semibold text-fg mb-2">
                   Something went wrong
                 </h2>
-                <p className="text-secondary-600 mb-6">
+                <p className="text-fg-2 mb-6">
                   We encountered an unexpected error. Please try refreshing the page.
                 </p>
                 <button
                   onClick={() => window.location.reload()}
-                  className="btn-primary px-4 py-2 flex items-center gap-2 mx-auto"
+                  className="rounded-[var(--radius-md)] bg-accent px-4 py-2 flex items-center gap-2 mx-auto font-semibold text-accent-fg transition hover:brightness-110"
                 >
                   <RefreshCw size={16} />
                   Refresh Page
                 </button>
-                
+
                 {process.env.NODE_ENV === 'development' && this.state.error && (
                   <details className="mt-6 text-left">
-                    <summary className="cursor-pointer text-sm text-secondary-500 hover:text-secondary-700">
+                    <summary className="cursor-pointer text-sm text-fg-3 hover:text-fg-2">
                       Error Details (Development)
                     </summary>
-                    <pre className="mt-2 p-3 bg-secondary-50 rounded text-xs text-secondary-700 overflow-auto">
+                    <pre className="mt-2 p-3 bg-surface-2 rounded-[var(--radius-md)] text-xs text-fg-2 overflow-auto">
                       {this.state.error.toString()}
                     </pre>
                   </details>

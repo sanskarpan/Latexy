@@ -109,22 +109,22 @@ export default function QrCodeInserter({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)]"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-sm rounded-xl border border-white/[0.08] bg-[#0d0d0d] shadow-2xl">
+      <div className="w-full max-w-sm rounded-[var(--radius-lg)] border border-line bg-surface shadow-[var(--shadow-2)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+        <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-orange-500/15">
-              <QrCode size={13} className="text-orange-300" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <QrCode size={13} className="text-accent-strong" />
             </div>
-            <h2 className="text-sm font-semibold text-zinc-100">Insert QR Code</h2>
+            <h2 className="text-sm font-semibold text-fg">Insert QR Code</h2>
           </div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-lg p-1.5 text-zinc-600 transition hover:bg-white/[0.06] hover:text-zinc-300"
+            className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={14} />
           </button>
@@ -133,7 +133,7 @@ export default function QrCodeInserter({
         <div className="space-y-4 p-4">
           {/* URL input */}
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-fg-3">
               URL
             </label>
             <input
@@ -142,20 +142,20 @@ export default function QrCodeInserter({
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://linkedin.com/in/yourname"
               autoFocus
-              className={`w-full rounded-lg border bg-white/[0.03] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-700 transition ${
+              className={`w-full rounded-[var(--radius-md)] border bg-surface-2 px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-3 transition ${
                 url && !valid
-                  ? 'border-rose-400/40 focus:border-rose-400/60'
-                  : 'border-white/[0.06] focus:border-orange-400/30'
+                  ? 'border-err/40 focus:border-err/60'
+                  : 'border-line focus:border-accent/30'
               }`}
             />
             {url && !valid && (
-              <p className="mt-1 text-[10px] text-rose-400">Enter a valid https:// URL</p>
+              <p className="mt-1 text-[10px] text-err">Enter a valid https:// URL</p>
             )}
           </div>
 
           {/* Size selector */}
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-fg-3">
               Size
             </label>
             <div className="flex gap-2">
@@ -163,36 +163,36 @@ export default function QrCodeInserter({
                 <button
                   key={s}
                   onClick={() => setSize(s)}
-                  className={`flex-1 rounded-lg border py-1.5 text-[11px] font-medium transition ${
+                  className={`flex-1 rounded-[var(--radius-md)] border py-1.5 text-[11px] font-medium transition ${
                     size === s
-                      ? 'border-orange-400/30 bg-orange-500/10 text-orange-200'
-                      : 'border-white/[0.06] text-zinc-500 hover:border-white/[0.10] hover:text-zinc-300'
+                      ? 'border-accent bg-accent-soft text-accent-strong'
+                      : 'border-line text-fg-3 hover:border-line-2 hover:text-fg-2'
                   }`}
                 >
                   {s.charAt(0).toUpperCase() + s.slice(1)}
                 </button>
               ))}
             </div>
-            <p className="mt-1 text-[10px] text-zinc-700">{SIZE_LABELS[size]}</p>
+            <p className="mt-1 text-[10px] text-fg-3">{SIZE_LABELS[size]}</p>
           </div>
 
           {/* Preview */}
-          <div className="flex items-center justify-center rounded-lg border border-white/[0.06] bg-black/30 p-4 min-h-[140px]">
+          <div className="flex items-center justify-center rounded-[var(--radius-md)] border border-line bg-surface-2 p-4 min-h-[140px]">
             {valid ? (
               <canvas ref={canvasRef} width={120} height={120} />
             ) : (
               <div className="flex flex-col items-center gap-2 text-center">
                 <canvas ref={canvasRef} width={120} height={120} className="hidden" />
-                <QrCode size={32} className="text-zinc-800" />
-                <p className="text-[11px] text-zinc-700">Enter a URL to preview</p>
+                <QrCode size={32} className="text-fg-3" />
+                <p className="text-[11px] text-fg-3">Enter a URL to preview</p>
               </div>
             )}
           </div>
 
           {/* LaTeX preview */}
           {valid && (
-            <div className="rounded-lg border border-white/[0.06] bg-black/20 px-3 py-2">
-              <p className="font-mono text-[11px] text-zinc-500">
+            <div className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2">
+              <p className="font-mono text-[11px] text-fg-3">
                 {`\\qrcode[height=${SIZE_CM[size]}]{\\detokenize{${url.length > 35 ? url.slice(0, 35) + '…' : url}}}`}
               </p>
             </div>
@@ -202,14 +202,14 @@ export default function QrCodeInserter({
           <div className="flex gap-2 pt-1">
             <button
               onClick={onClose}
-              className="flex-1 rounded-lg border border-white/[0.06] py-2 text-xs font-semibold text-zinc-500 transition hover:text-zinc-300"
+              className="flex-1 rounded-[var(--radius-md)] border border-line py-2 text-xs font-semibold text-fg-3 transition hover:text-fg-2"
             >
               Cancel
             </button>
             <button
               onClick={handleInsert}
               disabled={!valid}
-              className="flex-1 rounded-lg bg-orange-500/20 py-2 text-xs font-semibold text-orange-200 ring-1 ring-orange-400/20 transition hover:bg-orange-500/30 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex-1 rounded-[var(--radius-md)] bg-accent-soft py-2 text-xs font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Insert
             </button>

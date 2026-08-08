@@ -159,8 +159,8 @@ function OutlinePanel({
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-8 px-4">
-        <List size={18} className="text-zinc-800" />
-        <p className="text-[11px] text-zinc-700 text-center">
+        <List size={18} className="text-fg-3" />
+        <p className="text-[11px] text-fg-3 text-center">
           No sections found.<br />Add \section{} to your document.
         </p>
       </div>
@@ -173,11 +173,11 @@ function OutlinePanel({
         <button
           key={idx}
           onClick={() => onJump(item.line)}
-          className="flex w-full items-baseline gap-1 px-2 py-1 text-left text-[11px] text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-200"
+          className="flex w-full items-baseline gap-1 px-2 py-1 text-left text-[11px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           style={{ paddingLeft: `${8 + item.level * 10}px` }}
           title={`Line ${item.line}`}
         >
-          <span className="shrink-0 text-zinc-800" style={{ fontSize: 9 }}>
+          <span className="shrink-0 text-fg-3" style={{ fontSize: 9 }}>
             {'─'.repeat(item.level > 0 ? 1 : 0)}
           </span>
           <span className="truncate">{item.label}</span>
@@ -200,7 +200,7 @@ function AIStagePipeline({ stage, percent, message }: { stage: string; percent: 
   return (
     <div className="w-full space-y-4">
       <div className="relative flex items-start justify-between">
-        <div className="absolute left-4 right-4 top-3.5 h-px bg-white/[0.06]" />
+        <div className="absolute left-4 right-4 top-3.5 h-px bg-line" />
         {STAGES.map((s, i) => {
           const done = i < current
           const active = i === current
@@ -209,17 +209,17 @@ function AIStagePipeline({ stage, percent, message }: { stage: string; percent: 
               <div
                 className={`flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-bold transition-all duration-300 ${
                   done
-                    ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-400'
+                    ? 'border-ok/40 bg-ok/15 text-ok'
                     : active
-                    ? 'border-violet-400/50 bg-violet-500/20 text-violet-300'
-                    : 'border-white/[0.08] bg-black/40 text-zinc-700'
+                    ? 'border-accent/50 bg-accent/20 text-accent-strong'
+                    : 'border-line bg-surface-2 text-fg-3'
                 }`}
               >
                 {done ? <CheckCircle2 size={13} /> : <span>{i + 1}</span>}
               </div>
               <span
                 className={`text-[10px] font-medium ${
-                  done ? 'text-emerald-400' : active ? 'text-violet-300' : 'text-zinc-700'
+                  done ? 'text-ok' : active ? 'text-accent-strong' : 'text-fg-3'
                 }`}
               >
                 {s.label}
@@ -230,12 +230,12 @@ function AIStagePipeline({ stage, percent, message }: { stage: string; percent: 
       </div>
       <div>
         <div className="mb-1.5 flex justify-between text-[10px]">
-          <span className="text-zinc-500 truncate">{message || 'Processing…'}</span>
-          <span className="shrink-0 pl-2 tabular-nums text-zinc-600">{percent}%</span>
+          <span className="text-fg-3 truncate">{message || 'Processing…'}</span>
+          <span className="shrink-0 pl-2 tabular-nums text-fg-3">{percent}%</span>
         </div>
-        <div className="h-[3px] w-full overflow-hidden rounded-full bg-white/[0.05]">
+        <div className="h-[3px] w-full overflow-hidden rounded-full bg-surface-2">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-orange-400 transition-all duration-500"
+            className="h-full rounded-full bg-accent transition-all duration-500"
             style={{ width: `${percent}%` }}
           />
         </div>
@@ -262,18 +262,18 @@ function LevelSelector({
   }
   return (
     <div>
-      <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+      <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
         Optimization Level
       </label>
-      <div className="grid grid-cols-3 gap-1 rounded-xl border border-white/[0.06] bg-black/30 p-1">
+      <div className="grid grid-cols-3 gap-1 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-1">
         {(['conservative', 'balanced', 'aggressive'] as OptLevel[]).map((level) => (
           <button
             key={level}
             onClick={() => onChange(level)}
-            className={`rounded-lg py-2 text-[11px] font-medium capitalize transition ${
+            className={`rounded-[var(--radius-md)] py-2 text-[11px] font-medium capitalize transition ${
               value === level
-                ? 'bg-violet-500/25 text-violet-200 ring-1 ring-violet-400/30'
-                : 'text-zinc-600 hover:text-zinc-300'
+                ? 'bg-accent/20 text-accent-strong ring-1 ring-accent/30'
+                : 'text-fg-3 hover:text-fg-2'
             }`}
           >
             {level}
@@ -281,7 +281,7 @@ function LevelSelector({
         ))}
       </div>
       {!compact && (
-        <p className="mt-1.5 text-[10px] text-zinc-700">{descriptions[value]}</p>
+        <p className="mt-1.5 text-[10px] text-fg-3">{descriptions[value]}</p>
       )}
     </div>
   )
@@ -302,18 +302,18 @@ function ModelSelector({
   ]
   return (
     <div>
-      <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+      <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
         Model
       </label>
-      <div className="grid grid-cols-2 gap-1 rounded-xl border border-white/[0.06] bg-black/30 p-1">
+      <div className="grid grid-cols-2 gap-1 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-1">
         {models.map((m) => (
           <button
             key={m.id}
             onClick={() => onChange(m.id)}
-            className={`rounded-lg py-2 text-[11px] font-medium transition ${
+            className={`rounded-[var(--radius-md)] py-2 text-[11px] font-medium transition ${
               value === m.id
-                ? 'bg-violet-500/25 text-violet-200 ring-1 ring-violet-400/30'
-                : 'text-zinc-600 hover:text-zinc-300'
+                ? 'bg-accent/20 text-accent-strong ring-1 ring-accent/30'
+                : 'text-fg-3 hover:text-fg-2'
             }`}
           >
             {m.label}
@@ -321,7 +321,7 @@ function ModelSelector({
         ))}
       </div>
       {!compact && (
-        <p className="mt-1.5 text-[10px] text-zinc-700">
+        <p className="mt-1.5 text-[10px] text-fg-3">
           {models.find((m) => m.id === value)?.desc}
         </p>
       )}
@@ -341,10 +341,10 @@ function JDInput({
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+        <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
           Job Description
         </label>
-        <span className="text-[10px] text-zinc-700">optional</span>
+        <span className="text-[10px] text-fg-3">optional</span>
       </div>
       <textarea
         value={value}
@@ -355,7 +355,7 @@ function JDInput({
             : 'Paste a job description to tailor optimization to a specific role. Leave blank for general improvements.'
         }
         rows={compact ? 3 : 5}
-        className="w-full resize-none rounded-xl border border-white/[0.06] bg-black/40 p-3 text-[12px] text-zinc-200 outline-none transition placeholder:text-zinc-700 focus:border-violet-400/30"
+        className="w-full resize-none rounded-[var(--radius-lg)] border border-line bg-surface-2 p-3 text-[12px] text-fg outline-none transition placeholder:text-fg-3 focus:border-accent"
       />
     </div>
   )
@@ -396,32 +396,32 @@ function SectionSelector({
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+        <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
           Sections
         </label>
         <button
           onClick={() => onChange([])}
-          className="text-[10px] text-zinc-700 transition hover:text-zinc-400"
+          className="text-[10px] text-fg-3 transition hover:text-fg-2"
         >
           {allSelected ? 'all' : `${selected.length} selected`}
         </button>
       </div>
-      <div className="max-h-32 overflow-y-auto rounded-xl border border-white/[0.06] bg-black/30 p-2 space-y-0.5">
+      <div className="max-h-32 overflow-y-auto rounded-[var(--radius-lg)] border border-line bg-surface-2 p-2 space-y-0.5">
         {outline.map((item) => {
           const checked = selected.length === 0 || selected.includes(item.label)
           return (
             <label
               key={item.label}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[11px] transition hover:bg-white/[0.04]"
+              className="flex cursor-pointer items-center gap-2 rounded-[var(--radius-md)] px-2 py-1 text-[11px] transition hover:bg-surface-2"
             >
               <input
                 type="checkbox"
                 checked={checked}
                 onChange={() => toggle(item.label)}
-                className="h-3 w-3 accent-violet-400"
+                className="h-3 w-3 accent-[var(--accent)]"
               />
               <span
-                className="truncate text-zinc-400"
+                className="truncate text-fg-2"
                 style={{ paddingLeft: `${item.level * 8}px` }}
               >
                 {item.label}
@@ -487,10 +487,10 @@ function AIPanel({
         <div className="flex flex-1 flex-col items-center justify-center gap-8 p-6">
           <div className="w-full">
             <div className="mb-5 flex items-center gap-2">
-              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-500/20">
-                <Sparkles size={11} className="animate-pulse text-violet-300" />
+              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/20">
+                <Sparkles size={11} className="animate-pulse text-accent-strong" />
               </div>
-              <span className="text-xs font-semibold text-zinc-300">AI is working…</span>
+              <span className="text-xs font-semibold text-fg-2">AI is working…</span>
             </div>
             <AIStagePipeline
               stage={aiStream.stage}
@@ -499,7 +499,7 @@ function AIPanel({
             />
           </div>
           {aiStream.streamingLatex && (
-            <div className="flex items-center gap-2 rounded-lg border border-violet-400/20 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-300">
+            <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-accent/20 bg-accent/5 px-3 py-2 text-[11px] text-accent-strong">
               <Sparkles size={11} />
               <span>Streaming to editor in real-time…</span>
             </div>
@@ -509,11 +509,11 @@ function AIPanel({
 
       {isDone && (
         <div className="space-y-4 p-4">
-          <div className="flex items-center gap-3 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.07] p-3">
-            <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />
+          <div className="flex items-center gap-3 rounded-[var(--radius-lg)] border border-ok/20 bg-ok/10 p-3">
+            <CheckCircle2 size={16} className="shrink-0 text-ok" />
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-emerald-300">Optimization complete</p>
-              <p className="truncate text-[10px] text-zinc-500">
+              <p className="text-sm font-semibold text-ok">Optimization complete</p>
+              <p className="truncate text-[10px] text-fg-3">
                 {aiStream.changesMade?.length ?? 0} changes ·{' '}
                 {aiStream.tokensUsed ? `${aiStream.tokensUsed.toLocaleString()} tokens` : 'PDF ready'}
               </p>
@@ -521,13 +521,13 @@ function AIPanel({
           </div>
 
           {aiStream.atsScore != null && (
-            <div className="flex items-center gap-4 rounded-xl border border-white/[0.06] bg-black/40 p-4">
+            <div className="flex items-center gap-4 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">
               <div className="relative shrink-0">
                 <svg className="h-[68px] w-[68px] -rotate-90" viewBox="0 0 36 36">
-                  <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3" />
+                  <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--line)" strokeWidth="3" />
                   <circle
                     cx="18" cy="18" r="15.9" fill="none"
-                    stroke={aiStream.atsScore >= 80 ? '#34d399' : aiStream.atsScore >= 60 ? '#f59e0b' : '#f87171'}
+                    stroke={aiStream.atsScore >= 80 ? 'var(--ok)' : aiStream.atsScore >= 60 ? 'var(--warn)' : 'var(--err)'}
                     strokeWidth="3"
                     strokeDasharray={`${aiStream.atsScore} ${100 - aiStream.atsScore}`}
                     strokeLinecap="round"
@@ -535,15 +535,15 @@ function AIPanel({
                 </svg>
                 <span
                   className={`absolute inset-0 flex items-center justify-center text-base font-bold ${
-                    aiStream.atsScore >= 80 ? 'text-emerald-400' : aiStream.atsScore >= 60 ? 'text-amber-400' : 'text-rose-400'
+                    aiStream.atsScore >= 80 ? 'text-ok' : aiStream.atsScore >= 60 ? 'text-warn' : 'text-err'
                   }`}
                 >
                   {Math.round(aiStream.atsScore)}
                 </span>
               </div>
               <div>
-                <p className="text-sm font-semibold text-zinc-200">ATS Score</p>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-zinc-500">
+                <p className="text-sm font-semibold text-fg">ATS Score</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-fg-3">
                   {aiStream.atsScore >= 80
                     ? 'Excellent — highly compatible'
                     : aiStream.atsScore >= 60
@@ -551,7 +551,7 @@ function AIPanel({
                     : 'Needs improvement'}
                 </p>
                 {aiStream.atsDetails?.recommendations?.[0] && (
-                  <p className="mt-1 text-[10px] italic text-zinc-600">
+                  <p className="mt-1 text-[10px] italic text-fg-3">
                     {aiStream.atsDetails.recommendations[0]}
                   </p>
                 )}
@@ -562,20 +562,20 @@ function AIPanel({
           <button
             onClick={onRun}
             disabled={isSubmitting}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-violet-500/20 py-2.5 text-xs font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
+            className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-lg)] bg-accent/20 py-2.5 text-xs font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:bg-accent/25"
           >
             <Sparkles size={12} /> Run again
           </button>
 
           <button
             onClick={onOpenDeepAnalysis}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-violet-400/20 bg-violet-500/10 py-2.5 text-xs font-semibold text-violet-200 transition hover:bg-violet-500/20"
+            className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-lg)] border border-accent/20 bg-accent/10 py-2.5 text-xs font-semibold text-accent-strong transition hover:bg-accent/20"
           >
             <Brain size={12} /> Deep AI Analysis
           </button>
 
-          <div className="border-t border-white/[0.05]" />
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+          <div className="border-t border-line" />
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
             Settings for next run
           </p>
           <LevelSelector value={optLevel} onChange={setOptLevel} compact />
@@ -586,18 +586,18 @@ function AIPanel({
 
       {isFailed && (
         <div className="space-y-4 p-4">
-          <div className="flex items-start gap-3 rounded-xl border border-rose-400/20 bg-rose-500/[0.07] p-3">
-            <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-400" />
+          <div className="flex items-start gap-3 rounded-[var(--radius-lg)] border border-err/20 bg-err/10 p-3">
+            <AlertCircle size={15} className="mt-0.5 shrink-0 text-err" />
             <div>
-              <p className="text-sm font-semibold text-rose-300">Optimization failed</p>
-              <p className="mt-0.5 text-[11px] text-zinc-500">{aiStream.error || 'An error occurred'}</p>
+              <p className="text-sm font-semibold text-err">Optimization failed</p>
+              <p className="mt-0.5 text-[11px] text-fg-3">{aiStream.error || 'An error occurred'}</p>
             </div>
           </div>
 
           {/* Timeout upgrade CTA */}
           {aiStream.errorCode === 'compile_timeout' && (
-            <div className="flex items-center justify-between rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-2.5">
-              <span className="text-[11px] text-orange-300">
+            <div className="flex items-center justify-between rounded-[var(--radius-lg)] border border-accent/20 bg-accent/10 px-3 py-2.5">
+              <span className="text-[11px] text-accent-strong">
                 ⏱ {aiStream.timeoutError?.plan ?? 'free'} plan limit reached (
                 {aiStream.timeoutError?.plan === 'free' ? '30s'
                   : aiStream.timeoutError?.plan === 'basic' ? '120s'
@@ -606,7 +606,7 @@ function AIPanel({
               {flags.upgrade_ctas && (
                 <a
                   href="/billing"
-                  className="ml-3 shrink-0 text-[11px] font-medium text-orange-200 underline hover:text-orange-100"
+                  className="ml-3 shrink-0 text-[11px] font-medium text-accent-strong underline hover:text-accent-strong"
                 >
                   Upgrade →
                 </a>
@@ -616,17 +616,17 @@ function AIPanel({
 
           {/* Fix 3: Apply anyway when LLM succeeded but compile failed */}
           {aiStream.streamingLatex && (
-            <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.07] p-3">
+            <div className="rounded-[var(--radius-lg)] border border-warn/20 bg-warn/10 p-3">
               <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle size={13} className="text-amber-400" />
-                <p className="text-[11px] font-semibold text-amber-300">AI rewrite is available</p>
+                <AlertTriangle size={13} className="text-warn" />
+                <p className="text-[11px] font-semibold text-warn">AI rewrite is available</p>
               </div>
-              <p className="text-[10px] text-zinc-500 mb-3">
+              <p className="text-[10px] text-fg-3 mb-3">
                 The LaTeX rewrite completed but failed to compile. You can apply it to the editor and fix the errors manually.
               </p>
               <button
                 onClick={onApplyAnyway}
-                className="w-full rounded-lg border border-amber-400/30 bg-amber-500/10 py-2 text-[11px] font-semibold text-amber-200 transition hover:bg-amber-500/20"
+                className="w-full rounded-[var(--radius-md)] border border-warn/30 bg-warn/10 py-2 text-[11px] font-semibold text-warn transition hover:bg-warn/20"
               >
                 Apply optimized LaTeX anyway
               </button>
@@ -635,7 +635,7 @@ function AIPanel({
 
           <button
             onClick={onRun}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500/20 py-2.5 text-sm font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
+            className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-lg)] bg-accent/20 py-2.5 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:bg-accent/25"
           >
             <Sparkles size={13} /> Try again
           </button>
@@ -645,16 +645,16 @@ function AIPanel({
       {isIdle && (
         <div className="space-y-5 p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-orange-500/10 ring-1 ring-violet-400/20">
-              <Sparkles size={16} className="text-violet-300" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-lg)] bg-accent-soft ring-1 ring-accent/20">
+              <Sparkles size={16} className="text-accent-strong" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-zinc-100">AI Optimization</p>
-              <p className="text-[10px] text-zinc-600">GPT-4o · Optimize + Compile + Score</p>
+              <p className="text-sm font-semibold text-fg">AI Optimization</p>
+              <p className="text-[10px] text-fg-3">GPT-4o · Optimize + Compile + Score</p>
             </div>
           </div>
 
-          <p className="text-[12px] leading-relaxed text-zinc-500">
+          <p className="text-[12px] leading-relaxed text-fg-3">
             Rewrites your resume with improved language and ATS keywords, then compiles to PDF and
             scores for recruiter visibility.
           </p>
@@ -676,7 +676,7 @@ function AIPanel({
           <div>
             <button
               onClick={() => setShowCustom((v) => !v)}
-              className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600 transition hover:text-zinc-400"
+              className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3 transition hover:text-fg-2"
             >
               <ChevronDown
                 size={11}
@@ -690,7 +690,7 @@ function AIPanel({
                 onChange={(e) => setCustomInstructions(e.target.value)}
                 placeholder="e.g. keep it to 1 page, emphasize Python experience, avoid passive voice"
                 rows={3}
-                className="mt-2 w-full resize-none rounded-xl border border-white/[0.06] bg-black/40 p-3 text-[12px] text-zinc-200 outline-none transition placeholder:text-zinc-700 focus:border-violet-400/30"
+                className="mt-2 w-full resize-none rounded-[var(--radius-lg)] border border-line bg-surface-2 p-3 text-[12px] text-fg outline-none transition placeholder:text-fg-3 focus:border-accent"
               />
             )}
           </div>
@@ -698,7 +698,7 @@ function AIPanel({
           <button
             onClick={onRun}
             disabled={isSubmitting}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600/80 to-violet-500/60 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-900/20 ring-1 ring-violet-400/20 transition hover:from-violet-600 hover:to-violet-500/80 disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-lg)] bg-accent py-3 text-sm font-semibold text-accent-fg shadow-[var(--shadow-2)] ring-1 ring-accent/20 transition hover:brightness-110 disabled:opacity-50"
           >
             {isSubmitting ? (
               <><Loader2 size={14} className="animate-spin" /> Starting…</>
@@ -1824,27 +1824,27 @@ export default function ResumeEditPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#0d0d0d]">
+      <div className="flex h-screen items-center justify-center bg-bg">
         <LoadingSpinner />
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#0d0d0d]">
+    <div className="flex h-screen flex-col overflow-hidden bg-bg">
 
       {/* ── TOP HEADER ── */}
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-white/[0.07] bg-[#111] px-4">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-surface px-4">
         <div className="flex min-w-0 shrink items-center gap-1.5 text-xs">
-          <Link href="/workspace" className="hidden shrink-0 text-zinc-600 transition hover:text-zinc-300 sm:inline">
+          <Link href="/workspace" className="hidden shrink-0 text-fg-3 transition hover:text-fg-2 sm:inline">
             Workspace
           </Link>
-          <ChevronRight size={12} className="hidden shrink-0 text-zinc-800 sm:block" />
+          <ChevronRight size={12} className="hidden shrink-0 text-fg-3 sm:block" />
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-[120px] min-w-0 max-w-[280px] bg-transparent text-sm font-medium text-zinc-300 outline-none transition placeholder:text-zinc-700 hover:text-white focus:text-white sm:w-auto"
+            className="w-[120px] min-w-0 max-w-[280px] bg-transparent text-sm font-medium text-fg-2 outline-none transition placeholder:text-fg-3 hover:text-fg focus:text-fg sm:w-auto"
             placeholder="Untitled"
           />
         </div>
@@ -1852,7 +1852,7 @@ export default function ResumeEditPage() {
         <div className="flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto whitespace-nowrap scrollbar-none sm:justify-end">
           <button
             onClick={() => setShowImportModal(true)}
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <Upload size={12} />
             Import
@@ -1863,7 +1863,7 @@ export default function ResumeEditPage() {
           <button
             onClick={() => setQrInserterOpen(true)}
             title="Insert QR code"
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <QrCode size={12} />
             QR
@@ -1872,7 +1872,7 @@ export default function ResumeEditPage() {
           <button
             onClick={() => setDateStandardizerOpen(true)}
             title="Standardize date formats"
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <Calendar size={12} />
             Dates
@@ -1881,7 +1881,7 @@ export default function ResumeEditPage() {
           <button
             onClick={() => setAgeAnalysisOpen(true)}
             title="Analyze experience age"
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <Clock size={12} />
             Age
@@ -1890,7 +1890,7 @@ export default function ResumeEditPage() {
           <button
             onClick={() => setContactFormatterOpen(true)}
             title="Normalize contact info"
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <Phone size={12} />
             Contacts
@@ -1899,7 +1899,7 @@ export default function ResumeEditPage() {
           <button
             onClick={() => setSalaryEstimatorOpen(true)}
             title="Estimate salary for this resume"
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <DollarSign size={12} />
             Salary
@@ -1908,7 +1908,7 @@ export default function ResumeEditPage() {
           <button
             onClick={() => setSectionReorderOpen(true)}
             title="AI section reordering"
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <SlidersHorizontal size={12} />
             Reorder
@@ -1917,7 +1917,7 @@ export default function ResumeEditPage() {
           <button
             onClick={() => setImportModalOpen(true)}
             title="Import top projects from GitHub"
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <Github size={12} />
             Projects
@@ -1925,7 +1925,7 @@ export default function ResumeEditPage() {
 
           <Link
             href={`/workspace/${resumeId}/cover-letter`}
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-violet-300/80 transition hover:bg-violet-500/10 hover:text-violet-200"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-accent-strong transition hover:bg-accent/10 hover:text-accent-strong"
           >
             <Mail size={12} />
             Cover Letter
@@ -1933,7 +1933,7 @@ export default function ResumeEditPage() {
 
           <Link
             href={`/workspace/${resumeId}/career`}
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-emerald-300/80 transition hover:bg-emerald-500/10 hover:text-emerald-200"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-ok transition hover:bg-ok/10 hover:text-ok"
           >
             <TrendingUp size={12} />
             Career Path
@@ -1942,10 +1942,10 @@ export default function ResumeEditPage() {
           <button
             onClick={() => setAcademicConvertOpen(true)}
             title="Convert academic CV to industry resume"
-            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition ${
+            className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium transition ${
               academicReport?.is_academic_cv
-                ? 'text-cyan-200 hover:bg-cyan-500/10 hover:text-cyan-100'
-                : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200'
+                ? 'text-accent-strong hover:bg-accent/10 hover:text-accent-strong'
+                : 'text-fg-3 hover:bg-surface-2 hover:text-fg'
             }`}
           >
             <GraduationCap size={12} />
@@ -1957,7 +1957,7 @@ export default function ResumeEditPage() {
             <button
               ref={forkTriggerRef}
               onClick={() => { if (forkPopoverOpen) { setForkPopoverOpen(false) } else { openForkPopover() } }}
-              className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+              className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             >
               <GitFork size={12} />
               Variant
@@ -1968,7 +1968,7 @@ export default function ResumeEditPage() {
                 <div className="fixed inset-0 z-[200]" onClick={() => setForkPopoverOpen(false)} />
                 {/* Popover — fixed positioning from trigger rect so the scrolling toolbar can't clip it */}
                 <div
-                  className="z-[201] w-64 rounded-lg border border-white/10 bg-zinc-950 p-3 shadow-xl"
+                  className="z-[201] w-64 rounded-[var(--radius-md)] border border-line bg-surface p-3 shadow-[var(--shadow-2)]"
                   style={{ position: 'fixed', top: forkPopoverPos.top, right: forkPopoverPos.right }}
                 >
                   <input
@@ -1978,11 +1978,11 @@ export default function ResumeEditPage() {
                     onKeyDown={e => { if (e.key === 'Enter') handleCreateVariant(); if (e.key === 'Escape') setForkPopoverOpen(false) }}
                     placeholder="Variant title"
                     autoFocus
-                    className="w-full rounded-md border border-white/10 bg-black/40 px-2 py-1.5 text-xs text-zinc-100 outline-none focus:border-orange-300/40 mb-2"
+                    className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-1.5 text-xs text-fg outline-none focus:border-accent mb-2"
                   />
                   <div className="flex gap-2 justify-end">
-                    <button onClick={() => setForkPopoverOpen(false)} className="px-2 py-1 text-[10px] text-zinc-500 hover:text-zinc-300">Cancel</button>
-                    <button onClick={handleCreateVariant} disabled={isForkingResume} className="rounded-md bg-orange-500/20 px-3 py-1 text-[10px] font-semibold text-orange-200 ring-1 ring-orange-400/20 hover:bg-orange-500/30 disabled:opacity-50">
+                    <button onClick={() => setForkPopoverOpen(false)} className="px-2 py-1 text-[10px] text-fg-3 hover:text-fg-2">Cancel</button>
+                    <button onClick={handleCreateVariant} disabled={isForkingResume} className="rounded-[var(--radius-md)] bg-accent/20 px-3 py-1 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/20 hover:bg-accent/25 disabled:opacity-50">
                       {isForkingResume ? 'Creating...' : 'Create'}
                     </button>
                   </div>
@@ -1995,7 +1995,7 @@ export default function ResumeEditPage() {
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-40"
           >
             <Save size={12} />
             {isSaving ? 'Saving…' : 'Save'}
@@ -2006,10 +2006,10 @@ export default function ResumeEditPage() {
           <button
             onClick={() => setShareModalOpen(true)}
             title="Share resume"
-            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition ${
+            className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium transition ${
               shareToken
-                ? 'text-sky-300/90 hover:bg-sky-500/10 hover:text-sky-200'
-                : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200'
+                ? 'text-accent-strong hover:bg-accent/10 hover:text-accent-strong'
+                : 'text-fg-3 hover:bg-surface-2 hover:text-fg'
             }`}
           >
             <Share2 size={12} />
@@ -2023,10 +2023,10 @@ export default function ResumeEditPage() {
                 onClick={handleToggleGitHubSync}
                 disabled={ghTogglingSync}
                 title={ghSyncEnabled ? 'Disable GitHub sync' : 'Enable GitHub sync'}
-                className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+                className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium transition ${
                   ghSyncEnabled
-                    ? 'bg-zinc-800 text-zinc-200 ring-1 ring-white/[0.1]'
-                    : 'text-zinc-600 hover:text-zinc-300'
+                    ? 'bg-surface-2 text-fg ring-1 ring-line'
+                    : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 {ghTogglingSync ? <Loader2 size={11} className="animate-spin" /> : <Github size={11} />}
@@ -2038,7 +2038,7 @@ export default function ResumeEditPage() {
                     onClick={handlePushToGitHub}
                     disabled={ghPushing}
                     title="Push to GitHub"
-                    className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
+                    className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-40"
                   >
                     {ghPushing ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
                     Push
@@ -2047,7 +2047,7 @@ export default function ResumeEditPage() {
                     onClick={handlePullFromGitHub}
                     disabled={ghPushing}
                     title="Pull from GitHub"
-                    className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
+                    className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-40"
                   >
                     <Download size={11} />
                     Pull
@@ -2064,10 +2064,10 @@ export default function ResumeEditPage() {
                 onClick={handleToggleDropboxSync}
                 disabled={dbxTogglingSync}
                 title={dbxSyncEnabled ? 'Disable Dropbox sync' : 'Enable Dropbox sync'}
-                className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+                className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium transition ${
                   dbxSyncEnabled
-                    ? 'bg-zinc-800 text-zinc-200 ring-1 ring-white/[0.1]'
-                    : 'text-zinc-600 hover:text-zinc-300'
+                    ? 'bg-surface-2 text-fg ring-1 ring-line'
+                    : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 {dbxTogglingSync ? <Loader2 size={11} className="animate-spin" /> : <Cloud size={11} />}
@@ -2079,7 +2079,7 @@ export default function ResumeEditPage() {
                     onClick={handlePushToDropbox}
                     disabled={dbxSyncing}
                     title="Push to Dropbox"
-                    className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
+                    className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-40"
                   >
                     {dbxSyncing ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
                     Push
@@ -2088,7 +2088,7 @@ export default function ResumeEditPage() {
                     onClick={handlePullFromDropbox}
                     disabled={dbxSyncing}
                     title="Pull from Dropbox"
-                    className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-40"
+                    className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-40"
                   >
                     <Download size={11} />
                     Pull
@@ -2098,7 +2098,7 @@ export default function ResumeEditPage() {
             </>
           )}
 
-          <div className="mx-1 h-3.5 w-px bg-white/[0.08]" />
+          <div className="mx-1 h-3.5 w-px bg-line" />
 
           <CompilerSelector
             resumeId={resumeId}
@@ -2113,7 +2113,7 @@ export default function ResumeEditPage() {
           <button
             onClick={() => setCompileSettingsOpen(true)}
             title="Compile settings"
-            className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-300"
+            className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <Settings2 size={11} />
           </button>
@@ -2122,25 +2122,25 @@ export default function ResumeEditPage() {
           <button
             onClick={() => setCollabOpen(true)}
             title="Collaborators"
-            className="relative flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-300"
+            className="relative flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <Users size={11} />
             {presenceUsers.length > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-violet-500 text-[8px] font-bold text-white">
+              <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-accent text-[8px] font-bold text-accent-fg">
                 {presenceUsers.length}
               </span>
             )}
           </button>
 
-          <div className="mx-1 h-3.5 w-px bg-white/[0.08]" />
+          <div className="mx-1 h-3.5 w-px bg-line" />
 
           <button
             onClick={toggleAutoCompile}
             title="Auto-compile on change (2s debounce)"
-            className={`flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+            className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[11px] font-medium transition ${
               autoCompile
-                ? 'bg-orange-500/20 text-orange-300 ring-1 ring-orange-500/30'
-                : 'text-zinc-600 hover:text-zinc-300'
+                ? 'bg-accent/20 text-accent-strong ring-1 ring-accent/30'
+                : 'text-fg-3 hover:text-fg-2'
             }`}
           >
             <Zap size={11} />
@@ -2150,7 +2150,7 @@ export default function ResumeEditPage() {
           {(userPlan === 'pro' || userPlan === 'byok') && (
             <span
               title="Your compilations are processed with priority in the queue"
-              className="flex items-center gap-1 rounded-md bg-violet-500/15 px-2 py-1.5 text-[10px] font-semibold text-violet-300 ring-1 ring-violet-500/20"
+              className="flex items-center gap-1 rounded-[var(--radius-md)] bg-accent/15 px-2 py-1.5 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/20"
             >
               <Zap size={9} className="fill-current" />
               Priority
@@ -2160,7 +2160,7 @@ export default function ResumeEditPage() {
           <button
             onClick={runCompile}
             disabled={isSubmitting || isAnyRunning}
-            className="flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.05] px-3 py-1.5 text-[11px] font-semibold text-zinc-200 transition hover:bg-white/[0.09] disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-1.5 text-[11px] font-semibold text-fg transition hover:bg-surface-2 disabled:opacity-40"
           >
             {isCompiling
               ? <Loader2 size={11} className="animate-spin" />
@@ -2170,10 +2170,10 @@ export default function ResumeEditPage() {
 
           <button
             onClick={() => setRightTab('ai')}
-            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[11px] font-semibold transition ${
+            className={`flex items-center gap-1.5 rounded-[var(--radius-md)] border px-3 py-1.5 text-[11px] font-semibold transition ${
               isAiRunning
-                ? 'border-violet-400/30 bg-violet-500/15 text-violet-200'
-                : 'border-violet-400/20 bg-gradient-to-r from-violet-500/15 to-orange-500/10 text-violet-200 hover:from-violet-500/25 hover:to-orange-500/15'
+                ? 'border-accent bg-accent/15 text-accent-strong'
+                : 'border-accent/20 bg-accent-soft text-accent-strong hover:brightness-110'
             }`}
           >
             {isAiRunning
@@ -2186,13 +2186,13 @@ export default function ResumeEditPage() {
 
       {/* Variant banner */}
       {parentResumeId && parentTitle && (
-        <div className="flex h-7 shrink-0 items-center justify-between border-b border-orange-500/10 bg-orange-500/5 px-4">
-          <span className="text-xs text-zinc-400">
-            Variant of: <span className="font-medium text-zinc-300">{parentTitle}</span>
+        <div className="flex h-7 shrink-0 items-center justify-between border-b border-accent/10 bg-accent/5 px-4">
+          <span className="text-xs text-fg-2">
+            Variant of: <span className="font-medium text-fg-2">{parentTitle}</span>
           </span>
           <button
             onClick={handleCompareWithParent}
-            className="text-xs font-semibold text-orange-300 transition hover:text-orange-200"
+            className="text-xs font-semibold text-accent-strong transition hover:text-accent-strong"
           >
             Compare with Parent
           </button>
@@ -2209,13 +2209,13 @@ export default function ResumeEditPage() {
 
         {/* ── Left: Outline sidebar (collapsible) — hidden on mobile ── */}
         <aside
-          className={`hidden shrink-0 flex-col border-r border-white/[0.05] bg-[#0a0a0a] transition-all duration-200 md:flex ${
+          className={`hidden shrink-0 flex-col border-r border-line bg-surface transition-all duration-200 md:flex ${
             showOutline ? 'w-48' : 'w-8'
           }`}
         >
           <button
             onClick={() => setShowOutline((v) => !v)}
-            className={`flex h-8 w-full shrink-0 items-center border-b border-white/[0.05] px-1.5 text-zinc-600 transition hover:text-zinc-300 ${
+            className={`flex h-8 w-full shrink-0 items-center border-b border-line px-1.5 text-fg-3 transition hover:text-fg-2 ${
               showOutline ? 'justify-between' : 'justify-center'
             }`}
             title={showOutline ? 'Hide outline' : 'Show outline'}
@@ -2239,18 +2239,18 @@ export default function ResumeEditPage() {
 
         {/* ── Editor ── */}
         <section className="flex min-h-[55vh] w-full min-w-0 flex-col md:min-h-0 md:w-auto" style={{ flex: '3 1 0%' }}>
-          <div className="flex h-8 shrink-0 items-center gap-2 border-b border-white/[0.05] bg-[#0a0a0a] px-3">
-            <div className="flex items-center gap-1.5 rounded-md bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-400">
-              <FileText size={11} className="text-zinc-600" />
+          <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
+            <div className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-fg-2">
+              <FileText size={11} className="text-fg-3" />
               {title || 'Untitled'}.tex
             </div>
-            <div className="ml-auto flex items-center gap-0.5 rounded-md bg-white/[0.04] p-0.5">
+            <div className="ml-auto flex items-center gap-0.5 rounded-[var(--radius-md)] bg-surface-2 p-0.5">
               <button
                 onClick={() => handleToggleEditorMode('source')}
                 className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition ${
                   editorMode === 'source'
-                    ? 'bg-white/[0.08] text-zinc-200'
-                    : 'text-zinc-600 hover:text-zinc-400'
+                    ? 'bg-surface-2 text-fg'
+                    : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 <Code2 size={10} />
@@ -2260,8 +2260,8 @@ export default function ResumeEditPage() {
                 onClick={() => handleToggleEditorMode('wysiwyg')}
                 className={`flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition ${
                   editorMode === 'wysiwyg'
-                    ? 'bg-white/[0.08] text-zinc-200'
-                    : 'text-zinc-600 hover:text-zinc-400'
+                    ? 'bg-surface-2 text-fg'
+                    : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 <LayoutTemplate size={10} />
@@ -2272,13 +2272,13 @@ export default function ResumeEditPage() {
           {/* Offline status banner (Feature 79F) */}
           <OfflineBanner pendingCount={offlinePendingCount} />
           {academicReport?.is_academic_cv && (
-            <div className="flex shrink-0 items-center justify-between border-b border-cyan-500/20 bg-cyan-500/10 px-4 py-1.5">
-              <span className="text-[11px] text-cyan-200">
+            <div className="flex shrink-0 items-center justify-between border-b border-accent/20 bg-accent/10 px-4 py-1.5">
+              <span className="text-[11px] text-accent-strong">
                 Academic CV detected ({academicReport.estimated_pages} pages, {academicReport.detected_sections.join(', ') || 'academic signals'}). Convert it into an industry resume variant.
               </span>
               <button
                 onClick={() => setAcademicConvertOpen(true)}
-                className="ml-3 text-[11px] text-cyan-100 underline hover:text-white"
+                className="ml-3 text-[11px] text-accent-strong underline hover:text-fg"
               >
                 Convert with AI →
               </button>
@@ -2286,14 +2286,14 @@ export default function ResumeEditPage() {
           )}
           {/* Page overflow warning banner */}
           {pageCount !== null && pageCount > 1 && (
-            <div className="flex shrink-0 items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-4 py-1.5">
-              <span className="text-[11px] text-amber-400">
+            <div className="flex shrink-0 items-center justify-between border-b border-warn/20 bg-warn/10 px-4 py-1.5">
+              <span className="text-[11px] text-warn">
                 ⚠ Your resume is {pageCount} pages. Most recruiters prefer 1 page.
               </span>
               <button
                 onClick={handleTrimToOnePage}
                 disabled={isAiSubmitting || isAnyRunning}
-                className="ml-3 text-[11px] text-amber-300 underline hover:text-amber-100 disabled:opacity-50"
+                className="ml-3 text-[11px] text-warn underline hover:text-warn disabled:opacity-50"
               >
                 Trim with AI →
               </button>
@@ -2310,7 +2310,7 @@ export default function ResumeEditPage() {
                 />
               </div>
             ) : editorMode === 'wysiwyg' && !wysiwygDoc ? (
-              <div className="flex h-full items-center justify-center text-[12px] text-zinc-600">
+              <div className="flex h-full items-center justify-center text-[12px] text-fg-3">
                 Parsing…
               </div>
             ) : isMobile ? (
@@ -2378,7 +2378,7 @@ export default function ResumeEditPage() {
               <button
                 onClick={handleOpenSummaryWidget}
                 title="AI Summary Generator"
-                className="absolute left-1 z-20 flex items-center gap-1 rounded-md bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-violet-300 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
+                className="absolute left-1 z-20 flex items-center gap-1 rounded-[var(--radius-md)] bg-accent/20 px-1.5 py-0.5 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:bg-accent/25"
                 style={{ top: (editorRef.current?.getCaretPosition()?.top ?? 0) + 2 }}
               >
                 <Sparkles size={9} />
@@ -2408,7 +2408,7 @@ export default function ResumeEditPage() {
               <button
                 onClick={handleOpenBulletWidget}
                 title="AI Bullet Generator"
-                className="absolute left-1 z-20 flex items-center gap-1 rounded-md bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-violet-300 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30"
+                className="absolute left-1 z-20 flex items-center gap-1 rounded-[var(--radius-md)] bg-accent/20 px-1.5 py-0.5 text-[10px] font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:bg-accent/25"
                 style={{ top: (editorRef.current?.getCaretPosition()?.top ?? 0) + 2 }}
               >
                 <Sparkles size={9} />
@@ -2441,13 +2441,13 @@ export default function ResumeEditPage() {
           className="group relative hidden w-[5px] shrink-0 cursor-col-resize items-center justify-center md:flex"
           onMouseDown={startResize}
         >
-          <div className="h-full w-px bg-white/[0.05] transition-colors group-hover:bg-orange-400/30 group-active:bg-orange-400/60" />
+          <div className="h-full w-px bg-line transition-colors group-hover:bg-accent/30 group-active:bg-accent/60" />
         </div>
 
         {/* ── Right panel ── */}
         <aside
           ref={rightPanelRef}
-          className="flex min-h-[60vh] w-full min-w-0 flex-col border-t border-white/[0.05] bg-[#0e0e0e] md:min-h-0 md:w-auto md:border-l md:border-t-0"
+          className="flex min-h-[60vh] w-full min-w-0 flex-col border-t border-line bg-surface md:min-h-0 md:w-auto md:border-l md:border-t-0"
           style={
             isMobile
               ? undefined
@@ -2459,7 +2459,7 @@ export default function ResumeEditPage() {
           {/* Tab bar */}
           <div
             ref={rightTabBarRef}
-            className="flex h-9 shrink-0 snap-x items-center overflow-x-auto whitespace-nowrap border-b border-white/[0.05] bg-black/20 px-1 pr-3 scrollbar-none"
+            className="flex h-9 shrink-0 snap-x items-center overflow-x-auto whitespace-nowrap border-b border-line bg-surface px-1 pr-3 scrollbar-none"
             style={{ WebkitOverflowScrolling: 'touch' }}
           >
             {(
@@ -2487,28 +2487,28 @@ export default function ResumeEditPage() {
                 key={id}
                 ref={rightTab === id ? activeRightTabRef : undefined}
                 onClick={() => setRightTab(id)}
-                className={`relative flex shrink-0 snap-start items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition ${
-                  rightTab === id ? 'text-zinc-100' : 'text-zinc-600 hover:text-zinc-300'
+                className={`relative flex shrink-0 snap-start items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-[11px] font-medium transition ${
+                  rightTab === id ? 'text-fg' : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 <Icon size={11} />
                 {label}
                 {rightTab === id && (
-                  <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-t-sm bg-orange-400" />
+                  <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-t-sm bg-accent" />
                 )}
                 {id === 'ai' && isAiRunning && (
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" />
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                 )}
                 {id === 'logs' && isCompiling && (
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400" />
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                 )}
                 {id === 'linter' && lintIssues.length > 0 && (
-                  <span className="ml-0.5 rounded bg-amber-500/20 px-1 py-0.5 font-mono text-[8px] text-amber-300">
+                  <span className="ml-0.5 rounded bg-warn/20 px-1 py-0.5 font-mono text-[8px] text-warn">
                     {lintIssues.length}
                   </span>
                 )}
                 {id === 'changes' && trackedChanges.length > 0 && (
-                  <span className="ml-0.5 rounded bg-emerald-500/20 px-1 py-0.5 font-mono text-[8px] text-emerald-300">
+                  <span className="ml-0.5 rounded bg-ok/20 px-1 py-0.5 font-mono text-[8px] text-ok">
                     {trackedChanges.length}
                   </span>
                 )}
@@ -2521,7 +2521,7 @@ export default function ResumeEditPage() {
               <>
                 <button
                   onClick={handleDownload}
-                  className="flex shrink-0 items-center gap-1 px-2 py-1 text-[10px] text-zinc-600 transition hover:text-zinc-300"
+                  className="flex shrink-0 items-center gap-1 px-2 py-1 text-[10px] text-fg-3 transition hover:text-fg-2"
                 >
                   <Download size={11} />
                   PDF
@@ -2580,13 +2580,13 @@ export default function ResumeEditPage() {
             {rightTab === 'logs' && (
               <div className="h-full overflow-auto p-3">
                 <div className="mb-2 flex items-center justify-between px-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-700">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
                     {isCompiling ? 'Compilation output' : isAiRunning ? 'AI pipeline logs' : 'Last run logs'}
                   </span>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setShowErrorHistory(true)}
-                      className="text-[10px] font-medium text-zinc-500 hover:text-orange-400 transition"
+                      className="text-[10px] font-medium text-fg-3 hover:text-accent-strong transition"
                       title="View error history"
                     >
                       Error History
@@ -2594,10 +2594,10 @@ export default function ResumeEditPage() {
                     <span
                       className={`text-[10px] font-medium capitalize ${
                         isAnyRunning
-                          ? 'text-orange-400'
+                          ? 'text-accent-strong'
                           : compileStream.status === 'completed' || aiStream.status === 'completed'
-                          ? 'text-emerald-400'
-                          : 'text-zinc-600'
+                          ? 'text-ok'
+                          : 'text-fg-3'
                       }`}
                     >
                       {isAnyRunning
@@ -2797,18 +2797,18 @@ export default function ResumeEditPage() {
 
       {/* Import modal */}
       {showImportModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl shadow-black/60 p-6">
+        <div className="fixed inset-0 bg-[var(--overlay)] flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-surface shadow-[var(--shadow-2)] p-6">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="text-base font-semibold text-zinc-100">Import Resume File</h3>
+              <h3 className="text-base font-semibold text-fg">Import Resume File</h3>
               <button
                 onClick={() => setShowImportModal(false)}
-                className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300"
+                className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
               >
                 <X size={16} />
               </button>
             </div>
-            <p className="text-xs text-zinc-500 mb-5">
+            <p className="text-xs text-fg-3 mb-5">
               This will replace the current editor content. Make sure to save first.
             </p>
             <MultiFormatUpload
@@ -2970,8 +2970,8 @@ export default function ResumeEditPage() {
 
       {/* ── TIMEOUT BANNER (compile stream) ── */}
       {compileStream.errorCode === 'compile_timeout' && compileStream.timeoutError && (
-        <div className="flex shrink-0 items-center justify-between border-t border-orange-500/20 bg-orange-500/[0.08] px-3 py-1.5">
-          <span className="text-[11px] text-orange-300">
+        <div className="flex shrink-0 items-center justify-between border-t border-accent/20 bg-accent/10 px-3 py-1.5">
+          <span className="text-[11px] text-accent-strong">
             ⏱ Compile timed out — {compileStream.timeoutError.plan} plan limit (
             {compileStream.timeoutError.plan === 'free' ? '30s'
               : compileStream.timeoutError.plan === 'basic' ? '120s'
@@ -2980,7 +2980,7 @@ export default function ResumeEditPage() {
           {flags.upgrade_ctas && (
             <a
               href="/billing"
-              className="ml-3 shrink-0 text-[11px] font-medium text-orange-200 underline hover:text-orange-100"
+              className="ml-3 shrink-0 text-[11px] font-medium text-accent-strong underline hover:text-accent-strong"
             >
               Upgrade for longer timeouts →
             </a>
@@ -3001,34 +3001,34 @@ export default function ResumeEditPage() {
       )}
 
       {academicConvertOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm" onClick={() => setAcademicConvertOpen(false)}>
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0f1012] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] px-4" onClick={() => setAcademicConvertOpen(false)}>
+          <div className="w-full max-w-2xl rounded-[var(--radius-lg)] border border-line bg-surface p-5 shadow-[var(--shadow-2)]" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-base font-semibold text-zinc-100">Academic CV → Industry Resume</h2>
-                <p className="mt-1 text-sm text-zinc-400">
+                <h2 className="text-base font-semibold text-fg">Academic CV → Industry Resume</h2>
+                <p className="mt-1 text-sm text-fg-2">
                   Create a new variant that reframes academic work into industry outcomes without overwriting the original CV.
                 </p>
               </div>
-              <button onClick={() => setAcademicConvertOpen(false)} className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300">
+              <button onClick={() => setAcademicConvertOpen(false)} className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2">
                 <X size={16} />
               </button>
             </div>
 
             {academicReport && (
-              <div className="mt-4 rounded-xl border border-cyan-400/15 bg-cyan-500/[0.06] p-3 text-xs text-cyan-100/90">
+              <div className="mt-4 rounded-[var(--radius-lg)] border border-accent/15 bg-accent/10 p-3 text-xs text-accent-strong">
                 <div>Detection confidence: {Math.round(academicReport.confidence * 100)}%</div>
                 <div className="mt-1">Signals: {academicReport.detected_sections.join(', ') || 'general academic structure'}</div>
               </div>
             )}
 
             <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <label className="grid gap-2 text-sm text-zinc-300">
+              <label className="grid gap-2 text-sm text-fg-2">
                 <span>Target industry</span>
                 <select
                   value={academicTargetIndustry}
                   onChange={(e) => setAcademicTargetIndustry(e.target.value as typeof academicTargetIndustry)}
-                  className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-300/40"
+                  className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none focus:border-accent"
                 >
                   <option value="tech">Software Engineering / Tech</option>
                   <option value="data_science">Data Science / ML</option>
@@ -3038,33 +3038,33 @@ export default function ResumeEditPage() {
                   <option value="other">Other</option>
                 </select>
               </label>
-              <div className="rounded-lg border border-white/8 bg-white/[0.03] p-3 text-xs text-zinc-500">
+              <div className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-3 text-xs text-fg-3">
                 The output is saved as a child variant. You keep the original academic CV unchanged.
               </div>
             </div>
 
-            <label className="mt-4 grid gap-2 text-sm text-zinc-300">
+            <label className="mt-4 grid gap-2 text-sm text-fg-2">
               <span>Optional target role or job description</span>
               <textarea
                 value={academicRoleDescription}
                 onChange={(e) => setAcademicRoleDescription(e.target.value)}
                 rows={7}
                 placeholder="Paste a target role description to bias the conversion toward the right framing and keywords."
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-300/40"
+                className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-3 focus:border-accent"
               />
             </label>
 
             <div className="mt-5 flex items-center justify-end gap-2">
               <button
                 onClick={() => setAcademicConvertOpen(false)}
-                className="rounded-md px-3 py-2 text-sm text-zinc-500 transition hover:text-zinc-300"
+                className="rounded-[var(--radius-md)] px-3 py-2 text-sm text-fg-3 transition hover:text-fg-2"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAcademicConvert}
                 disabled={isAcademicConverting}
-                className="inline-flex items-center gap-2 rounded-md bg-cyan-500/20 px-3 py-2 text-sm font-medium text-cyan-100 ring-1 ring-cyan-400/20 transition hover:bg-cyan-500/30 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-accent/20 px-3 py-2 text-sm font-medium text-accent-strong ring-1 ring-accent/20 transition hover:bg-accent/25 disabled:opacity-50"
               >
                 {isAcademicConverting ? <Loader2 size={14} className="animate-spin" /> : <GraduationCap size={14} />}
                 {isAcademicConverting ? 'Creating Variant…' : 'Create Industry Variant'}
@@ -3101,16 +3101,16 @@ export default function ResumeEditPage() {
       />
 
       {/* ── STATUS BAR ── */}
-      <footer className="flex h-6 shrink-0 items-center justify-between border-t border-white/[0.05] bg-[#0a0a0a] px-3">
+      <footer className="flex h-6 shrink-0 items-center justify-between border-t border-line bg-surface px-3">
         <span
           className={`text-[10px] font-medium ${
             isAnyRunning
-              ? 'text-violet-400'
+              ? 'text-accent-strong'
               : compileStream.status === 'completed' || aiStream.status === 'completed'
-              ? 'text-emerald-400/80'
+              ? 'text-ok'
               : aiStream.status === 'failed' || compileStream.status === 'failed'
-              ? 'text-rose-400/80'
-              : 'text-zinc-700'
+              ? 'text-err'
+              : 'text-fg-3'
           }`}
         >
           {statusText}
@@ -3118,12 +3118,12 @@ export default function ResumeEditPage() {
         <div className="flex items-center gap-3">
           {aiStream.atsScore != null && (
             <span
-              className={`flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-bold tabular-nums ${
+              className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-2 py-0.5 text-[11px] font-bold tabular-nums ${
                 aiStream.atsScore >= 80
-                  ? 'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/20'
+                  ? 'bg-ok/15 text-ok ring-1 ring-ok/20'
                   : aiStream.atsScore >= 60
-                  ? 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/20'
-                  : 'bg-rose-500/15 text-rose-400 ring-1 ring-rose-500/20'
+                  ? 'bg-warn/15 text-warn ring-1 ring-warn/20'
+                  : 'bg-err/15 text-err ring-1 ring-err/20'
               }`}
               title="ATS compatibility score from last AI optimization"
             >
@@ -3131,11 +3131,11 @@ export default function ResumeEditPage() {
             </span>
           )}
           {cursorLine && (
-            <span className="text-[10px] tabular-nums text-zinc-700">
+            <span className="text-[10px] tabular-nums text-fg-3">
               Ln {cursorLine}
             </span>
           )}
-          <span className="text-[10px] tabular-nums text-zinc-700">
+          <span className="text-[10px] tabular-nums text-fg-3">
             {latexContent.length.toLocaleString()} chars
           </span>
         </div>

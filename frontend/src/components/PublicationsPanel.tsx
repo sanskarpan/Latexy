@@ -108,7 +108,7 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
     <div className="space-y-5">
       {/* ORCID ID input */}
       <div>
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
           ORCID iD
         </label>
         <input
@@ -117,9 +117,9 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
           onChange={e => setOrcidId(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') handleFetch() }}
           placeholder="0000-0000-0000-0000"
-          className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-orange-300/40 font-mono"
+          className="w-full rounded-[var(--radius-lg)] border border-line bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-accent font-mono"
         />
-        <p className="mt-1 text-[11px] text-zinc-600">
+        <p className="mt-1 text-[11px] text-fg-3">
           Find your ORCID iD at orcid.org — it's free and identifies you across publications.
         </p>
       </div>
@@ -128,7 +128,7 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
       <div className="flex flex-wrap gap-4">
         {/* Year range */}
         <div className="flex items-center gap-2">
-          <span className="text-xs text-zinc-500">Year:</span>
+          <span className="text-xs text-fg-3">Year:</span>
           <input
             type="number"
             value={yearFrom}
@@ -136,9 +136,9 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
             placeholder="From"
             min={1900}
             max={2100}
-            className="w-20 rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-zinc-100 outline-none transition focus:border-orange-300/40"
+            className="w-20 rounded-[var(--radius-md)] border border-line bg-bg px-2 py-1 text-xs text-fg outline-none transition focus:border-accent"
           />
-          <span className="text-xs text-zinc-600">–</span>
+          <span className="text-xs text-fg-3">–</span>
           <input
             type="number"
             value={yearTo}
@@ -146,22 +146,22 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
             placeholder="To"
             min={1900}
             max={2100}
-            className="w-20 rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-zinc-100 outline-none transition focus:border-orange-300/40"
+            className="w-20 rounded-[var(--radius-md)] border border-line bg-bg px-2 py-1 text-xs text-fg outline-none transition focus:border-accent"
           />
         </div>
 
         {/* Publication type checkboxes */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-zinc-500">Types:</span>
+          <span className="text-xs text-fg-3">Types:</span>
           {PUB_TYPES.map(t => (
             <label key={t.key} className="flex cursor-pointer items-center gap-1.5">
               <input
                 type="checkbox"
                 checked={selectedTypes.includes(t.key)}
                 onChange={() => toggleType(t.key)}
-                className="accent-orange-400"
+                className="accent-accent"
               />
-              <span className="text-xs text-zinc-300">{t.label}</span>
+              <span className="text-xs text-fg-2">{t.label}</span>
             </label>
           ))}
         </div>
@@ -171,20 +171,20 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
       <button
         onClick={handleFetch}
         disabled={isLoading || !orcidId.trim()}
-        className="flex items-center gap-2 rounded-lg bg-orange-500/20 px-4 py-2.5 text-sm font-semibold text-orange-200 ring-1 ring-orange-400/20 transition hover:bg-orange-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2.5 text-sm font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
         {isLoading ? 'Fetching…' : 'Fetch Publications'}
       </button>
 
       {error && (
-        <div className="rounded-lg border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-300">
+        <div className="rounded-[var(--radius-md)] border border-err/20 bg-err/10 px-4 py-3 text-sm text-err">
           {error}
         </div>
       )}
 
       {hasFetched && publications.length === 0 && (
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-fg-3">
           No publications found for this ORCID iD with the current filters.
         </p>
       )}
@@ -193,14 +193,14 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
         <div className="space-y-3">
           {/* Selection controls */}
           <div className="flex items-center justify-between">
-            <span className="text-xs text-zinc-400">
+            <span className="text-xs text-fg-2">
               {selectedPubs.size} of {publications.length} selected
             </span>
             <div className="flex gap-3">
-              <button onClick={selectAll} className="text-[11px] text-orange-300 hover:text-orange-200 transition">
+              <button onClick={selectAll} className="text-[11px] text-accent-strong hover:brightness-110 transition">
                 Select all
               </button>
-              <button onClick={deselectAll} className="text-[11px] text-zinc-500 hover:text-zinc-300 transition">
+              <button onClick={deselectAll} className="text-[11px] text-fg-3 hover:text-fg-2 transition">
                 Deselect all
               </button>
             </div>
@@ -211,32 +211,32 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
             {publications.map((pub, i) => (
               <label
                 key={i}
-                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition ${
+                className={`flex cursor-pointer items-start gap-3 rounded-[var(--radius-md)] border p-3 transition ${
                   selectedPubs.has(i)
-                    ? 'border-orange-400/30 bg-orange-400/5'
-                    : 'border-white/10 bg-white/[0.02] hover:border-white/20'
+                    ? 'border-accent bg-accent-soft'
+                    : 'border-line bg-surface-2 hover:border-line-2'
                 }`}
               >
                 <input
                   type="checkbox"
                   checked={selectedPubs.has(i)}
                   onChange={() => togglePub(i)}
-                  className="mt-0.5 shrink-0 accent-orange-400"
+                  className="mt-0.5 shrink-0 accent-accent"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold leading-snug text-zinc-200">{pub.title}</p>
+                  <p className="text-xs font-semibold leading-snug text-fg">{pub.title}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     {pub.venue && (
-                      <span className="text-[10px] italic text-zinc-500">{pub.venue}</span>
+                      <span className="text-[10px] italic text-fg-3">{pub.venue}</span>
                     )}
                     {pub.year && (
-                      <span className="text-[10px] text-zinc-600">{pub.year}</span>
+                      <span className="text-[10px] text-fg-3">{pub.year}</span>
                     )}
-                    <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500 ring-1 ring-white/10">
+                    <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-3 ring-1 ring-line">
                       {pubTypeLabel(pub.pub_type)}
                     </span>
                     {pub.doi && (
-                      <span className="text-[10px] font-mono text-zinc-600">{pub.doi}</span>
+                      <span className="text-[10px] font-mono text-fg-3">{pub.doi}</span>
                     )}
                   </div>
                 </div>
@@ -248,7 +248,7 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
           <button
             onClick={handleInsert}
             disabled={selectedPubs.size === 0}
-            className="flex items-center gap-2 rounded-lg bg-violet-500/20 px-4 py-2.5 text-sm font-semibold text-violet-200 ring-1 ring-violet-400/20 transition hover:bg-violet-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus size={14} />
             Insert Publications Section ({selectedPubs.size})

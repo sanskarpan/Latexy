@@ -51,26 +51,26 @@ const TYPE_META = {
   manual: {
     icon: Bookmark,
     label: 'Checkpoint',
-    color: 'text-blue-400',
-    bg: 'bg-blue-500/10',
-    border: 'border-blue-500/20',
-    dot: 'bg-blue-400',
+    color: 'text-fg-2',
+    bg: 'bg-surface-2',
+    border: 'border-line',
+    dot: 'bg-fg-2',
   },
   auto: {
     icon: Clock,
     label: 'Auto-save',
-    color: 'text-zinc-400',
-    bg: 'bg-zinc-500/10',
-    border: 'border-zinc-500/20',
-    dot: 'bg-zinc-500',
+    color: 'text-fg-3',
+    bg: 'bg-surface-2',
+    border: 'border-line',
+    dot: 'bg-fg-3',
   },
   optimization: {
     icon: Sparkles,
     label: 'AI Optimization',
-    color: 'text-orange-400',
-    bg: 'bg-orange-500/10',
-    border: 'border-orange-500/20',
-    dot: 'bg-orange-400',
+    color: 'text-accent-strong',
+    bg: 'bg-accent-soft',
+    border: 'border-accent',
+    dot: 'bg-accent',
   },
 } as const
 
@@ -201,7 +201,7 @@ export default function VersionHistoryPanel({
     return (
       <div className="space-y-3 p-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-16 animate-pulse rounded-lg bg-white/5" />
+          <div key={i} className="h-16 animate-pulse rounded-[var(--radius-md)] bg-surface-2" />
         ))}
       </div>
     )
@@ -210,9 +210,9 @@ export default function VersionHistoryPanel({
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center gap-1.5 py-8 text-center">
-        <Clock size={20} className="text-zinc-600" />
-        <p className="text-xs text-zinc-600">No version history yet</p>
-        <p className="text-[10px] text-zinc-700">
+        <Clock size={20} className="text-fg-3" />
+        <p className="text-xs text-fg-3">No version history yet</p>
+        <p className="text-[10px] text-fg-3">
           Checkpoints are created when you compile or save manually.
         </p>
       </div>
@@ -223,10 +223,10 @@ export default function VersionHistoryPanel({
     <div className="flex flex-col">
       {/* Compare button */}
       {selected.size === 2 && (
-        <div className="sticky top-0 z-10 border-b border-white/5 bg-zinc-950/90 px-3 py-2 backdrop-blur-sm">
+        <div className="sticky top-0 z-10 border-b border-line bg-bg/90 px-3 py-2 backdrop-blur-sm">
           <button
             onClick={handleCompare}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-orange-300/25 bg-orange-300/10 py-1.5 text-xs font-medium text-orange-200 transition hover:bg-orange-300/20"
+            className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-accent bg-accent-soft py-1.5 text-xs font-medium text-accent-strong transition hover:brightness-110"
           >
             <GitCompareArrows size={13} />
             Compare Selected
@@ -237,7 +237,7 @@ export default function VersionHistoryPanel({
       {/* Timeline */}
       <div className="relative px-3 py-2">
         {/* Vertical line */}
-        <div className="absolute bottom-0 left-[26px] top-0 w-px bg-white/5" />
+        <div className="absolute bottom-0 left-[26px] top-0 w-px bg-line" />
 
         {entries.map((entry) => {
           const type = entryType(entry)
@@ -249,7 +249,7 @@ export default function VersionHistoryPanel({
             <div key={entry.id} className="relative mb-2 flex gap-3 pl-5">
               {/* Timeline dot */}
               <div
-                className={`absolute left-[1px] top-3 z-10 h-2 w-2 rounded-full ring-2 ring-zinc-950 ${meta.dot}`}
+                className={`absolute left-[1px] top-3 z-10 h-2 w-2 rounded-full ring-2 ring-bg ${meta.dot}`}
               />
 
               {/* Card */}
@@ -258,10 +258,10 @@ export default function VersionHistoryPanel({
                 tabIndex={0}
                 onClick={() => toggleSelect(entry.id)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSelect(entry.id) } }}
-                className={`flex w-full cursor-pointer flex-col gap-1 rounded-lg border p-2.5 text-left transition ${
+                className={`flex w-full cursor-pointer flex-col gap-1 rounded-[var(--radius-md)] border p-2.5 text-left transition ${
                   isSelected
-                    ? 'border-orange-300/30 bg-orange-300/5'
-                    : 'border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.04]'
+                    ? 'border-accent bg-accent-soft'
+                    : 'border-line bg-surface hover:border-line-2 hover:bg-surface-2'
                 }`}
               >
                 {/* Top row: type badge + time */}
@@ -272,13 +272,13 @@ export default function VersionHistoryPanel({
                     <Icon size={10} />
                     {meta.label}
                   </span>
-                  <span className="text-[10px] text-zinc-600">
+                  <span className="text-[10px] text-fg-3">
                     {relativeTime(entry.created_at)}
                   </span>
                 </div>
 
                 {/* Label */}
-                <p className="truncate text-xs text-zinc-300">
+                <p className="truncate text-xs text-fg-2">
                   {entry.checkpoint_label ??
                     (type === 'optimization'
                       ? `AI Optimization${entry.optimization_level ? ` — ${entry.optimization_level}` : ''}`
@@ -294,17 +294,17 @@ export default function VersionHistoryPanel({
                       <span
                         className={`text-[10px] font-medium ${
                           entry.ats_score >= 80
-                            ? 'text-emerald-400'
+                            ? 'text-ok'
                             : entry.ats_score >= 60
-                              ? 'text-amber-400'
-                              : 'text-rose-400'
+                              ? 'text-warn'
+                              : 'text-err'
                         }`}
                       >
                         ATS {Math.round(entry.ats_score)}
                       </span>
                     )}
                     {entry.changes_count > 0 && (
-                      <span className="text-[10px] text-zinc-600">
+                      <span className="text-[10px] text-fg-3">
                         {entry.changes_count} changes
                       </span>
                     )}
@@ -318,7 +318,7 @@ export default function VersionHistoryPanel({
                       <button
                         onClick={() => handleBeforeAfter(entry)}
                         disabled={beforeAfterId === entry.id}
-                        className="rounded px-1.5 py-0.5 text-[10px] text-orange-400/70 transition hover:bg-orange-500/10 hover:text-orange-300 disabled:opacity-40"
+                        className="rounded px-1.5 py-0.5 text-[10px] text-accent-strong transition hover:bg-accent-soft hover:text-accent-strong disabled:opacity-40"
                       >
                         {beforeAfterId === entry.id ? '…' : 'Before/After'}
                       </button>
@@ -326,14 +326,14 @@ export default function VersionHistoryPanel({
                     <button
                       onClick={() => handleRestore(entry)}
                       disabled={restoringId === entry.id}
-                      className="rounded px-1.5 py-0.5 text-[10px] text-zinc-500 transition hover:bg-white/5 hover:text-zinc-300 disabled:opacity-40"
+                      className="rounded px-1.5 py-0.5 text-[10px] text-fg-3 transition hover:bg-surface-2 hover:text-fg-2 disabled:opacity-40"
                     >
                       {restoringId === entry.id ? '…' : 'Restore'}
                     </button>
                     {entry.is_checkpoint && !entry.is_auto_save && (
                       <button
                         onClick={() => handleDelete(entry)}
-                        className="rounded p-0.5 text-zinc-600 transition hover:bg-red-500/10 hover:text-red-400"
+                        className="rounded p-0.5 text-fg-3 transition hover:bg-err/10 hover:text-err"
                         title="Delete checkpoint"
                       >
                         <Trash2 size={11} />

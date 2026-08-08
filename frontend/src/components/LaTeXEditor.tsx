@@ -20,7 +20,7 @@ import { classifyCollabClose } from '@/lib/collab-close'
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
   ssr: false,
-  loading: () => <div className="h-full w-full bg-[#07090f]" aria-hidden="true" />,
+  loading: () => <div className="h-full w-full bg-bg" aria-hidden="true" />,
 })
 
 type MonacoEditorInstance = import('monaco-editor').editor.IStandaloneCodeEditor
@@ -338,6 +338,91 @@ function parseLogErrors(logLines: LogLine[]): LogError[] {
   return errors
 }
 
+// ── Editor themes ───────────────────────────────────────────────────────
+// Defined unconditionally on every editor mount (defineTheme is idempotent) so
+// the light theme ALWAYS exists — it must not sit behind the run-once language
+// guard, or a hot-reload / prior mount leaves it undefined and setTheme falls
+// back to dark on a light page.
+function defineLatexyThemes(monaco: MonacoNamespace) {
+  monaco.editor.defineTheme('latexy-dark', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment',           foreground: '6b7280', fontStyle: 'italic' },
+      { token: 'keyword.structure', foreground: 'fb923c', fontStyle: 'bold' },
+      { token: 'keyword.doc',       foreground: '818cf8' },
+      { token: 'keyword.font',      foreground: '67e8f9' },
+      { token: 'keyword.math',      foreground: 'f472b6' },
+      { token: 'keyword.special',   foreground: 'fbbf24' },
+      { token: 'keyword',           foreground: 'fcd34d' },
+      { token: 'math.delim',        foreground: 'ec4899', fontStyle: 'bold' },
+      { token: 'math.content',      foreground: 'f9a8d4' },
+      { token: 'math.command',      foreground: 'f472b6' },
+      { token: 'math.bracket',      foreground: 'a78bfa' },
+      { token: 'delimiter.bracket', foreground: 'a78bfa' },
+      { token: 'delimiter.square',  foreground: 'c4b5fd' },
+      { token: 'number',            foreground: '86efac' },
+    ],
+    colors: {
+      'editor.background':            '#0d1117',
+      'editor.foreground':            '#e2e8f0',
+      'editor.lineHighlightBackground': '#161b22',
+      'editor.selectionBackground':   '#1e3a5f',
+      'editor.inactiveSelectionBackground': '#162a44',
+      'editorLineNumber.foreground':  '#4b5563',
+      'editorLineNumber.activeForeground': '#9ca3af',
+      'editorCursor.foreground':      '#f59e0b',
+      'editorWhitespace.foreground':  '#1e293b',
+      'editorIndentGuide.background': '#1e293b',
+      'editorIndentGuide.activeBackground': '#334155',
+      'editorOverviewRuler.background': '#0d1117',
+      'scrollbar.shadow':             '#00000000',
+      'scrollbarSlider.background':   '#334155aa',
+      'scrollbarSlider.hoverBackground': '#475569bb',
+      'editorGutter.background':      '#0d1117',
+    },
+  })
+  // Light counterpart — warm paper-white surface, muted higher-contrast ink.
+  monaco.editor.defineTheme('latexy-light', {
+    base: 'vs',
+    inherit: true,
+    rules: [
+      { token: 'comment',           foreground: '8a8f98', fontStyle: 'italic' },
+      { token: 'keyword.structure', foreground: 'c2410c', fontStyle: 'bold' },
+      { token: 'keyword.doc',       foreground: '4f46e5' },
+      { token: 'keyword.font',      foreground: '0e7490' },
+      { token: 'keyword.math',      foreground: 'be185d' },
+      { token: 'keyword.special',   foreground: 'b45309' },
+      { token: 'keyword',           foreground: 'a16207' },
+      { token: 'math.delim',        foreground: 'be185d', fontStyle: 'bold' },
+      { token: 'math.content',      foreground: 'a21caf' },
+      { token: 'math.command',      foreground: 'be185d' },
+      { token: 'math.bracket',      foreground: '7c3aed' },
+      { token: 'delimiter.bracket', foreground: '7c3aed' },
+      { token: 'delimiter.square',  foreground: '9333ea' },
+      { token: 'number',            foreground: '15803d' },
+    ],
+    colors: {
+      'editor.background':            '#fbfbf9',
+      'editor.foreground':            '#26282d',
+      'editor.lineHighlightBackground': '#f1f1ec',
+      'editor.selectionBackground':   '#d6e4f5',
+      'editor.inactiveSelectionBackground': '#e8eef6',
+      'editorLineNumber.foreground':  '#b8b8b0',
+      'editorLineNumber.activeForeground': '#4b5563',
+      'editorCursor.foreground':      '#d97706',
+      'editorWhitespace.foreground':  '#e6e6df',
+      'editorIndentGuide.background': '#ecece5',
+      'editorIndentGuide.activeBackground': '#d6d6cd',
+      'editorOverviewRuler.background': '#fbfbf9',
+      'scrollbar.shadow':             '#00000000',
+      'scrollbarSlider.background':   '#c8c8be88',
+      'scrollbarSlider.hoverBackground': '#b0b0a6aa',
+      'editorGutter.background':      '#fbfbf9',
+    },
+  })
+}
+
 // ── Component ─────────────────────────────────────────────────────────────
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
@@ -403,6 +488,21 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     }, [])
 
     const [searchPanelOpen, setSearchPanelOpen] = useState(false)
+
+    // Follow the app's light/dark mode so the editor matches the page instead
+    // of being permanently dark. Reads the `data-mode` attribute the
+    // ThemeProvider stamps on <html> and reacts to toggles.
+    // Matches the token CSS: dark ONLY when data-mode="dark"; anything else
+    // (light, or the attribute missing) resolves to the light editor theme.
+    const [editorTheme, setEditorTheme] = useState<'latexy-dark' | 'latexy-light'>('latexy-light')
+    useEffect(() => {
+      const read = () =>
+        setEditorTheme(document.documentElement.getAttribute('data-mode') === 'dark' ? 'latexy-dark' : 'latexy-light')
+      read()
+      const obs = new MutationObserver(read)
+      obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-mode'] })
+      return () => obs.disconnect()
+    }, [])
 
     function handlePresetSelect(preset: LatexSearchPreset) {
       const editor = editorRef.current
@@ -814,6 +914,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       exposeMonacoTestHook(editor, monaco)
       disposablesRef.current.push({ dispose: () => clearMonacoTestHook(editor) })
 
+      // Always (re)define themes before applying one — never behind the language guard.
+      defineLatexyThemes(monaco)
+
       if (collabEnabled && value && !editor.getValue()) {
         editor.setValue(value)
       }
@@ -871,45 +974,6 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         },
       })
 
-      // ── Theme ──────────────────────────────────────────────────────
-      monaco.editor.defineTheme('latexy-dark', {
-        base: 'vs-dark',
-        inherit: true,
-        rules: [
-          { token: 'comment',         foreground: '6b7280', fontStyle: 'italic' },
-          { token: 'keyword.structure', foreground: 'fb923c', fontStyle: 'bold' }, // orange - sections
-          { token: 'keyword.doc',     foreground: '818cf8' },                       // indigo - doc cmds
-          { token: 'keyword.font',    foreground: '67e8f9' },                       // cyan - font cmds
-          { token: 'keyword.math',    foreground: 'f472b6' },                       // pink - math cmds
-          { token: 'keyword.special', foreground: 'fbbf24' },                       // amber
-          { token: 'keyword',         foreground: 'fcd34d' },                       // yellow - generic
-          { token: 'math.delim',      foreground: 'ec4899', fontStyle: 'bold' },   // hot pink
-          { token: 'math.content',    foreground: 'f9a8d4' },                       // light pink
-          { token: 'math.command',    foreground: 'f472b6' },
-          { token: 'math.bracket',    foreground: 'a78bfa' },
-          { token: 'delimiter.bracket', foreground: 'a78bfa' },                    // purple
-          { token: 'delimiter.square',  foreground: 'c4b5fd' },
-          { token: 'number',          foreground: '86efac' },                       // green
-        ],
-        colors: {
-          'editor.background':            '#0d1117',
-          'editor.foreground':            '#e2e8f0',
-          'editor.lineHighlightBackground': '#0f1420',
-          'editor.selectionBackground':   '#1e3a5f',
-          'editor.inactiveSelectionBackground': '#162a44',
-          'editorLineNumber.foreground':  '#334155',
-          'editorLineNumber.activeForeground': '#64748b',
-          'editorCursor.foreground':      '#f59e0b',
-          'editorWhitespace.foreground':  '#1e293b',
-          'editorIndentGuide.background': '#1e293b',
-          'editorIndentGuide.activeBackground': '#334155',
-          'editorOverviewRuler.background': '#07090f',
-          'scrollbar.shadow':             '#00000000',
-          'scrollbarSlider.background':   '#334155aa',
-          'scrollbarSlider.hoverBackground': '#475569bb',
-          'editorGutter.background':      '#07090f',
-        },
-      })
       // ── Completion provider ────────────────────────────────────────
       const completionDisposable = monaco.languages.registerCompletionItemProvider('latex', {
         triggerCharacters: ['\\', '{'],
@@ -1196,7 +1260,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
         _latexLanguageRegistered = true
       } // end !_latexLanguageRegistered
-      monaco.editor.setTheme('latexy-dark')
+      monaco.editor.setTheme(
+        document.documentElement.getAttribute('data-mode') === 'dark' ? 'latexy-dark' : 'latexy-light'
+      )
 
       // ── CodeLens provider (Explain this error) ──────────────────────
       // Register a unique command that CodeLens items can reference
@@ -1649,14 +1715,14 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       <div className="flex h-full flex-col">
         {!value ? (
           <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-            <p className="text-sm uppercase tracking-[0.14em] text-zinc-600">Empty document</p>
-            <p className="mt-2 max-w-sm text-xs text-zinc-600">
+            <p className="text-sm uppercase tracking-[0.14em] text-fg-3">Empty document</p>
+            <p className="mt-2 max-w-sm text-xs text-fg-3">
               {hideEmptyAction ? 'Content will appear here once generated.' : 'Start writing or use a sample template.'}
             </p>
             {!hideEmptyAction && (
               <button
                 onClick={() => onChange(BLANK_RESUME_TEMPLATE)}
-                className="mt-4 rounded-lg border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08]"
+                className="mt-4 rounded-[var(--radius-md)] border border-line bg-surface px-4 py-2 text-xs font-medium text-fg-2 transition hover:bg-surface-2"
               >
                 Insert Sample Resume
               </button>
@@ -1674,6 +1740,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             <MonacoEditor
               height="100%"
               defaultLanguage="latex"
+              theme={editorTheme}
               {...(collabEnabled ? { defaultValue: '' } : { value })}
               onChange={(v) => onChange(v || '')}
               onMount={handleEditorDidMount}
@@ -1722,18 +1789,18 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         )}
 
         {/* Status bar */}
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-white/[0.05] bg-[#07090f] px-3 py-1 text-[10px] uppercase tracking-[0.12em]">
-          <span className="text-zinc-700">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line bg-bg px-3 py-1 text-[10px] uppercase tracking-[0.12em]">
+          <span className="text-fg-3">
             {readOnly
               ? 'Read-only — job running'
               : collabReadOnly
                 ? 'Read-only — no edit access'
                 : 'LaTeX editor'}
           </span>
-          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-zinc-700">
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-fg-3">
             {onAutoCompile && (
-              <span className="flex items-center gap-1 text-[10px] text-orange-400/70">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-400/70" />
+              <span className="flex items-center gap-1 text-[10px] text-accent-strong">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                 Auto
               </span>
             )}
@@ -1741,12 +1808,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             {(pageCount !== null && pageCount !== undefined) ? (
               <span
                 title={`Resume is ${pageCount} page${pageCount === 1 ? '' : 's'}`}
-                className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md ${
+                className={`text-[10px] font-medium px-1.5 py-0.5 rounded-[var(--radius-md)] ${
                   pageCount === 1
-                    ? 'text-emerald-400 bg-emerald-500/10'
+                    ? 'text-ok bg-ok/10'
                     : pageCount === 2
-                    ? 'text-amber-400 bg-amber-500/10'
-                    : 'text-rose-400 bg-rose-500/10 animate-pulse'
+                    ? 'text-warn bg-warn/10'
+                    : 'text-err bg-err/10 animate-pulse'
                 }`}
               >
                 {pageCount} {pageCount === 1 ? 'page' : 'pages'}{pageCount > 1 ? ' ⚠' : ''}
@@ -1754,7 +1821,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             ) : estimatedPageCount !== null ? (
               <span
                 title="Estimated page count (compile for exact count)"
-                className="text-[10px] text-zinc-600 px-1.5"
+                className="text-[10px] text-fg-3 px-1.5"
               >
                 ~{estimatedPageCount} {estimatedPageCount === 1 ? 'page' : 'pages'}
               </span>
@@ -1765,13 +1832,13 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 title={spellCheckEnabled ? 'Spell check on — click to disable' : 'Spell check off — click to enable'}
                 className={`flex items-center gap-1 text-[10px] transition ${
                   spellCheckEnabled
-                    ? 'text-blue-400 hover:text-blue-300'
-                    : 'text-zinc-700 hover:text-zinc-400'
+                    ? 'text-accent-strong hover:text-accent'
+                    : 'text-fg-3 hover:text-fg-2'
                 }`}
               >
                 ABC{spellCheckEnabled ? ' ✓' : ''}
                 {spellCheckLoading && (
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" />
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                 )}
               </button>
             )}
@@ -1784,8 +1851,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             )}
             {(confidenceScore !== undefined || confidenceScoreLoading) && (
               confidenceScoreLoading ? (
-                <span className="flex items-center gap-1 text-[10px] text-zinc-500">
-                  <span className="h-1.5 w-1.5 animate-spin rounded-full border border-zinc-500 border-t-transparent" />
+                <span className="flex items-center gap-1 text-[10px] text-fg-3">
+                  <span className="h-1.5 w-1.5 animate-spin rounded-full border border-line-2 border-t-transparent" />
                   Quality
                 </span>
               ) : confidenceScore != null ? (
@@ -1794,12 +1861,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                     type="button"
                     onClick={onConfidenceBadgeClick}
                     title="Resume quality score — click to view details"
-                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer hover:brightness-110 ${
+                    className={`rounded-[var(--radius-md)] px-1.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer hover:brightness-110 ${
                       confidenceScore >= 80
-                        ? 'text-emerald-400 bg-emerald-500/10'
+                        ? 'text-ok bg-ok/10'
                         : confidenceScore >= 60
-                          ? 'text-amber-400 bg-amber-500/10'
-                          : 'text-rose-400 bg-rose-500/10'
+                          ? 'text-warn bg-warn/10'
+                          : 'text-err bg-err/10'
                     }`}
                   >
                     Q {confidenceScore}
@@ -1807,12 +1874,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 ) : (
                   <span
                     title="Resume quality score"
-                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
+                    className={`rounded-[var(--radius-md)] px-1.5 py-0.5 text-[10px] font-medium ${
                       confidenceScore >= 80
-                        ? 'text-emerald-400 bg-emerald-500/10'
+                        ? 'text-ok bg-ok/10'
                         : confidenceScore >= 60
-                          ? 'text-amber-400 bg-amber-500/10'
-                          : 'text-rose-400 bg-rose-500/10'
+                          ? 'text-warn bg-warn/10'
+                          : 'text-err bg-err/10'
                     }`}
                   >
                     Q {confidenceScore}
@@ -1821,7 +1888,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               ) : null
             )}
             <span>{value.length.toLocaleString()} chars</span>
-            <span className="hidden text-zinc-800 sm:inline">
+            <span className="hidden text-fg-3 sm:inline">
               {[onSave && '⌘S save', onCompile && '⌘↵ compile', '⌘⇧H presets'].filter(Boolean).join(' · ')}
             </span>
           </div>

@@ -44,35 +44,35 @@ export default function OnboardingFlow({
       id: 'welcome',
       title: 'Welcome to Latexy!',
       description: 'Your AI-powered resume optimization platform',
-      icon: <Sparkles className="w-8 h-8 text-primary-500" />,
+      icon: <Sparkles className="w-8 h-8 text-accent-strong" />,
       content: (
         <div className="text-center space-y-6">
-          <div className="w-24 h-24 mx-auto bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center">
-            <FileText className="w-12 h-12 text-white" />
+          <div className="w-24 h-24 mx-auto bg-gradient-to-br from-accent to-accent rounded-[var(--radius-pill)] flex items-center justify-center">
+            <FileText className="w-12 h-12 text-accent-fg" />
           </div>
           <div>
-            <h3 className="text-2xl font-bold text-secondary-900 mb-2">
+            <h3 className="text-2xl font-bold text-fg mb-2">
               Welcome to Latexy!
             </h3>
-            <p className="text-secondary-600 text-lg">
+            <p className="text-fg-2 text-lg">
               Create ATS-friendly resumes with LaTeX precision and AI optimization
             </p>
           </div>
           <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <Users className="w-6 h-6 text-blue-500 mx-auto mb-2" />
-              <p className="text-sm font-medium text-blue-700">10,000+</p>
-              <p className="text-xs text-blue-600">Happy Users</p>
+            <div className="p-4 bg-accent-soft rounded-[var(--radius-lg)]">
+              <Users className="w-6 h-6 text-accent-strong mx-auto mb-2" />
+              <p className="text-sm font-medium text-accent-strong">10,000+</p>
+              <p className="text-xs text-accent-strong">Happy Users</p>
             </div>
-            <div className="p-4 bg-green-50 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-green-500 mx-auto mb-2" />
-              <p className="text-sm font-medium text-green-700">95%</p>
-              <p className="text-xs text-green-600">ATS Pass Rate</p>
+            <div className="p-4 bg-ok/10 rounded-[var(--radius-lg)]">
+              <TrendingUp className="w-6 h-6 text-ok mx-auto mb-2" />
+              <p className="text-sm font-medium text-ok">95%</p>
+              <p className="text-xs text-ok">ATS Pass Rate</p>
             </div>
-            <div className="p-4 bg-purple-50 rounded-lg">
-              <Shield className="w-6 h-6 text-purple-500 mx-auto mb-2" />
-              <p className="text-sm font-medium text-purple-700">100%</p>
-              <p className="text-xs text-purple-600">Secure & Private</p>
+            <div className="p-4 bg-accent-soft rounded-[var(--radius-lg)]">
+              <Shield className="w-6 h-6 text-accent-strong mx-auto mb-2" />
+              <p className="text-sm font-medium text-accent-strong">100%</p>
+              <p className="text-xs text-accent-strong">Secure & Private</p>
             </div>
           </div>
         </div>
@@ -82,42 +82,42 @@ export default function OnboardingFlow({
       id: 'how-it-works',
       title: 'How Latexy Works',
       description: 'Three simple steps to optimize your resume',
-      icon: <Zap className="w-8 h-8 text-primary-500" />,
+      icon: <Zap className="w-8 h-8 text-accent-strong" />,
       content: (
         <div className="space-y-6">
-          <h3 className="text-xl font-bold text-secondary-900 text-center mb-6">
+          <h3 className="text-xl font-bold text-fg text-center mb-6">
             Three Simple Steps
           </h3>
           <div className="space-y-4">
-            <div className="flex items-start gap-4 p-4 bg-blue-50 rounded-lg">
-              <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold text-sm">
+            <div className="flex items-start gap-4 p-4 bg-accent-soft rounded-[var(--radius-lg)]">
+              <div className="w-8 h-8 bg-accent text-accent-fg rounded-[var(--radius-pill)] flex items-center justify-center font-bold text-sm">
                 1
               </div>
               <div>
-                <h4 className="font-semibold text-blue-900">Upload or Create</h4>
-                <p className="text-blue-700 text-sm">
+                <h4 className="font-semibold text-accent-strong">Upload or Create</h4>
+                <p className="text-accent-strong text-sm">
                   Upload your existing resume or create one using our LaTeX editor
                 </p>
               </div>
             </div>
-            <div className="flex items-start gap-4 p-4 bg-green-50 rounded-lg">
-              <div className="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold text-sm">
+            <div className="flex items-start gap-4 p-4 bg-ok/10 rounded-[var(--radius-lg)]">
+              <div className="w-8 h-8 bg-ok text-accent-fg rounded-[var(--radius-pill)] flex items-center justify-center font-bold text-sm">
                 2
               </div>
               <div>
-                <h4 className="font-semibold text-green-900">AI Optimization</h4>
-                <p className="text-green-700 text-sm">
+                <h4 className="font-semibold text-ok">AI Optimization</h4>
+                <p className="text-ok text-sm">
                   Paste the job description and let AI optimize your resume for ATS compatibility
                 </p>
               </div>
             </div>
-            <div className="flex items-start gap-4 p-4 bg-purple-50 rounded-lg">
-              <div className="w-8 h-8 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold text-sm">
+            <div className="flex items-start gap-4 p-4 bg-accent-soft rounded-[var(--radius-lg)]">
+              <div className="w-8 h-8 bg-accent text-accent-fg rounded-[var(--radius-pill)] flex items-center justify-center font-bold text-sm">
                 3
               </div>
               <div>
-                <h4 className="font-semibold text-purple-900">Download & Apply</h4>
-                <p className="text-purple-700 text-sm">
+                <h4 className="font-semibold text-accent-strong">Download & Apply</h4>
+                <p className="text-accent-strong text-sm">
                   Get your optimized PDF resume and start applying with confidence
                 </p>
               </div>
@@ -130,38 +130,38 @@ export default function OnboardingFlow({
       id: 'features',
       title: 'Key Features',
       description: 'Discover what makes Latexy powerful',
-      icon: <Target className="w-8 h-8 text-primary-500" />,
+      icon: <Target className="w-8 h-8 text-accent-strong" />,
       content: (
         <div className="space-y-6">
-          <h3 className="text-xl font-bold text-secondary-900 text-center mb-6">
+          <h3 className="text-xl font-bold text-fg text-center mb-6">
             Powerful Features
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 border border-secondary-200 rounded-lg hover:border-primary-300 transition-colors">
-              <FileText className="w-6 h-6 text-primary-500 mb-2" />
-              <h4 className="font-semibold text-secondary-900 mb-1">LaTeX Editor</h4>
-              <p className="text-sm text-secondary-600">
+            <div className="p-4 border border-line rounded-[var(--radius-lg)] hover:border-accent transition-colors">
+              <FileText className="w-6 h-6 text-accent-strong mb-2" />
+              <h4 className="font-semibold text-fg mb-1">LaTeX Editor</h4>
+              <p className="text-sm text-fg-2">
                 Professional typesetting with syntax highlighting
               </p>
             </div>
-            <div className="p-4 border border-secondary-200 rounded-lg hover:border-primary-300 transition-colors">
-              <Zap className="w-6 h-6 text-primary-500 mb-2" />
-              <h4 className="font-semibold text-secondary-900 mb-1">AI Optimization</h4>
-              <p className="text-sm text-secondary-600">
+            <div className="p-4 border border-line rounded-[var(--radius-lg)] hover:border-accent transition-colors">
+              <Zap className="w-6 h-6 text-accent-strong mb-2" />
+              <h4 className="font-semibold text-fg mb-1">AI Optimization</h4>
+              <p className="text-sm text-fg-2">
                 Smart content optimization for job descriptions
               </p>
             </div>
-            <div className="p-4 border border-secondary-200 rounded-lg hover:border-primary-300 transition-colors">
-              <Target className="w-6 h-6 text-primary-500 mb-2" />
-              <h4 className="font-semibold text-secondary-900 mb-1">ATS Scoring</h4>
-              <p className="text-sm text-secondary-600">
+            <div className="p-4 border border-line rounded-[var(--radius-lg)] hover:border-accent transition-colors">
+              <Target className="w-6 h-6 text-accent-strong mb-2" />
+              <h4 className="font-semibold text-fg mb-1">ATS Scoring</h4>
+              <p className="text-sm text-fg-2">
                 Real-time compatibility scoring and recommendations
               </p>
             </div>
-            <div className="p-4 border border-secondary-200 rounded-lg hover:border-primary-300 transition-colors">
-              <Shield className="w-6 h-6 text-primary-500 mb-2" />
-              <h4 className="font-semibold text-secondary-900 mb-1">BYOK Support</h4>
-              <p className="text-sm text-secondary-600">
+            <div className="p-4 border border-line rounded-[var(--radius-lg)] hover:border-accent transition-colors">
+              <Shield className="w-6 h-6 text-accent-strong mb-2" />
+              <h4 className="font-semibold text-fg mb-1">BYOK Support</h4>
+              <p className="text-sm text-fg-2">
                 Use your own API keys for cost-effective optimization
               </p>
             </div>
@@ -173,25 +173,25 @@ export default function OnboardingFlow({
       id: 'get-started',
       title: 'Ready to Get Started?',
       description: 'Choose your path and start optimizing',
-      icon: <CheckCircle className="w-8 h-8 text-primary-500" />,
+      icon: <CheckCircle className="w-8 h-8 text-accent-strong" />,
       content: (
         <div className="text-center space-y-6">
           <div>
-            <h3 className="text-xl font-bold text-secondary-900 mb-2">
+            <h3 className="text-xl font-bold text-fg mb-2">
               You're All Set!
             </h3>
-            <p className="text-secondary-600">
+            <p className="text-fg-2">
               Ready to create your first optimized resume?
             </p>
           </div>
           
           {userType === 'new' && (
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <h4 className="font-semibold text-blue-900 mb-2">Free Trial Available</h4>
-              <p className="text-blue-700 text-sm mb-3">
+            <div className="p-4 bg-accent-soft rounded-[var(--radius-lg)] border border-accent">
+              <h4 className="font-semibold text-accent-strong mb-2">Free Trial Available</h4>
+              <p className="text-accent-strong text-sm mb-3">
                 Try 3 resume compilations right now - no account, no credit card required!
               </p>
-              <div className="flex items-center justify-center gap-2 text-blue-600 text-sm">
+              <div className="flex items-center justify-center gap-2 text-accent-strong text-sm">
                 <CheckCircle className="w-4 h-4" />
                 <span>No registration needed for trial</span>
               </div>
@@ -199,18 +199,18 @@ export default function OnboardingFlow({
           )}
           
           {userType === 'trial_converted' && (
-            <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-              <h4 className="font-semibold text-green-900 mb-2">Welcome to the Community!</h4>
-              <p className="text-green-700 text-sm">
+            <div className="p-4 bg-ok/10 rounded-[var(--radius-lg)] border border-ok/20">
+              <h4 className="font-semibold text-ok mb-2">Welcome to the Community!</h4>
+              <p className="text-ok text-sm">
                 Thanks for joining Latexy! Your free account includes 10 compilations per day and 3 AI optimizations per month.
               </p>
             </div>
           )}
           
           {userType === 'premium' && (
-            <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-              <h4 className="font-semibold text-purple-900 mb-2">Premium Features Unlocked!</h4>
-              <p className="text-purple-700 text-sm">
+            <div className="p-4 bg-accent-soft rounded-[var(--radius-lg)] border border-accent/30">
+              <h4 className="font-semibold text-accent-strong mb-2">Premium Features Unlocked!</h4>
+              <p className="text-accent-strong text-sm">
                 Enjoy unlimited optimizations, priority support, and advanced features.
               </p>
             </div>
@@ -219,13 +219,13 @@ export default function OnboardingFlow({
           <div className="space-y-3">
             <button
               onClick={onComplete}
-              className="w-full btn-primary py-3 text-base font-medium"
+              className="w-full rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg transition hover:brightness-110 py-3 text-base font-medium"
             >
               Start Creating My Resume
             </button>
             <button
               onClick={onSkip}
-              className="w-full text-secondary-600 hover:text-secondary-800 text-sm"
+              className="w-full text-fg-2 hover:text-fg text-sm"
             >
               Skip tutorial and explore on my own
             </button>
@@ -255,27 +255,27 @@ export default function OnboardingFlow({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-[var(--overlay)] flex items-center justify-center z-50 p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
+        className="bg-surface rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
       >
         {/* Header */}
-        <div className="p-6 border-b border-secondary-200">
+        <div className="p-6 border-b border-line">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-secondary-900">
+              <h2 className="text-lg font-semibold text-fg">
                 Getting Started
               </h2>
-              <p className="text-sm text-secondary-600">
+              <p className="text-sm text-fg-2">
                 Step {currentStep + 1} of {steps.length}
               </p>
             </div>
             <button
               onClick={onSkip}
-              className="text-secondary-400 hover:text-secondary-600 text-sm"
+              className="text-fg-3 hover:text-fg-2 text-sm"
             >
               Skip
             </button>
@@ -288,10 +288,11 @@ export default function OnboardingFlow({
                 <button
                   key={index}
                   onClick={() => goToStep(index)}
-                  className={`flex-1 h-2 rounded-full transition-colors ${
+                  aria-label={`Go to step ${index + 1}`}
+                  className={`flex-1 h-2 rounded-[var(--radius-pill)] transition-colors ${
                     index <= currentStep
-                      ? 'bg-primary-500'
-                      : 'bg-secondary-200'
+                      ? 'bg-accent'
+                      : 'bg-surface-2'
                   }`}
                 />
               ))}
@@ -316,15 +317,15 @@ export default function OnboardingFlow({
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-secondary-200 bg-secondary-50">
+        <div className="p-6 border-t border-line bg-surface-2">
           <div className="flex items-center justify-between">
             <button
               onClick={prevStep}
               disabled={currentStep === 0}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-[var(--radius-lg)] text-sm font-medium transition-colors ${
                 currentStep === 0
-                  ? 'text-secondary-400 cursor-not-allowed'
-                  : 'text-secondary-700 hover:bg-secondary-200'
+                  ? 'text-fg-3 cursor-not-allowed'
+                  : 'text-fg-2 hover:bg-surface-2'
               }`}
             >
               <ArrowLeft className="w-4 h-4" />
@@ -336,12 +337,13 @@ export default function OnboardingFlow({
                 <button
                   key={index}
                   onClick={() => goToStep(index)}
-                  className={`w-2 h-2 rounded-full transition-colors ${
+                  aria-label={`Go to step ${index + 1}`}
+                  className={`w-2 h-2 rounded-[var(--radius-pill)] transition-colors ${
                     index === currentStep
-                      ? 'bg-primary-500'
+                      ? 'bg-accent'
                       : index < currentStep
-                      ? 'bg-primary-300'
-                      : 'bg-secondary-300'
+                      ? 'bg-accent-soft'
+                      : 'bg-surface-2'
                   }`}
                 />
               ))}
@@ -350,7 +352,7 @@ export default function OnboardingFlow({
             {currentStep < steps.length - 1 ? (
               <button
                 onClick={nextStep}
-                className="flex items-center gap-2 btn-primary px-4 py-2 text-sm font-medium"
+                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg transition hover:brightness-110 px-4 py-2 text-sm font-medium"
               >
                 Next
                 <ArrowRight className="w-4 h-4" />
@@ -358,7 +360,7 @@ export default function OnboardingFlow({
             ) : (
               <button
                 onClick={onComplete}
-                className="flex items-center gap-2 btn-primary px-4 py-2 text-sm font-medium"
+                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg transition hover:brightness-110 px-4 py-2 text-sm font-medium"
               >
                 Get Started
                 <CheckCircle className="w-4 h-4" />

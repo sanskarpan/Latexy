@@ -4,6 +4,8 @@ import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient } from '@/lib/auth-client'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 
 function ResetPasswordInner() {
   const router = useRouter()
@@ -53,81 +55,92 @@ function ResetPasswordInner() {
   const invalidLink = !token || tokenError
 
   return (
-    <div className="content-shell flex min-h-[80vh] items-center justify-center">
-      <div className="w-full max-w-md space-y-8">
+    <div className="flex min-h-[80vh] items-center justify-center bg-bg px-5 py-16 sm:px-8">
+      <div className="w-full max-w-md">
         <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Reset password</h1>
-          <p className="mt-2 text-zinc-400">Choose a new password for your account</p>
+          <span className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Account recovery</span>
+          <h1 className="mt-4 font-display text-4xl font-semibold tracking-[-0.02em] text-fg sm:text-5xl">
+            Reset password
+          </h1>
+          <p className="mt-3 font-body text-fg-2">Choose a new password for your account.</p>
         </div>
 
-        <div className="surface-panel edge-highlight p-6 sm:p-8">
+        <div className="mt-8 rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)] sm:p-8">
           {done ? (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-center text-sm text-emerald-300">
+            <div
+              role="status"
+              aria-live="polite"
+              className="rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-4 py-3 text-center font-body text-sm text-ok"
+            >
               Password updated. Redirecting you to sign in&hellip;
             </div>
           ) : invalidLink ? (
             <div className="space-y-4 text-center">
-              <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-4 py-3 font-body text-sm text-err"
+              >
                 This reset link is invalid or has expired.
               </div>
               <Link
                 href="/forgot-password"
-                className="inline-block text-sm font-semibold text-orange-200 hover:text-orange-100"
+                className="inline-block rounded-[var(--radius-sm)] font-ui text-sm font-semibold text-accent-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
                 Request a new link
               </Link>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-4">
-              <div>
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="space-y-2">
                 <label
                   htmlFor="password"
-                  className="block text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400"
+                  className="block font-ui text-xs uppercase tracking-[0.16em] text-fg-3"
                 >
                   New password
                 </label>
-                <input
+                <Input
                   type="password"
                   id="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={8}
-                  className="mt-2 block w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-zinc-100 outline-none transition focus:border-orange-300/50"
+                  autoComplete="new-password"
                 />
               </div>
 
-              <div>
+              <div className="space-y-2">
                 <label
                   htmlFor="confirm"
-                  className="block text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400"
+                  className="block font-ui text-xs uppercase tracking-[0.16em] text-fg-3"
                 >
                   Confirm password
                 </label>
-                <input
+                <Input
                   type="password"
                   id="confirm"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   required
                   minLength={8}
-                  className="mt-2 block w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-zinc-100 outline-none transition focus:border-orange-300/50"
+                  autoComplete="new-password"
                 />
               </div>
 
               {error && (
-                <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  className="rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-3 py-2 font-body text-sm text-err"
+                >
                   {error}
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="btn-accent w-full py-2.5 text-sm disabled:opacity-50"
-              >
-                {isLoading ? 'Updating...' : 'Update password'}
-              </button>
+              <Button type="submit" disabled={isLoading} loading={isLoading} className="h-11 w-full">
+                Update password
+              </Button>
             </form>
           )}
         </div>

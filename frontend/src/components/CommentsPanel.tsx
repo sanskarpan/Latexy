@@ -99,14 +99,14 @@ export default function CommentsPanel({
   }
 
   return (
-    <div className="flex flex-col h-full bg-zinc-900 border-l border-zinc-800 w-72">
+    <div className="flex flex-col h-full bg-surface border-l border-line w-72">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 shrink-0">
-        <div className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
-          <MessageSquare className="h-4 w-4 text-violet-400" />
+      <div className="flex items-center justify-between px-4 py-3 border-b border-line shrink-0">
+        <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+          <MessageSquare className="h-4 w-4 text-accent-strong" />
           Comments
           {comments.length > 0 && (
-            <span className="text-xs bg-zinc-700 text-zinc-400 rounded-full px-2 py-0.5">
+            <span className="text-xs bg-surface-2 text-fg-2 rounded-full px-2 py-0.5">
               {comments.length}
             </span>
           )}
@@ -114,7 +114,7 @@ export default function CommentsPanel({
         {onClose && (
           <button
             onClick={onClose}
-            className="text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="text-fg-3 hover:text-fg-2 transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -125,10 +125,10 @@ export default function CommentsPanel({
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
         {loading ? (
           <div className="flex justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-zinc-500" />
+            <Loader2 className="h-5 w-5 animate-spin text-fg-3" />
           </div>
         ) : comments.length === 0 ? (
-          <p className="text-center text-xs text-zinc-500 py-8">No comments yet.</p>
+          <p className="text-center text-xs text-fg-3 py-8">No comments yet.</p>
         ) : (
           <ul className="space-y-2">
             {comments.map((comment) => {
@@ -139,24 +139,24 @@ export default function CommentsPanel({
                 <li
                   key={comment.id}
                   ref={isHighlighted ? highlightRef : null}
-                  className={`rounded-lg p-3 transition-colors ${
+                  className={`rounded-[var(--radius-md)] p-3 transition-colors ${
                     comment.resolved
-                      ? 'bg-zinc-800/50 opacity-60'
+                      ? 'bg-surface-2/50 opacity-60'
                       : isHighlighted
-                      ? 'bg-violet-500/10 border border-violet-500/30'
-                      : 'bg-zinc-800'
+                      ? 'bg-accent-soft border border-accent'
+                      : 'bg-surface-2'
                   }`}
                 >
                   {/* Line / section badge */}
                   {(comment.line_number != null || comment.section_tag) && (
                     <div className="flex gap-1.5 mb-1.5">
                       {comment.line_number != null && (
-                        <span className="text-xs bg-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded font-mono">
+                        <span className="text-xs bg-surface-2 text-fg-2 px-1.5 py-0.5 rounded-[var(--radius-md)] font-mono">
                           L{comment.line_number}
                         </span>
                       )}
                       {comment.section_tag && (
-                        <span className="text-xs bg-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded">
+                        <span className="text-xs bg-surface-2 text-fg-2 px-1.5 py-0.5 rounded-[var(--radius-md)]">
                           {comment.section_tag}
                         </span>
                       )}
@@ -172,13 +172,13 @@ export default function CommentsPanel({
                           setEditDrafts((p) => ({ ...p, [comment.id]: e.target.value }))
                         }
                         rows={3}
-                        className="w-full bg-zinc-700 border border-zinc-600 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-violet-500 resize-none"
+                        className="w-full bg-surface-2 border border-line rounded-[var(--radius-md)] px-2 py-1.5 text-xs focus:outline-none focus:border-accent resize-none"
                       />
                       <div className="flex gap-1.5">
                         <button
                           onClick={() => handleUpdate(comment.id)}
                           disabled={editSaving[comment.id]}
-                          className="flex items-center gap-1 px-2 py-1 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded text-xs transition-colors"
+                          className="flex items-center gap-1 px-2 py-1 bg-accent text-accent-fg hover:brightness-110 disabled:opacity-50 rounded-[var(--radius-md)] text-xs transition-colors"
                         >
                           {editSaving[comment.id]
                             ? <Loader2 className="h-3 w-3 animate-spin" />
@@ -187,19 +187,19 @@ export default function CommentsPanel({
                         </button>
                         <button
                           onClick={() => setEditDrafts((p) => { const next = { ...p }; delete next[comment.id]; return next })}
-                          className="px-2 py-1 text-zinc-400 hover:text-zinc-200 text-xs transition-colors"
+                          className="px-2 py-1 text-fg-2 hover:text-fg text-xs transition-colors"
                         >
                           Cancel
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-zinc-200 whitespace-pre-wrap">{comment.content}</p>
+                    <p className="text-xs text-fg whitespace-pre-wrap">{comment.content}</p>
                   )}
 
                   {/* Footer */}
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-fg-3">
                       {comment.author_name ?? comment.author_email ?? 'User'} ·{' '}
                       {new Date(comment.created_at).toLocaleDateString()}
                     </span>
@@ -210,8 +210,8 @@ export default function CommentsPanel({
                         title={comment.resolved ? 'Unresolve' : 'Resolve'}
                         className={`p-0.5 transition-colors ${
                           comment.resolved
-                            ? 'text-emerald-400 hover:text-zinc-400'
-                            : 'text-zinc-600 hover:text-emerald-400'
+                            ? 'text-ok hover:text-fg-2'
+                            : 'text-fg-3 hover:text-ok'
                         }`}
                       >
                         <Check className="h-3.5 w-3.5" />
@@ -220,14 +220,14 @@ export default function CommentsPanel({
                         <>
                           <button
                             onClick={() => setEditDrafts((p) => ({ ...p, [comment.id]: comment.content }))}
-                            className="p-0.5 text-zinc-600 hover:text-violet-400 transition-colors"
+                            className="p-0.5 text-fg-3 hover:text-accent-strong transition-colors"
                             title="Edit"
                           >
                             <Pencil className="h-3 w-3" />
                           </button>
                           <button
                             onClick={() => handleDelete(comment.id)}
-                            className="p-0.5 text-zinc-600 hover:text-rose-400 transition-colors"
+                            className="p-0.5 text-fg-3 hover:text-err transition-colors"
                             title="Delete"
                           >
                             <Trash2 className="h-3 w-3" />
@@ -244,7 +244,7 @@ export default function CommentsPanel({
       </div>
 
       {/* Add comment form */}
-      <div className="shrink-0 border-t border-zinc-800 px-3 py-3">
+      <div className="shrink-0 border-t border-line px-3 py-3">
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -253,12 +253,12 @@ export default function CommentsPanel({
           }}
           placeholder="Add a comment… (⌘↵ to send)"
           rows={3}
-          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-violet-500 resize-none placeholder-zinc-600 mb-2"
+          className="w-full bg-surface-2 border border-line rounded-[var(--radius-md)] px-3 py-2 text-xs focus:outline-none focus:border-accent resize-none placeholder-fg-3 mb-2"
         />
         <button
           onClick={handleSubmit}
           disabled={submitting || !draft.trim()}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg text-xs font-medium transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-accent-fg hover:brightness-110 disabled:opacity-50 rounded-[var(--radius-md)] text-xs font-medium transition-colors"
         >
           {submitting
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />

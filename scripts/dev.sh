@@ -232,9 +232,12 @@ start_app() {
   CELERY_BROKER_URL="$REDIS" \
   CELERY_RESULT_BACKEND="$REDIS" \
   MINIO_ENDPOINT="$MINIO" \
+  MINIO_ACCESS_KEY="minioadmin" \
+  MINIO_SECRET_KEY="minioadmin_secret" \
   BETTER_AUTH_URL="http://localhost:${FRONTEND_PORT}" \
   FRONTEND_URL="http://localhost:${FRONTEND_PORT}" \
   CORS_ORIGINS="$CORS" \
+  RATE_LIMIT_ENABLED="false" \
   "$UVICORN" app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" --reload --reload-dir app \
     2>&1 | sed "s/^/[backend]  /" &
   echo $! >> "$PID_FILE"
@@ -247,6 +250,8 @@ start_app() {
   CELERY_BROKER_URL="$REDIS" \
   CELERY_RESULT_BACKEND="$REDIS" \
   MINIO_ENDPOINT="$MINIO" \
+  MINIO_ACCESS_KEY="minioadmin" \
+  MINIO_SECRET_KEY="minioadmin_secret" \
   "$CELERY" -A app.core.celery_app worker --loglevel=info --concurrency=2 \
     -n "latexy-slot${SLOT}@%h" \
     --queues=latex,llm,combined,ats,cleanup,email \

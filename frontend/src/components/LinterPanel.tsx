@@ -43,34 +43,34 @@ export default function LinterPanel({
     <div className="flex h-full flex-col overflow-hidden">
 
       {/* ── Header ── */}
-      <div className="shrink-0 space-y-2 border-b border-white/[0.05] p-3">
+      <div className="shrink-0 space-y-2 border-b border-line p-3">
         <div className="flex items-center justify-between">
           {/* Sub-tab toggle */}
-          <div className="flex items-center gap-0.5 rounded-lg bg-white/[0.04] p-0.5">
+          <div className="flex items-center gap-0.5 rounded-[var(--radius-md)] bg-surface-2 p-0.5">
             <button
               onClick={() => setView('issues')}
-              className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition ${
-                view === 'issues' ? 'bg-white/[0.08] text-zinc-200' : 'text-zinc-600 hover:text-zinc-400'
+              className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium transition ${
+                view === 'issues' ? 'bg-surface-2 text-fg' : 'text-fg-3 hover:text-fg-2'
               }`}
             >
               <AlertTriangle size={9} />
               Issues
               {issues.length > 0 && (
-                <span className="rounded bg-amber-500/20 px-1 font-mono text-[8px] text-amber-300">
+                <span className="rounded bg-warn/20 px-1 font-mono text-[8px] text-warn">
                   {issues.length}
                 </span>
               )}
             </button>
             <button
               onClick={() => setView('ats-text')}
-              className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition ${
-                view === 'ats-text' ? 'bg-white/[0.08] text-zinc-200' : 'text-zinc-600 hover:text-zinc-400'
+              className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium transition ${
+                view === 'ats-text' ? 'bg-surface-2 text-fg' : 'text-fg-3 hover:text-fg-2'
               }`}
             >
               <FileText size={9} />
               ATS Text
               {extractedPdfText && (
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <span className="h-1.5 w-1.5 rounded-full bg-ok" />
               )}
             </button>
           </div>
@@ -80,14 +80,14 @@ export default function LinterPanel({
             <button
               onClick={() => onToggleEnabled(!enabled)}
               className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ${
-                enabled ? 'bg-violet-500/60' : 'bg-white/[0.08]'
+                enabled ? 'bg-accent' : 'bg-surface-2'
               }`}
               aria-label={enabled ? 'Disable linting' : 'Enable linting'}
               role="switch"
               aria-checked={enabled}
             >
               <span
-                className={`pointer-events-none inline-block h-3 w-3 translate-y-0.5 rounded-full bg-white shadow transition-transform duration-200 ${
+                className={`pointer-events-none inline-block h-3 w-3 translate-y-0.5 rounded-full bg-fg shadow transition-transform duration-200 ${
                   enabled ? 'translate-x-3.5' : 'translate-x-0.5'
                 }`}
               />
@@ -98,7 +98,7 @@ export default function LinterPanel({
         {view === 'issues' && enabled && fixableCount > 0 && (
           <button
             onClick={onAutoFixAll}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-[11px] font-medium text-violet-300 ring-1 ring-violet-500/25 transition hover:bg-violet-500/25"
+            className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft px-3 py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110"
           >
             <Zap size={11} />
             Auto-Fix All ({fixableCount} fixable)
@@ -119,17 +119,17 @@ export default function LinterPanel({
           <div className="flex-1 overflow-y-auto">
             {!enabled ? (
               <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-                <Info size={20} className="text-zinc-700" />
-                <p className="text-[11px] text-zinc-600">Linting is disabled.</p>
+                <Info size={20} className="text-fg-3" />
+                <p className="text-[11px] text-fg-3">Linting is disabled.</p>
               </div>
             ) : issues.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-                <CheckCircle size={20} className="text-emerald-600" />
-                <p className="text-[11px] text-zinc-500">No issues found.</p>
-                <p className="text-[10px] text-zinc-700">Results update 3s after you stop typing.</p>
+                <CheckCircle size={20} className="text-ok" />
+                <p className="text-[11px] text-fg-3">No issues found.</p>
+                <p className="text-[10px] text-fg-3">Results update 3s after you stop typing.</p>
               </div>
             ) : (
-              <div className="divide-y divide-white/[0.03]">
+              <div className="divide-y divide-line">
                 {warnings.length > 0 && (
                   <IssueGroup
                     label="Warnings"
@@ -153,15 +153,15 @@ export default function LinterPanel({
           </div>
 
           {enabled && (
-            <div className="shrink-0 border-t border-white/[0.04] px-3 py-2">
-              <p className="text-[10px] text-zinc-700">
+            <div className="shrink-0 border-t border-line px-3 py-2">
+              <p className="text-[10px] text-fg-3">
                 {issues.length} issue{issues.length === 1 ? '' : 's'}
                 {issues.length > 0 && (
                   <>
                     {' '}·{' '}
-                    <span className="text-amber-500/60">{warnings.length} warning{warnings.length === 1 ? '' : 's'}</span>
+                    <span className="text-warn">{warnings.length} warning{warnings.length === 1 ? '' : 's'}</span>
                     {infos.length > 0 && (
-                      <span className="text-blue-500/60 ml-1">· {infos.length} info</span>
+                      <span className="text-fg-3 ml-1">· {infos.length} info</span>
                     )}
                   </>
                 )}
@@ -191,14 +191,14 @@ function IssueGroup({
 }) {
   const colorMap = {
     amber: {
-      label: 'text-amber-400/70',
-      badge: 'bg-amber-500/10 text-amber-400',
-      icon: <AlertTriangle size={10} className="shrink-0 text-amber-400" />,
+      label: 'text-warn',
+      badge: 'bg-warn/10 text-warn',
+      icon: <AlertTriangle size={10} className="shrink-0 text-warn" />,
     },
     blue: {
-      label: 'text-blue-400/70',
-      badge: 'bg-blue-500/10 text-blue-400',
-      icon: <Info size={10} className="shrink-0 text-blue-400" />,
+      label: 'text-fg-3',
+      badge: 'bg-surface-2 text-fg-2',
+      icon: <Info size={10} className="shrink-0 text-fg-2" />,
     },
   }
 
@@ -214,21 +214,21 @@ function IssueGroup({
           <div className="flex items-start gap-2">
             <div className="mt-0.5">{c.icon}</div>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] leading-snug text-zinc-300">{issue.message}</p>
+              <p className="text-[11px] leading-snug text-fg-2">{issue.message}</p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 <span className={`rounded px-1.5 py-0.5 font-mono text-[9px] ${c.badge}`}>
                   {issue.ruleId}
                 </span>
                 <button
                   onClick={() => onJumpToLine(issue.line)}
-                  className="text-[10px] text-zinc-600 underline-offset-2 hover:text-zinc-400 hover:underline"
+                  className="text-[10px] text-fg-3 underline-offset-2 hover:text-fg-2 hover:underline"
                 >
                   line {issue.line}
                 </button>
                 {issue.fixable && (
                   <button
                     onClick={() => onApplyFix(issue)}
-                    className="flex items-center gap-0.5 rounded bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-zinc-400 ring-1 ring-white/[0.06] transition hover:bg-violet-500/15 hover:text-violet-300 hover:ring-violet-500/25"
+                    className="flex items-center gap-0.5 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-2 ring-1 ring-line transition hover:bg-accent-soft hover:text-accent-strong hover:ring-accent"
                   >
                     <Wrench size={8} />
                     Fix

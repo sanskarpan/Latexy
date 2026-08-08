@@ -28,10 +28,10 @@ function Field({
   multiline?: boolean
 }) {
   const cls =
-    'w-full rounded border border-white/[0.08] bg-black/30 px-2 py-1 text-[11px] text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20'
+    'w-full rounded border border-line bg-bg px-2 py-1 text-[11px] text-fg outline-none placeholder:text-fg-3 focus:border-accent focus:ring-1 focus:ring-accent'
   return (
     <div className="flex flex-col gap-0.5">
-      <label className="text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-700">
+      <label className="text-[9px] font-semibold uppercase tracking-[0.12em] text-fg-3">
         {label}
       </label>
       {multiline ? (
@@ -75,18 +75,18 @@ function EntryCard({
   const removeBullet = (i: number) => upd({ bullets: entry.bullets.filter((_, j) => j !== i) })
 
   return (
-    <div className="group relative rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+    <div className="group relative rounded-[var(--radius-md)] border border-line bg-surface p-3">
       <button
         onClick={onRemove}
-        className="absolute right-2 top-2 hidden rounded p-0.5 text-zinc-700 transition hover:bg-red-500/20 hover:text-red-400 group-hover:flex"
+        className="absolute right-2 top-2 hidden rounded p-0.5 text-fg-3 transition hover:bg-err/20 hover:text-err group-hover:flex"
       >
         <Trash2 size={11} />
       </button>
 
       {/* Type badge */}
       <div className="mb-2 flex items-center gap-1.5">
-        <GripVertical size={11} className="text-zinc-800" />
-        <span className="rounded bg-white/[0.05] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-zinc-600">
+        <GripVertical size={11} className="text-fg-3" />
+        <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-fg-3">
           {entry.type}
         </span>
       </div>
@@ -123,22 +123,22 @@ function EntryCard({
 
           {/* Bullets */}
           <div>
-            <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-700">
+            <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-fg-3">
               Bullets
             </div>
             <div className="space-y-1">
               {entry.bullets.map((b, i) => (
                 <div key={i} className="flex items-start gap-1">
-                  <span className="mt-1.5 text-zinc-800">•</span>
+                  <span className="mt-1.5 text-fg-3">•</span>
                   <input
                     value={b}
                     onChange={(e) => updBullet(i, e.target.value)}
-                    className="flex-1 rounded border border-white/[0.06] bg-black/20 px-2 py-1 text-[11px] text-zinc-300 outline-none focus:border-violet-500/30"
+                    className="flex-1 rounded border border-line bg-bg px-2 py-1 text-[11px] text-fg-2 outline-none focus:border-accent"
                     placeholder="Bullet point…"
                   />
                   <button
                     onClick={() => removeBullet(i)}
-                    className="mt-0.5 rounded p-0.5 text-zinc-800 transition hover:text-red-400"
+                    className="mt-0.5 rounded p-0.5 text-fg-3 transition hover:text-err"
                   >
                     <Trash2 size={10} />
                   </button>
@@ -147,7 +147,7 @@ function EntryCard({
             </div>
             <button
               onClick={addBullet}
-              className="mt-1.5 flex items-center gap-1 text-[10px] text-zinc-700 transition hover:text-zinc-400"
+              className="mt-1.5 flex items-center gap-1 text-[10px] text-fg-3 transition hover:text-fg-2"
             >
               <Plus size={10} />
               Add bullet
@@ -192,12 +192,12 @@ function SectionCard({
   }
 
   return (
-    <div className="rounded-xl border border-white/[0.05] bg-white/[0.01] p-4">
+    <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
         <input
           value={section.title}
           onChange={(e) => onChange({ ...section, title: e.target.value })}
-          className="flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-[13px] font-bold text-zinc-200 outline-none hover:border-white/[0.08] focus:border-violet-500/40"
+          className="flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-[13px] font-bold text-fg outline-none hover:border-line focus:border-accent"
           placeholder="Section Title"
         />
       </div>
@@ -218,7 +218,7 @@ function SectionCard({
           <button
             key={type}
             onClick={() => addEntry(type)}
-            className="flex items-center gap-1 rounded-md border border-white/[0.06] bg-white/[0.02] px-2 py-1 text-[10px] text-zinc-600 transition hover:border-violet-500/30 hover:text-zinc-400"
+            className="flex items-center gap-1 rounded-[var(--radius-md)] border border-line bg-surface px-2 py-1 text-[10px] text-fg-3 transition hover:border-accent hover:text-fg-2"
           >
             <Plus size={10} />
             {type === 'subheading' ? 'Job / Education' : type === 'project' ? 'Project' : 'Bullet list'}
@@ -254,7 +254,7 @@ export default function WYSIWYGEditor({ doc, onChange, hasRawEntries }: WYSIWYGE
   return (
     <div className="flex flex-col gap-4">
       {hasRawEntries && (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
+        <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-warn/20 bg-warn/10 px-3 py-2 text-[11px] text-warn">
           <AlertTriangle size={12} />
           Some blocks could not be parsed and are shown as raw LaTeX. They will be preserved as-is.
         </div>
@@ -270,7 +270,7 @@ export default function WYSIWYGEditor({ doc, onChange, hasRawEntries }: WYSIWYGE
 
       <button
         onClick={addSection}
-        className="flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-white/[0.08] py-3 text-[11px] text-zinc-700 transition hover:border-violet-500/30 hover:text-zinc-500"
+        className="flex items-center justify-center gap-1.5 rounded-[var(--radius-lg)] border border-dashed border-line py-3 text-[11px] text-fg-3 transition hover:border-accent hover:text-fg-2"
       >
         <Plus size={12} />
         Add Section

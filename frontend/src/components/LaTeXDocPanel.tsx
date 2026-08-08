@@ -41,32 +41,32 @@ function CommandDetail({
   return (
     <div className="flex h-full flex-col overflow-auto">
       {/* Header */}
-      <div className="shrink-0 border-b border-white/[0.05] px-3 py-2">
+      <div className="shrink-0 border-b border-line px-3 py-2">
         <button
           onClick={onBack}
-          className="mb-2 flex items-center gap-1 text-[11px] text-zinc-500 transition hover:text-zinc-300"
+          className="mb-2 flex items-center gap-1 text-[11px] text-fg-3 transition hover:text-fg-2"
         >
           <ChevronLeft size={12} />
           Back to reference
         </button>
-        <div className="font-mono text-base font-semibold text-orange-400">{doc.command}</div>
-        <div className="mt-0.5 font-mono text-xs text-zinc-500">{doc.signature}</div>
+        <div className="font-mono text-base font-semibold text-accent-strong">{doc.command}</div>
+        <div className="mt-0.5 font-mono text-xs text-fg-3">{doc.signature}</div>
       </div>
 
       {/* Body */}
       <div className="flex-1 space-y-4 overflow-auto p-3">
         {/* Description */}
-        <p className="text-xs leading-relaxed text-zinc-300">{doc.description}</p>
+        <p className="text-xs leading-relaxed text-fg-2">{doc.description}</p>
 
         {/* Parameters */}
         {doc.parameters.length > 0 && (
           <div>
-            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">
               Parameters
             </div>
             <table className="w-full border-collapse text-xs">
               <thead>
-                <tr className="border-b border-white/[0.06] text-left text-[10px] text-zinc-600">
+                <tr className="border-b border-line text-left text-[10px] text-fg-3">
                   <th className="pb-1 pr-2 font-medium">Name</th>
                   <th className="pb-1 pr-2 font-medium">Required</th>
                   <th className="pb-1 font-medium">Description</th>
@@ -74,20 +74,20 @@ function CommandDetail({
               </thead>
               <tbody>
                 {doc.parameters.map((p) => (
-                  <tr key={p.name} className="border-b border-white/[0.03]">
-                    <td className="py-1 pr-2 font-mono text-orange-300">{p.name}</td>
+                  <tr key={p.name} className="border-b border-line">
+                    <td className="py-1 pr-2 font-mono text-accent-strong">{p.name}</td>
                     <td className="py-1 pr-2">
                       {p.required ? (
-                        <span className="rounded bg-orange-500/15 px-1 py-0.5 text-[9px] font-semibold text-orange-300">
+                        <span className="rounded bg-accent-soft px-1 py-0.5 text-[9px] font-semibold text-accent-strong">
                           yes
                         </span>
                       ) : (
-                        <span className="rounded bg-zinc-800 px-1 py-0.5 text-[9px] font-semibold text-zinc-500">
+                        <span className="rounded bg-surface-2 px-1 py-0.5 text-[9px] font-semibold text-fg-3">
                           no
                         </span>
                       )}
                     </td>
-                    <td className="py-1 text-zinc-400">{p.description}</td>
+                    <td className="py-1 text-fg-2">{p.description}</td>
                   </tr>
                 ))}
               </tbody>
@@ -98,17 +98,17 @@ function CommandDetail({
         {/* Examples */}
         {doc.examples.length > 0 && (
           <div>
-            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">
               Examples
             </div>
             <div className="space-y-3">
               {doc.examples.map((ex, i) => (
                 <div key={i}>
-                  <pre className="rounded bg-zinc-950 p-2 font-mono text-[11px] text-orange-200 whitespace-pre-wrap break-words">
+                  <pre className="rounded bg-bg p-2 font-mono text-[11px] text-accent-strong whitespace-pre-wrap break-words">
                     {ex.code}
                   </pre>
                   {ex.description && (
-                    <p className="mt-1 text-[11px] text-zinc-500">{ex.description}</p>
+                    <p className="mt-1 text-[11px] text-fg-3">{ex.description}</p>
                   )}
                 </div>
               ))}
@@ -118,11 +118,11 @@ function CommandDetail({
 
         {/* Packages */}
         <div>
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">
             Requires
           </div>
           {doc.packages.length === 0 ? (
-            <span className="rounded bg-zinc-800/60 px-2 py-0.5 text-[11px] text-zinc-400">
+            <span className="rounded bg-surface-2 px-2 py-0.5 text-[11px] text-fg-2">
               Core LaTeX
             </span>
           ) : (
@@ -130,7 +130,7 @@ function CommandDetail({
               {doc.packages.map((pkg) => (
                 <span
                   key={pkg}
-                  className="rounded bg-violet-500/15 px-2 py-0.5 font-mono text-[11px] text-violet-300 ring-1 ring-violet-500/20"
+                  className="rounded bg-accent-soft px-2 py-0.5 font-mono text-[11px] text-accent-strong ring-1 ring-accent"
                 >
                   {pkg}
                 </span>
@@ -142,7 +142,7 @@ function CommandDetail({
         {/* See also */}
         {doc.seealso.length > 0 && (
           <div>
-            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">
               See Also
             </div>
             <div className="flex flex-wrap gap-1">
@@ -150,7 +150,7 @@ function CommandDetail({
                 <button
                   key={cmd}
                   onClick={() => onNavigate(cmd)}
-                  className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[11px] text-zinc-300 transition hover:bg-zinc-700 hover:text-orange-300"
+                  className="rounded bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-fg-2 transition hover:bg-surface hover:text-accent-strong"
                 >
                   {cmd}
                 </button>
@@ -168,14 +168,14 @@ function NotFound({ command, onBack }: { command: string; onBack: () => void }) 
     <div className="flex h-full flex-col p-3">
       <button
         onClick={onBack}
-        className="mb-3 flex items-center gap-1 text-[11px] text-zinc-500 transition hover:text-zinc-300"
+        className="mb-3 flex items-center gap-1 text-[11px] text-fg-3 transition hover:text-fg-2"
       >
         <ChevronLeft size={12} />
         Back to reference
       </button>
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-        <span className="font-mono text-sm text-zinc-500">{command}</span>
-        <p className="text-xs text-zinc-600">No documentation found for this command.</p>
+        <span className="font-mono text-sm text-fg-3">{command}</span>
+        <p className="text-xs text-fg-3">No documentation found for this command.</p>
       </div>
     </div>
   )
@@ -237,19 +237,19 @@ export default function LaTeXDocPanel({ command, mode = 'reference' }: LaTeXDocP
   return (
     <div className="flex h-full flex-col">
       {/* Search */}
-      <div className="shrink-0 border-b border-white/[0.05] p-3">
+      <div className="shrink-0 border-b border-line p-3">
         <div className="relative">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-600" />
+          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-3" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search commands…"
-            className="w-full rounded-md border border-white/[0.06] bg-white/[0.03] py-1.5 pl-7 pr-3 text-xs text-zinc-200 outline-none placeholder:text-zinc-700 focus:border-white/[0.12]"
+            className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 py-1.5 pl-7 pr-3 text-xs text-fg outline-none placeholder:text-fg-3 focus:border-line-2"
           />
         </div>
         {query && (
-          <p className="mt-1.5 text-[10px] text-zinc-600">
+          <p className="mt-1.5 text-[10px] text-fg-3">
             {filtered.length} result{filtered.length !== 1 ? 's' : ''}
           </p>
         )}
@@ -258,7 +258,7 @@ export default function LaTeXDocPanel({ command, mode = 'reference' }: LaTeXDocP
       {/* List */}
       <div className="min-h-0 flex-1 overflow-auto">
         {filtered.length === 0 ? (
-          <div className="flex h-32 items-center justify-center text-xs text-zinc-600">
+          <div className="flex h-32 items-center justify-center text-xs text-fg-3">
             No commands match &ldquo;{query}&rdquo;
           </div>
         ) : (
@@ -268,8 +268,8 @@ export default function LaTeXDocPanel({ command, mode = 'reference' }: LaTeXDocP
             return (
               <div key={cat}>
                 {/* Sticky category header */}
-                <div className="sticky top-0 z-10 border-b border-white/[0.04] bg-zinc-950/90 px-3 py-1.5 backdrop-blur-sm">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+                <div className="sticky top-0 z-10 border-b border-line bg-bg/90 px-3 py-1.5 backdrop-blur-sm">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-fg-3">
                     {CATEGORY_LABELS[cat] ?? cat}
                   </span>
                 </div>
@@ -277,12 +277,12 @@ export default function LaTeXDocPanel({ command, mode = 'reference' }: LaTeXDocP
                   <button
                     key={doc.command}
                     onClick={() => setActiveCommand(doc.command)}
-                    className="flex w-full flex-col items-start border-b border-white/[0.03] px-3 py-2 text-left transition hover:bg-white/[0.03]"
+                    className="flex w-full flex-col items-start border-b border-line px-3 py-2 text-left transition hover:bg-surface-2"
                   >
-                    <span className="font-mono text-xs font-medium text-orange-400">
+                    <span className="font-mono text-xs font-medium text-accent-strong">
                       {doc.command}
                     </span>
-                    <span className="mt-0.5 line-clamp-1 text-[11px] text-zinc-500">
+                    <span className="mt-0.5 line-clamp-1 text-[11px] text-fg-3">
                       {doc.description}
                     </span>
                   </button>

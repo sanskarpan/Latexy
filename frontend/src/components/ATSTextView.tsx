@@ -45,9 +45,9 @@ export default function ATSTextView({ extractedText, pageCount }: ATSTextViewPro
   if (!extractedText) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 py-12 text-center">
-        <Info size={20} className="text-zinc-700" />
-        <p className="text-[11px] text-zinc-600">No extracted text yet.</p>
-        <p className="text-[10px] text-zinc-700">Compile your resume to see what an ATS reads.</p>
+        <Info size={20} className="text-fg-3" />
+        <p className="text-[11px] text-fg-3">No extracted text yet.</p>
+        <p className="text-[10px] text-fg-3">Compile your resume to see what an ATS reads.</p>
       </div>
     )
   }
@@ -61,24 +61,24 @@ export default function ATSTextView({ extractedText, pageCount }: ATSTextViewPro
     <div className="flex h-full flex-col overflow-hidden">
 
       {/* ── Header ── */}
-      <div className="shrink-0 space-y-2 border-b border-white/[0.05] p-3">
+      <div className="shrink-0 space-y-2 border-b border-line p-3">
         <div className="flex items-center justify-between">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-fg-3">
             ATS Text View
           </p>
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300"
+            className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
             title="Copy extracted text to clipboard"
           >
-            {copied ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
+            {copied ? <Check size={10} className="text-ok" /> : <Copy size={10} />}
             {copied ? 'Copied' : 'Copy'}
           </button>
         </div>
 
-        <p className="text-[10px] text-zinc-700">
+        <p className="text-[10px] text-fg-3">
           Plain text extracted from your compiled PDF — exactly what an ATS parser reads.
-          {pageCount != null && <span className="ml-1 text-zinc-600">{pageCount} page{pageCount === 1 ? '' : 's'}.</span>}
+          {pageCount != null && <span className="ml-1 text-fg-3">{pageCount} page{pageCount === 1 ? '' : 's'}.</span>}
         </p>
 
         {/* ── Diagnostics ── */}
@@ -112,8 +112,8 @@ export default function ATSTextView({ extractedText, pageCount }: ATSTextViewPro
                 key={label}
                 className={
                   found
-                    ? 'rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-400'
-                    : 'rounded bg-white/[0.04] px-1.5 py-0.5 text-[9px] text-zinc-600'
+                    ? 'rounded bg-ok/10 px-1.5 py-0.5 text-[9px] font-medium text-ok'
+                    : 'rounded bg-surface-2 px-1.5 py-0.5 text-[9px] text-fg-3'
                 }
                 title={found ? `${label} detected` : `${label} not found`}
               >
@@ -126,7 +126,7 @@ export default function ATSTextView({ extractedText, pageCount }: ATSTextViewPro
 
       {/* ── Extracted text ── */}
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        <pre className="whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-zinc-400">
+        <pre className="whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-fg-2">
           {extractedText}
         </pre>
       </div>
@@ -146,15 +146,15 @@ function DiagnosticRow({
   if (level === 'ok') {
     return (
       <div className="flex items-start gap-1.5">
-        <CheckCircle size={10} className="mt-0.5 shrink-0 text-emerald-500" />
-        <p className="text-[10px] text-zinc-500">{message}</p>
+        <CheckCircle size={10} className="mt-0.5 shrink-0 text-ok" />
+        <p className="text-[10px] text-fg-3">{message}</p>
       </div>
     )
   }
   return (
-    <div className="flex items-start gap-1.5 rounded-lg bg-amber-500/8 px-2 py-1.5 ring-1 ring-amber-500/20">
-      <AlertTriangle size={10} className="mt-0.5 shrink-0 text-amber-400" />
-      <p className="text-[10px] text-amber-300/80">{message}</p>
+    <div className="flex items-start gap-1.5 rounded-[var(--radius-md)] bg-warn/10 px-2 py-1.5 ring-1 ring-warn/20">
+      <AlertTriangle size={10} className="mt-0.5 shrink-0 text-warn" />
+      <p className="text-[10px] text-warn">{message}</p>
     </div>
   )
 }

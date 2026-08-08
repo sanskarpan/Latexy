@@ -57,14 +57,18 @@ describe('dispatch — LOCAL_HANDLERS', () => {
     expect($messages.get().length).toBe(0)
   })
 
-  it('/help adds a system message listing all commands', async () => {
+  it('/help lists exactly the commands that work', async () => {
+    // Not a hard-coded list: /help must track whatever is actually routed. It
+    // previously advertised 32 commands while 7 worked, which is how users were
+    // sent to commands that answered "Unknown command".
     const { dispatch } = await import('../../commands/dispatch.js')
+    const { IMPLEMENTED_COMMANDS } = await import('../../commands/registry.js')
     await dispatch('/help')
-    const msgs = $messages.get()
-    const sys = msgs.find(m => m.role === 'system')
+    const sys = $messages.get().find(m => m.role === 'system')
     expect(sys).toBeDefined()
-    expect(sys?.content).toContain('/compile')
-    expect(sys?.content).toContain('/ats')
+    for (const cmd of IMPLEMENTED_COMMANDS) {
+      expect(sys?.content, `/help omits ${cmd.name}`).toContain(`/${cmd.name}`)
+    }
   })
 
   it('/help compile adds usage for that specific command', async () => {

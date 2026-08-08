@@ -115,21 +115,21 @@ export default function CollaboratorPanel({
   return (
     <div
       ref={backdropRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)]"
       onClick={(e) => { if (e.target === backdropRef.current) onClose() }}
     >
-      <div className="relative w-full max-w-md rounded-2xl border border-white/[0.08] bg-[#0d0d0d] shadow-2xl">
+      <div className="relative w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-surface shadow-[var(--shadow-2)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
+        <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15">
-              <Users size={14} className="text-violet-300" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <Users size={14} className="text-accent-strong" />
             </div>
-            <h2 className="text-sm font-semibold text-zinc-100">Collaborators</h2>
+            <h2 className="text-sm font-semibold text-fg">Collaborators</h2>
           </div>
           <button
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
           >
             <X size={14} />
           </button>
@@ -139,7 +139,7 @@ export default function CollaboratorPanel({
           {/* Live presence */}
           {presenceUsers.length > 0 && (
             <div className="space-y-2">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-fg-3">
                 Currently editing
               </p>
               <div className="flex flex-wrap gap-2">
@@ -163,7 +163,7 @@ export default function CollaboratorPanel({
           {/* Invite form (owner only) */}
           {isOwner && (
             <form onSubmit={handleInvite} className="space-y-2">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-fg-3">
                 Invite by email
               </p>
               <div className="flex gap-1.5">
@@ -172,25 +172,25 @@ export default function CollaboratorPanel({
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="colleague@example.com"
-                  className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-[#141414] px-3 py-2 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20"
+                  className="min-w-0 flex-1 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-[12px] text-fg outline-none placeholder:text-fg-3 focus:border-accent focus:ring-1 focus:ring-accent"
                 />
                 {/* Role selector */}
                 <div className="relative">
                   <select
                     value={inviteRole}
                     onChange={(e) => setInviteRole(e.target.value as CollabRole)}
-                    className="appearance-none rounded-lg border border-white/[0.08] bg-[#141414] py-2 pl-3 pr-7 text-[11px] text-zinc-300 outline-none focus:border-violet-500/40"
+                    className="appearance-none rounded-[var(--radius-md)] border border-line bg-surface-2 py-2 pl-3 pr-7 text-[11px] text-fg-2 outline-none focus:border-accent"
                   >
                     {(Object.keys(ROLE_META) as CollabRole[]).map((r) => (
                       <option key={r} value={r}>{ROLE_META[r].label}</option>
                     ))}
                   </select>
-                  <ChevronDown size={10} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500" />
+                  <ChevronDown size={10} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-fg-3" />
                 </div>
                 <button
                   type="submit"
                   disabled={inviting || !inviteEmail.trim()}
-                  className="flex items-center gap-1 rounded-lg bg-violet-600/80 px-3 py-2 text-[11px] font-semibold text-white ring-1 ring-violet-500/30 transition hover:bg-violet-600 disabled:opacity-40"
+                  className="flex items-center gap-1 rounded-[var(--radius-md)] bg-accent px-3 py-2 text-[11px] font-semibold text-accent-fg ring-1 ring-accent transition hover:brightness-110 disabled:opacity-40"
                 >
                   {inviting ? <Loader2 size={11} className="animate-spin" /> : <UserPlus size={11} />}
                   {inviting ? 'Inviting…' : 'Invite'}
@@ -202,15 +202,15 @@ export default function CollaboratorPanel({
           {/* Collaborator list */}
           {isOwner && (
             <div className="space-y-2">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-fg-3">
                 {loadingList ? 'Loading…' : `${collaborators.length} collaborator${collaborators.length !== 1 ? 's' : ''}`}
               </p>
               {loadingList ? (
                 <div className="flex justify-center py-4">
-                  <Loader2 size={16} className="animate-spin text-zinc-600" />
+                  <Loader2 size={16} className="animate-spin text-fg-3" />
                 </div>
               ) : collaborators.length === 0 ? (
-                <p className="py-3 text-center text-[11px] text-zinc-700">
+                <p className="py-3 text-center text-[11px] text-fg-3">
                   No collaborators yet. Invite someone above.
                 </p>
               ) : (
@@ -220,35 +220,35 @@ export default function CollaboratorPanel({
                     return (
                       <div
                         key={collab.id}
-                        className="flex items-center gap-3 rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2.5"
+                        className="flex items-center gap-3 rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2.5"
                       >
                         {/* Avatar */}
                         <div
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold uppercase text-white"
-                          style={{ backgroundColor: isLiveUser ? '#7c3aed' : '#374151' }}
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold uppercase text-fg"
+                          style={{ backgroundColor: isLiveUser ? 'var(--accent)' : 'var(--surface-2)' }}
                         >
                           {(collab.user_name || collab.user_email || '?')[0]}
                         </div>
 
                         {/* Name + email */}
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[12px] font-medium text-zinc-200">
+                          <p className="truncate text-[12px] font-medium text-fg">
                             {collab.user_name || collab.user_email}
                           </p>
                           {collab.user_name && (
-                            <p className="truncate text-[10px] text-zinc-600">{collab.user_email}</p>
+                            <p className="truncate text-[10px] text-fg-3">{collab.user_email}</p>
                           )}
                         </div>
 
                         {/* Role selector */}
                         <div className="relative">
                           {roleChangeId === collab.user_id ? (
-                            <Loader2 size={10} className="animate-spin text-zinc-500" />
+                            <Loader2 size={10} className="animate-spin text-fg-3" />
                           ) : (
                             <select
                               value={collab.role}
                               onChange={(e) => handleRoleChange(collab, e.target.value as CollabRole)}
-                              className="appearance-none rounded border border-white/[0.08] bg-transparent py-0.5 pl-2 pr-5 text-[10px] text-zinc-400 outline-none"
+                              className="appearance-none rounded border border-line bg-transparent py-0.5 pl-2 pr-5 text-[10px] text-fg-2 outline-none"
                             >
                               {(Object.keys(ROLE_META) as CollabRole[]).map((r) => (
                                 <option key={r} value={r}>{ROLE_META[r].label}</option>
@@ -261,7 +261,7 @@ export default function CollaboratorPanel({
                         <button
                           onClick={() => handleRemove(collab)}
                           disabled={removingId === collab.user_id}
-                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-600 transition hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-3 transition hover:bg-err/15 hover:text-err disabled:opacity-40"
                           title="Remove collaborator"
                         >
                           {removingId === collab.user_id ? (
@@ -280,7 +280,7 @@ export default function CollaboratorPanel({
 
           {/* Info for non-owners */}
           {!isOwner && (
-            <p className="text-center text-[11px] text-zinc-600">
+            <p className="text-center text-[11px] text-fg-3">
               You were invited to collaborate on this resume.
             </p>
           )}

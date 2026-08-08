@@ -45,16 +45,16 @@ function formatBytes(bytes: number): string {
 function getFileIcon(filename: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
   if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp'].includes(ext))
-    return <ImageIcon className="w-4 h-4 text-violet-300" />
+    return <ImageIcon className="w-4 h-4 text-fg-2" />
   if (['tex', 'latex', 'ltx'].includes(ext))
-    return <Code className="w-4 h-4 text-orange-300" />
+    return <Code className="w-4 h-4 text-accent-strong" />
   if (['pdf'].includes(ext))
-    return <FileText className="w-4 h-4 text-rose-300" />
+    return <FileText className="w-4 h-4 text-fg-2" />
   if (['docx', 'doc'].includes(ext))
-    return <FileText className="w-4 h-4 text-blue-300" />
+    return <FileText className="w-4 h-4 text-fg-2" />
   if (['md', 'markdown', 'mdx'].includes(ext))
-    return <FileText className="w-4 h-4 text-emerald-300" />
-  return <File className="w-4 h-4 text-zinc-400" />
+    return <FileText className="w-4 h-4 text-fg-2" />
+  return <File className="w-4 h-4 text-fg-2" />
 }
 
 function getFormatLabel(filename: string): string {
@@ -194,23 +194,23 @@ export default function MultiFormatUpload({ onFileUpload, sourceHint }: MultiFor
   // Uploaded + done state
   if (uploadedFile && (status === 'idle' || status === 'done')) {
     return (
-      <div className="w-full rounded-xl border border-emerald-400/20 bg-emerald-500/5 px-4 py-3">
+      <div className="w-full rounded-[var(--radius-lg)] border border-ok/20 bg-ok/5 px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <CheckCircle className="w-4 h-4 shrink-0 text-emerald-300" />
+            <CheckCircle className="w-4 h-4 shrink-0 text-ok" />
             <div className="min-w-0">
-              <p className="text-sm font-medium text-zinc-200 flex items-center gap-1.5 truncate">
+              <p className="text-sm font-medium text-fg flex items-center gap-1.5 truncate">
                 {getFileIcon(uploadedFile)}
                 <span className="truncate">{uploadedFile}</span>
               </p>
-              <p className="text-xs text-zinc-500 mt-0.5">
+              <p className="text-xs text-fg-3 mt-0.5">
                 {isTexFile(uploadedFile) ? 'LaTeX file loaded' : `${getFormatLabel(uploadedFile)} converted to LaTeX`}
               </p>
             </div>
           </div>
           <button
             onClick={clearFile}
-            className="shrink-0 rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300"
+            className="shrink-0 rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={14} />
           </button>
@@ -222,20 +222,20 @@ export default function MultiFormatUpload({ onFileUpload, sourceHint }: MultiFor
   // Converting state
   if (isConverting) {
     return (
-      <div className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4">
+      <div className="w-full rounded-[var(--radius-lg)] border border-line bg-surface px-4 py-4">
         <div className="flex items-center gap-3 mb-3">
-          <Loader2 className="w-4 h-4 shrink-0 text-orange-300 animate-spin" />
+          <Loader2 className="w-4 h-4 shrink-0 text-accent-strong animate-spin" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-zinc-200 truncate">{uploadedFile}</p>
-            <p className="text-xs text-zinc-500 mt-0.5">
+            <p className="text-sm font-medium text-fg truncate">{uploadedFile}</p>
+            <p className="text-xs text-fg-3 mt-0.5">
               {status === 'uploading' ? 'Uploading…' : `Converting to LaTeX… ${progress}%`}
             </p>
           </div>
         </div>
         {status === 'converting' && (
-          <div className="w-full rounded-full bg-white/[0.06] h-1">
+          <div className="w-full rounded-full bg-surface-2 h-1">
             <div
-              className="bg-orange-300 h-1 rounded-full transition-all duration-500"
+              className="bg-accent h-1 rounded-full transition-all duration-500"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -247,18 +247,18 @@ export default function MultiFormatUpload({ onFileUpload, sourceHint }: MultiFor
   // Error state
   if (status === 'error') {
     return (
-      <div className="w-full rounded-xl border border-rose-400/20 bg-rose-500/5 px-4 py-3">
+      <div className="w-full rounded-[var(--radius-lg)] border border-err/20 bg-err/5 px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-300" />
+            <AlertCircle className="w-4 h-4 shrink-0 text-err" />
             <div className="min-w-0">
-              <p className="text-sm font-medium text-zinc-200">Conversion failed</p>
-              <p className="text-xs text-rose-300 mt-0.5 truncate">{error}</p>
+              <p className="text-sm font-medium text-fg">Conversion failed</p>
+              <p className="text-xs text-err mt-0.5 truncate">{error}</p>
             </div>
           </div>
           <button
             onClick={clearFile}
-            className="shrink-0 rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300"
+            className="shrink-0 rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={14} />
           </button>
@@ -271,28 +271,28 @@ export default function MultiFormatUpload({ onFileUpload, sourceHint }: MultiFor
   return (
     <div className="w-full">
       <div
-        className={`rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+        className={`rounded-[var(--radius-lg)] border-2 border-dashed p-8 text-center transition-colors ${
           isDragOver
-            ? 'border-orange-300/50 bg-orange-300/[0.04]'
-            : 'border-white/10 hover:border-white/20'
+            ? 'border-accent/50 bg-accent-soft'
+            : 'border-line hover:border-line-2'
         }`}
         onDrop={handleDrop}
         onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
         onDragLeave={() => setIsDragOver(false)}
       >
-        <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
-          <Upload className="w-5 h-5 text-zinc-400" />
+        <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-line bg-surface-2">
+          <Upload className="w-5 h-5 text-fg-2" />
         </div>
 
-        <h3 className="text-sm font-semibold text-zinc-100 mb-1">
+        <h3 className="text-sm font-semibold text-fg mb-1">
           Upload Resume
         </h3>
 
-        <p className="text-xs text-zinc-500 mb-5">
+        <p className="text-xs text-fg-3 mb-5">
           Drop any resume file here, or click to browse
         </p>
 
-        <label className="btn-primary cursor-pointer inline-flex items-center gap-2 px-4 py-2 text-sm">
+        <label className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 cursor-pointer inline-flex items-center gap-2 px-4 py-2 text-sm">
           <input
             ref={inputRef}
             type="file"
@@ -304,7 +304,7 @@ export default function MultiFormatUpload({ onFileUpload, sourceHint }: MultiFor
           Choose File
         </label>
 
-        <p className="text-[11px] text-zinc-600 mt-4 leading-relaxed">
+        <p className="text-[11px] text-fg-3 mt-4 leading-relaxed">
           PDF · Word · Markdown · LaTeX · JSON · YAML · HTML · images · and more
         </p>
       </div>

@@ -49,15 +49,15 @@ function Switch({
       aria-label={label}
       onClick={onClick}
       disabled={disabled || busy}
-      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/60 disabled:cursor-not-allowed disabled:opacity-50 ${
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-bg disabled:cursor-not-allowed disabled:opacity-50 ${
         enabled
-          ? 'border-orange-400/40 bg-orange-400/20'
-          : 'border-white/10 bg-white/[0.04]'
+          ? 'border-accent bg-accent-soft'
+          : 'border-line bg-surface-2'
       }`}
     >
       <span
         className={`inline-block h-4 w-4 transform rounded-full transition duration-200 ${
-          enabled ? 'translate-x-5 bg-orange-300' : 'translate-x-0.5 bg-zinc-600'
+          enabled ? 'translate-x-5 bg-accent' : 'translate-x-0.5 bg-fg-3'
         }`}
       />
     </button>
@@ -106,13 +106,13 @@ function FeatureFlagsTab() {
       {flags?.map((flag) => (
         <div
           key={flag.key}
-          className="flex items-center justify-between rounded-xl border border-white/[0.07] bg-zinc-900/60 px-5 py-4"
+          className="flex items-center justify-between rounded-[var(--radius-lg)] border border-line bg-surface px-5 py-4"
         >
           <div className="min-w-0 flex-1 pr-6">
-            <p className="text-sm font-medium text-zinc-100">{flag.label}</p>
-            {flag.description && <p className="mt-0.5 text-xs text-zinc-500">{flag.description}</p>}
+            <p className="text-sm font-medium text-fg">{flag.label}</p>
+            {flag.description && <p className="mt-0.5 text-xs text-fg-3">{flag.description}</p>}
             {flag.updated_at && (
-              <p className="mt-1 text-[10px] text-zinc-700">
+              <p className="mt-1 text-[10px] text-fg-3">
                 {new Date(flag.updated_at).toLocaleString()}
               </p>
             )}
@@ -282,21 +282,21 @@ function MatrixTab() {
   const families = state.plan_families
 
   return (
-    <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-zinc-900/40">
+    <div className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] border-collapse text-sm">
           <thead>
-            <tr className="sticky top-0 z-20 bg-zinc-950/95 backdrop-blur">
-              <th className="sticky left-0 z-30 w-[160px] min-w-[160px] bg-zinc-950/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+            <tr className="sticky top-0 z-20 bg-bg/95 backdrop-blur">
+              <th className="sticky left-0 z-30 w-[160px] min-w-[160px] bg-bg/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-fg-2">
                 Feature
               </th>
-              <th className="min-w-[68px] px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-orange-200/80">
+              <th className="min-w-[68px] px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-accent-strong">
                 Global
               </th>
               {families.map((fam) => (
                 <th
                   key={fam}
-                  className="min-w-[68px] px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-zinc-400"
+                  className="min-w-[68px] px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-fg-2"
                 >
                   {fam}
                 </th>
@@ -320,8 +320,8 @@ function MatrixTab() {
           </tbody>
         </table>
       </div>
-      <p className="border-t border-white/[0.07] px-4 py-3 text-[11px] text-zinc-600">
-        Launch default is everything on. A <span className="text-orange-200/80">Global</span>{' '}
+      <p className="border-t border-line px-4 py-3 text-[11px] text-fg-3">
+        Launch default is everything on. A <span className="text-accent-strong">Global</span>{' '}
         kill-switch off disables the feature for every plan. Non-gateable core features are always on.
       </p>
     </div>
@@ -353,7 +353,7 @@ function FragmentGroup({
         <th
           colSpan={colSpan}
           scope="colgroup"
-          className="sticky left-0 bg-zinc-900/80 px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500"
+          className="sticky left-0 bg-surface-2 px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.2em] text-fg-3"
         >
           {categoryLabel(category)}
         </th>
@@ -364,20 +364,20 @@ function FragmentGroup({
         return (
           <tr
             key={feat.key}
-            className={`group border-t border-white/[0.04] transition-colors hover:bg-white/[0.02] ${
-              idx % 2 === 1 ? 'bg-white/[0.012]' : ''
+            className={`group border-t border-line transition-colors hover:bg-surface-2 ${
+              idx % 2 === 1 ? 'bg-surface-2/40' : ''
             } ${rowDisabled ? 'opacity-50' : ''}`}
           >
-            <td className="sticky left-0 z-10 w-[160px] min-w-[160px] bg-zinc-900/60 px-4 py-3 group-hover:bg-zinc-900/80">
+            <td className="sticky left-0 z-10 w-[160px] min-w-[160px] bg-surface px-4 py-3 group-hover:bg-surface-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-zinc-200">{feat.label}</span>
+                <span className="text-sm text-fg">{feat.label}</span>
                 {!feat.gateable && (
-                  <span className="rounded bg-emerald-400/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-300/80">
+                  <span className="rounded bg-ok/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ok">
                     always on
                   </span>
                 )}
               </div>
-              <span className="text-[10px] text-zinc-600">{feat.key}</span>
+              <span className="text-[10px] text-fg-3">{feat.key}</span>
             </td>
 
             {/* Global kill-switch */}
@@ -431,7 +431,7 @@ function AlwaysOnDot() {
   return (
     <span
       title="Always on"
-      className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400/70 align-middle"
+      className="inline-block h-2.5 w-2.5 rounded-full bg-ok/70 align-middle"
       aria-label="Always on"
     />
   )
@@ -518,7 +518,7 @@ function UsersTab() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by email or name…"
           aria-label="Search users"
-          className="w-full rounded-lg border border-white/10 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/40 sm:max-w-sm"
+          className="w-full rounded-[var(--radius-md)] border border-line bg-surface px-4 py-2.5 text-sm text-fg placeholder:text-fg-3 focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-bg sm:max-w-sm"
         />
       </div>
 
@@ -527,19 +527,19 @@ function UsersTab() {
       ) : error ? (
         <InlineError message={error} />
       ) : !users || users.length === 0 ? (
-        <div className="rounded-xl border border-white/[0.07] bg-zinc-900/40 px-6 py-16 text-center">
-          <p className="text-sm font-medium text-zinc-300">No users found</p>
-          <p className="mt-1 text-xs text-zinc-600">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface px-6 py-16 text-center">
+          <p className="text-sm font-medium text-fg-2">No users found</p>
+          <p className="mt-1 text-xs text-fg-3">
             {debounced ? `No matches for “${debounced}”.` : 'No users to display.'}
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-zinc-900/40">
+        <div className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-white/[0.07] text-[11px] uppercase tracking-wider text-zinc-500">
-                  <th className="sticky left-0 z-10 min-w-[220px] bg-zinc-950 px-4 py-3 text-left font-semibold">User</th>
+                <tr className="border-b border-line text-[11px] uppercase tracking-wider text-fg-3">
+                  <th className="sticky left-0 z-10 min-w-[220px] bg-bg px-4 py-3 text-left font-semibold">User</th>
                   <th className="min-w-[90px] px-4 py-3 text-left font-semibold">Plan</th>
                   <th className="min-w-[130px] px-4 py-3 text-left font-semibold">Role</th>
                 </tr>
@@ -548,24 +548,24 @@ function UsersTab() {
                 {users.map((u, idx) => (
                   <tr
                     key={u.id}
-                    className={`group border-t border-white/[0.04] ${idx % 2 === 1 ? 'bg-white/[0.012]' : ''}`}
+                    className={`group border-t border-line ${idx % 2 === 1 ? 'bg-surface-2/40' : ''}`}
                   >
-                    <td className="sticky left-0 z-10 min-w-[220px] bg-zinc-950 px-4 py-3">
+                    <td className="sticky left-0 z-10 min-w-[220px] bg-bg px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-medium text-zinc-100">{u.email}</span>
+                        <span className="truncate text-sm font-medium text-fg">{u.email}</span>
                         {u.email_verified && (
                           <span
                             title="Email verified"
-                            className="rounded bg-emerald-400/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-300/80"
+                            className="rounded bg-ok/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ok"
                           >
                             verified
                           </span>
                         )}
                       </div>
-                      {u.name && <p className="mt-0.5 text-xs text-zinc-600">{u.name}</p>}
+                      {u.name && <p className="mt-0.5 text-xs text-fg-3">{u.name}</p>}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="rounded-md border border-white/[0.07] bg-white/[0.03] px-2 py-0.5 text-xs text-zinc-400">
+                      <span className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-0.5 text-xs text-fg-2">
                         {u.subscription_plan ?? 'free'}
                       </span>
                     </td>
@@ -575,7 +575,7 @@ function UsersTab() {
                         disabled={savingId === u.id}
                         onChange={(e) => changeRole(u, e.target.value as UserRole)}
                         aria-label={`Role for ${u.email}`}
-                        className="min-h-[40px] rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 focus:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/40 disabled:opacity-50"
+                        className="min-h-[40px] rounded-[var(--radius-md)] border border-line bg-surface px-3 py-2 text-sm text-fg focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-bg disabled:opacity-50"
                       >
                         {ROLES.map((r) => (
                           <option key={r} value={r}>
@@ -590,22 +590,22 @@ function UsersTab() {
             </table>
           </div>
 
-          <div className="flex items-center justify-between border-t border-white/[0.07] px-4 py-3">
-            <p className="text-xs text-zinc-600">
+          <div className="flex items-center justify-between border-t border-line px-4 py-3">
+            <p className="text-xs text-fg-3">
               {total} user{total === 1 ? '' : 's'} · page {page} of {pageCount}
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
                 disabled={offset === 0}
-                className="rounded-lg border border-white/10 px-3 py-1 text-xs font-medium text-zinc-300 transition hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-[var(--radius-md)] border border-line px-3 py-1 text-xs font-medium text-fg-2 transition hover:border-line-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Previous
               </button>
               <button
                 onClick={() => setOffset((o) => o + PAGE_SIZE)}
                 disabled={offset + PAGE_SIZE >= total}
-                className="rounded-lg border border-white/10 px-3 py-1 text-xs font-medium text-zinc-300 transition hover:border-white/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-[var(--radius-md)] border border-line px-3 py-1 text-xs font-medium text-fg-2 transition hover:border-line-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next
               </button>
@@ -625,7 +625,7 @@ function RowsSkeleton({ rows }: { rows: number }) {
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
-          className="h-16 animate-pulse rounded-xl border border-white/[0.05] bg-zinc-900/40"
+          className="h-16 animate-pulse rounded-[var(--radius-lg)] border border-line bg-surface"
         />
       ))}
     </div>
@@ -634,9 +634,9 @@ function RowsSkeleton({ rows }: { rows: number }) {
 
 function InlineError({ message }: { message: string }) {
   return (
-    <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.06] px-5 py-4">
-      <p className="text-sm font-medium text-rose-200">Failed to load</p>
-      <p className="mt-1 text-xs text-rose-300/70">{message}</p>
+    <div className="rounded-[var(--radius-lg)] border border-err/20 bg-err/[0.06] px-5 py-4">
+      <p className="text-sm font-medium text-err">Failed to load</p>
+      <p className="mt-1 text-xs text-err/70">{message}</p>
     </div>
   )
 }
@@ -673,7 +673,7 @@ export default function AdminPage() {
   if (checking) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-orange-300" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-line-2 border-t-accent" />
       </div>
     )
   }
@@ -681,8 +681,8 @@ export default function AdminPage() {
   if (forbidden) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
-        <p className="text-lg font-semibold text-zinc-300">Not authorized</p>
-        <p className="text-sm text-zinc-600">
+        <p className="text-lg font-semibold text-fg-2">Not authorized</p>
+        <p className="text-sm text-fg-3">
           Admin access required. Ask an administrator to grant you the admin role.
         </p>
       </div>
@@ -692,15 +692,15 @@ export default function AdminPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
       <div className="mb-6">
-        <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-600">Admin</p>
-        <h1 className="mt-1 text-xl font-semibold text-white">Control Plane</h1>
+        <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">Admin</p>
+        <h1 className="mt-1 text-xl font-semibold text-fg">Control Plane</h1>
       </div>
 
       {/* Tab list */}
       <div
         role="tablist"
         aria-label="Admin sections"
-        className="mb-8 inline-flex gap-1 rounded-xl border border-white/[0.07] bg-zinc-900/50 p-1"
+        className="mb-8 inline-flex gap-1 rounded-[var(--radius-lg)] border border-line bg-surface p-1"
       >
         {TABS.map((t, i) => {
           const active = tab === t.id
@@ -717,10 +717,10 @@ export default function AdminPage() {
               tabIndex={active ? 0 : -1}
               onClick={() => setTab(t.id)}
               onKeyDown={(e) => onTabKeyDown(e, i)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/60 ${
+              className={`rounded-[var(--radius-md)] px-4 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-bg ${
                 active
-                  ? 'bg-orange-300/15 text-orange-100'
-                  : 'text-zinc-400 hover:bg-white/[0.04] hover:text-white'
+                  ? 'bg-accent-soft text-accent-strong'
+                  : 'text-fg-2 hover:bg-surface-2 hover:text-fg'
               }`}
             >
               {t.label}
@@ -743,10 +743,10 @@ export default function AdminPage() {
 
       <div className="mt-12">
         <div className="mb-6">
-          <p className="text-[10px] uppercase tracking-[0.25em] text-zinc-600">System</p>
-          <h2 className="mt-1 text-xl font-semibold text-white">Job Queue</h2>
+          <p className="text-[10px] uppercase tracking-[0.25em] text-fg-3">System</p>
+          <h2 className="mt-1 text-xl font-semibold text-fg">Job Queue</h2>
         </div>
-        <div className="rounded-xl border border-white/[0.07] bg-zinc-900/60 p-5">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
           <JobQueue maxJobs={50} showFilters showSearch />
         </div>
       </div>
