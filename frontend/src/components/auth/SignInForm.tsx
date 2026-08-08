@@ -172,11 +172,12 @@ export default function SignInForm() {
 
           <Button
             type="submit"
-            disabled={isLoading || !!socialLoading}
+            loading={isLoading}
+            disabled={!!socialLoading}
             size="lg"
             className="w-full min-h-[44px]"
           >
-            {isLoading ? 'Signing in...' : 'Sign In'}
+            Sign In
           </Button>
         </form>
       </div>
