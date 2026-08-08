@@ -137,11 +137,9 @@
   }
 }
 
-.monaco-editor,
-.monaco-editor .margin,
-.monaco-editor .monaco-editor-background {
-  background: rgba(7, 7, 7, 0.96) !important;
-}
+/* Let the active Monaco theme own the editor background (latexy-light /
+   latexy-dark). A hardcoded !important dark fill used to live here and
+   overrode the theme, forcing the editor dark on light pages. */
 
 .synctex-highlight {
   background-color: rgba(245, 158, 11, 0.15) !important;
