@@ -119,24 +119,15 @@ export default function TemplatesPage() {
   return (
     <>
       <div className="bg-bg text-fg">
-        {/* folio strip */}
-        <div className="border-b border-line">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-2 font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3 sm:px-8">
-            <span>№ 02 — The Specimen Library</span>
-            <span className="hidden sm:inline">Set in Fraunces &amp; JetBrains Mono</span>
-            <span>pdflatex · xelatex · lualatex</span>
-          </div>
-        </div>
-
         <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8 lg:py-16">
           {/* Header */}
           <header>
             <p className="font-ui text-xs uppercase tracking-[0.18em] text-fg-3">Library</p>
             <h1 className="mt-4 max-w-[18ch] text-balance font-display text-[clamp(2.4rem,6vw,4.4rem)] font-semibold leading-[0.98] tracking-[-0.025em] text-fg">
-              Résumé <em className="italic text-accent">specimens</em>, ready to set.
+              Résumé <span className="text-accent">templates</span>, ready to use.
             </h1>
             <p className="mt-6 max-w-[52ch] font-body text-lg text-fg-2">
-              Browse professional LaTeX templates across industries. Preview any specimen, then
+              Browse professional LaTeX templates across industries. Preview any template, then
               use it to start building.
             </p>
           </header>
