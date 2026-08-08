@@ -21,6 +21,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: 'ats', description: 'Run ATS deep analysis', usage: '/ats [resume-id] [--jd url|file] [--industry software_engineering]', isLocal: false , implemented: true },
   { name: 'quick-ats', description: 'Fast rule-based ATS (no LLM)', usage: '/quick-ats [resume-id]', isLocal: false , implemented: true },
   { name: 'list', description: 'Open resume picker', usage: '/list [--archived] [--type resume|academic_cv]', isLocal: true , implemented: true },
+  { name: 'workbench', description: 'Open the Miller-columns workbench', usage: '/workbench', isLocal: true , implemented: true },
   { name: 'new', description: 'Create new resume', usage: '/new [title]', isLocal: false , implemented: true },
   { name: 'edit', description: 'Open resume in $EDITOR', usage: '/edit [resume-id]', isLocal: false , implemented: true },
   { name: 'fork', description: 'Fork resume into a variant', usage: '/fork [resume-id] [new-title]', isLocal: false , implemented: true },
