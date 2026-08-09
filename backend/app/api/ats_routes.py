@@ -153,7 +153,7 @@ class JobDescriptionAnalysisResponse(BaseModel):
 
 
 class ATSRecommendationsRequest(BaseModel):
-    ats_score: float = Field(..., description="Current ATS score")
+    ats_score: float = Field(..., ge=0, le=100, description="Current ATS score (0-100)")
     category_scores: Dict[str, float] = Field(..., description="Category scores")
     industry: Optional[str] = Field(None, description="Industry context")
 
