@@ -809,6 +809,12 @@ async def update_resume(
     user_id: str = Depends(get_current_user_required)
 ):
     """Update an existing resume."""
+    # A non-UUID path segment would reach Postgres and raise asyncpg DataError
+    # -> 500; guard it as a 404, consistent with GET /{resume_id}.
+    try:
+        UUID(str(resume_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=404, detail="Resume not found")
     # Check ownership first
     result = await db.execute(
         select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
@@ -860,6 +866,11 @@ async def delete_resume(
     user_id: str = Depends(get_current_user_required)
 ):
     """Delete a resume."""
+    # Guard non-UUID id (asyncpg DataError -> 500) as 404, like GET /{resume_id}.
+    try:
+        UUID(str(resume_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=404, detail="Resume not found")
     result = await db.execute(
         delete(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
     )
@@ -877,6 +888,11 @@ async def update_resume_settings(
     user_id: str = Depends(get_current_user_required),
 ):
     """Update per-resume settings (compiler preference, custom flags, etc.)."""
+    # Guard non-UUID id (asyncpg DataError -> 500) as 404, like GET /{resume_id}.
+    try:
+        UUID(str(resume_id))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=404, detail="Resume not found")
     result = await db.execute(
         select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
     )

@@ -125,7 +125,13 @@ def optimize_resume_task(
         provider_call_start = time.perf_counter()
         start_time = time.time()
         with traced("llm.provider_call", provider=provider, model=model_name):
-            client = openai.OpenAI(api_key=api_key)
+            # Route the platform key through an OpenAI-compatible base URL when
+            # configured (e.g. Gemini); BYOK keys keep native OpenAI unchanged.
+            if settings.OPENAI_BASE_URL and api_key == settings.OPENAI_API_KEY:
+                client = openai.OpenAI(api_key=api_key, base_url=settings.OPENAI_BASE_URL)
+                model_name = settings.OPENAI_MODEL
+            else:
+                client = openai.OpenAI(api_key=api_key)
 
             stream = client.chat.completions.create(
                 model=model_name,

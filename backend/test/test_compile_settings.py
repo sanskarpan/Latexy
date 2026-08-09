@@ -188,7 +188,7 @@ class TestCompileSettingsEndpoint:
     def test_invalid_flag_returns_422(self, authed_client):
         """Sending an unknown latexmk flag returns 422 Unprocessable Entity."""
         resp = authed_client.patch(
-            "/resumes/fake-id/settings",
+            "/resumes/11111111-1111-1111-1111-111111111111/settings",
             json={"latexmk_flags": ["--shell-escape; rm -rf /"]},
         )
         assert resp.status_code == 422
@@ -196,7 +196,7 @@ class TestCompileSettingsEndpoint:
     def test_path_traversal_main_file_returns_422(self, authed_client):
         """Sending a path traversal main_file returns 422."""
         resp = authed_client.patch(
-            "/resumes/fake-id/settings",
+            "/resumes/11111111-1111-1111-1111-111111111111/settings",
             json={"main_file": "../../etc/passwd"},
         )
         assert resp.status_code == 422
@@ -204,7 +204,7 @@ class TestCompileSettingsEndpoint:
     def test_invalid_texlive_version_returns_422(self, authed_client):
         """Sending an invalid texlive_version returns 422."""
         resp = authed_client.patch(
-            "/resumes/fake-id/settings",
+            "/resumes/11111111-1111-1111-1111-111111111111/settings",
             json={"texlive_version": "2020"},
         )
         assert resp.status_code == 422
@@ -227,7 +227,7 @@ class TestCompileSettingsEndpoint:
         app.dependency_overrides[get_db] = lambda: mock_db
         try:
             resp = authed_client.patch(
-                "/resumes/fake-id/settings",
+                "/resumes/11111111-1111-1111-1111-111111111111/settings",
                 json={
                     "texlive_version": "2023",
                     "main_file": "main.tex",
@@ -243,7 +243,7 @@ class TestCompileSettingsEndpoint:
     def test_extra_packages_with_special_chars_returns_422(self, authed_client):
         """Package names with special chars are rejected before hitting the DB."""
         resp = authed_client.patch(
-            "/resumes/fake-id/settings",
+            "/resumes/11111111-1111-1111-1111-111111111111/settings",
             json={"extra_packages": ["xcolor; rm -rf /"]},
         )
         assert resp.status_code == 422
@@ -251,7 +251,7 @@ class TestCompileSettingsEndpoint:
     def test_package_name_too_long_returns_422(self, authed_client):
         """Package names exceeding 50 chars are rejected."""
         resp = authed_client.patch(
-            "/resumes/fake-id/settings",
+            "/resumes/11111111-1111-1111-1111-111111111111/settings",
             json={"extra_packages": ["a" * 51]},
         )
         assert resp.status_code == 422
