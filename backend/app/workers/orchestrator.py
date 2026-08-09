@@ -411,7 +411,16 @@ def _run_llm_stage(
         "message": "Streaming LLM response",
     })
 
-    client = openai.OpenAI(api_key=api_key)
+    # Route the PLATFORM key through an OpenAI-compatible base URL when configured
+    # (e.g. Gemini). BYOK keys always use native OpenAI and never inherit the
+    # platform model override.
+    _use_platform_base = bool(settings.OPENAI_BASE_URL) and api_key == settings.OPENAI_API_KEY
+    if _use_platform_base:
+        client = openai.OpenAI(api_key=api_key, base_url=settings.OPENAI_BASE_URL)
+        effective_model = model or settings.OPENAI_MODEL
+    else:
+        client = openai.OpenAI(api_key=api_key)
+        effective_model = model or ("gpt-4o-mini" if settings.OPENAI_BASE_URL else settings.OPENAI_MODEL)
     start_time = time.time()
     accumulated = ""
     token_count = 0
@@ -429,8 +438,8 @@ def _run_llm_stage(
         else base_system
     )
 
-    stream = client.chat.completions.create(
-        model=model or settings.OPENAI_MODEL,
+    create_kwargs = dict(
+        model=effective_model,
         messages=[
             {"role": "system", "content": system_content},
             {"role": "user", "content": prompt},
@@ -440,6 +449,12 @@ def _run_llm_stage(
         stream=True,
         stream_options={"include_usage": True},
     )
+    # Gemini's OpenAI-compat models "think" by default, consuming the token
+    # budget before emitting the closing <<<END_LATEX>>> delimiter and breaking
+    # the parser. Disable it on the platform-base (Gemini) path only.
+    if _use_platform_base:
+        create_kwargs["extra_body"] = {"reasoning_effort": "none"}
+    stream = client.chat.completions.create(**create_kwargs)
 
     # ── Delimiter state machine ──────────────────────────────────────
     # States: BEFORE → IN_LATEX → AFTER_LATEX → IN_CHANGES
