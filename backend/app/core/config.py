@@ -106,6 +106,10 @@ class Settings(BaseSettings):
 
     # OpenAI Configuration
     OPENAI_API_KEY: str = Field(default="", description="OpenAI API key for LLM services")
+    # Optional override of the OpenAI API base URL. When set, the PLATFORM key is
+    # routed here — this lets us point the OpenAI SDK at an OpenAI-compatible
+    # endpoint (e.g. Gemini's /v1beta/openai/) without touching BYOK keys.
+    OPENAI_BASE_URL: str = Field(default="", description="OpenAI-compatible base URL for the platform key (blank = api.openai.com)")
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_MAX_TOKENS: int = 4000
     OPENAI_TEMPERATURE: float = 0.7
