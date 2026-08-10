@@ -27,9 +27,19 @@ const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 export class ApiClient {
   private token: string | null = null
   private baseUrl: string
+  private origin: string | null
 
-  constructor(opts: { baseUrl: string }) {
+  constructor(opts: { baseUrl: string; origin?: string }) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, '')
+    // Better Auth (mounted on the Next.js app) refuses any request it decides
+    // came from a browser but carries no Origin, and Node's fetch trips that
+    // heuristic while sending no Origin of its own:
+    //
+    //   403 {"message":"Missing or null Origin","code":"MISSING_OR_NULL_ORIGIN"}
+    //
+    // So sign-in from the TUI could never succeed. Callers talking to the auth
+    // origin declare it here; requests to the FastAPI backend are unaffected.
+    this.origin = opts.origin != null ? opts.origin.replace(/\/$/, '') : null
   }
 
   setToken(token: string | null): void {
@@ -43,6 +53,7 @@ export class ApiClient {
   private buildHeaders(): Headers {
     const h = new Headers({ 'Content-Type': 'application/json' })
     if (this.token) h.set('Authorization', `Bearer ${this.token}`)
+    if (this.origin != null) h.set('Origin', this.origin)
     return h
   }
 
@@ -82,7 +93,9 @@ export class ApiClient {
 
         if (res.status === 401) {
           const data = await res.json().catch(() => ({}))
-          throw new ApiError('Unauthorized', 401, data)
+          // Prefer the server's own wording ("Session expired", "Authentication
+          // required") over a hardcoded label that tells the user nothing.
+          throw new ApiError(errorMessage(data) ?? 'Unauthorized', 401, data)
         }
 
         if (res.status >= 500 && attempt < maxAttempts) {
@@ -92,8 +105,7 @@ export class ApiClient {
 
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
-          const msg = (data as Record<string, unknown>)['detail'] as string ?? res.statusText
-          throw new ApiError(msg, res.status, data)
+          throw new ApiError(errorMessage(data) ?? res.statusText, res.status, data)
         }
 
         const ct = res.headers.get('Content-Type') ?? ''
@@ -102,6 +114,10 @@ export class ApiClient {
       } catch (err) {
         clearTimeout(timer)
         if (err instanceof ApiError) throw err
+        // Nothing is listening, or the host does not resolve. That will not
+        // change within the backoff, so retrying only made every command sit for
+        // ~3 seconds before admitting the backend was down.
+        if (isUnreachable(err)) throw err
         if (attempt === maxAttempts) throw err
         await sleep(retryDelayMs * attempt)
       }
@@ -163,6 +179,7 @@ export class ApiClient {
         // A deliberate cancellation is not a transient failure. Retrying it made
         // an aborted export take ~3s to stop while it slept between attempts.
         if (opts.signal?.aborted === true) throw err
+        if (isUnreachable(err)) throw err
         if (attempt === maxAttempts) throw err
         lastErr = err
         await sleep(retryDelayMs * attempt)
@@ -197,11 +214,63 @@ export class ApiClient {
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
-      const msg = (data as Record<string, unknown>)['detail'] as string ?? res.statusText
+      const msg = errorMessage(data) ?? res.statusText
       throw new ApiError(msg, res.status, data)
     }
     return res.json() as Promise<T>
   }
+}
+
+/**
+ * Pull a human-readable message out of an error body.
+ *
+ * `detail` was read as a string and handed straight to ApiError. On a 422 FastAPI
+ * makes it an ARRAY of per-field objects, so the `as string` cast was a lie and
+ * the `??` never fired — every validation failure reached the user as the literal
+ * text `[object Object]`, naming neither the field nor the problem.
+ *
+ * The backend also sends a second envelope, {error:{code,message}}, which is the
+ * better wording when `detail` is absent.
+ */
+function errorMessage(data: unknown): string | null {
+  if (data == null || typeof data !== 'object') return null
+  const body = data as Record<string, unknown>
+
+  const detail = body['detail']
+  if (typeof detail === 'string' && detail !== '') return detail
+
+  if (Array.isArray(detail)) {
+    // [{loc:["body","latex_content"], msg:"Field required"}, …]
+    const parts = detail
+      .map(d => {
+        if (d == null || typeof d !== 'object') return null
+        const item = d as Record<string, unknown>
+        const msg = typeof item['msg'] === 'string' ? item['msg'] : null
+        if (msg == null) return null
+        const loc = Array.isArray(item['loc'])
+          // Drop the leading "body"/"query" scope — the field name is what helps.
+          ? (item['loc'] as unknown[]).slice(1).map(String).join('.')
+          : ''
+        return loc !== '' ? `${loc}: ${msg}` : msg
+      })
+      .filter((p): p is string => p !== null)
+    if (parts.length > 0) return parts.slice(0, 4).join('; ')
+  }
+
+  const nested = body['error']
+  if (nested != null && typeof nested === 'object') {
+    const msg = (nested as Record<string, unknown>)['message']
+    if (typeof msg === 'string' && msg !== '') return msg
+  }
+
+  // Better Auth puts its reason at the top level — {"message":"Missing or null
+  // Origin","code":"MISSING_OR_NULL_ORIGIN"} — with no `detail` and no `error`
+  // wrapper, so every sign-in failure reached the login prompt as bare
+  // "Forbidden" instead of saying what was actually wrong.
+  const flat = body['message']
+  if (typeof flat === 'string' && flat !== '') return flat
+
+  return null
 }
 
 /**
@@ -215,16 +284,35 @@ async function binaryError(res: Response): Promise<ApiError> {
   const raw = await res.text().catch(() => '')
   let message = res.statusText || `HTTP ${res.status}`
   try {
-    const body = JSON.parse(raw) as Record<string, unknown>
-    const detail = body['detail']
-    const nested = (body['error'] as Record<string, unknown> | undefined)?.['message']
-    if (typeof detail === 'string' && detail !== '') message = detail
-    else if (typeof nested === 'string' && nested !== '') message = nested
+    message = errorMessage(JSON.parse(raw)) ?? message
   } catch {
     // Not JSON (an HTML error page from a proxy) — do not dump the markup.
     if (res.status === 401 || res.status === 403) message = 'Unauthorized'
   }
   return new ApiError(message, res.status, raw.slice(0, 500))
+}
+
+/**
+ * A connection that cannot succeed on retry — no host, or nothing listening.
+ *
+ * Node tries IPv4 and IPv6 in parallel, so `cause` is often an AggregateError
+ * carrying one failure per address family and no `code` of its own. Reading only
+ * `cause.code` missed those entirely and the request still burned its retries.
+ */
+const UNREACHABLE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EHOSTUNREACH', 'ENETUNREACH'])
+
+function isUnreachable(err: unknown): boolean {
+  const cause = (err as { cause?: unknown } | null)?.cause
+  if (cause == null || typeof cause !== 'object') return false
+
+  const code = (cause as { code?: string }).code
+  if (code != null) return UNREACHABLE_CODES.has(code)
+
+  const nested = (cause as { errors?: unknown }).errors
+  if (Array.isArray(nested) && nested.length > 0) {
+    return nested.every(e => UNREACHABLE_CODES.has((e as { code?: string })?.code ?? ''))
+  }
+  return false
 }
 
 function sleep(ms: number): Promise<void> {

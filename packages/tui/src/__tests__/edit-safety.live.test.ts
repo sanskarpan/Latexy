@@ -34,6 +34,7 @@ async function edit(editor: string): Promise<string> {
 
 ;(LIVE ? describe : describe.skip)('/edit never destroys a resume', () => {
   beforeAll(() => {
+    expect(SANDBOX, 'LATEXY_FIXTURES required — without it this suite spawns /ed_*.sh and fails as though /edit were broken').not.toBe('')
     $session.set({ ...$session.get(), token: TOKEN, backendUrl: API, isAuthenticated: true, plan: 'pro' })
     initApiClient(API, TOKEN)
   })

@@ -9,6 +9,7 @@
 import { readFile } from 'node:fs/promises'
 
 import { getApiClient } from '../lib/api-client.js'
+import { readConfig } from '../lib/config.js'
 import { beginPick } from '../lib/pick.js'
 import { wsClient } from '../lib/ws-client.js'
 import { createJobController } from '../hooks/useJobStream.js'
@@ -23,9 +24,20 @@ export interface Resume {
   id: string
   title: string
   updated_at: string
-  type?: string
-  is_pinned?: boolean
+  /** API field names — not `type`/`is_pinned`, which the picker used to read. */
+  document_type?: string
+  pinned?: boolean
 }
+
+/**
+ * How many resumes a picker fetches.
+ *
+ * This was 50 with no indication when it truncated, so an account with more than
+ * that could not reach its older resumes from /list, /edit, /compile or anything
+ * else built on resolveResumeId — they simply were not in the list, and nothing
+ * said so.
+ */
+export const RESUME_PAGE = 200
 
 /** Guard used by every authenticated command. Reports plainly and returns false. */
 export function requireAuth(): boolean {
@@ -47,16 +59,21 @@ export function requireAuth(): boolean {
  * quietly stop rather than reporting an error.
  */
 export async function resolveResumeId(parsed: ParsedCommand): Promise<string | null> {
+  // Only a *string* --resume counts. A bare `--resume` parses to boolean true,
+  // which used to be returned as the id and built a request against /resumes/true.
+  const flag = parsed.args['resume']
   const explicit =
-    (parsed.args['resume'] as string | undefined) ??
+    (typeof flag === 'string' && flag !== '' ? flag : undefined) ??
     parsed.positional.find(p => /^[0-9a-f-]{36}$/i.test(p))
   if (explicit) return explicit
 
   const client = getApiClient()
   let resumes: Resume[] = []
+  let total = 0
   try {
-    const res = await client.get<{ resumes: Resume[] }>('/resumes/?limit=50')
+    const res = await client.get<{ resumes: Resume[]; total?: number }>(`/resumes/?limit=${RESUME_PAGE}`)
     resumes = res.resumes ?? []
+    total = res.total ?? resumes.length
   } catch (err) {
     addMessage({ role: 'error', content: `Could not list resumes: ${describeError(err)}` })
     return null
@@ -68,13 +85,36 @@ export async function resolveResumeId(parsed: ParsedCommand): Promise<string | n
   }
   if (resumes.length === 1) return resumes[0]!.id
 
+  // Honour the default the user chose in /list. ResumePicker has always written
+  // `defaultResumeId`, but nothing ever read it back, so choosing a resume
+  // changed nothing and every later command asked again. Only accept it while it
+  // still refers to a resume that exists, or a deleted default would wedge every
+  // command behind a 404.
+  const { defaultResumeId } = await readConfig()
+  if (defaultResumeId != null) {
+    if (resumes.some(r => r.id === defaultResumeId)) return defaultResumeId
+    // The listing is one page, so a default outside it is not evidence the
+    // resume is gone — ask directly before falling back to the picker. Only a
+    // genuinely deleted default should make us prompt again.
+    try {
+      await client.get<Resume>(`/resumes/${defaultResumeId}`)
+      return defaultResumeId
+    } catch {
+      /* deleted or inaccessible — prompt instead */
+    }
+  }
+
   const { SelectOverlay } = await import('../components/overlays/SelectOverlay.js')
   const React = await import('react')
   return new Promise<string | null>(resolve => {
     beginPick(resolve)
     openOverlay(
       React.createElement(SelectOverlay, {
-        title: `Select a resume for /${parsed.name}`,
+        // Say so when the list is a page rather than everything. Silently showing
+        // the first N of M reads as "these are all your resumes".
+        title: total > resumes.length
+          ? `Select a resume for /${parsed.name} — showing ${resumes.length} of ${total}`
+          : `Select a resume for /${parsed.name}`,
         load: async () =>
           resumes.map(r => ({ id: r.id, label: r.title, detail: formatAge(r.updated_at) })),
       }),
@@ -231,7 +271,22 @@ export function busyWithAnotherJob(): boolean {
 
 /** ApiError carries a useful message; anything else stringifies poorly. */
 export function describeError(err: unknown): string {
-  if (err instanceof Error) return err.message
+  if (err instanceof Error) {
+    // fetch() rejects with a bare "TypeError: fetch failed" and puts the real
+    // reason on .cause, so a backend that was simply not running reached the
+    // user as "TypeError: fetch failed" — true, and of no help whatsoever.
+    if (err.name === 'TypeError' && /fetch failed/i.test(err.message)) {
+      const cause = (err as { cause?: { code?: string; errors?: Array<{ code?: string }> } }).cause
+      // Dual-stack failures arrive as an AggregateError with the codes nested.
+      const code = cause?.code ?? cause?.errors?.[0]?.code
+      return `Cannot reach the Latexy backend${code != null ? ` (${code})` : ''}. ` +
+        'Check that it is running, or set LATEXY_API_URL.'
+    }
+    if (err.name === 'AbortError' || /the operation was aborted/i.test(err.message)) {
+      return 'The request timed out. The backend may be busy — try again.'
+    }
+    return err.message
+  }
   return String(err)
 }
 
@@ -260,12 +315,16 @@ export function report(title: string, rows: Array<[string, unknown]>): void {
     addMessage({ role: 'system', content: `${title}\n  (nothing to show)` })
     return
   }
-  const width = Math.max(...rows.map(([k]) => k.length))
-  const body = rows
-    // `false` and `0` are real values worth printing — dropping them made the
-    // notification settings render as an empty block.
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .map(([k, v]) => `  ${k.padEnd(width)}  ${String(v)}`)
-    .join('\n')
+  // `false` and `0` are real values worth printing — dropping them made the
+  // notification settings render as an empty block.
+  const shown = rows.filter(([, v]) => v !== undefined && v !== null && v !== '')
+  if (shown.length === 0) {
+    // Every value was empty. Printing just the heading with a blank line under it
+    // looks like a rendering failure; say plainly that there is nothing.
+    addMessage({ role: 'system', content: `${title}\n  (nothing to show)` })
+    return
+  }
+  const width = Math.max(...shown.map(([k]) => k.length))
+  const body = shown.map(([k, v]) => `  ${k.padEnd(width)}  ${String(v)}`).join('\n')
   addMessage({ role: 'system', content: `${title}\n${body}` })
 }

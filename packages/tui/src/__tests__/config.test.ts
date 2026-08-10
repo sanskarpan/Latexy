@@ -5,6 +5,13 @@ import { join } from 'node:path'
 
 const TMP_CONFIG = join(tmpdir(), `latexy-test-${process.pid}`)
 
+// readConfig() intentionally lets env vars win over the persisted file, so these
+// disk round-trip tests must run without them — otherwise a caller that exported
+// LATEXY_SESSION_TOKEN (as the live audit suites do) fails them spuriously.
+for (const k of ['LATEXY_SESSION_TOKEN', 'LATEXY_API_URL', 'LATEXY_APP_URL']) {
+  delete process.env[k]
+}
+
 describe('config', () => {
   beforeEach(() => {
     process.env['XDG_CONFIG_HOME'] = TMP_CONFIG

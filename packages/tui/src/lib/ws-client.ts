@@ -99,7 +99,9 @@ export class LatexyWSClient extends EventEmitter {
         const outer = JSON.parse(data.toString()) as Record<string, unknown>
         if (outer['type'] === 'event' && outer['event']) {
           // Unwrap the server's envelope: {type:"event", event:{...}} → emit inner event
-          this.publish(outer['event'] as AnyEvent)
+          const ev = outer['event'] as AnyEvent
+          this.rememberPosition(ev)
+          this.publish(ev)
         } else if (outer['type'] === 'subscribed') {
           this.emit('subscribed', outer)
         } else if (outer['type'] === 'error') {
@@ -150,6 +152,30 @@ export class LatexyWSClient extends EventEmitter {
   subscribe(jobId: string, lastEventId = '0'): void {
     this.subscriptions.set(jobId, lastEventId)
     this.send({ type: 'subscribe', job_id: jobId, last_event_id: lastEventId })
+  }
+
+  /**
+   * Advance the stored resume position for a job.
+   *
+   * Without this the map kept the '0' it was seeded with, so every reconnect
+   * resubscribed from the start of the stream and the server replayed the whole
+   * job. Nothing deduplicates downstream: JobController appends, so a compile
+   * that dropped its socket once showed every build-log line twice, and an
+   * /optimize showed the generated LaTeX concatenated with itself.
+   *
+   * Only advance for jobs still subscribed — a late event for a released job
+   * must not resurrect its entry.
+   */
+  private rememberPosition(ev: AnyEvent): void {
+    const id = (ev as { event_id?: unknown }).event_id
+    if (typeof id !== 'string' || id === '') return
+    if (!this.subscriptions.has(ev.job_id)) return
+    this.subscriptions.set(ev.job_id, id)
+  }
+
+  /** The position a reconnect would resume this job from. Exposed for tests. */
+  resumePosition(jobId: string): string | undefined {
+    return this.subscriptions.get(jobId)
   }
 
   unsubscribe(jobId: string): void {

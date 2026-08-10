@@ -1,17 +1,23 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
+import { useOverlaySize } from '../../lib/overlay-size.js'
+import { useCtrlKeyGuard } from '../../lib/ctrl-key-guard.js'
 import { getApiClient } from '../../lib/api-client.js'
 import { closeOverlay } from '../../stores/overlay.js'
 import { writeConfig } from '../../lib/config.js'
 import { addMessage } from '../../stores/messages.js'
+import { RESUME_PAGE } from '../../tools/shared.js'
 
 interface Resume {
   id: string
   title: string
-  type?: string
   updated_at: string
-  is_pinned?: boolean
+  // The API names these `document_type` and `pinned`. Reading `type`/`is_pinned`
+  // meant the type label and the ★ were never drawn for any resume, pinned or
+  // not — `undefined === true` is simply always false.
+  document_type?: string
+  pinned?: boolean
 }
 
 interface ResumeListResponse {
@@ -28,6 +34,7 @@ interface ResumePickerProps {
 
 export function ResumePicker({ archived, documentType }: ResumePickerProps): React.ReactElement {
   const [resumes, setResumes] = useState<Resume[]>([])
+  const [total, setTotal] = useState(0)
   const [filter, setFilter] = useState('')
   const [cursor, setCursor] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -35,12 +42,13 @@ export function ResumePicker({ archived, documentType }: ResumePickerProps): Rea
 
   useEffect(() => {
     const client = getApiClient()
-    const params = new URLSearchParams({ limit: '50' })
+    const params = new URLSearchParams({ limit: String(RESUME_PAGE) })
     if (archived === true) params.set('archived', 'true')
     if (documentType != null) params.set('document_type', documentType)
     client.get<ResumeListResponse>(`/resumes/?${params.toString()}`)
       .then(res => {
         setResumes(res.resumes)
+        setTotal(res.total ?? res.resumes.length)
         setLoading(false)
       })
       .catch(err => {
@@ -48,6 +56,10 @@ export function ResumePicker({ archived, documentType }: ResumePickerProps): Rea
         setLoading(false)
       })
   }, [archived, documentType])
+
+  // Ctrl+L clears the transcript underneath; without this its letter lands in
+  // this overlay's filter box instead.
+  useCtrlKeyGuard(setFilter)
 
   const filtered = filter
     ? resumes.filter(r => r.title.toLowerCase().includes(filter.toLowerCase()))
@@ -71,6 +83,12 @@ export function ResumePicker({ archived, documentType }: ResumePickerProps): Rea
     if (key.return && filtered[cursor]) { select(filtered[cursor]!); return }
   })
 
+  // Every row was rendered. SelectOverlay windows to 10 for exactly this reason:
+  // a user with 40 resumes had the list push the prompt off the top of the screen.
+  const { rows: WINDOW, width: boxWidth } = useOverlaySize()
+  const start = Math.max(0, Math.min(cursor - Math.floor(WINDOW / 2), filtered.length - WINDOW))
+  const visible = filtered.slice(start, start + WINDOW)
+
   const formatAge = (iso: string): string => {
     const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
     if (days === 0) return 'today'
@@ -80,8 +98,13 @@ export function ResumePicker({ archived, documentType }: ResumePickerProps): Rea
   }
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="blue" padding={1} width={60}>
-      <Text bold color="cyan">{archived === true ? 'Archived Resumes' : 'Select Resume'}</Text>
+    <Box flexDirection="column" borderStyle="round" borderColor="blue" padding={1} width={boxWidth}>
+      <Text bold color="cyan">
+        {archived === true ? 'Archived Resumes' : 'Select Resume'}
+        {/* Showing a page of a longer list without saying so reads as "this is
+            everything you have". */}
+        {total > resumes.length ? ` — showing ${resumes.length} of ${total}` : ''}
+      </Text>
       <Box marginTop={1} gap={1}>
         <Text dimColor>Filter:</Text>
         <TextInput value={filter} onChange={setFilter} placeholder="type to filter..." />
@@ -92,16 +115,22 @@ export function ResumePicker({ archived, documentType }: ResumePickerProps): Rea
         {!loading && errorMsg == null && filtered.length === 0 && (
           <Text dimColor>No resumes found</Text>
         )}
-        {filtered.map((r, i) => (
-          <Box key={r.id} gap={2}>
-            <Text color={i === cursor ? 'cyan' : undefined}>
-              {i === cursor ? '▶' : ' '} {r.title}
-            </Text>
-            {r.type && <Text dimColor>{r.type}</Text>}
-            <Text dimColor>{formatAge(r.updated_at)}</Text>
-            {r.is_pinned === true && <Text color="yellow">★</Text>}
-          </Box>
-        ))}
+        {visible.map(r => {
+          const i = filtered.indexOf(r)
+          return (
+            <Box key={r.id} gap={2}>
+              <Text color={i === cursor ? 'cyan' : undefined}>
+                {i === cursor ? '▶' : ' '} {r.title}
+              </Text>
+              {r.document_type != null && <Text dimColor>{r.document_type}</Text>}
+              <Text dimColor>{formatAge(r.updated_at)}</Text>
+              {r.pinned === true && <Text color="yellow">★</Text>}
+            </Box>
+          )
+        })}
+        {filtered.length > WINDOW && (
+          <Text dimColor>{`  … ${filtered.length - WINDOW} more (type to filter)`}</Text>
+        )}
       </Box>
       <Box marginTop={1}>
         <Text dimColor>Type to filter · ↑↓ navigate · Enter select · Esc close</Text>

@@ -3,27 +3,22 @@ import { basename } from 'node:path'
 import type { ParsedCommand } from '../commands/parser.js'
 import { getApiClient } from '../lib/api-client.js'
 import { wsClient } from '../lib/ws-client.js'
-import { $session } from '../stores/session.js'
 import { addMessage, updateMessage, $activeJobId } from '../stores/messages.js'
 import { createJobController } from '../hooks/useJobStream.js'
+import { describeError, requireAuth, resolveResumeId } from './shared.js'
 
 interface JobSubmitResponse {
   job_id: string
   status: string
 }
 
-interface ResumeListResponse {
-  resumes: Array<{ id: string; title: string }>
-}
-
 export async function runCompile(parsed: ParsedCommand): Promise<void> {
   const client = getApiClient()
-  const session = $session.get()
 
-  if (!session.isAuthenticated) {
-    addMessage({ role: 'error', content: 'Not logged in. Use /login or restart to authenticate.' })
-    return
-  }
+  // Was a bespoke check pointing at "/login", which has never been a registered
+  // command — a dead end for anyone who followed it. requireAuth() gives the
+  // same guidance as every other command.
+  if (!requireAuth()) return
 
   const compiler = (parsed.args['compiler'] as string | undefined) ?? 'pdflatex'
   const resumeIdFlag = parsed.args['resume-id'] as string | undefined
@@ -63,30 +58,21 @@ export async function runCompile(parsed: ParsedCommand): Promise<void> {
     } catch (err) {
       updateMessage(toolMsgId, {
         toolState: 'error',
-        toolResult: { error: String(err) },
+        toolResult: { error: describeError(err) },
         durationMs: 0,
       })
     }
     return
   }
 
-  // Case 2: resume ID given — submit job directly
-  let actualResumeId = resumeId
-
-  if (!actualResumeId) {
-    // No resume specified — fetch first resume
-    try {
-      const list = await client.get<ResumeListResponse>('/resumes?limit=1')
-      actualResumeId = list.resumes[0]?.id
-      if (!actualResumeId) {
-        addMessage({ role: 'error', content: 'No resumes found. Create one first with /new.' })
-        return
-      }
-    } catch (err) {
-      addMessage({ role: 'error', content: `Failed to fetch resumes: ${String(err)}` })
-      return
-    }
-  }
+  // Case 2: resume ID given, or resolved the same way as every other command.
+  //
+  // This used to take `/resumes?limit=1` and compile whichever resume happened to
+  // sort first — ignoring both the default the user had chosen in /list and the
+  // picker. With several resumes the user had no way to tell which one had been
+  // built, on the single most-used command in the TUI.
+  const actualResumeId = resumeId ?? await resolveResumeId(parsed)
+  if (!actualResumeId) return   // resolveResumeId already explained, or the user cancelled
 
   const toolMsgId = addMessage({
     role: 'tool_use',
@@ -112,7 +98,7 @@ export async function runCompile(parsed: ParsedCommand): Promise<void> {
   } catch (err) {
     updateMessage(toolMsgId, {
       toolState: 'error',
-      toolResult: { error: String(err) },
+      toolResult: { error: describeError(err) },
       durationMs: 0,
     })
   }

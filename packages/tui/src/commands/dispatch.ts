@@ -108,7 +108,9 @@ const API_HANDLERS: Record<string, (parsed: NonNullable<ReturnType<typeof parseS
       const result = await getApiClient().get<{ status: string }>('/health')
       addMessage({ role: 'system', content: `Backend status: ${result.status}` })
     } catch (err) {
-      addMessage({ role: 'error', content: `Health check failed: ${String(err)}` })
+      // String(err) rendered "TypeError: fetch failed" when the backend was down.
+      const { describeError } = await import('../tools/shared.js')
+      addMessage({ role: 'error', content: `Health check failed: ${describeError(err)}` })
     }
   },
   cancel: async (p) => {
@@ -118,22 +120,49 @@ const API_HANDLERS: Record<string, (parsed: NonNullable<ReturnType<typeof parseS
       return
     }
     const { getApiClient } = await import('../lib/api-client.js')
+    // The slot is held by $activeJobId until a terminal event arrives. If the
+    // socket dropped, or the worker died, or the job settled while the TUI was
+    // not listening, that event never comes — and /cancel used to leave
+    // $activeJobId set, so the one command the error message tells the user to
+    // run could not clear it. Every subsequent job was refused with "a job is
+    // already running" until the process was restarted.
+    const releaseIfCurrent = (): void => {
+      if ($activeJobId.get() === jobId) $activeJobId.set(null)
+    }
     try {
       // DELETE /jobs/{id} answers 200 {"success":true} even for an id that was
       // never a job, so the response cannot distinguish a real cancellation from
       // a no-op. Confirm the job exists first, otherwise any typo was reported
       // back as a successful cancellation.
       const client = getApiClient()
+      let state: { status?: string } | null
       try {
-        await client.get(`/jobs/${jobId}/state`)
+        state = await client.get<{ status?: string } | null>(`/jobs/${jobId}/state`)
       } catch {
+        // An id we cannot look up must not keep the slot hostage either.
+        releaseIfCurrent()
         addMessage({ role: 'error', content: `No job with id ${jobId} — see /jobs for recent ones.` })
         return
       }
+
+      // Optional chaining, not `state.status`: a body that is not an object
+      // threw here and the cancellation never reached the server.
+      const status = String(state?.status ?? '').toLowerCase()
+      if (['completed', 'failed', 'cancelled', 'canceled'].includes(status)) {
+        releaseIfCurrent()
+        addMessage({
+          role: 'system',
+          content: `Job ${jobId} already ${status} — nothing to cancel. You can start a new one.`,
+        })
+        return
+      }
+
       await client.delete(`/jobs/${jobId}`)
+      releaseIfCurrent()
       addMessage({ role: 'system', content: `Job ${jobId} cancellation requested.` })
     } catch (err) {
-      addMessage({ role: 'error', content: `Cancel failed: ${String(err)}` })
+      const { describeError } = await import('../tools/shared.js')
+      addMessage({ role: 'error', content: `Cancel failed: ${describeError(err)}` })
     }
   },
 }
