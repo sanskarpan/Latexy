@@ -1,0 +1,6 @@
+# /export and /pdf write into the working directory, so an audit run inside the
+# repo leaves resume-<id>.<fmt> artefacts behind.
+resume-*.pdf
+resume-*.docx
+resume-*.tex
+resume-*.json

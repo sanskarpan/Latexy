@@ -6,6 +6,8 @@
  * of starting any job until they restart the TUI. Every early return has to
  * release it.
  */
+import { mkdtempSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { busyWithAnotherJob, claimJobSlot, releaseJobSlot } from '../tools/shared.js'
@@ -14,6 +16,7 @@ import { initApiClient } from '../lib/api-client.js'
 import { $activeJobId, clearMessages } from '../stores/messages.js'
 import { pickPending, settlePick } from '../lib/pick.js'
 import { $session } from '../stores/session.js'
+import { writeConfig } from '../lib/config.js'
 
 const LIVE = process.env['LATEXY_LIVE'] === '1'
 const API = process.env['LATEXY_API_URL'] ?? 'http://localhost:8030'
@@ -24,8 +27,32 @@ const GHOST = '00000000-0000-4000-8000-000000000000'
 const cmd = (name: string, positional: string[], args: Record<string, string | boolean> = {}) =>
   ({ name, args, positional, raw: `/${name}` })
 
+/**
+ * Wait for the picker instead of sleeping a fixed interval.
+ *
+ * These used to sleep 500-600ms, which was enough until resume resolution grew a
+ * validation round-trip — then they failed intermittently under parallel load,
+ * looking like a resolution bug rather than an impatient test.
+ */
+async function waitForPicker(timeoutMs = 6000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (pickPending()) return true
+    await new Promise(r => setTimeout(r, 50))
+  }
+  return false
+}
+
 ;(LIVE ? describe : describe.skip)('the job slot never wedges', () => {
   beforeAll(async () => {
+    // Own config dir: these suites both write defaultResumeId, and sharing one
+    // made each see the other's writes. Derived from the sandbox root so the
+    // outside-$HOME guard still holds.
+    const root = process.env['XDG_CONFIG_HOME']
+    if (root != null && root !== '') {
+      process.env['XDG_CONFIG_HOME'] = mkdtempSync(join(root, 'job-slot-'))
+    }
+
     $session.set({ ...$session.get(), token: TOKEN, backendUrl: API, isAuthenticated: true, plan: 'pro' })
     initApiClient(API, TOKEN)
 
@@ -33,6 +60,11 @@ const cmd = (name: string, positional: string[], args: Record<string, string | b
     // resume exists, so guarantee that here rather than depending on fixture
     // state a concurrent process might have cleaned up.
     const client = initApiClient(API, TOKEN)
+    // resolveResumeId honours a saved defaultResumeId, so a default left behind
+    // by another suite sharing this XDG_CONFIG_HOME would satisfy resolution and
+    // the picker under test would never open.
+    await writeConfig({ defaultResumeId: null })
+
     const list = await client.get<{ resumes: unknown[] }>('/resumes/?limit=5')
     if ((list.resumes ?? []).length < 2) {
       await client.post('/resumes/', {
@@ -62,8 +94,7 @@ const cmd = (name: string, positional: string[], args: Record<string, string | b
     // Needs >1 resume, otherwise resolveResumeId auto-selects and a job really
     // does start — in which case a held slot is correct, not a leak.
     const call = runCombined(cmd('combined', [], { jd: 'text' }))
-    await new Promise(r => setTimeout(r, 500))
-    expect(pickPending(), 'picker did not open — fixture needs two resumes').toBe(true)
+    expect(await waitForPicker(), 'picker did not open — fixture needs two resumes').toBe(true)
     settlePick(null)
     await call
     expect(busyWithAnotherJob(), 'slot stuck after cancelling the picker').toBe(false)
