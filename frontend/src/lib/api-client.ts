@@ -180,9 +180,15 @@ export interface TrialStatusResponse {
 }
 
 export interface HealthResponse {
+  /** "healthy" or "degraded" — degraded when any backing service below is down. */
   status: string
   version: string
   latex_available: boolean
+  database?: string
+  redis?: string
+  /** Object storage. Its absence from this type is how a 502-ing template
+   *  gallery went unnoticed while /health still reported healthy. */
+  storage?: string
 }
 
 export interface BillingAvailability {
