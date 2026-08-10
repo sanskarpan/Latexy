@@ -176,6 +176,44 @@ jobs:
       - name: Build
         run: pnpm build
 
+  tui-test:
+    name: TUI Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/tui
+    env:
+      # The live suites refuse to run unless this is set outside $HOME. /logout calls
+      # clearConfig(), and during an earlier audit round it destroyed a developer's real
+      # session token — so the guard is load-bearing, not decorative. Point it at the
+      # runner's temp dir so the guard is satisfied even though no live test runs here.
+      XDG_CONFIG_HOME: ${{ runner.temp }}/xdg
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          # packages/tui declares engines.node >=22; the other jobs pin 20.
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Build
+        run: pnpm run build
+      # No LATEXY_LIVE: the 66 live tests need a backend, worker, Postgres, Redis and
+      # (for sign-in) the Next.js app, and they skip cleanly without it. The remaining
+      # 164 need nothing, and they are what four audit rounds' worth of invariants live
+      # in — the registry/dispatch parity check, websocket lifecycle, config atomicity,
+      # retry safety and argv parsing.
+      - name: Test
+        run: pnpm test
+
   full-stack-smoke:
     name: Full-Stack Smoke
     runs-on: ubuntu-latest
