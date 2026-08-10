@@ -74,12 +74,15 @@ describe('slash command registry integration', () => {
 
   it('local commands are correctly classified', () => {
     const localNames = SLASH_COMMANDS.filter(c => c.isLocal).map(c => c.name)
-    expect(localNames).toContain('list')
     expect(localNames).toContain('clear')
     expect(localNames).toContain('help')
     expect(localNames).toContain('logout')
-    expect(localNames).toContain('jobs')
-    expect(localNames).toContain('billing')
+    // isLocal is shown to the user as a local/api badge, so it must mean
+    // "needs no backend". /jobs and /billing both make REST calls.
+    expect(localNames).not.toContain('jobs')
+    expect(localNames).not.toContain('billing')
+    // /list opens an overlay, but it fetches the resume list over REST first.
+    expect(localNames).not.toContain('list')
   })
 
   it('api commands are correctly classified', () => {
@@ -89,5 +92,8 @@ describe('slash command registry integration', () => {
     expect(apiNames).toContain('ats')
     expect(apiNames).toContain('health')
     expect(apiNames).toContain('cancel')
+    expect(apiNames).toContain('jobs')
+    expect(apiNames).toContain('billing')
+    expect(apiNames).toContain('settings')
   })
 })

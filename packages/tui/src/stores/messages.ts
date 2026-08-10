@@ -6,8 +6,9 @@ export type MessageRole =
   | 'tool_use'
   | 'log_stream'
   | 'compile_result'
-  | 'ats_result'
-  | 'resume_list'
+  // 'ats_result' and 'resume_list' used to be declared here. Nothing ever
+  // produced them and MessageRow had no branch for either, so a message using
+  // one would have rendered as nothing at all.
   | 'system'
   | 'error'
 
