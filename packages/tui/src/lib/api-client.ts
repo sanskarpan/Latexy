@@ -214,7 +214,7 @@ export class ApiClient {
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
-      const msg = (data as Record<string, unknown>)['detail'] as string ?? res.statusText
+      const msg = errorMessage(data) ?? res.statusText
       throw new ApiError(msg, res.status, data)
     }
     return res.json() as Promise<T>
