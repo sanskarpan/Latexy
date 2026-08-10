@@ -29,6 +29,7 @@ export class JobController {
   private lastFlushedLen = 0
   private flushTimer: NodeJS.Timeout | null = null
   private startedAt = Date.now()
+  private seenEventIds = new Set<string>()
 
   constructor(private readonly jobId: string) {}
 
@@ -36,7 +37,57 @@ export class JobController {
     this.toolMsgId = id
   }
 
+  /**
+   * Drop an event this controller has already applied.
+   *
+   * The client resumes a reconnect from its last event id now, so a full replay
+   * should not happen — but a replay is silently destructive here (onLogLine and
+   * onLLMToken both append), so this is a cheap second line of defence against
+   * any path that still delivers an event twice.
+   */
+  private alreadyApplied(ev: { event_id?: string }): boolean {
+    const id = ev.event_id
+    if (typeof id !== 'string' || id === '') return false
+    if (this.seenEventIds.has(id)) return true
+    // An /optimize streams a token event per chunk, and a job that never reaches
+    // a terminal state is never released — so this set would grow for the whole
+    // session. Reset rather than grow without bound: the resume position is the
+    // real defence, and this is only a backstop.
+    if (this.seenEventIds.size > 20_000) this.seenEventIds.clear()
+    this.seenEventIds.add(id)
+    return false
+  }
+
+  /**
+   * Write out any buffered LLM text immediately and stop the pending flush.
+   *
+   * The 16ms flush timer used to outlive the job: if completion arrived first,
+   * llmMsgId was still null, so onComplete's `streaming: false` had nothing to
+   * apply to and the timer then created the message with `streaming: true` —
+   * leaving a finished answer rendering as though it were still being written,
+   * forever. The timer also kept the event loop alive.
+   */
+  private flushLLM(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer)
+      this.flushTimer = null
+    }
+    if (this.llmBuffer === '') return
+    this.lastFlushedLen = this.llmBuffer.length
+    if (!this.llmMsgId) {
+      this.llmMsgId = addMessage({
+        role: 'assistant',
+        content: this.llmBuffer,
+        jobId: this.jobId,
+        streaming: false,
+      })
+    } else {
+      updateMessage(this.llmMsgId, { content: this.llmBuffer, streaming: false })
+    }
+  }
+
   onLogLine(ev: LogLineEvent): void {
+    if (this.alreadyApplied(ev)) return
     if (!this.logMsgId) {
       this.logMsgId = addMessage({
         role: 'log_stream',
@@ -49,7 +100,9 @@ export class JobController {
     updateMessage(this.logMsgId, { resultData: { lines: [...this.logLines] } })
   }
 
-  onLLMToken(token: string): void {
+  onLLMToken(token: string, ev?: { event_id?: string }): void {
+    // Replayed tokens append, so a replay used to render the answer twice over.
+    if (ev && this.alreadyApplied(ev)) return
     this.llmBuffer += token
     if (!this.flushTimer) {
       this.flushTimer = setTimeout(() => {
@@ -77,8 +130,12 @@ export class JobController {
   }
 
   onComplete(ev: JobCompletedEvent): void {
+    if (this.alreadyApplied(ev)) return
     const durationMs = Date.now() - this.startedAt
     const atsScore = resolveAtsScore(ev)
+    // Land any buffered tokens before the card settles, so the streamed answer
+    // is not left half-written or stuck rendering as in-progress.
+    this.flushLLM()
     if (this.toolMsgId) {
       updateMessage(this.toolMsgId, {
         toolState: 'success',
@@ -90,9 +147,6 @@ export class JobController {
         },
         durationMs,
       })
-    }
-    if (this.llmMsgId) {
-      updateMessage(this.llmMsgId, { streaming: false })
     }
     clearActiveJob(this.jobId)
     // job.completed carries these at the top level — there is no `result` wrapper
@@ -116,7 +170,10 @@ export class JobController {
   }
 
   onFailed(ev: JobFailedEvent): void {
+    if (this.alreadyApplied(ev)) return
     const durationMs = Date.now() - this.startedAt
+    // Keep whatever the model had produced, but stop it rendering as streaming.
+    this.flushLLM()
     if (this.toolMsgId) {
       updateMessage(this.toolMsgId, {
         toolState: 'error',
@@ -127,7 +184,9 @@ export class JobController {
     clearActiveJob(this.jobId)
   }
 
-  onCancelled(_ev: JobCancelledEvent): void {
+  onCancelled(ev: JobCancelledEvent): void {
+    if (this.alreadyApplied(ev)) return
+    this.flushLLM()
     if (this.toolMsgId) {
       updateMessage(this.toolMsgId, { toolState: 'cancelled' })
     }
@@ -203,7 +262,7 @@ export function useWSEventRouter(): void {
       if (!ctrl) return
       switch (ev.type) {
         case 'log.line':      ctrl.onLogLine(ev); break
-        case 'llm.token':     ctrl.onLLMToken(ev.token); break
+        case 'llm.token':     ctrl.onLLMToken(ev.token, ev); break
         case 'job.progress':  ctrl.onProgress(ev); break
         // Release the websocket subscription alongside the controller. Without
         // this the subscription map grew for the whole session, and every
