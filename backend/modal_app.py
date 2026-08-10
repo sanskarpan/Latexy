@@ -5,7 +5,8 @@ Run from the backend/ directory:
   modal deploy modal_app.py          # deploy to production
   modal serve  modal_app.py          # live-reload dev mode
 
-Environment variables are loaded from Modal secret "latexy-backend-secrets".
+Environment variables are loaded from the Modal secrets "latexy-backend-secrets"
+(app config) and "latexy-storage" (object storage).
 DEPLOY_TARGET=modal is baked into the image so worker dispatch routes here.
 """
 
@@ -103,7 +104,19 @@ worker_image = (
 # ---------------------------------------------------------------------------
 # Secrets
 # ---------------------------------------------------------------------------
-_secrets = [modal.Secret.from_name("latexy-backend-secrets")]
+# Object storage lives in its own secret rather than being added to
+# latexy-backend-secrets. `modal secret create --force` REPLACES a secret wholesale
+# and its values cannot be read back, so amending the existing one risks silently
+# dropping DATABASE_URL and every other key it holds. Modal merges the env from
+# each secret in this list, so a second one is both safer and easier to rotate.
+#
+# Without it, MINIO_ENDPOINT fell back to http://localhost:9000 — which does not
+# exist inside a Modal container — and every template thumbnail and preview PDF
+# answered 502 Storage unavailable (#1143).
+_secrets = [
+    modal.Secret.from_name("latexy-backend-secrets"),
+    modal.Secret.from_name("latexy-storage"),
+]
 
 
 # ---------------------------------------------------------------------------
