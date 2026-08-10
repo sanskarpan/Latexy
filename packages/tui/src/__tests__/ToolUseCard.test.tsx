@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { render } from 'ink-testing-library'
 import React from 'react'
 import { ToolUseCard } from '../components/ToolUseCard.js'
+import { SPINNER_FRAMES } from '../components/Spinner.js'
 import type { Message } from '../stores/messages.js'
 
 const base: Message = {
@@ -15,8 +16,15 @@ const base: Message = {
 describe('ToolUseCard', () => {
   it('shows tool name with spinner when running', () => {
     const { lastFrame } = render(<ToolUseCard message={{ ...base, toolState: 'running' }} />)
-    expect(lastFrame()).toContain('compile_pdf')
-    // Running state shows a spinner (animated frame char), not the word "running"
+    const frame = lastFrame() ?? ''
+    expect(frame).toContain('compile_pdf')
+    // Assert the spinner itself renders. @inkjs/ui's Spinner returned nothing under
+    // Ink 7 on Linux and took the whole subtree with it, so the tool name vanished
+    // too and this test only caught it incidentally — on one platform.
+    expect(
+      SPINNER_FRAMES.some(f => frame.includes(f)),
+      `no spinner frame in: ${JSON.stringify(frame)}`,
+    ).toBe(true)
   })
 
   it('shows duration on success', () => {

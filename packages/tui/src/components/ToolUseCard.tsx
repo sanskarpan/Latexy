@@ -1,6 +1,6 @@
 import React from 'react'
 import { Box, Text } from 'ink'
-import { Spinner } from '@inkjs/ui'
+import { Spinner } from './Spinner.js'
 import type { Message } from '../stores/messages.js'
 
 interface Props {
