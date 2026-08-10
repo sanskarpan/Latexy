@@ -36,7 +36,10 @@ export function LoginOverlay(): React.ReactElement {
     const session = $session.get()
     // Better Auth is mounted on the Next.js app, not the FastAPI backend — use a dedicated
     // client so the global one keeps pointing at the backend
-    const authClient = new ApiClient({ baseUrl: appUrl(session) })
+    // Origin must be declared, or Better Auth answers 403 MISSING_OR_NULL_ORIGIN
+    // and sign-in fails for every user on first run.
+    const authOrigin = appUrl(session)
+    const authClient = new ApiClient({ baseUrl: authOrigin, origin: authOrigin })
 
     try {
       // Better Auth signin endpoint
