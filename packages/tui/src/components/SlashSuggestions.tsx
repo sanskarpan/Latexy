@@ -14,9 +14,15 @@ export function SlashSuggestions({ query, maxItems = 7, onComplete, isActive = t
 
   const matches = useMemo(() => {
     const q = query.toLowerCase()
-    return IMPLEMENTED_COMMANDS.filter(c =>
-      c.name.startsWith(q) || c.description.toLowerCase().includes(q)
-    ).slice(0, maxItems)
+    // Name matches first. A flat OR ranked them by registry order, so typing
+    // "co" offered /share — whose description happens to say "copy share link" —
+    // above commands actually beginning with "co". Descriptions still match, so
+    // searching by intent works; they just rank below the literal prefix.
+    const byName = IMPLEMENTED_COMMANDS.filter(c => c.name.startsWith(q))
+    const byDescription = IMPLEMENTED_COMMANDS.filter(
+      c => !c.name.startsWith(q) && c.description.toLowerCase().includes(q),
+    )
+    return [...byName, ...byDescription].slice(0, maxItems)
   }, [query, maxItems])
 
   // Reset selection when matches change
