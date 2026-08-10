@@ -2,7 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, "feature/**", "fix/**"]
+    # chore/**, test/** and ci/** are here because a branch matching none of these
+    # gets NO CI at all: the pull_request trigger below only fires for PRs into
+    # main or develop, so a stacked PR targeting another branch is unchecked in
+    # both directions. That is how the Ink 7 upgrade branch ended up with no
+    # backend, frontend or TUI job running against it.
+    branches: [main, develop, "feature/**", "fix/**", "chore/**", "test/**", "ci/**"]
   pull_request:
     branches: [main, develop]
 
