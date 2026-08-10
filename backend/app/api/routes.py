@@ -294,9 +294,32 @@ async def health_check():
         logger.warning("Health check: redis unavailable: %s", exc)
         redis_status = "unavailable"
 
-    # Consider service healthy if LaTeX is available AND both backing services are up.
-    # DB/Redis unavailability degrades status but does not change HTTP status code.
-    if not latex_available or db_status != "ok" or redis_status != "ok":
+    # Object storage was the one backing service left unprobed, so this endpoint
+    # answered "healthy" while every template thumbnail and preview PDF returned
+    # 502 Storage unavailable in production — 0 of 147 served. Run it in a thread:
+    # boto3 is synchronous and would otherwise block the event loop for up to the
+    # client's 5s connect timeout.
+    storage_status = "ok"
+    try:
+        from app.services import storage_service
+
+        ok, detail = await asyncio.to_thread(storage_service.probe)
+        if not ok:
+            logger.warning("Health check: object storage unavailable: %s", detail)
+            storage_status = "unavailable"
+    except Exception as exc:
+        logger.warning("Health check: object storage probe failed: %s", exc)
+        storage_status = "unavailable"
+
+    # Consider service healthy if LaTeX is available AND every backing service is up.
+    # Unavailability degrades status but does not change the HTTP status code, so
+    # availability probes that only check for 200 keep working.
+    if (
+        not latex_available
+        or db_status != "ok"
+        or redis_status != "ok"
+        or storage_status != "ok"
+    ):
         status = "degraded"
     else:
         status = "healthy"
@@ -307,6 +330,7 @@ async def health_check():
         latex_available=latex_available,
         database=db_status,
         redis=redis_status,
+        storage=storage_status,
     )
 
 

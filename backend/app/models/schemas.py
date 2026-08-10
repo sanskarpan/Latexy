@@ -24,6 +24,9 @@ class HealthResponse(BaseModel):
     latex_available: bool
     database: str = "ok"
     redis: str = "ok"
+    # Object storage was unprobed, so /health reported "healthy" while every
+    # template thumbnail and preview PDF returned 502 Storage unavailable.
+    storage: str = "ok"
 
 
 class CompilationRequest(BaseModel):
