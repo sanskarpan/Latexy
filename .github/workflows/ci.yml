@@ -187,7 +187,11 @@ jobs:
       # clearConfig(), and during an earlier audit round it destroyed a developer's real
       # session token — so the guard is load-bearing, not decorative. Point it at the
       # runner's temp dir so the guard is satisfied even though no live test runs here.
-      XDG_CONFIG_HOME: ${{ runner.temp }}/xdg
+      # A literal path, not ${{ runner.temp }}: the `runner` context is not
+      # available in a job-level env block and GitHub rejects the whole workflow
+      # file for it — which fails the run before any job starts, so it does not
+      # show up as a job failure.
+      XDG_CONFIG_HOME: /tmp/latexy-ci-xdg
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v5
