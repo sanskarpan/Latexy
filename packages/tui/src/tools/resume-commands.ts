@@ -324,6 +324,15 @@ export async function runCheckpoint(parsed: ParsedCommand): Promise<void> {
   if (!requireAuth()) return
   const resumeId = await resolveResumeId(parsed)
   if (!resumeId) return
+
+  // The server caps manual checkpoints at 20 and answers "Delete older ones
+  // first" — which was a dead end, because no TUI command could delete one. The
+  // endpoint has always existed; nothing exposed it.
+  if (parsed.args['delete'] === true || parsed.args['delete'] === 'true') {
+    await deleteCheckpoint(resumeId)
+    return
+  }
+
   const label = parsed.positional.filter(p => !/^[0-9a-f-]{36}$/i.test(p)).join(' ').trim()
     || `Checkpoint ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`
   try {
@@ -331,6 +340,45 @@ export async function runCheckpoint(parsed: ParsedCommand): Promise<void> {
     report('Checkpoint saved', [['label', label], ['restore with', '/restore']])
   } catch (err) {
     addMessage({ role: 'error', content: `Checkpoint failed: ${describeError(err)}` })
+  }
+}
+
+/** Pick a manual checkpoint and delete it. Only checkpoints are deletable. */
+async function deleteCheckpoint(resumeId: string): Promise<void> {
+  const client = getApiClient()
+  try {
+    const list = await client.get<Checkpoint[] | { checkpoints?: Checkpoint[] }>(
+      `/resumes/${resumeId}/checkpoints`,
+    )
+    const items = (Array.isArray(list) ? list : (list.checkpoints ?? []))
+      .filter(c => c.is_checkpoint === true)
+    if (items.length === 0) {
+      addMessage({ role: 'system', content: 'No manual checkpoints to delete.' })
+      return
+    }
+
+    const { SelectOverlay } = await import('../components/overlays/SelectOverlay.js')
+    const { beginPick } = await import('../lib/pick.js')
+    const { openOverlay } = await import('../stores/overlay.js')
+    const React = await import('react')
+
+    const chosen = await new Promise<string | null>(resolve => {
+      beginPick(resolve)
+      openOverlay(React.createElement(SelectOverlay, {
+        title: `Delete which checkpoint? (${items.length} of 20 used)`,
+        load: async () => items.map(c => ({
+          id: c.id,
+          label: checkpointLabel(c),
+          detail: formatAge(c.created_at),
+        })),
+      }))
+    })
+    if (chosen == null) return
+
+    await client.delete(`/resumes/${resumeId}/checkpoints/${chosen}`)
+    addMessage({ role: 'system', content: 'Checkpoint deleted.' })
+  } catch (err) {
+    addMessage({ role: 'error', content: `Could not delete the checkpoint: ${describeError(err)}` })
   }
 }
 

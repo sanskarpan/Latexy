@@ -18,7 +18,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { dispatch } from '../commands/dispatch.js'
-import { initApiClient } from '../lib/api-client.js'
+import { getApiClient, initApiClient } from '../lib/api-client.js'
 import { pickPending, settlePick } from '../lib/pick.js'
 import { $messages, clearMessages } from '../stores/messages.js'
 import { $overlay, closeOverlay } from '../stores/overlay.js'
@@ -154,6 +154,17 @@ function assertClean(out: string, cmd: string): void {
   // ── mutations ────────────────────────────────────────────────────────────
   it('/checkpoint saves, and /history then shows the label', async () => {
     const label = `verify-${Date.now()}`
+    // The server caps manual checkpoints at 20 per resume, so a suite that only
+    // ever creates them starts failing on the 21st run with an error that is
+    // entirely correct. Make room first.
+    const client = getApiClient()
+    const existing = await client.get<Array<{ id: string; is_checkpoint?: boolean }>>(
+      `/resumes/${RESUME}/checkpoints`)
+    const manual = (Array.isArray(existing) ? existing : []).filter(c => c.is_checkpoint === true)
+    for (const c of manual.slice(0, Math.max(0, manual.length - 15))) {
+      await client.delete(`/resumes/${RESUME}/checkpoints/${c.id}`).catch(() => {})
+    }
+
     const saved = await run(`/checkpoint ${RESUME} ${label}`)
     assertClean(saved, 'checkpoint')
     expect(saved).toMatch(/Checkpoint saved/)
