@@ -12,6 +12,7 @@ import { Workbench } from './workbench/Workbench.js'
 import { PromptInput } from './PromptInput.js'
 import { KeyboardHints } from './KeyboardHints.js'
 import { useWSEventRouter } from '../hooks/useJobStream.js'
+import { wsClient } from '../lib/ws-client.js'
 
 async function lazyDispatch(input: string): Promise<void> {
   const { dispatch } = await import('../commands/dispatch.js')
@@ -30,6 +31,9 @@ export function AppShell(): React.ReactElement {
 
   useInput((input, key) => {
     if (key.ctrl && input === 'c' && !isBlocked) {
+      // Drop the socket and its heartbeat before unmounting; otherwise they are
+      // live handles holding the event loop open after the UI is gone.
+      wsClient.destroy()
       exit()
       return
     }

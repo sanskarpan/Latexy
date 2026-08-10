@@ -17,6 +17,51 @@ const FATAL_WS_ERROR_CODES = new Set(['forbidden', 'invalid_request'])
 const RATE_LIMIT_RETRY_MS = 1_000
 const MAX_RATE_LIMIT_RETRIES = 5
 
+/** Headless flags that consume the following token as their value. */
+const VALUE_FLAGS = new Set(['--resume-id', '--compiler', '--output'])
+
+export interface HeadlessArgs {
+  flags: Record<string, string>
+  positional: string[]
+}
+
+/**
+ * Split argv into flags and true positionals.
+ *
+ * Everything used to be scanned with `args.find(a => !a.startsWith('-'))` to
+ * locate the .tex path, which cannot tell a positional from a flag's VALUE. So
+ * `latexy compile --compiler xelatex cv.tex` — the documented invocation — tried
+ * to compile a file called "xelatex", and `--output out.pdf cv.tex` read out.pdf
+ * as the LaTeX source, submitting a binary PDF as a job.
+ */
+export function parseHeadlessArgs(argv: string[]): HeadlessArgs {
+  const flags: Record<string, string> = {}
+  const positional: string[] = []
+
+  for (let i = 0; i < argv.length; i++) {
+    const tok = argv[i]!
+    if (tok.startsWith('-')) {
+      const eq = tok.indexOf('=')
+      if (eq !== -1) {
+        flags[tok.slice(0, eq)] = tok.slice(eq + 1)
+        continue
+      }
+      if (VALUE_FLAGS.has(tok)) {
+        const next = argv[i + 1]
+        // A value-flag with a missing value must not silently swallow the path.
+        if (next !== undefined && !next.startsWith('-')) {
+          flags[tok] = next
+          i++
+        }
+        continue
+      }
+      continue // bare flag such as --json
+    }
+    positional.push(tok)
+  }
+  return { flags, positional }
+}
+
 function out(obj: unknown): void {
   if (useJson) process.stdout.write(JSON.stringify(obj) + '\n')
   else process.stdout.write(JSON.stringify(obj, null, 2) + '\n')
@@ -113,12 +158,10 @@ async function compileJob(cfg: LatexyConfig & { token: string }, args: string[])
   const client = initApiClient(cfg.backendUrl, cfg.token)
   const wsUrl = cfg.backendUrl.replace(/^http/, 'ws') + '/ws/jobs'
 
-  const resumeIdIdx = args.indexOf('--resume-id')
-  const resumeId = resumeIdIdx !== -1 ? args[resumeIdIdx + 1] : null
-  const compilerIdx = args.indexOf('--compiler')
-  const compiler = compilerIdx !== -1 ? args[compilerIdx + 1] ?? 'pdflatex' : 'pdflatex'
-  const outputIdx = args.indexOf('--output')
-  const outputPath = outputIdx !== -1 ? args[outputIdx + 1] ?? null : null
+  const { flags, positional } = parseHeadlessArgs(args)
+  const resumeId = flags['--resume-id'] ?? null
+  const compiler = flags['--compiler'] ?? 'pdflatex'
+  const outputPath = flags['--output'] ?? null
 
   let jobId: string
 
@@ -135,7 +178,7 @@ async function compileJob(cfg: LatexyConfig & { token: string }, args: string[])
     jobId = res.job_id
   } else {
     // Local file path: read content and submit via the job queue (same as --resume-id)
-    const filePath = args.find(a => !a.startsWith('-') && a !== 'compile')
+    const filePath = positional.find(a => a !== 'compile')
     if (!filePath) {
       out({ success: false, error: 'Provide a .tex file path or --resume-id <uuid>' })
       return 3
@@ -206,7 +249,13 @@ export async function runHeadless(subcommand: string | undefined, args: string[]
     switch (subcommand) {
       case 'compile': return await headlessCompile(args.slice(1))
       default:
-        out({ success: false, error: `Unknown subcommand: ${String(subcommand)}. Available: compile` })
+        out({
+          success: false,
+          // String(undefined) printed the literal text "undefined" at the user.
+          error: subcommand === undefined
+            ? 'No subcommand given. Usage: latexy compile <file.tex|--resume-id <uuid>> [--compiler <name>] [--output <file.pdf>]'
+            : `Unknown subcommand: ${subcommand}. Available: compile`,
+        })
         return 3
     }
   } catch (err) {
