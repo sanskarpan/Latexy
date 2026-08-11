@@ -80,3 +80,73 @@ async def test_metrics_exposes_new_series(client: AsyncClient):
         "latexy_db_pool_connections",
     ):
         assert family in text, f"expected metric family {family} in /metrics output"
+
+
+# --- object storage -------------------------------------------------------
+# /health probed the database and Redis but not object storage, so in production
+# it reported {"status": "healthy"} while every template thumbnail and preview PDF
+# returned 502 Storage unavailable — 0 of 147 served. The outage was invisible to
+# anything watching health.
+
+
+async def test_health_reports_storage_ok_when_reachable(client: AsyncClient):
+    from app.services import storage_service
+
+    class _FakeRedis:
+        async def ping(self):
+            return True
+
+    from app.api import routes
+
+    with patch.object(storage_service, "probe", lambda: (True, "ok")), \
+         patch.object(routes._redis_manager, "redis_client", _FakeRedis()):
+        resp = await client.get("/health")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["storage"] == "ok"
+    assert body["status"] == "healthy"
+
+
+async def test_health_degrades_when_storage_unreachable(client: AsyncClient):
+    """The exact production failure: DB and Redis fine, storage dead."""
+    from app.api import routes
+    from app.services import storage_service
+
+    class _FakeRedis:
+        async def ping(self):
+            return True
+
+    with patch.object(storage_service, "probe", lambda: (False, "EndpointConnectionError")), \
+         patch.object(routes._redis_manager, "redis_client", _FakeRedis()):
+        resp = await client.get("/health")
+
+    # Still 200 so availability probes that only check the status code keep working.
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["storage"] == "unavailable"
+    assert body["status"] == "degraded", (
+        "storage being down must not report as healthy — that is what hid the outage"
+    )
+    assert body["database"] == "ok"
+    assert body["redis"] == "ok"
+
+
+async def test_health_survives_a_raising_storage_probe(client: AsyncClient):
+    """A probe that raises must degrade, not 500 the health endpoint."""
+    from app.api import routes
+    from app.services import storage_service
+
+    def _boom():
+        raise RuntimeError("boto3 exploded")
+
+    class _FakeRedis:
+        async def ping(self):
+            return True
+
+    with patch.object(storage_service, "probe", _boom), \
+         patch.object(routes._redis_manager, "redis_client", _FakeRedis()):
+        resp = await client.get("/health")
+
+    assert resp.status_code == 200
+    assert resp.json()["storage"] == "unavailable"

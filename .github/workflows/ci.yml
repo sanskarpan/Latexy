@@ -2,7 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, "feature/**", "fix/**"]
+    # chore/**, test/** and ci/** are here because a branch matching none of these
+    # gets NO CI at all: the pull_request trigger below only fires for PRs into
+    # main or develop, so a stacked PR targeting another branch is unchecked in
+    # both directions. That is how the Ink 7 upgrade branch ended up with no
+    # backend, frontend or TUI job running against it.
+    branches: [main, develop, "feature/**", "fix/**", "chore/**", "test/**", "ci/**"]
   pull_request:
     branches: [main, develop]
 
@@ -175,6 +180,48 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm build
+
+  tui-test:
+    name: TUI Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/tui
+    env:
+      # The live suites refuse to run unless this is set outside $HOME. /logout calls
+      # clearConfig(), and during an earlier audit round it destroyed a developer's real
+      # session token — so the guard is load-bearing, not decorative. Point it at the
+      # runner's temp dir so the guard is satisfied even though no live test runs here.
+      # A literal path, not ${{ runner.temp }}: the `runner` context is not
+      # available in a job-level env block and GitHub rejects the whole workflow
+      # file for it — which fails the run before any job starts, so it does not
+      # show up as a job failure.
+      XDG_CONFIG_HOME: /tmp/latexy-ci-xdg
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          # packages/tui declares engines.node >=22; the other jobs pin 20.
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Build
+        run: pnpm run build
+      # No LATEXY_LIVE: the 66 live tests need a backend, worker, Postgres, Redis and
+      # (for sign-in) the Next.js app, and they skip cleanly without it. The remaining
+      # 164 need nothing, and they are what four audit rounds' worth of invariants live
+      # in — the registry/dispatch parity check, websocket lifecycle, config atomicity,
+      # retry safety and argv parsing.
+      - name: Test
+        run: pnpm test
 
   full-stack-smoke:
     name: Full-Stack Smoke
