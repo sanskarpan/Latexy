@@ -23,6 +23,26 @@ class TestSecurityHeaders:
         assert isinstance(resp.json(), dict)
 
 
+class TestFramableAssetExemption:
+    """Template/resume PDF + thumbnail endpoints must be embeddable in the app
+    iframe, so they are exempt from X-Frame-Options: DENY (see #preview-fix)."""
+
+    def test_framable_paths(self):
+        from app.middleware.security_headers import _is_framable_asset
+
+        assert _is_framable_asset("/templates/abc-123/pdf") is True
+        assert _is_framable_asset("/templates/abc-123/thumbnail") is True
+        assert _is_framable_asset("/download/job-1") is True
+
+    def test_non_framable_paths_stay_denied(self):
+        from app.middleware.security_headers import _is_framable_asset
+
+        assert _is_framable_asset("/health") is False
+        assert _is_framable_asset("/templates/") is False
+        assert _is_framable_asset("/resumes/abc/pdf") is False  # not a template/download path
+        assert _is_framable_asset("/admin/users") is False
+
+
 class TestEffectiveCorsOrigins:
     def test_localhost_stripped_in_production(self, monkeypatch):
         monkeypatch.setattr(settings, "ENVIRONMENT", "production")
