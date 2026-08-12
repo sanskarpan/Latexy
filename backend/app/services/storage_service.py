@@ -33,6 +33,11 @@ def _get_client():
                     aws_secret_access_key=settings.MINIO_SECRET_KEY,
                     region_name="us-east-1",
                     config=Config(
+                        # Cloudflare R2 only accepts AWS Signature V4. boto3 defaults
+                        # PRESIGNED urls to SigV2 for some endpoints, which R2 rejects
+                        # ("UnauthorizedSigV2 ... Please use SigV4"). Pin s3v4 so
+                        # presigned template/asset URLs work.
+                        signature_version="s3v4",
                         connect_timeout=5,
                         read_timeout=15,
                         retries={"max_attempts": 3, "mode": "standard"},

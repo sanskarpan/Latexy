@@ -20,7 +20,7 @@ import uuid as _uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -238,10 +238,27 @@ async def head_template_thumbnail(template_id: str):
 
 @router.get("/{template_id}/thumbnail")
 async def get_template_thumbnail(template_id: str):
-    """Serve the pre-compiled PNG thumbnail from MinIO."""
+    """Redirect to the PNG thumbnail on object storage (R2).
+
+    Serving via a presigned redirect lets the browser fetch straight from the
+    storage/CDN edge instead of proxying every image through the backend
+    (backend->R2->backend->client). Across a 147-template grid that removes a
+    round-trip per thumbnail. Falls back to streaming if presigning is
+    unavailable so a misconfigured environment still works.
+    """
     _validate_uuid(template_id)
+    key = f"templates/{template_id}.png"
     try:
-        data = storage_service.download_bytes(f"templates/{template_id}.png")
+        url = storage_service.generate_presigned_url(key, ttl=86400)
+        return RedirectResponse(
+            url,
+            status_code=307,
+            headers={"Cache-Control": "public, max-age=600"},
+        )
+    except Exception:
+        logger.warning("Presign failed for thumbnail %s; streaming instead", template_id)
+    try:
+        data = storage_service.download_bytes(key)
     except Exception:
         logger.exception("MinIO error fetching thumbnail for %s", template_id)
         raise HTTPException(status_code=502, detail="Storage unavailable")
@@ -274,10 +291,26 @@ async def head_template_pdf(template_id: str):
 
 @router.get("/{template_id}/pdf")
 async def get_template_pdf(template_id: str):
-    """Serve the pre-compiled PDF from MinIO."""
+    """Redirect to the pre-compiled PDF on object storage (R2).
+
+    Same rationale as the thumbnail: the browser fetches from the storage/CDN
+    edge instead of streaming through the backend, which also renders the
+    preview <iframe> faster. R2 serves the object without X-Frame-Options, so
+    it embeds cleanly. Falls back to streaming if presigning is unavailable.
+    """
     _validate_uuid(template_id)
+    key = f"templates/{template_id}.pdf"
     try:
-        data = storage_service.download_bytes(f"templates/{template_id}.pdf")
+        url = storage_service.generate_presigned_url(key, ttl=86400)
+        return RedirectResponse(
+            url,
+            status_code=307,
+            headers={"Cache-Control": "public, max-age=600"},
+        )
+    except Exception:
+        logger.warning("Presign failed for PDF %s; streaming instead", template_id)
+    try:
+        data = storage_service.download_bytes(key)
     except Exception:
         logger.exception("MinIO error fetching PDF for %s", template_id)
         raise HTTPException(status_code=502, detail="Storage unavailable")
