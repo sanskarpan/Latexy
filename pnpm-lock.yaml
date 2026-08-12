@@ -160,7 +160,7 @@ importers:
         version: 12.11.2(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       better-auth:
         specifier: ^1.6.22
-        version: 1.6.25(next@14.2.35(@babel/core@7.29.7)(@playwright/test@1.62.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.22.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.10(@types/node@26.1.2)(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.49.2)))
+        version: 1.6.25(next@14.2.35(@babel/core@7.29.7)(@playwright/test@1.62.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.22.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.10(@types/node@26.1.2)(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.50.0)))
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -189,8 +189,8 @@ importers:
         specifier: 14.2.35
         version: 14.2.35(@babel/core@7.29.7)(@playwright/test@1.62.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       pako:
-        specifier: ^2.1.0
-        version: 2.1.0
+        specifier: ^3.0.1
+        version: 3.0.1
       pg:
         specifier: ^8.22.0
         version: 8.22.0
@@ -253,8 +253,8 @@ importers:
         specifier: ^26.1.2
         version: 26.1.2
       '@types/pako':
-        specifier: ^2.0.3
-        version: 2.0.4
+        specifier: ^3.0.0
+        version: 3.0.0
       '@types/react':
         specifier: ^18.2.45
         version: 18.3.31
@@ -290,7 +290,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.10
-        version: 4.1.10(@types/node@26.1.2)(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.49.2))
+        version: 4.1.10(@types/node@26.1.2)(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.50.0))
 
   packages/tui:
     dependencies:
@@ -345,7 +345,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.0.0
-        version: 2.1.9(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.49.2)
+        version: 2.1.9(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.50.0)
 
 packages:
 
@@ -1486,12 +1486,12 @@ packages:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
 
-  '@napi-rs/wasm-runtime@1.2.2':
-    resolution: {integrity: sha512-JfB4kuJQjaoHuCTseIINHtHWeJnvgEcxjwA5t/Y00ZgaOO1Crz3fjT/p8kT28zA/Caz7oiUMn3d6H2yOVCVwuw==}
+  '@napi-rs/wasm-runtime@1.2.3':
+    resolution: {integrity: sha512-UMduMbqO5s5zF2NkNacMT/yK5Y5QiKvWr2+50bzIIxFDwVJ2h49b+oyjaCGPhJxd2/gC2x39EHv/gHVuu36x2Q==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=23.5.0}
     peerDependencies:
-      '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.3
-      '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.3
+      '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.4
+      '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.4
 
   '@next/env@14.2.35':
     resolution: {integrity: sha512-DuhvCtj4t9Gwrx80dmz2F4t/zKQ4ktN8WrMwOuVzkJfBilwAwGr6v16M5eI8yCuZ63H9TTuEU09Iu2HqkzFPVQ==}
@@ -2711,8 +2711,9 @@ packages:
   '@types/offscreencanvas@2019.7.3':
     resolution: {integrity: sha512-ieXiYmgSRXUDeOntE1InxjWyvEelZGP63M+cGuquuRLuIKKT1osnkXjxev9B7d1nXSug5vpunx+gNlbVxMlC9A==}
 
-  '@types/pako@2.0.4':
-    resolution: {integrity: sha512-VWDCbrLeVXJM9fihYodcLiIv0ku+AlOa/TQ1SvYOaBuyrSKgEcro95LJyIsJ4vSo6BXIxOKxiJAat04CmST9Fw==}
+  '@types/pako@3.0.0':
+    resolution: {integrity: sha512-MtIzg1Ul1GxhHZLq6oSKvWQENKqmfK1fdaW+SDcPJe7+YcJVo6AbmkW0BvGFH6+559+hEuCwdXZZe8F85lBPkA==}
+    deprecated: This is a stub types definition. pako provides its own type definitions, so you do not need this installed.
 
   '@types/pg@8.20.0':
     resolution: {integrity: sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow==}
@@ -5269,8 +5270,8 @@ packages:
     resolution: {integrity: sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==}
     engines: {node: '>=6'}
 
-  pako@2.1.0:
-    resolution: {integrity: sha512-w+eufiZ1WuJYgPXbV/PO3NCMEc3xqylkKHzp8bxp1uW4qaSNQUkwmLLEc3kKsfz8lpV1F8Ht3U1Cm+9Srog2ug==}
+  pako@3.0.1:
+    resolution: {integrity: sha512-GupotUUI0mlhugKjUs4bjOwLt3nrehy9Ys2dxC0GtgVef5cnKggkDMmf2bq2poCCuVXopWPmqsc9VDT2iJUy+w==}
 
   parent-module@1.0.1:
     resolution: {integrity: sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==}
@@ -6163,8 +6164,8 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  terser@5.49.2:
-    resolution: {integrity: sha512-rGbJiKeQ4WDe3EXlDAIaQcwftVfv2Q8o1awFNfvXolJYKkb1AuZY1RTOmqx4LJXZENbWZA7eIsYGHuEzHsi1nQ==}
+  terser@5.50.0:
+    resolution: {integrity: sha512-CN9BVxWhgS/hRxtUMjtC2uRWSTcSfQFHMDWma6sKKfIivCD91sM+FOPfvwoaRMqCSrUpe1nv3jDamd9eEQ4y+w==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -8131,7 +8132,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.2
     optional: true
 
-  '@napi-rs/wasm-runtime@1.2.2(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
+  '@napi-rs/wasm-runtime@1.2.3(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
       '@emnapi/core': 1.10.0
       '@emnapi/runtime': 1.10.0
@@ -8957,7 +8958,7 @@ snapshots:
     dependencies:
       '@emnapi/core': 1.10.0
       '@emnapi/runtime': 1.10.0
-      '@napi-rs/wasm-runtime': 1.2.2(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+      '@napi-rs/wasm-runtime': 1.2.3(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
     optional: true
 
   '@rolldown/binding-win32-arm64-msvc@1.0.3':
@@ -9242,7 +9243,9 @@ snapshots:
 
   '@types/offscreencanvas@2019.7.3': {}
 
-  '@types/pako@2.0.4': {}
+  '@types/pako@3.0.0':
+    dependencies:
+      pako: 3.0.1
 
   '@types/pg@8.20.0':
     dependencies:
@@ -9562,21 +9565,21 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.49.2))':
+  '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.50.0))':
     dependencies:
       '@vitest/spy': 2.1.9
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 5.4.21(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.49.2)
+      vite: 5.4.21(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.50.0)
 
-  '@vitest/mocker@4.1.10(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.49.2))':
+  '@vitest/mocker@4.1.10(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.50.0))':
     dependencies:
       '@vitest/spy': 4.1.10
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.49.2)
+      vite: 8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.50.0)
 
   '@vitest/pretty-format@2.1.9':
     dependencies:
@@ -9958,7 +9961,7 @@ snapshots:
 
   baseline-browser-mapping@2.11.8: {}
 
-  better-auth@1.6.25(next@14.2.35(@babel/core@7.29.7)(@playwright/test@1.62.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.22.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.10(@types/node@26.1.2)(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.49.2))):
+  better-auth@1.6.25(next@14.2.35(@babel/core@7.29.7)(@playwright/test@1.62.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(pg@8.22.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(vitest@4.1.10(@types/node@26.1.2)(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.50.0))):
     dependencies:
       '@better-auth/core': 1.6.25(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0)
       '@better-auth/drizzle-adapter': 1.6.25(@better-auth/core@1.6.25(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.2)(nanostores@1.3.0))(@better-auth/utils@0.4.2)
@@ -9982,7 +9985,7 @@ snapshots:
       pg: 8.22.0
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
-      vitest: 4.1.10(@types/node@26.1.2)(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.49.2))
+      vitest: 4.1.10(@types/node@26.1.2)(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.50.0))
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
       - '@opentelemetry/api'
@@ -11960,7 +11963,7 @@ snapshots:
 
   p-try@2.2.0: {}
 
-  pako@2.1.0: {}
+  pako@3.0.1: {}
 
   parent-module@1.0.1:
     dependencies:
@@ -12890,7 +12893,7 @@ snapshots:
       '@jridgewell/trace-mapping': 0.3.31
       jest-worker: 27.5.1
       schema-utils: 4.3.3
-      terser: 5.49.2
+      terser: 5.50.0
       webpack: 5.107.2(esbuild@0.27.7)(postcss@8.5.25)
     optionalDependencies:
       esbuild: 0.27.7
@@ -12903,7 +12906,7 @@ snapshots:
       commander: 2.20.3
       source-map-support: 0.5.21
 
-  terser@5.49.2:
+  terser@5.50.0:
     dependencies:
       '@jridgewell/source-map': 0.3.11
       acorn: 8.18.0
@@ -13208,13 +13211,13 @@ snapshots:
       - '@types/react'
       - '@types/react-dom'
 
-  vite-node@2.1.9(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.49.2):
+  vite-node@2.1.9(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.50.0):
     dependencies:
       cac: 6.7.14
       debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 1.1.2
-      vite: 5.4.21(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.49.2)
+      vite: 5.4.21(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.50.0)
     transitivePeerDependencies:
       - '@types/node'
       - less
@@ -13226,7 +13229,7 @@ snapshots:
       - supports-color
       - terser
 
-  vite@5.4.21(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.49.2):
+  vite@5.4.21(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.50.0):
     dependencies:
       esbuild: 0.21.5
       postcss: 8.5.25
@@ -13235,9 +13238,9 @@ snapshots:
       '@types/node': 22.19.21
       fsevents: 2.3.3
       lightningcss: 1.33.0
-      terser: 5.49.2
+      terser: 5.50.0
 
-  vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.49.2):
+  vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.50.0):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.5
@@ -13249,12 +13252,12 @@ snapshots:
       esbuild: 0.27.7
       fsevents: 2.3.3
       jiti: 1.21.7
-      terser: 5.49.2
+      terser: 5.50.0
 
-  vitest@2.1.9(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.49.2):
+  vitest@2.1.9(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.50.0):
     dependencies:
       '@vitest/expect': 2.1.9
-      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.49.2))
+      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.50.0))
       '@vitest/pretty-format': 2.1.9
       '@vitest/runner': 2.1.9
       '@vitest/snapshot': 2.1.9
@@ -13270,8 +13273,8 @@ snapshots:
       tinyexec: 0.3.2
       tinypool: 1.1.1
       tinyrainbow: 1.2.0
-      vite: 5.4.21(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.49.2)
-      vite-node: 2.1.9(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.49.2)
+      vite: 5.4.21(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.50.0)
+      vite-node: 2.1.9(@types/node@22.19.21)(lightningcss@1.33.0)(terser@5.50.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.19.21
@@ -13286,10 +13289,10 @@ snapshots:
       - supports-color
       - terser
 
-  vitest@4.1.10(@types/node@26.1.2)(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.49.2)):
+  vitest@4.1.10(@types/node@26.1.2)(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.50.0)):
     dependencies:
       '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.49.2))
+      '@vitest/mocker': 4.1.10(vite@8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.50.0))
       '@vitest/pretty-format': 4.1.10
       '@vitest/runner': 4.1.10
       '@vitest/snapshot': 4.1.10
@@ -13306,7 +13309,7 @@ snapshots:
       tinyexec: 1.2.4
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vite: 8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.49.2)
+      vite: 8.0.16(@types/node@26.1.2)(esbuild@0.27.7)(jiti@1.21.7)(terser@5.50.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 26.1.2
