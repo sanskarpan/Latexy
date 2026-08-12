@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { X, FileText, Code } from 'lucide-react'
+import { X, FileText, Code, Copy, Check } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import type { TemplateDetailResponse } from '@/lib/api-client'
 
@@ -53,6 +53,18 @@ export default function TemplatePreviewModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('pdf')
+  const [copied, setCopied] = useState(false)
+
+  const copySource = async () => {
+    if (!template?.latex_content) return
+    try {
+      await navigator.clipboard.writeText(template.latex_content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
   const [pdfFailed, setPdfFailed] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -241,7 +253,14 @@ export default function TemplatePreviewModal({
                     onError={() => setPdfFailed(true)}
                   />
                 ) : (
-                  <div className="flex-1 overflow-auto bg-surface p-4">
+                  <div className="relative flex-1 overflow-auto bg-surface p-4">
+                    <button
+                      onClick={copySource}
+                      className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-2.5 py-1.5 text-[11px] font-semibold text-fg-2 shadow-sm transition hover:text-fg hover:brightness-110"
+                      aria-label="Copy LaTeX source"
+                    >
+                      {copied ? <><Check size={13} className="text-ok" /> Copied</> : <><Copy size={13} /> Copy</>}
+                    </button>
                     <pre className="text-[11px] leading-relaxed text-fg-2 whitespace-pre-wrap break-all">
                       {template.latex_content}
                     </pre>
