@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText,
@@ -188,17 +189,22 @@ export default function OnboardingFlow({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
-              { icon: <LayoutTemplate className="w-5 h-5" />, label: 'Use a template', desc: 'Start from 140+ curated designs.' },
-              { icon: <Upload className="w-5 h-5" />, label: 'Import a resume', desc: 'Bring a PDF, DOCX, or .tex file.' },
-              { icon: <PenLine className="w-5 h-5" />, label: 'Write from scratch', desc: 'Open the LaTeX Studio.' },
+              { icon: <LayoutTemplate className="w-5 h-5" />, label: 'Use a template', desc: 'Start from 50+ curated designs.', href: '/templates' },
+              { icon: <Upload className="w-5 h-5" />, label: 'Import a resume', desc: 'Bring a PDF, DOCX, or .tex file.', href: '/workspace/new' },
+              { icon: <PenLine className="w-5 h-5" />, label: 'Write from scratch', desc: 'Open the LaTeX Studio.', href: '/try' },
             ].map((o) => (
-              <Card key={o.label} className="space-y-2">
+              <Link
+                key={o.label}
+                href={o.href}
+                onClick={onComplete}
+                className="block space-y-2 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4 transition hover:border-accent"
+              >
                 <span className="grid place-items-center w-8 h-8 rounded-[var(--radius-sm)] bg-accent-soft text-accent-strong">
                   {o.icon}
                 </span>
                 <p className="text-sm font-medium text-fg">{o.label}</p>
                 <p className="text-xs text-fg-2 leading-relaxed">{o.desc}</p>
-              </Card>
+              </Link>
             ))}
           </div>
 
