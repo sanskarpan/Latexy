@@ -36,7 +36,7 @@ export default function BYOKPage() {
 
   useEffect(() => {
     if (!isPending && !session) {
-      router.push('/login')
+      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
     }
   }, [session, isPending, router])
 
