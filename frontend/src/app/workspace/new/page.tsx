@@ -242,7 +242,13 @@ export default function NewResumePage() {
             placeholder="Senior Backend Engineer – Q3 2026"
             value={title}
             onChange={e => setTitle(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && canCreate) handleCreate() }}
+            onKeyDown={e => {
+              // In template mode there is no single obvious create action — a
+              // template still needs to be picked — so Enter must NOT fall
+              // through to blank-resume creation. Only trigger create in the
+              // import/linkedin/builder flows where one create action exists.
+              if (e.key === 'Enter' && mode !== 'template' && canCreate) handleCreate()
+            }}
             className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-4 py-3 text-base text-fg outline-none transition focus:border-accent"
           />
         </section>
