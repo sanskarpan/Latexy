@@ -1,13 +1,28 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { CheckCircle2 } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
-export default function ForgotPasswordPage() {
+// Accept whichever intended-destination param an auth guard may have appended.
+const REDIRECT_KEYS = ['redirect', 'callbackURL', 'next', 'returnTo'] as const
+
+/** Return a safe same-origin relative path, or null. Blocks open-redirects. */
+function readRedirect(params: URLSearchParams): string | null {
+  for (const key of REDIRECT_KEYS) {
+    const raw = params.get(key)
+    if (raw && raw[0] === '/' && raw[1] !== '/' && raw[1] !== '\\') return raw
+  }
+  return null
+}
+
+function ForgotPasswordInner() {
+  const redirect = readRedirect(useSearchParams())
+  const loginHref = redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login'
   const [email, setEmail] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -68,7 +83,7 @@ export default function ForgotPasswordPage() {
                 </span>
               </div>
               <Link
-                href="/login"
+                href={loginHref}
                 className="inline-flex items-center rounded-[var(--radius-sm)] font-ui text-sm font-semibold text-accent-strong transition duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
               >
                 Back to sign in
@@ -119,7 +134,7 @@ export default function ForgotPasswordPage() {
         <p className="text-center font-body text-sm text-fg-3">
           Remembered it?{' '}
           <Link
-            href="/login"
+            href={loginHref}
             className="font-semibold text-accent-strong transition duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
           >
             Sign in
@@ -127,5 +142,13 @@ export default function ForgotPasswordPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ForgotPasswordInner />
+    </Suspense>
   )
 }
