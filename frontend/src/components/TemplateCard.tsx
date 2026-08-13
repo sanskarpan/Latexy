@@ -43,8 +43,14 @@ export default function TemplateCard({ template, onSelect, onPreview, disabled }
   return (
     <div className="group relative flex flex-col rounded-[var(--radius-lg)] border border-line bg-surface transition hover:border-line-2 hover:bg-surface-2">
 
-      {/* Thumbnail area — aspect-ratio locked so it can never balloon in any grid/flex context */}
-      <div className="relative aspect-[4/3] max-h-56 w-full shrink-0 overflow-hidden rounded-t-[var(--radius-lg)] bg-surface border-b border-line flex items-center justify-center">
+      {/* Thumbnail area — the whole thing is a preview trigger so it works on touch (no hover needed).
+          aspect-ratio locked so it can never balloon in any grid/flex context. */}
+      <button
+        type="button"
+        onClick={() => onPreview(template.id)}
+        aria-label={`Preview ${template.name}`}
+        className="group/thumb relative aspect-[4/3] max-h-56 w-full shrink-0 cursor-pointer overflow-hidden rounded-t-[var(--radius-lg)] border-b border-line bg-surface flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+      >
         {template.thumbnail_url && !imgFailed ? (
           <img
             src={template.thumbnail_url}
@@ -62,23 +68,28 @@ export default function TemplateCard({ template, onSelect, onPreview, disabled }
           </div>
         )}
 
-        {/* Overlay with Preview button — visible on hover/focus */}
-        <div className="absolute inset-0 flex items-center justify-center bg-[var(--overlay)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          <button
-            onClick={() => onPreview(template.id)}
-            aria-label={`Preview ${template.name}`}
-            className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-4 py-2 text-xs font-medium text-fg transition hover:bg-surface focus:outline-none focus:ring-2 focus:ring-accent ring-offset-bg"
-          >
+        {/* Preview affordance overlay — revealed on hover/focus for pointer devices, and
+            always visible on coarse-pointer (touch) devices where hover doesn't exist. */}
+        <div className="absolute inset-0 flex items-center justify-center bg-[var(--overlay)] opacity-0 transition-opacity group-hover/thumb:opacity-100 group-focus-visible/thumb:opacity-100 [@media(hover:none)]:opacity-100">
+          <span className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-4 py-2 text-xs font-medium text-fg">
             <Eye size={13} />
             Preview
-          </button>
+          </span>
         </div>
-      </div>
+      </button>
 
       {/* Card body */}
       <div className="flex flex-1 flex-col gap-3 p-4">
         <div>
-          <h3 className="text-sm font-semibold text-fg leading-tight">{template.name}</h3>
+          <h3 className="text-sm font-semibold leading-tight">
+            <button
+              type="button"
+              onClick={() => onPreview(template.id)}
+              className="text-left text-fg transition hover:text-accent-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded-[var(--radius-sm)]"
+            >
+              {template.name}
+            </button>
+          </h3>
           {template.description && (
             <p className="mt-1 text-xs text-fg-3 line-clamp-2">{template.description}</p>
           )}

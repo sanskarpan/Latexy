@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { KeyRound, Trash2 } from 'lucide-react'
+import { Check, Copy, KeyRound, Trash2, X } from 'lucide-react'
 import { useSession } from '@/lib/auth-client'
 import {
   apiClient,
@@ -40,10 +40,11 @@ export default function DeveloperPage() {
   const [activeTab, setActiveTab] = useState<ExampleTab>('curl')
   const [busyKeyId, setBusyKeyId] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<Record<string, string>>({})
+  const [copiedCreatedKey, setCopiedCreatedKey] = useState(false)
 
   useEffect(() => {
     if (!isPending && !session) {
-      router.push('/login?next=/developer')
+      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
     }
   }, [isPending, router, session])
 
@@ -117,9 +118,26 @@ console.log(payload);`,
       return
     }
     setCreatedKey(result.data)
+    setCopiedCreatedKey(false)
     setCreateName('')
     toast.success('Developer API key created')
     await load()
+  }
+
+  const handleCopyCreatedKey = async () => {
+    if (!createdKey) return
+    try {
+      await navigator.clipboard.writeText(createdKey.full_key)
+      setCopiedCreatedKey(true)
+      toast.success('API key copied to clipboard')
+    } catch {
+      toast.error('Could not copy — select the key and copy manually')
+    }
+  }
+
+  const handleDismissCreatedKey = () => {
+    setCreatedKey(null)
+    setCopiedCreatedKey(false)
   }
 
   const handleRename = async (keyId: string) => {
@@ -203,13 +221,45 @@ console.log(payload);`,
 
         {createdKey && (
           <div className="mb-6 rounded-[var(--radius-md)] border border-accent bg-accent-soft p-4">
-            <p className="flex items-center gap-2 font-ui text-xs uppercase tracking-[0.14em] text-accent-strong">
-              <KeyRound className="h-4 w-4" aria-hidden="true" />
-              Copy this key now — it will never be shown again
-            </p>
-            <code className="mt-3 block overflow-x-auto rounded-[var(--radius-sm)] bg-code-bg p-3 font-ui text-sm text-code-fg">
-              {createdKey.full_key}
-            </code>
+            <div className="flex items-start justify-between gap-3">
+              <p className="flex items-center gap-2 font-ui text-xs uppercase tracking-[0.14em] text-accent-strong">
+                <KeyRound className="h-4 w-4" aria-hidden="true" />
+                Copy this key now — it will never be shown again
+              </p>
+              <button
+                onClick={handleDismissCreatedKey}
+                className="shrink-0 rounded-[var(--radius-sm)] p-1 text-accent-strong transition duration-150 hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+                aria-label="Dismiss API key banner"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-stretch">
+              <code className="min-w-0 flex-1 overflow-x-auto rounded-[var(--radius-sm)] bg-code-bg p-3 font-ui text-sm text-code-fg">
+                {createdKey.full_key}
+              </code>
+              <button
+                onClick={handleCopyCreatedKey}
+                className={`${ghostBtn} shrink-0`}
+              >
+                {copiedCreatedKey ? (
+                  <>
+                    <Check className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Copy
+                  </>
+                )}
+              </button>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button onClick={handleDismissCreatedKey} className={`${ghostBtn} shrink-0`}>
+                I&apos;ve saved it — dismiss
+              </button>
+            </div>
           </div>
         )}
 
@@ -280,23 +330,29 @@ console.log(payload);`,
                 : 'Rate limit history'}
             </p>
 
-            <div className="space-y-4">
-              {(usage?.history || []).map((point) => {
-                const max = Math.max(...(usage?.history.map((entry) => entry.count) || [1]), 1)
-                const width = `${Math.max((point.count / max) * 100, point.count > 0 ? 6 : 0)}%`
-                return (
-                  <div key={point.date}>
-                    <div className="mb-1.5 flex items-center justify-between font-ui text-xs text-fg-2">
-                      <span>{point.date}</span>
-                      <span className="text-fg">{point.count}</span>
+            {!usage?.history?.length ? (
+              <div className="rounded-[var(--radius-md)] border border-line bg-surface p-5 font-ui text-sm text-fg-3">
+                No API requests yet — your daily usage will appear here.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {usage.history.map((point) => {
+                  const max = Math.max(...usage.history.map((entry) => entry.count), 1)
+                  const width = `${Math.max((point.count / max) * 100, point.count > 0 ? 6 : 0)}%`
+                  return (
+                    <div key={point.date}>
+                      <div className="mb-1.5 flex items-center justify-between font-ui text-xs text-fg-2">
+                        <span>{point.date}</span>
+                        <span className="text-fg">{point.count}</span>
+                      </div>
+                      <div className="h-2 rounded-[var(--radius-pill)] bg-surface-2">
+                        <div className="h-2 rounded-[var(--radius-pill)] bg-accent" style={{ width }} />
+                      </div>
                     </div>
-                    <div className="h-2 rounded-[var(--radius-pill)] bg-surface-2">
-                      <div className="h-2 rounded-[var(--radius-pill)] bg-accent" style={{ width }} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {/* docs */}

@@ -36,7 +36,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!sessionLoading && !session) {
-      router.push('/login')
+      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
     }
   }, [session, sessionLoading, router])
 
@@ -179,6 +179,8 @@ export default function DashboardPage() {
             <button
               key={range.days}
               onClick={() => setSelectedRange(range.days)}
+              aria-pressed={selectedRange === range.days}
+              aria-label={`Show last ${range.days} days`}
               className={`rounded-[var(--radius-md)] border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] transition ${
                 selectedRange === range.days
                   ? 'border-accent bg-accent-soft text-accent-strong'
@@ -210,15 +212,22 @@ export default function DashboardPage() {
       )}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {loading
-          ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="rounded-[var(--radius-lg)] border border-line bg-surface h-28 animate-pulse" />)
-          : kpis.map((item) => (
+        {loading ? (
+          Array.from({ length: 5 }).map((_, index) => <div key={index} className="rounded-[var(--radius-lg)] border border-line bg-surface h-28 animate-pulse" />)
+        ) : error ? (
+          <article className="rounded-[var(--radius-lg)] border border-dashed border-err/30 bg-surface p-6 text-center md:col-span-2 xl:col-span-5">
+            <p className="text-sm font-semibold text-err">Couldn&apos;t load metrics</p>
+            <p className="mt-1 text-xs text-fg-3">Your metrics are unavailable right now. Use retry above to try again.</p>
+          </article>
+        ) : (
+          kpis.map((item) => (
               <article key={item.label} className="rounded-[var(--radius-lg)] border border-line bg-surface p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-fg-3">{item.label}</p>
                 <p className="mt-2 text-3xl font-semibold text-fg">{item.value}</p>
                 <p className="mt-1 text-xs text-fg-2">{item.note}</p>
               </article>
-            ))}
+            ))
+        )}
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
@@ -233,7 +242,13 @@ export default function DashboardPage() {
                 {selectedRange} day window
               </span>
             </div>
-            {loading ? <div className="h-[280px] animate-pulse rounded-[var(--radius-lg)] bg-surface-2" /> : <ActivityAreaChart data={dailySeries} />}
+            {loading ? (
+              <div className="h-[280px] animate-pulse rounded-[var(--radius-lg)] bg-surface-2" />
+            ) : error ? (
+              <ChartUnavailable heightClass="h-[280px]" onRetry={fetchDashboardData} />
+            ) : (
+              <ActivityAreaChart data={dailySeries} />
+            )}
           </article>
 
           <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
@@ -241,7 +256,13 @@ export default function DashboardPage() {
               <h2 className="text-lg font-semibold text-fg">Feature Usage Mix</h2>
               <p className="text-xs text-fg-3">Most used actions in your current range</p>
             </div>
-            {loading ? <div className="h-[260px] animate-pulse rounded-[var(--radius-lg)] bg-surface-2" /> : <FeatureUsageBars data={featureSeries} />}
+            {loading ? (
+              <div className="h-[260px] animate-pulse rounded-[var(--radius-lg)] bg-surface-2" />
+            ) : error ? (
+              <ChartUnavailable heightClass="h-[260px]" onRetry={fetchDashboardData} />
+            ) : (
+              <FeatureUsageBars data={featureSeries} />
+            )}
           </article>
 
           <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
@@ -252,7 +273,15 @@ export default function DashboardPage() {
         <aside className="space-y-6">
           <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
             <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-fg-2">Run Status Distribution</h2>
-            <div className="mt-4">{loading ? <div className="h-[220px] animate-pulse rounded-[var(--radius-lg)] bg-surface-2" /> : <StatusDonutChart data={statusSeries} />}</div>
+            <div className="mt-4">
+              {loading ? (
+                <div className="h-[220px] animate-pulse rounded-[var(--radius-lg)] bg-surface-2" />
+              ) : error ? (
+                <ChartUnavailable heightClass="h-[220px]" onRetry={fetchDashboardData} />
+              ) : (
+                <StatusDonutChart data={statusSeries} />
+              )}
+            </div>
           </article>
 
           <article className="rounded-[var(--radius-lg)] border border-line bg-surface p-5">
@@ -284,6 +313,20 @@ export default function DashboardPage() {
           </article>
         </aside>
       </div>
+    </div>
+  )
+}
+
+function ChartUnavailable({ heightClass, onRetry }: { heightClass: string; onRetry: () => void }) {
+  return (
+    <div className={`flex ${heightClass} flex-col items-center justify-center gap-3 rounded-[var(--radius-md)] border border-dashed border-err/30 text-center`}>
+      <p className="text-sm font-semibold text-err">Couldn&apos;t load</p>
+      <button
+        onClick={onRetry}
+        className="rounded-[var(--radius-md)] border border-err/40 bg-err/10 px-3 py-1 text-xs font-semibold text-err transition hover:bg-err/20"
+      >
+        Retry
+      </button>
     </div>
   )
 }

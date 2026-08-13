@@ -55,6 +55,28 @@ interface PricingPlan {
 const MONTHLY_PLAN_IDS = ['free', 'basic', 'pro', 'byok', 'student', 'team']
 const ANNUAL_PLAN_IDS = ['free', 'basic_annual', 'pro_annual', 'byok_annual', 'student', 'team']
 
+const formatFeature = (value: string | number) => {
+  if (value === 'unlimited') return 'Unlimited'
+  if (value === 0) return 'None'
+  return String(value)
+}
+
+const COMPARISON_ROWS: { label: string; value: (plan: PricingPlan) => string | number }[] = [
+  { label: 'LaTeX compilations', value: (p) => formatFeature(p.features.compilations) },
+  { label: 'AI optimizations', value: (p) => formatFeature(p.features.optimizations) },
+  {
+    label: 'History retention',
+    value: (p) => (p.features.historyRetention === 0 ? 'None' : `${p.features.historyRetention} days`),
+  },
+  { label: 'Priority support', value: (p) => (p.features.prioritySupport ? 'Yes' : 'No') },
+  { label: 'API access', value: (p) => (p.features.apiAccess ? 'Yes' : 'No') },
+  {
+    label: 'Custom models',
+    value: (p) => (typeof p.features.customModels === 'boolean' ? (p.features.customModels ? 'Yes' : 'No') : '—'),
+  },
+  { label: 'Team seats', value: (p) => (typeof p.features.teamSeats === 'number' ? p.features.teamSeats : '—') },
+]
+
 function BillingPageContent() {
   const { data: session, isPending } = useSession()
   const sessionToken = session?.session?.token ?? null
@@ -71,7 +93,9 @@ function BillingPageContent() {
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
   const [couponCode, setCouponCode] = useState('')
   const [couponState, setCouponState] = useState<CouponValidationResponse | null>(null)
+  const [couponPlanId, setCouponPlanId] = useState<string | null>(null)
   const [couponLoading, setCouponLoading] = useState(false)
+  const [showComparison, setShowComparison] = useState(false)
   const [studentEmail, setStudentEmail] = useState('')
   const [studentCheckoutPlan, setStudentCheckoutPlan] = useState<string | null>(null)
   const [currentSubscription, setCurrentSubscription] = useState<CurrentSubscriptionResponse | null>(null)
@@ -143,6 +167,12 @@ function BillingPageContent() {
   }, [billingPeriod, plans])
 
   const appliedCoupon = couponState?.valid ? couponState : null
+  const couponScopePlan = couponPlanId ? plans[couponPlanId] ?? null : null
+  const couponDiscountedPrice =
+    appliedCoupon?.discountPercent && couponScopePlan
+      ? Math.round(couponScopePlan.price * (1 - appliedCoupon.discountPercent / 100))
+      : null
+  const formatRupees = (paise: number) => `₹${(paise / 100).toFixed(0)}`
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return
@@ -156,10 +186,41 @@ function BillingPageContent() {
     }
     setCouponState(result.data)
     if (result.data.valid) {
+      // Record the plan the coupon was validated against so the UI can state its
+      // scope explicitly and preview the discounted price on the applicable card.
+      setCouponPlanId(targetPlanId)
       toast.success(result.data.message)
     } else {
+      setCouponPlanId(null)
       toast.error(result.data.message)
     }
+  }
+
+  const handleRemoveCoupon = () => {
+    setCouponCode('')
+    setCouponState(null)
+    setCouponPlanId(null)
+  }
+
+  /**
+   * A coupon is validated against the Pro plan in the panel above, but it may
+   * not apply to the tier the user actually selects. Re-validate against the
+   * chosen plan before checkout so we never promise a discount the payment step
+   * would reject. Returns the code to send, or null (checkout should abort).
+   */
+  const resolveCouponForPlan = async (
+    planId: string,
+    period: BillingPeriod,
+  ): Promise<{ code: string | undefined; abort: boolean }> => {
+    if (!appliedCoupon?.code) return { code: undefined, abort: false }
+    const check = await apiClient.validateCoupon(appliedCoupon.code, planId, period)
+    if (check.success && check.data?.valid) {
+      return { code: appliedCoupon.code, abort: false }
+    }
+    toast.error(
+      `Coupon ${appliedCoupon.code} is not valid on this plan — remove it or choose a Pro plan to continue.`,
+    )
+    return { code: undefined, abort: true }
   }
 
   const refreshTeamSeats = async () => {
@@ -185,7 +246,7 @@ function BillingPageContent() {
     }
 
     if (!sessionUser?.email) {
-      router.push('/login?next=/billing')
+      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
       return
     }
 
@@ -204,13 +265,19 @@ function BillingPageContent() {
     // after the await avoids the browser popup blocker that fires when
     // window.open is called outside a user gesture.
     const checkoutTab = window.open('', '_blank')
+    const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(planId, billingPeriod)
+    if (abort) {
+      checkoutTab?.close()
+      setActivePlan(null)
+      return
+    }
     const result = await apiClient.createSubscription(
       planId,
       sessionUser.email,
       sessionUser.name || '',
       {
         billingPeriod,
-        couponCode: appliedCoupon?.code ?? undefined,
+        couponCode: couponCodeForPlan,
       },
     )
     setActivePlan(null)
@@ -256,13 +323,19 @@ function BillingPageContent() {
     setActivePlan(studentCheckoutPlan)
     // Pre-open synchronously within the click gesture to avoid popup blocking.
     const previewTab = window.open('', '_blank')
+    const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(studentCheckoutPlan, 'monthly')
+    if (abort) {
+      previewTab?.close()
+      setActivePlan(null)
+      return
+    }
     const result = await apiClient.createSubscription(
       studentCheckoutPlan,
       sessionUser.email,
       sessionUser.name || '',
       {
         billingPeriod: 'monthly',
-        couponCode: appliedCoupon?.code ?? undefined,
+        couponCode: couponCodeForPlan,
         studentEmail,
       },
     )
@@ -313,7 +386,10 @@ function BillingPageContent() {
     refreshTeamSeats()
   }
 
-  const handleRemoveSeat = async (seatId: string) => {
+  const handleRemoveSeat = async (seatId: string, memberEmail: string) => {
+    if (!window.confirm(`Remove ${memberEmail} from your team? They will lose access immediately.`)) {
+      return
+    }
     setTeamLoading(true)
     const result = await apiClient.removeTeamSeat(seatId)
     setTeamLoading(false)
@@ -406,11 +482,40 @@ function BillingPageContent() {
                   {couponLoading ? 'Applying...' : 'Apply'}
                 </button>
               </div>
-              {couponState && (
-                <p className={`mt-3 text-sm ${couponState.valid ? 'text-ok' : 'text-err'}`}>
-                  {couponState.message}
-                  {couponState.valid && couponState.discountPercent ? ` (${couponState.discountPercent}% off)` : ''}
-                </p>
+              {couponState && !couponState.valid && (
+                <p className="mt-3 text-sm text-err">{couponState.message}</p>
+              )}
+              {appliedCoupon && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-2 rounded-[var(--radius-pill)] border border-ok/30 bg-ok/10 px-3 py-1 font-mono text-xs uppercase tracking-wider text-ok">
+                      {appliedCoupon.code ?? couponCode}
+                      {appliedCoupon.discountPercent ? ` · ${appliedCoupon.discountPercent}% off` : ''}
+                      <button
+                        type="button"
+                        onClick={handleRemoveCoupon}
+                        aria-label={`Remove coupon ${appliedCoupon.code ?? couponCode}`}
+                        className="rounded-[var(--radius-pill)] px-1 text-ok/80 hover:text-ok focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ok"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                    <span className="font-mono text-[11px] uppercase tracking-wider text-fg-3">
+                      Valid on Pro plans
+                    </span>
+                  </div>
+                  {couponScopePlan && couponDiscountedPrice !== null && (
+                    <p className="text-sm text-fg-2">
+                      {couponScopePlan.name}:{' '}
+                      <span className="text-fg-3 line-through">{formatRupees(couponScopePlan.price)}</span>{' '}
+                      <span className="font-semibold text-ok">{formatRupees(couponDiscountedPrice)}</span>
+                      <span className="text-fg-3"> / {couponScopePlan.interval}</span>
+                    </p>
+                  )}
+                  <p className="text-xs text-fg-3">
+                    Re-checked against your selected plan at checkout.
+                  </p>
+                </div>
               )}
             </div>
 
@@ -425,19 +530,76 @@ function BillingPageContent() {
           {loading ? (
             <div className="rounded-[var(--radius-lg)] border border-line bg-bg p-4 text-fg-2">Loading plans...</div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {visiblePlans.map((plan, idx) => (
-                <PricingCard
-                  key={`${plan.id ?? 'plan'}-${idx}`}
-                  plan={plan}
-                  isPopular={plan.id === (billingPeriod === 'annual' ? 'pro_annual' : 'pro')}
-                  onSelectPlan={handleSelectPlan}
-                  isLoading={activePlan === plan.id}
-                  disabled={plan.id !== 'free' && plan.id !== 'student' && !!billingStatus && !billingStatus.available}
-                  disabledLabel="Unavailable"
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {visiblePlans.map((plan, idx) => (
+                  <PricingCard
+                    key={`${plan.id ?? 'plan'}-${idx}`}
+                    plan={plan}
+                    isPopular={plan.id === (billingPeriod === 'annual' ? 'pro_annual' : 'pro')}
+                    onSelectPlan={handleSelectPlan}
+                    isLoading={activePlan === plan.id}
+                    disabled={plan.id !== 'free' && plan.id !== 'student' && !!billingStatus && !billingStatus.available}
+                    disabledLabel="Unavailable"
+                  />
+                ))}
+              </div>
+
+              {visiblePlans.length > 1 && (
+                <div className="mt-5">
+                  <button
+                    type="button"
+                    onClick={() => setShowComparison((prev) => !prev)}
+                    aria-expanded={showComparison}
+                    aria-controls="plan-comparison"
+                    className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-sm text-fg hover:bg-surface-2"
+                  >
+                    {showComparison ? 'Hide comparison table' : 'Compare all plans'}
+                  </button>
+
+                  {showComparison && (
+                    <div id="plan-comparison" className="mt-4 overflow-x-auto rounded-[var(--radius-lg)] border border-line">
+                      <table className="w-full min-w-[640px] border-collapse text-sm">
+                        <caption className="sr-only">Feature comparison across plans</caption>
+                        <thead>
+                          <tr className="border-b border-line bg-bg">
+                            <th scope="col" className="px-4 py-3 text-left font-mono text-xs uppercase tracking-wider text-fg-3">
+                              Feature
+                            </th>
+                            {visiblePlans.map((plan, idx) => (
+                              <th
+                                key={`h-${plan.id ?? idx}`}
+                                scope="col"
+                                className="px-4 py-3 text-left text-sm font-semibold text-fg"
+                              >
+                                {plan.name}
+                                <span className="mt-1 block text-xs font-normal text-fg-2">
+                                  {plan.price === 0 ? 'Free' : `${formatRupees(plan.price)} / ${plan.interval}`}
+                                </span>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {COMPARISON_ROWS.map((row) => (
+                            <tr key={row.label} className="border-b border-line last:border-b-0">
+                              <th scope="row" className="px-4 py-3 text-left font-normal text-fg-2">
+                                {row.label}
+                              </th>
+                              {visiblePlans.map((plan, idx) => (
+                                <td key={`${row.label}-${plan.id ?? idx}`} className="px-4 py-3 font-medium text-accent-strong">
+                                  {row.value(plan)}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </section>
 
@@ -460,7 +622,7 @@ function BillingPageContent() {
                   Sign in to subscribe, manage billing, or redeem team invitations.
                 </p>
                 <button
-                  onClick={() => router.push('/login?next=/billing')}
+                  onClick={() => router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)}
                   className="mt-4 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110"
                 >
                   Sign In to Subscribe
@@ -510,7 +672,7 @@ function BillingPageContent() {
                       </p>
                     </div>
                     <button
-                      onClick={() => handleRemoveSeat(seat.id)}
+                      onClick={() => handleRemoveSeat(seat.id, seat.member_email)}
                       className="rounded-[var(--radius-md)] border border-err/30 bg-err/10 px-3 py-2 text-sm text-err hover:bg-err/20"
                     >
                       Remove

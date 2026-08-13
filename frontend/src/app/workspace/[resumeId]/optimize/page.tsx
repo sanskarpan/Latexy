@@ -46,6 +46,10 @@ export default function OptimizationSuitePage() {
   const resumeId = params.resumeId as string
 
   const [resume, setResume] = useState<{ title: string; latex_content: string } | null>(null)
+  // Live editor content — kept in sync with the editor (manual edits + optimize
+  // stream) so the quick ATS badge tracks the current document, not the loaded one.
+  const [editorContent, setEditorContent] = useState('')
+  const [isSavingVersion, setIsSavingVersion] = useState(false)
   const [jobDescription, setJobDescription] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -103,7 +107,7 @@ export default function OptimizationSuitePage() {
   const { data: session, isPending: sessionLoading } = useSession()
 
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
-  const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(resume?.latex_content || '', jobDescription)
+  const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(editorContent || resume?.latex_content || '', jobDescription)
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
@@ -117,6 +121,7 @@ export default function OptimizationSuitePage() {
         const data = await apiClient.getResume(resumeId)
         setResume(data)
         setBaselineLatex(data.latex_content)
+        setEditorContent(data.latex_content)
         editorRef.current?.setValue(data.latex_content)
         setParentResumeId(data.parent_resume_id ?? null)
         if (data.parent_resume_id) {
@@ -157,6 +162,9 @@ export default function OptimizationSuitePage() {
   useEffect(() => {
     if (!stream.streamingLatex || !editorRef.current) return
     editorRef.current.setValue(stream.streamingLatex)
+    // Keep live content (and thus the ATS badge) in sync with the optimize stream —
+    // onChange does not fire for external setValue while the editor is read-only.
+    setEditorContent(stream.streamingLatex)
   }, [stream.streamingLatex])
 
   useEffect(() => {
@@ -255,7 +263,17 @@ export default function OptimizationSuitePage() {
 
   const restoreOriginal = () => {
     if (!baselineLatex || !editorRef.current) return
+    // Guard: restoring overwrites the editor. If the user has diverged from the
+    // baseline (manual edits or an accepted optimization), confirm before wiping it.
+    const current = editorRef.current.getValue()
+    if (current.trim() !== baselineLatex.trim()) {
+      const ok = window.confirm(
+        'Restore the original resume? This will discard the current editor content, including any edits or applied optimizations.'
+      )
+      if (!ok) return
+    }
     editorRef.current.setValue(baselineLatex)
+    setEditorContent(baselineLatex)
     toast.success('Original resume restored in editor')
   }
 
@@ -278,6 +296,7 @@ export default function OptimizationSuitePage() {
   // LaTeX into the editor, make it the new "after" snapshot, and recompile.
   const handleApplyReviewedChanges = useCallback(async (latex: string) => {
     editorRef.current?.setValue(latex)
+    setEditorContent(latex)
     setCompareAfterLatex(latex)
     setIsSubmitting(true)
     setPdfUrl(null)
@@ -380,6 +399,7 @@ export default function OptimizationSuitePage() {
 
   const handleHistoryRestore = useCallback((latex: string) => {
     editorRef.current?.setValue(latex)
+    setEditorContent(latex)
     setShowHistoryDiff(false)
     // Toast is fired by the caller (VersionHistoryPanel or DiffViewerModal)
   }, [])
@@ -716,7 +736,7 @@ export default function OptimizationSuitePage() {
                 <LaTeXEditor
                   ref={editorRef}
                   value={resume?.latex_content || ''}
-                  onChange={() => {}}
+                  onChange={setEditorContent}
                   readOnly={isProcessing}
                   logLines={stream.logLines}
                   onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
@@ -828,18 +848,33 @@ export default function OptimizationSuitePage() {
                   <h2 className="text-xl font-semibold text-fg">ATS Analysis</h2>
                   <div className="flex gap-2">
                     <button
-                      className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2"
+                      className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isSavingVersion}
                       onClick={async () => {
+                        if (isSavingVersion) return
+                        setIsSavingVersion(true)
                         try {
                           const latex = editorRef.current?.getValue() || stream.streamingLatex || ''
+                          // Non-destructive: snapshot the CURRENT stored content as a
+                          // checkpoint (recoverable from Version History) before the
+                          // overwrite, so the prior version is never lost.
+                          const stamp = new Date().toLocaleString()
+                          try {
+                            await apiClient.createCheckpoint(resumeId, `Before save · ${stamp}`)
+                          } catch {
+                            // Non-fatal — proceed with save even if snapshot fails
+                          }
                           await apiClient.updateResume(resumeId, { latex_content: latex })
-                          toast.success('Saved to resume')
+                          setHistoryRefreshKey((k) => k + 1)
+                          toast.success('New version saved — previous content kept in Version History')
                         } catch {
                           toast.error('Failed to save')
+                        } finally {
+                          setIsSavingVersion(false)
                         }
                       }}
                     >
-                      Save as New Version
+                      {isSavingVersion ? 'Saving…' : 'Save as New Version'}
                     </button>
                     <button
                       className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs"

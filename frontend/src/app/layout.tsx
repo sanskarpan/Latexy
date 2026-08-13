@@ -57,6 +57,12 @@ export default function RootLayout({
   return (
     <html lang="en" data-aesthetic="typeset" className={fontVariables} suppressHydrationWarning>
       <body className="font-sans antialiased">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[var(--z-toast)] focus:rounded-[var(--radius-md)] focus:bg-accent focus:px-4 focus:py-2 focus:font-ui focus:text-sm focus:font-semibold focus:text-accent-fg focus:shadow-[var(--shadow-2)] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg"
+        >
+          Skip to content
+        </a>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
         <ThemeProvider>
         <AestheticController />
@@ -70,15 +76,16 @@ export default function RootLayout({
             <div className="min-h-screen flex flex-col">
               <EmailVerifyBanner />
               <GlobalHeader />
-              <main className="flex-1">
+              <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
                 {children}
               </main>
               <MarketingFooter />
             </div>
             <Toaster
               richColors
+              closeButton
               position="bottom-right"
-              duration={1500}
+              duration={4000}
               toastOptions={{
                 className: 'border border-line bg-surface text-fg',
               }}

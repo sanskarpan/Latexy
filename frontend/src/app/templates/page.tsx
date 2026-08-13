@@ -89,7 +89,9 @@ export default function TemplatesPage() {
   const handleUseTemplate = useCallback(async (id: string) => {
     if (usingTemplateId) return
     if (!session) {
-      router.push('/login')
+      toast('Sign in to use templates')
+      const dest = `/templates?use=${id}`
+      router.push(`/login?redirect=${encodeURIComponent(dest)}`)
       return
     }
     setUsingTemplateId(id)
@@ -104,10 +106,20 @@ export default function TemplatesPage() {
     }
   }, [session, router, usingTemplateId])
 
-  const handleUseFromPreview = useCallback((id: string) => {
-    setPreviewTemplateId(null)
-    handleUseTemplate(id)
-  }, [handleUseTemplate])
+  // The modal awaits this and shows its own "Creating…" state, then closes
+  // itself via onClose (success navigates away, unmounting it).
+  const handleUseFromPreview = useCallback((id: string) => handleUseTemplate(id), [handleUseTemplate])
+
+  // Resume the "Use Template" flow after returning from login (?use=<id>).
+  const [autoUseHandled, setAutoUseHandled] = useState(false)
+  useEffect(() => {
+    if (autoUseHandled || loading) return
+    const useId = new URLSearchParams(window.location.search).get('use')
+    if (!useId) return
+    setAutoUseHandled(true)
+    router.replace('/templates')
+    if (session) handleUseTemplate(useId)
+  }, [autoUseHandled, loading, session, router, handleUseTemplate])
 
   const tabClass = (isActive: boolean) =>
     `inline-flex min-h-[36px] items-center rounded-[var(--radius-pill)] border px-4 py-1.5 font-ui text-xs uppercase tracking-[0.08em] transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none ${
@@ -214,7 +226,7 @@ export default function TemplatesPage() {
                       template={template}
                       onSelect={handleUseTemplate}
                       onPreview={handlePreview}
-                      disabled={usingTemplateId !== null}
+                      disabled={usingTemplateId === template.id}
                     />
                     {usingTemplateId === template.id && (
                       <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[var(--radius-lg)] bg-bg/80">

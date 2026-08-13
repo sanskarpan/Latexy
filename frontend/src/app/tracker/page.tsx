@@ -1,10 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, MoreHorizontal, ExternalLink, Trash2, Pencil, X } from 'lucide-react'
+import { Plus, MoreHorizontal, ExternalLink, Trash2, Pencil, X, StickyNote, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   DndContext,
@@ -12,11 +12,17 @@ import {
   DragOverEvent,
   DragOverlay,
   DragStartEvent,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { apiClient, type JobApplication, type TrackerStats } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -36,6 +42,16 @@ const COLUMNS = [
   { id: 'rejected', label: 'Rejected', color: 'border-t-err/60', badge: 'bg-err/10 text-err' },
   { id: 'withdrawn', label: 'Withdrawn', color: 'border-t-line-2', badge: 'bg-surface-2 text-fg-3' },
 ] as const
+
+const STATUSES = [
+  { value: 'applied', label: 'Applied' },
+  { value: 'phone_screen', label: 'Phone Screen' },
+  { value: 'technical', label: 'Technical' },
+  { value: 'onsite', label: 'On-Site' },
+  { value: 'offer', label: 'Offer' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'withdrawn', label: 'Withdrawn' },
+]
 
 function atsColor(score: number) {
   if (score >= 75) return 'bg-ok/10 text-ok ring-ok/20'
@@ -90,13 +106,15 @@ interface ApplicationCardProps {
   app: JobApplication
   onDelete: (id: string) => void
   onEdit: (app: JobApplication) => void
+  onStatusChange: (id: string, status: string) => void
   isDragging?: boolean
 }
 
-function ApplicationCard({ app, onDelete, onEdit, isDragging = false }: ApplicationCardProps) {
+function ApplicationCard({ app, onDelete, onEdit, onStatusChange, isDragging = false }: ApplicationCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging: sortableDragging } =
     useSortable({ id: app.id })
   const [menuOpen, setMenuOpen] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null)
@@ -153,21 +171,60 @@ function ApplicationCard({ app, onDelete, onEdit, isDragging = false }: Applicat
           </span>
         )}
         <span className="text-[10px] text-fg-3">{timeAgo(app.applied_at)}</span>
-        {app.job_url && (
-          <a
-            href={app.job_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="ml-auto text-fg-3 transition hover:text-fg-2"
-          >
-            <ExternalLink size={11} />
-          </a>
-        )}
+        <div className="ml-auto flex items-center gap-1.5">
+          {app.notes && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setNotesOpen((v) => !v) }}
+              aria-expanded={notesOpen}
+              aria-label={notesOpen ? 'Hide notes' : 'Show notes'}
+              title="Notes"
+              className={`transition ${notesOpen ? 'text-accent-strong' : 'text-fg-3 hover:text-fg-2'}`}
+            >
+              <StickyNote size={11} />
+            </button>
+          )}
+          {app.job_url && (
+            <a
+              href={app.job_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              aria-label="Open job posting"
+              className="text-fg-3 transition hover:text-fg-2"
+            >
+              <ExternalLink size={11} />
+            </a>
+          )}
+        </div>
       </div>
 
-      {/* Overflow menu */}
-      <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition">
+      {/* Notes preview (read-only detail) */}
+      {app.notes && notesOpen && (
+        <p className="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap rounded-[var(--radius-md)] bg-surface-2 p-2 text-[11px] leading-relaxed text-fg-2">
+          {app.notes}
+        </p>
+      )}
+
+      {/* Non-drag status control — keyboard & touch accessible alternative to dragging */}
+      <div className="mt-2.5">
+        <label className="sr-only" htmlFor={`status-${app.id}`}>
+          Move {app.company_name} to status
+        </label>
+        <select
+          id={`status-${app.id}`}
+          value={app.status}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onChange={(e) => { e.stopPropagation(); onStatusChange(app.id, e.target.value) }}
+          className="w-full cursor-pointer rounded-[var(--radius-md)] border border-line bg-surface-2 px-2 py-1 text-[11px] text-fg-2 outline-none transition focus:border-accent"
+        >
+          {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+      </div>
+
+      {/* Overflow menu — always visible on touch/coarse pointers and on keyboard focus */}
+      <div className="absolute right-2 top-2 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
         <button
           ref={menuTriggerRef}
           type="button"
@@ -232,9 +289,10 @@ interface ColumnProps {
   apps: JobApplication[]
   onDelete: (id: string) => void
   onEdit: (app: JobApplication) => void
+  onStatusChange: (id: string, status: string) => void
 }
 
-function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete, onEdit }: ColumnProps) {
+function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete, onEdit, onStatusChange }: ColumnProps) {
   return (
     <div className={`flex min-h-[200px] w-[80vw] max-w-[300px] flex-shrink-0 flex-col rounded-[var(--radius-lg)] border border-line bg-bg border-t-2 sm:w-[260px] ${colorClass}`}>
       <div className="flex items-center gap-2 px-3.5 py-3">
@@ -246,7 +304,7 @@ function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete,
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-2.5 pb-3">
         <SortableContext items={apps.map((a) => a.id)} strategy={verticalListSortingStrategy}>
           {apps.map((app) => (
-            <ApplicationCard key={app.id} app={app} onDelete={onDelete} onEdit={onEdit} />
+            <ApplicationCard key={app.id} app={app} onDelete={onDelete} onEdit={onEdit} onStatusChange={onStatusChange} />
           ))}
         </SortableContext>
         {apps.length === 0 && (
@@ -309,12 +367,19 @@ export default function TrackerPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [dragSourceCol, setDragSourceCol] = useState<string | null>(null)
 
+  // Client-side filter / sort controls
+  const [searchQuery, setSearchQuery] = useState('')
+  const [onlyThisWeek, setOnlyThisWeek] = useState(false)
+  const [atsMin, setAtsMin] = useState(0)
+  const [sortBy, setSortBy] = useState<'recent' | 'ats' | 'company'>('recent')
+
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
   useEffect(() => {
-    if (!sessionLoading && !session) router.push('/login')
+    if (!sessionLoading && !session) router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
   }, [session, sessionLoading, router])
 
   const loadBoard = useCallback(async () => {
@@ -402,7 +467,10 @@ export default function TrackerPage() {
     const finalCol = COLUMNS.find((c) => c.id === overId)?.id ?? findColumn(overId)
     if (!finalCol) return
 
-    // Compare against sourceCol captured at drag start — boardData is already optimistically updated
+    // Compare against sourceCol captured at drag start — boardData is already optimistically updated.
+    // Within-column drops are intentionally a no-op: the backend has no per-card position field,
+    // so card order is governed by the explicit Sort control (see cross_file_deps) rather than by
+    // manual drag, which avoids a reorder affordance that would silently revert on reload.
     if (!sourceCol || sourceCol === finalCol) return
 
     try {
@@ -414,23 +482,68 @@ export default function TrackerPage() {
     }
   }
 
-  const handleDelete = useCallback(async (id: string) => {
+  // Non-drag status change (from the card <select>) — keyboard / touch accessible
+  const handleStatusChange = useCallback(async (id: string, newStatus: string) => {
+    const sourceCol = findColumn(id)
+    if (!sourceCol || sourceCol === newStatus) return
+    const app = boardData[sourceCol]?.find((a) => a.id === id)
+    if (!app) return
+    setBoardData((prev) => ({
+      ...prev,
+      [sourceCol]: prev[sourceCol].filter((a) => a.id !== id),
+      [newStatus]: [{ ...app, status: newStatus }, ...(prev[newStatus] ?? [])],
+    }))
+    try {
+      await apiClient.updateApplicationStatus(id, newStatus)
+      setStats(await apiClient.getTrackerStats())
+    } catch {
+      toast.error('Failed to move card — reverting')
+      loadBoard()
+    }
+  }, [boardData, findColumn, loadBoard])
+
+  const handleDelete = useCallback((id: string) => {
     const col = findColumn(id)
     if (!col) return
-    // Optimistic remove
+    const index = boardData[col].findIndex((a) => a.id === id)
+    const app = boardData[col][index]
+    if (!app) return
+
+    // Optimistic remove — the real API call is deferred so an "Undo" can cancel it.
     setBoardData((prev) => ({
       ...prev,
       [col]: prev[col].filter((a) => a.id !== id),
     }))
-    try {
-      await apiClient.deleteApplication(id)
-      toast.success('Application deleted')
-      setStats(await apiClient.getTrackerStats())
-    } catch {
-      toast.error('Failed to delete')
-      loadBoard()
-    }
-  }, [findColumn, loadBoard])
+
+    let undone = false
+    const timer = setTimeout(async () => {
+      if (undone) return
+      try {
+        await apiClient.deleteApplication(id)
+        setStats(await apiClient.getTrackerStats())
+      } catch {
+        toast.error('Failed to delete — restoring')
+        loadBoard()
+      }
+    }, 5000)
+
+    toast('Application deleted', {
+      duration: 5000,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          undone = true
+          clearTimeout(timer)
+          // Reinsert at the original position within its column.
+          setBoardData((prev) => {
+            const next = [...(prev[col] ?? [])]
+            next.splice(Math.min(index, next.length), 0, app)
+            return { ...prev, [col]: next }
+          })
+        },
+      },
+    })
+  }, [boardData, findColumn, loadBoard])
 
   const handleAppCreated = useCallback((app: JobApplication) => {
     setBoardData((prev) => ({
@@ -441,6 +554,33 @@ export default function TrackerPage() {
   }, [])
 
   const activeApp = activeId ? findApp(activeId) : null
+
+  const filtersActive = searchQuery.trim() !== '' || onlyThisWeek || atsMin > 0
+
+  // Client-side view over boardData: search + filters + sort. Cross-column drag and
+  // status changes still mutate boardData directly, so this only affects presentation.
+  const filteredBoard = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    const weekAgo = Date.now() - 7 * 86400000
+    const out: Record<string, JobApplication[]> = {}
+    for (const col of COLUMNS) {
+      let apps = (boardData[col.id] ?? []).filter((a) => {
+        if (q && !`${a.company_name} ${a.role_title}`.toLowerCase().includes(q)) return false
+        if (onlyThisWeek && new Date(a.applied_at).getTime() < weekAgo) return false
+        if (atsMin > 0 && (a.ats_score_at_submission == null || a.ats_score_at_submission < atsMin)) return false
+        return true
+      })
+      if (sortBy === 'ats') {
+        apps = [...apps].sort((a, b) => (b.ats_score_at_submission ?? -1) - (a.ats_score_at_submission ?? -1))
+      } else if (sortBy === 'company') {
+        apps = [...apps].sort((a, b) => a.company_name.localeCompare(b.company_name))
+      } else {
+        apps = [...apps].sort((a, b) => new Date(b.applied_at).getTime() - new Date(a.applied_at).getTime())
+      }
+      out[col.id] = apps
+    }
+    return out
+  }, [boardData, searchQuery, onlyThisWeek, atsMin, sortBy])
 
   if (sessionLoading || (isLoading && session)) {
     return (
@@ -481,6 +621,68 @@ export default function TrackerPage() {
       {/* Stats */}
       <StatsBar stats={stats} />
 
+      {/* Filters / search / sort */}
+      <section className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-3" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search company or role…"
+            aria-label="Search applications by company or role"
+            className="w-full rounded-[var(--radius-md)] border border-line bg-surface px-3 py-1.5 pl-8 text-xs text-fg outline-none transition placeholder:text-fg-3 focus:border-accent"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setOnlyThisWeek((v) => !v)}
+          aria-pressed={onlyThisWeek}
+          className={`rounded-[var(--radius-md)] border px-3 py-1.5 text-xs transition ${
+            onlyThisWeek
+              ? 'border-accent bg-accent-soft text-accent-strong'
+              : 'border-line text-fg-2 hover:bg-surface-2'
+          }`}
+        >
+          This week
+        </button>
+
+        <label className="sr-only" htmlFor="ats-filter">Minimum ATS score</label>
+        <select
+          id="ats-filter"
+          value={atsMin}
+          onChange={(e) => setAtsMin(Number(e.target.value))}
+          className="rounded-[var(--radius-md)] border border-line bg-surface px-2.5 py-1.5 text-xs text-fg-2 outline-none transition focus:border-accent"
+        >
+          <option value={0}>Any ATS</option>
+          <option value={55}>ATS 55+</option>
+          <option value={75}>ATS 75+</option>
+        </select>
+
+        <label className="sr-only" htmlFor="sort-by">Sort applications</label>
+        <select
+          id="sort-by"
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'recent' | 'ats' | 'company')}
+          className="rounded-[var(--radius-md)] border border-line bg-surface px-2.5 py-1.5 text-xs text-fg-2 outline-none transition focus:border-accent"
+        >
+          <option value="recent">Sort: Recent</option>
+          <option value="ats">Sort: ATS</option>
+          <option value="company">Sort: Company</option>
+        </select>
+
+        {filtersActive && (
+          <button
+            type="button"
+            onClick={() => { setSearchQuery(''); setOnlyThisWeek(false); setAtsMin(0) }}
+            className="rounded-[var(--radius-md)] px-2.5 py-1.5 text-xs text-fg-3 transition hover:text-fg"
+          >
+            Clear
+          </button>
+        )}
+      </section>
+
       {/* Kanban board — horizontally scrollable, contained to viewport width */}
       <div className="max-w-full overflow-x-auto pb-4">
         <DndContext
@@ -497,9 +699,10 @@ export default function TrackerPage() {
                 label={col.label}
                 colorClass={col.color}
                 badgeClass={col.badge}
-                apps={boardData[col.id] ?? []}
+                apps={filteredBoard[col.id] ?? []}
                 onDelete={handleDelete}
                 onEdit={setEditingApp}
+                onStatusChange={handleStatusChange}
               />
             ))}
           </div>
@@ -556,16 +759,6 @@ export default function TrackerPage() {
 // ------------------------------------------------------------------ //
 //  Inline edit modal                                                   //
 // ------------------------------------------------------------------ //
-
-const STATUSES = [
-  { value: 'applied', label: 'Applied' },
-  { value: 'phone_screen', label: 'Phone Screen' },
-  { value: 'technical', label: 'Technical' },
-  { value: 'onsite', label: 'On-Site' },
-  { value: 'offer', label: 'Offer' },
-  { value: 'rejected', label: 'Rejected' },
-  { value: 'withdrawn', label: 'Withdrawn' },
-]
 
 function EditApplicationModal({
   app,

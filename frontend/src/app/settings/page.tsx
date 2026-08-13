@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Bell, BookOpen, Mail, Calendar, Save, Loader2, CheckCircle, Monitor, Unlink, ExternalLink, Cloud } from 'lucide-react'
+import { Bell, BookOpen, Mail, Calendar, Loader2, CheckCircle, Monitor, Unlink, ExternalLink, Cloud, LogIn } from 'lucide-react'
 import { Github } from '@/components/icons/brand-icons'
 import { apiClient, type NotificationPrefs, type GitHubStatusResponse, type ZoteroStatusResponse, type MendeleyStatusResponse, type DropboxStatusResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -36,11 +36,20 @@ function SettingsContent() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [desktopNotifs, setDesktopNotifs] = useState(true)
+  const [desktopBusy, setDesktopBusy] = useState(false)
 
-  // Gate client-only UI (e.g. Notification.permission) until after hydration so
-  // the first client render matches the server and doesn't mismatch.
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
+  // Track the browser's current Notification permission so we can (a) drive the
+  // request flow when the toggle is turned on and (b) surface the blocked hint.
+  // Starts 'default' so the first client render matches SSR (no hydration
+  // mismatch); the effect syncs the real value after mount.
+  const [notifPerm, setNotifPerm] = useState<NotificationPermission | 'unsupported'>('default')
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotifPerm(Notification.permission)
+    } else {
+      setNotifPerm('unsupported')
+    }
+  }, [])
 
   // Load desktop notification preference from localStorage
   useEffect(() => {
@@ -163,19 +172,76 @@ function SettingsContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
-  async function handleSave() {
+  // Notification prefs autosave on toggle (optimistic). The switches look like
+  // instant toggles, so persist immediately and reconcile with the server. On
+  // failure we revert to the previous value and surface an error.
+  async function persistPrefs(next: NotificationPrefs) {
+    const prev = prefs
+    setPrefs(next) // optimistic
     setSaving(true)
     setSaved(false)
     setError(null)
     try {
-      const updated = await apiClient.updateNotificationPrefs(prefs)
+      const updated = await apiClient.updateNotificationPrefs(next)
       setPrefs(updated)
       setSaved(true)
-      scheduleTimer(() => setSaved(false), 3000)
+      scheduleTimer(() => setSaved(false), 2000)
     } catch (e: unknown) {
+      setPrefs(prev) // revert optimistic change
       setError(e instanceof Error ? e.message : 'Failed to save preferences')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Desktop notifications toggle. Turning ON must actually obtain browser
+  // permission — otherwise the switch reads "enabled" while the browser silently
+  // drops every notification. Only persist the pref as ON once permission is
+  // 'granted'; if the user denies, revert and let the blocked hint show.
+  async function handleToggleDesktop() {
+    if (desktopBusy) return
+    // Turning OFF is always allowed and needs no permission.
+    if (desktopNotifs) {
+      setDesktopNotifs(false)
+      setNotificationPref(false)
+      return
+    }
+
+    // Turning ON.
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      // No Notification API — persist the local pref and let callers no-op.
+      setDesktopNotifs(true)
+      setNotificationPref(true)
+      return
+    }
+
+    if (Notification.permission === 'granted') {
+      setDesktopNotifs(true)
+      setNotificationPref(true)
+      return
+    }
+
+    if (Notification.permission === 'denied') {
+      // Cannot enable while blocked — keep OFF and surface the hint.
+      setNotifPerm('denied')
+      return
+    }
+
+    // permission === 'default' → must ask before enabling.
+    setDesktopBusy(true)
+    try {
+      const result = await Notification.requestPermission()
+      setNotifPerm(result)
+      if (result === 'granted') {
+        setDesktopNotifs(true)
+        setNotificationPref(true)
+      } else {
+        // Denied or dismissed — keep the toggle OFF and do not persist ON.
+        setDesktopNotifs(false)
+        setNotificationPref(false)
+      }
+    } finally {
+      setDesktopBusy(false)
     }
   }
 
@@ -251,6 +317,56 @@ function SettingsContent() {
     } finally {
       setMenDisconnecting(false)
     }
+  }
+
+  // While the session resolves, avoid flashing either the cards or the sign-in
+  // gate.
+  if (sessionLoading) {
+    return (
+      <div className="min-h-screen overflow-x-hidden bg-bg px-4 py-10">
+        <div className="mx-auto max-w-xl">
+          <div className="flex items-center gap-2 rounded-[var(--radius-lg)] border border-line bg-surface p-6 text-sm text-fg-3">
+            <Loader2 size={14} className="animate-spin" />
+            Loading settings…
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Signed-out gate. Every card on this page is per-user (integrations need a
+  // Bearer token, Save hits an authenticated endpoint), so render a sign-in
+  // prompt instead of empty "not connected" cards — matching /developer and
+  // /byok.
+  if (!sessionData) {
+    return (
+      <div className="min-h-screen overflow-x-hidden bg-bg px-4 py-10">
+        <div className="mx-auto max-w-xl space-y-8">
+          <div>
+            <h1 className="text-2xl font-semibold text-fg">Settings</h1>
+            <p className="mt-1 text-sm text-fg-3">Manage your account preferences</p>
+          </div>
+          <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-8 text-center space-y-4">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <LogIn size={16} className="text-accent-strong" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold text-fg">Sign in to manage settings</h2>
+              <p className="text-[12px] text-fg-3">
+                Connect integrations and manage your notification preferences from one place.
+              </p>
+            </div>
+            <a
+              href="/login?next=/settings"
+              className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg transition hover:brightness-110"
+            >
+              <LogIn size={13} />
+              Sign in
+            </a>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -575,14 +691,15 @@ function SettingsContent() {
                 <button
                   role="switch"
                   aria-checked={prefs.job_completed}
-                  onClick={() => setPrefs((p) => ({ ...p, job_completed: !p.job_completed }))}
+                  disabled={saving}
+                  onClick={() => persistPrefs({ ...prefs, job_completed: !prefs.job_completed })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
                       e.preventDefault()
-                      setPrefs((p) => ({ ...p, job_completed: !p.job_completed }))
+                      persistPrefs({ ...prefs, job_completed: !prefs.job_completed })
                     }
                   }}
-                  className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
+                  className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
                     prefs.job_completed ? 'bg-accent' : 'bg-surface-2'
                   }`}
                 >
@@ -612,14 +729,15 @@ function SettingsContent() {
                 <button
                   role="switch"
                   aria-checked={prefs.weekly_digest}
-                  onClick={() => setPrefs((p) => ({ ...p, weekly_digest: !p.weekly_digest }))}
+                  disabled={saving}
+                  onClick={() => persistPrefs({ ...prefs, weekly_digest: !prefs.weekly_digest })}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
                       e.preventDefault()
-                      setPrefs((p) => ({ ...p, weekly_digest: !p.weekly_digest }))
+                      persistPrefs({ ...prefs, weekly_digest: !prefs.weekly_digest })
                     }
                   }}
-                  className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
+                  className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
                     prefs.weekly_digest ? 'bg-accent' : 'bg-surface-2'
                   }`}
                 >
@@ -639,21 +757,22 @@ function SettingsContent() {
             </p>
           )}
 
-          <div className="flex items-center gap-3 pt-1">
-            <button
-              onClick={handleSave}
-              disabled={saving || loading}
-              className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg transition hover:brightness-110 disabled:opacity-40"
-            >
-              {saving ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : saved ? (
-                <CheckCircle size={13} className="text-accent-fg" />
-              ) : (
-                <Save size={13} />
-              )}
-              {saving ? 'Saving…' : saved ? 'Saved!' : 'Save preferences'}
-            </button>
+          {/* Autosave status — changes persist on toggle, so there is no manual
+              Save button and no unsaved state to lose. */}
+          <div className="flex items-center gap-1.5 pt-1 text-[11px] text-fg-3" aria-live="polite">
+            {saving ? (
+              <>
+                <Loader2 size={12} className="animate-spin" />
+                Saving…
+              </>
+            ) : saved ? (
+              <>
+                <CheckCircle size={12} className="text-ok" />
+                <span className="text-ok">Saved</span>
+              </>
+            ) : (
+              'Changes are saved automatically'
+            )}
           </div>
         </div>
 
@@ -681,20 +800,15 @@ function SettingsContent() {
             <button
               role="switch"
               aria-checked={desktopNotifs}
-              onClick={() => {
-                const next = !desktopNotifs
-                setDesktopNotifs(next)
-                setNotificationPref(next)
-              }}
+              disabled={desktopBusy}
+              onClick={handleToggleDesktop}
               onKeyDown={(e) => {
                 if (e.key === ' ' || e.key === 'Enter') {
                   e.preventDefault()
-                  const next = !desktopNotifs
-                  setDesktopNotifs(next)
-                  setNotificationPref(next)
+                  handleToggleDesktop()
                 }
               }}
-              className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
+              className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
                 desktopNotifs ? 'bg-accent' : 'bg-surface-2'
               }`}
             >
@@ -706,7 +820,7 @@ function SettingsContent() {
             </button>
           </label>
 
-          {mounted && 'Notification' in window && Notification.permission === 'denied' && (
+          {notifPerm === 'denied' && (
             <p className="rounded-[var(--radius-md)] bg-warn/10 px-3 py-2 text-[11px] text-warn ring-1 ring-warn/20">
               Notifications are blocked by your browser. Update your site permissions to enable them.
             </p>

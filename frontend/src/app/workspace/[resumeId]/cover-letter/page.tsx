@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FileText, Mail, Zap } from 'lucide-react'
 import { toast } from 'sonner'
@@ -35,8 +35,10 @@ const LENGTH_OPTIONS: { value: CoverLetterLength; label: string; desc: string }[
 export default function CoverLetterPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { data: session, isPending: sessionLoading } = useSession()
   const resumeId = params.resumeId as string
+  const requestedCoverLetterId = searchParams.get('cl')
 
   const [resume, setResume] = useState<{ title: string; latex_content: string } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -55,6 +57,7 @@ export default function CoverLetterPage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [existingCoverLetters, setExistingCoverLetters] = useState<CoverLetterResponse[]>([])
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
   const editorRef = useRef<LaTeXEditorRef>(null)
@@ -64,7 +67,7 @@ export default function CoverLetterPage() {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!sessionLoading && !session) {
-      router.push('/login')
+      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
     }
   }, [session, sessionLoading, router])
 
@@ -80,13 +83,22 @@ export default function CoverLetterPage() {
         setResume(data)
         setExistingCoverLetters(cls)
 
-        // If there are existing cover letters, load the most recent one
-        if (cls.length > 0 && cls[0].latex_content) {
-          editorRef.current?.setValue(cls[0].latex_content)
-          setActiveCoverLetterId(cls[0].id)
+        // Open the specific cover letter requested via ?cl=<id>, otherwise the most recent one
+        const requested = requestedCoverLetterId
+          ? cls.find((c) => c.id === requestedCoverLetterId)
+          : undefined
+        const initial = requested ?? (cls.length > 0 ? cls[0] : undefined)
+        if (initial && initial.latex_content) {
+          editorRef.current?.setValue(initial.latex_content)
+          setActiveCoverLetterId(initial.id)
+          setJobDescription(initial.job_description || '')
+          setCompanyName(initial.company_name || '')
+          setRoleTitle(initial.role_title || '')
+          setTone(initial.tone as CoverLetterTone)
+          setLengthPref(initial.length_preference as CoverLetterLength)
           // Auto-compile the existing cover letter
           try {
-            const r = await apiClient.compileLatex({ latex_content: cls[0].latex_content })
+            const r = await apiClient.compileLatex({ latex_content: initial.latex_content })
             if (r.success && r.job_id) setActiveJobId(r.job_id)
           } catch {
             // Silent
@@ -100,7 +112,7 @@ export default function CoverLetterPage() {
       }
     }
     fetchData()
-  }, [resumeId, router, session])
+  }, [resumeId, router, session, requestedCoverLetterId])
 
   // Stream LLM tokens into editor
   useEffect(() => {
@@ -292,6 +304,7 @@ export default function CoverLetterPage() {
   }
 
   const deleteCoverLetter = async (id: string) => {
+    setConfirmDeleteId(null)
     try {
       await apiClient.deleteCoverLetter(id)
       setExistingCoverLetters(prev => prev.filter(cl => cl.id !== id))
@@ -523,12 +536,30 @@ export default function CoverLetterPage() {
                         {new Date(cl.created_at).toLocaleDateString()}
                       </p>
                     </button>
-                    <button
-                      onClick={() => deleteCoverLetter(cl.id)}
-                      className="ml-2 text-[10px] text-fg-3 hover:text-err transition"
-                    >
-                      Delete
-                    </button>
+                    {confirmDeleteId === cl.id ? (
+                      <div className="ml-2 flex shrink-0 items-center gap-1.5">
+                        <button
+                          onClick={() => deleteCoverLetter(cl.id)}
+                          aria-label={`Confirm delete cover letter ${cl.company_name || cl.role_title || ''}`}
+                          className="text-[10px] font-semibold text-err transition hover:brightness-110"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="text-[10px] text-fg-3 transition hover:text-fg-2"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteId(cl.id)}
+                        className="ml-2 shrink-0 text-[10px] text-fg-3 hover:text-err transition"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -640,7 +671,7 @@ export default function CoverLetterPage() {
                       onClick={saveChanges}
                       className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2"
                     >
-                      Save to Resume
+                      Save Cover Letter
                     </button>
                     <button
                       className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110"

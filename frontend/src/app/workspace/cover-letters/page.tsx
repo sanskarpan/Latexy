@@ -16,34 +16,55 @@ export default function CoverLettersPage() {
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
+  const [isFetching, setIsFetching] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!sessionLoading && !session) {
-      router.push('/login')
+      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
     }
   }, [session, sessionLoading, router])
 
+  // Debounce the search query so we don't fire a request on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
   useEffect(() => {
     if (!session) return
+    let cancelled = false
     const fetchData = async () => {
-      setIsLoading(true)
+      setIsFetching(true)
       try {
-        const data = await apiClient.listCoverLetters(page, 20, searchQuery)
+        const data = await apiClient.listCoverLetters(page, 20, debouncedSearch)
+        if (cancelled) return
         setCoverLetters(data.cover_letters)
         setTotal(data.total)
         setTotalPages(data.pages)
       } catch {
-        toast.error('Failed to load cover letters')
+        if (!cancelled) toast.error('Failed to load cover letters')
       } finally {
-        setIsLoading(false)
+        if (!cancelled) {
+          setIsFetching(false)
+          setIsLoading(false)
+        }
       }
     }
     fetchData()
-  }, [session, page, searchQuery])
+    return () => {
+      cancelled = true
+    }
+  }, [session, page, debouncedSearch])
 
   const handleDelete = async (id: string) => {
+    setConfirmDeleteId(null)
     try {
       await apiClient.deleteCoverLetter(id)
       setCoverLetters((prev) => prev.filter((cl) => cl.id !== id))
@@ -105,16 +126,24 @@ export default function CoverLettersPage() {
 
       <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value)
-              setPage(1)
-            }}
-            placeholder="Search by company or role"
-            className="w-full max-w-md rounded-[var(--radius-md)] border border-line bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
-          />
+          <div className="relative w-full max-w-md">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by company or role"
+              aria-label="Search cover letters by company or role"
+              className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-3 py-2 pr-24 text-sm text-fg outline-none transition focus:border-accent"
+            />
+            {isFetching && !isLoading && (
+              <span
+                aria-live="polite"
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-ui text-[10px] uppercase tracking-[0.14em] text-fg-3"
+              >
+                Searching…
+              </span>
+            )}
+          </div>
           <div className="flex rounded-[var(--radius-md)] border border-line bg-surface-2 p-1 text-xs">
             <button
               onClick={() => setViewMode('grid')}
@@ -140,7 +169,9 @@ export default function CoverLettersPage() {
         <div className="flex h-72 items-center justify-center rounded-[var(--radius-lg)] border border-line bg-surface">
           <LoadingSpinner />
         </div>
-      ) : coverLetters.length === 0 ? (
+      ) : (
+      <div className={isFetching ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+      {coverLetters.length === 0 ? (
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface px-6 py-16 text-center">
           <h2 className="text-lg font-semibold text-fg">No cover letters yet</h2>
           <p className="mt-2 text-sm text-fg-2">
@@ -187,17 +218,35 @@ export default function CoverLettersPage() {
 
               <div className="mt-auto pt-4 flex gap-2 text-xs">
                 <Link
-                  href={`/workspace/${cl.resume_id}/cover-letter`}
+                  href={`/workspace/${cl.resume_id}/cover-letter?cl=${cl.id}`}
                   className="flex-1 rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-2 text-center font-semibold text-accent-strong transition hover:brightness-110"
                 >
                   View
                 </Link>
-                <button
-                  onClick={() => handleDelete(cl.id)}
-                  className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 font-semibold text-fg-2 transition hover:border-err/30 hover:bg-err/10 hover:text-err"
-                >
-                  Delete
-                </button>
+                {confirmDeleteId === cl.id ? (
+                  <>
+                    <button
+                      onClick={() => handleDelete(cl.id)}
+                      aria-label={`Confirm delete cover letter for ${cl.company_name || cl.role_title || 'Untitled'}`}
+                      className="rounded-[var(--radius-md)] border border-err/40 bg-err/10 px-3 py-2 font-semibold text-err transition hover:bg-err/20"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 font-semibold text-fg-2 transition hover:text-fg"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDeleteId(cl.id)}
+                    className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 font-semibold text-fg-2 transition hover:border-err/30 hover:bg-err/10 hover:text-err"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </article>
           ))}
@@ -246,17 +295,35 @@ export default function CoverLettersPage() {
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex gap-2">
                       <Link
-                        href={`/workspace/${cl.resume_id}/cover-letter`}
+                        href={`/workspace/${cl.resume_id}/cover-letter?cl=${cl.id}`}
                         className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong transition hover:brightness-110"
                       >
                         View
                       </Link>
-                      <button
-                        onClick={() => handleDelete(cl.id)}
-                        className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-semibold text-fg-2 transition hover:border-err/30 hover:text-err"
-                      >
-                        Delete
-                      </button>
+                      {confirmDeleteId === cl.id ? (
+                        <>
+                          <button
+                            onClick={() => handleDelete(cl.id)}
+                            aria-label={`Confirm delete cover letter for ${cl.company_name || cl.role_title || 'Untitled'}`}
+                            className="rounded-[var(--radius-md)] border border-err/40 bg-err/10 px-3 py-1.5 text-xs font-semibold text-err transition hover:bg-err/20"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-semibold text-fg-2 transition hover:text-fg"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDeleteId(cl.id)}
+                          className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-semibold text-fg-2 transition hover:border-err/30 hover:text-err"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -264,6 +331,8 @@ export default function CoverLettersPage() {
             </tbody>
           </table>
         </div>
+      )}
+      </div>
       )}
 
       {/* Pagination */}
