@@ -2,13 +2,24 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { signIn, signInWithGoogle, signInWithGithub } from '@/lib/auth-client'
+import { Eye, EyeOff } from 'lucide-react'
+import { signIn, authClient } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === 'true'
 const GITHUB_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GITHUB_ENABLED === 'true'
 const ANY_OAUTH = GOOGLE_ENABLED || GITHUB_ENABLED
+
+/**
+ * Coerce an incoming redirect target to a safe same-origin relative path.
+ * Rejects absolute URLs and protocol-relative (`//`, `/\`) values to prevent
+ * open-redirect. Falls back to the generic workspace landing.
+ */
+function safeDest(raw: string | undefined): string {
+  if (!raw || raw[0] !== '/' || raw[1] === '/' || raw[1] === '\\') return '/workspace'
+  return raw
+}
 
 const labelClass = 'block font-ui text-xs uppercase tracking-[0.16em] text-fg-3'
 const oauthBtnClass =
@@ -32,12 +43,19 @@ function GithubIcon() {
   )
 }
 
-export default function SignInForm() {
+export default function SignInForm({ redirect }: { redirect?: string }) {
+  const dest = safeDest(redirect)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [socialLoading, setSocialLoading] = useState<'google' | 'github' | null>(null)
   const [error, setError] = useState('')
+
+  const forgotHref =
+    dest === '/workspace'
+      ? '/forgot-password'
+      : `/forgot-password?redirect=${encodeURIComponent(dest)}`
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,7 +66,7 @@ export default function SignInForm() {
       if (result.error) {
         setError(result.error.message || 'Sign in failed')
       } else {
-        window.location.href = '/workspace'
+        window.location.href = dest
       }
     } catch {
       setError('An unexpected error occurred')
@@ -61,7 +79,7 @@ export default function SignInForm() {
     setSocialLoading(provider)
     setError('')
     try {
-      const result = provider === 'google' ? await signInWithGoogle() : await signInWithGithub()
+      const result = await authClient.signIn.social({ provider, callbackURL: dest })
       // The client resolves with an `error` instead of throwing, and only sends
       // the browser away once it has an authorization URL. Any other outcome
       // has to release the form — otherwise a failed handshake leaves every
@@ -136,6 +154,7 @@ export default function SignInForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="email"
               className="min-h-[44px]"
             />
           </div>
@@ -146,20 +165,36 @@ export default function SignInForm() {
                 Password
               </label>
               <Link
-                href="/forgot-password"
+                href={forgotHref}
                 className="font-ui text-xs font-medium text-accent-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded-[var(--radius-sm)]"
               >
                 Forgot password?
               </Link>
             </div>
-            <Input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="min-h-[44px]"
-            />
+            <div className="relative">
+              <Input
+                type={showPassword ? 'text' : 'password'}
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+                className="min-h-[44px] pr-12"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-pressed={showPassword}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="absolute inset-y-0 right-0 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition duration-150 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Eye className="h-4 w-4" aria-hidden="true" />
+                )}
+              </button>
+            </div>
           </div>
 
           <div aria-live="polite">
