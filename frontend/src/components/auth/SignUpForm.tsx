@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { signUp, signInWithGoogle, signInWithGithub } from '@/lib/auth-client'
+import { Eye, EyeOff } from 'lucide-react'
+import { signUp, authClient } from '@/lib/auth-client'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
@@ -10,27 +11,64 @@ const GITHUB_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GITHUB_ENABLED === 'true'
 const ANY_OAUTH = GOOGLE_ENABLED || GITHUB_ENABLED
 
 const labelClass = 'block font-ui text-xs uppercase tracking-[0.16em] text-fg-3'
+
+/**
+ * Coerce an incoming redirect target to a safe same-origin relative path.
+ * Rejects absolute and protocol-relative values to prevent open-redirect.
+ */
+function safeDest(raw: string | undefined): string {
+  if (!raw || raw[0] !== '/' || raw[1] === '/' || raw[1] === '\\') return '/workspace'
+  return raw
+}
+
+/** Lightweight 0–3 password strength heuristic for the sign-up hint. */
+function passwordStrength(pw: string): { score: number; label: string } {
+  let score = 0
+  if (pw.length >= 8) score++
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++
+  if (/\d/.test(pw) || /[^A-Za-z0-9]/.test(pw)) score++
+  const labels = ['Too short', 'Weak', 'Fair', 'Strong']
+  return { score, label: labels[Math.min(score, 3)] }
+}
 const oauthButtonClass =
   'inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[var(--radius-md)] border border-line-2 bg-surface px-3 py-2.5 font-ui text-sm font-medium text-fg transition duration-150 hover:border-accent hover:text-accent-strong disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none'
 
-export default function SignUpForm() {
+export default function SignUpForm({ redirect }: { redirect?: string }) {
+  const dest = safeDest(redirect)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
   const [name, setName] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [socialLoading, setSocialLoading] = useState<'google' | 'github' | null>(null)
   const [error, setError] = useState('')
 
+  const strength = passwordStrength(password)
+  const confirmMismatch = confirm.length > 0 && confirm !== password
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
     setError('')
+
+    // Validate client-side so typos surface inline instead of after a round-trip.
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
+    if (password !== confirm) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    setIsLoading(true)
     try {
       const result = await signUp.email({ email, password, name })
       if (result.error) {
         setError(result.error.message || 'Sign up failed')
       } else {
-        window.location.href = '/workspace'
+        window.location.href = dest
       }
     } catch {
       setError('An unexpected error occurred')
@@ -43,7 +81,7 @@ export default function SignUpForm() {
     setSocialLoading(provider)
     setError('')
     try {
-      const result = provider === 'google' ? await signInWithGoogle() : await signInWithGithub()
+      const result = await authClient.signIn.social({ provider, callbackURL: dest })
       // The client resolves with an `error` instead of throwing, and only sends
       // the browser away once it has an authorization URL. Any other outcome
       // has to release the form — otherwise a failed handshake leaves every
@@ -118,6 +156,7 @@ export default function SignUpForm() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
+            autoComplete="name"
           />
         </div>
 
@@ -131,6 +170,7 @@ export default function SignUpForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
           />
         </div>
 
@@ -138,14 +178,94 @@ export default function SignUpForm() {
           <label htmlFor="password" className={labelClass}>
             Password
           </label>
-          <Input
-            type="password"
-            id="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={8}
-          />
+          <div className="relative">
+            <Input
+              type={showPassword ? 'text' : 'password'}
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              autoComplete="new-password"
+              aria-describedby="password-hint"
+              className="pr-12"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-pressed={showPassword}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute inset-y-0 right-0 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition duration-150 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+            >
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Eye className="h-4 w-4" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+          {password.length > 0 && (
+            <div className="flex items-center gap-2" aria-hidden="true">
+              <div className="flex flex-1 gap-1">
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className={`h-1 flex-1 rounded-[var(--radius-pill)] transition-colors duration-150 ${
+                      i < strength.score
+                        ? strength.score >= 3
+                          ? 'bg-ok'
+                          : strength.score === 2
+                            ? 'bg-warn'
+                            : 'bg-err'
+                        : 'bg-line-2'
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="font-ui text-xs text-fg-3">{strength.label}</span>
+            </div>
+          )}
+          <p id="password-hint" className="font-body text-xs text-fg-3">
+            At least 8 characters.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="confirm" className={labelClass}>
+            Confirm Password
+          </label>
+          <div className="relative">
+            <Input
+              type={showConfirm ? 'text' : 'password'}
+              id="confirm"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              required
+              minLength={8}
+              autoComplete="new-password"
+              aria-invalid={confirmMismatch}
+              aria-describedby={confirmMismatch ? 'confirm-error' : undefined}
+              className="pr-12"
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirm((v) => !v)}
+              aria-pressed={showConfirm}
+              aria-label={showConfirm ? 'Hide password' : 'Show password'}
+              className="absolute inset-y-0 right-0 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition duration-150 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
+            >
+              {showConfirm ? (
+                <EyeOff className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Eye className="h-4 w-4" aria-hidden="true" />
+              )}
+            </button>
+          </div>
+          {confirmMismatch && (
+            <p id="confirm-error" className="font-body text-xs text-err" role="alert">
+              Passwords do not match.
+            </p>
+          )}
         </div>
 
         <div aria-live="polite">
