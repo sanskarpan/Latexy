@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { BookUser, GitFork, GitMerge, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate, Globe, Send, MoreHorizontal, Pencil, Sparkles, FileText, Languages, Briefcase } from 'lucide-react'
+import { BookUser, GitFork, GitMerge, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate, Globe, Send, MoreHorizontal, Pencil, Sparkles, FileText, Languages, Briefcase, Trash2, ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult, type TranslateResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -55,6 +55,7 @@ export default function WorkspacePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [sortBy, setSortBy] = useState<'updated' | 'name' | 'freshness' | 'match'>('updated')
   const [openCardMenu, setOpenCardMenu] = useState<string | null>(null)
   const [matchModalOpen, setMatchModalOpen] = useState(false)
   const [matchResults, setMatchResults] = useState<SemanticMatchResult[]>([])
@@ -138,7 +139,7 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     if (!sessionLoading && !session) {
-      router.push('/login')
+      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
     }
   }, [session, sessionLoading, router])
 
@@ -178,9 +179,27 @@ export default function WorkspacePage() {
   const filteredResumes = useMemo(() => {
     let result = resumes.filter((r) => r.title.toLowerCase().includes(searchQuery.toLowerCase()))
     if (activeTagFilter) result = result.filter((r) => r.tags?.includes(activeTagFilter))
-    // Pinned resumes first
-    return [...result].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
-  }, [resumes, searchQuery, activeTagFilter])
+    const scoreMap = new Map(matchResults.map((m) => [m.resume_id, m.similarity_score ?? -1]))
+    // Pinned resumes always first, then the chosen sort order.
+    return [...result].sort((a, b) => {
+      const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
+      if (pinDiff !== 0) return pinDiff
+      switch (sortBy) {
+        case 'name':
+          return a.title.localeCompare(b.title)
+        case 'freshness':
+          // Stalest first — surfaces resumes that need refreshing.
+          return (b.days_since_updated ?? 0) - (a.days_since_updated ?? 0)
+        case 'match':
+          return (scoreMap.get(b.id) ?? -1) - (scoreMap.get(a.id) ?? -1)
+        case 'updated':
+        default:
+          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      }
+    })
+  }, [resumes, searchQuery, activeTagFilter, sortBy, matchResults])
+
+  const isFiltered = searchQuery.trim().length > 0 || activeTagFilter !== null
 
   const allTags = useMemo(() => {
     const set = new Set<string>()
@@ -206,6 +225,33 @@ export default function WorkspacePage() {
       a.click()
       URL.revokeObjectURL(url)
       toast.success('Download started')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed')
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  // Export only the currently visible (search/tag filtered) resumes.
+  // The bulk endpoint exports everything, so we export each filtered
+  // resume individually to respect the active filter.
+  const handleFilteredExport = async (format: 'tex' | 'pdf' | 'docx') => {
+    const targets = filteredResumes
+    if (targets.length === 0) return
+    setExportLoading(true)
+    setExportMenuOpen(false)
+    try {
+      for (const resume of targets) {
+        const blob = await apiClient.exportResume(resume.id, format)
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        const safeName = resume.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'resume'
+        a.download = `${safeName}.${format}`
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+      toast.success(`Exported ${targets.length} resume${targets.length === 1 ? '' : 's'}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Export failed')
     } finally {
@@ -354,6 +400,16 @@ export default function WorkspacePage() {
     }
   }, [])
 
+  const handleDeletePermanently = useCallback(async (resumeId: string) => {
+    try {
+      await apiClient.deleteResume(resumeId)
+      setArchivedResumes(prev => prev.filter(r => r.id !== resumeId))
+      toast.success('Resume deleted permanently')
+    } catch {
+      toast.error('Failed to delete resume')
+    }
+  }, [])
+
   const handleSaveTags = useCallback(async () => {
     if (!tagEditResumeId) return
     const tags = tagEditValue
@@ -414,6 +470,83 @@ export default function WorkspacePage() {
       </div>
     )
   }
+
+  // Shared overflow (…) menu — used by both grid cards and list rows so
+  // switching view mode never removes capabilities.
+  const renderActionMenu = (resume: ResumeResponse, isVariant = false) => (
+    <div className="relative">
+      <button
+        onClick={() => setOpenCardMenu(openCardMenu === resume.id ? null : resume.id)}
+        aria-label="More actions"
+        aria-expanded={openCardMenu === resume.id}
+        className="grid h-9 w-9 place-items-center rounded-[var(--radius-md)] border border-line bg-surface-2 text-fg-2 transition hover:text-fg hover:brightness-110"
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {openCardMenu === resume.id && (
+        <>
+          <button
+            aria-hidden
+            tabIndex={-1}
+            onClick={() => setOpenCardMenu(null)}
+            className="fixed inset-0 z-40 cursor-default"
+          />
+          <div className="absolute right-0 top-10 z-50 w-56 rounded-[var(--radius-md)] border border-line bg-surface py-1 shadow-[var(--shadow-2)]">
+            <button onClick={() => { setOpenCardMenu(null); setQuickTailorResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+              <Zap size={13} className="text-fg-3" /> Tailor to a job
+            </button>
+            <Link href={`/workspace/${resume.id}/cover-letter`} onClick={() => setOpenCardMenu(null)} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+              <FileText size={13} className="text-fg-3" /> Cover letter
+            </Link>
+            <button onClick={() => { setOpenCardMenu(null); openForkModal(resume.id, resume.title) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+              <GitFork size={13} className="text-fg-3" /> Fork a variant
+            </button>
+            {isVariant && resume.parent_resume_id && (
+              <button onClick={() => { setOpenCardMenu(null); handleCompareWithParent(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+                <GitMerge size={13} className="text-fg-3" /> Compare with parent
+              </button>
+            )}
+            <button onClick={() => { setOpenCardMenu(null); setTranslateModalResumeId(resume.id); setTranslateSelectedLang('fr') }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+              <Languages size={13} className="text-fg-3" /> Translate
+            </button>
+            <button onClick={() => { setOpenCardMenu(null); portfolioUrls[resume.id] ? window.open(portfolioUrls[resume.id], '_blank', 'noopener,noreferrer') : handleGeneratePortfolio(resume.id) }} disabled={isGeneratingPortfolio === resume.id} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg disabled:opacity-50">
+              {isGeneratingPortfolio === resume.id ? <Loader2 size={13} className="animate-spin text-fg-3" /> : <Globe size={13} className="text-fg-3" />}
+              {portfolioUrls[resume.id] ? 'View portfolio' : 'Portfolio site'}
+            </button>
+            <button onClick={() => { setOpenCardMenu(null); setShareModalResumeId(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+              <Share2 size={13} className="text-fg-3" /> {resume.share_token ? 'Manage share link' : 'Share'}
+            </button>
+            <button onClick={() => { setOpenCardMenu(null); setApplyModalResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+              <Send size={13} className="text-fg-3" /> Apply to a job
+            </button>
+            <button onClick={() => { setOpenCardMenu(null); setTrackerModalResumeId(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+              <Briefcase size={13} className="text-fg-3" /> Track application
+            </button>
+            <button onClick={() => { setOpenCardMenu(null); setReferencesModalResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+              <BookUser size={13} className="text-fg-3" /> References page
+            </button>
+            <div className="my-1 border-t border-line" />
+            <div className="px-2 py-0.5"><ExportDropdown resumeId={resume.id} variant="card" /></div>
+            {!isVariant && (
+              <>
+                <div className="my-1 border-t border-line" />
+                <button onClick={() => { setOpenCardMenu(null); handlePin(resume.id, !!resume.pinned) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+                  {resume.pinned ? <PinOff size={13} className="text-fg-3" /> : <Pin size={13} className="text-fg-3" />}
+                  {resume.pinned ? 'Unpin' : 'Pin to top'}
+                </button>
+                <button onClick={() => { setOpenCardMenu(null); setTagEditResumeId(resume.id); setTagEditValue(resume.tags?.join(', ') ?? '') }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
+                  <Tag size={13} className="text-fg-3" /> Edit tags
+                </button>
+                <button onClick={() => { setOpenCardMenu(null); if (confirm(`Archive "${resume.title}"? It will be hidden from the workspace.`)) handleArchive(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-err/80 transition hover:bg-err/10 hover:text-err">
+                  <Archive size={13} /> Archive
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
 
   // Shared card renderer for both master and variant resumes
   const renderResumeCard = (resume: ResumeResponse, isVariant = false, parentTitle?: string) => (
@@ -503,78 +636,7 @@ export default function WorkspacePage() {
         >
           <Sparkles size={12} /> Optimize
         </Link>
-        <div className="relative">
-          <button
-            onClick={() => setOpenCardMenu(openCardMenu === resume.id ? null : resume.id)}
-            aria-label="More actions"
-            aria-expanded={openCardMenu === resume.id}
-            className="grid h-9 w-9 place-items-center rounded-[var(--radius-md)] border border-line bg-surface-2 text-fg-2 transition hover:text-fg hover:brightness-110"
-          >
-            <MoreHorizontal size={16} />
-          </button>
-          {openCardMenu === resume.id && (
-            <>
-              <button
-                aria-hidden
-                tabIndex={-1}
-                onClick={() => setOpenCardMenu(null)}
-                className="fixed inset-0 z-40 cursor-default"
-              />
-              <div className="absolute right-0 top-10 z-50 w-56 rounded-[var(--radius-md)] border border-line bg-surface py-1 shadow-[var(--shadow-2)]">
-                <button onClick={() => { setOpenCardMenu(null); setQuickTailorResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-                  <Zap size={13} className="text-fg-3" /> Tailor to a job
-                </button>
-                <Link href={`/workspace/${resume.id}/cover-letter`} onClick={() => setOpenCardMenu(null)} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-                  <FileText size={13} className="text-fg-3" /> Cover letter
-                </Link>
-                <button onClick={() => { setOpenCardMenu(null); openForkModal(resume.id, resume.title) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-                  <GitFork size={13} className="text-fg-3" /> Fork a variant
-                </button>
-                {isVariant && resume.parent_resume_id && (
-                  <button onClick={() => { setOpenCardMenu(null); handleCompareWithParent(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-                    <GitMerge size={13} className="text-fg-3" /> Compare with parent
-                  </button>
-                )}
-                <button onClick={() => { setOpenCardMenu(null); setTranslateModalResumeId(resume.id); setTranslateSelectedLang('fr') }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-                  <Languages size={13} className="text-fg-3" /> Translate
-                </button>
-                <button onClick={() => { setOpenCardMenu(null); portfolioUrls[resume.id] ? window.open(portfolioUrls[resume.id], '_blank', 'noopener,noreferrer') : handleGeneratePortfolio(resume.id) }} disabled={isGeneratingPortfolio === resume.id} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg disabled:opacity-50">
-                  {isGeneratingPortfolio === resume.id ? <Loader2 size={13} className="animate-spin text-fg-3" /> : <Globe size={13} className="text-fg-3" />}
-                  {portfolioUrls[resume.id] ? 'View portfolio' : 'Portfolio site'}
-                </button>
-                <button onClick={() => { setOpenCardMenu(null); setShareModalResumeId(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-                  <Share2 size={13} className="text-fg-3" /> {resume.share_token ? 'Manage share link' : 'Share'}
-                </button>
-                <button onClick={() => { setOpenCardMenu(null); setApplyModalResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-                  <Send size={13} className="text-fg-3" /> Apply to a job
-                </button>
-                <button onClick={() => { setOpenCardMenu(null); setTrackerModalResumeId(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-                  <Briefcase size={13} className="text-fg-3" /> Track application
-                </button>
-                <button onClick={() => { setOpenCardMenu(null); setReferencesModalResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-                  <BookUser size={13} className="text-fg-3" /> References page
-                </button>
-                <div className="my-1 border-t border-line" />
-                <div className="px-2 py-0.5"><ExportDropdown resumeId={resume.id} variant="card" /></div>
-                {!isVariant && (
-                  <>
-                    <div className="my-1 border-t border-line" />
-                    <button onClick={() => { setOpenCardMenu(null); handlePin(resume.id, !!resume.pinned) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-                      {resume.pinned ? <PinOff size={13} className="text-fg-3" /> : <Pin size={13} className="text-fg-3" />}
-                      {resume.pinned ? 'Unpin' : 'Pin to top'}
-                    </button>
-                    <button onClick={() => { setOpenCardMenu(null); setTagEditResumeId(resume.id); setTagEditValue(resume.tags?.join(', ') ?? '') }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-                      <Tag size={13} className="text-fg-3" /> Edit tags
-                    </button>
-                    <button onClick={() => { setOpenCardMenu(null); if (confirm(`Archive "${resume.title}"? It will be hidden from the workspace.`)) handleArchive(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-err/80 transition hover:bg-err/10 hover:text-err">
-                      <Archive size={13} /> Archive
-                    </button>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+        {renderActionMenu(resume, isVariant)}
       </div>
     </article>
   )
@@ -627,7 +689,7 @@ export default function WorkspacePage() {
             Match to Job
           </button>
 
-          {/* Export All dropdown (Feature 49) */}
+          {/* Export dropdown (Feature 49) */}
           <div className="relative">
             <button
               ref={exportMenuTriggerRef}
@@ -648,20 +710,45 @@ export default function WorkspacePage() {
               ) : (
                 <Download size={12} />
               )}
-              <span className="hidden sm:inline">Export All</span>
+              <span className="hidden sm:inline">Export</span>
               <ChevronDown size={11} />
             </button>
             {exportMenuOpen && (
-              <div className={`absolute right-0 z-50 max-h-[min(20rem,calc(100vh-6rem))] w-44 overflow-y-auto rounded-[var(--radius-md)] border border-line bg-surface py-1 shadow-[var(--shadow-2)] ${
+              <div className={`absolute right-0 z-50 max-h-[min(24rem,calc(100vh-6rem))] w-56 overflow-y-auto rounded-[var(--radius-md)] border border-line bg-surface py-1 shadow-[var(--shadow-2)] ${
                 exportMenuFlipUp ? 'bottom-full mb-1' : 'top-full mt-1'
               }`}>
+                {isFiltered && (
+                  <>
+                    <p className="px-3 pb-1 pt-1.5 text-[10px] font-mono uppercase tracking-[0.12em] text-fg-3">
+                      Filtered ({filteredResumes.length})
+                    </p>
+                    {([
+                      { format: 'tex', label: 'LaTeX Source (.tex)' },
+                      { format: 'pdf', label: 'PDF Files (.pdf)' },
+                      { format: 'docx', label: 'Word Docs (.docx)' },
+                    ] as const).map(({ format, label }) => (
+                      <button
+                        key={`filtered-${format}`}
+                        onClick={() => handleFilteredExport(format)}
+                        disabled={filteredResumes.length === 0}
+                        className="w-full px-3 py-2 text-left text-[12px] text-fg-2 transition hover:bg-surface-2 hover:text-fg disabled:opacity-50"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <div className="my-1 border-t border-line" />
+                  </>
+                )}
+                <p className="px-3 pb-1 pt-1.5 text-[10px] font-mono uppercase tracking-[0.12em] text-fg-3">
+                  All resumes
+                </p>
                 {([
                   { format: 'tex', label: 'LaTeX Source (.zip)' },
                   { format: 'pdf', label: 'PDF Files (.zip)' },
                   { format: 'docx', label: 'Word Docs (.zip)' },
                 ] as const).map(({ format, label }) => (
                   <button
-                    key={format}
+                    key={`all-${format}`}
                     onClick={() => handleBulkExport(format)}
                     className="w-full px-3 py-2 text-left text-[12px] text-fg-2 transition hover:bg-surface-2 hover:text-fg"
                   >
@@ -698,23 +785,41 @@ export default function WorkspacePage() {
             className="w-full max-w-md rounded-[var(--radius-md)] border border-line bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
           />
 
-          <div className="flex rounded-[var(--radius-md)] border border-line bg-surface-2 p-1 text-xs">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`rounded-[var(--radius-md)] px-3 py-1.5 uppercase tracking-[0.12em] transition ${
-                viewMode === 'grid' ? 'bg-accent-soft text-accent-strong' : 'text-fg-2 hover:text-fg'
-              }`}
-            >
-              Grid
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`rounded-[var(--radius-md)] px-3 py-1.5 uppercase tracking-[0.12em] transition ${
-                viewMode === 'list' ? 'bg-accent-soft text-accent-strong' : 'text-fg-2 hover:text-fg'
-              }`}
-            >
-              List
-            </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-2.5 py-1.5 text-xs text-fg-2">
+              <ArrowUpDown size={12} className="text-fg-3" />
+              <span className="font-mono uppercase tracking-[0.12em] text-fg-3">Sort</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                aria-label="Sort resumes"
+                className="bg-transparent text-xs text-fg outline-none"
+              >
+                <option value="updated">Recently updated</option>
+                <option value="name">Name A–Z</option>
+                <option value="freshness">Freshness</option>
+                <option value="match">Match score</option>
+              </select>
+            </label>
+
+            <div className="flex rounded-[var(--radius-md)] border border-line bg-surface-2 p-1 text-xs">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`rounded-[var(--radius-md)] px-3 py-1.5 uppercase tracking-[0.12em] transition ${
+                  viewMode === 'grid' ? 'bg-accent-soft text-accent-strong' : 'text-fg-2 hover:text-fg'
+                }`}
+              >
+                Grid
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`rounded-[var(--radius-md)] px-3 py-1.5 uppercase tracking-[0.12em] transition ${
+                  viewMode === 'list' ? 'bg-accent-soft text-accent-strong' : 'text-fg-2 hover:text-fg'
+                }`}
+              >
+                List
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -826,34 +931,7 @@ export default function WorkspacePage() {
                             >
                               Optimize
                             </Link>
-                            <Link
-                              href={`/workspace/${resume.id}/cover-letter`}
-                              className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong transition hover:brightness-110"
-                            >
-                              CL
-                            </Link>
-                            <button
-                              onClick={() => setQuickTailorResume(resume)}
-                              className="flex items-center gap-1 rounded-[var(--radius-md)] border border-warn/20 bg-warn/10 px-3 py-1.5 text-xs font-semibold text-warn transition hover:bg-warn/20"
-                            >
-                              <Zap size={11} />
-                              Tailor
-                            </button>
-                            <button
-                              onClick={() => openForkModal(resume.id, resume.title)}
-                              className="flex items-center gap-1 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-semibold text-fg-2 transition hover:border-line-2 hover:text-fg"
-                            >
-                              <GitFork size={11} />
-                              Fork
-                            </button>
-                            <button
-                              onClick={() => setReferencesModalResume(resume)}
-                              className="flex items-center gap-1 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-semibold text-fg-2 transition hover:border-accent hover:text-accent-strong"
-                            >
-                              <BookUser size={11} />
-                              Refs
-                            </button>
-                            <ExportDropdown resumeId={resume.id} variant="toolbar" />
+                            {renderActionMenu(resume, false)}
                           </div>
                         </td>
                       </tr>
@@ -889,20 +967,13 @@ export default function WorkspacePage() {
                               >
                                 Edit
                               </Link>
-                              <button
-                                onClick={() => handleCompareWithParent(variant.id)}
+                              <Link
+                                href={`/workspace/${variant.id}/optimize`}
                                 className="rounded-[var(--radius-md)] border border-accent bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong transition hover:brightness-110"
                               >
-                                Compare
-                              </button>
-                              <button
-                                onClick={() => openForkModal(variant.id, variant.title)}
-                                className="flex items-center gap-1 rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs font-semibold text-fg-2 transition hover:border-line-2 hover:text-fg"
-                              >
-                                <GitFork size={11} />
-                                Fork
-                              </button>
-                              <ExportDropdown resumeId={variant.id} variant="toolbar" />
+                                Optimize
+                              </Link>
+                              {renderActionMenu(variant, true)}
                             </div>
                           </td>
                         </tr>
@@ -935,14 +1006,25 @@ export default function WorkspacePage() {
                         <p className="truncate text-sm font-medium text-fg-2">{r.title}</p>
                         <p className="text-[11px] text-fg-3">Archived</p>
                       </div>
-                      <button
-                        onClick={() => handleUnarchive(r.id)}
-                        title="Restore"
-                        className="flex shrink-0 items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[10px] font-medium text-fg-3 ring-1 ring-line transition hover:bg-ok/10 hover:text-ok"
-                      >
-                        <ArchiveRestore size={11} />
-                        Restore
-                      </button>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          onClick={() => handleUnarchive(r.id)}
+                          title="Restore"
+                          className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[10px] font-medium text-fg-3 ring-1 ring-line transition hover:bg-ok/10 hover:text-ok"
+                        >
+                          <ArchiveRestore size={11} />
+                          Restore
+                        </button>
+                        <button
+                          onClick={() => { if (confirm(`Permanently delete "${r.title}"? This cannot be undone.`)) handleDeletePermanently(r.id) }}
+                          title="Delete permanently"
+                          aria-label={`Delete "${r.title}" permanently`}
+                          className="flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1.5 text-[10px] font-medium text-fg-3 ring-1 ring-line transition hover:bg-err/10 hover:text-err"
+                        >
+                          <Trash2 size={11} />
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
