@@ -35,7 +35,7 @@ export default function MergeResumesPage() {
   // Auth guard
   useEffect(() => {
     if (!isPending && !session) {
-      router.push('/login')
+      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
     }
   }, [isPending, session, router])
 
