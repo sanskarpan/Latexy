@@ -52,6 +52,15 @@
       radial-gradient(circle at 21% 82%, rgba(255, 255, 255, 0.04), transparent 24%);
     background-attachment: fixed;
   }
+
+  /* Global keyboard focus indicator (WCAG 2.4.7). Applies to any focusable
+     element — nav/footer/menu links included — that doesn't already define its
+     own focus-visible ring. Mouse clicks stay ring-free via :focus-visible. */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
 }
 
 @layer components {
