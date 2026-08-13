@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 interface APIKey {
@@ -28,8 +28,16 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newKey, setNewKey] = useState(initialKey)
-  const [validating, setValidating] = useState(false)
-  const [showKey, setShowKey] = useState<Record<string, boolean>>({})
+  const [saving, setSaving] = useState(false)
+
+  const modalRef = useRef<HTMLDivElement>(null)
+  const firstFieldRef = useRef<HTMLSelectElement>(null)
+  const triggerRef = useRef<HTMLElement | null>(null)
+
+  const closeAddModal = useCallback(() => {
+    setShowAddModal(false)
+    setNewKey(initialKey)
+  }, [])
 
   const fetchAPIKeys = useCallback(async () => {
     try {
@@ -69,8 +77,57 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
     fetchProviders()
   }, [fetchAPIKeys, fetchProviders])
 
+  useEffect(() => {
+    if (!showAddModal) return
+
+    triggerRef.current = document.activeElement as HTMLElement | null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    // Autofocus the first field once the modal has mounted.
+    const focusTimer = window.setTimeout(() => firstFieldRef.current?.focus(), 0)
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeAddModal()
+        return
+      }
+
+      if (event.key !== 'Tab') return
+
+      const modal = modalRef.current
+      if (!modal) return
+      const focusable = modal.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+
+      if (event.shiftKey) {
+        if (active === first || !modal.contains(active)) {
+          event.preventDefault()
+          last.focus()
+        }
+      } else if (active === last || !modal.contains(active)) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.clearTimeout(focusTimer)
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = previousOverflow
+      triggerRef.current?.focus()
+    }
+  }, [showAddModal, closeAddModal])
+
   const validateAPIKey = async (provider: string, apiKey: string) => {
-    setValidating(true)
     try {
       const response = await fetch('/api/byok/validate', {
         method: 'POST',
@@ -81,24 +138,24 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
       return result.success
     } catch {
       return false
-    } finally {
-      setValidating(false)
     }
   }
 
   const addAPIKey = async () => {
+    if (saving) return
     if (!newKey.provider || !newKey.api_key) {
       toast.error('Provider and API key are required')
       return
     }
 
-    const isValid = await validateAPIKey(newKey.provider, newKey.api_key)
-    if (!isValid) {
-      toast.error('Key validation failed for selected provider')
-      return
-    }
-
+    setSaving(true)
     try {
+      const isValid = await validateAPIKey(newKey.provider, newKey.api_key)
+      if (!isValid) {
+        toast.error('Key validation failed for selected provider')
+        return
+      }
+
       const response = await fetch('/api/byok/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -112,6 +169,8 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
       fetchAPIKeys()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to add key')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -162,12 +221,6 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setShowKey((prev) => ({ ...prev, [key.id]: !prev[key.id] }))}
-                    className="rounded-[var(--radius-md)] border border-line px-3 py-2 text-xs text-fg-2 hover:bg-surface-2"
-                  >
-                    {showKey[key.id] ? 'Hide' : 'Show'}
-                  </button>
-                  <button
                     onClick={() => deleteAPIKey(key.id)}
                     className="rounded-[var(--radius-md)] border border-err/30 bg-err/10 px-3 py-2 text-xs text-err hover:bg-err/20"
                   >
@@ -189,8 +242,9 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
                 </p>
               </div>
 
-              <div className="mt-2 rounded-[var(--radius-md)] border border-line bg-bg p-2 text-xs font-mono text-fg-3">
-                {showKey[key.id] ? '•••••••••••••••••••••••••••••' : 'hidden'}
+              <div className="mt-2 flex items-center gap-2 rounded-[var(--radius-md)] border border-line bg-bg p-2 text-xs font-mono text-fg-3">
+                <span aria-hidden="true">••••</span>
+                <span className="font-sans">stored securely</span>
               </div>
 
               {key.last_validated && (
@@ -204,13 +258,25 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
       </div>
 
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4">
-          <div className="rounded-[var(--radius-lg)] border border-line bg-surface w-full max-w-lg p-5">
-            <h3 className="text-lg font-semibold text-fg">Add Provider Key</h3>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeAddModal()
+          }}
+        >
+          <div
+            ref={modalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="byok-add-key-title"
+            className="rounded-[var(--radius-lg)] border border-line bg-surface w-full max-w-lg p-5"
+          >
+            <h3 id="byok-add-key-title" className="text-lg font-semibold text-fg">Add Provider Key</h3>
             <p className="mt-1 text-sm text-fg-2">Validate and store encrypted credentials for runtime usage.</p>
 
             <div className="mt-4 space-y-3">
               <select
+                ref={firstFieldRef}
                 value={newKey.provider}
                 onChange={(e) => setNewKey((prev) => ({ ...prev, provider: e.target.value }))}
                 className="w-full rounded-[var(--radius-md)] border border-line-2 bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent"
@@ -242,20 +308,24 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
 
             <div className="mt-5 flex justify-end gap-2">
               <button
-                onClick={() => {
-                  setShowAddModal(false)
-                  setNewKey(initialKey)
-                }}
-                className="rounded-[var(--radius-md)] border border-line-2 px-3 py-2 text-sm text-fg hover:bg-surface-2"
+                onClick={closeAddModal}
+                disabled={saving}
+                className="rounded-[var(--radius-md)] border border-line-2 px-3 py-2 text-sm text-fg hover:bg-surface-2 disabled:opacity-60"
               >
                 Cancel
               </button>
               <button
                 onClick={addAPIKey}
-                disabled={validating}
-                className="rounded-[var(--radius-md)] bg-accent px-3 py-2 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:opacity-60"
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-accent px-3 py-2 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:opacity-60"
               >
-                {validating ? 'Validating...' : 'Validate and Save'}
+                {saving && (
+                  <span
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent-fg/40 border-t-accent-fg"
+                  />
+                )}
+                {saving ? 'Saving…' : 'Validate and Save'}
               </button>
             </div>
           </div>
