@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import {
   FileText,
   Zap,
@@ -68,6 +68,76 @@ export default function OnboardingFlow({
 }: OnboardingFlowProps) {
   const [currentStep, setCurrentStep] = useState(0)
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set())
+
+  const prefersReducedMotion = useReducedMotion()
+  const panelRef = useRef<HTMLDivElement>(null)
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null)
+  const titleId = 'onboarding-flow-title'
+
+  // Focus management, focus trap, Escape-to-close, and body scroll lock.
+  // Keyed on isOpen so it engages on open and cleans up fully on close.
+  useEffect(() => {
+    if (!isOpen) return
+
+    // Remember what had focus so we can restore it when the modal closes.
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+
+    // Lock body scroll while the modal is open.
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const getFocusable = (): HTMLElement[] => {
+      const panel = panelRef.current
+      if (!panel) return []
+      return Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement)
+    }
+
+    // Move focus into the modal (first focusable, else the panel itself).
+    const focusTarget = getFocusable()[0] ?? panelRef.current
+    focusTarget?.focus()
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onSkip()
+        return
+      }
+      if (e.key !== 'Tab') return
+
+      const focusable = getFocusable()
+      if (focusable.length === 0) {
+        e.preventDefault()
+        panelRef.current?.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+
+      if (e.shiftKey) {
+        if (active === first || !panelRef.current?.contains(active)) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else if (active === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = previousOverflow
+      previouslyFocusedRef.current?.focus?.()
+    }
+  }, [isOpen, onSkip])
 
   const steps: OnboardingStep[] = [
     {
@@ -247,20 +317,29 @@ export default function OnboardingFlow({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
+      onClick={onSkip}
+    >
       <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 8 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[var(--radius-xl,20px)] border border-line bg-surface shadow-2xl"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.96, y: 8 }}
+        animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+        exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 8 }}
+        transition={{ duration: prefersReducedMotion ? 0 : 0.2, ease: 'easeOut' }}
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[var(--radius-xl,20px)] border border-line bg-surface shadow-2xl focus:outline-none"
       >
         {/* Header */}
         <div className="border-b border-line px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Eyebrow>Getting started</Eyebrow>
-              <h2 className="text-base font-semibold text-fg">
+              <h2 id={titleId} className="text-base font-semibold text-fg">
                 {steps[currentStep].title}
               </h2>
             </div>
@@ -292,10 +371,10 @@ export default function OnboardingFlow({
           <AnimatePresence mode="wait">
             <motion.div
               key={currentStep}
-              initial={{ opacity: 0, x: 16 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -16 }}
-              transition={{ duration: 0.22 }}
+              initial={prefersReducedMotion ? false : { opacity: 0, x: 16 }}
+              animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, x: 0 }}
+              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: -16 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.22 }}
               className="flex-1"
             >
               {steps[currentStep].content}
