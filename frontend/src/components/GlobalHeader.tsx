@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Download } from 'lucide-react'
 import { signOut, useSession } from '@/lib/auth-client'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
@@ -42,20 +42,112 @@ export default function GlobalHeader() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const { canInstall, prompt: promptInstall } = usePWAInstall()
+  // framer-motion honours the OS "reduce motion" preference (the CSS floor in
+  // design-tokens.css can't reach JS/WAAPI-driven transforms).
+  const reduceMotion = useReducedMotion()
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const mobileRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setHydrated(true)
   }, [])
 
-  // Close the account menu on Escape for keyboard accessibility.
+  // Close the account menu on Escape and return focus to its trigger.
   useEffect(() => {
     if (!isUserMenuOpen) return
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsUserMenuOpen(false)
+      if (e.key === 'Escape') {
+        setIsUserMenuOpen(false)
+        triggerRef.current?.focus()
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [isUserMenuOpen])
+
+  // Move focus into the account menu when it opens (menu keyboard pattern).
+  useEffect(() => {
+    if (!isUserMenuOpen) return
+    const id = requestAnimationFrame(() => {
+      menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
+    })
+    return () => cancelAnimationFrame(id)
+  }, [isUserMenuOpen])
+
+  // Close both menus on navigation (covers link clicks AND browser back/forward).
+  useEffect(() => {
+    setIsMobileMenuOpen(false)
+    setIsUserMenuOpen(false)
+  }, [pathname])
+
+  // While the mobile menu is open: lock body scroll, close on Escape, and move
+  // focus into the panel so the trap has an anchor.
+  useEffect(() => {
+    if (!isMobileMenuOpen) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsMobileMenuOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    const id = requestAnimationFrame(() => {
+      mobileRef.current?.querySelector<HTMLElement>('a[href], button:not([disabled])')?.focus()
+    })
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKeyDown)
+      cancelAnimationFrame(id)
+    }
+  }, [isMobileMenuOpen])
+
+  // Roving focus + Tab-to-close for the account menu (menu keyboard pattern).
+  const handleMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+    )
+    if (items.length === 0) return
+    const current = items.indexOf(document.activeElement as HTMLElement)
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        items[(current + 1) % items.length]?.focus()
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        items[(current - 1 + items.length) % items.length]?.focus()
+        break
+      case 'Home':
+        e.preventDefault()
+        items[0]?.focus()
+        break
+      case 'End':
+        e.preventDefault()
+        items[items.length - 1]?.focus()
+        break
+      case 'Tab':
+        setIsUserMenuOpen(false)
+        break
+    }
+  }
+
+  // Cyclic focus trap for the mobile menu panel.
+  const handleMobileKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab') return
+    const items = Array.from(
+      mobileRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') ?? [],
+    )
+    if (items.length === 0) return
+    const first = items[0]
+    const last = items[items.length - 1]
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
 
   if (fullscreenPatterns.some((pattern) => pattern.test(pathname))) {
     return null
@@ -72,6 +164,10 @@ export default function GlobalHeader() {
   const effectiveAppNav = appNav.filter((item) => !item.feature || can(item.feature))
   const activeNav = isAuthenticated ? effectiveAppNav : effectiveGuestNav
   const firstName = resolvedUser?.name?.trim().split(' ')[0] || 'Account'
+
+  // Match section roots too (e.g. /tracker/123 highlights Tracker), not just
+  // exact paths. Fullscreen sub-routes already bail out above.
+  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
 
   // Admin is gated server-side by ADMIN_EMAIL; only surface the link to the
   // configured admin address(es) so it is not advertised to every user.
@@ -107,12 +203,17 @@ export default function GlobalHeader() {
 
         <nav className="hidden items-center gap-7 md:flex">
           {activeNav.map((item) => {
-            const active = pathname === item.href
+            const active = isActive(item.href)
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`font-ui text-sm font-medium transition ${active ? 'text-accent-strong' : 'text-fg-2 hover:text-fg'}`}
+                aria-current={active ? 'page' : undefined}
+                className={`font-ui text-sm transition ${
+                  active
+                    ? 'font-semibold text-accent-strong underline decoration-accent decoration-2 underline-offset-[7px]'
+                    : 'font-medium text-fg-2 hover:text-fg'
+                }`}
               >
                 {item.label}
               </Link>
@@ -135,6 +236,7 @@ export default function GlobalHeader() {
           {isAuthenticated ? (
             <div className="relative">
               <button
+                ref={triggerRef}
                 onClick={() => setIsUserMenuOpen((open) => !open)}
                 aria-label={isUserMenuOpen ? 'Close account menu' : 'Open account menu'}
                 aria-expanded={isUserMenuOpen}
@@ -160,9 +262,11 @@ export default function GlobalHeader() {
                       aria-label="Close account menu"
                     />
                     <motion.div
-                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      ref={menuRef}
+                      initial={reduceMotion ? false : { opacity: 0, y: 8, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
+                      onKeyDown={handleMenuKeyDown}
                       role="menu"
                       aria-label="Account menu"
                       className="absolute right-0 z-[var(--z-dropdown)] mt-2 w-56 rounded-[var(--radius-lg)] border border-line bg-surface p-2 shadow-[var(--shadow-2)]"
@@ -172,17 +276,19 @@ export default function GlobalHeader() {
                         <p className="mt-1 truncate text-sm font-semibold text-fg">{resolvedUser?.email || 'Unknown account'}</p>
                       </div>
                       <div className="my-1 h-px bg-line" />
-                      <Link href="/dashboard" className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Dashboard</Link>
+                      <Link href="/dashboard" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Dashboard</Link>
                       {flags.billing && (
-                        <Link href="/billing" className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Billing</Link>
+                        <Link href="/billing" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Billing</Link>
                       )}
-                      <Link href="/developer" className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Developer API</Link>
-                      <Link href="/byok" className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Settings</Link>
+                      <Link href="/developer" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Developer API</Link>
+                      <Link href="/byok" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Settings</Link>
                       {isAdmin && (
-                        <Link href="/admin" className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Admin</Link>
+                        <Link href="/admin" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Admin</Link>
                       )}
                       <div className="my-1 h-px bg-line" />
                       <button
+                        role="menuitem"
+                        tabIndex={-1}
                         onClick={handleSignOut}
                         className="block w-full rounded-[var(--radius-md)] px-3 py-2 text-left text-sm text-err transition hover:bg-[color-mix(in_srgb,var(--err)_12%,transparent)]"
                       >
@@ -224,22 +330,32 @@ export default function GlobalHeader() {
       <AnimatePresence>
         {isMobileMenuOpen && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
+            ref={mobileRef}
+            initial={reduceMotion ? false : { opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+            onKeyDown={handleMobileKeyDown}
             className="border-t border-line bg-surface md:hidden"
           >
             <div className="space-y-1 p-4">
-              {activeNav.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="block rounded-[var(--radius-md)] px-4 py-2.5 font-ui text-sm font-medium text-fg-2 transition hover:bg-surface-2 hover:text-fg"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  {item.label}
-                </Link>
-              ))}
+              {activeNav.map((item) => {
+                const active = isActive(item.href)
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={active ? 'page' : undefined}
+                    className={`block rounded-[var(--radius-md)] px-4 py-2.5 font-ui text-sm transition ${
+                      active
+                        ? 'bg-surface-2 font-semibold text-accent-strong'
+                        : 'font-medium text-fg-2 hover:bg-surface-2 hover:text-fg'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    {item.label}
+                  </Link>
+                )
+              })}
 
               {!isAuthenticated && (
                 <div className="mt-3 grid grid-cols-2 gap-2 border-t border-line pt-3">
