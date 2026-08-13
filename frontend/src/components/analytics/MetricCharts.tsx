@@ -55,8 +55,31 @@ export function ActivityAreaChart({ data, width = 760, height = 280 }: { data: A
     nice: true,
   })
 
+  const peakPoint = parsed.reduce((best, point) => (point.value > best.value ? point : best), parsed[0])
+  const peakLabel = `${peakPoint.date.getMonth() + 1}/${peakPoint.date.getDate()}`
+  const totalActivity = parsed.reduce((sum, point) => sum + point.value, 0)
+  const activityLabel = `Daily activity over ${parsed.length} ${parsed.length === 1 ? 'day' : 'days'}: ${totalActivity} total, peak ${peakPoint.value} on ${peakLabel}.`
+
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-[280px] w-full">
+    <>
+      <table className="sr-only">
+        <caption>{activityLabel}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Activity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {parsed.map((point) => (
+            <tr key={point.date.toISOString()}>
+              <td>{`${point.date.getMonth() + 1}/${point.date.getDate()}`}</td>
+              <td>{point.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-[280px] w-full" role="img" aria-label={activityLabel}>
       <Group left={chartMargin.left} top={chartMargin.top}>
         <GridRows
           scale={yScale}
@@ -115,7 +138,8 @@ export function ActivityAreaChart({ data, width = 760, height = 280 }: { data: A
           <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.02} />
         </linearGradient>
       </defs>
-    </svg>
+      </svg>
+    </>
   )
 }
 
@@ -143,8 +167,31 @@ export function FeatureUsageBars({ data, width = 760, height = 260 }: { data: Fe
     padding: 0.28,
   })
 
+  const topFeature = normalized[0]
+  const featureLabel = `Feature usage across ${normalized.length} ${normalized.length === 1 ? 'feature' : 'features'}: ${normalized
+    .map((item) => `${item.name} ${item.value}`)
+    .join(', ')}. Most used: ${topFeature.name} with ${topFeature.value}.`
+
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-[260px] w-full">
+    <>
+      <table className="sr-only">
+        <caption>{featureLabel}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Feature</th>
+            <th scope="col">Uses</th>
+          </tr>
+        </thead>
+        <tbody>
+          {normalized.map((item) => (
+            <tr key={item.name}>
+              <td>{item.name}</td>
+              <td>{item.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-[260px] w-full" role="img" aria-label={featureLabel}>
       <Group left={chartMargin.left} top={chartMargin.top}>
         <GridRows scale={yScale} width={xMax} height={yMax} stroke="var(--line)" pointerEvents="none" />
 
@@ -175,7 +222,8 @@ export function FeatureUsageBars({ data, width = 760, height = 260 }: { data: Fe
           )
         })}
       </Group>
-    </svg>
+      </svg>
+    </>
   )
 }
 
@@ -201,9 +249,13 @@ export function StatusDonutChart({ data, width = 280, height = 280 }: { data: St
 
   const radius = Math.min(width, height) / 2
 
+  const donutLabel = `Run statuses, ${total} total: ${filtered
+    .map((item) => `${item.name} ${item.value} (${Math.round((item.value / total) * 100)}%)`)
+    .join(', ')}.`
+
   return (
     <div className="flex items-center gap-4">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-[220px] w-[220px]">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-[220px] w-[220px]" role="img" aria-label={donutLabel}>
         <Group top={height / 2} left={width / 2}>
           <Pie<StatusPoint>
             data={filtered}
