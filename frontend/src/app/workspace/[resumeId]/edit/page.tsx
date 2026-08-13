@@ -51,6 +51,7 @@ import {
   Keyboard,
   Pencil,
   GraduationCap,
+  MoreHorizontal,
 } from 'lucide-react'
 import { Github } from '@/components/icons/brand-icons'
 import { apiClient, type AcademicCVReport, type CheckpointEntry, type CompileSettings, type DiffWithParentResponse, type ExplainErrorResponse, type GitHubResumeStatus, type DropboxResumeStatus, type LatexCompiler, type PresenceUser, type ProofreadIssue, type ResumeResponse } from '@/lib/api-client'
@@ -729,6 +730,11 @@ export default function ResumeEditPage() {
   const [latexContent, setLatexContent] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  // Unsaved-changes guard: last-persisted snapshot + autosave status
+  const [savedSnapshot, setSavedSnapshot] = useState<{ title: string; latex: string }>({ title: '', latex: '' })
+  const [autoSaving, setAutoSaving] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
+  const isDirtyRef = useRef(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [compileJobId, setCompileJobId] = useState<string | null>(null)
   const [lastStartedJobKind, setLastStartedJobKind] = useState<'compile' | 'ai'>('compile')
@@ -845,6 +851,18 @@ export default function ResumeEditPage() {
     setForkTitleInput(`${title} — Variant`)
     setForkPopoverOpen(true)
   }, [title])
+  // Toolbar "Tools" overflow menu + right-panel "More" tab menu (Finding: flat toolbar hierarchy)
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false)
+  const [toolsMenuPos, setToolsMenuPos] = useState<{ top: number; right: number } | null>(null)
+  const toolsTriggerRef = useRef<HTMLButtonElement>(null)
+  const openToolsMenu = useCallback(() => {
+    const rect = toolsTriggerRef.current?.getBoundingClientRect()
+    if (rect) setToolsMenuPos({ top: rect.bottom + 6, right: Math.max(12, window.innerWidth - rect.right) })
+    setToolsMenuOpen(true)
+  }, [])
+  const [moreTabsOpen, setMoreTabsOpen] = useState(false)
+  const [moreTabsPos, setMoreTabsPos] = useState<{ top: number; right: number } | null>(null)
+  const moreTabsTriggerRef = useRef<HTMLButtonElement>(null)
   const [academicReport, setAcademicReport] = useState<AcademicCVReport | null>(null)
   const [academicConvertOpen, setAcademicConvertOpen] = useState(false)
   const [academicTargetIndustry, setAcademicTargetIndustry] = useState<'tech' | 'data_science' | 'finance' | 'consulting' | 'product' | 'other'>('tech')
@@ -1031,6 +1049,7 @@ export default function ResumeEditPage() {
         const data = await apiClient.getResume(resumeId)
         setTitle(data.title)
         setLatexContent(data.latex_content)
+        setSavedSnapshot({ title: data.title, latex: data.latex_content })
         editorRef.current?.setValue(data.latex_content)
         // Load compiler preference from resume metadata
         const savedCompiler = data.metadata?.compiler as LatexCompiler | undefined
@@ -1357,10 +1376,30 @@ export default function ResumeEditPage() {
     if (mode === 'wysiwyg') {
       const src = editorRef.current?.getValue() ?? latexContent
       const { doc, warnings } = parseResume(src)
+      const hasRaw = warnings.some((w) => w.type === 'unrecognised_block')
+      // Round-trip through the visual model can reorder/reformat LaTeX the parser
+      // didn't fully understand. Warn once per document before the first switch
+      // when unrecognised blocks are present (Finding: silent LaTeX mutation).
+      if (hasRaw) {
+        const warnKey = `latexy_wysiwyg_warned_${resumeId}`
+        const alreadyWarned = typeof window !== 'undefined' && localStorage.getItem(warnKey) === 'true'
+        if (!alreadyWarned) {
+          const proceed = window.confirm(
+            'Some LaTeX in this document couldn’t be fully parsed for visual editing. '
+            + 'Those blocks stay read-only in Visual mode, but switching back may reformat or reorder complex content. '
+            + 'A restore point will be saved. Continue to Visual mode?'
+          )
+          if (!proceed) return
+          if (typeof window !== 'undefined') localStorage.setItem(warnKey, 'true')
+        }
+      }
+      // Snapshot before entering Visual so the switch is reversible.
+      pushUndo('Before switch to Visual')
       setWysiwygDoc(doc)
-      setWysiwygHasRaw(warnings.some((w) => w.type === 'unrecognised_block'))
+      setWysiwygHasRaw(hasRaw)
     } else {
-      // wysiwyg → source: serialize back
+      // wysiwyg → source: snapshot, then serialize back
+      pushUndo('Before switch to Source')
       if (wysiwygDoc) {
         const src = serializeResume(wysiwygDoc)
         setLatexContent(src)
@@ -1368,7 +1407,7 @@ export default function ResumeEditPage() {
     }
     setEditorMode(mode)
     localStorage.setItem(`latexy_editor_mode_${resumeId}`, mode)
-  }, [editorMode, latexContent, wysiwygDoc, resumeId])
+  }, [editorMode, latexContent, wysiwygDoc, resumeId, pushUndo])
 
   const handleWysiwygChange = useCallback((doc: ResumeDoc) => {
     setWysiwygDoc(doc)
@@ -1387,6 +1426,8 @@ export default function ResumeEditPage() {
         syncStatus: 'pending',
       })
       setLatexContent(content)
+      setSavedSnapshot({ title, latex: content })
+      setLastSavedAt(Date.now())
       const count = await pendingDraftCount()
       setOfflinePendingCount(count)
       toast.info('Saved locally — will sync when back online')
@@ -1396,6 +1437,8 @@ export default function ResumeEditPage() {
     try {
       await apiClient.updateResume(resumeId, { title, latex_content: content })
       setLatexContent(content)
+      setSavedSnapshot({ title, latex: content })
+      setLastSavedAt(Date.now())
       toast.success('Saved')
     } catch {
       toast.error('Failed to save')
@@ -1712,6 +1755,14 @@ export default function ResumeEditPage() {
     if (isForkingResume) return
     setIsForkingResume(true)
     try {
+      // Fork copies the last-saved server state — persist the live editor buffer
+      // first so unsaved edits are carried into the new variant (Finding: stale fork).
+      if (isDirtyRef.current) {
+        const content = editorRef.current?.getValue() ?? latexContent
+        await apiClient.updateResume(resumeId, { title, latex_content: content })
+        setSavedSnapshot({ title, latex: content })
+        setLastSavedAt(Date.now())
+      }
       const newResume = await apiClient.forkResume(resumeId, forkTitleInput || undefined)
       setForkPopoverOpen(false)
       setForkTitleInput('')
@@ -1721,12 +1772,20 @@ export default function ResumeEditPage() {
     } finally {
       setIsForkingResume(false)
     }
-  }, [resumeId, forkTitleInput, isForkingResume, router])
+  }, [resumeId, forkTitleInput, isForkingResume, router, title, latexContent])
 
   const handleAcademicConvert = useCallback(async () => {
     if (isAcademicConverting) return
     setIsAcademicConverting(true)
     try {
+      // Convert operates on saved server content — persist live edits first
+      // so the industry variant reflects what the user currently sees.
+      if (isDirtyRef.current) {
+        const content = editorRef.current?.getValue() ?? latexContent
+        await apiClient.updateResume(resumeId, { title, latex_content: content })
+        setSavedSnapshot({ title, latex: content })
+        setLastSavedAt(Date.now())
+      }
       const result = await apiClient.convertAcademicCV(resumeId, {
         target_industry: academicTargetIndustry,
         target_role_description: academicRoleDescription.trim() || undefined,
@@ -1742,11 +1801,56 @@ export default function ResumeEditPage() {
     } finally {
       setIsAcademicConverting(false)
     }
-  }, [resumeId, academicTargetIndustry, academicRoleDescription, academicReport, isAcademicConverting, router])
+  }, [resumeId, academicTargetIndustry, academicRoleDescription, academicReport, isAcademicConverting, router, title, latexContent])
 
   const isCompiling = compileStream.status === 'queued' || compileStream.status === 'processing'
   const isAiRunning = aiStream.status === 'queued' || aiStream.status === 'processing'
   const isAnyRunning = isCompiling || isAiRunning
+
+  // ── Unsaved-changes guard (Finding: silent data loss on navigation) ──────
+  const isDirty = title !== savedSnapshot.title || latexContent !== savedSnapshot.latex
+  useEffect(() => { isDirtyRef.current = isDirty }, [isDirty])
+
+  // Silent debounced autosave — persists edits without an explicit Save click.
+  const autoSave = useCallback(async () => {
+    const content = editorRef.current?.getValue() ?? latexContent
+    setAutoSaving(true)
+    try {
+      await apiClient.updateResume(resumeId, { title, latex_content: content })
+      setLatexContent(content)
+      setSavedSnapshot({ title, latex: content })
+      setLastSavedAt(Date.now())
+    } catch {
+      // Silent — manual Save or the next change will retry.
+    } finally {
+      setAutoSaving(false)
+    }
+  }, [resumeId, title, latexContent])
+
+  useEffect(() => {
+    // Never autosave mid-job (AI/compile mutate the buffer) or while offline.
+    if (!isDirty || isAnyRunning || autoSaving) return
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    const t = setTimeout(() => { void autoSave() }, 2500)
+    return () => clearTimeout(t)
+  }, [isDirty, isAnyRunning, autoSaving, title, latexContent, autoSave])
+
+  // Warn before tab close / refresh / external navigation while dirty.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!isDirtyRef.current) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [])
+
+  // Guard in-app navigation (breadcrumb / cover-letter / career links).
+  const confirmDiscardIfDirty = useCallback(() => {
+    if (!isDirtyRef.current) return true
+    return window.confirm('You have unsaved changes. Leave this page without saving?')
+  }, [])
 
   // Auto-compile handler (compile-only, not optimize)
   const handleAutoCompile = useCallback(async (content: string) => {
@@ -1822,6 +1926,10 @@ export default function ResumeEditPage() {
   const currentLatex = editorRef.current?.getValue() || latexContent
   const outline = buildOutline(currentLatex)
 
+  // Right-panel tab hierarchy: a few primary tabs stay inline; the rest live in
+  // a "More" overflow menu (Finding: 17 equally-weighted tabs).
+  const moreTabIds: RightTab[] = ['references', 'interview', 'proofread', 'packages', 'linter', 'symbols', 'changes', 'docs', 'layout', 'snippets', 'macros', 'tikz']
+
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-bg">
@@ -1836,7 +1944,11 @@ export default function ResumeEditPage() {
       {/* ── TOP HEADER ── */}
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-surface px-4">
         <div className="flex min-w-0 shrink items-center gap-1.5 text-xs">
-          <Link href="/workspace" className="hidden shrink-0 text-fg-3 transition hover:text-fg-2 sm:inline">
+          <Link
+            href="/workspace"
+            onClick={(e) => { if (!confirmDiscardIfDirty()) e.preventDefault() }}
+            className="hidden shrink-0 text-fg-3 transition hover:text-fg-2 sm:inline"
+          >
             Workspace
           </Link>
           <ChevronRight size={12} className="hidden shrink-0 text-fg-3 sm:block" />
@@ -1847,6 +1959,22 @@ export default function ResumeEditPage() {
             className="w-[120px] min-w-0 max-w-[280px] bg-transparent text-sm font-medium text-fg-2 outline-none transition placeholder:text-fg-3 hover:text-fg focus:text-fg sm:w-auto"
             placeholder="Untitled"
           />
+          {/* Save status indicator */}
+          <span
+            role="status"
+            aria-live="polite"
+            title={lastSavedAt ? `Last saved ${new Date(lastSavedAt).toLocaleTimeString()}` : undefined}
+            className={`hidden shrink-0 items-center gap-1 text-[10px] font-medium sm:flex ${
+              autoSaving ? 'text-accent-strong' : isDirty ? 'text-warn' : 'text-fg-3'
+            }`}
+          >
+            {autoSaving ? (
+              <Loader2 size={10} className="animate-spin" />
+            ) : (
+              <span className={`h-1.5 w-1.5 rounded-full ${isDirty ? 'bg-warn' : 'bg-ok'}`} />
+            )}
+            {autoSaving ? 'Saving…' : isDirty ? 'Unsaved changes' : 'Saved'}
+          </span>
         </div>
 
         <div className="flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto whitespace-nowrap scrollbar-none sm:justify-end">
@@ -1860,71 +1988,75 @@ export default function ResumeEditPage() {
 
           <ExportDropdown resumeId={resumeId} variant="toolbar" />
 
-          <button
-            onClick={() => setQrInserterOpen(true)}
-            title="Insert QR code"
-            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
-          >
-            <QrCode size={12} />
-            QR
-          </button>
-
-          <button
-            onClick={() => setDateStandardizerOpen(true)}
-            title="Standardize date formats"
-            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
-          >
-            <Calendar size={12} />
-            Dates
-          </button>
-
-          <button
-            onClick={() => setAgeAnalysisOpen(true)}
-            title="Analyze experience age"
-            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
-          >
-            <Clock size={12} />
-            Age
-          </button>
-
-          <button
-            onClick={() => setContactFormatterOpen(true)}
-            title="Normalize contact info"
-            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
-          >
-            <Phone size={12} />
-            Contacts
-          </button>
-
-          <button
-            onClick={() => setSalaryEstimatorOpen(true)}
-            title="Estimate salary for this resume"
-            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
-          >
-            <DollarSign size={12} />
-            Salary
-          </button>
-
-          <button
-            onClick={() => setSectionReorderOpen(true)}
-            title="AI section reordering"
-            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
-          >
-            <SlidersHorizontal size={12} />
-            Reorder
-          </button>
-
-          <button
-            onClick={() => setImportModalOpen(true)}
-            title="Import top projects from GitHub"
-            className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg"
-          >
-            <Github size={12} />
-            Projects
-          </button>
+          {/* Tools overflow menu — collapses niche formatting/analysis tools */}
+          <div className="relative">
+            <button
+              ref={toolsTriggerRef}
+              onClick={() => { if (toolsMenuOpen) { setToolsMenuOpen(false) } else { openToolsMenu() } }}
+              aria-haspopup="menu"
+              aria-expanded={toolsMenuOpen}
+              title="Formatting & analysis tools"
+              className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium transition ${
+                academicReport?.is_academic_cv
+                  ? 'text-accent-strong hover:bg-accent/10 hover:text-accent-strong'
+                  : 'text-fg-3 hover:bg-surface-2 hover:text-fg'
+              }`}
+            >
+              <SlidersHorizontal size={12} />
+              Tools
+              <ChevronDown size={11} />
+            </button>
+            {toolsMenuOpen && toolsMenuPos && createPortal(
+              <>
+                <div className="fixed inset-0 z-[200]" onClick={() => setToolsMenuOpen(false)} />
+                <div
+                  role="menu"
+                  aria-label="Formatting and analysis tools"
+                  className="z-[201] w-56 rounded-[var(--radius-md)] border border-line bg-surface p-1 shadow-[var(--shadow-2)]"
+                  style={{ position: 'fixed', top: toolsMenuPos.top, right: toolsMenuPos.right }}
+                >
+                  {([
+                    { icon: QrCode, label: 'Insert QR code', action: () => setQrInserterOpen(true) },
+                    { icon: Calendar, label: 'Standardize dates', action: () => setDateStandardizerOpen(true) },
+                    { icon: Clock, label: 'Analyze experience age', action: () => setAgeAnalysisOpen(true) },
+                    { icon: Phone, label: 'Normalize contacts', action: () => setContactFormatterOpen(true) },
+                    { icon: DollarSign, label: 'Estimate salary', action: () => setSalaryEstimatorOpen(true) },
+                    { icon: SlidersHorizontal, label: 'Reorder sections (AI)', action: () => setSectionReorderOpen(true) },
+                    { icon: Github, label: 'Import top projects', action: () => setImportModalOpen(true) },
+                  ] as const).map(({ icon: Icon, label, action }) => (
+                    <button
+                      key={label}
+                      role="menuitem"
+                      onClick={() => { action(); setToolsMenuOpen(false) }}
+                      className="flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[11px] font-medium text-fg-2 transition hover:bg-surface-2 hover:text-fg"
+                    >
+                      <Icon size={12} className="shrink-0 text-fg-3" />
+                      {label}
+                    </button>
+                  ))}
+                  <div className="my-1 h-px bg-line" />
+                  <button
+                    role="menuitem"
+                    onClick={() => { setAcademicConvertOpen(true); setToolsMenuOpen(false) }}
+                    className={`flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[11px] font-medium transition hover:bg-surface-2 ${
+                      academicReport?.is_academic_cv ? 'text-accent-strong' : 'text-fg-2 hover:text-fg'
+                    }`}
+                  >
+                    <GraduationCap size={12} className="shrink-0" />
+                    Convert CV → Industry
+                    {academicReport?.is_academic_cv && (
+                      <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent-strong" />
+                    )}
+                  </button>
+                </div>
+              </>,
+              document.body
+            )}
+          </div>
 
           <Link
             href={`/workspace/${resumeId}/cover-letter`}
+            onClick={(e) => { if (!confirmDiscardIfDirty()) e.preventDefault() }}
             className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-accent-strong transition hover:bg-accent/10 hover:text-accent-strong"
           >
             <Mail size={12} />
@@ -1933,24 +2065,12 @@ export default function ResumeEditPage() {
 
           <Link
             href={`/workspace/${resumeId}/career`}
+            onClick={(e) => { if (!confirmDiscardIfDirty()) e.preventDefault() }}
             className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-ok transition hover:bg-ok/10 hover:text-ok"
           >
             <TrendingUp size={12} />
             Career Path
           </Link>
-
-          <button
-            onClick={() => setAcademicConvertOpen(true)}
-            title="Convert academic CV to industry resume"
-            className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium transition ${
-              academicReport?.is_academic_cv
-                ? 'text-accent-strong hover:bg-accent/10 hover:text-accent-strong'
-                : 'text-fg-3 hover:bg-surface-2 hover:text-fg'
-            }`}
-          >
-            <GraduationCap size={12} />
-            CV→Industry
-          </button>
 
           {/* Create Variant button */}
           <div className="relative">
@@ -2468,19 +2588,7 @@ export default function ResumeEditPage() {
                 { id: 'ai', label: 'AI', icon: Sparkles },
                 { id: 'logs', label: 'Logs', icon: Terminal },
                 { id: 'history', label: 'History', icon: History },
-                { id: 'references', label: 'Refs', icon: BookOpen },
-                { id: 'interview', label: 'Interview', icon: MessageSquare },
                 { id: 'design', label: 'Design', icon: Palette },
-                { id: 'proofread', label: 'Proof', icon: ShieldCheck },
-                { id: 'packages', label: 'Packages', icon: Package },
-                { id: 'linter', label: 'Linter', icon: AlertTriangle },
-                { id: 'symbols', label: 'Symbols', icon: Braces },
-                { id: 'changes', label: 'Changes', icon: GitMerge },
-                { id: 'docs', label: 'Docs', icon: BookOpen },
-                { id: 'layout', label: 'Layout', icon: SlidersHorizontal },
-                { id: 'snippets', label: 'Snippets', icon: Package },
-                { id: 'macros', label: 'Macros', icon: Keyboard },
-                { id: 'tikz', label: 'TikZ', icon: Pencil },
               ] as const
             ).map(({ id, label, icon: Icon }) => (
               <button
@@ -2502,18 +2610,85 @@ export default function ResumeEditPage() {
                 {id === 'logs' && isCompiling && (
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                 )}
-                {id === 'linter' && lintIssues.length > 0 && (
-                  <span className="ml-0.5 rounded bg-warn/20 px-1 py-0.5 font-mono text-[8px] text-warn">
-                    {lintIssues.length}
-                  </span>
-                )}
-                {id === 'changes' && trackedChanges.length > 0 && (
-                  <span className="ml-0.5 rounded bg-ok/20 px-1 py-0.5 font-mono text-[8px] text-ok">
-                    {trackedChanges.length}
-                  </span>
-                )}
               </button>
             ))}
+
+            {/* More tabs — groups the remaining panels behind an overflow menu */}
+            <div className="relative shrink-0">
+              <button
+                ref={moreTabsTriggerRef}
+                onClick={() => {
+                  if (moreTabsOpen) { setMoreTabsOpen(false); return }
+                  const rect = moreTabsTriggerRef.current?.getBoundingClientRect()
+                  if (rect) setMoreTabsPos({ top: rect.bottom + 6, right: Math.max(12, window.innerWidth - rect.right) })
+                  setMoreTabsOpen(true)
+                }}
+                aria-haspopup="menu"
+                aria-expanded={moreTabsOpen}
+                className={`relative flex shrink-0 items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-[11px] font-medium transition ${
+                  moreTabIds.includes(rightTab) ? 'text-fg' : 'text-fg-3 hover:text-fg-2'
+                }`}
+              >
+                <MoreHorizontal size={11} />
+                More
+                <ChevronDown size={10} />
+                {moreTabIds.includes(rightTab) && (
+                  <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-t-sm bg-accent" />
+                )}
+                {(lintIssues.length > 0 || trackedChanges.length > 0) && !moreTabIds.includes(rightTab) && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-warn" />
+                )}
+              </button>
+              {moreTabsOpen && moreTabsPos && createPortal(
+                <>
+                  <div className="fixed inset-0 z-[200]" onClick={() => setMoreTabsOpen(false)} />
+                  <div
+                    role="menu"
+                    aria-label="More panels"
+                    className="z-[201] max-h-[70vh] w-52 overflow-y-auto rounded-[var(--radius-md)] border border-line bg-surface p-1 shadow-[var(--shadow-2)]"
+                    style={{ position: 'fixed', top: moreTabsPos.top, right: moreTabsPos.right }}
+                  >
+                    {([
+                      { id: 'references', label: 'References', icon: BookOpen },
+                      { id: 'interview', label: 'Interview Prep', icon: MessageSquare },
+                      { id: 'proofread', label: 'Proofread', icon: ShieldCheck },
+                      { id: 'packages', label: 'Packages', icon: Package },
+                      { id: 'linter', label: 'Linter', icon: AlertTriangle },
+                      { id: 'symbols', label: 'Symbols', icon: Braces },
+                      { id: 'changes', label: 'Changes', icon: GitMerge },
+                      { id: 'docs', label: 'Docs', icon: BookOpen },
+                      { id: 'layout', label: 'Layout', icon: SlidersHorizontal },
+                      { id: 'snippets', label: 'Snippets', icon: Package },
+                      { id: 'macros', label: 'Macros', icon: Keyboard },
+                      { id: 'tikz', label: 'TikZ', icon: Pencil },
+                    ] as const).map(({ id, label, icon: Icon }) => (
+                      <button
+                        key={id}
+                        role="menuitem"
+                        onClick={() => { setRightTab(id); setMoreTabsOpen(false) }}
+                        className={`flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-left text-[11px] font-medium transition hover:bg-surface-2 ${
+                          rightTab === id ? 'bg-surface-2 text-fg' : 'text-fg-2 hover:text-fg'
+                        }`}
+                      >
+                        <Icon size={12} className="shrink-0 text-fg-3" />
+                        {label}
+                        {id === 'linter' && lintIssues.length > 0 && (
+                          <span className="ml-auto rounded bg-warn/20 px-1 py-0.5 font-mono text-[8px] text-warn">
+                            {lintIssues.length}
+                          </span>
+                        )}
+                        {id === 'changes' && trackedChanges.length > 0 && (
+                          <span className="ml-auto rounded bg-ok/20 px-1 py-0.5 font-mono text-[8px] text-ok">
+                            {trackedChanges.length}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </>,
+                document.body
+              )}
+            </div>
 
             <div className="min-w-[8px] flex-1" />
 
@@ -2808,12 +2983,26 @@ export default function ResumeEditPage() {
                 <X size={16} />
               </button>
             </div>
-            <p className="text-xs text-fg-3 mb-5">
-              This will replace the current editor content. Make sure to save first.
-            </p>
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <p className="text-xs text-fg-3">
+                This will replace the current editor content. The previous version is added to your undo history, so you can revert.
+              </p>
+              <button
+                onClick={handleSave}
+                disabled={isSaving || !isDirty}
+                title={isDirty ? 'Save current content before importing' : 'No unsaved changes'}
+                className="flex shrink-0 items-center gap-1.5 rounded-[var(--radius-md)] border border-line bg-surface-2 px-2.5 py-1.5 text-[11px] font-medium text-fg-2 transition hover:text-fg disabled:opacity-40"
+              >
+                <Save size={12} />
+                {isSaving ? 'Saving…' : 'Save current first'}
+              </button>
+            </div>
             <MultiFormatUpload
               onFileUpload={(content) => {
                 if (content) {
+                  // Push the pre-import buffer onto the undo stack so the replace
+                  // is reversible (Finding: import overwrites with no undo).
+                  pushUndo('Before import')
                   editorRef.current?.setValue(content)
                   setLatexContent(content)
                   setShowImportModal(false)
