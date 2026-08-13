@@ -14,12 +14,14 @@ import { useEffect, useState } from 'react'
 import { authClient, useSession } from '@/lib/auth-client'
 
 const DISMISS_KEY = 'latexy_verify_banner_dismissed'
+const RESEND_COOLDOWN_SECONDS = 30
 
 export default function EmailVerifyBanner() {
   const { data: session, isPending } = useSession()
   const [dismissed, setDismissed] = useState(true) // default hidden to avoid SSR flash
   const [resending, setResending] = useState(false)
   const [resent, setResent] = useState(false)
+  const [cooldown, setCooldown] = useState(0)
   const [error, setError] = useState('')
 
   // Read dismissal state on mount (client-only).
@@ -30,6 +32,20 @@ export default function EmailVerifyBanner() {
       setDismissed(false)
     }
   }, [])
+
+  // Tick down the resend cooldown; clear the "sent" confirmation once it lapses
+  // so the action becomes available again (e.g. if the email never arrived).
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const id = setTimeout(() => {
+      setCooldown((c) => {
+        const next = c - 1
+        if (next <= 0) setResent(false)
+        return next
+      })
+    }, 1000)
+    return () => clearTimeout(id)
+  }, [cooldown])
 
   const user = session?.user
   const shouldShow = !isPending && !!user && user.emailVerified === false && !dismissed
@@ -61,6 +77,7 @@ export default function EmailVerifyBanner() {
         setError(err.message || 'Could not resend. Try again shortly.')
       } else {
         setResent(true)
+        setCooldown(RESEND_COOLDOWN_SECONDS)
       }
     } catch {
       setError('Could not resend. Try again shortly.')
@@ -85,16 +102,18 @@ export default function EmailVerifyBanner() {
           </span>
         </div>
         <div className="flex items-center gap-3">
-          {!resent && (
-            <button
-              type="button"
-              onClick={handleResend}
-              disabled={resending}
-              className="font-semibold text-warn underline-offset-2 hover:underline disabled:opacity-50"
-            >
-              {resending ? 'Sending…' : 'Resend verification'}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleResend}
+            disabled={resending || cooldown > 0}
+            className="font-semibold text-warn underline-offset-2 hover:underline disabled:opacity-50"
+          >
+            {resending
+              ? 'Sending…'
+              : cooldown > 0
+                ? `Resend again in ${cooldown}s`
+                : 'Resend verification'}
+          </button>
           <button
             type="button"
             onClick={handleDismiss}
