@@ -4,10 +4,10 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import {
-  AlertTriangle, Briefcase, Check, ChevronDown, ChevronRight, Clock, DownloadCloud,
+  AlertTriangle, Briefcase, Check, ChevronDown, ChevronRight, Clock, Copy, DownloadCloud,
   FileCode2, Files, Gauge, GitBranch, LayoutTemplate, Link2, Loader2, MapPin,
   PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, Play, RotateCcw,
-  Sparkles, Upload, X, Zap,
+  Sparkles, Square, Upload, X, Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type ExplainErrorResponse, type ScrapeJobResponse } from '@/lib/api-client'
@@ -86,6 +86,17 @@ export default function TryPage() {
   const splitAreaRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
 
+  // ── local persistence + sync state ──
+  const [persistState, setPersistState] = useState<'saved' | 'pending'>('saved')
+  const [sourceCopied, setSourceCopied] = useState(false)
+  const [cursorLine, setCursorLine] = useState<number | null>(null)
+  const rehydratedRef = useRef(false)
+  // Baseline the editor is considered "clean" against (demo, restored draft, or last compiled)
+  const cleanBaselineRef = useRef(DEMO_RESUME_TEMPLATE)
+  const hasUnsavedRef = useRef(false)
+  // Editor content captured immediately before a run, restored if the job is cancelled
+  const preRunSnapshotRef = useRef<string | null>(null)
+
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent, jobDescription)
   const editorRef = useRef<LaTeXEditorRef>(null)
@@ -97,10 +108,86 @@ export default function TryPage() {
   const resolvedSession = hydrated ? session : null
   // When trial_limits flag is off, every visitor can run without restriction
   const effectiveCanRun = flags.trial_limits ? trialStatus.canRun : true
+  // Anonymous visitor who has exhausted their free compiles
+  const trialBlocked = !resolvedSession && !effectiveCanRun
+
+  const notifyTrialBlocked = useCallback(() => {
+    if (flags.upgrade_ctas) {
+      toast.error("You've used all your free compiles", {
+        description: 'Log in or upgrade to keep compiling.',
+        action: { label: 'Upgrade', onClick: () => { window.location.href = '/billing' } },
+      })
+    } else {
+      toast.error("You've used all your free compiles — log in to continue.")
+    }
+  }, [flags.upgrade_ctas])
 
   useEffect(() => {
     setHydrated(true)
   }, [])
+
+  // Rehydrate the last locally-saved draft on mount so a reload/tab-close no
+  // longer silently destroys work. The restored buffer becomes the clean
+  // baseline so the beforeunload guard only fires on genuinely new edits.
+  useEffect(() => {
+    try {
+      const savedTex = localStorage.getItem('latexy_try_latex')
+      const savedJd = localStorage.getItem('latexy_try_jd')
+      if (savedTex != null && savedTex !== latexContent) {
+        setLatexContent(savedTex)
+        editorRef.current?.setValue(savedTex)
+        cleanBaselineRef.current = savedTex
+      }
+      if (savedJd != null) setJobDescription(savedJd)
+    } catch {
+      /* localStorage unavailable — ignore */
+    }
+    rehydratedRef.current = true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Debounced autosave of the editor + job description to localStorage.
+  useEffect(() => {
+    if (!rehydratedRef.current) return
+    setPersistState('pending')
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem('latexy_try_latex', latexContent)
+        localStorage.setItem('latexy_try_jd', jobDescription)
+        setPersistState('saved')
+      } catch {
+        /* quota/unavailable — leave as pending */
+      }
+    }, 600)
+    return () => clearTimeout(t)
+  }, [latexContent, jobDescription])
+
+  // Warn on unload when the buffer differs from the clean baseline.
+  useEffect(() => {
+    hasUnsavedRef.current =
+      latexContent.trim() !== '' && latexContent !== cleanBaselineRef.current
+  }, [latexContent])
+
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!hasUnsavedRef.current) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [])
+
+  const persistNow = useCallback(() => {
+    try {
+      localStorage.setItem('latexy_try_latex', editorRef.current?.getValue() ?? latexContent)
+      localStorage.setItem('latexy_try_jd', jobDescription)
+      setPersistState('saved')
+      toast.success('Saved locally')
+    } catch {
+      toast.error('Could not save to this browser')
+    }
+  }, [latexContent, jobDescription])
 
   // Track desktop breakpoint so the resizable split (inline width %) applies
   // only at lg+, while mobile uses a single-pane switch.
@@ -117,6 +204,8 @@ export default function TryPage() {
       editorRef.current.setValue(stream.streamingLatex)
       if (stream.status === 'completed' || stream.status === 'failed') {
         setLatexContent(stream.streamingLatex)
+        // The AI-rewritten source is the new clean baseline
+        cleanBaselineRef.current = stream.streamingLatex
       }
     }
   }, [stream.streamingLatex, stream.status])
@@ -188,7 +277,11 @@ export default function TryPage() {
   const runCompile = async (mode: 'compile' | 'combined') => {
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) { toast.error('LaTeX content is required'); return }
-    if (!resolvedSession && !effectiveCanRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
+    if (trialBlocked) { notifyTrialBlocked(); return }
+    preRunSnapshotRef.current = currentContent
+    cleanBaselineRef.current = currentContent
+    // Surface the result pane immediately on any submit (mobile lands on Editor otherwise)
+    setMobilePane('pdf')
     setIsSubmitting(true)
     try {
       // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
@@ -204,7 +297,6 @@ export default function TryPage() {
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to submit job')
       setActiveJobId(response.job_id)
       if (!resolvedSession) trialStatus.incrementUsage()
-      if (mobilePane === 'tools') setMobilePane('pdf')
       toast.success('Job submitted. Streaming updates live.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Submission failed')
@@ -212,6 +304,22 @@ export default function TryPage() {
       setIsSubmitting(false)
     }
   }
+
+  const handleCancel = useCallback(async () => {
+    if (!activeJobId) return
+    try {
+      await apiClient.cancelJob(activeJobId)
+      // Restore the editor to its pre-run state (optimize overwrites it live).
+      if (preRunSnapshotRef.current != null) {
+        editorRef.current?.setValue(preRunSnapshotRef.current)
+        setLatexContent(preRunSnapshotRef.current)
+      }
+      setActiveJobId(null)
+      toast.success('Compile cancelled')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Cancel failed')
+    }
+  }, [activeJobId])
 
   const handleDownload = async () => {
     const downloadId = stream.pdfJobId ?? activeJobId
@@ -306,7 +414,10 @@ export default function TryPage() {
   const handleTrimToOnePage = useCallback(async () => {
     const currentContent = editorRef.current?.getValue() || latexContent
     if (!currentContent.trim()) return
-    if (!resolvedSession && !effectiveCanRun) { toast.error('Trial limit reached. Upgrade to continue.'); return }
+    if (trialBlocked) { notifyTrialBlocked(); return }
+    preRunSnapshotRef.current = currentContent
+    cleanBaselineRef.current = currentContent
+    setMobilePane('pdf')
     setIsSubmitting(true)
     try {
       // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
@@ -326,7 +437,7 @@ export default function TryPage() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [latexContent, jobDescription, resolvedSession, trialStatus, TRIM_INSTRUCTION, effectiveCanRun])
+  }, [latexContent, jobDescription, resolvedSession, trialStatus, TRIM_INSTRUCTION, trialBlocked, notifyTrialBlocked])
 
   const categoryScores = stream.atsDetails?.category_scores as Record<string, number> | undefined
 
@@ -360,8 +471,45 @@ export default function TryPage() {
     }
   }
 
-  const resetEditor = () => { setLatexContent(DEMO_RESUME_TEMPLATE); editorRef.current?.setValue(DEMO_RESUME_TEMPLATE) }
-  const clearEditor = () => { setLatexContent(''); editorRef.current?.setValue('') }
+  const restoreContent = (prev: string) => {
+    setLatexContent(prev)
+    editorRef.current?.setValue(prev)
+  }
+  const resetEditor = () => {
+    const prev = editorRef.current?.getValue() ?? latexContent
+    restoreContent(DEMO_RESUME_TEMPLATE)
+    toast('Reset to demo template', { action: { label: 'Undo', onClick: () => restoreContent(prev) } })
+  }
+  const clearEditor = () => {
+    const prev = editorRef.current?.getValue() ?? latexContent
+    restoreContent('')
+    toast('Editor cleared', { action: { label: 'Undo', onClick: () => restoreContent(prev) } })
+  }
+  const nudgeSplit = (delta: number) => setSplit((s) => Math.min(72, Math.max(28, s + delta)))
+  const handleSplitKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); nudgeSplit(-2) }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); nudgeSplit(2) }
+    else if (e.key === 'Home') { e.preventDefault(); setSplit(28) }
+    else if (e.key === 'End') { e.preventDefault(); setSplit(72) }
+    else if (e.key === 'Enter') { e.preventDefault(); setSplit(50) }
+  }
+  const copySource = async () => {
+    try {
+      await navigator.clipboard.writeText(editorRef.current?.getValue() ?? latexContent)
+      setSourceCopied(true)
+      setTimeout(() => setSourceCopied(false), 1500)
+    } catch {
+      toast.error('Copy failed')
+    }
+  }
+  const copyLogs = async () => {
+    try {
+      await navigator.clipboard.writeText(stream.logLines.map((l) => l.line).join('\n'))
+      toast.success('Logs copied')
+    } catch {
+      toast.error('Copy failed')
+    }
+  }
   const openTool = (id: Tool) => { setTool(id); setLeftOpen(true); setMobilePane('tools') }
   const trialsLabel = resolvedSession ? '∞' : hydrated ? String(trialStatus.remaining) : '…'
   const atsDisplay = stream.atsScore ?? quickATSScore
@@ -379,19 +527,14 @@ export default function TryPage() {
     <>
       {panelHead('Project')}
       <div className="p-1.5">
-        {[
-          { name: 'resume.tex', icon: FileCode2, active: true },
-          { name: 'latexy-resume.cls', icon: FileCode2, active: false },
-        ].map((f) => (
-          <div
-            key={f.name}
-            className={`flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 font-mono text-[12px] ${
-              f.active ? 'bg-accent-soft text-accent-strong' : 'text-fg-3'
-            }`}
-          >
-            <f.icon size={13} className="flex-shrink-0 opacity-70" /> {f.name}
-          </div>
-        ))}
+        <button
+          type="button"
+          onClick={() => setMobilePane('editor')}
+          aria-current="true"
+          className="flex w-full items-center gap-2 rounded-[var(--radius-sm)] bg-accent-soft px-2 py-1.5 text-left font-mono text-[12px] text-accent-strong transition hover:brightness-105"
+        >
+          <FileCode2 size={13} className="flex-shrink-0 opacity-70" /> resume.tex
+        </button>
       </div>
       <div className="border-t border-line p-3">
         <p className="mb-2 font-ui text-[11px] text-fg-3">Source</p>
@@ -450,14 +593,14 @@ export default function TryPage() {
           />
           <button
             onClick={() => runCompile('combined')}
-            disabled={isSubmitting || isProcessing || (!resolvedSession && !effectiveCanRun)}
+            disabled={isSubmitting || isProcessing}
             className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-3 py-2 font-ui text-xs font-semibold text-accent-fg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Sparkles size={13} /> {isSubmitting ? 'Running…' : 'Optimize for this role'}
           </button>
           <button
             onClick={handleTrimToOnePage}
-            disabled={isSubmitting || isProcessing || (!resolvedSession && !effectiveCanRun)}
+            disabled={isSubmitting || isProcessing}
             className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 px-3 py-1.5 font-ui text-[11px] text-fg-2 transition hover:text-fg disabled:opacity-50"
           >
             Trim to one page
@@ -558,10 +701,16 @@ export default function TryPage() {
 
   const templatesPanel = (
     <>
-      {panelHead('Templates', <Link href="/templates" className="font-ui text-[11px] text-accent-strong hover:brightness-110">Browse all</Link>)}
+      {panelHead('Templates', <Link href="/templates" className="font-ui text-[11px] text-accent-strong hover:brightness-110">Browse all →</Link>)}
       <div className="grid grid-cols-2 gap-2 p-3">
         {['Minimal', 'Two-column', 'Academic', 'ATS-safe'].map((t) => (
-          <Link key={t} href="/templates" className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-2 text-left transition hover:border-accent">
+          <Link
+            key={t}
+            href="/templates"
+            aria-label={`Open ${t} in the template gallery`}
+            title={`Open ${t} in the template gallery`}
+            className="group rounded-[var(--radius-md)] border border-line bg-surface-2 p-2 text-left transition hover:border-accent"
+          >
             <div className="mb-1.5 aspect-[3/4] rounded-[var(--radius-sm)] bg-bg p-1.5">
               <div className="h-1.5 w-2/3 rounded bg-fg/20" />
               <div className="mt-1 h-1 w-full rounded bg-fg/10" />
@@ -569,10 +718,14 @@ export default function TryPage() {
               <div className="mt-2 h-1 w-1/2 rounded bg-accent/40" />
               <div className="mt-1 h-1 w-full rounded bg-fg/10" />
             </div>
-            <span className="font-ui text-[11px] text-fg-2">{t}</span>
+            <span className="flex items-center justify-between font-ui text-[11px] text-fg-2">
+              {t}
+              <ChevronRight size={12} className="text-fg-3 transition group-hover:text-accent-strong" />
+            </span>
           </Link>
         ))}
       </div>
+      <p className="px-3 pb-3 font-ui text-[11px] leading-relaxed text-fg-3">Previews open the full gallery — your current draft stays saved.</p>
     </>
   )
 
@@ -584,14 +737,27 @@ export default function TryPage() {
       <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-line bg-surface-2 px-3">
         <FileCode2 size={13} className="text-fg-3" />
         <span className="font-mono text-xs text-fg-2">resume.tex</span>
-        <span className="ml-auto font-ui text-[10px] text-fg-3">⌘F to find</span>
+        <button
+          onClick={copySource}
+          title="Copy LaTeX source"
+          aria-label="Copy LaTeX source"
+          className="ml-auto flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[10px] text-fg-3 transition hover:bg-surface hover:text-fg"
+        >
+          {sourceCopied ? <Check size={11} className="text-ok" /> : <Copy size={11} />}
+          {sourceCopied ? 'Copied' : 'Copy'}
+        </button>
+        <span className="font-ui text-[10px] text-fg-3">⌘F to find</span>
       </div>
       <div className="relative min-h-0 flex-1">
         <LaTeXEditor
           ref={editorRef}
           value={latexContent}
           onChange={setLatexContent}
+          readOnly={isProcessing}
           logLines={stream.logLines}
+          onCompile={() => runCompile('compile')}
+          onSave={persistNow}
+          onCursorChange={setCursorLine}
           onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
           atsScore={quickATSScore}
           atsScoreLoading={quickATSLoading}
@@ -620,7 +786,18 @@ export default function TryPage() {
         <div className="flex-shrink-0 border-b border-line bg-surface px-4 py-2">
           <div className="flex items-center justify-between gap-3">
             <span className="truncate font-ui text-[11px] text-fg-2">{stream.stage || 'waiting'}</span>
-            <span className="font-mono text-[11px] text-fg-3">{stream.percent}%</span>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <span className="font-mono text-[11px] text-fg-3">{stream.percent}%</span>
+              {isProcessing && activeJobId && (
+                <button
+                  onClick={handleCancel}
+                  title="Cancel this run"
+                  className="flex items-center gap-1 rounded-[var(--radius-sm)] border border-line-2 px-1.5 py-0.5 font-ui text-[10px] font-medium text-fg-2 transition hover:border-err hover:text-err"
+                >
+                  <Square size={9} className="fill-current" /> Stop
+                </button>
+              )}
+            </div>
           </div>
           <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-surface-2">
             <div className="h-full rounded-full bg-accent transition-all duration-500" style={{ width: `${stream.percent}%` }} />
@@ -643,22 +820,43 @@ export default function TryPage() {
       )}
 
       <div className="relative min-h-0 flex-1">
-        <PDFPreview pdfUrl={pdfUrl} isLoading={isProcessing} onDownload={handleDownload} />
+        <PDFPreview
+          pdfUrl={pdfUrl}
+          isLoading={isProcessing}
+          onDownload={handleDownload}
+          jobId={stream.pdfJobId}
+          latexContent={latexContent}
+          syncFromLine={cursorLine}
+          onSyncToSource={(line) => { editorRef.current?.highlightLine(line); if (!isDesktop) setMobilePane('editor') }}
+          onJumpToLine={(line) => { editorRef.current?.highlightLine(line); if (!isDesktop) setMobilePane('editor') }}
+        />
       </div>
 
       {/* compile status / logs footer — only once there's something to report */}
       {(stream.logLines.length > 0 || isProcessing || stream.status === 'completed' || stream.status === 'failed') && (
         <div className="flex-shrink-0 border-t border-line bg-surface">
-          <button onClick={() => setLogsOpen((v) => !v)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left">
-            <span className={`flex items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[10px] font-semibold ${
-              stream.status === 'completed' ? 'bg-ok/10 text-ok' : stream.status === 'failed' ? 'bg-err/10 text-err' : 'bg-surface-2 text-fg-3'
-            }`}>
-              {stream.status === 'completed' ? <Check size={10} /> : null}
-              {stream.status === 'completed' ? 'Compiled' : stream.status === 'failed' ? 'Failed' : isProcessing ? 'Compiling…' : 'Ready'}
-            </span>
-            {stream.logLines.length > 0 && <span className="font-ui text-[11px] text-fg-3">{stream.logLines.length} log lines</span>}
-            <ChevronDown size={13} className={`ml-auto text-fg-3 transition-transform ${logsOpen ? 'rotate-180' : ''}`} />
-          </button>
+          <div className="flex w-full items-center gap-2 px-3 py-1.5">
+            <button onClick={() => setLogsOpen((v) => !v)} aria-expanded={logsOpen} className="flex flex-1 items-center gap-2 text-left">
+              <span className={`flex items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[10px] font-semibold ${
+                stream.status === 'completed' ? 'bg-ok/10 text-ok' : stream.status === 'failed' ? 'bg-err/10 text-err' : 'bg-surface-2 text-fg-3'
+              }`}>
+                {stream.status === 'completed' ? <Check size={10} /> : null}
+                {stream.status === 'completed' ? 'Compiled' : stream.status === 'failed' ? 'Failed' : isProcessing ? 'Compiling…' : 'Ready'}
+              </span>
+              {stream.logLines.length > 0 && <span className="font-ui text-[11px] text-fg-3">{stream.logLines.length} log lines</span>}
+              <ChevronDown size={13} className={`ml-auto text-fg-3 transition-transform ${logsOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {stream.logLines.length > 0 && (
+              <button
+                onClick={copyLogs}
+                title="Copy all log output"
+                aria-label="Copy all log output"
+                className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[10px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
+              >
+                <Copy size={11} /> Copy
+              </button>
+            )}
+          </div>
           {logsOpen && (
             <div className="border-t border-line bg-bg">
               <LogViewer lines={stream.logLines} maxHeight="14rem" className="font-mono text-xs" />
@@ -676,11 +874,19 @@ export default function TryPage() {
         <Link href="/" className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-[var(--radius-sm)] bg-accent font-display text-sm font-bold text-accent-fg" title="Home">L</Link>
         <span className="hidden font-display text-sm font-semibold text-fg sm:inline">Résumé Studio</span>
         <span className="hidden rounded-[var(--radius-sm)] bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-3 md:inline">resume.tex</span>
+        <span
+          title={persistState === 'saved' ? 'Draft autosaved to this browser' : 'Saving your draft locally…'}
+          className="hidden items-center gap-1 font-ui text-[10px] text-fg-3 lg:inline-flex"
+        >
+          {persistState === 'saved'
+            ? <><Check size={10} className="text-ok" /> Saved locally</>
+            : <><Loader2 size={10} className="animate-spin" /> Saving…</>}
+        </span>
 
         <div className="ml-1 flex items-center sm:ml-2">
           <button
             onClick={() => runCompile('compile')}
-            disabled={isSubmitting || isProcessing || (!resolvedSession && !effectiveCanRun)}
+            disabled={isSubmitting || isProcessing}
             className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-3.5 py-1.5 font-ui text-xs font-semibold text-accent-fg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isProcessing || isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Play size={12} className="fill-current" />}
@@ -723,6 +929,19 @@ export default function TryPage() {
         </div>
       </header>
 
+      {/* ── trial-exhausted banner ── */}
+      {trialBlocked && (
+        <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-x-2 gap-y-0.5 border-b border-warn/20 bg-warn/10 px-3 py-1.5 text-center">
+          <span className="font-ui text-[11px] text-warn">
+            <AlertTriangle size={11} className="mr-1 -mt-0.5 inline" /> You&apos;ve used all your free compiles.
+          </span>
+          <span className="font-ui text-[11px] text-fg-2">
+            <Link href="/login" className="font-semibold text-accent-strong underline hover:brightness-110">Log in</Link>
+            {flags.upgrade_ctas && <> or <a href="/billing" className="font-semibold text-accent-strong underline hover:brightness-110">upgrade</a></>} to continue.
+          </span>
+        </div>
+      )}
+
       {/* ── mobile pane switch (< lg) ── */}
       <div className="flex flex-shrink-0 items-center gap-1 border-b border-line bg-surface px-2 py-1.5 lg:hidden">
         {([['tools', 'Tools'], ['editor', 'Editor'], ['pdf', 'PDF']] as [MobilePane, string][]).map(([id, label]) => (
@@ -736,6 +955,17 @@ export default function TryPage() {
             {label}
           </button>
         ))}
+        {/* Auto-compile toggle — header copy is hidden < sm, so surface it here */}
+        <button
+          onClick={toggleAutoCompile}
+          title="Auto-compile on change"
+          aria-pressed={autoCompile}
+          className={`flex shrink-0 select-none items-center gap-1 rounded-[var(--radius-md)] border px-2.5 py-1.5 font-ui text-xs font-medium transition sm:hidden ${
+            autoCompile ? 'border-accent bg-accent-soft text-accent-strong' : 'border-line-2 text-fg-3'
+          }`}
+        >
+          <Zap size={13} /> Auto
+        </button>
       </div>
 
       {/* ── body ── */}
@@ -785,9 +1015,21 @@ export default function TryPage() {
           {/* splitter (lg+) */}
           {pdfOpen && (
             <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize editor and preview panes"
+              aria-valuenow={Math.round(split)}
+              aria-valuemin={28}
+              aria-valuemax={72}
+              tabIndex={0}
               onMouseDown={() => { draggingRef.current = true; document.body.style.cursor = 'col-resize' }}
-              className="hidden w-1 flex-shrink-0 cursor-col-resize bg-line transition-colors hover:bg-accent lg:block"
-            />
+              onDoubleClick={() => setSplit(50)}
+              onKeyDown={handleSplitKey}
+              title="Drag to resize · double-click to reset · arrow keys to nudge"
+              className="group hidden w-2 flex-shrink-0 cursor-col-resize items-center justify-center bg-transparent focus:outline-none lg:flex"
+            >
+              <div className="h-full w-px bg-line transition-colors group-hover:bg-accent group-focus-visible:w-[3px] group-focus-visible:bg-accent" />
+            </div>
           )}
 
           {/* pdf */}
