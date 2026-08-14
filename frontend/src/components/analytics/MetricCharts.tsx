@@ -153,7 +153,12 @@ export function FeatureUsageBars({ data, width = 760, height = 260 }: { data: Fe
     .map((item) => ({ ...item, name: item.name.replace(/_/g, ' ') }))
     .sort((a, b) => b.value - a.value)
 
-  const xMax = width - chartMargin.left - chartMargin.right
+  // Category names live in a dedicated left gutter (outside the bar track) so
+  // they never collide with the value labels, which sit at the end of each
+  // bar — inside it when there's room, otherwise just outside so short bars
+  // stay legible instead of overlapping the name.
+  const nameGutter = 116
+  const xMax = width - chartMargin.left - chartMargin.right - nameGutter
   const yMax = height - chartMargin.top - chartMargin.bottom
 
   const xScale = scaleLinear<number>({
@@ -193,6 +198,19 @@ export function FeatureUsageBars({ data, width = 760, height = 260 }: { data: Fe
       </table>
       <svg viewBox={`0 0 ${width} ${height}`} className="h-[260px] w-full" role="img" aria-label={featureLabel}>
       <Group left={chartMargin.left} top={chartMargin.top}>
+        {normalized.map((item) => {
+          const y = yScale(item.name)
+          if (y === undefined) return null
+          const rowCenter = y + yScale.bandwidth() / 2 + 4
+          return (
+            <text key={`name-${item.name}`} x={nameGutter - 10} y={rowCenter} textAnchor="end" fill="var(--fg-2)" fontSize={10}>
+              {item.name}
+            </text>
+          )
+        })}
+      </Group>
+
+      <Group left={chartMargin.left + nameGutter} top={chartMargin.top}>
         <GridRows scale={yScale} width={xMax} height={yMax} stroke="var(--line)" pointerEvents="none" />
 
         {normalized.map((item, index) => {
@@ -201,6 +219,11 @@ export function FeatureUsageBars({ data, width = 760, height = 260 }: { data: Fe
           if (y === undefined) return null
 
           const alpha = 0.36 + (normalized.length - index) * 0.06
+          const rowCenter = y + yScale.bandwidth() / 2 + 4
+          // A value label needs ~22px to sit legibly inside the bar; shorter
+          // bars push the label just outside the bar's end instead, so it
+          // never overlaps the bar (or the now separately-anchored name).
+          const valueFitsInside = barWidth >= 28
           return (
             <Group key={item.name}>
               <Bar
@@ -212,10 +235,14 @@ export function FeatureUsageBars({ data, width = 760, height = 260 }: { data: Fe
                 fill="var(--accent)"
                 fillOpacity={Math.min(alpha, 0.9)}
               />
-              <text x={6} y={y + yScale.bandwidth() / 2 + 4} fill="var(--fg)" fontSize={10}>
-                {item.name}
-              </text>
-              <text x={Math.max(barWidth - 6, 34)} y={y + yScale.bandwidth() / 2 + 4} textAnchor="end" fill="var(--accent-fg)" fontSize={10} fontWeight={700}>
+              <text
+                x={valueFitsInside ? barWidth - 6 : barWidth + 6}
+                y={rowCenter}
+                textAnchor={valueFitsInside ? 'end' : 'start'}
+                fill={valueFitsInside ? 'var(--accent-fg)' : 'var(--fg)'}
+                fontSize={10}
+                fontWeight={700}
+              >
                 {item.value}
               </text>
             </Group>
@@ -227,7 +254,20 @@ export function FeatureUsageBars({ data, width = 760, height = 260 }: { data: Fe
   )
 }
 
-export function StatusDonutChart({ data, width = 280, height = 280 }: { data: StatusPoint[]; width?: number; height?: number }) {
+export function StatusDonutChart({
+  data,
+  width = 280,
+  height = 280,
+  totalLabel = 'RUNS',
+}: {
+  data: StatusPoint[]
+  width?: number
+  height?: number
+  /** Small caption under the center total (e.g. "RUNS" vs "LAST 10") so the
+   *  donut is honest about its scope when it's driven by a fallback sample
+   *  rather than the full range-scoped distribution. */
+  totalLabel?: string
+}) {
   if (data.length === 0) {
     return <EmptyChart label="No run statuses to display." />
   }
@@ -249,7 +289,7 @@ export function StatusDonutChart({ data, width = 280, height = 280 }: { data: St
 
   const radius = Math.min(width, height) / 2
 
-  const donutLabel = `Run statuses, ${total} total: ${filtered
+  const donutLabel = `${totalLabel === 'RUNS' ? 'Run statuses' : `Run statuses (${totalLabel.toLowerCase()})`}, ${total} total: ${filtered
     .map((item) => `${item.name} ${item.value} (${Math.round((item.value / total) * 100)}%)`)
     .join(', ')}.`
 
@@ -276,7 +316,7 @@ export function StatusDonutChart({ data, width = 280, height = 280 }: { data: St
             {total}
           </text>
           <text textAnchor="middle" fill="var(--fg-3)" fontSize={10} dy={14}>
-            RUNS
+            {totalLabel}
           </text>
         </Group>
       </svg>
