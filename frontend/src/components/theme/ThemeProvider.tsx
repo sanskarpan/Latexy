@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { useSession } from '@/lib/auth-client'
 
 /**
  * Light/dark mode runtime (redesign, PRD 2026-08-03).
@@ -10,6 +11,15 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
  * This provider owns *user* toggles from then on: it reflects the current mode,
  * and `setMode` writes the cookie (for SSR on the next load) + the `data-mode`
  * attribute. Aesthetic (typeset/compiler) is handled separately by route.
+ *
+ * Account sync: there is currently no backend endpoint for a persisted user
+ * theme preference (checked `api-client.ts` — the closest analogue,
+ * `updateNotificationPrefs`, is a different feature). Until that endpoint
+ * exists, mode is additionally cached per-account in localStorage
+ * (`latexy-theme:acct:{userId}`) so at least a signed-in user gets a
+ * consistent preference across browsers/devices *that have already seen*
+ * that account locally, and a real cross-device sync should replace this
+ * with a proper `PATCH /users/me` (or similar) call once one is added.
  */
 
 type Mode = 'light' | 'dark'
@@ -22,6 +32,14 @@ interface ThemeCtx {
 
 const Ctx = createContext<ThemeCtx | null>(null)
 
+function acctKey(userId: string) {
+  return `latexy-theme:acct:${userId}`
+}
+
+// Reads the mode the pre-paint bootstrap script already applied to
+// `data-mode`, so the very first client render matches it exactly (no flash
+// of the wrong ModeToggle glyph). Falls back to the cookie, then OS
+// preference, for the rare case this runs before the bootstrap script has.
 function readInitialMode(): Mode {
   if (typeof document === 'undefined') return 'light'
   const attr = document.documentElement.getAttribute('data-mode')
@@ -32,19 +50,49 @@ function readInitialMode(): Mode {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setModeState] = useState<Mode>('light')
+  // Lazy initializer runs synchronously on first client render, so it already
+  // matches whatever the pre-paint script set — no post-hydration flip.
+  const [mode, setModeState] = useState<Mode>(readInitialMode)
+  const { data: session } = useSession()
+  const userId = session?.user?.id
 
-  // Sync from what the bootstrap script already applied (avoids a flash).
-  useEffect(() => {
-    setModeState(readInitialMode())
-  }, [])
-
-  const setMode = useCallback((m: Mode) => {
+  const applyMode = useCallback((m: Mode) => {
     setModeState(m)
     document.documentElement.setAttribute('data-mode', m)
     // 1-year cookie so SSR matches on the next load; Lax is fine (not sensitive).
     document.cookie = `latexy-theme=${m}; path=/; max-age=31536000; SameSite=Lax`
   }, [])
+
+  // Hydrate from the signed-in account's cached preference (if any) once the
+  // session resolves, so a user who set dark mode elsewhere and logs in here
+  // picks it up instead of staying on this device's local/OS default.
+  useEffect(() => {
+    if (!userId) return
+    try {
+      const cached = window.localStorage.getItem(acctKey(userId))
+      if ((cached === 'light' || cached === 'dark') && cached !== mode) {
+        applyMode(cached)
+      }
+    } catch {
+      // localStorage unavailable (private mode, etc.) — fall back to device-local only.
+    }
+    // Only run when the account identity changes, not on every mode change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId])
+
+  const setMode = useCallback(
+    (m: Mode) => {
+      applyMode(m)
+      if (userId) {
+        try {
+          window.localStorage.setItem(acctKey(userId), m)
+        } catch {
+          // Best-effort only — device-local cookie already covers this device.
+        }
+      }
+    },
+    [applyMode, userId],
+  )
 
   const toggle = useCallback(() => setMode(mode === 'dark' ? 'light' : 'dark'), [mode, setMode])
 
