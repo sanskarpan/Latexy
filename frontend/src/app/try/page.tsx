@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import {
-  AlertTriangle, Briefcase, Check, ChevronDown, ChevronRight, Clock, Copy, DownloadCloud,
+  AlertTriangle, Check, ChevronDown, ChevronRight, Clock, Copy, DownloadCloud,
   FileCode2, Files, Gauge, GitBranch, LayoutTemplate, Link2, Loader2, MapPin,
   PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, Play, RotateCcw,
   Sparkles, Square, Upload, X, Zap,
@@ -518,7 +518,7 @@ export default function TryPage() {
   // Rendered inline (not child components) so controlled inputs keep focus.
   const panelHead = (title: string, action?: React.ReactNode) => (
     <div className="flex items-center justify-between border-b border-line px-3 py-2">
-      <span className="font-ui text-[11px] font-semibold uppercase tracking-[0.14em] text-fg-3">{title}</span>
+      <span className="font-ui text-[12px] font-semibold uppercase tracking-[0.14em] text-fg-3">{title}</span>
       {action}
     </div>
   )
@@ -681,9 +681,7 @@ export default function TryPage() {
       {panelHead('Import')}
       <div className="space-y-2 p-3">
         {[
-          { icon: GitBranch, label: 'GitHub', hint: 'Pull top projects', onClick: () => setShowProjectsModal(true) },
-          { icon: Link2, label: 'Portfolio URL', hint: 'Scrape a page', onClick: () => setShowProjectsModal(true) },
-          { icon: Briefcase, label: 'LinkedIn export', hint: 'Upload archive', onClick: () => setShowProjectsModal(true) },
+          { icon: GitBranch, label: 'Import projects', hint: 'GitHub · Portfolio URL · LinkedIn export', onClick: () => setShowProjectsModal(true) },
           { icon: Upload, label: 'Existing file', hint: 'PDF · DOCX · TEX', onClick: () => setShowImportModal(true) },
         ].map((s) => (
           <button key={s.label} onClick={s.onClick} className="flex w-full items-center gap-3 rounded-[var(--radius-md)] border border-line bg-surface-2 p-2.5 text-left transition hover:border-accent">
@@ -741,12 +739,12 @@ export default function TryPage() {
           onClick={copySource}
           title="Copy LaTeX source"
           aria-label="Copy LaTeX source"
-          className="ml-auto flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[10px] text-fg-3 transition hover:bg-surface hover:text-fg"
+          className="ml-auto flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[11px] text-fg-3 transition hover:bg-surface hover:text-fg"
         >
           {sourceCopied ? <Check size={11} className="text-ok" /> : <Copy size={11} />}
           {sourceCopied ? 'Copied' : 'Copy'}
         </button>
-        <span className="font-ui text-[10px] text-fg-3">⌘F to find</span>
+        <span className="font-ui text-[11px] text-fg-3">⌘F to find</span>
       </div>
       <div className="relative min-h-0 flex-1">
         <LaTeXEditor
@@ -785,9 +783,9 @@ export default function TryPage() {
       {(isProcessing || stream.stage) && (
         <div className="flex-shrink-0 border-b border-line bg-surface px-4 py-2">
           <div className="flex items-center justify-between gap-3">
-            <span className="truncate font-ui text-[11px] text-fg-2">{stream.stage || 'waiting'}</span>
+            <span className="truncate font-ui text-[12px] text-fg-2">{stream.stage || 'waiting'}</span>
             <div className="flex flex-shrink-0 items-center gap-2">
-              <span className="font-mono text-[11px] text-fg-3">{stream.percent}%</span>
+              <span className="font-mono text-[12px] text-fg-3">{stream.percent}%</span>
               {isProcessing && activeJobId && (
                 <button
                   onClick={handleCancel}
@@ -808,7 +806,7 @@ export default function TryPage() {
       {/* page-overflow + timeout banners */}
       {stream.pageCount !== null && stream.pageCount > 1 && (
         <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-warn/20 bg-warn/10 px-4 py-2">
-          <span className="font-ui text-[11px] text-warn"><AlertTriangle size={11} className="mr-1 -mt-0.5 inline" /> {stream.pageCount} pages — most recruiters prefer 1.</span>
+          <span className="font-ui text-[12px] text-warn"><AlertTriangle size={11} className="mr-1 -mt-0.5 inline" /> {stream.pageCount} pages — most recruiters prefer 1.</span>
           <button onClick={handleTrimToOnePage} disabled={isSubmitting || isProcessing} className="shrink-0 font-ui text-[11px] text-warn underline hover:brightness-110 disabled:opacity-50">Trim with AI →</button>
         </div>
       )}
@@ -843,7 +841,7 @@ export default function TryPage() {
                 {stream.status === 'completed' ? <Check size={10} /> : null}
                 {stream.status === 'completed' ? 'Compiled' : stream.status === 'failed' ? 'Failed' : isProcessing ? 'Compiling…' : 'Ready'}
               </span>
-              {stream.logLines.length > 0 && <span className="font-ui text-[11px] text-fg-3">{stream.logLines.length} log lines</span>}
+              {stream.logLines.length > 0 && <span className="font-ui text-[12px] text-fg-3">{stream.logLines.length} log lines</span>}
               <ChevronDown size={13} className={`ml-auto text-fg-3 transition-transform ${logsOpen ? 'rotate-180' : ''}`} />
             </button>
             {stream.logLines.length > 0 && (
@@ -922,7 +920,7 @@ export default function TryPage() {
             </Link>
           ) : (
             <div className="flex items-center gap-2">
-              <span className="hidden font-ui text-[11px] text-fg-3 sm:inline">trials <b className="text-accent-strong">{trialsLabel}</b></span>
+              <span className="hidden font-ui text-[12px] text-fg-3 sm:inline">trials <b className="text-accent-strong">{trialsLabel}</b></span>
               <Link href="/login" className="whitespace-nowrap rounded-[var(--radius-md)] border border-line-2 px-2.5 py-1.5 font-ui text-[11px] font-semibold text-fg transition hover:border-accent hover:text-accent-strong">Log in</Link>
             </div>
           )}
