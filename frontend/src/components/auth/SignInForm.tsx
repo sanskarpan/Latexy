@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Eye, EyeOff } from 'lucide-react'
 import { signIn, authClient } from '@/lib/auth-client'
@@ -11,6 +11,10 @@ const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === 'true'
 const GITHUB_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GITHUB_ENABLED === 'true'
 const ANY_OAUTH = GOOGLE_ENABLED || GITHUB_ENABLED
 
+// How long a social redirect can sit at "Redirecting..." before we treat the
+// handshake as stalled and hand control back to the user.
+const SOCIAL_TIMEOUT_MS = 8000
+
 /**
  * Coerce an incoming redirect target to a safe same-origin relative path.
  * Rejects absolute URLs and protocol-relative (`//`, `/\`) values to prevent
@@ -19,6 +23,25 @@ const ANY_OAUTH = GOOGLE_ENABLED || GITHUB_ENABLED
 function safeDest(raw: string | undefined): string {
   if (!raw || raw[0] !== '/' || raw[1] === '/' || raw[1] === '\\') return '/workspace'
   return raw
+}
+
+/** Map terse/technical Better Auth error text to friendlier copy. */
+function friendlyAuthError(message: string | undefined, fallback: string): string {
+  const text = (message || '').toLowerCase()
+  if (!text) return fallback
+  if (text.includes('invalid') && (text.includes('password') || text.includes('credential'))) {
+    return 'Incorrect email or password. Please try again.'
+  }
+  if (text.includes('not found') || text.includes('no user')) {
+    return 'We couldn’t find an account with that email.'
+  }
+  if (text.includes('too many') || text.includes('rate limit')) {
+    return 'Too many attempts. Please wait a moment and try again.'
+  }
+  if (text.includes('verify') || text.includes('verification')) {
+    return 'Please verify your email address before signing in.'
+  }
+  return message || fallback
 }
 
 const labelClass = 'block font-ui text-xs uppercase tracking-[0.16em] text-fg-3'
@@ -51,6 +74,20 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
   const [isLoading, setIsLoading] = useState(false)
   const [socialLoading, setSocialLoading] = useState<'google' | 'github' | null>(null)
   const [error, setError] = useState('')
+  const errorRef = useRef<HTMLDivElement>(null)
+  const socialTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (error && errorRef.current) {
+      errorRef.current.focus()
+    }
+  }, [error])
+
+  useEffect(() => {
+    return () => {
+      if (socialTimeoutRef.current) clearTimeout(socialTimeoutRef.current)
+    }
+  }, [])
 
   const forgotHref =
     dest === '/workspace'
@@ -64,7 +101,7 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
     try {
       const result = await signIn.email({ email, password })
       if (result.error) {
-        setError(result.error.message || 'Sign in failed')
+        setError(friendlyAuthError(result.error.message, 'Sign in failed'))
       } else {
         window.location.href = dest
       }
@@ -75,9 +112,24 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
     }
   }
 
+  const clearSocialTimeout = () => {
+    if (socialTimeoutRef.current) {
+      clearTimeout(socialTimeoutRef.current)
+      socialTimeoutRef.current = null
+    }
+  }
+
   const handleSocial = async (provider: 'google' | 'github') => {
     setSocialLoading(provider)
     setError('')
+    clearSocialTimeout()
+    // Guard against a stalled OAuth handshake: if the browser hasn't been
+    // navigated away within SOCIAL_TIMEOUT_MS, release the form instead of
+    // leaving a disabled "Redirecting..." button as a dead end.
+    socialTimeoutRef.current = setTimeout(() => {
+      setSocialLoading(null)
+      setError('Taking longer than expected — try again.')
+    }, SOCIAL_TIMEOUT_MS)
     try {
       const result = await authClient.signIn.social({ provider, callbackURL: dest })
       // The client resolves with an `error` instead of throwing, and only sends
@@ -85,10 +137,14 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
       // has to release the form — otherwise a failed handshake leaves every
       // button disabled with no way back short of a page reload.
       if (result?.error || !result?.data?.url) {
-        setError(result?.error?.message || `${provider} sign-in is unavailable right now`)
+        clearSocialTimeout()
+        setError(
+          friendlyAuthError(result?.error?.message, `${provider} sign-in is unavailable right now`)
+        )
         setSocialLoading(null)
       }
     } catch {
+      clearSocialTimeout()
       setError(`${provider} sign-in failed`)
       setSocialLoading(null)
     }
@@ -143,7 +199,7 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
           </>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5" aria-describedby={error ? 'signin-error' : undefined}>
           <div className="space-y-2">
             <label htmlFor="email" className={labelClass}>
               Email
@@ -199,7 +255,13 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
 
           <div aria-live="polite">
             {error && (
-              <div className="rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-3 py-2 font-body text-sm text-err">
+              <div
+                id="signin-error"
+                ref={errorRef}
+                tabIndex={-1}
+                role="alert"
+                className="rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-3 py-2 font-body text-sm text-err focus:outline-none"
+              >
                 {error}
               </div>
             )}
