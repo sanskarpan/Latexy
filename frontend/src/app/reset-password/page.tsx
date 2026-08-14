@@ -8,6 +8,16 @@ import { authClient } from '@/lib/auth-client'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
+/** Lightweight 0–3 password strength heuristic, mirrors SignUpForm's hint. */
+function passwordStrength(pw: string): { score: number; label: string } {
+  let score = 0
+  if (pw.length >= 8) score++
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++
+  if (/\d/.test(pw) || /[^A-Za-z0-9]/.test(pw)) score++
+  const labels = ['Too short', 'Weak', 'Fair', 'Strong']
+  return { score, label: labels[Math.min(score, 3)] }
+}
+
 function ResetPasswordInner() {
   const router = useRouter()
   const params = useSearchParams()
@@ -21,6 +31,11 @@ function ResetPasswordInner() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
+
+  const strength = passwordStrength(password)
+  const tooShort = password.length > 0 && password.length < 8
+  const confirmMismatch = confirm.length > 0 && confirm !== password
+  const canSubmit = password.length >= 8 && confirm.length > 0 && confirm === password
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -111,6 +126,7 @@ function ResetPasswordInner() {
                     required
                     minLength={8}
                     autoComplete="new-password"
+                    aria-describedby="new-password-hint"
                     className="pr-12"
                   />
                   <button
@@ -127,6 +143,33 @@ function ResetPasswordInner() {
                     )}
                   </button>
                 </div>
+                {password.length > 0 && (
+                  <div className="flex items-center gap-2" aria-hidden="true">
+                    <div className="flex flex-1 gap-1">
+                      {[0, 1, 2].map((i) => (
+                        <span
+                          key={i}
+                          className={`h-1 flex-1 rounded-[var(--radius-pill)] transition-colors duration-150 ${
+                            i < strength.score
+                              ? strength.score >= 3
+                                ? 'bg-ok'
+                                : strength.score === 2
+                                  ? 'bg-warn'
+                                  : 'bg-err'
+                              : 'bg-line-2'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="font-ui text-xs text-fg-3">{strength.label}</span>
+                  </div>
+                )}
+                <p
+                  id="new-password-hint"
+                  className={`font-body text-xs ${tooShort ? 'text-err' : 'text-fg-3'}`}
+                >
+                  {tooShort ? 'Must be at least 8 characters.' : 'At least 8 characters.'}
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -145,6 +188,8 @@ function ResetPasswordInner() {
                     required
                     minLength={8}
                     autoComplete="new-password"
+                    aria-invalid={confirmMismatch}
+                    aria-describedby={confirmMismatch ? 'confirm-hint' : undefined}
                     className="pr-12"
                   />
                   <button
@@ -161,6 +206,11 @@ function ResetPasswordInner() {
                     )}
                   </button>
                 </div>
+                {confirmMismatch && (
+                  <p id="confirm-hint" className="font-body text-xs text-err" role="alert">
+                    Passwords don&apos;t match.
+                  </p>
+                )}
               </div>
 
               {error && (
@@ -173,7 +223,12 @@ function ResetPasswordInner() {
                 </div>
               )}
 
-              <Button type="submit" disabled={isLoading} loading={isLoading} className="h-11 w-full">
+              <Button
+                type="submit"
+                disabled={isLoading || !canSubmit}
+                loading={isLoading}
+                className="h-11 w-full"
+              >
                 Update password
               </Button>
             </form>
