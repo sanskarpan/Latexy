@@ -26,6 +26,11 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
   const [apiKeys, setApiKeys] = useState<APIKey[]>([])
   const [providers, setProviders] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(true)
+  // Tracked separately from `loading` (providers): fetchAPIKeys and fetchProviders
+  // run in parallel and resolve independently, so gating the empty-state render
+  // on this flag (rather than the providers flag) stops existing keys from
+  // briefly flashing "No API Keys Yet" if providers happen to resolve first.
+  const [keysLoading, setKeysLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newKey, setNewKey] = useState(initialKey)
   const [saving, setSaving] = useState(false)
@@ -49,6 +54,8 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
       onKeysChange?.(keys)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to load keys')
+    } finally {
+      setKeysLoading(false)
     }
   }, [onKeysChange])
 
@@ -127,7 +134,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
     }
   }, [showAddModal, closeAddModal])
 
-  const validateAPIKey = async (provider: string, apiKey: string) => {
+  const validateAPIKey = async (provider: string, apiKey: string): Promise<{ valid: boolean; reason?: string }> => {
     try {
       const response = await fetch('/api/byok/validate', {
         method: 'POST',
@@ -135,9 +142,12 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
         body: JSON.stringify({ provider, api_key: apiKey }),
       })
       const result = await response.json()
-      return result.success
-    } catch {
-      return false
+      if (!response.ok) {
+        return { valid: false, reason: result?.detail || result?.error || 'Validation request failed' }
+      }
+      return { valid: Boolean(result.valid), reason: result.error || undefined }
+    } catch (error) {
+      return { valid: false, reason: error instanceof Error ? error.message : 'Unable to reach validation service' }
     }
   }
 
@@ -150,9 +160,9 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
 
     setSaving(true)
     try {
-      const isValid = await validateAPIKey(newKey.provider, newKey.api_key)
-      if (!isValid) {
-        toast.error('Key validation failed for selected provider')
+      const { valid, reason } = await validateAPIKey(newKey.provider, newKey.api_key)
+      if (!valid) {
+        toast.error(reason ? `Key validation failed: ${reason}` : 'Key validation failed for selected provider')
         return
       }
 
@@ -206,7 +216,11 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
       </div>
 
       <div className="space-y-3">
-        {apiKeys.length === 0 ? (
+        {keysLoading ? (
+          <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-8 text-center text-fg-2">
+            Loading your keys...
+          </div>
+        ) : apiKeys.length === 0 ? (
           <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-8 text-center">
             <h3 className="text-lg font-semibold text-fg">No API Keys Yet</h3>
             <p className="mt-1 text-sm text-fg-2">Add your first provider key to enable BYOK execution.</p>
