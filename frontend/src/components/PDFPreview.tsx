@@ -97,6 +97,7 @@ export default function PDFPreview({
 }: PDFPreviewProps) {
   const [numPages, setNumPages] = useState(0)
   const [zoom, setZoom] = useState(1)
+  const [currentPage, setCurrentPage] = useState(1)
   const [renderError, setRenderError] = useState(false)
   const [synctexReady, setSynctexReady] = useState(false)
   const [syncHint, setSyncHint] = useState(false)
@@ -143,6 +144,9 @@ export default function PDFPreview({
 
   const handleZoomIn = () => setZoom((p) => Math.min(+(p + 0.15).toFixed(2), 3))
   const handleZoomOut = () => setZoom((p) => Math.max(+(p - 0.15).toFixed(2), 0.4))
+  // Container width already tracks the panel's available width, so 100% zoom
+  // is "fit to width" — reset and fit-width are the same target state.
+  const handleResetZoom = () => setZoom(1)
 
   // Measure container width so pages never overflow the panel
   useEffect(() => {
@@ -157,6 +161,72 @@ export default function PDFPreview({
     setContainerWidth(el.getBoundingClientRect().width)
     return () => ro.disconnect()
   }, [])
+
+  // Ctrl/Cmd + scroll (or trackpad pinch, which browsers report as a ctrl-flagged
+  // wheel event) zooms the preview instead of scrolling the page.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      setZoom((p) => {
+        const next = e.deltaY < 0 ? p + 0.08 : p - 0.08
+        return Math.min(3, Math.max(0.4, +next.toFixed(2)))
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  // Keyboard zoom shortcuts: Cmd/Ctrl +/- to step, Cmd/Ctrl+0 to reset to 100%/fit.
+  // Skipped while typing in an input/textarea/contenteditable (e.g. the LaTeX editor).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault()
+        setZoom((p) => Math.min(+(p + 0.15).toFixed(2), 3))
+      } else if (e.key === '-') {
+        e.preventDefault()
+        setZoom((p) => Math.max(+(p - 0.15).toFixed(2), 0.4))
+      } else if (e.key === '0') {
+        e.preventDefault()
+        setZoom(1)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  // Track which page is most in view while scrolling, for the "Page X of N" indicator.
+  useEffect(() => {
+    if (numPages <= 1) {
+      setCurrentPage(1)
+      return
+    }
+    const root = containerRef.current
+    if (!root) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let best: { page: number; ratio: number } | null = null
+        for (const entry of entries) {
+          const pageAttr = (entry.target as HTMLElement).dataset.pageNumber
+          if (!pageAttr) continue
+          if (!best || entry.intersectionRatio > best.ratio) {
+            best = { page: Number(pageAttr), ratio: entry.intersectionRatio }
+          }
+        }
+        if (best && best.ratio > 0) setCurrentPage(best.page)
+      },
+      { root, threshold: [0.25, 0.5, 0.75, 1] }
+    )
+    Object.values(pageRefs.current).forEach((el) => { if (el) observer.observe(el) })
+    return () => observer.disconnect()
+  }, [numPages])
 
   // Base width = container minus horizontal padding (24px each side)
   const baseWidth = containerWidth > 0 ? Math.max(200, containerWidth - 48) : 520
@@ -347,23 +417,43 @@ export default function PDFPreview({
             onClick={handleZoomOut}
             disabled={zoom <= 0.4}
             aria-label="Zoom out"
-            title="Zoom out"
+            title="Zoom out (Ctrl/Cmd -)"
             className="rounded p-1 text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-30"
           >
             <ZoomOut size={13} />
           </button>
-          <span className="min-w-[3rem] text-center text-[11px] tabular-nums text-fg-3">
+          <button
+            onClick={handleResetZoom}
+            disabled={zoom === 1}
+            aria-label="Reset zoom to 100%"
+            title="Reset to 100% (Ctrl/Cmd 0)"
+            className="min-w-[3rem] rounded px-1 py-1 text-center text-[12px] tabular-nums text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-fg-3"
+          >
             {Math.round(zoom * 100)}%
-          </span>
+          </button>
           <button
             onClick={handleZoomIn}
             disabled={zoom >= 3}
             aria-label="Zoom in"
-            title="Zoom in"
+            title="Zoom in (Ctrl/Cmd +)"
             className="rounded p-1 text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-30"
           >
             <ZoomIn size={13} />
           </button>
+          <button
+            onClick={handleResetZoom}
+            disabled={zoom === 1}
+            aria-label="Fit to width"
+            title="Fit to width (Ctrl/Cmd 0)"
+            className="ml-0.5 rounded px-1.5 py-1 font-ui text-[11px] text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-30"
+          >
+            Fit
+          </button>
+          {numPages > 1 && (
+            <span className="ml-1.5 whitespace-nowrap font-ui text-[11px] tabular-nums text-fg-3">
+              Page {currentPage} of {numPages}
+            </span>
+          )}
         </div>
 
         {/* SyncTeX indicator */}
@@ -467,6 +557,7 @@ export default function PDFPreview({
               <div
                 key={pageNum}
                 ref={(el) => { pageRefs.current[pageNum] = el }}
+                data-page-number={pageNum}
                 className="shadow-[var(--shadow-2)] select-text"
                 style={{ lineHeight: 0, position: 'relative' }}
                 onClick={(e) => handlePageClick(e, pageNum)}
