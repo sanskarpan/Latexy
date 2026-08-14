@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, Upload, LayoutTemplate, X, PackageOpen, Sparkles } from 'lucide-react'
+import { Search, Upload, LayoutTemplate, X, PackageOpen, Sparkles, Loader2 } from 'lucide-react'
 import { Linkedin } from '@/components/icons/brand-icons'
 import { toast } from 'sonner'
 import { useSession } from '@/lib/auth-client'
@@ -93,6 +93,9 @@ export default function NewResumePage() {
 
   // ---- submit state ----
   const [isCreating, setIsCreating] = useState(false)
+  // Which specific template card is currently being created from — drives a
+  // per-card spinner so a slow network doesn't look like a frozen page.
+  const [creatingTemplateId, setCreatingTemplateId] = useState<string | null>(null)
 
   // ---- fetch templates on mount ----
   useEffect(() => {
@@ -147,6 +150,7 @@ export default function NewResumePage() {
     const finalTitle = trimmedTitle || template?.name || 'Untitled Resume'
 
     setIsCreating(true)
+    setCreatingTemplateId(id)
     try {
       const result = await apiClient.useTemplate(id, finalTitle)
       toast.success('Resume created from template')
@@ -154,6 +158,7 @@ export default function NewResumePage() {
     } catch {
       toast.error('Failed to create resume')
       setIsCreating(false)
+      setCreatingTemplateId(null)
     }
   }, [title, templates, router])
 
@@ -400,26 +405,43 @@ export default function NewResumePage() {
         {/* --- TEMPLATE MODE --- */}
         {mode === 'template' && (
           <section className="space-y-5">
-            {/* Blank resume option + search bar */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              {/* Search */}
-              <div className="relative w-full sm:max-w-xs">
-                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-fg-3" />
-                <input
-                  type="text"
-                  placeholder="Search templates…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="w-full rounded-[var(--radius-md)] border border-line bg-bg py-2 pl-9 pr-9 text-sm text-fg outline-none transition placeholder:text-fg-3 focus:border-accent"
-                />
-                {search && (
-                  <button
-                    onClick={() => setSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg-2"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
+            {/* Title (mirrors the field at the top of the page) + search bar + blank option.
+                Keeping a compact title input right next to the gallery makes it obvious
+                the title applies to whichever template gets picked below. */}
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                {/* Title */}
+                <div className="relative w-full sm:max-w-xs">
+                  <input
+                    type="text"
+                    placeholder="Resume title (used for the template you pick)"
+                    value={title}
+                    onChange={e => setTitle(e.target.value)}
+                    aria-label="Resume title"
+                    title="Applied to whichever template you select below"
+                    className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-3 focus:border-accent"
+                  />
+                </div>
+
+                {/* Search */}
+                <div className="relative w-full sm:max-w-xs">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-fg-3" />
+                  <input
+                    type="text"
+                    placeholder="Search templates…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="w-full rounded-[var(--radius-md)] border border-line bg-bg py-2 pl-9 pr-9 text-sm text-fg outline-none transition placeholder:text-fg-3 focus:border-accent"
+                  />
+                  {search && (
+                    <button
+                      onClick={() => setSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg-2"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Blank option */}
@@ -479,13 +501,22 @@ export default function NewResumePage() {
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredTemplates.map(template => (
-                  <TemplateCard
-                    key={template.id}
-                    template={template}
-                    onSelect={handleSelectTemplate}
-                    onPreview={handlePreviewTemplate}
-                    disabled={isCreating}
-                  />
+                  <div key={template.id} className="relative">
+                    <TemplateCard
+                      template={template}
+                      onSelect={handleSelectTemplate}
+                      onPreview={handlePreviewTemplate}
+                      disabled={isCreating}
+                    />
+                    {creatingTemplateId === template.id && (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] bg-[color:var(--overlay)] backdrop-blur-[1px]">
+                        <Loader2 size={20} className="animate-spin text-accent-strong" />
+                        <span className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-fg shadow-[var(--shadow-2)]">
+                          Creating…
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
