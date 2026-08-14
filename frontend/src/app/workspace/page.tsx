@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { BookUser, GitFork, GitMerge, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate, Globe, Send, MoreHorizontal, Pencil, Sparkles, FileText, Languages, Briefcase, Trash2, ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiClient, type DiffWithParentResponse, type JobApplication, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult, type TranslateResumeResponse } from '@/lib/api-client'
+import { apiClient, type DiffWithParentResponse, type JobApplication, type JobResultResponse, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult, type TranslateResumeResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import SemanticMatchModal from '@/components/ats/SemanticMatchModal'
@@ -122,6 +122,11 @@ export default function WorkspacePage() {
   const [archivedLoading, setArchivedLoading] = useState(false)
   const [tagEditResumeId, setTagEditResumeId] = useState<string | null>(null)
   const [tagEditValue, setTagEditValue] = useState('')
+  const [archiveConfirmResume, setArchiveConfirmResume] = useState<ResumeResponse | null>(null)
+  const [isArchiving, setIsArchiving] = useState(false)
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
+  const [jobResultCache, setJobResultCache] = useState<Record<string, JobResultResponse | null>>({})
+  const [jobResultLoading, setJobResultLoading] = useState<string | null>(null)
 
   // Variant state
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set())
@@ -380,12 +385,16 @@ export default function WorkspacePage() {
   }, [])
 
   const handleArchive = useCallback(async (resumeId: string) => {
+    setIsArchiving(true)
     try {
       await apiClient.archiveResume(resumeId)
       setResumes(prev => prev.filter(r => r.id !== resumeId))
       toast.success('Resume archived')
+      setArchiveConfirmResume(null)
     } catch {
       toast.error('Failed to archive resume')
+    } finally {
+      setIsArchiving(false)
     }
   }, [])
 
@@ -426,6 +435,23 @@ export default function WorkspacePage() {
       toast.error('Failed to update tags')
     }
   }, [tagEditResumeId, tagEditValue])
+
+  // Clicking a Recent Activity row expands it in place with the run's
+  // result (PDF link / ATS score / error), so a specific recent run is
+  // actionable instead of a dead end.
+  const handleToggleJobDetail = useCallback(async (jobId: string) => {
+    setExpandedJobId(prev => (prev === jobId ? null : jobId))
+    if (jobResultCache[jobId] !== undefined) return
+    setJobResultLoading(jobId)
+    try {
+      const result = await apiClient.getJobResult(jobId)
+      setJobResultCache(prev => ({ ...prev, [jobId]: result }))
+    } catch {
+      setJobResultCache(prev => ({ ...prev, [jobId]: null }))
+    } finally {
+      setJobResultLoading(null)
+    }
+  }, [jobResultCache])
 
   const loadArchivedResumes = useCallback(async () => {
     setArchivedLoading(true)
@@ -516,11 +542,27 @@ export default function WorkspacePage() {
             <button onClick={() => { setOpenCardMenu(null); setShareModalResumeId(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <Share2 size={13} className="text-fg-3" /> {resume.share_token ? 'Manage share link' : 'Share'}
             </button>
-            <button onClick={() => { setOpenCardMenu(null); setApplyModalResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-              <Send size={13} className="text-fg-3" /> Apply to a job
+            <button
+              onClick={() => { setOpenCardMenu(null); setApplyModalResume(resume) }}
+              title="Fill out and submit an application for a specific job posting using this resume"
+              className="flex w-full items-start gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg"
+            >
+              <Send size={13} className="mt-0.5 shrink-0 text-fg-3" />
+              <span>
+                <span className="block">Quick apply</span>
+                <span className="block text-[10px] text-fg-3">Submit an application now</span>
+              </span>
             </button>
-            <button onClick={() => { setOpenCardMenu(null); setTrackerModalResumeId(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
-              <Briefcase size={13} className="text-fg-3" /> Track application
+            <button
+              onClick={() => { setOpenCardMenu(null); setTrackerModalResumeId(resume.id) }}
+              title="Log a job you already applied to elsewhere, so you can track its status here"
+              className="flex w-full items-start gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg"
+            >
+              <Briefcase size={13} className="mt-0.5 shrink-0 text-fg-3" />
+              <span>
+                <span className="block">Add to tracker</span>
+                <span className="block text-[10px] text-fg-3">Log an application you already made</span>
+              </span>
             </button>
             <button onClick={() => { setOpenCardMenu(null); setReferencesModalResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
               <BookUser size={13} className="text-fg-3" /> References page
@@ -537,7 +579,7 @@ export default function WorkspacePage() {
                 <button onClick={() => { setOpenCardMenu(null); setTagEditResumeId(resume.id); setTagEditValue(resume.tags?.join(', ') ?? '') }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-fg-2 transition hover:bg-surface-2 hover:text-fg">
                   <Tag size={13} className="text-fg-3" /> Edit tags
                 </button>
-                <button onClick={() => { setOpenCardMenu(null); if (confirm(`Archive "${resume.title}"? It will be hidden from the workspace.`)) handleArchive(resume.id) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-err/80 transition hover:bg-err/10 hover:text-err">
+                <button onClick={() => { setOpenCardMenu(null); setArchiveConfirmResume(resume) }} className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-err/80 transition hover:bg-err/10 hover:text-err">
                   <Archive size={13} /> Archive
                 </button>
               </>
@@ -673,11 +715,11 @@ export default function WorkspacePage() {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setProjectSearchOpen(true)}
-            title="Search resumes (⌘⇧F)"
+            title="Search resume content — full text (⌘⇧F)"
             className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-3 py-2 text-xs flex items-center gap-1.5"
           >
             <Search className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Search</span>
+            <span className="hidden sm:inline">Search content <span className="text-fg-3">⌘⇧F</span></span>
           </button>
           <Link href="/workspace/history" className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
             Run History
@@ -781,7 +823,9 @@ export default function WorkspacePage() {
             type="text"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search resume titles"
+            placeholder="Filter by title…"
+            aria-label="Filter resumes by title"
+            title="Filters the list below by title only — for full-text search across resume content, use Search content (⌘⇧F) above"
             className="w-full max-w-md rounded-[var(--radius-md)] border border-line bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
           />
 
@@ -1403,6 +1447,55 @@ export default function WorkspacePage() {
               </button>
               <button onClick={handleSaveTags} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg transition hover:brightness-110">
                 Save Tags
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive confirmation modal — themed replacement for window.confirm() */}
+      {archiveConfirmResume && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]"
+          onClick={() => { if (!isArchiving) setArchiveConfirmResume(null) }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="archive-confirm-title"
+            className="w-full max-w-sm rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 id="archive-confirm-title" className="flex items-center gap-2 text-base font-semibold text-fg">
+                <Archive size={14} className="text-err" />
+                Archive resume
+              </h3>
+              <button
+                onClick={() => { if (!isArchiving) setArchiveConfirmResume(null) }}
+                className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="mb-5 text-sm text-fg-2">
+              Archive &ldquo;<strong className="text-fg">{archiveConfirmResume.title}</strong>&rdquo;? It will be hidden from the workspace, but you can restore it later from the archived list.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setArchiveConfirmResume(null)}
+                disabled={isArchiving}
+                className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-semibold text-fg-2 transition hover:text-fg disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleArchive(archiveConfirmResume.id)}
+                disabled={isArchiving}
+                className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-err/15 px-4 py-2 text-xs font-semibold text-err ring-1 ring-err/30 transition hover:bg-err/25 disabled:opacity-50"
+              >
+                {isArchiving ? <Loader2 size={12} className="animate-spin" /> : <Archive size={12} />}
+                {isArchiving ? 'Archiving…' : 'Archive'}
               </button>
             </div>
           </div>
