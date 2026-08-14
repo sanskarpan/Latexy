@@ -27,7 +27,22 @@ function aestheticFor(pathname: string): 'typeset' | 'compiler' {
 export default function AestheticController() {
   const pathname = usePathname()
   useEffect(() => {
-    document.documentElement.setAttribute('data-aesthetic', aestheticFor(pathname || '/'))
+    const root = document.documentElement
+    // not-found.tsx sets this flag (via an inline script that runs during the
+    // initial HTML parse, before this effect ever fires) because a genuinely
+    // unmatched route's real pathname isn't distinguishable from an
+    // authenticated "compiler" route by string alone. Honor it, then clear it
+    // on a macrotask (not synchronously) so a later real navigation recomputes
+    // normally — a sync removal would be undone by React 18 dev StrictMode's
+    // double effect-invoke (mount -> cleanup -> mount), which would otherwise
+    // see the flag already gone on its second pass and fall through to
+    // 'compiler'.
+    if (root.hasAttribute('data-force-typeset')) {
+      root.setAttribute('data-aesthetic', 'typeset')
+      const clear = setTimeout(() => root.removeAttribute('data-force-typeset'), 0)
+      return () => clearTimeout(clear)
+    }
+    root.setAttribute('data-aesthetic', aestheticFor(pathname || '/'))
   }, [pathname])
   return null
 }
