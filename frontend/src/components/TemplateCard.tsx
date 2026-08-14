@@ -8,21 +8,8 @@ import type { TemplateResponse } from '@/lib/api-client'
 //  Category colour + icon mapping                                     //
 // ------------------------------------------------------------------ //
 
-const CATEGORY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  software_engineering: { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-line' },
-  finance:              { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-line' },
-  academic:             { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-line' },
-  creative:             { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-line' },
-  minimal:              { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-line' },
-  ats_safe:             { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-line' },
-  two_column:           { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-line' },
-  executive:            { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-line' },
-  marketing:            { bg: 'bg-accent-soft', text: 'text-accent-strong', border: 'border-accent' },
-  medical:              { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-line' },
-  legal:                { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-line' },
-  graduate:             { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-line' },
-}
-
+// All categories render the same neutral badge — no category is semantically
+// more important than another, so none gets a special accent treatment.
 const DEFAULT_STYLE = { bg: 'bg-surface-2', text: 'text-fg-2', border: 'border-line' }
 
 // ------------------------------------------------------------------ //
@@ -37,7 +24,7 @@ interface TemplateCardProps {
 }
 
 export default function TemplateCard({ template, onSelect, onPreview, disabled }: TemplateCardProps) {
-  const style = CATEGORY_STYLES[template.category] ?? DEFAULT_STYLE
+  const style = DEFAULT_STYLE
   const [imgFailed, setImgFailed] = useState(false)
 
   return (
