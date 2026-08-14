@@ -117,9 +117,30 @@ function ApplicationCard({ app, onDelete, onEdit, onStatusChange, isDragging = f
   const [notesOpen, setNotesOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
+  const firstMenuItemRef = useRef<HTMLButtonElement>(null)
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null)
 
   useEffect(() => { setMounted(true) }, [])
+
+  const closeMenu = useCallback((restoreFocus: boolean) => {
+    setMenuOpen(false)
+    if (restoreFocus) menuTriggerRef.current?.focus()
+  }, [])
+
+  // Escape closes the menu and returns focus to its trigger; focus moves into
+  // the menu (first item) as soon as it opens, so it behaves like a real menu.
+  useEffect(() => {
+    if (!menuOpen) return
+    firstMenuItemRef.current?.focus()
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        closeMenu(true)
+      }
+    }
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
+  }, [menuOpen, closeMenu])
 
   function openMenu() {
     if (menuTriggerRef.current) {
@@ -228,7 +249,9 @@ function ApplicationCard({ app, onDelete, onEdit, onStatusChange, isDragging = f
         <button
           ref={menuTriggerRef}
           type="button"
-          onClick={(e) => { e.stopPropagation(); menuOpen ? setMenuOpen(false) : openMenu() }}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={(e) => { e.stopPropagation(); menuOpen ? closeMenu(false) : openMenu() }}
           className="rounded p-1 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
         >
           <MoreHorizontal size={14} />
@@ -241,11 +264,13 @@ function ApplicationCard({ app, onDelete, onEdit, onStatusChange, isDragging = f
             <button
               type="button"
               className="fixed inset-0 z-[200]"
-              onClick={() => setMenuOpen(false)}
+              onClick={() => closeMenu(false)}
               aria-label="Close menu"
               tabIndex={-1}
             />
             <div
+              role="menu"
+              aria-label={`Actions for ${app.company_name}`}
               className="z-[201] w-36 rounded-[var(--radius-lg)] border border-line bg-surface p-1 shadow-[var(--shadow-2)]"
               style={{
                 position: 'fixed',
@@ -255,15 +280,18 @@ function ApplicationCard({ app, onDelete, onEdit, onStatusChange, isDragging = f
               }}
             >
               <button
+                ref={firstMenuItemRef}
                 type="button"
-                onClick={() => { setMenuOpen(false); onEdit(app) }}
+                role="menuitem"
+                onClick={() => { closeMenu(true); onEdit(app) }}
                 className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-3 py-1.5 text-xs text-fg-2 transition hover:bg-surface-2"
               >
                 <Pencil size={12} /> Edit
               </button>
               <button
                 type="button"
-                onClick={() => { setMenuOpen(false); onDelete(app.id) }}
+                role="menuitem"
+                onClick={() => { closeMenu(true); onDelete(app.id) }}
                 className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-3 py-1.5 text-xs text-err transition hover:bg-err/10"
               >
                 <Trash2 size={12} /> Delete
@@ -559,6 +587,11 @@ export default function TrackerPage() {
 
   // Client-side view over boardData: search + filters + sort. Cross-column drag and
   // status changes still mutate boardData directly, so this only affects presentation.
+  const totalApps = useMemo(
+    () => Object.values(boardData).reduce((sum, apps) => sum + apps.length, 0),
+    [boardData],
+  )
+
   const filteredBoard = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
     const weekAgo = Date.now() - 7 * 86400000
@@ -621,6 +654,26 @@ export default function TrackerPage() {
       {/* Stats */}
       <StatsBar stats={stats} />
 
+      {totalApps === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-[var(--radius-lg)] border border-dashed border-line bg-bg px-6 py-16 text-center">
+          <div className="grid h-12 w-12 place-items-center rounded-[var(--radius-pill)] bg-accent-soft text-accent-strong">
+            <Plus size={20} />
+          </div>
+          <h2 className="text-lg font-semibold text-fg">No applications yet</h2>
+          <p className="max-w-sm text-sm text-fg-2">
+            Track every job application from first submission to offer — add one to see your pipeline take shape across the columns below.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            className="mt-2 flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg transition hover:brightness-110"
+          >
+            <Plus size={13} />
+            Add your first application
+          </button>
+        </div>
+      ) : (
+      <>
       {/* Filters / search / sort */}
       <section className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[180px] max-w-xs">
@@ -722,6 +775,8 @@ export default function TrackerPage() {
           </DragOverlay>
         </DndContext>
       </div>
+      </>
+      )}
 
       {/* Add modal */}
       {showAddModal && (

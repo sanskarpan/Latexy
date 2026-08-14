@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -36,6 +36,21 @@ export default function TemplatesPage() {
   const [loading, setLoading] = useState(true)
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null)
   const [usingTemplateId, setUsingTemplateId] = useState<string | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // '/' focuses search, unless the user is already typing in a form field.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== '/') return
+      const target = e.target as HTMLElement
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+      e.preventDefault()
+      searchInputRef.current?.focus()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   // Fetch templates on mount
   useEffect(() => {
@@ -67,6 +82,7 @@ export default function TemplatesPage() {
       list = list.filter(t =>
         t.name.toLowerCase().includes(q) ||
         (t.description ?? '').toLowerCase().includes(q) ||
+        t.category_label.toLowerCase().includes(q) ||
         t.tags.some(tag => tag.toLowerCase().includes(q))
       )
     }
@@ -150,9 +166,10 @@ export default function TemplatesPage() {
               <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-3" />
               <label htmlFor="template-search" className="sr-only">Search templates</label>
               <input
+                ref={searchInputRef}
                 id="template-search"
                 type="text"
-                placeholder="Search templates…"
+                placeholder="Search templates… (press /)"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="w-full rounded-[var(--radius-md)] border border-line bg-surface py-2.5 pl-9 pr-10 font-body text-sm text-fg outline-none transition duration-150 placeholder:text-fg-3 focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
@@ -168,7 +185,7 @@ export default function TemplatesPage() {
                 </button>
               )}
             </div>
-            <p className="font-ui text-xs uppercase tracking-[0.12em] text-fg-3">
+            <p className="font-ui text-xs uppercase tracking-[0.12em] text-fg-3" role="status" aria-live="polite">
               {filteredTemplates.length} template{filteredTemplates.length !== 1 ? 's' : ''}
             </p>
           </div>
@@ -206,7 +223,7 @@ export default function TemplatesPage() {
                 ))}
               </div>
             ) : filteredTemplates.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 border-t border-line py-20 text-center">
+              <div className="flex flex-col items-center gap-3 border-t border-line py-20 text-center" role="status" aria-live="polite">
                 <p className="font-body text-sm text-fg-2">No templates found</p>
                 {search && (
                   <button

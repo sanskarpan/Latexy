@@ -41,6 +41,7 @@ export default function GlobalHeader() {
   const [hydrated, setHydrated] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const [isSigningOut, setIsSigningOut] = useState(false)
   const { canInstall, prompt: promptInstall } = usePWAInstall()
   // framer-motion honours the OS "reduce motion" preference (the CSS floor in
   // design-tokens.css can't reach JS/WAAPI-driven transforms).
@@ -180,6 +181,8 @@ export default function GlobalHeader() {
   )
 
   const handleSignOut = async () => {
+    if (isSigningOut) return
+    setIsSigningOut(true)
     // Clear device-local offline data so the next user on a shared device can't
     // load the previous user's drafts / queued compiles (cross-user leakage).
     try {
@@ -187,8 +190,14 @@ export default function GlobalHeader() {
     } catch {
       // Non-critical — proceed with sign out regardless.
     }
-    await signOut()
-    window.location.href = '/'
+    try {
+      await signOut()
+    } finally {
+      // No `setIsSigningOut(false)` on success — the imminent full-page
+      // redirect below makes the button irrelevant, and leaving it disabled
+      // avoids a flash back to the enabled state right before navigation.
+      window.location.href = '/'
+    }
   }
 
   const menuLink =
@@ -197,7 +206,10 @@ export default function GlobalHeader() {
   return (
     <header className="sticky top-0 z-[var(--z-sticky)] border-b border-line bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-10">
-        <Link href="/" className="font-display text-xl font-semibold tracking-tight text-fg transition hover:text-accent">
+        <Link
+          href={isAuthenticated ? '/dashboard' : '/'}
+          className="font-display text-xl font-semibold tracking-tight text-fg transition hover:text-accent"
+        >
           Latexy
         </Link>
 
@@ -290,9 +302,17 @@ export default function GlobalHeader() {
                         role="menuitem"
                         tabIndex={-1}
                         onClick={handleSignOut}
-                        className="block w-full rounded-[var(--radius-md)] px-3 py-2 text-left text-sm text-err transition hover:bg-[color-mix(in_srgb,var(--err)_12%,transparent)]"
+                        disabled={isSigningOut}
+                        aria-busy={isSigningOut}
+                        className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-3 py-2 text-left text-sm text-err transition hover:bg-[color-mix(in_srgb,var(--err)_12%,transparent)] disabled:cursor-wait disabled:opacity-70"
                       >
-                        Sign Out
+                        {isSigningOut && (
+                          <span
+                            aria-hidden
+                            className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-err/30 border-t-err motion-reduce:animate-none"
+                          />
+                        )}
+                        {isSigningOut ? 'Signing out…' : 'Sign Out'}
                       </button>
                     </motion.div>
                   </>

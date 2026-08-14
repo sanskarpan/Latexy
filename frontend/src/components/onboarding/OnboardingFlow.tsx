@@ -16,6 +16,7 @@ import {
   LayoutTemplate,
   Upload,
 } from 'lucide-react'
+import { apiClient } from '@/lib/api-client'
 
 interface OnboardingStep {
   id: string
@@ -68,6 +69,24 @@ export default function OnboardingFlow({
 }: OnboardingFlowProps) {
   const [currentStep, setCurrentStep] = useState(0)
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set())
+  const [freePlanCopy, setFreePlanCopy] = useState(
+    'a generous daily compilation allowance and monthly AI optimizations',
+  )
+
+  // Free-plan limits drift as pricing changes — pull the real numbers from the
+  // same /subscription/plans endpoint the billing page uses instead of hardcoding them.
+  useEffect(() => {
+    if (userType === 'premium') return
+    let cancelled = false
+    apiClient.getSubscriptionPlans().then((res) => {
+      if (cancelled || !res.success || !res.data) return
+      const free = res.data.plans?.free as { compilations?: number | string; optimizations?: number | string } | undefined
+      if (free && typeof free.compilations !== 'undefined' && typeof free.optimizations !== 'undefined') {
+        setFreePlanCopy(`${free.compilations} compilations a day and ${free.optimizations} AI optimizations a month`)
+      }
+    }).catch(() => { /* keep the non-numeric fallback copy */ })
+    return () => { cancelled = true }
+  }, [userType])
 
   const prefersReducedMotion = useReducedMotion()
   const panelRef = useRef<HTMLDivElement>(null)
@@ -252,7 +271,7 @@ export default function OnboardingFlow({
               <p className="text-fg-2 max-w-md">
                 {userType === 'premium'
                   ? 'Your plan includes unlimited compilations and AI optimizations. Pick a starting point below.'
-                  : 'Your free account includes 10 compilations a day and 3 AI optimizations a month. Pick a starting point below.'}
+                  : `Your free account includes ${freePlanCopy}. Pick a starting point below.`}
               </p>
             </div>
           </div>
@@ -351,17 +370,27 @@ export default function OnboardingFlow({
             </button>
           </div>
 
-          {/* Segmented progress */}
-          <div className="mt-4 flex gap-1.5">
+          {/* Segmented progress — each segment has a real touch target (min-h-11)
+              with a thin visible bar centered inside it. */}
+          <div className="mt-4 flex gap-1.5" role="group" aria-label="Onboarding progress">
             {steps.map((_, index) => (
               <button
                 key={index}
                 onClick={() => goToStep(index)}
                 aria-label={`Go to step ${index + 1}`}
-                className={`h-1.5 flex-1 rounded-[var(--radius-pill)] transition-colors ${
-                  index <= currentStep ? 'bg-accent' : 'bg-surface-2'
-                }`}
-              />
+                aria-current={index === currentStep ? 'step' : undefined}
+                className="flex min-h-[44px] flex-1 items-center rounded-[var(--radius-sm)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <span
+                  className={`h-1.5 w-full rounded-[var(--radius-pill)] transition-colors ${
+                    index === currentStep
+                      ? 'bg-accent'
+                      : index < currentStep
+                      ? 'bg-accent-strong'
+                      : 'bg-surface-2'
+                  }`}
+                />
+              </button>
             ))}
           </div>
         </div>
@@ -424,7 +453,13 @@ export default function OnboardingFlow({
   )
 }
 
-// Hook for managing onboarding state
+// Hook for managing onboarding state.
+//
+// KNOWN GAP: completion is tracked in localStorage only, so it is device-local
+// and re-triggers in every new browser/device the user signs into. A full fix
+// needs a server-side `has_onboarded` flag (persisted via an API call and
+// hydrated from the session) plus a UI entry point to replay it — both require
+// backend + workspace/page.tsx changes outside this file's scope.
 export function useOnboarding() {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   // Default to true (assume completed) until localStorage check resolves.

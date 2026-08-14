@@ -26,6 +26,20 @@ const TONE_OPTIONS: { value: CoverLetterTone; label: string; desc: string }[] = 
   { value: 'enthusiastic', label: 'Enthusiastic', desc: 'Energetic and passionate' },
 ]
 
+// Fall back through company/role -> a job-description snippet -> a stable
+// ordinal, so entries created without a company/role stay distinguishable
+// instead of collapsing to identical "Cover Letter" rows.
+function getCoverLetterLabel(cl: CoverLetterResponse, blankIndex: number): string {
+  if (cl.company_name || cl.role_title) {
+    return [cl.company_name, cl.role_title].filter(Boolean).join(' — ')
+  }
+  if (cl.job_description) {
+    const snippet = cl.job_description.trim().slice(0, 48)
+    return snippet.length < cl.job_description.trim().length ? `${snippet}…` : snippet
+  }
+  return `Cover Letter #${blankIndex}`
+}
+
 const LENGTH_OPTIONS: { value: CoverLetterLength; label: string; desc: string }[] = [
   { value: '3_paragraphs', label: '3 Paragraphs', desc: 'Concise and focused' },
   { value: '4_paragraphs', label: '4 Paragraphs', desc: 'More detail' },
@@ -516,7 +530,13 @@ export default function CoverLetterPage() {
                 Previous Cover Letters ({existingCoverLetters.length})
               </h2>
               <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-subtle">
-                {existingCoverLetters.map((cl) => (
+                {(() => {
+                  let blankCount = 0
+                  return existingCoverLetters.map((cl) => {
+                    const isBlank = !cl.company_name && !cl.role_title && !cl.job_description
+                    if (isBlank) blankCount += 1
+                    const label = getCoverLetterLabel(cl, blankCount)
+                    return (
                   <div
                     key={cl.id}
                     className={`flex items-center justify-between rounded-[var(--radius-md)] border p-3 transition ${
@@ -529,18 +549,18 @@ export default function CoverLetterPage() {
                       onClick={() => loadCoverLetter(cl)}
                       className="flex-1 text-left"
                     >
-                      <p className="text-xs font-medium text-fg truncate">
-                        {cl.company_name || cl.role_title || 'Cover Letter'}
+                      <p className="text-xs font-medium text-fg truncate" title={label}>
+                        {label}
                       </p>
                       <p className="text-[10px] text-fg-3">
-                        {new Date(cl.created_at).toLocaleDateString()}
+                        {new Date(cl.created_at).toLocaleDateString()} {new Date(cl.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </button>
                     {confirmDeleteId === cl.id ? (
                       <div className="ml-2 flex shrink-0 items-center gap-1.5">
                         <button
                           onClick={() => deleteCoverLetter(cl.id)}
-                          aria-label={`Confirm delete cover letter ${cl.company_name || cl.role_title || ''}`}
+                          aria-label={`Confirm delete cover letter ${label}`}
                           className="text-[10px] font-semibold text-err transition hover:brightness-110"
                         >
                           Confirm
@@ -561,7 +581,9 @@ export default function CoverLetterPage() {
                       </button>
                     )}
                   </div>
-                ))}
+                    )
+                  })
+                })()}
               </div>
             </section>
           )}
