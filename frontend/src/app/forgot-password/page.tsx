@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { CheckCircle2 } from 'lucide-react'
@@ -20,6 +20,8 @@ function readRedirect(params: URLSearchParams): string | null {
   return null
 }
 
+const RESEND_COOLDOWN_SECONDS = 30
+
 function ForgotPasswordInner() {
   const redirect = readRedirect(useSearchParams())
   const loginHref = redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login'
@@ -27,26 +29,77 @@ function ForgotPasswordInner() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [sent, setSent] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+  const [resendStatus, setResendStatus] = useState('')
+  const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimer.current) clearInterval(cooldownTimer.current)
+    }
+  }, [])
+
+  const startCooldown = () => {
+    setResendCooldown(RESEND_COOLDOWN_SECONDS)
+    if (cooldownTimer.current) clearInterval(cooldownTimer.current)
+    cooldownTimer.current = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          if (cooldownTimer.current) clearInterval(cooldownTimer.current)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  const requestReset = async () => {
+    const { error: err } = await authClient.requestPasswordReset({
+      email,
+      redirectTo: '/reset-password',
+    })
+    if (err) {
+      throw new Error(err.message || 'Could not send the reset email. Please try again.')
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError('')
     try {
-      const { error: err } = await authClient.requestPasswordReset({
-        email,
-        redirectTo: '/reset-password',
-      })
-      if (err) {
-        setError(err.message || 'Could not send the reset email. Please try again.')
-      } else {
-        setSent(true)
-      }
-    } catch {
-      setError('An unexpected error occurred')
+      await requestReset()
+      setSent(true)
+      startCooldown()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred')
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleResend = async () => {
+    if (resendCooldown > 0 || isLoading) return
+    setIsLoading(true)
+    setError('')
+    setResendStatus('')
+    try {
+      await requestReset()
+      setResendStatus('Link resent — check your inbox.')
+      startCooldown()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleUseDifferentEmail = () => {
+    if (cooldownTimer.current) clearInterval(cooldownTimer.current)
+    setSent(false)
+    setResendCooldown(0)
+    setResendStatus('')
+    setError('')
   }
 
   return (
@@ -82,6 +135,47 @@ function ForgotPasswordInner() {
                   is on its way. Check your inbox.
                 </span>
               </div>
+
+              {resendStatus && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-3 py-2 text-left font-body text-sm text-ok"
+                >
+                  {resendStatus}
+                </div>
+              )}
+
+              {error && (
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  className="rounded-[var(--radius-md)] border border-err/40 bg-surface-2 px-3 py-2 text-left font-body text-sm text-err"
+                >
+                  {error}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleResend}
+                  disabled={isLoading || resendCooldown > 0}
+                  loading={isLoading}
+                  className="sm:w-auto"
+                >
+                  {resendCooldown > 0 ? `Resend link (${resendCooldown}s)` : 'Resend link'}
+                </Button>
+                <button
+                  type="button"
+                  onClick={handleUseDifferentEmail}
+                  className="font-ui text-sm font-medium text-fg-3 underline-offset-2 transition duration-150 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded-[var(--radius-sm)] motion-reduce:transition-none"
+                >
+                  Use a different email
+                </button>
+              </div>
+
               <Link
                 href={loginHref}
                 className="inline-flex items-center rounded-[var(--radius-sm)] font-ui text-sm font-semibold text-accent-strong transition duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none"
