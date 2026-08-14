@@ -11,7 +11,7 @@ import Link from 'next/link'
  * typeset look its copy/design imply. Force it back to 'typeset' as soon as
  * this page mounts, before paint is visible to the user.
  */
-const FORCE_TYPESET = `document.documentElement.setAttribute('data-aesthetic','typeset');`
+const FORCE_TYPESET = `document.documentElement.setAttribute('data-aesthetic','typeset');document.documentElement.setAttribute('data-force-typeset','1');`
 
 export default function NotFound() {
   return (
