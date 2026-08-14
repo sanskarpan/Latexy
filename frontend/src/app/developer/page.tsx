@@ -304,7 +304,11 @@ console.log(payload);`,
                   />
                   <button
                     onClick={() => handleRename(key.id)}
-                    disabled={busyKeyId === key.id}
+                    disabled={
+                      busyKeyId === key.id ||
+                      !renaming[key.id]?.trim() ||
+                      renaming[key.id]?.trim() === key.name
+                    }
                     className={`${ghostBtn} shrink-0`}
                   >
                     Rename
