@@ -9,24 +9,9 @@ import type { TemplateDetailResponse } from '@/lib/api-client'
 //  Category label map                                                 //
 // ------------------------------------------------------------------ //
 
-const ACCENT_CHIP = { bg: 'bg-accent-soft', text: 'text-accent-strong', border: 'border-accent' }
-
-const CATEGORY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  software_engineering: ACCENT_CHIP,
-  finance:              ACCENT_CHIP,
-  academic:             ACCENT_CHIP,
-  creative:             ACCENT_CHIP,
-  minimal:              ACCENT_CHIP,
-  ats_safe:             ACCENT_CHIP,
-  two_column:           ACCENT_CHIP,
-  executive:            ACCENT_CHIP,
-  marketing:            ACCENT_CHIP,
-  medical:              ACCENT_CHIP,
-  legal:                ACCENT_CHIP,
-  graduate:             ACCENT_CHIP,
-}
-
-const DEFAULT_STYLE = ACCENT_CHIP
+// Every category shares the same chip style — kept as one constant rather
+// than a dead per-category lookup map.
+const DEFAULT_STYLE = { bg: 'bg-accent-soft', text: 'text-accent-strong', border: 'border-accent' }
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
@@ -189,7 +174,7 @@ export default function TemplatePreviewModal({
 
   if (!templateId) return null
 
-  const style = template ? (CATEGORY_STYLES[template.category] ?? DEFAULT_STYLE) : DEFAULT_STYLE
+  const style = DEFAULT_STYLE
   const effectiveView = (viewMode === 'pdf' && pdfFailed) ? 'latex' : viewMode
 
   return (
@@ -286,6 +271,8 @@ export default function TemplatePreviewModal({
                   <button
                     onClick={() => !pdfFailed && setViewMode('pdf')}
                     disabled={pdfFailed}
+                    aria-disabled={pdfFailed}
+                    title={pdfFailed ? 'PDF unavailable for this template' : undefined}
                     className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-3 py-1.5 text-xs font-medium transition ${
                       effectiveView === 'pdf'
                         ? 'bg-surface-2 text-fg'
@@ -296,6 +283,7 @@ export default function TemplatePreviewModal({
                   >
                     <FileText size={12} />
                     PDF Preview
+                    {pdfFailed && <span className="text-[10px] text-fg-3">(unavailable)</span>}
                   </button>
                   <button
                     onClick={() => setViewMode('latex')}
