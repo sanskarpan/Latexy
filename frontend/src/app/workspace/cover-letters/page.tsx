@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { X } from 'lucide-react'
 import { apiClient, type CoverLetterListItem } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -127,7 +128,11 @@ export default function CoverLettersPage() {
       <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="relative w-full max-w-md">
+            <label htmlFor="cover-letter-search" className="sr-only">
+              Search cover letters by company or role
+            </label>
             <input
+              id="cover-letter-search"
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -138,10 +143,20 @@ export default function CoverLettersPage() {
             {isFetching && !isLoading && (
               <span
                 aria-live="polite"
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-ui text-[10px] uppercase tracking-[0.14em] text-fg-3"
+                className="pointer-events-none absolute right-9 top-1/2 -translate-y-1/2 font-ui text-[10px] uppercase tracking-[0.14em] text-fg-3"
               >
                 Searching…
               </span>
+            )}
+            {searchQuery && !isFetching && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-[var(--radius-sm)] text-fg-3 transition hover:text-fg"
+              >
+                <X size={14} />
+              </button>
             )}
           </div>
           <div className="flex rounded-[var(--radius-md)] border border-line bg-surface-2 p-1 text-xs">
@@ -253,7 +268,8 @@ export default function CoverLettersPage() {
         </div>
       ) : (
         <div className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface">
-          <table className="w-full text-left">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-left">
             <thead>
               <tr className="border-b border-line bg-surface-2 text-[11px] uppercase tracking-[0.14em] text-fg-3">
                 <th className="px-4 py-3 font-semibold">Company / Role</th>
@@ -330,6 +346,7 @@ export default function CoverLettersPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
       </div>
