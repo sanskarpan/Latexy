@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Bell, BookOpen, Mail, Calendar, Loader2, CheckCircle, Monitor, Unlink, ExternalLink, Cloud, LogIn } from 'lucide-react'
 import { Github } from '@/components/icons/brand-icons'
 import { apiClient, type NotificationPrefs, type GitHubStatusResponse, type ZoteroStatusResponse, type MendeleyStatusResponse, type DropboxStatusResponse } from '@/lib/api-client'
@@ -12,6 +12,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030'
 
 function SettingsContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
   const { data: sessionData, isPending: sessionLoading } = useSession()
   const settingsTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
 
@@ -141,12 +143,16 @@ function SettingsContent() {
 
   // Show success message after OAuth redirect
   useEffect(() => {
+    let sawConnectedParam = false
+
     if (searchParams.get('github') === 'connected') {
+      sawConnectedParam = true
       setGhSuccess('GitHub account connected successfully!')
       apiClient.getGitHubStatus().then(setGhStatus).catch(() => {})
       scheduleTimer(() => setGhSuccess(null), 5000)
     }
     if (searchParams.get('zotero') === 'connected') {
+      sawConnectedParam = true
       setZotSuccess('Zotero connected successfully!')
       apiClient.getZoteroStatus().then(setZotStatus).catch(() => {})
       scheduleTimer(() => setZotSuccess(null), 5000)
@@ -156,6 +162,7 @@ function SettingsContent() {
       }
     }
     if (searchParams.get('mendeley') === 'connected') {
+      sawConnectedParam = true
       setMenSuccess('Mendeley connected successfully!')
       apiClient.getMendeleyStatus().then(setMenStatus).catch(() => {})
       scheduleTimer(() => setMenSuccess(null), 5000)
@@ -165,9 +172,16 @@ function SettingsContent() {
       }
     }
     if (searchParams.get('dropbox') === 'connected') {
+      sawConnectedParam = true
       setDbxSuccess('Dropbox account connected successfully!')
       apiClient.getDropboxStatus().then(setDbxStatus).catch(() => {})
       scheduleTimer(() => setDbxSuccess(null), 5000)
+    }
+
+    // Strip the OAuth success query params from the URL so a refresh or
+    // shared link doesn't replay the "connected successfully" state.
+    if (sawConnectedParam) {
+      router.replace(pathname, { scroll: false })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
