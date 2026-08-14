@@ -166,6 +166,11 @@ function BillingPageContent() {
       .filter((plan): plan is PricingPlan => Boolean(plan))
   }, [billingPeriod, plans])
 
+  // Mirrors SubscriptionManager's own "no active paid subscription" check so the
+  // Free plan card's CTA and behavior stay consistent with the subscription panel.
+  const isFreeTier =
+    !currentSubscription || (currentSubscription.planId === 'free' && !currentSubscription.subscriptionId)
+
   const appliedCoupon = couponState?.valid ? couponState : null
   const couponScopePlan = couponPlanId ? plans[couponPlanId] ?? null : null
   const couponDiscountedPrice =
@@ -239,6 +244,27 @@ function BillingPageContent() {
     }
   }, [currentSubscription?.planId]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Downgrading to Free cancels the active paid subscription (there is no
+  // separate "switch to free" endpoint). Confirm first since this is
+  // destructive to the user's current plan/benefits.
+  const handleDowngradeToFree = async () => {
+    if (!confirm('Downgrade to the Free plan? This cancels your current subscription.')) return
+    setActivePlan('free')
+    const result = await apiClient.cancelSubscription()
+    setActivePlan(null)
+    if (!result.success) {
+      toast.error(result.error || 'Failed to downgrade to Free')
+      return
+    }
+    toast.success('Downgraded to the Free plan.')
+    const refreshed = await apiClient.getCurrentSubscription()
+    if (refreshed.success && refreshed.data) {
+      setCurrentSubscription(refreshed.data)
+    } else {
+      setCurrentSubscription(null)
+    }
+  }
+
   const handleSelectPlan = async (planId: string) => {
     if (planId !== 'free' && billingStatus && !billingStatus.available && planId !== 'student') {
       toast.error(billingStatus.message)
@@ -251,7 +277,11 @@ function BillingPageContent() {
     }
 
     if (planId === 'free') {
-      toast.info('Free plan is already available.')
+      if (isFreeTier) {
+        toast.info('You are already on the Free plan.')
+        return
+      }
+      await handleDowngradeToFree()
       return
     }
 
@@ -448,18 +478,33 @@ function BillingPageContent() {
               <h2 className="text-lg font-semibold text-fg">Choose a plan</h2>
               <p className="mt-1 text-sm text-fg-2">Annual billing saves 20% on Basic, Pro, and BYOK.</p>
             </div>
-            <div className="inline-flex rounded-[var(--radius-lg)] border border-line bg-bg p-1">
+            <div
+              role="group"
+              aria-label="Billing period"
+              className="inline-flex rounded-[var(--radius-lg)] border border-line bg-bg p-1"
+            >
               <button
+                type="button"
+                aria-pressed={billingPeriod === 'monthly'}
                 onClick={() => setBillingPeriod('monthly')}
                 className={`rounded-[var(--radius-md)] px-4 py-2 text-sm ${billingPeriod === 'monthly' ? 'bg-accent text-accent-fg' : 'text-fg-2'}`}
               >
                 Monthly
               </button>
               <button
+                type="button"
+                aria-pressed={billingPeriod === 'annual'}
                 onClick={() => setBillingPeriod('annual')}
-                className={`rounded-[var(--radius-md)] px-4 py-2 text-sm ${billingPeriod === 'annual' ? 'bg-accent text-accent-fg' : 'text-fg-2'}`}
+                className={`inline-flex items-center gap-2 rounded-[var(--radius-md)] px-4 py-2 text-sm ${billingPeriod === 'annual' ? 'bg-accent text-accent-fg' : 'text-fg-2'}`}
               >
                 Annual
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                    billingPeriod === 'annual' ? 'bg-accent-fg/20 text-accent-fg' : 'bg-ok/10 text-ok'
+                  }`}
+                >
+                  Save 20%
+                </span>
               </button>
             </div>
           </div>
@@ -533,15 +578,25 @@ function BillingPageContent() {
             <>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {visiblePlans.map((plan, idx) => (
-                  <PricingCard
-                    key={`${plan.id ?? 'plan'}-${idx}`}
-                    plan={plan}
-                    isPopular={plan.id === (billingPeriod === 'annual' ? 'pro_annual' : 'pro')}
-                    onSelectPlan={handleSelectPlan}
-                    isLoading={activePlan === plan.id}
-                    disabled={plan.id !== 'free' && plan.id !== 'student' && !!billingStatus && !billingStatus.available}
-                    disabledLabel="Unavailable"
-                  />
+                  <div key={`${plan.id ?? 'plan'}-${idx}`}>
+                    <PricingCard
+                      plan={plan}
+                      isPopular={plan.id === (billingPeriod === 'annual' ? 'pro_annual' : 'pro')}
+                      onSelectPlan={handleSelectPlan}
+                      isLoading={activePlan === plan.id}
+                      disabled={
+                        plan.id === 'free'
+                          ? isFreeTier
+                          : plan.id !== 'student' && !!billingStatus && !billingStatus.available
+                      }
+                      disabledLabel={plan.id === 'free' ? 'Current Plan' : 'Unavailable'}
+                    />
+                    {plan.id === 'free' && !isFreeTier && (
+                      <p className="mt-2 text-xs text-fg-3">
+                        Selecting this cancels your current subscription and reverts your account to Free.
+                      </p>
+                    )}
+                  </div>
                 ))}
               </div>
 
