@@ -1,0 +1,3 @@
+# measure_db_latency.py is a `modal run` research instrument, not part of the app.
+__pycache__/
+*.pyc
