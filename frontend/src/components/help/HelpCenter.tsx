@@ -129,7 +129,7 @@ const faqData: FAQItem[] = [
   {
     id: 'subscription-plans',
     question: 'What subscription plans are available?',
-    answer: 'We offer: Free (10 compilations/day, 3 AI optimizations/month), Basic (₹299/month - 50 compilations, 10 optimizations per month), Pro (₹599/month - unlimited), and BYOK (₹199/month - unlimited with your API keys). All paid plans include resume history and priority support.',
+    answer: 'We offer: Free (10 compilations/day, 3 AI optimizations/month), Basic (₹299/month - 400 compilations, 10 optimizations per month), Pro (₹599/month - unlimited), and BYOK (₹199/month - unlimited with your API keys). All paid plans include resume history and priority support.',
     category: 'billing',
     tags: ['plans', 'pricing', 'subscription']
   },
