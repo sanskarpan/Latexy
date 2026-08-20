@@ -477,6 +477,7 @@ function BillingPageContent() {
             <div>
               <h2 className="text-lg font-semibold text-fg">Choose a plan</h2>
               <p className="mt-1 text-sm text-fg-2">Annual billing saves 20% on Basic, Pro, and BYOK.</p>
+              <p className="mt-1 text-xs text-fg-3">All prices include GST — nothing extra added at checkout.</p>
             </div>
             <div
               role="group"
