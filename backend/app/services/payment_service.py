@@ -668,6 +668,19 @@ class PaymentService:
                     "error": "Invalid plan selected"
                 }
 
+            # Annual SKUs (basic_annual/pro_annual/byok_annual) are only
+            # launched once their RAZORPAY_PLAN_*_ANNUAL id is configured in
+            # the dashboard. Without that, falling through would spin up an
+            # ad-hoc Razorpay plan on every checkout attempt (via the
+            # create_razorpay_plan fallback in _create_paid_subscription)
+            # instead of billing against a reviewed, pre-configured annual
+            # SKU — refuse cleanly instead.
+            if concrete_plan_id.endswith("_annual") and not get_razorpay_plan_id(concrete_plan_id):
+                return {
+                    "success": False,
+                    "error": "Annual billing isn't available yet — please choose monthly.",
+                }
+
             # Handle free plan
             if plan_config["price"] == 0:
                 live = await self._get_live_provider_subscription(db, user_id)
