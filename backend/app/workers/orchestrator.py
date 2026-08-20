@@ -64,6 +64,8 @@ from ..workers.event_publisher import (
 from ..workers.latex_worker import (
     cache_compile_log,
     cache_compile_output,
+    compute_queue_wait_seconds,
+    consume_cold_start_seconds,
     reconcile_compilation_record,
 )
 
@@ -119,9 +121,56 @@ def optimize_and_compile_task(
     if job_id is None:
         job_id = str(uuid.uuid4())
 
+    # Timing instrumentation (#1281) — same phases latex_worker.compile_latex_task
+    # reports, plus the LLM/ATS stages that are unique to this combined pipeline.
+    _task_monotonic_start = time.monotonic()
+    _cold_start_seconds = consume_cold_start_seconds()
+    _queue_wait_seconds = compute_queue_wait_seconds(job_id)
+
     task_id = self.request.id
     worker_id = f"orchestrator-{task_id}"
-    logger.info(f"Orchestrator task {task_id} starting for job {job_id}")
+    logger.info(
+        f"Orchestrator task {task_id} starting for job {job_id}",
+        extra={
+            "job_id": job_id,
+            "task_id": task_id,
+            "queue_wait_seconds": _queue_wait_seconds,
+            "cold_start_seconds": _cold_start_seconds,
+        },
+    )
+
+    def _log_task_timing(
+        outcome: str,
+        optimization_seconds: Optional[float] = None,
+        compile_subprocess_seconds: Optional[float] = None,
+        ats_scoring_seconds: Optional[float] = None,
+        reporting_start: Optional[float] = None,
+    ) -> None:
+        """One structured, grep-able line per task completion (#1281).
+
+        Splits the combined LLM -> LaTeX -> ATS pipeline into its phases so a
+        latency regression shows up as a specific field instead of one opaque
+        total.
+        """
+        reporting_seconds = (
+            time.monotonic() - reporting_start if reporting_start is not None else None
+        )
+        logger.info(
+            "orchestrator_task_timing",
+            extra={
+                "job_id": job_id,
+                "task_id": task_id,
+                "compiler": compiler,
+                "outcome": outcome,
+                "queue_wait_seconds": _queue_wait_seconds,
+                "cold_start_seconds": _cold_start_seconds,
+                "optimization_seconds": optimization_seconds,
+                "compile_subprocess_seconds": compile_subprocess_seconds,
+                "ats_scoring_seconds": ats_scoring_seconds,
+                "reporting_seconds": reporting_seconds,
+                "total_task_seconds": time.monotonic() - _task_monotonic_start,
+            },
+        )
 
     api_key = user_api_key or settings.OPENAI_API_KEY
 
@@ -235,6 +284,11 @@ def optimize_and_compile_task(
                 compilation_time=compilation_time,
                 error_message=compile_error,
             )
+            _log_task_timing(
+                error_code,
+                optimization_seconds=optimization_time,
+                compile_subprocess_seconds=compilation_time,
+            )
             return {
                 "success": False,
                 "job_id": job_id,
@@ -252,11 +306,14 @@ def optimize_and_compile_task(
             "message": "Scoring ATS compatibility",
         })
 
+        _ats_start = time.monotonic()
         ats_score, ats_details = _run_ats_stage(
             job_id=job_id,
             latex_content=optimized_latex,
             job_description=job_description,
         )
+        _ats_scoring_seconds = time.monotonic() - _ats_start
+        _reporting_start = time.monotonic()
 
         # ================================================================ #
         # Completion                                                        #
@@ -299,6 +356,13 @@ def optimize_and_compile_task(
             f"Orchestrator task {task_id} succeeded for job {job_id} "
             f"(ATS {ats_score:.1f}, {tokens_used} tokens, {compilation_time:.1f}s)"
         )
+        _log_task_timing(
+            "success",
+            optimization_seconds=optimization_time,
+            compile_subprocess_seconds=compilation_time,
+            ats_scoring_seconds=_ats_scoring_seconds,
+            reporting_start=_reporting_start,
+        )
 
         # Auto-save checkpoint if resume_id is known
         _resume_id = resume_id or (metadata or {}).get("resume_id")
@@ -334,6 +398,7 @@ def optimize_and_compile_task(
             "retryable": False,
         })
         reconcile_compilation_record(job_id, success=False, error_message="compile_timeout")
+        _log_task_timing("soft_time_limit_exceeded")
         return {"success": False, "job_id": job_id, "error": "compile_timeout"}
 
     except Exception as exc:
@@ -348,6 +413,7 @@ def optimize_and_compile_task(
                 "attempt": self.request.retries + 2,
                 "error_message": str(exc),
             })
+            _log_task_timing("retrying")
             raise self.retry(countdown=min(60 * (2 ** self.request.retries), 600), exc=exc)
         publish_event(job_id, "job.failed", {
             "stage": current_stage,
@@ -356,6 +422,7 @@ def optimize_and_compile_task(
             "retryable": False,
         })
         reconcile_compilation_record(job_id, success=False, error_message=str(exc))
+        _log_task_timing("exception")
         return {"success": False, "job_id": job_id, "error": str(exc)}
 
 
