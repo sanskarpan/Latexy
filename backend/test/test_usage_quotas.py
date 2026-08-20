@@ -98,13 +98,33 @@ class TestPlanQuotaTable:
 
         assert get_plan_config("free")["features"]["compilations"] == "10 / day"
         assert get_plan_config("free")["features"]["optimizations"] == "3 / month"
-        assert get_plan_config("basic")["features"]["compilations"] == "50 / month"
+        assert get_plan_config("basic")["features"]["compilations"] == "400 / month"
         assert get_plan_config("pro")["features"]["compilations"] == "unlimited"
 
     def test_basic_matches_advertised_plan(self):
-        assert get_plan_quota("basic", "compilations") == 50
+        assert get_plan_quota("basic", "compilations") == 400
         assert get_plan_quota("basic", "optimizations") == 10
         assert get_plan_quota("basic_annual", "optimizations") == 10
+
+    def test_basic_compilations_is_not_a_downgrade_from_free(self):
+        # B3/#1283 regression guard: the first PAID tier must never grant a
+        # lower effective monthly compile allowance than the free tier does.
+        # Free is metered per DAY, so its worst-case monthly equivalent is
+        # ~31 * daily limit; Basic (a paid, monthly-windowed plan) must clear
+        # that bar, or paying becomes a downgrade on the headline metric.
+        free_daily = get_plan_quota("free", "compilations")
+        assert get_plan_quota_window("free", "compilations") == "day"
+        free_monthly_equivalent = free_daily * 31
+
+        basic_monthly = get_plan_quota("basic", "compilations")
+        assert get_plan_quota_window("basic", "compilations") == "month"
+
+        assert basic_monthly is not None
+        assert basic_monthly >= free_monthly_equivalent, (
+            f"basic compilations quota ({basic_monthly}/month) must be >= "
+            f"free's 31-day equivalent ({free_monthly_equivalent}) — paying "
+            "must never grant fewer compiles than staying free."
+        )
 
     @pytest.mark.parametrize("plan", ["pro", "pro_annual", "byok", "team", "student"])
     def test_paid_unlimited_is_none(self, plan):
@@ -474,7 +494,7 @@ class TestEntitlementsEndpointExposesQuotas:
         assert resp.status_code == 200
         quotas = resp.json()["quotas"]
         assert quotas["dimensions"]["optimizations"]["limit"] == 10
-        assert quotas["dimensions"]["compilations"]["limit"] == 50
+        assert quotas["dimensions"]["compilations"]["limit"] == 400
         assert quotas["dimensions"]["compilations"]["window"] == "month"
 
     async def test_anonymous_response_has_no_quotas(self, client: AsyncClient):
