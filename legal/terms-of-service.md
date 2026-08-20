@@ -34,7 +34,7 @@ Latexy is an AI-powered ATS (Applicant Tracking System) resume optimizer that he
 
 ### 4.1 Plan Types
 - **Free Trial**: 3 free resume compilations per device (no registration required)
-- **Basic Plan**: ₹299/month - 50 compilations, 10 optimizations
+- **Basic Plan**: ₹299/month - 400 compilations, 10 optimizations
 - **Pro Plan**: ₹599/month - Unlimited compilations and optimizations
 - **BYOK Plan**: ₹199/month - Use your own API keys with premium features
 
