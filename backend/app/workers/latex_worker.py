@@ -10,9 +10,11 @@ Compilation row (SQLAlchemy async engine has no sync counterpart in this app).
 
 import asyncio
 import base64
+import json
 import re
 import shutil
 import subprocess
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -73,6 +75,75 @@ _PDFTOTEXT_FALLBACK_PATHS = (
     "/usr/local/bin/pdftotext",
     "/usr/bin/pdftotext",
 )
+
+
+# ------------------------------------------------------------------ #
+#  Timing instrumentation (#1281 — "Compile latency: 37s median ->    #
+#  target <10s"). Production measurement showed ~8s job submit + ~24s#
+#  more of opaque "processing" before completion, with the job's own #
+#  reported compilation_time at ~15.5s — i.e. roughly half the       #
+#  "processing" window is unaccounted for by the one number we       #
+#  already report. These helpers break that window into phases that #
+#  get logged as structured (grep-able) fields instead of prose, so  #
+#  the next measurement shows which phase actually dominates:        #
+#    - queue_wait_seconds: job creation (API writes :meta.submitted_at)  #
+#      to this worker picking the task up.                            #
+#    - cold_start_seconds: only set for the FIRST task this worker    #
+#      process (== this Modal container) handles — the gap between    #
+#      module import (proxy for container start) and task start, i.e. #
+#      container boot + image pull. None on every task after that,    #
+#      i.e. on a warm min_containers=1 container.                      #
+#    - compile_subprocess_seconds: the pdflatex/xelatex/lualatex        #
+#      subprocess itself (already computed elsewhere as                #
+#      compilation_time — reused, not duplicated).                     #
+#    - reporting_seconds: everything after the subprocess exits —      #
+#      recorder-escape check, log/PDF caching to Redis, Compilation    #
+#      row reconcile (+ MinIO upload), event publishing.               #
+# ------------------------------------------------------------------ #
+
+# Stamped once, at import time — this module is imported fresh in every worker
+# OS process (a Celery worker fork, or a Modal container for run_latex_task /
+# run_orchestrator_task), so this is a reliable proxy for "this process started".
+_PROCESS_STARTED_AT = time.monotonic()
+_first_task_lock = threading.Lock()
+_first_task_seen = False
+
+
+def consume_cold_start_seconds() -> Optional[float]:
+    """Elapsed time since this worker process started, but only once.
+
+    The first caller (the first task this process handles) gets the real gap;
+    every later call returns None so a warm container's fast tasks are never
+    mislabeled as cold starts.
+    """
+    global _first_task_seen
+    with _first_task_lock:
+        if _first_task_seen:
+            return None
+        _first_task_seen = True
+        return time.monotonic() - _PROCESS_STARTED_AT
+
+
+def compute_queue_wait_seconds(job_id: str) -> Optional[float]:
+    """Time between job creation and this worker picking the task up.
+
+    Reads the :meta key the API writes (with submitted_at) at submission time
+    (see job_routes._write_initial_redis_state), before the task is dispatched.
+    Best-effort: returns None when there is no meta (e.g. a task invoked
+    directly in a unit test, or a compile path that skips the API's initial
+    Redis write) rather than raising, since this is diagnostics, not a
+    correctness dependency.
+    """
+    try:
+        raw = get_worker_redis().get(f"latexy:job:{job_id}:meta")
+        if not raw:
+            return None
+        submitted_at = json.loads(raw).get("submitted_at")
+        if not submitted_at:
+            return None
+        return max(0.0, time.time() - float(submitted_at))
+    except Exception:
+        return None
 
 
 def _inject_watermark(latex_content: str, watermark_text: str) -> str:
@@ -392,6 +463,12 @@ def compile_latex_task(
     if job_id is None:
         job_id = str(uuid.uuid4())
 
+    # Timing instrumentation (#1281) — captured before anything else so
+    # cold_start/queue_wait reflect the true start of this task's execution.
+    _task_monotonic_start = time.monotonic()
+    _cold_start_seconds = consume_cold_start_seconds()
+    _queue_wait_seconds = compute_queue_wait_seconds(job_id)
+
     # Resolve and validate compiler — None means "use configured default"
     compiler = compiler or settings.DEFAULT_LATEX_COMPILER
     if compiler not in settings.ALLOWED_LATEX_COMPILERS:
@@ -403,7 +480,45 @@ def compile_latex_task(
 
     task_id = self.request.id
     worker_id = f"latex-{task_id}"
-    logger.info(f"LaTeX task {task_id} starting for job {job_id} (compiler={compiler})")
+    logger.info(
+        f"LaTeX task {task_id} starting for job {job_id} (compiler={compiler})",
+        extra={
+            "job_id": job_id,
+            "task_id": task_id,
+            "compiler": compiler,
+            "queue_wait_seconds": _queue_wait_seconds,
+            "cold_start_seconds": _cold_start_seconds,
+        },
+    )
+
+    def _log_task_timing(
+        outcome: str,
+        compile_subprocess_seconds: Optional[float] = None,
+        reporting_start: Optional[float] = None,
+    ) -> None:
+        """One structured, grep-able line per task completion (#1281).
+
+        Breaks the "processing" window a client sees into the phases that
+        matter for latency diagnosis, instead of the single opaque
+        compilation_time this task already reports in its result payload.
+        """
+        reporting_seconds = (
+            time.monotonic() - reporting_start if reporting_start is not None else None
+        )
+        logger.info(
+            "compile_task_timing",
+            extra={
+                "job_id": job_id,
+                "task_id": task_id,
+                "compiler": compiler,
+                "outcome": outcome,
+                "queue_wait_seconds": _queue_wait_seconds,
+                "cold_start_seconds": _cold_start_seconds,
+                "compile_subprocess_seconds": compile_subprocess_seconds,
+                "reporting_seconds": reporting_seconds,
+                "total_task_seconds": time.monotonic() - _task_monotonic_start,
+            },
+        )
 
     if self.request.retries == 0:
         publish_event(job_id, "job.started", {
@@ -576,6 +691,7 @@ def compile_latex_task(
                     compilation_time=time.time() - start_time,
                     error_message="engine_read_escape",
                 )
+                _log_task_timing("engine_read_escape", time.time() - start_time)
                 return escape_result
 
             for line in proc.stdout:
@@ -635,6 +751,7 @@ def compile_latex_task(
                         compilation_time=time.time() - start_time,
                         error_message="cancelled",
                     )
+                    _log_task_timing("cancelled", time.time() - start_time)
                     return result
 
                 # ── Timeout check ────────────────────────────────────────
@@ -661,11 +778,15 @@ def compile_latex_task(
                         compilation_time=time.time() - start_time,
                         error_message="compile_timeout",
                     )
+                    _log_task_timing("compile_timeout", time.time() - start_time)
                     return result
 
             proc.wait()
             compilation_time = time.time() - start_time
         _compile_duration = time.perf_counter() - _perf_start
+        # Everything from here on is post-subprocess bookkeeping (recorder check,
+        # Redis caching, DB reconcile, event publish) — the "reporting" phase.
+        _reporting_start = time.monotonic()
 
         # Post-run read confinement. \openin/\read leaves no trace in the transcript,
         # so the -recorder .fls file is the only complete list of what was opened.
@@ -750,6 +871,7 @@ def compile_latex_task(
             logger.info(
                 f"LaTeX task {task_id} succeeded for job {job_id} ({pdf_size} bytes)"
             )
+            _log_task_timing("success", _compile_duration, _reporting_start)
 
             # Auto-save checkpoint if resume_id is known (skip for watermarked compiles)
             _resume_id = resume_id or (metadata or {}).get("resume_id")
@@ -787,6 +909,7 @@ def compile_latex_task(
             compilation_time=compilation_time,
             error_message=first_latex_error or error_msg,
         )
+        _log_task_timing("compile_error", _compile_duration, _reporting_start)
         return result
 
     except SoftTimeLimitExceeded:
@@ -812,6 +935,7 @@ def compile_latex_task(
         result = {"success": False, "job_id": job_id, "error": "compile_timeout"}
         publish_job_result(job_id, result)
         reconcile_compilation_record(job_id, success=False, error_message="compile_timeout")
+        _log_task_timing("soft_time_limit_exceeded")
         return result
 
     except Exception as exc:
@@ -837,6 +961,7 @@ def compile_latex_task(
         result = {"success": False, "job_id": job_id, "error": str(exc)}
         publish_job_result(job_id, result)
         reconcile_compilation_record(job_id, success=False, error_message=str(exc))
+        _log_task_timing("exception")
         return result
     finally:
         if job_dir is not None and job_dir.exists():

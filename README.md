@@ -314,7 +314,7 @@ Required repository secrets: `CI_DATABASE_URL`, `CI_JWT_SECRET_KEY`, `CI_BETTER_
 | Plan | Compilations | Optimizations | Deep analyses | Price |
 |------|-------------|---------------|---------------|-------|
 | Free (trial) | 3 lifetime | 3 lifetime | 2 lifetime | — |
-| Basic | 50 / mo | 50 / mo | 10 / mo | ₹299 / mo |
+| Basic | 400 / mo | 50 / mo | 10 / mo | ₹299 / mo |
 | Pro | Unlimited | Unlimited | Unlimited | ₹599 / mo |
 | BYOK | Unlimited | Unlimited | Unlimited | ₹199 / mo |
 

@@ -49,10 +49,33 @@ _APT_BASE = [
 # The full TeX toolchain. Every engine named in ALLOWED_LATEX_COMPILERS needs its
 # package here, and poppler-utils (pdftotext, for page-count extraction) comes
 # from _APT_BASE.
+#
+# texlive-fonts-extra trimmed to just its cm-super dependency (#1281 —
+# "Compile latency: 37s median -> target <10s"): the full package is 1,665 of
+# the 1,750MB this apt_install pulls in (per Debian package sizes). An audit of
+# every currently-active production template's LaTeX source
+# (backend/app/data/templates/**/*.tex) plus official_snippets.py found only
+# array, enumitem, fontenc, geometry, hyperref, inputenc, microtype, parskip,
+# titlesec, xcolor, amsmath, amssymb, graphicx, booktabs, tikz, pgfplots,
+# tcolorbox, appendixnumberbeamer, ccicons, xspace in use — all standard
+# packages shipped by texlive-latex-base/texlive-latex-recommended (a
+# transitive dependency of texlive-latex-extra) or texlive-latex-extra itself.
+#
+# BUT: texlive-fonts-extra Recommends (and apt installs by default) the
+# `cm-super` font package, which nothing else here depends on — and it is
+# load-bearing. Every default-Computer-Modern template compiles via
+# microtype's font-expansion feature, which needs cm-super's Type1 fonts
+# (verified locally: dropping texlive-fonts-extra outright reproduces
+# `! pdfTeX error (font expansion): auto expansion is only possible with
+# scalable fonts` and a fatal, no-PDF compile on the production "Clean Simple"
+# template — this is NOT a hypothetical). Installing `cm-super` directly
+# instead keeps that dependency (52.6MB installed) while dropping the other
+# ~1,362MB of texlive-fonts-extra that's genuinely unused (decorative font
+# families like libertine/ebgaramond).
 _APT_LATEX = [
     "texlive-latex-extra",
     "texlive-fonts-recommended",
-    "texlive-fonts-extra",
+    "cm-super",               # microtype font-expansion dependency; see comment above
     "texlive-science",
     "texlive-xetex",
     "texlive-luatex",
