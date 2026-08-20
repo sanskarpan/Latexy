@@ -71,6 +71,20 @@ class JsonFormatter(logging.Formatter):
             value = getattr(record, key, None)
             if value is not None:
                 payload[key] = value
+        # Job-pipeline timing checkpoints (#1281 — "Compile latency: 37s median ->
+        # target <10s"). Emitted via logger.*(..., extra={...}) in latex_worker.py /
+        # orchestrator.py so a single log line carries every phase of a job instead
+        # of one opaque duration, and can be grepped/aggregated by "outcome" and
+        # "compiler" across all compiles.
+        for key in (
+            "compiler", "outcome",
+            "queue_wait_seconds", "cold_start_seconds",
+            "compile_subprocess_seconds", "reporting_seconds", "total_task_seconds",
+            "optimization_seconds", "ats_scoring_seconds",
+        ):
+            value = getattr(record, key, None)
+            if value is not None:
+                payload[key] = value
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
         return json.dumps(_sanitize(payload), ensure_ascii=True)
