@@ -71,6 +71,9 @@ export default function PricingCard({
         <h3 className="text-xl font-semibold text-fg">{plan.name}</h3>
         <p className="mt-2 text-3xl font-semibold text-fg">{formatPrice(plan.price)}</p>
         <p className="text-sm text-fg-2">{plan.price > 0 ? `per ${plan.interval}` : 'No payment required'}</p>
+        {plan.price > 0 ? (
+          <p className="mt-1 text-xs text-fg-3">Incl. GST &middot; no surprises at checkout</p>
+        ) : null}
         {plan.monthly_equivalent_price ? (
           <p className="mt-1 text-xs text-ok">₹{(plan.monthly_equivalent_price / 100).toFixed(0)}/month effective</p>
         ) : null}
