@@ -321,7 +321,7 @@ class Settings(BaseSettings):
             "plan_family": "basic",
             "discount_percent": 0,
             "features": {
-                "compilations": 50,
+                "compilations": 400,
                 "optimizations": 10,
                 "historyRetention": 30,
                 "prioritySupport": False,
@@ -338,7 +338,7 @@ class Settings(BaseSettings):
             "discount_percent": 20,
             "monthly_equivalent_price": 23925,
             "features": {
-                "compilations": 50,
+                "compilations": 400,
                 "optimizations": 10,
                 "historyRetention": 30,
                 "prioritySupport": False,
@@ -758,7 +758,7 @@ PLAN_QUOTAS: Dict[str, Dict[str, tuple[int | None, str]]] = {
         "ai_assists": (25, "month"),
     },
     "basic": {
-        "compilations": (50, "month"),
+        "compilations": (400, "month"),
         "optimizations": (10, "month"),
         "ai_assists": (100, "month"),
     },
