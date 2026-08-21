@@ -69,8 +69,9 @@ export interface ChangeEntry {
 export interface JobCompletedEvent extends BaseEvent {
   type: 'job.completed'
   pdf_job_id: string
-  ats_score: number
-  ats_details: ATSDetails
+  /** null when the job never ran ATS scoring (e.g. a plain compile with no JD) */
+  ats_score: number | null
+  ats_details: ATSDetails | null
   changes_made: ChangeEntry[]
   compilation_time: number
   optimization_time: number
