@@ -581,7 +581,8 @@ class TestCombinedPathValidates:
         import app.workers.orchestrator as orch
 
         latex = r"\documentclass{article}\begin{document}%s\end{document}" % body
-        with patch("app.workers.orchestrator.subprocess.Popen") as popen:
+        with patch("app.workers.orchestrator.subprocess.Popen") as popen, \
+                patch("app.workers.orchestrator.publish_event"):
             success, _, error, page_count, pdf = orch._run_latex_stage("job-x", latex)
 
         popen.assert_not_called()
