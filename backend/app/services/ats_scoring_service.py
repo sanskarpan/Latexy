@@ -858,6 +858,29 @@ class ATSScoringService:
         else:
             recommendations.append("Include relevant soft skills")
 
+        # ── JD keyword-match anchor ────────────────────────────────────────
+        # This category is surfaced to users as "Keywords" (ATSScoreCard)
+        # alongside the "Keywords" axis on ATSRadarChart, which reads
+        # multi_dim_scores.keyword_density, and the quick-score preview
+        # (ats_quick_scorer). All three must show the SAME number for the
+        # same resume/JD pair, so once a JD exists the category score IS the
+        # canonical match percentage from _score_keyword_density — not a
+        # stuffing/tech-corpus heuristic that never looked at the JD at all
+        # (that previously produced scores like 100 here vs. 30 there).
+        # The quality heuristics above still drive recommendations/warnings/
+        # strengths and remain the sole basis for the score when no JD is
+        # given.
+        jd_match_percent: Optional[float] = None
+        if job_description:
+            # Round to match the precision multi_dim_scores.keyword_density is
+            # published at, so both surfaces show the exact same number.
+            jd_match_percent = round(self._score_keyword_density(text_content, job_description), 1)
+            score = jd_match_percent
+            if jd_match_percent < 30:
+                warnings.append("Low keyword overlap with the job description")
+            elif jd_match_percent >= 70:
+                strengths.append("Strong keyword overlap with the job description")
+
         return {
             "score": max(0, score),
             "recommendations": recommendations,
@@ -872,6 +895,7 @@ class ATSScoringService:
                 "keyword_density": len(set(words)) / word_count if word_count > 0 else 0,
                 "calibrated_industry": industry_key,
                 "calibrated_hits": calibrated_hits,
+                "jd_match_percent": jd_match_percent,
             },
         }
 

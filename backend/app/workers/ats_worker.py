@@ -291,7 +291,10 @@ def analyze_job_description_ats_task(
         publish_event(job_id, "job.completed", {
             "percent": 100,
             "pdf_job_id": job_id,
-            "ats_score": 0.0,
+            # This job only analyses the job description — no resume was
+            # scored, so send None (not a fake 0.0) to avoid a misleading
+            # 0/100 "Poor" verdict on the client.
+            "ats_score": None,
             "ats_details": {"detected_industry": detected_industry},
             "changes_made": [],
             "compilation_time": 0.0,

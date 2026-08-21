@@ -955,6 +955,51 @@ export interface FetchReferencesResponse {
   processing_time: number
 }
 
+/**
+ * Extracts a clean, human-readable message from a failed response body.
+ *
+ * FastAPI's `HTTPException` responses look like `{"detail": "..."}`; Pydantic
+ * validation errors look like `{"detail": [{"msg": "...", ...}, ...]}`. Both
+ * shapes are unwrapped into plain text here so that no downstream catch-site
+ * (toast, banner) ever has to guess how to render an error — it just reads
+ * `.message`. Without this, callers were dumping the raw JSON body (or a full
+ * exception string) straight into the UI.
+ *
+ * Falls back to a short raw body / statusText / fallbackLabel when the body
+ * isn't a recognizable JSON error shape, so failures are never swallowed —
+ * only genuinely un-parseable bodies (long HTML error pages, etc.) are capped.
+ */
+function parseApiErrorMessage(bodyText: string, statusText: string, fallbackLabel?: string): string {
+  const trimmed = bodyText.trim()
+  if (trimmed) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed)
+      const detail = (parsed as { detail?: unknown } | null)?.detail
+      if (typeof detail === 'string' && detail.trim()) return detail
+      if (Array.isArray(detail) && detail.length > 0) {
+        const messages = detail
+          .map((d) =>
+            d && typeof d === 'object' && 'msg' in d
+              ? String((d as { msg?: unknown }).msg)
+              : typeof d === 'string'
+                ? d
+                : null
+          )
+          .filter((m): m is string => Boolean(m))
+        if (messages.length > 0) return messages.join('; ')
+      }
+      const message = (parsed as { message?: unknown } | null)?.message
+      if (typeof message === 'string' && message.trim()) return message
+      // Recognizable JSON, but no known error field — don't dump the raw object.
+    } catch {
+      // Not JSON. A short plain-text body (e.g. from a proxy/load balancer) is
+      // still readable; a long one (HTML error pages) is not, so cap it.
+      if (trimmed.length <= 200 && !trimmed.startsWith('<')) return trimmed
+    }
+  }
+  return statusText || fallbackLabel || 'Request failed'
+}
+
 class ApiClient {
   private authToken: string | null = null
   readonly baseUrl: string = API_BASE
@@ -1064,8 +1109,8 @@ class ApiClient {
   ): Promise<T> {
     const res = await this.authedFetch(`${API_BASE}${path}`, init)
     if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
     }
     if (res.status === 204) {
       return undefined as T
@@ -1215,8 +1260,8 @@ class ApiClient {
       credentials: 'include',
     })
     if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
     }
     return res.json()
   }
@@ -1282,8 +1327,8 @@ class ApiClient {
       method: 'DELETE',
     })
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      throw new Error(body.detail || `Delete failed (${res.status})`)
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(parseApiErrorMessage(bodyText, res.statusText, `Delete failed (${res.status})`))
     }
   }
 
@@ -1322,8 +1367,8 @@ class ApiClient {
       method: 'DELETE',
     })
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      throw new Error(body.detail || `Cancel failed (${res.status})`)
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(parseApiErrorMessage(bodyText, res.statusText, `Cancel failed (${res.status})`))
     }
   }
 
@@ -1853,6 +1898,34 @@ class ApiClient {
     return this.request('/ats/industry-profiles')
   }
 
+  /**
+   * Synchronous ATS score — used for an immediate re-score when the user
+   * overrides the industry calibration (see ATSScoreCard). Hits the same
+   * `ats_scoring_service` computation as the async job path, just without
+   * the Celery round-trip, so the score/recommendations shown stay in sync
+   * with the chosen industry profile.
+   */
+  async scoreATS(body: {
+    latex_content: string
+    job_description?: string
+    industry_override?: string
+  }): Promise<{
+    success: boolean
+    ats_score?: number
+    category_scores?: Record<string, number>
+    recommendations?: string[]
+    warnings?: string[]
+    strengths?: string[]
+    industry_key?: string
+    industry_label?: string
+    message: string
+  }> {
+    return this.request('/ats/score', {
+      method: 'POST',
+      body: JSON.stringify({ ...body, async_processing: false }),
+    })
+  }
+
   async deepAnalyzeResume(body: {
     latex_content: string
     job_description?: string
@@ -1975,8 +2048,8 @@ class ApiClient {
       body: formData,
     })
     if (!response.ok) {
-      const error = await response.text()
-      throw new Error(error || `Upload failed: ${response.status}`)
+      const bodyText = await response.text().catch(() => '')
+      throw new Error(parseApiErrorMessage(bodyText, response.statusText, `Upload failed (${response.status})`))
     }
     return response.json()
   }
@@ -1990,8 +2063,8 @@ class ApiClient {
       body: formData,
     })
     if (!response.ok) {
-      const error = await response.text()
-      throw new Error(error || `Parse failed: ${response.status}`)
+      const bodyText = await response.text().catch(() => '')
+      throw new Error(parseApiErrorMessage(bodyText, response.statusText, `Parse failed (${response.status})`))
     }
     return response.json()
   }
@@ -2000,7 +2073,8 @@ class ApiClient {
   async exportResume(resumeId: string, format: string): Promise<Blob> {
     const response = await this.authedFetch(`${this.baseUrl}/export/${resumeId}/${format}`)
     if (!response.ok) {
-      throw new Error(`Export failed: ${response.status}`)
+      const bodyText = await response.text().catch(() => '')
+      throw new Error(parseApiErrorMessage(bodyText, response.statusText, `Export failed (${response.status})`))
     }
     return response.blob()
   }
@@ -2044,8 +2118,8 @@ class ApiClient {
       { method: 'DELETE' }
     )
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      throw new Error(body.detail || `Delete failed (${res.status})`)
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(parseApiErrorMessage(bodyText, res.statusText, `Delete failed (${res.status})`))
     }
   }
 
@@ -2089,7 +2163,8 @@ class ApiClient {
       body: JSON.stringify({ latex_content: latexContent }),
     })
     if (!response.ok) {
-      throw new Error(`Export failed: ${response.status}`)
+      const bodyText = await response.text().catch(() => '')
+      throw new Error(parseApiErrorMessage(bodyText, response.statusText, `Export failed (${response.status})`))
     }
     return response.blob()
   }
@@ -2330,8 +2405,8 @@ class ApiClient {
       { method: 'DELETE' }
     )
     if (!res.ok && res.status !== 204) {
-      const body = await res.text().catch(() => '')
-      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
     }
   }
 
@@ -2348,8 +2423,8 @@ class ApiClient {
       `${API_BASE}/resumes/export/bulk?format=${format}`
     )
     if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
     }
     return res.blob()
   }
@@ -2490,8 +2565,8 @@ class ApiClient {
       method: 'DELETE',
     })
     if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
     }
   }
 
@@ -2530,8 +2605,8 @@ class ApiClient {
       method: 'DELETE',
     })
     if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
     }
   }
 
@@ -2640,8 +2715,8 @@ class ApiClient {
       credentials: 'include',
     })
     if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
     }
     return res.json()
   }
@@ -2770,8 +2845,8 @@ class ApiClient {
       method: 'DELETE',
     })
     if (!res.ok) {
-      const body = await res.text()
-      throw new Error(`Failed to remove collaborator (${res.status}): ${body}`)
+      const bodyText = await res.text().catch(() => '')
+      throw new Error(parseApiErrorMessage(bodyText, res.statusText, `Failed to remove collaborator (${res.status})`))
     }
   }
 

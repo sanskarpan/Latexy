@@ -791,6 +791,12 @@ export default function ResumeEditPage() {
 
   // Auto-compile
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
+  // Whether the currently in-flight/active compile job was triggered by
+  // auto-compile rather than a manual Compile click — so a failed auto-compile
+  // gets the same failure toast a manual compile's submit-catch already gives
+  // it, without spamming a toast on every debounce tick for the same error.
+  const autoCompileTriggeredRef = useRef(false)
+  const lastAutoCompileErrorRef = useRef<string | null>(null)
 
   // SyncTeX
   const [syncFromLine, setSyncFromLine] = useState<number | null>(null)
@@ -1457,6 +1463,7 @@ export default function ResumeEditPage() {
       return
     }
     setIsSubmitting(true)
+    autoCompileTriggeredRef.current = false
     try {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!r.success || !r.job_id) throw new Error(r.message)
@@ -1859,14 +1866,42 @@ export default function ResumeEditPage() {
     try {
       const r = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!r.success || !r.job_id) throw new Error(r.message)
+      autoCompileTriggeredRef.current = true
       setCompileJobId(r.job_id)
       setLastStartedJobKind('compile')
-    } catch {
-      // Silent fail for auto-compile — don't spam toasts
+    } catch (e) {
+      // Auto-compile fires on a debounce rather than a click, so a hard failure to
+      // even submit (network/API error, etc.) needs the same toast.error runCompile's
+      // catch already gives a manual compile — deduped so a persistent failure
+      // doesn't re-toast on every debounce tick while the user keeps typing.
+      const msg = e instanceof Error ? e.message : 'Auto-compile failed'
+      if (lastAutoCompileErrorRef.current !== msg) {
+        lastAutoCompileErrorRef.current = msg
+        toast.error(msg)
+      }
     } finally {
       setIsSubmitting(false)
     }
   }, [isSubmitting, resumeId, compiler])
+
+  // Surface auto-compile job failures (e.g. invalid LaTeX) the same way a manual
+  // compile is — runCompile switches to the Logs tab on submit so a failure is
+  // immediately visible there; auto-compile deliberately does NOT steal focus away
+  // from the editor on every debounce tick, so a toast is the only prompt that
+  // reaches a user who isn't already looking at the Logs tab. One toast per
+  // distinct error, not one per debounce tick — cleared on the next successful compile.
+  useEffect(() => {
+    if (!autoCompileTriggeredRef.current) return
+    if (compileStream.status === 'failed') {
+      const msg = compileStream.error || 'Auto-compile failed — open the Logs tab for details'
+      if (lastAutoCompileErrorRef.current !== msg) {
+        lastAutoCompileErrorRef.current = msg
+        toast.error(msg, { description: 'Auto-compile failed. Open the Logs tab to see the LaTeX error.' })
+      }
+    } else if (compileStream.status === 'completed') {
+      lastAutoCompileErrorRef.current = null
+    }
+  }, [compileStream.status, compileStream.error])
 
   // Design panel — trigger compile after preamble change (Feature 20)
   const handleDesignTriggerCompile = useCallback(() => {
@@ -1921,6 +1956,8 @@ export default function ResumeEditPage() {
     ? `AI complete · ATS ${aiStream.atsScore != null ? Math.round(aiStream.atsScore) : '—'}`
     : aiStream.status === 'failed'
     ? `AI failed: ${aiStream.error || 'error'}`
+    : compileStream.status === 'failed'
+    ? `Compile failed: ${compileStream.error || 'error'}`
     : 'LaTeX editor ready'
 
   const currentLatex = editorRef.current?.getValue() || latexContent

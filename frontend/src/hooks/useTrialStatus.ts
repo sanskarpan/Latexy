@@ -13,14 +13,23 @@ export interface TrialStatus {
 const DEFAULT_TOTAL = 3
 
 export function useTrialStatus() {
-  const [status, setStatus] = useState<TrialStatus>({
+  // `fingerprint` must NEVER start empty: getDeviceFingerprint() reads/writes
+  // localStorage synchronously, so it is always available on first render —
+  // there is no need to wait for the async trial-status fetch below to
+  // populate it. Previously this state initialized to '', and callers that
+  // read `trialStatus.fingerprint` (e.g. the /try compile button, autosave)
+  // could fire before `fetchStatus` resolved, sending device_fingerprint=''
+  // and permanently 400ing a brand-new visitor's very first compile
+  // ("device_fingerprint is required for anonymous jobs."). Seeding it from
+  // the same synchronous source `fetchStatus` itself uses closes that race.
+  const [status, setStatus] = useState<TrialStatus>(() => ({
     used: 0,
     total: DEFAULT_TOTAL,
     blocked: false,
     remaining: DEFAULT_TOTAL,
     canRun: true,
-    fingerprint: '',
-  })
+    fingerprint: getDeviceFingerprint(),
+  }))
   const [loading, setLoading] = useState(true)
 
   const fetchStatus = useCallback(async () => {

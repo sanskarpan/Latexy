@@ -35,7 +35,15 @@ const fullscreenPatterns = [/^\/try$/, /^\/workspace\/[^/]+\/edit$/, /^\/workspa
 
 export default function GlobalHeader() {
   const pathname = usePathname()
-  const { data: session } = useSession()
+  const { data: session, error: sessionError } = useSession()
+  // Latch the last confirmed session: useSession() re-fetches on focus/interval,
+  // and a transient failure (e.g. a rate-limited request) must not flip an
+  // already-signed-in user's nav to the logged-out "Log In / Try Free" state —
+  // that reads as "you got logged out" when the cookie is still perfectly valid.
+  // Only a session with no error and no user means an actual sign-out.
+  const lastKnownSessionRef = useRef<typeof session>(null)
+  if (session) lastKnownSessionRef.current = session
+  const effectiveSession = session ?? (sessionError ? lastKnownSessionRef.current : null)
   const flags = useFeatureFlags()
   const { can } = useEntitlements()
   const [hydrated, setHydrated] = useState(false)
@@ -154,7 +162,7 @@ export default function GlobalHeader() {
     return null
   }
 
-  const resolvedSession = hydrated ? session : null
+  const resolvedSession = hydrated ? effectiveSession : null
   const resolvedUser = resolvedSession?.user ?? null
   const isAuthenticated = Boolean(resolvedUser)
   const effectiveGuestNav = flags.billing

@@ -68,6 +68,7 @@ class ValidateAPIKeyResponse(BaseModel):
     available_models: Optional[List[str]] = None
     validated_at: Optional[str] = None
     error: Optional[str] = None
+    error_kind: Optional[str] = None
 
 
 class ProviderInfo(BaseModel):
@@ -236,7 +237,8 @@ async def validate_api_key(
             capabilities=result.get("capabilities"),
             available_models=result.get("available_models"),
             validated_at=result.get("validated_at"),
-            error=result.get("error")
+            error=result.get("error"),
+            error_kind=result.get("error_kind"),
         )
 
     except Exception as e:

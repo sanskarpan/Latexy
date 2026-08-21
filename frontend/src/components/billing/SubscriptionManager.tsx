@@ -80,11 +80,14 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
         <h3 className="text-lg font-semibold text-fg">
           {subscription?.planName ?? 'Free Tier'}
         </h3>
-        <p className="mt-1 text-sm text-fg-2">
-          {billingStatus?.available
-            ? 'You are on the free tier.'
-            : billingStatus?.message || 'Billing is unavailable in this environment.'}
-        </p>
+        {/* Free-tier copy is intentionally independent of billingStatus.message —
+            that string explains *why paid plans are unavailable* (e.g. Razorpay
+            isn't configured), which is unrelated to why this user is on Free and
+            must not be presented as if it were the reason. */}
+        <p className="mt-1 text-sm text-fg-2">You&apos;re currently on the Free plan.</p>
+        {billingStatus && !billingStatus.available && (
+          <p className="mt-1 text-xs text-fg-3">{billingStatus.message}</p>
+        )}
         {billingStatus?.available && (
           <button onClick={onUpgrade} className="mt-4 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110">
             Browse Plans

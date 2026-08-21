@@ -832,6 +832,20 @@ async def compile_latex_anonymous(
             detail="Authenticated callers must use /compile, which applies your plan allowance.",
         )
 
+    # Form(...) only requires the field to be PRESENT, not non-empty — a client
+    # that races ahead of its own fingerprint generation (or a stripped/blank
+    # value) could otherwise slip an empty string past this point. Without this
+    # guard, check_and_track_usage below would silently create (and then
+    # permanently bind/block) ONE shared DeviceTrial row keyed on "" that every
+    # such racing visitor collides into, instead of each getting their own
+    # fresh per-device trial. Reject up front, same as job_routes._enforce_
+    # anonymous_trial does for the /jobs/submit path.
+    if not device_fingerprint or not device_fingerprint.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="device_fingerprint is required for anonymous compiles.",
+        )
+
     try:
         ip_address = request.client.host if request.client else None
 

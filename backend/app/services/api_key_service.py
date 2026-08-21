@@ -231,34 +231,37 @@ class APIKeyService:
 
             is_valid = await provider_instance.validate_api_key()
 
-            if is_valid:
-                capabilities = provider_instance.get_capabilities()
-                models = provider_instance.get_available_models()
-
-                return {
-                    "valid": True,
-                    "provider": provider,
-                    "capabilities": {
-                        "max_context_length": capabilities.max_context_length,
-                        "supports_streaming": capabilities.supports_streaming,
-                        "supports_function_calling": capabilities.supports_function_calling,
-                        "cost_per_1k_input_tokens": capabilities.cost_per_1k_input_tokens,
-                        "cost_per_1k_output_tokens": capabilities.cost_per_1k_output_tokens,
-                    },
-                    "available_models": models[:10],  # Limit to first 10 models
-                    "validated_at": datetime.utcnow().isoformat()
-                }
-            else:
+            if not is_valid:
+                detail = getattr(provider_instance, "last_validation_error", None) or {}
                 return {
                     "valid": False,
-                    "error": "API key validation failed with provider"
+                    "error": detail.get("message", "API key validation failed with provider"),
+                    "error_kind": detail.get("kind", "unknown"),
                 }
+
+            capabilities = provider_instance.get_capabilities()
+            models = provider_instance.get_available_models()
+
+            return {
+                "valid": True,
+                "provider": provider,
+                "capabilities": {
+                    "max_context_length": capabilities.max_context_length,
+                    "supports_streaming": capabilities.supports_streaming,
+                    "supports_function_calling": capabilities.supports_function_calling,
+                    "cost_per_1k_input_tokens": capabilities.cost_per_1k_input_tokens,
+                    "cost_per_1k_output_tokens": capabilities.cost_per_1k_output_tokens,
+                },
+                "available_models": models[:10],  # Limit to first 10 models
+                "validated_at": datetime.utcnow().isoformat()
+            }
 
         except Exception as e:
             logger.error(f"Error validating API key for {provider}: {e}")
             return {
                 "valid": False,
-                "error": f"Validation error: {str(e)}"
+                "error": "Unexpected error while validating the key — please try again in a moment.",
+                "error_kind": "unknown",
             }
 
     async def get_user_provider(self, db: AsyncSession, user_id: str, provider: str) -> Optional[str]:

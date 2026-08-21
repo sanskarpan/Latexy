@@ -272,17 +272,27 @@ class TestLLMWorkerJsonParse:
         result = self._run(mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc, content)
         assert result["changes_made"] == []
 
-    def test_garbage_json_falls_back_to_original(self, mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc):
+    def test_garbage_json_reports_genuine_failure(self, mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc):
+        # Missing <<<LATEX>>> markers after exhausting every retry is a real
+        # failure, not a resume that "didn't need changes" — silently
+        # falling back to the original and reporting success would hide a
+        # broken optimization from the user (see llm_worker.py's retry loop).
         result = self._run(mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc, "NOT_JSON_AT_ALL")
-        assert result["optimized_latex"] == VALID_LATEX
+        assert result["success"] is False
+        assert "optimized_latex" not in result
 
-    def test_garbage_json_still_returns_success(self, mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc):
+    def test_garbage_json_publishes_job_failed(self, mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc):
         result = self._run(mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc, "NOT_JSON")
-        assert result["success"] is True
+        assert result["success"] is False
+        failed_calls = [c for c in mock_publish.call_args_list if c.args[1] == "job.failed"]
+        assert len(failed_calls) == 1
+        assert failed_calls[0].args[2]["error_code"] == "llm_error"
+        assert failed_calls[0].args[2]["retryable"] is True
 
-    def test_empty_content_falls_back_to_original(self, mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc):
+    def test_empty_content_reports_genuine_failure(self, mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc):
         result = self._run(mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc, "")
-        assert result["optimized_latex"] == VALID_LATEX
+        assert result["success"] is False
+        assert "optimized_latex" not in result
 
 
 # ── Cancellation ──────────────────────────────────────────────────────────────

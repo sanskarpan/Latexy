@@ -173,25 +173,24 @@ def _score_quality(plain_text: str) -> int:
 def _score_keywords(plain_text: str, job_description: Optional[str]) -> tuple[int, Optional[float]]:
     """
     KEYWORD SCORE — 30 pts max.
-    If JD provided: extract keywords via the shared full-score extractor (same
-    implementation and stopword list as ATSScoringService) so the instant
-    quick-score and the async full score agree on which keywords matter.
-    If no JD: award 15 pts baseline.
+    If JD provided: delegate to the canonical ATSScoringService keyword-match
+    computation (same extractor AND same matcher) so this "quick estimate"
+    can never silently diverge from the full async score for the same
+    resume/JD pair. If no JD: award 15 pts baseline.
     """
     if not job_description:
         return 15, None
 
-    # Reuse the canonical keyword extractor so both ATS surfaces stay consistent.
+    # Reuse the canonical extractor + matcher — single source of truth shared
+    # with ATSScoringService._score_keyword_density (multi_dim_scores) so the
+    # instant quick-score and the async full score report the same percentage.
     from .ats_scoring_service import ats_scoring_service
     top_keywords = ats_scoring_service._extract_keywords_from_job_description(job_description)
 
     if not top_keywords:
         return 15, None
 
-    # Match against resume text
-    resume_words_set = set(re.findall(r"[a-zA-Z]{3,}", plain_text.lower()))
-    matched = sum(1 for kw in top_keywords if kw in resume_words_set)
-    match_pct = matched / len(top_keywords) * 100
+    match_pct = ats_scoring_service._score_keyword_density(plain_text, job_description)
     score = int(match_pct / 100 * 30)
 
     return score, round(match_pct, 1)

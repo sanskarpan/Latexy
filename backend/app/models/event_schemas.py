@@ -51,8 +51,11 @@ class JobProgressEvent(BaseEvent):
 class JobCompletedEvent(BaseEvent):
     type: Literal["job.completed"] = "job.completed"
     pdf_job_id: str
-    ats_score: float
-    ats_details: Dict[str, Any]
+    # None when the job never ran ATS scoring (e.g. a plain compile with no
+    # job description) — the client must show a neutral "no score yet" state,
+    # not a fake 0.0/100. See latex_worker.py / llm_worker.py.
+    ats_score: Optional[float] = None
+    ats_details: Optional[Dict[str, Any]] = None
     changes_made: List[Dict[str, Any]]
     compilation_time: float
     optimization_time: float
