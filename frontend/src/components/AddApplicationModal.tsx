@@ -5,6 +5,9 @@ import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type CreateApplicationRequest, type JobApplication, type ResumeResponse } from '@/lib/api-client'
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+
 const STATUSES = [
   { value: 'applied', label: 'Applied' },
   { value: 'phone_screen', label: 'Phone Screen' },
@@ -42,18 +45,51 @@ export default function AddApplicationModal({
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const firstInputRef = useRef<HTMLInputElement>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLElement | null>(null)
 
+  // Open lifecycle: capture the trigger, move focus into the dialog, and
+  // restore focus to the trigger on close.
   useEffect(() => {
+    triggerRef.current = document.activeElement as HTMLElement | null
     firstInputRef.current?.focus()
     apiClient.listResumes().then((data) => {
       setResumes(Array.isArray(data) ? data : [])
     }).catch(() => {})
+    return () => {
+      triggerRef.current?.focus?.()
+    }
   }, [])
 
-  // Close on Escape
+  // Keyboard handling: Escape closes the dialog, Tab is trapped within it.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusables = Array.from(
+          modalRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+        ).filter((el) => el.offsetParent !== null || el === document.activeElement)
+        if (focusables.length === 0) {
+          e.preventDefault()
+          modalRef.current.focus()
+          return
+        }
+        const first = focusables[0]
+        const last = focusables[focusables.length - 1]
+        const active = document.activeElement
+        if (e.shiftKey) {
+          if (active === first || active === modalRef.current) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else if (active === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -92,12 +128,17 @@ export default function AddApplicationModal({
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)]"
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-application-title"
+        tabIndex={-1}
+        className="relative w-full max-w-lg rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)] focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
-          <h2 className="text-sm font-semibold text-fg">Add Application</h2>
+          <h2 id="add-application-title" className="text-sm font-semibold text-fg">Add Application</h2>
           <button
             type="button"
             onClick={onClose}
