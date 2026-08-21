@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
@@ -89,6 +89,7 @@ function BillingPageContent() {
   const [plans, setPlans] = useState<Record<string, PricingPlan>>({})
   const [billingStatus, setBillingStatus] = useState<BillingAvailability | null>(null)
   const [loading, setLoading] = useState(true)
+  const [plansError, setPlansError] = useState<string | null>(null)
   const [activePlan, setActivePlan] = useState<string | null>(null)
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
   const [couponCode, setCouponCode] = useState('')
@@ -109,20 +110,26 @@ function BillingPageContent() {
   // layout — it is the single source of truth. Mirroring it from here would race
   // AuthSync (child effects run first) and could publish a null token.
 
-  useEffect(() => {
-    const fetchPlans = async () => {
-      setLoading(true)
-      const response = await apiClient.getSubscriptionPlans()
-      if (response.success && response.data) {
-        setPlans(response.data.plans as Record<string, PricingPlan>)
-        setBillingStatus(response.data.billing)
-      } else {
-        toast.error(response.error || 'Failed to fetch plans')
-      }
-      setLoading(false)
+  const fetchPlans = useCallback(async () => {
+    setLoading(true)
+    setPlansError(null)
+    const response = await apiClient.getSubscriptionPlans()
+    if (response.success && response.data) {
+      setPlans(response.data.plans as Record<string, PricingPlan>)
+      setBillingStatus(response.data.billing)
+    } else {
+      // Keep any previously-loaded plans on screen (e.g. a transient 429 on a
+      // background refresh) — only fall back to the empty-state card when we
+      // have nothing to show at all.
+      setPlansError(response.error || "Couldn't load pricing plans. Please try again.")
+      toast.error(response.error || 'Failed to fetch plans')
     }
-    fetchPlans()
+    setLoading(false)
   }, [])
+
+  useEffect(() => {
+    fetchPlans()
+  }, [fetchPlans])
 
   const studentVerifyToken = searchParams.get('student_verify')
   const teamInviteToken = searchParams.get('team_invite')
@@ -575,6 +582,18 @@ function BillingPageContent() {
 
           {loading ? (
             <div className="rounded-[var(--radius-lg)] border border-line bg-bg p-4 text-fg-2">Loading plans...</div>
+          ) : plansError && visiblePlans.length === 0 ? (
+            <div className="rounded-[var(--radius-lg)] border border-line bg-bg p-6 text-center">
+              <p className="text-sm font-medium text-fg">Couldn&apos;t load billing info</p>
+              <p className="mt-1 text-sm text-fg-2">{plansError}</p>
+              <button
+                type="button"
+                onClick={() => fetchPlans()}
+                className="mt-4 rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-sm text-fg hover:bg-surface-2"
+              >
+                Try again
+              </button>
+            </div>
           ) : (
             <>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
