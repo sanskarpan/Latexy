@@ -12,7 +12,7 @@ import {
   type CoverLetterTone,
   type CoverLetterLength,
 } from '@/lib/api-client'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
@@ -50,7 +50,7 @@ export default function CoverLetterPage() {
   const params = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { data: session, isPending: sessionLoading } = useSession()
+  const { session, isPending: sessionLoading } = useRequireAuth()
   const resumeId = params.resumeId as string
   const requestedCoverLetterId = searchParams.get('cl')
 
@@ -77,13 +77,6 @@ export default function CoverLetterPage() {
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
-
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!sessionLoading && !session) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
-    }
-  }, [session, sessionLoading, router])
 
   // Load resume + existing cover letters
   useEffect(() => {
@@ -187,8 +180,9 @@ export default function CoverLetterPage() {
   useEffect(() => {
     if (stream.status === 'failed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'failed')
+      toast.error(stream.error || 'Cover letter generation failed. Please try again.')
     }
-  }, [stream.status, activeJobId])
+  }, [stream.status, activeJobId, stream.error])
 
   // Cleanup PDF URLs
   useEffect(() => {
@@ -504,6 +498,21 @@ export default function CoverLetterPage() {
                 </p>
                 <p className="mt-1 text-xs text-fg-3">
                   {stream.message || 'Connecting to workers...'}
+                </p>
+              </motion.section>
+            )}
+            {activeJobId && stream.status === 'failed' && (
+              <motion.section
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="rounded-[var(--radius-lg)] border border-err/30 bg-err/10 p-5"
+              >
+                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-err">
+                  Generation Failed
+                </h2>
+                <p className="mt-2 text-sm text-fg">
+                  {stream.error || 'Something went wrong. Please try again.'}
                 </p>
               </motion.section>
             )}
