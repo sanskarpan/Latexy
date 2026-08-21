@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { BookUser, GitFork, GitMerge, ChevronDown, ChevronRight, Share2, X, Search, Zap, AlertTriangle, BarChart2, Download, Loader2, Tag, Pin, PinOff, Archive, ArchiveRestore, LayoutTemplate, Globe, Send, MoreHorizontal, Pencil, Sparkles, FileText, Languages, Briefcase, Trash2, ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type DiffWithParentResponse, type JobApplication, type JobResultResponse, type JobStateResponse, type ResumeResponse, type ResumeStats, type SemanticMatchResult, type TranslateResumeResponse } from '@/lib/api-client'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import SemanticMatchModal from '@/components/ats/SemanticMatchModal'
 import ExportDropdown from '@/components/ExportDropdown'
@@ -48,7 +48,7 @@ const TRANSLATE_LANGUAGES = [
 ]
 
 export default function WorkspacePage() {
-  const { data: session, isPending: sessionLoading } = useSession()
+  const { session, isPending: sessionLoading } = useRequireAuth()
   const router = useRouter()
   const [resumes, setResumes] = useState<ResumeResponse[]>([])
   const [jobs, setJobs] = useState<JobStateResponse[]>([])
@@ -141,12 +141,6 @@ export default function WorkspacePage() {
   const [diffData, setDiffData] = useState<DiffWithParentResponse | null>(null)
   const [showDiffModal, setShowDiffModal] = useState(false)
   const [diffVariantId, setDiffVariantId] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!sessionLoading && !session) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
-    }
-  }, [session, sessionLoading, router])
 
   // Show onboarding for first-time users (localStorage flag not yet set)
   useEffect(() => {
