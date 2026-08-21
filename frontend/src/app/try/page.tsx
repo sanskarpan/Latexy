@@ -96,6 +96,12 @@ export default function TryPage() {
   const hasUnsavedRef = useRef(false)
   // Editor content captured immediately before a run, restored if the job is cancelled
   const preRunSnapshotRef = useRef<string | null>(null)
+  // Whether the currently in-flight/active job was triggered by auto-compile
+  // rather than a manual Recompile click — used so a failed auto-compile gets
+  // the same failure toast a manual compile's submit-catch already gives it,
+  // without spamming a toast on every debounce tick for the same error.
+  const autoCompileTriggeredRef = useRef(false)
+  const lastAutoCompileErrorRef = useRef<string | null>(null)
 
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
   const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent, jobDescription)
@@ -283,6 +289,7 @@ export default function TryPage() {
     // Surface the result pane immediately on any submit (mobile lands on Editor otherwise)
     setMobilePane('pdf')
     setIsSubmitting(true)
+    autoCompileTriggeredRef.current = false
     try {
       // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
       const response =
@@ -349,14 +356,42 @@ export default function TryPage() {
       // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
       const response = await apiClient.compileLatex({ latex_content: content, device_fingerprint: trialStatus.fingerprint })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
+      autoCompileTriggeredRef.current = true
       setActiveJobId(response.job_id)
       if (!resolvedSession) trialStatus.incrementUsage()
-    } catch {
-      // Silent fail for auto-compile
+    } catch (error) {
+      // Auto-compile fires on a debounce rather than a click, so a hard failure to
+      // even submit (network/API error, trial exhausted, etc.) needs the same
+      // toast.error runCompile's catch already gives manual compiles — deduped so a
+      // persistent failure doesn't re-toast on every debounce tick while the user
+      // keeps typing.
+      const msg = error instanceof Error ? error.message : 'Auto-compile failed'
+      if (lastAutoCompileErrorRef.current !== msg) {
+        lastAutoCompileErrorRef.current = msg
+        toast.error(msg)
+      }
     } finally {
       setIsSubmitting(false)
     }
   }, [isProcessing, isSubmitting, resolvedSession, trialStatus, effectiveCanRun])
+
+  // Surface auto-compile job failures (e.g. invalid LaTeX) the same way a manual
+  // compile's result is visible — the status badge already turns red for any
+  // trigger, but a toast is the only prompt that reaches a user who isn't looking
+  // at the PDF pane (e.g. still mid-edit on mobile). One toast per distinct error,
+  // not one per debounce tick — cleared on the next successful compile.
+  useEffect(() => {
+    if (!autoCompileTriggeredRef.current) return
+    if (stream.status === 'failed') {
+      const msg = stream.error || 'Auto-compile failed — open Live Logs for details'
+      if (lastAutoCompileErrorRef.current !== msg) {
+        lastAutoCompileErrorRef.current = msg
+        toast.error(msg, { description: 'Auto-compile failed. Open Live Logs to see the LaTeX error.' })
+      }
+    } else if (stream.status === 'completed') {
+      lastAutoCompileErrorRef.current = null
+    }
+  }, [stream.status, stream.error])
 
   const handleExplainError = useCallback(async (error: { line: number; message: string; surroundingLatex: string }) => {
     setExplainerLine(error.line)
@@ -419,6 +454,7 @@ export default function TryPage() {
     cleanBaselineRef.current = currentContent
     setMobilePane('pdf')
     setIsSubmitting(true)
+    autoCompileTriggeredRef.current = false
     try {
       // Trial usage is now enforced+counted server-side in /jobs/submit for anonymous users.
       const response = await apiClient.optimizeAndCompile({
