@@ -102,9 +102,16 @@ export default function OnboardingFlow({
     previouslyFocusedRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null
 
-    // Lock body scroll while the modal is open.
+    // Lock body scroll while the modal is open. `overflow: hidden` alone
+    // doesn't stop touch-driven rubber-band scrolling on mobile Safari — the
+    // page can still bounce beneath the fixed backdrop, briefly exposing
+    // unstyled page content past its edges (the "backdrop doesn't cover the
+    // full viewport" symptom). Pairing it with `overscroll-behavior: none`
+    // blocks that bounce/scroll-chaining outright.
     const previousOverflow = document.body.style.overflow
+    const previousOverscroll = document.body.style.overscrollBehavior
     document.body.style.overflow = 'hidden'
+    document.body.style.overscrollBehavior = 'none'
 
     const getFocusable = (): HTMLElement[] => {
       const panel = panelRef.current
@@ -154,6 +161,7 @@ export default function OnboardingFlow({
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       document.body.style.overflow = previousOverflow
+      document.body.style.overscrollBehavior = previousOverscroll
       previouslyFocusedRef.current?.focus?.()
     }
   }, [isOpen, onSkip])
@@ -337,7 +345,7 @@ export default function OnboardingFlow({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-[var(--overlay)] p-4"
       onClick={onSkip}
     >
       <motion.div
@@ -351,7 +359,7 @@ export default function OnboardingFlow({
         animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
         exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 8 }}
         transition={{ duration: prefersReducedMotion ? 0 : 0.2, ease: 'easeOut' }}
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[var(--radius-xl,20px)] border border-line bg-surface shadow-2xl focus:outline-none"
+        className="flex max-h-[90vh] supports-[height:100dvh]:max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-[var(--radius-xl,20px)] border border-line bg-surface shadow-2xl focus:outline-none"
       >
         {/* Header */}
         <div className="border-b border-line px-6 py-5">
@@ -395,8 +403,15 @@ export default function OnboardingFlow({
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex min-h-[380px] flex-1 flex-col overflow-y-auto px-6 py-6">
+        {/* Content — `min-h-0` (not a fixed min-height) is required here: this
+            flex item sits between a header and footer inside a `max-h` +
+            `overflow-hidden` panel, so a rigid min-height can force the
+            column past the panel's height budget on short mobile viewports.
+            Once that happens the excess is clipped by the panel's
+            `overflow-hidden` instead of being reachable via this element's
+            own `overflow-y-auto`, which is how the last card in a step's
+            grid can end up unreachable on mobile. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-6 py-6">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentStep}
