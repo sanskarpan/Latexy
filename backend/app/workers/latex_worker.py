@@ -546,6 +546,16 @@ def compile_latex_task(
                 r"Invalid LaTeX: missing \documentclass, "
                 r"\begin{document}, or \end{document}"
             )
+            # This gate runs BEFORE the compiler ever starts, so there is no
+            # pdflatex stdout to stream — without this, the Live Logs panel
+            # stays completely empty on failure (see job.failed below), giving
+            # the user no actionable detail. Publish the reason as a log line
+            # too, matching what a real compiler failure looks like downstream.
+            publish_event(job_id, "log.line", {
+                "line": f"! {error_msg}",
+                "source": compiler,
+                "is_error": True,
+            })
             publish_event(job_id, "job.failed", {
                 "stage": "latex_compilation",
                 "error_code": "latex_error",
@@ -857,8 +867,11 @@ def compile_latex_task(
             publish_event(job_id, "job.completed", {
                 "percent": 100,
                 "pdf_job_id": job_id,
-                "ats_score": 0.0,
-                "ats_details": {},
+                # A plain compile never runs ATS scoring — send None (not a
+                # fake 0.0) so the client shows a neutral "no score yet"
+                # state instead of a misleading 0/100 "Poor" verdict.
+                "ats_score": None,
+                "ats_details": None,
                 "changes_made": [],
                 "compilation_time": compilation_time,
                 "optimization_time": 0.0,
