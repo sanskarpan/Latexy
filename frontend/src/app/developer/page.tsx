@@ -1,10 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Check, Copy, KeyRound, Trash2, X } from 'lucide-react'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import {
   apiClient,
   type DeveloperKey,
@@ -28,9 +27,8 @@ const fieldInput =
 const label = 'font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3'
 
 export default function DeveloperPage() {
-  const { data: session, isPending } = useSession()
+  const { session, isPending } = useRequireAuth()
   const sessionToken = session?.session?.token ?? null
-  const router = useRouter()
 
   const [loading, setLoading] = useState(true)
   const [keys, setKeys] = useState<DeveloperKey[]>([])
@@ -41,12 +39,6 @@ export default function DeveloperPage() {
   const [busyKeyId, setBusyKeyId] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<Record<string, string>>({})
   const [copiedCreatedKey, setCopiedCreatedKey] = useState(false)
-
-  useEffect(() => {
-    if (!isPending && !session) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
-    }
-  }, [isPending, router, session])
 
   // Note: the Bearer token is published to apiClient by <AuthSync /> in the root
   // layout — it is the single source of truth. Mirroring it from here would race
@@ -275,7 +267,18 @@ console.log(payload);`,
               <div key={key.id} className={`bg-surface p-5 ${i > 0 ? 'border-t border-line' : ''}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="font-ui text-sm font-semibold text-fg">{key.key_prefix}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-ui text-sm font-semibold text-fg">{key.key_prefix}</p>
+                      {key.is_active ? (
+                        <span className="rounded-[var(--radius-pill)] bg-ok/10 px-2 py-0.5 font-ui text-[10px] font-semibold uppercase tracking-[0.08em] text-ok ring-1 ring-ok/20">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="rounded-[var(--radius-pill)] bg-err/10 px-2 py-0.5 font-ui text-[10px] font-semibold uppercase tracking-[0.08em] text-err ring-1 ring-err/20">
+                          Revoked
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-1 font-ui text-xs text-fg-3">
                       {key.request_count} requests · last used{' '}
                       {key.last_used_at ? new Date(key.last_used_at).toLocaleString() : 'never'}
@@ -283,11 +286,11 @@ console.log(payload);`,
                   </div>
                   <button
                     onClick={() => handleRevoke(key.id)}
-                    disabled={busyKeyId === key.id}
+                    disabled={busyKeyId === key.id || !key.is_active}
                     className="inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-line-2 px-3 py-2 font-ui text-sm font-semibold uppercase tracking-[0.06em] text-err transition duration-150 hover:border-err focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 motion-reduce:transition-none"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    Revoke
+                    {key.is_active ? 'Revoke' : 'Revoked'}
                   </button>
                 </div>
                 <div className="mt-4 flex flex-col gap-3 sm:flex-row">
