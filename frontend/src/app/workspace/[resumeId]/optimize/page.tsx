@@ -94,6 +94,18 @@ export default function OptimizationSuitePage() {
 
   // Industry override for ATS calibration (Feature 46)
   const [industryOverride, setIndustryOverride] = useState<string | null>(null)
+  // Re-scored result for the selected industry override — score/recommendations
+  // must reflect the chosen calibration, not just the display label.
+  const [industryOverrideResult, setIndustryOverrideResult] = useState<{
+    ats_score?: number
+    category_scores?: Record<string, number>
+    recommendations?: string[]
+    warnings?: string[]
+    strengths?: string[]
+    industry_key?: string
+    industry_label?: string
+  } | null>(null)
+  const [isRescoringIndustry, setIsRescoringIndustry] = useState(false)
 
   // ATS tools tab
   const [activeToolTab, setActiveToolTab] = useState<'ATS Simulator' | 'Keywords' | 'Publications'>('ATS Simulator')
@@ -232,6 +244,9 @@ export default function OptimizationSuitePage() {
     setCompareOriginalLatex(currentContent)
     setIsSubmitting(true)
     setPdfUrl(null)
+    // A fresh optimize pass produces its own ATS analysis — drop any stale
+    // industry-override re-score so we don't show mismatched results.
+    setIndustryOverrideResult(null)
 
     try {
       const response = await apiClient.optimizeAndCompile({
@@ -260,6 +275,34 @@ export default function OptimizationSuitePage() {
       setIsSubmitting(false)
     }
   }
+
+  // Re-score against the chosen industry profile so the "Change industry…"
+  // selector actually affects the displayed score/recommendations, not just
+  // the label. Hits the same ats_scoring_service computation (sync path) that
+  // powers the async job pipeline, so results stay consistent.
+  const handleIndustryOverride = useCallback(async (key: string) => {
+    const resolvedKey = key === 'generic' ? null : key
+    setIndustryOverride(resolvedKey)
+    const currentContent = editorRef.current?.getValue() || resume?.latex_content || ''
+    if (!currentContent.trim()) return
+    setIsRescoringIndustry(true)
+    try {
+      const res = await apiClient.scoreATS({
+        latex_content: currentContent,
+        job_description: jobDescription || undefined,
+        industry_override: resolvedKey ?? undefined,
+      })
+      if (res.success) {
+        setIndustryOverrideResult(res)
+      } else {
+        toast.error(res.message || 'Failed to re-score for this industry')
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to re-score for this industry')
+    } finally {
+      setIsRescoringIndustry(false)
+    }
+  }, [resume?.latex_content, jobDescription])
 
   const restoreOriginal = () => {
     if (!baselineLatex || !editorRef.current) return
@@ -838,7 +881,7 @@ export default function OptimizationSuitePage() {
           </section>
 
           <AnimatePresence>
-            {stream.status === 'completed' && stream.atsScore !== undefined && (
+            {stream.status === 'completed' && (
               <motion.section
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -898,14 +941,15 @@ export default function OptimizationSuitePage() {
                   </div>
                 </div>
                 <ATSScoreCard
-                  score={stream.atsScore ?? undefined}
-                  categoryScores={stream.atsDetails?.category_scores}
-                  recommendations={stream.atsDetails?.recommendations}
-                  warnings={stream.atsDetails?.warnings}
-                  strengths={stream.atsDetails?.strengths}
-                  industryLabel={industryOverride ? null : stream.industryLabel}
-                  industryKey={industryOverride ?? (stream.atsDetails as any)?.industry_key ?? null}
-                  onIndustryOverride={(key) => setIndustryOverride(key === 'generic' ? null : key)}
+                  score={industryOverrideResult?.ats_score ?? stream.atsScore ?? undefined}
+                  categoryScores={industryOverrideResult?.category_scores ?? stream.atsDetails?.category_scores}
+                  recommendations={industryOverrideResult?.recommendations ?? stream.atsDetails?.recommendations}
+                  warnings={industryOverrideResult?.warnings ?? stream.atsDetails?.warnings}
+                  strengths={industryOverrideResult?.strengths ?? stream.atsDetails?.strengths}
+                  isLoading={isRescoringIndustry}
+                  industryLabel={industryOverrideResult?.industry_label ?? (industryOverride ? null : stream.industryLabel)}
+                  industryKey={industryOverrideResult?.industry_key ?? industryOverride ?? (stream.atsDetails as any)?.industry_key ?? null}
+                  onIndustryOverride={handleIndustryOverride}
                 />
               </motion.section>
             )}
