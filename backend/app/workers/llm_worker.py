@@ -124,55 +124,105 @@ def optimize_resume_task(
 
         provider_call_start = time.perf_counter()
         start_time = time.time()
-        with traced("llm.provider_call", provider=provider, model=model_name):
-            # Route the platform key through an OpenAI-compatible base URL when
-            # configured (e.g. Gemini); BYOK keys keep native OpenAI unchanged.
-            if settings.OPENAI_BASE_URL and api_key == settings.OPENAI_API_KEY:
-                client = openai.OpenAI(api_key=api_key, base_url=settings.OPENAI_BASE_URL)
-                model_name = settings.OPENAI_MODEL
-            else:
-                client = openai.OpenAI(api_key=api_key)
 
-            stream = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are an expert resume optimizer specializing in ATS-friendly "
-                            "LaTeX resumes. You help job seekers optimize their resumes for "
-                            "specific job descriptions while maintaining professional formatting."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=settings.OPENAI_MAX_TOKENS,
-                temperature=settings.OPENAI_TEMPERATURE,
-                stream=True,
-                stream_options={"include_usage": True},
+        # Route the platform key through an OpenAI-compatible base URL when
+        # configured (e.g. Gemini); BYOK keys keep native OpenAI unchanged.
+        _use_platform_base = bool(settings.OPENAI_BASE_URL) and api_key == settings.OPENAI_API_KEY
+        if _use_platform_base:
+            client = openai.OpenAI(api_key=api_key, base_url=settings.OPENAI_BASE_URL)
+            model_name = settings.OPENAI_MODEL
+        else:
+            client = openai.OpenAI(api_key=api_key)
+
+        # Gemini's OpenAI-compat models "think" by default, consuming the token
+        # budget before ever emitting the closing <<<END_LATEX>>> delimiter —
+        # confirmed live in production, a real call spent 4,146 tokens and
+        # produced zero visible output. reasoning_effort="none" reduces this
+        # but does NOT eliminate it (confirmed empirically: it still happens
+        # some fraction of the time, non-deterministically) — so on top of
+        # disabling it, retry once on a genuinely empty/undelimited response
+        # before giving up. Silently returning the unmodified resume as a
+        # "success" (the previous behavior) is worse than a clear failure the
+        # user can retry.
+        MAX_ATTEMPTS = 2
+        optimized_latex = latex_content
+        changes_made: list[Dict] = []
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            accumulated = ""
+            token_count = 0
+            with traced("llm.provider_call", provider=provider, model=model_name, attempt=attempt):
+                create_kwargs: Dict[str, Any] = dict(
+                    model=model_name,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are an expert resume optimizer specializing in ATS-friendly "
+                                "LaTeX resumes. You help job seekers optimize their resumes for "
+                                "specific job descriptions while maintaining professional formatting."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=settings.OPENAI_MAX_TOKENS,
+                    temperature=settings.OPENAI_TEMPERATURE,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                )
+                if _use_platform_base:
+                    create_kwargs["extra_body"] = {"reasoning_effort": "none"}
+
+                stream = client.chat.completions.create(**create_kwargs)
+
+                for chunk in stream:
+                    # Final chunk may carry usage info when stream_options include_usage=True
+                    if hasattr(chunk, "usage") and chunk.usage is not None:
+                        tokens_total += chunk.usage.total_tokens
+                        prompt_tokens = getattr(chunk.usage, "prompt_tokens", 0) or 0
+                        completion_tokens += getattr(chunk.usage, "completion_tokens", 0) or 0
+                        continue
+
+                    if not chunk.choices:
+                        continue
+
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        accumulated += delta
+                        token_count += 1
+                        # Only stream tokens to the client on the attempt that
+                        # actually pans out is unknowable in advance, so the
+                        # first attempt's tokens are shown live as normal; a
+                        # retry (rare) republishes from scratch below.
+                        publish_event(job_id, "llm.token", {"token": delta})
+
+                        # Check cancellation every 20 tokens to avoid hammering Redis
+                        if token_count % 20 == 0 and is_cancelled(job_id):
+                            publish_event(job_id, "job.cancelled", {})
+                            return {"success": False, "job_id": job_id, "cancelled": True}
+
+            optimized_latex, raw_changes = parse_delimited_optimization(accumulated, latex_content)
+            changes_made = [
+                {
+                    "section": c.get("section", ""),
+                    "change_type": c.get("change_type", "modified"),
+                    "reason": c.get("reason", ""),
+                }
+                for c in raw_changes
+            ]
+
+            if "<<<LATEX>>>" in accumulated:
+                break  # got real delimited output — done
+
+            logger.warning(
+                f"[{job_id}] attempt {attempt}/{MAX_ATTEMPTS}: LLM output missing "
+                f"<<<LATEX>>> markers ({len(accumulated)} chars, {token_count} tokens accumulated)"
             )
-
-            for chunk in stream:
-                # Final chunk may carry usage info when stream_options include_usage=True
-                if hasattr(chunk, "usage") and chunk.usage is not None:
-                    tokens_total = chunk.usage.total_tokens
-                    prompt_tokens = getattr(chunk.usage, "prompt_tokens", 0) or 0
-                    completion_tokens = getattr(chunk.usage, "completion_tokens", 0) or 0
-                    continue
-
-                if not chunk.choices:
-                    continue
-
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    accumulated += delta
-                    token_count += 1
-                    publish_event(job_id, "llm.token", {"token": delta})
-
-                    # Check cancellation every 20 tokens to avoid hammering Redis
-                    if token_count % 20 == 0 and is_cancelled(job_id):
-                        publish_event(job_id, "job.cancelled", {})
-                        return {"success": False, "job_id": job_id, "cancelled": True}
+            if attempt < MAX_ATTEMPTS:
+                publish_event(job_id, "job.progress", {
+                    "percent": 10,
+                    "stage": "llm_optimization",
+                    "message": "Retrying — first attempt produced no usable output",
+                })
 
         provider_call_seconds = time.perf_counter() - provider_call_start
         optimization_time = time.time() - start_time
@@ -181,22 +231,27 @@ def optimize_resume_task(
         if tokens_total == 0:
             tokens_total = llm_service.count_tokens(accumulated)
 
-        # ── Parse accumulated delimiter output FIRST ─────────────────
-        # The prompt (_create_optimization_prompt) asks the model to wrap the
-        # result in <<<LATEX>>>...<<<END_LATEX>>> / <<<CHANGES>>>...<<<END_CHANGES>>>.
-        # Parse before publishing llm.complete so full_content contains the actual
-        # LaTeX (not the raw delimited wrapper string).
-        optimized_latex, raw_changes = parse_delimited_optimization(accumulated, latex_content)
-        changes_made: list[Dict] = [
-            {
-                "section": c.get("section", ""),
-                "change_type": c.get("change_type", "modified"),
-                "reason": c.get("reason", ""),
+        if "<<<LATEX>>>" not in accumulated:
+            # Exhausted every retry with no usable output — this is a real
+            # failure, not a resume that "didn't need changes". Say so.
+            logger.error(f"[{job_id}] LLM optimization failed after {MAX_ATTEMPTS} attempts — no delimited output")
+            publish_event(job_id, "job.failed", {
+                "stage": "llm_optimization",
+                "error_code": "llm_error",
+                "error_message": "The AI didn't return a usable result after retrying. Please try again.",
+                "retryable": True,
+            })
+            record_llm_call(
+                provider, model_name, "error",
+                total_seconds=time.perf_counter() - total_start,
+                prompt_build_seconds=prompt_build_seconds,
+                provider_call_seconds=provider_call_seconds,
+            )
+            return {
+                "success": False,
+                "job_id": job_id,
+                "error": "LLM returned no usable output after retrying",
             }
-            for c in raw_changes
-        ]
-        if optimized_latex == latex_content and "<<<LATEX>>>" not in accumulated:
-            logger.warning(f"[{job_id}] LLM output missing <<<LATEX>>> markers; returning original resume")
 
         # Publish llm.complete with parsed LaTeX (not the raw JSON string)
         publish_event(job_id, "llm.complete", {
@@ -229,8 +284,11 @@ def optimize_resume_task(
         publish_event(job_id, "job.completed", {
             "percent": 100,
             "pdf_job_id": job_id,
-            "ats_score": 0.0,
-            "ats_details": {},
+            # This is a pure LLM rewrite — no ATS scoring stage runs here, so
+            # send None (not a fake 0.0) to avoid a misleading 0/100 "Poor"
+            # verdict on the client.
+            "ats_score": None,
+            "ats_details": None,
             "changes_made": changes_made,
             "compilation_time": 0.0,
             "optimization_time": optimization_time,
