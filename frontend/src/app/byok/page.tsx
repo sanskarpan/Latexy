@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import APIKeyManager from '@/components/byok/APIKeyManager'
 import ProviderSelector from '@/components/byok/ProviderSelector'
 
@@ -30,15 +29,8 @@ const points = [
 ]
 
 export default function BYOKPage() {
-  const { data: session, isPending } = useSession()
-  const router = useRouter()
+  const { session } = useRequireAuth()
   const [userApiKeys, setUserApiKeys] = useState<APIKeyInfo[]>([])
-
-  useEffect(() => {
-    if (!isPending && !session) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
-    }
-  }, [session, isPending, router])
 
   return (
     <div className="content-shell">
