@@ -1,12 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Merge, Check, Loader2, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type ResumeResponse } from '@/lib/api-client'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 
 function parseLatexSections(latex: string): string[] {
   const matches = latex.matchAll(/\\section\*?\{([^}]+)\}/g)
@@ -18,8 +17,7 @@ function parseLatexSections(latex: string): string[] {
 }
 
 export default function MergeResumesPage() {
-  const { data: session, isPending } = useSession()
-  const router = useRouter()
+  const { session, isPending } = useRequireAuth()
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
   const [resumes, setResumes] = useState<ResumeResponse[]>([])
@@ -31,13 +29,6 @@ export default function MergeResumesPage() {
   const [mergedLatex, setMergedLatex] = useState('')
   const [newResumeId, setNewResumeId] = useState('')
   const mergeCalledRef = useRef(false)
-
-  // Auth guard
-  useEffect(() => {
-    if (!isPending && !session) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
-    }
-  }, [isPending, session, router])
 
   // Fetch resumes on mount
   useEffect(() => {
