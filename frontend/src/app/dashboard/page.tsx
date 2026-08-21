@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import {
   apiClient,
   type CoverLetterStatsResponse,
@@ -12,7 +11,7 @@ import {
   type UserAnalyticsResponse,
   type UserAnalyticsTimeseriesResponse,
 } from '@/lib/api-client'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import { ActivityAreaChart, FeatureUsageBars, StatusDonutChart } from '@/components/analytics/MetricCharts'
 import { JobQueue } from '@/components/JobQueue'
@@ -24,8 +23,7 @@ const ranges = [
 ]
 
 export default function DashboardPage() {
-  const { data: session, isPending: sessionLoading } = useSession()
-  const router = useRouter()
+  const { session, isPending: sessionLoading } = useRequireAuth()
   const [selectedRange, setSelectedRange] = useState(30)
   const [analytics, setAnalytics] = useState<UserAnalyticsResponse | null>(null)
   const [timeseries, setTimeseries] = useState<UserAnalyticsTimeseriesResponse | null>(null)
@@ -38,12 +36,6 @@ export default function DashboardPage() {
   const [selectedJobResult, setSelectedJobResult] = useState<JobResultResponse | null>(null)
   const [selectedJobResultLoading, setSelectedJobResultLoading] = useState(false)
   const [selectedJobResultError, setSelectedJobResultError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!sessionLoading && !session) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
-    }
-  }, [session, sessionLoading, router])
 
   const fetchDashboardData = useCallback(async () => {
     if (!session) return
