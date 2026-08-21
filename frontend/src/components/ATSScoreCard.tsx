@@ -160,8 +160,8 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
         <CardContent className="flex items-center justify-center py-8">
           <div className="text-center text-fg-3">
             <Target className="w-8 h-8 mx-auto mb-2" />
-            <p>No ATS score available</p>
-            <p className="text-sm">Run ATS analysis to see your score</p>
+            <p>No ATS score yet</p>
+            <p className="text-sm">Add a job description and optimize to see your ATS score</p>
           </div>
         </CardContent>
       </Card>
