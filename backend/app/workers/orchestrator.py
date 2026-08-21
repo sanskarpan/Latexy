@@ -685,10 +685,21 @@ def _run_latex_stage(
 
     # Shared content gate (same call the latex_compilation path makes)
     if not latex_service.validate_latex_content(latex_content):
-        return False, 0.0, (
+        error_msg = (
             r"Invalid LaTeX: missing \documentclass, \begin{document}, "
             r"\end{document}, or disallowed file/shell primitives"
-        ), None, None
+        )
+        # This gate runs BEFORE the compiler ever starts, so there is no
+        # pdflatex stdout to stream — without this, the Live Logs panel stays
+        # completely empty on failure (the caller publishes job.failed from
+        # the returned error_msg alone). Publish it as a log line too, so it
+        # shows up the same way a real compiler failure's output would.
+        publish_event(job_id, "log.line", {
+            "line": f"! {error_msg}",
+            "source": compiler,
+            "is_error": True,
+        })
+        return False, 0.0, error_msg, None, None
 
     job_dir = Path(settings.TEMP_DIR) / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
