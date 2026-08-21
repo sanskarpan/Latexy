@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { Plus, MoreHorizontal, ExternalLink, Trash2, Pencil, X, StickyNote, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -14,6 +13,7 @@ import {
   DragStartEvent,
   KeyboardSensor,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
@@ -25,7 +25,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { apiClient, type JobApplication, type TrackerStats } from '@/lib/api-client'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import AddApplicationModal from '@/components/AddApplicationModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
@@ -73,24 +73,18 @@ function timeAgo(iso: string) {
 //  Logo / avatar helper                                                //
 // ------------------------------------------------------------------ //
 
-function CompanyAvatar({ name, logoUrl }: { name: string; logoUrl: string | null }) {
-  const [imgFailed, setImgFailed] = useState(false)
+// `logoUrl` (server-constructed logo.clearbit.com lookup) is accepted for
+// backward compatibility but intentionally unused — the Clearbit Logo API
+// domain no longer resolves, so attempting it fired a failed network
+// request (and a console error) on every card render. We render a text
+// avatar instead of ever attempting the external fetch.
+function CompanyAvatar({ name }: { name: string; logoUrl?: string | null }) {
   const initials = name
     .split(' ')
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('')
 
-  if (logoUrl && !imgFailed) {
-    return (
-      <img
-        src={logoUrl}
-        alt={name}
-        onError={() => setImgFailed(true)}
-        className="h-8 w-8 flex-shrink-0 rounded-[var(--radius-md)] object-contain bg-surface-2 p-0.5"
-      />
-    )
-  }
   return (
     <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-surface-2 text-[11px] font-bold text-fg-2">
       {initials || '?'}
@@ -321,6 +315,10 @@ interface ColumnProps {
 }
 
 function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete, onEdit, onStatusChange }: ColumnProps) {
+  // The column container itself (not just its cards) must be a registered
+  // droppable target — otherwise an empty column has no children for dnd-kit
+  // to hit-test against and drops onto it silently fail.
+  const { setNodeRef, isOver } = useDroppable({ id: columnId })
   return (
     <div className={`flex min-h-[200px] w-[80vw] max-w-[300px] flex-shrink-0 flex-col rounded-[var(--radius-lg)] border border-line bg-bg border-t-2 sm:w-[260px] ${colorClass}`}>
       <div className="flex items-center gap-2 px-3.5 py-3">
@@ -329,7 +327,12 @@ function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete,
           {apps.length}
         </span>
       </div>
-      <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-2.5 pb-3">
+      <div
+        ref={setNodeRef}
+        className={`flex flex-1 flex-col gap-2 overflow-y-auto px-2.5 pb-3 rounded-[var(--radius-md)] transition-colors ${
+          isOver ? 'bg-accent-soft/40' : ''
+        }`}
+      >
         <SortableContext items={apps.map((a) => a.id)} strategy={verticalListSortingStrategy}>
           {apps.map((app) => (
             <ApplicationCard key={app.id} app={app} onDelete={onDelete} onEdit={onEdit} onStatusChange={onStatusChange} />
@@ -343,6 +346,58 @@ function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete,
       </div>
     </div>
   )
+}
+
+// ------------------------------------------------------------------ //
+//  Local stats recomputation                                          //
+// ------------------------------------------------------------------ //
+
+// Mirrors the aggregation done by GET /tracker/stats (see
+// backend/app/api/tracker_routes.py::get_tracker_stats) so the stats strip
+// can be recomputed optimistically from boardData the instant it changes,
+// instead of only reflecting reality after a round trip to the server.
+function computeStatsFromBoard(board: Record<string, JobApplication[]>): TrackerStats {
+  const apps = Object.values(board).flat()
+  const total = apps.length
+  const byStatus: Record<string, number> = Object.fromEntries(COLUMNS.map((c) => [c.id, 0]))
+  const atsScores: number[] = []
+
+  const now = Date.now()
+  const weekStart = now - 7 * 86400000
+  const monthStart = new Date()
+  monthStart.setUTCDate(1)
+  monthStart.setUTCHours(0, 0, 0, 0)
+  const monthStartMs = monthStart.getTime()
+
+  let thisWeek = 0
+  let thisMonth = 0
+
+  for (const a of apps) {
+    if (a.status in byStatus) byStatus[a.status] += 1
+    if (a.ats_score_at_submission != null) atsScores.push(a.ats_score_at_submission)
+    const appliedMs = new Date(a.applied_at).getTime()
+    if (!Number.isNaN(appliedMs)) {
+      if (appliedMs >= weekStart) thisWeek += 1
+      if (appliedMs >= monthStartMs) thisMonth += 1
+    }
+  }
+
+  const progressed = ['phone_screen', 'technical', 'onsite', 'offer'].reduce(
+    (sum, s) => sum + (byStatus[s] ?? 0),
+    0
+  )
+
+  return {
+    total_applications: total,
+    by_status: byStatus,
+    avg_ats_score: atsScores.length
+      ? Math.round((atsScores.reduce((a, b) => a + b, 0) / atsScores.length) * 10) / 10
+      : null,
+    applications_this_week: thisWeek,
+    applications_this_month: thisMonth,
+    response_rate: total > 0 ? Math.round((progressed / total) * 10000) / 10000 : 0,
+    offer_rate: total > 0 ? Math.round((byStatus.offer / total) * 10000) / 10000 : 0,
+  }
 }
 
 // ------------------------------------------------------------------ //
@@ -382,8 +437,7 @@ function StatsBar({ stats }: { stats: TrackerStats | null }) {
 // ------------------------------------------------------------------ //
 
 export default function TrackerPage() {
-  const { data: session, isPending: sessionLoading } = useSession()
-  const router = useRouter()
+  const { session, isPending: sessionLoading } = useRequireAuth()
 
   const [boardData, setBoardData] = useState<Record<string, JobApplication[]>>(() =>
     Object.fromEntries(COLUMNS.map((c) => [c.id, []]))
@@ -406,9 +460,6 @@ export default function TrackerPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  useEffect(() => {
-    if (!sessionLoading && !session) router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
-  }, [session, sessionLoading, router])
 
   const loadBoard = useCallback(async () => {
     if (!session) return
@@ -538,10 +589,12 @@ export default function TrackerPage() {
     if (!app) return
 
     // Optimistic remove — the real API call is deferred so an "Undo" can cancel it.
-    setBoardData((prev) => ({
-      ...prev,
-      [col]: prev[col].filter((a) => a.id !== id),
-    }))
+    // Stats are recomputed locally in lockstep with the board so the stats strip
+    // reflects the deletion immediately, rather than lagging behind the deferred
+    // network delete + refetch below (or requiring a manual reload to catch up).
+    const boardAfterDelete = { ...boardData, [col]: boardData[col].filter((a) => a.id !== id) }
+    setBoardData(boardAfterDelete)
+    setStats(computeStatsFromBoard(boardAfterDelete))
 
     let undone = false
     const timer = setTimeout(async () => {
@@ -566,7 +619,9 @@ export default function TrackerPage() {
           setBoardData((prev) => {
             const next = [...(prev[col] ?? [])]
             next.splice(Math.min(index, next.length), 0, app)
-            return { ...prev, [col]: next }
+            const restored = { ...prev, [col]: next }
+            setStats(computeStatsFromBoard(restored))
+            return restored
           })
         },
       },
