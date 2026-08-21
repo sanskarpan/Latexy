@@ -11,7 +11,14 @@ from enum import Enum
 from typing import Dict, List, Optional
 
 import httpx
-from openai import AsyncOpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AsyncOpenAI,
+    AuthenticationError,
+    PermissionDeniedError,
+    RateLimitError,
+)
 
 from ..core.config import settings
 from ..core.logging import get_logger
@@ -76,10 +83,46 @@ class BaseLLMProvider(ABC):
     # provider; falls back to get_capabilities() defaults when a model is absent.
     MODEL_PRICING: Dict[str, tuple] = {}
 
+    # Expected key prefix used for a cheap client-side format check before ever
+    # calling the provider. None disables the check for providers with no fixed
+    # prefix convention.
+    KEY_PREFIX: Optional[str] = None
+    KEY_PREFIX_HINT: str = ""
+    # Human-readable provider name for error messages (e.g. "OpenAI", not the
+    # lowercase internal provider_name). Falls back to provider_name.title().
+    DISPLAY_NAME: str = ""
+
     def __init__(self, api_key: str, provider_config: Optional[Dict] = None):
         self.api_key = api_key
         self.provider_config = provider_config or {}
         self.provider_name = self.__class__.__name__.lower().replace('provider', '')
+        # Populated by validate_api_key() on failure so callers can surface a
+        # specific, actionable reason instead of a flat "invalid key" message.
+        # kind is one of: "format" (malformed before any network call),
+        # "rejected" (provider reached, key/permissions denied), "network"
+        # (couldn't reach the provider), "unknown" (unexpected error).
+        self.last_validation_error: Optional[Dict[str, str]] = None
+
+    def _set_validation_error(self, kind: str, message: str) -> None:
+        self.last_validation_error = {"kind": kind, "message": message}
+
+    def _check_key_format(self) -> bool:
+        """Cheap client-side format check, run before any provider round-trip.
+
+        Returns True (and leaves last_validation_error untouched) when the key
+        looks plausible or no prefix convention is configured for this provider.
+        """
+        self.last_validation_error = None
+        if self.KEY_PREFIX and not (self.api_key or "").startswith(self.KEY_PREFIX):
+            display_name = self.DISPLAY_NAME or self.provider_name.title()
+            self._set_validation_error(
+                "format",
+                f"This doesn't look like a valid {display_name} key — "
+                f"{display_name} keys start with '{self.KEY_PREFIX}'. "
+                f"{self.KEY_PREFIX_HINT}".strip(),
+            )
+            return False
+        return True
 
     @abstractmethod
     async def generate(self, request: LLMRequest) -> LLMResponse:
@@ -128,6 +171,10 @@ class BaseLLMProvider(ABC):
 
 class OpenAIProvider(BaseLLMProvider):
     """OpenAI provider implementation"""
+
+    KEY_PREFIX = "sk-"
+    KEY_PREFIX_HINT = "Copy the key again from platform.openai.com/api-keys."
+    DISPLAY_NAME = "OpenAI"
 
     # USD per 1K tokens (input, output). Most-specific prefixes first.
     MODEL_PRICING = {
@@ -194,14 +241,47 @@ class OpenAIProvider(BaseLLMProvider):
             raise
 
     async def validate_api_key(self) -> bool:
+        if not self._check_key_format():
+            return False
         try:
             # Validate via the auth-only /models endpoint rather than a chat
             # completion against a hardcoded model — a key scoped to only newer
             # models (no gpt-3.5 access) is still valid.
             await self.client.models.list()
             return True
+        except AuthenticationError as e:
+            logger.error(f"OpenAI API key validation failed (auth): {e}")
+            self._set_validation_error(
+                "rejected",
+                "OpenAI rejected this key as invalid or revoked. Generate a new key at "
+                "platform.openai.com/api-keys and try again.",
+            )
+            return False
+        except PermissionDeniedError as e:
+            logger.error(f"OpenAI API key validation failed (permission): {e}")
+            self._set_validation_error(
+                "rejected",
+                "This key's format is valid but OpenAI denied access — check that the key's "
+                "project/organization has API access enabled.",
+            )
+            return False
+        except RateLimitError as e:
+            logger.error(f"OpenAI API key validation failed (rate limit): {e}")
+            self._set_validation_error(
+                "rejected",
+                "OpenAI rate-limited the validation request for this key. Wait a moment and try again.",
+            )
+            return False
+        except (APITimeoutError, APIConnectionError) as e:
+            logger.error(f"OpenAI API key validation failed (network): {e}")
+            self._set_validation_error(
+                "network",
+                "Could not reach OpenAI to validate this key — check your network connection and try again.",
+            )
+            return False
         except Exception as e:
             logger.error(f"OpenAI API key validation failed: {e}")
+            self._set_validation_error("unknown", f"OpenAI validation failed unexpectedly: {e}")
             return False
 
     def get_capabilities(self) -> ProviderCapabilities:
@@ -228,6 +308,10 @@ class OpenAIProvider(BaseLLMProvider):
 
 class AnthropicProvider(BaseLLMProvider):
     """Anthropic Claude provider implementation"""
+
+    KEY_PREFIX = "sk-ant-"
+    KEY_PREFIX_HINT = "Copy the key again from console.anthropic.com/settings/keys."
+    DISPLAY_NAME = "Anthropic"
 
     # USD per 1K tokens (input, output). Most-specific prefixes first.
     MODEL_PRICING = {
@@ -312,6 +396,8 @@ class AnthropicProvider(BaseLLMProvider):
             raise
 
     async def validate_api_key(self) -> bool:
+        if not self._check_key_format():
+            return False
         try:
             params = {
                 "model": "claude-3-haiku-20240307",
@@ -326,9 +412,47 @@ class AnthropicProvider(BaseLLMProvider):
                     json=params,
                     timeout=30.0
                 )
-                return response.status_code == 200
+
+            if response.status_code == 200:
+                return True
+
+            if response.status_code == 401:
+                self._set_validation_error(
+                    "rejected",
+                    "Anthropic rejected this key as invalid or revoked. Generate a new key at "
+                    "console.anthropic.com/settings/keys and try again.",
+                )
+            elif response.status_code == 403:
+                self._set_validation_error(
+                    "rejected",
+                    "This key's format is valid but Anthropic denied access — check that the key's "
+                    "organization has API access enabled.",
+                )
+            elif response.status_code == 429:
+                self._set_validation_error(
+                    "rejected",
+                    "Anthropic rate-limited the validation request for this key. Wait a moment and try again.",
+                )
+            else:
+                try:
+                    detail = response.json().get("error", {}).get("message", response.text)
+                except Exception:
+                    detail = response.text
+                self._set_validation_error(
+                    "rejected",
+                    f"Anthropic rejected this key: {detail}",
+                )
+            return False
+        except httpx.RequestError as e:
+            logger.error(f"Anthropic API key validation failed (network): {e}")
+            self._set_validation_error(
+                "network",
+                "Could not reach Anthropic to validate this key — check your network connection and try again.",
+            )
+            return False
         except Exception as e:
             logger.error(f"Anthropic API key validation failed: {e}")
+            self._set_validation_error("unknown", f"Anthropic validation failed unexpectedly: {e}")
             return False
 
     def get_capabilities(self) -> ProviderCapabilities:
@@ -353,6 +477,10 @@ class AnthropicProvider(BaseLLMProvider):
 
 class OpenRouterProvider(BaseLLMProvider):
     """OpenRouter provider implementation (supports multiple models)"""
+
+    KEY_PREFIX = "sk-or-"
+    KEY_PREFIX_HINT = "Copy the key again from openrouter.ai/keys."
+    DISPLAY_NAME = "OpenRouter"
 
     def __init__(self, api_key: str, provider_config: Optional[Dict] = None):
         super().__init__(api_key, provider_config)
@@ -403,13 +531,45 @@ class OpenRouterProvider(BaseLLMProvider):
             raise
 
     async def validate_api_key(self) -> bool:
+        if not self._check_key_format():
+            return False
         try:
             # Auth-only /models check — avoids rejecting keys that lack access to
             # a specific hardcoded model.
             await self.client.models.list()
             return True
+        except AuthenticationError as e:
+            logger.error(f"OpenRouter API key validation failed (auth): {e}")
+            self._set_validation_error(
+                "rejected",
+                "OpenRouter rejected this key as invalid or revoked. Generate a new key at "
+                "openrouter.ai/keys and try again.",
+            )
+            return False
+        except PermissionDeniedError as e:
+            logger.error(f"OpenRouter API key validation failed (permission): {e}")
+            self._set_validation_error(
+                "rejected",
+                "This key's format is valid but OpenRouter denied access to the requested resource.",
+            )
+            return False
+        except RateLimitError as e:
+            logger.error(f"OpenRouter API key validation failed (rate limit): {e}")
+            self._set_validation_error(
+                "rejected",
+                "OpenRouter rate-limited the validation request for this key. Wait a moment and try again.",
+            )
+            return False
+        except (APITimeoutError, APIConnectionError) as e:
+            logger.error(f"OpenRouter API key validation failed (network): {e}")
+            self._set_validation_error(
+                "network",
+                "Could not reach OpenRouter to validate this key — check your network connection and try again.",
+            )
+            return False
         except Exception as e:
             logger.error(f"OpenRouter API key validation failed: {e}")
+            self._set_validation_error("unknown", f"OpenRouter validation failed unexpectedly: {e}")
             return False
 
     def get_capabilities(self) -> ProviderCapabilities:
