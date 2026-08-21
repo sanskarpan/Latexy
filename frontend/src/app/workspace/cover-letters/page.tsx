@@ -2,16 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { X } from 'lucide-react'
 import { apiClient, type CoverLetterListItem } from '@/lib/api-client'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 export default function CoverLettersPage() {
-  const { data: session, isPending: sessionLoading } = useSession()
-  const router = useRouter()
+  const { session, isPending: sessionLoading } = useRequireAuth()
   const [coverLetters, setCoverLetters] = useState<CoverLetterListItem[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -22,12 +20,6 @@ export default function CoverLettersPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!sessionLoading && !session) {
-      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`)
-    }
-  }, [session, sessionLoading, router])
 
   // Debounce the search query so we don't fire a request on every keystroke.
   useEffect(() => {
