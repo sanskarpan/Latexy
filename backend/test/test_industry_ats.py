@@ -210,19 +210,31 @@ class TestATSScoringWithCalibration:
         assert result.industry_key == "generic"
         assert result.industry_label is None
 
-    async def test_tech_profile_boosts_keywords_score_vs_generic(self):
-        """Tech resume + tech JD should score >= tech resume + no JD on keyword dimension."""
+    async def test_keywords_score_matches_canonical_jd_match_percent(self):
+        """
+        When a JD is supplied, the "keywords" category must equal the SAME
+        canonical JD-match percentage shown elsewhere (multi_dim_scores.
+        keyword_density / the quick-score preview / the keyword-density map)
+        for the same resume+JD pair — not an industry-bonus heuristic that
+        floats independently of actual keyword overlap (previously this
+        category could sit at 100 even when true JD overlap was ~30%).
+        """
         from app.services.ats_scoring_service import ats_scoring_service
         calibrated = await ats_scoring_service.score_resume(
             latex_content=TECH_RESUME,
             job_description=TECH_JD,
         )
+        assert calibrated.category_scores["keywords"] == calibrated.multi_dim_scores["keyword_density"]
+
+    async def test_keywords_score_without_jd_uses_quality_heuristic(self):
+        """Without a JD there's no match percentage to anchor to, so the
+        keyword-quality heuristic (stuffing/tech-corpus/soft-skills) still
+        drives the category score."""
+        from app.services.ats_scoring_service import ats_scoring_service
         uncalibrated = await ats_scoring_service.score_resume(
             latex_content=TECH_RESUME,
         )
-        # Calibrated (tech_saas profile) should have equal or higher keywords score
-        # because profile boosts present keywords like kubernetes, microservices
-        assert calibrated.category_scores.get("keywords", 0) >= uncalibrated.category_scores.get("keywords", 0)
+        assert uncalibrated.category_scores["keywords"] == 100.0
 
     async def test_industry_calibration_in_detailed_analysis(self):
         """detailed_analysis must include industry_calibration block."""
