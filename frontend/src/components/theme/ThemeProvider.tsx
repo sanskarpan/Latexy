@@ -37,9 +37,13 @@ function acctKey(userId: string) {
 }
 
 // Reads the mode the pre-paint bootstrap script already applied to
-// `data-mode`, so the very first client render matches it exactly (no flash
-// of the wrong ModeToggle glyph). Falls back to the cookie, then OS
-// preference, for the rare case this runs before the bootstrap script has.
+// `data-mode`, so `mode` reflects the real theme from the first client
+// render onward (used to drive things like the toggle's own icon once
+// mounted — see ModeToggle, which intentionally renders the SSR-default
+// icon until then, since `mode` itself can only resolve to 'light' during
+// SSR and reading the real value on the client's first render would be a
+// hydration mismatch). Falls back to the cookie, then OS preference, for the
+// rare case this runs before the bootstrap script has.
 function readInitialMode(): Mode {
   if (typeof document === 'undefined') return 'light'
   const attr = document.documentElement.getAttribute('data-mode')
