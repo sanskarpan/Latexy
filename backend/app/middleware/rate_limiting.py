@@ -113,6 +113,48 @@ def _warn_fail_open(context: str) -> None:
         )
 
 
+
+# Paths hit on essentially every page load/navigation (session bootstrap
+# reads, feature flags, tenant context, best-effort telemetry) — cheap,
+# read-mostly, and not a meaningful abuse target on their own. Previously
+# these shared ONE bucket with expensive routes (compile, AI optimize),
+# keyed only by client_id with no per-endpoint segmentation at all — so a
+# user opening a few tabs, or a shared/NAT IP, could exhaust the budget
+# during completely normal browsing and get 429'd on these background calls.
+# Confirmed in production: a 429 here was being misread by the frontend as
+# "not authenticated" and evicting signed-in users mid-session (see
+# useRequireAuth.ts for the client-side half of this fix). Giving them their
+# own, more generous budget — not full exemption — fixes the false-eviction
+# trigger without losing rate limiting on these routes altogether.
+_LIGHTWEIGHT_PATHS = {
+    "/config/feature-flags",
+    "/tenants/current-context",
+    "/telemetry/frontend",
+}
+_LIGHTWEIGHT_CALLS_PER_MINUTE = 300
+_LIGHTWEIGHT_CALLS_PER_HOUR = 6000
+
+# Third-party "Connect" buttons on the Settings page (GitHub, Zotero, Mendeley,
+# Dropbox) — a single deliberate click that kicks off an OAuth redirect, not
+# automated background traffic. These previously shared the SAME default
+# per-IP bucket as everything else, including expensive compile/AI calls, so
+# a user who had already spent their default per-minute budget on normal
+# navigation could get 429'd just clicking "Connect GitHub" (production
+# audit). These are low-frequency by nature (nobody clicks Connect more than
+# a handful of times), so the budget is intentionally much tighter than the
+# lightweight background-poll bucket above — generous enough for legitimate
+# retries (e.g. fixing a misconfigured OAuth app) without exposing an
+# expensive-relative-to-compile redirect endpoint to abuse.
+_INTEGRATION_PATHS = {
+    "/github/connect",
+    "/zotero/connect",
+    "/mendeley/connect",
+    "/dropbox/connect",
+}
+_INTEGRATION_CALLS_PER_MINUTE = 10
+_INTEGRATION_CALLS_PER_HOUR = 100
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Rate limiting middleware using Redis for storage."""
 
@@ -173,25 +215,40 @@ return {m, h}
             _warn_fail_open("rate limiting")
             return
 
+        # Lightweight paths get their own bucket (namespaced ":lw:") so they
+        # never share budget with compile/AI calls — see _LIGHTWEIGHT_PATHS.
+        if endpoint in _LIGHTWEIGHT_PATHS:
+            per_minute, per_hour = _LIGHTWEIGHT_CALLS_PER_MINUTE, _LIGHTWEIGHT_CALLS_PER_HOUR
+            bucket = f"rate_limit:{client_id}:lw"
+        # OAuth "Connect" buttons get their own, distinct bucket (namespaced
+        # ":int:") so a busy session's default-bucket usage can never 429 a
+        # deliberate, infrequent click — see _INTEGRATION_PATHS.
+        elif endpoint in _INTEGRATION_PATHS:
+            per_minute, per_hour = _INTEGRATION_CALLS_PER_MINUTE, _INTEGRATION_CALLS_PER_HOUR
+            bucket = f"rate_limit:{client_id}:int"
+        else:
+            per_minute, per_hour = self.calls_per_minute, self.calls_per_hour
+            bucket = f"rate_limit:{client_id}"
+
         current_time = int(time.time())
-        minute_key = f"rate_limit:{client_id}:minute:{current_time // 60}"
-        hour_key = f"rate_limit:{client_id}:hour:{current_time // 3600}"
+        minute_key = f"{bucket}:minute:{current_time // 60}"
+        hour_key = f"{bucket}:hour:{current_time // 3600}"
 
         try:
             counts = await redis_manager.redis_client.eval(
                 self._LUA_INCR_EXPIRE_2, 2, minute_key, hour_key, 60, 3600
             )
             minute_count, hour_count = int(counts[0]), int(counts[1])
-            if minute_count > self.calls_per_minute:
+            if minute_count > per_minute:
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Rate limit exceeded: {self.calls_per_minute} calls per minute",
+                    detail=f"Rate limit exceeded: {per_minute} calls per minute",
                     headers={"Retry-After": "60"},
                 )
-            if hour_count > self.calls_per_hour:
+            if hour_count > per_hour:
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Rate limit exceeded: {self.calls_per_hour} calls per hour",
+                    detail=f"Rate limit exceeded: {per_hour} calls per hour",
                     headers={"Retry-After": "3600"},
                 )
 
