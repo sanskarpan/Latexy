@@ -162,13 +162,25 @@ def generate_cover_letter_task(
             "message": "Streaming LLM response",
         })
 
-        client = openai.OpenAI(api_key=api_key)
+        # Route the platform key through an OpenAI-compatible base URL when
+        # configured (e.g. Gemini); BYOK keys keep native OpenAI unchanged.
+        # This worker previously constructed the client with no base_url at
+        # all — it only reached Gemini because the openai SDK falls back to
+        # reading OPENAI_BASE_URL from the process environment when the
+        # constructor arg is omitted, which happened to work but meant the
+        # Gemini "thinking"-token workaround below was never applied here.
+        _use_platform_base = bool(settings.OPENAI_BASE_URL) and api_key == settings.OPENAI_API_KEY
+        model_name = model or settings.OPENAI_MODEL
+        if _use_platform_base:
+            client = openai.OpenAI(api_key=api_key, base_url=settings.OPENAI_BASE_URL)
+        else:
+            client = openai.OpenAI(api_key=api_key)
         start_time = time.time()
         accumulated = ""
         token_count = 0
 
-        stream = client.chat.completions.create(
-            model=model or settings.OPENAI_MODEL,
+        create_kwargs: Dict[str, Any] = dict(
+            model=model_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -178,6 +190,15 @@ def generate_cover_letter_task(
             stream=True,
             stream_options={"include_usage": True},
         )
+        # Gemini's OpenAI-compat models "think" by default, consuming the
+        # token budget before ever emitting the closing <<<END_LATEX>>>
+        # delimiter — confirmed live in production ("LLM output missing
+        # <<<LATEX>>> delimiters", cover letter stuck on "Empty Document"
+        # forever). Same fix as llm_worker.py / orchestrator.py.
+        if _use_platform_base:
+            create_kwargs["extra_body"] = {"reasoning_effort": "none"}
+
+        stream = client.chat.completions.create(**create_kwargs)
 
         tokens_total = 0
         for chunk in stream:
