@@ -7,7 +7,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
 import { GitFork, History, Link2, Loader2, Zap } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiClient, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ScrapeJobResponse } from '@/lib/api-client'
+import { apiClient, type AcademicCVReport, type CheckpointEntry, type DiffWithParentResponse, type ExplainErrorResponse, type LatexCompiler, type ScrapeJobResponse } from '@/lib/api-client'
 import CompilerSelector from '@/components/CompilerSelector'
 import VersionHistoryPanel from '@/components/VersionHistoryPanel'
 import { useJobStream } from '@/hooks/useJobStream'
@@ -61,6 +61,10 @@ export default function OptimizationSuitePage() {
   const [compareAfterLatex, setCompareAfterLatex] = useState<string | null>(null)
   const [showCompareModal, setShowCompareModal] = useState(false)
   const [showReviewModal, setShowReviewModal] = useState(false)
+
+  // Academic-CV awareness — a genuine CV legitimately runs past one page, so the
+  // page-overflow warning is suppressed for it (see the banner below).
+  const [academicReport, setAcademicReport] = useState<AcademicCVReport | null>(null)
 
   // Variant awareness
   const [parentResumeId, setParentResumeId] = useState<string | null>(null)
@@ -136,6 +140,10 @@ export default function OptimizationSuitePage() {
         setEditorContent(data.latex_content)
         editorRef.current?.setValue(data.latex_content)
         setParentResumeId(data.parent_resume_id ?? null)
+
+        // Academic-CV detection (best-effort) — gates the page-overflow warning.
+        apiClient.getAcademicCVReport(resumeId).then(setAcademicReport).catch(() => {})
+
         if (data.parent_resume_id) {
           apiClient.getResume(data.parent_resume_id).then(p => setParentTitle(p.title)).catch(() => {
             setParentResumeId(null)
@@ -761,7 +769,8 @@ export default function OptimizationSuitePage() {
                   Restore Original
                 </button>
               </div>
-              {stream.pageCount !== null && stream.pageCount > 1 && (
+              {/* Academic CVs legitimately run long — don't nag them about page count. */}
+              {stream.pageCount !== null && stream.pageCount > 1 && !academicReport?.is_academic_cv && (
                 <div className="flex shrink-0 items-center justify-between border-b border-warn/20 bg-warn/10 px-4 py-1.5">
                   <span className="text-[11px] text-warn">
                     ⚠ Your resume is {stream.pageCount} pages. Most recruiters prefer 1 page.

@@ -136,6 +136,23 @@ async function waitForEditorShell(page: import('@playwright/test').Page) {
   await expect(page.getByText(/\d+ chars/).first()).toBeVisible({ timeout: 15_000 })
 }
 
+/** Mock the academic-CV detection endpoint. `is_academic_cv` gates the overflow warning. */
+async function mockAcademicReport(page: import('@playwright/test').Page, isAcademicCV: boolean) {
+  await page.route((url) => url.pathname.endsWith('/academic-cv-report'), (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        is_academic_cv: isAcademicCV,
+        detected_sections: isAcademicCV ? ['publications', 'grants', 'teaching'] : [],
+        estimated_pages: isAcademicCV ? 4 : 1,
+        confidence: isAcademicCV ? 0.9 : 0.1,
+        reasons: isAcademicCV ? ['Detected publications and grants sections'] : [],
+      }),
+    })
+  )
+}
+
 function getTrimButton(page: import('@playwright/test').Page) {
   return page.getByRole('button', { name: /Trim with AI/i })
 }
@@ -355,7 +372,7 @@ test.describe('Page count — estimated badge (pre-compile from LaTeXEditor)', (
     await waitForEditorShell(page)
     const badge = page.getByTitle('Estimated page count (compile for exact count)')
     await expect(badge).toBeVisible({ timeout: 15_000 })
-    await expect(badge).toHaveClass(/text-zinc-600/)
+    await expect(badge).toHaveClass(/text-fg-3/)
   })
 })
 
@@ -389,7 +406,7 @@ test.describe('/workspace/optimize — page count badge via WebSocket', () => {
 
     const badge = page.getByTitle('Resume is 1 page')
     await expect(badge).toBeVisible({ timeout: 10_000 })
-    await expect(badge).toHaveClass(/text-emerald-400/)
+    await expect(badge).toHaveClass(/text-ok/)
   })
 
   test('shows "2 pages ⚠" amber badge after compile with page_count=2', async ({ page }) => {
@@ -411,7 +428,7 @@ test.describe('/workspace/optimize — page count badge via WebSocket', () => {
 
     const badge = page.getByText('2 pages ⚠')
     await expect(badge).toBeVisible({ timeout: 20_000 })
-    await expect(badge).toHaveClass(/text-amber-400/)
+    await expect(badge).toHaveClass(/text-warn/)
   })
 
   test('shows "3 pages ⚠" rose badge after compile with page_count=3', async ({ page }) => {
@@ -433,7 +450,7 @@ test.describe('/workspace/optimize — page count badge via WebSocket', () => {
 
     const badge = page.getByText('3 pages ⚠')
     await expect(badge).toBeVisible({ timeout: 10_000 })
-    await expect(badge).toHaveClass(/text-rose-400/)
+    await expect(badge).toHaveClass(/text-err/)
     await expect(badge).toHaveClass(/animate-pulse/)
   })
 
@@ -531,7 +548,7 @@ test.describe('/workspace/optimize — warning banner', () => {
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
 
-    const banner = page.locator('[class*="amber"]').filter({ hasText: /Your resume is/ })
+    const banner = page.locator('[class*="warn"]').filter({ hasText: /Your resume is/ })
     await expect(banner.first()).toBeVisible({ timeout: 10_000 })
   })
 })
@@ -980,6 +997,47 @@ test.describe('No regressions — page count coexists with ATS badge', () => {
 
     // No JS errors — hooks coexist
     expect(errors.filter((e) => !e.toLowerCase().includes('warning'))).toHaveLength(0)
+  })
+})
+
+// ------------------------------------------------------------------ //
+//  12. Document-type exemption (#1312) — academic CVs run long        //
+//      The overflow warning is a resume norm, not a CV one. An         //
+//      academic CV legitimately spans multiple pages, so the banner    //
+//      (and its "Trim with AI →" nag) must be suppressed for it —      //
+//      while the neutral page-count badge still reports the count.     //
+// ------------------------------------------------------------------ //
+
+test.describe('Page overflow warning — academic-CV exemption (#1312)', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuth(page)
+    await mockCommonBackend(page)
+    await mockResume(page, MOCK_RESUME_LARGE)
+    await mockCompileEndpoint(page, JOB_ID_COMPILE)
+    await mockWebSocketPageCount(page, JOB_ID_COMPILE, 2)
+  })
+
+  test('control: non-academic 2-page resume DOES show the overflow banner', async ({ page }) => {
+    await mockAcademicReport(page, false)
+
+    await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
+    await page.waitForLoadState('domcontentloaded')
+
+    await expect(page.getByText(/Your resume is 2 pages/)).toBeVisible({ timeout: 10_000 })
+    await expect(getTrimButton(page)).toBeVisible({ timeout: 10_000 })
+  })
+
+  test('academic CV: overflow banner is suppressed even at 2 pages', async ({ page }) => {
+    await mockAcademicReport(page, true)
+
+    await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
+    await page.waitForLoadState('domcontentloaded')
+
+    // The neutral page-count badge still reports the true count…
+    await expect(page.getByText('2 pages ⚠')).toBeVisible({ timeout: 15_000 })
+    // …but the "prefer 1 page" nag banner and its Trim action are gone.
+    await expect(page.getByText(/Your resume is 2 pages/)).not.toBeVisible()
+    await expect(getTrimButton(page)).not.toBeVisible()
   })
 })
 
