@@ -18,6 +18,18 @@ Coverage:
     50U-13  profile listing returns all 7 systems
     50U-14  IssueEntry line_range identifies first matching line
 
+  Unit (document-quality checks — universal, Textkernel-derived):
+    50U-15  Missing email AND phone → contact_missing, and it costs score
+    50U-16  Contact present in the first lines → neither contact issue fires
+    50U-17  Bare date tokens on consecutive lines → vertical_dates
+    50U-18  Inline "Jan 2022 -- Present" → vertical_dates does NOT fire
+    50U-19  Unrecognisable section header → suggestion severity, score unchanged
+    50U-20  Standard headers ("Professional Experience") → not flagged
+    50U-21  No section headings at all → no_section_headers
+    50U-22  Skills evidenced in experience prose → skills_not_in_context absent
+    50U-23  Quality checks run for every ATS profile, not per-profile opt-in
+    50U-24  Quality findings surface an actionable recommendation
+
   Integration (HTTP endpoint):
     50I-01  POST /ats/simulate with valid ats_name → 200 with expected fields
     50I-02  POST /ats/simulate with unknown ats_name → 422
@@ -131,8 +143,132 @@ class TestAtsSimulatorService:
     def test_greenhouse_clean_resume_high_score(self):
         result = self.svc.simulate(CLEAN_LATEX, "greenhouse")
         assert result.score >= 85
-        # No issues expected for a clean, single-column resume
-        assert result.issues == []
+        # No *scoring* issues expected for a clean, single-column resume.
+        # Suggestion-severity findings are advisory and deliberately excluded:
+        # CLEAN_LATEX lists skills that never appear in its experience bullets,
+        # which is Textkernel code 112 — real advice, but not a defect, so it
+        # is surfaced without affecting the score.
+        scoring_issues = [i for i in result.issues if i.severity != "suggestion"]
+        assert scoring_issues == []
+
+    # ── Document-quality checks (Textkernel-derived, universal) ───────────
+
+    # 50U-15
+    def test_missing_contact_details_flagged(self):
+        latex = r"""\documentclass{article}\begin{document}
+Ravi Mehta
+\section*{Experience}
+Acme Corp, Senior Engineer, 2022.
+\end{document}"""
+        result = self.svc.simulate(latex, "greenhouse")
+        types = [i.type for i in result.issues]
+        assert "contact_missing" in types
+        # Fatal-class, so it must actually cost score.
+        assert result.score < 90
+
+    # 50U-16
+    def test_contact_present_at_top_not_flagged(self):
+        latex = r"""\documentclass{article}\begin{document}
+Ravi Mehta \\ ravi.mehta@gmail.com \\ +91 98765 43210
+\section*{Experience}
+Acme Corp \hfill Jan 2022 -- Present
+\end{document}"""
+        result = self.svc.simulate(latex, "greenhouse")
+        types = [i.type for i in result.issues]
+        assert "contact_missing" not in types
+        assert "contact_not_at_top" not in types
+
+    # 50U-17
+    def test_vertical_date_column_flagged(self):
+        latex = r"""\documentclass{article}\begin{document}
+Ravi Mehta \\ ravi@example.com
+\section*{Experience}
+Acme Corp
+Jan 2022
+Present
+Built things.
+\end{document}"""
+        result = self.svc.simulate(latex, "greenhouse")
+        assert "vertical_dates" in [i.type for i in result.issues]
+
+    # 50U-18
+    def test_inline_date_range_not_flagged(self):
+        latex = r"""\documentclass{article}\begin{document}
+Ravi Mehta \\ ravi@example.com
+\section*{Experience}
+Acme Corp \hfill Jan 2022 -- Present
+Built things.
+\end{document}"""
+        result = self.svc.simulate(latex, "greenhouse")
+        assert "vertical_dates" not in [i.type for i in result.issues]
+
+    # 50U-19
+    def test_nonstandard_section_header_is_suggestion_only(self):
+        latex = r"""\documentclass{article}\begin{document}
+Ravi Mehta \\ ravi@example.com \\ +91 98765 43210
+\section*{My Journey So Far}
+Acme Corp, 2022 -- Present.
+\end{document}"""
+        result = self.svc.simulate(latex, "lever")
+        entry = next(i for i in result.issues if i.type == "nonstandard_section_headers")
+        assert entry.severity == "suggestion"
+        # Suggestions must never cost score — lever is a "good" tier, base 90.
+        assert result.score == 90
+
+    # 50U-20
+    def test_standard_section_headers_not_flagged(self):
+        latex = r"""\documentclass{article}\begin{document}
+Ravi Mehta \\ ravi@example.com \\ +91 98765 43210
+\section*{Professional Experience}
+Acme Corp, 2022 -- Present.
+\section*{Technical Skills}
+Python
+\end{document}"""
+        result = self.svc.simulate(latex, "lever")
+        assert "nonstandard_section_headers" not in [i.type for i in result.issues]
+
+    # 50U-21
+    def test_no_section_headers_flagged(self):
+        latex = r"""\documentclass{article}\begin{document}
+Ravi Mehta \\ ravi@example.com \\ +91 98765 43210
+Acme Corp, Senior Engineer, Jan 2022 -- Present. Built things.
+\end{document}"""
+        result = self.svc.simulate(latex, "greenhouse")
+        assert "no_section_headers" in [i.type for i in result.issues]
+
+    # 50U-22
+    def test_skills_evidenced_in_experience_not_flagged(self):
+        latex = r"""\documentclass{article}\begin{document}
+Ravi Mehta \\ ravi@example.com \\ +91 98765 43210
+\section*{Experience}
+Acme Corp \hfill Jan 2022 -- Present. Built Python services backed by PostgreSQL.
+\section*{Skills}
+Python, PostgreSQL
+\end{document}"""
+        result = self.svc.simulate(latex, "lever")
+        assert "skills_not_in_context" not in [i.type for i in result.issues]
+
+    # 50U-23
+    def test_quality_issues_apply_to_every_profile(self):
+        """Document-quality checks are universal, not per-ATS opt-in."""
+        latex = r"""\documentclass{article}\begin{document}
+Ravi Mehta
+\section*{Experience}
+Acme Corp, 2022.
+\end{document}"""
+        for ats in ATS_PROFILES:
+            types = [i.type for i in self.svc.simulate(latex, ats).issues]
+            assert "contact_missing" in types, f"{ats} did not report contact_missing"
+
+    # 50U-24
+    def test_quality_recommendation_surfaced(self):
+        latex = r"""\documentclass{article}\begin{document}
+Ravi Mehta
+\section*{Experience}
+Acme Corp, 2022.
+\end{document}"""
+        result = self.svc.simulate(latex, "greenhouse")
+        assert any("email" in r.lower() for r in result.recommendations)
 
     # 50U-03
     def test_unknown_ats_raises_value_error(self):
@@ -340,7 +476,9 @@ class TestAtsSimulateEndpoint:
             assert "type" in issue
             assert "severity" in issue
             assert "description" in issue
-            assert issue["severity"] in ("high", "medium", "low")
+            # "suggestion" is the advisory tier for Textkernel Suggested-grade
+            # findings (codes 112/151): reported to the user, never scored.
+            assert issue["severity"] in ("high", "medium", "low", "suggestion")
 
     async def test_greenhouse_clean_score_at_least_85(self, client: AsyncClient):
         resp = await client.post(
