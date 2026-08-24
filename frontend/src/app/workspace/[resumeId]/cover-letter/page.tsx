@@ -16,6 +16,7 @@ import { useRequireAuth } from '@/hooks/useRequireAuth'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
+import ModeToggle from '@/components/theme/ModeToggle'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -353,7 +354,8 @@ export default function CoverLetterPage() {
             Generate a tailored cover letter for &quot;{resume?.title}&quot; — matching your resume&apos;s style.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <ModeToggle />
           <Link
             href={`/workspace/${resumeId}/edit`}
             className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2"
