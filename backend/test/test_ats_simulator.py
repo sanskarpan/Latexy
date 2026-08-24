@@ -33,7 +33,13 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
-from app.services.ats_simulator_service import ATS_PROFILES, AtsSimulatorService
+from app.services.ats_simulator_service import (
+    ATS_PROFILES,
+    AtsSimulatorService,
+    _detect_contact_not_at_top,
+    _detect_missing_section_headers,
+    _detect_vertical_dates,
+)
 
 # ── Test latex fixtures ───────────────────────────────────────────────────────
 
@@ -357,3 +363,112 @@ class TestAtsSimulateEndpoint:
         )
         assert resp.status_code == 200
         assert "cached" in resp.json()
+
+
+# ── Textkernel universal résumé-quality checks (#1289) ────────────────────────
+
+CONTACT_AT_BOTTOM_LATEX = r"""
+\documentclass{article}
+\begin{document}
+\section*{Summary}
+Experienced engineer with a decade of backend work across fintech and infra.
+\section*{Experience}
+Senior Engineer, Acme, 2020--2023. Built platforms, led teams, shipped features.
+\section*{Education}
+B.Sc. Computer Science, State University, 2015
+\section*{Contact}
+Email me at jane.doe@example.com or call 415-555-0142.
+\end{document}
+""".strip()
+
+VERTICAL_DATES_LATEX = r"""
+\documentclass{article}
+\begin{document}
+\section*{Experience}
+Senior Engineer, Acme Corporation
+2020
+2023
+Staff Engineer, Widget Industries
+2016
+2020
+\section*{Education}
+B.Sc. Computer Science, State University in 2015
+\end{document}
+""".strip()
+
+NO_HEADERS_LATEX = r"""
+\documentclass{article}
+\begin{document}
+Jane Doe, jane@example.com, 415-555-0142
+Senior Software Engineer with ten years of experience building systems.
+Worked at Acme Corporation from 2020 to 2023 on backend platforms and infra.
+Studied Computer Science at State University, graduating in the year 2015.
+Proficient in Python, Go, and PostgreSQL with strong system-design skills.
+\end{document}
+""".strip()
+
+
+class TestTextkernelQualityChecks:
+    """Universal résumé-quality checks (#1289) — Textkernel parser codes."""
+
+    svc = AtsSimulatorService()
+
+    def _types(self, latex: str, ats: str = "greenhouse"):
+        return {i.type for i in self.svc.simulate(latex, ats).issues}
+
+    # -- contact position (311) --
+    def test_contact_at_bottom_flags_contact_not_at_top(self):
+        assert "contact_not_at_top" in self._types(CONTACT_AT_BOTTOM_LATEX)
+
+    def test_clean_resume_contact_at_top_not_flagged(self):
+        assert "contact_not_at_top" not in self._types(CLEAN_LATEX)
+
+    def test_detect_contact_helper(self):
+        assert _detect_contact_not_at_top(["role", "bullet", "bullet", "more", "a@b.com"]) is True
+        assert _detect_contact_not_at_top(["a@b.com", "role", "bullet", "more", "end"]) is False
+        assert _detect_contact_not_at_top(["no", "contact", "here", "at", "all"]) is False
+
+    # -- vertical dates (418) --
+    def test_stacked_dates_flag_vertical_dates(self):
+        assert "vertical_dates" in self._types(VERTICAL_DATES_LATEX)
+
+    def test_clean_resume_inline_dates_not_flagged(self):
+        assert "vertical_dates" not in self._types(CLEAN_LATEX)
+
+    def test_detect_vertical_dates_helper(self):
+        assert _detect_vertical_dates(["2020", "2023", "role"]) is True
+        assert _detect_vertical_dates(["Jan 2020", "Present"]) is False  # only one date-only line
+        assert _detect_vertical_dates(["Engineer, Acme 2020--2023"]) is False
+
+    # -- missing section headers (325 / 412-414) --
+    def test_no_headers_flags_missing_section_headers(self):
+        assert "missing_section_headers" in self._types(NO_HEADERS_LATEX)
+
+    def test_clean_resume_with_headers_not_flagged(self):
+        assert "missing_section_headers" not in self._types(CLEAN_LATEX)
+
+    def test_detect_missing_headers_helper(self):
+        assert _detect_missing_section_headers(["blah", "blah", "blah", "blah"]) is True
+        assert _detect_missing_section_headers(["Experience", "blah", "blah", "blah"]) is False
+        assert _detect_missing_section_headers(["only", "two"]) is False  # too short to judge
+
+    # -- regression + presentation guarantees --
+    def test_clean_resume_has_no_quality_issues(self):
+        # A clean résumé must stay at zero issues for a good-tier ATS.
+        result = self.svc.simulate(CLEAN_LATEX, "greenhouse")
+        assert result.issues == []
+        assert result.score == 90
+
+    def test_skills_section_is_not_flagged_as_an_issue(self):
+        # Textkernel 112 is deliberately NOT implemented — a standalone Skills
+        # section is near-universal and flagging it would be noise.
+        assert "skills_in_separate_section" not in self._types(CLEAN_LATEX)
+
+    def test_quality_issues_reduce_score(self):
+        clean = self.svc.simulate(CLEAN_LATEX, "greenhouse").score
+        bad = self.svc.simulate(NO_HEADERS_LATEX, "greenhouse").score
+        assert bad < clean
+
+    def test_quality_issues_carry_actionable_recommendations(self):
+        recs = " ".join(self.svc.simulate(NO_HEADERS_LATEX, "greenhouse").recommendations).lower()
+        assert "section header" in recs
