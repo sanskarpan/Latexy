@@ -510,7 +510,7 @@ Every audit finding is resolved. The seven P0/P1 items that were Partial/Open at
 - **Where:** `src/components/analytics/MetricCharts.tsx (ActivityAreaChart L58, StatusDonutChart L204) consumed by dashboard L236/L255` · route `/dashboard`
 - **Problem:** The activity area chart and status donut are static SVG with no hover tooltips, data-point markers, or crosshair. A user can see the shape of activity but cannot read the value for any specific day, nor the percentage of a donut slice without doing mental math against the legend counts. This substantially limits the analytical value of the dashboard.
 - **Fix:** Add hover tooltips (visx Tooltip/localPoint) showing date+value on the area chart and label+count+percent on donut slices; consider point markers on the line for discoverability.
-- **Status:** ✅ Fixed — the activity chart now has a hover read-out: a guide line, point marker, and a date/value tooltip.
+- **Status:** ✅ Fixed — the activity chart has a hover read-out (guide line, marker, date/value tooltip), and the status donut shows per-slice percentages in the legend plus a hover highlight that surfaces the slice's share in the center.
 
 #### 🟠 Medium · ✨ Improvement — Charts are inaccessible to screen readers — bare SVG with no roles/labels
 - **Where:** `src/components/analytics/MetricCharts.tsx: <svg> elements L59, L147, L206 (no role/aria/title/desc)` · route `/dashboard`
@@ -750,7 +750,7 @@ Every audit finding is resolved. The seven P0/P1 items that were Partial/Open at
 - **Where:** `src/components/marketing/MarketingFooter.tsx:17-37` · route `marketing + app`
 - **Problem:** MarketingFooter (17-37) lists only product nav (Platform/Resources/Updates/FAQ) plus an 'Open Studio' CTA. For a SaaS that handles accounts, payments (Razorpay), and user resume data, the absence of Privacy Policy, Terms of Service, Contact/Support, and a copyright line is a trust and (likely) compliance gap. It's also entirely hidden on all app surfaces, so authenticated users never see legal links anywhere.
 - **Fix:** Add a footer row with Privacy, Terms, Security/Status, Contact, and a © line. Consider a slim legal-links strip that also renders (or is linked from account menu) on app surfaces.
-- **Status:** ✅ Fixed — the footer now links Privacy (`/privacy`), Terms (`/terms`), and Contact; both legal pages were added (SSG).
+- **Status:** ✅ Fixed — the footer links Privacy (`/privacy`), Terms (`/terms`), and Contact, both legal pages were added (SSG), and the account menu carries Privacy/Terms so signed-in users reach them on app surfaces too.
 
 #### 🟠 Medium · ✨ Improvement — Skeletons announce nothing to assistive tech during loading
 - **Where:** `src/components/ui/Skeleton.tsx:3-41` · route `all (loading states)`
