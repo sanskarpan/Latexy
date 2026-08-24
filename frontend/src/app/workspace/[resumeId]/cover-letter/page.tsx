@@ -72,6 +72,17 @@ export default function CoverLetterPage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [existingCoverLetters, setExistingCoverLetters] = useState<CoverLetterResponse[]>([])
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false)
+
+  // Unsaved-changes guard: don't silently lose cover-letter edits on reload/nav.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => { if (hasUnsavedEdits) { e.preventDefault(); e.returnValue = '' } }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [hasUnsavedEdits])
+  const confirmDiscardIfDirty = useCallback(() => {
+    if (!hasUnsavedEdits) return true
+    return window.confirm('You have unsaved cover-letter changes that will be lost. Leave without saving?')
+  }, [hasUnsavedEdits])
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
@@ -358,6 +369,7 @@ export default function CoverLetterPage() {
           <ModeToggle />
           <Link
             href={`/workspace/${resumeId}/edit`}
+            onClick={(e) => { if (!confirmDiscardIfDirty()) e.preventDefault() }}
             className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2"
           >
             Back to Editor
