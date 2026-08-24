@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Brain, X, AlertCircle, Zap, ChevronDown, TrendingUp, Tag } from 'lucide-react'
 import type { ATSDeepAnalysis, ATSDeepSection } from '@/lib/event-types'
+import type { ATSCategory } from '@/lib/ats-categories'
+import ATSCategoryScoreCard from './ATSCategoryScoreCard'
 import ATSRadarChart from './ATSRadarChart'
 import ScoreHistoryChart from '@/components/ScoreHistoryChart'
 
@@ -34,6 +36,12 @@ interface DeepAnalysisPanelProps {
   isRunning: boolean
   hideUpgradeCtas?: boolean
   resumeId?: string
+  /** Rule-based multi-dimensional breakdown (#1367); shown above the LLM analysis. */
+  categories?: ATSCategory[]
+  /** Deep-link a finding to an editor line. */
+  onJumpToLine?: (line: number) => void
+  /** Quick-score grade, shown on the breakdown card. */
+  quickGrade?: string | null
 }
 
 function ScoreRing({ score, size = 72 }: { score: number; size?: number }) {
@@ -130,6 +138,9 @@ export default function DeepAnalysisPanel({
   isRunning,
   hideUpgradeCtas = false,
   resumeId,
+  categories,
+  onJumpToLine,
+  quickGrade,
 }: DeepAnalysisPanelProps) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [industryOverride, setIndustryOverride] = useState<string>('generic')
@@ -232,6 +243,15 @@ export default function DeepAnalysisPanel({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto pb-2">
+          {/* Rule-based multi-dimensional breakdown (#1367) — always available,
+              above the optional LLM deep analysis. Each finding deep-links to
+              the editor line it refers to. */}
+          {categories && categories.length > 0 && (
+            <div className="p-4 pb-0">
+              <ATSCategoryScoreCard categories={categories} onJumpToLine={onJumpToLine} grade={quickGrade} />
+            </div>
+          )}
+
           {/* Idle state */}
           {!isLoading && !analysis && !error && !isRunning && (
             <div className="space-y-5 p-5">
