@@ -76,6 +76,84 @@ class TestAcademicCVService:
         report = academic_cv_service.detect(PLAIN_RESUME_LATEX, document_type="resume")
         assert report.is_academic_cv is False
 
+    # ── Regression: qualified headings and prose false positives (#1588) ──────
+    #
+    # The page-overflow exemption on the editor and optimize pages is gated on
+    # is_academic_cv, so a detection miss means a genuine 2-page academic CV is
+    # still nagged about length — the exact thing the exemption exists to stop.
+
+    @pytest.mark.parametrize(
+        "heading,section",
+        [
+            ("Peer-Reviewed Publications", "publications"),
+            ("Selected Publications", "publications"),
+            ("Research Summary", "research"),
+            ("Research Interests", "research"),
+            ("Teaching \\& Mentorship", "teaching"),
+            ("Grants \\& Awards", "grants"),
+            ("Conference Presentations", "presentations"),
+            ("Invited Talks", "presentations"),
+        ],
+    )
+    async def test_detect_matches_qualified_headings(self, heading: str, section: str) -> None:
+        """A keyword anywhere in the heading counts, not only at the start."""
+        latex = (
+            "\\documentclass{article}\\begin{document}\n"
+            f"\\section{{{heading}}}\nContent.\n"
+            "\\end{document}"
+        )
+        report = academic_cv_service.detect(latex)
+        assert section in report.detected_sections, (
+            f"heading {heading!r} should register as a {section!r} section"
+        )
+
+    async def test_detect_ignores_section_keywords_in_body_prose(self) -> None:
+        r"""Ungrouped alternation used to match outside a section command.
+
+        `r"\\section\*?\{publications?|conference papers?"` parses as two
+        independent branches, the second anchored to nothing — so ordinary prose
+        mentioning "conference papers" was credited with a publications section.
+        """
+        latex = (
+            "\\documentclass{article}\\begin{document}\n"
+            "\\section{Experience}\n"
+            "Reviewed conference papers for NeurIPS and read journal papers weekly.\n"
+            "Received awards and gave talks at internal meetings.\n"
+            "\\end{document}"
+        )
+        report = academic_cv_service.detect(latex)
+        assert "publications" not in report.detected_sections
+        assert "presentations" not in report.detected_sections
+        assert report.is_academic_cv is False
+
+    async def test_detect_recognises_custom_section_macros(self) -> None:
+        r"""Templates define their own heading commands (\ressection in ats_modern)."""
+        latex = (
+            "\\documentclass{article}\\begin{document}\n"
+            "\\ressection{Selected Publications}\nContent.\n"
+            "\\end{document}"
+        )
+        assert "publications" in academic_cv_service.detect(latex).detected_sections
+
+    async def test_every_bundled_academic_template_is_detected(self) -> None:
+        """Guards the exemption against the templates we actually ship.
+
+        academic/postdoc.tex regressed here: "Peer-Reviewed Publications",
+        "Research Summary" and "Teaching \\& Mentorship" were all missed, leaving
+        it at 0.36 against a 0.45 threshold.
+        """
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1] / "app" / "data" / "templates" / "academic"
+        templates = sorted(root.glob("*.tex"))
+        assert templates, f"no academic templates found under {root}"
+
+        missed = [
+            t.name for t in templates
+            if not academic_cv_service.detect(t.read_text(errors="ignore")).is_academic_cv
+        ]
+        assert not missed, f"academic templates not detected as CVs: {missed}"
+
 
 @pytest.mark.asyncio
 class TestAcademicCVRoutes:
