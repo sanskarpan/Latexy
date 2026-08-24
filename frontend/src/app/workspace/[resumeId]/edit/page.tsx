@@ -2441,8 +2441,12 @@ export default function ResumeEditPage() {
               </button>
             </div>
           )}
-          {/* Page overflow warning banner */}
-          {pageCount !== null && pageCount > 1 && (
+          {/* Page overflow warning banner.
+              Suppressed for document types where >1 page is legitimate: slide/
+              presentation decks and academic CVs (which routinely run long — the
+              "1 page" convention is a resume norm, not a CV one). Mirrors the
+              document-type gating already used for the live ATS badge below. */}
+          {pageCount !== null && pageCount > 1 && documentType !== 'presentation' && !academicReport?.is_academic_cv && (
             <div className="flex shrink-0 items-center justify-between border-b border-warn/20 bg-warn/10 px-4 py-1.5">
               <span className="text-[11px] text-warn">
                 ⚠ Your resume is {pageCount} pages. Most recruiters prefer 1 page.
