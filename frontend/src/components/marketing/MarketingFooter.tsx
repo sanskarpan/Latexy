@@ -40,6 +40,11 @@ export default function MarketingFooter() {
 
         <div className="mt-8 flex flex-col gap-4 border-t border-line pt-6 sm:flex-row sm:items-center sm:justify-between">
           <p className="font-body text-xs text-fg-3">© {year} Latexy. All rights reserved.</p>
+          <nav className="flex flex-wrap items-center gap-4 font-ui text-xs text-fg-3">
+            <Link href="/privacy" className="transition hover:text-fg">Privacy</Link>
+            <Link href="/terms" className="transition hover:text-fg">Terms</Link>
+            <a href="mailto:support@latexy.com" className="transition hover:text-fg">Contact</a>
+          </nav>
         </div>
       </div>
     </footer>
