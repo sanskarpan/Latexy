@@ -180,6 +180,19 @@ export default function OptimizationSuitePage() {
     fetchResume()
   }, [resumeId, router, session, sessionLoading])
 
+  // Unsaved-changes guard: manual edits or an un-saved optimize result should not
+  // be lost silently on reload or navigation (parity with the edit page).
+  const isDirty = editorContent.trim() !== '' && editorContent.trim() !== baselineLatex.trim()
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => { if (isDirty) { e.preventDefault(); e.returnValue = '' } }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [isDirty])
+  const confirmDiscardIfDirty = useCallback(() => {
+    if (!isDirty) return true
+    return window.confirm('You have unsaved changes that will be lost. Leave without saving a new version?')
+  }, [isDirty])
+
   useEffect(() => {
     if (!stream.streamingLatex || !editorRef.current) return
     editorRef.current.setValue(stream.streamingLatex, { reveal: false })
@@ -531,11 +544,12 @@ export default function OptimizationSuitePage() {
             )}
           </div>
           <ModeToggle />
-          <Link href={`/workspace/${resumeId}/edit`} className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2">
+          <Link href={`/workspace/${resumeId}/edit`} onClick={(e) => { if (!confirmDiscardIfDirty()) e.preventDefault() }} className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2">
             Back to Editor
           </Link>
           <Link
             href={`/workspace/${resumeId}/cover-letter`}
+            onClick={(e) => { if (!confirmDiscardIfDirty()) e.preventDefault() }}
             className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-semibold text-fg transition hover:bg-surface-2"
           >
             Cover Letter
@@ -919,6 +933,8 @@ export default function OptimizationSuitePage() {
                             // Non-fatal — proceed with save even if snapshot fails
                           }
                           await apiClient.updateResume(resumeId, { latex_content: latex })
+                          setBaselineLatex(latex) // the saved content is the new clean baseline
+                          setEditorContent(latex)
                           setHistoryRefreshKey((k) => k + 1)
                           toast.success('New version saved — previous content kept in Version History')
                         } catch {
