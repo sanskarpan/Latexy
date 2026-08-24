@@ -17,6 +17,19 @@ env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
 
 jobs:
+  # ── Privacy guards ───────────────────────────────────────────────────────────
+  # Enforces the "no session recording on document surfaces" principle (#1410):
+  # fails the build if a keystroke-capture / heatmap SDK (Clarity, Hotjar,
+  # FullStory, Inspectlet, LogRocket, Qualaroo, Smartlook, Mouseflow) is
+  # introduced into shipped frontend code. Pure grep — no deps, no services.
+  privacy-guard:
+    name: Privacy Guard (no session recording)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Assert no session-recording SDKs in shipped frontend code
+        run: bash scripts/ci/no-session-recording.sh
+
   # ── Backend ────────────────────────────────────────────────────────────────
   backend-lint:
     name: Backend Lint (ruff)
