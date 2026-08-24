@@ -1167,13 +1167,58 @@ export default function WorkspacePage() {
               <p className="mt-3 text-sm text-fg-3">No recent runs yet.</p>
             ) : (
               <div className="mt-4 space-y-3">
-                {jobs.slice(0, 5).map((job, index) => (
-                  <div key={job.job_id ?? `${job.last_updated}-${index}`} className="rounded-[var(--radius-md)] border border-line bg-bg p-3">
-                    <p className="text-xs uppercase tracking-[0.12em] text-fg-3">{job.stage || 'Pipeline'}</p>
-                    <p className="mt-1 text-sm capitalize text-fg">{job.status}</p>
-                    <p className="mt-1 text-xs text-fg-3">{new Date(job.last_updated * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                  </div>
-                ))}
+                {jobs.slice(0, 5).map((job, index) => {
+                  const jobId = job.job_id
+                  const expanded = !!jobId && expandedJobId === jobId
+                  const result = jobId ? jobResultCache[jobId] : undefined
+                  return (
+                    <div key={jobId ?? `${job.last_updated}-${index}`} className="overflow-hidden rounded-[var(--radius-md)] border border-line bg-bg">
+                      <button
+                        type="button"
+                        onClick={() => jobId && handleToggleJobDetail(jobId)}
+                        disabled={!jobId}
+                        aria-expanded={expanded}
+                        className="flex w-full items-start justify-between gap-2 p-3 text-left transition enabled:hover:bg-surface-2 disabled:cursor-default"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs uppercase tracking-[0.12em] text-fg-3">{job.stage || 'Pipeline'}</p>
+                          <p className="mt-1 text-sm capitalize text-fg">{job.status}</p>
+                          <p className="mt-1 text-xs text-fg-3">{new Date(job.last_updated * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                        {jobId && <ChevronDown size={14} className={`mt-0.5 shrink-0 text-fg-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />}
+                      </button>
+                      {expanded && jobId && (
+                        <div className="border-t border-line px-3 py-2.5 text-xs">
+                          {jobResultLoading === jobId ? (
+                            <p className="text-fg-3">Loading result…</p>
+                          ) : result == null ? (
+                            <p className="text-fg-3">No detailed result is available for this run.</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {result.error && <p className="text-err">{result.error}</p>}
+                              {result.ats_score != null && (
+                                <p className="text-fg-2">ATS score: <span className="font-semibold text-fg">{Math.round(result.ats_score)}</span></p>
+                              )}
+                              {result.compilation_time != null && (
+                                <p className="text-fg-3">Compiled in {result.compilation_time.toFixed(1)}s</p>
+                              )}
+                              {(result.pdf_job_id || jobId) && (
+                                <a
+                                  href={apiClient.getPdfUrl(result.pdf_job_id ?? jobId)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-accent-strong transition hover:brightness-110"
+                                >
+                                  <Download size={12} /> Download PDF
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
             {jobs.length > 0 && (

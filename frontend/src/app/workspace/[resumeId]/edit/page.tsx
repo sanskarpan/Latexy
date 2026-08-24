@@ -78,6 +78,7 @@ import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { buildATSCategories, type SimulatorIssueSignal } from '@/lib/ats-categories'
 import ModeToggle from '@/components/theme/ModeToggle'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import { useConfidenceScore } from '@/hooks/useConfidenceScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
 import { useSpellCheck, addWordToDict } from '@/hooks/useSpellCheck'
@@ -915,6 +916,8 @@ export default function ResumeEditPage() {
   const [ghConnected, setGhConnected] = useState(false)
   const [ghSyncEnabled, setGhSyncEnabled] = useState(false)
   const [ghPushing, setGhPushing] = useState(false)
+  // Themed confirmation for the destructive GitHub/Dropbox "pull" (overwrites the buffer).
+  const [confirmPull, setConfirmPull] = useState<null | 'github' | 'dropbox'>(null)
   const [ghTogglingSync, setGhTogglingSync] = useState(false)
 
   // Dropbox sync (Feature 77)
@@ -1361,8 +1364,8 @@ export default function ResumeEditPage() {
     }
   }
 
-  const handlePullFromGitHub = async () => {
-    if (!window.confirm('Replace local content with the latest version from GitHub? Unsaved changes will be overwritten.')) return
+  const handlePullFromGitHub = () => setConfirmPull('github')
+  const doPullFromGitHub = async () => {
     setGhPushing(true)
     try {
       const result = await apiClient.pullFromGitHub(resumeId)
@@ -1410,8 +1413,8 @@ export default function ResumeEditPage() {
     }
   }
 
-  const handlePullFromDropbox = async () => {
-    if (!window.confirm('Replace local content with the version from Dropbox? Unsaved changes will be overwritten.')) return
+  const handlePullFromDropbox = () => setConfirmPull('dropbox')
+  const doPullFromDropbox = async () => {
     setDbxSyncing(true)
     try {
       const result = await apiClient.pullFromDropbox(resumeId)
@@ -3120,6 +3123,16 @@ export default function ResumeEditPage() {
         categories={atsCategories}
         onJumpToLine={handleJumpToFinding}
         quickGrade={quickATSGrade}
+      />
+
+      <ConfirmDialog
+        open={confirmPull !== null}
+        title={confirmPull === 'dropbox' ? 'Pull from Dropbox?' : 'Pull from GitHub?'}
+        message={`Replace the local content with the latest version from ${confirmPull === 'dropbox' ? 'Dropbox' : 'GitHub'}? Unsaved changes will be overwritten.`}
+        confirmLabel="Replace"
+        destructive
+        onConfirm={() => { const which = confirmPull; setConfirmPull(null); if (which === 'github') doPullFromGitHub(); else if (which === 'dropbox') doPullFromDropbox() }}
+        onCancel={() => setConfirmPull(null)}
       />
 
       <ConfidenceScorePanel

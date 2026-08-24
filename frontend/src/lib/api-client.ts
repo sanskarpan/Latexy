@@ -345,6 +345,20 @@ export interface ResumeStats {
   optimized_count: number
 }
 
+export interface UserPreferences {
+  has_onboarded?: boolean
+  theme?: 'light' | 'dark'
+}
+
+export interface MeResponse {
+  id: string
+  email: string
+  plan: string
+  preferences: UserPreferences
+}
+
+export type UserPreferencesUpdate = Partial<UserPreferences>
+
 export interface AcademicCVReport {
   is_academic_cv: boolean
   detected_sections: string[]
@@ -2608,6 +2622,21 @@ class ApiClient {
       const bodyText = await res.text().catch(() => '')
       throw new Error(`HTTP ${res.status}: ${parseApiErrorMessage(bodyText, res.statusText)}`)
     }
+  }
+
+  // ---------------------------------------------------------------- //
+  //  Account (me) + synced UI preferences                            //
+  // ---------------------------------------------------------------- //
+
+  async getMe(): Promise<MeResponse> {
+    return this.request<MeResponse>('/me')
+  }
+
+  async updateMePreferences(prefs: UserPreferencesUpdate): Promise<MeResponse> {
+    return this.request<MeResponse>('/me/preferences', {
+      method: 'PATCH',
+      body: JSON.stringify(prefs),
+    })
   }
 
   // ---------------------------------------------------------------- //

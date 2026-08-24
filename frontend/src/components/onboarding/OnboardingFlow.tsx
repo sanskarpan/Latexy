@@ -470,11 +470,10 @@ export default function OnboardingFlow({
 
 // Hook for managing onboarding state.
 //
-// KNOWN GAP: completion is tracked in localStorage only, so it is device-local
-// and re-triggers in every new browser/device the user signs into. A full fix
-// needs a server-side `has_onboarded` flag (persisted via an API call and
-// hydrated from the session) plus a UI entry point to replay it — both require
-// backend + workspace/page.tsx changes outside this file's scope.
+// Completion is remembered locally AND synced to the account (a `has_onboarded`
+// preference on the user), so signing in on a new browser/device does not
+// re-trigger onboarding. localStorage is the fast path; the account is the
+// cross-device source of truth and reconciles on mount.
 export function useOnboarding() {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   // Default to true (assume completed) until localStorage check resolves.
@@ -485,27 +484,43 @@ export function useOnboarding() {
   useEffect(() => {
     const completed = localStorage.getItem('latexy_onboarding_completed')
     setHasCompletedOnboarding(!!completed)
+    // Reconcile with the account (cross-device). Anonymous/offline → 401/error
+    // is ignored and the local value stands.
+    apiClient.getMe()
+      .then((me) => {
+        if (me.preferences?.has_onboarded) {
+          localStorage.setItem('latexy_onboarding_completed', 'true')
+          setHasCompletedOnboarding(true)
+        }
+      })
+      .catch(() => { /* not signed in / offline — keep local state */ })
   }, [])
 
   const startOnboarding = () => {
     setIsOnboardingOpen(true)
   }
 
+  const persistCompleted = () => {
+    localStorage.setItem('latexy_onboarding_completed', 'true')
+    apiClient.updateMePreferences({ has_onboarded: true }).catch(() => { /* best-effort */ })
+  }
+
   const completeOnboarding = () => {
     setIsOnboardingOpen(false)
     setHasCompletedOnboarding(true)
-    localStorage.setItem('latexy_onboarding_completed', 'true')
+    persistCompleted()
   }
 
   const skipOnboarding = () => {
     setIsOnboardingOpen(false)
     setHasCompletedOnboarding(true)
-    localStorage.setItem('latexy_onboarding_completed', 'true')
+    persistCompleted()
   }
 
   const resetOnboarding = () => {
     setHasCompletedOnboarding(false)
     localStorage.removeItem('latexy_onboarding_completed')
+    apiClient.updateMePreferences({ has_onboarded: false }).catch(() => { /* best-effort */ })
   }
 
   return {

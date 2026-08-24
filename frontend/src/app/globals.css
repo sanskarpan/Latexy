@@ -228,3 +228,10 @@
 .comment-gutter-icon:hover {
   opacity: 1;
 }
+
+/* ModeToggle: show the correct icon at first paint via the pre-paint data-mode
+   attribute (no React state, so no icon flash and no hydration mismatch). */
+.mode-icon-dark { display: none; }
+.mode-icon-light { display: inline-flex; }
+html[data-mode='dark'] .mode-icon-dark { display: inline-flex; }
+html[data-mode='dark'] .mode-icon-light { display: none; }

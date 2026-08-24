@@ -644,9 +644,9 @@ export default function TryPage() {
           </div>
           {scrapedMeta && !scrapedMeta.error && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1">
-              {scrapedMeta.title && <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent-strong">{scrapedMeta.title}</span>}
-              {scrapedMeta.company && <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-2">{scrapedMeta.company}</span>}
-              {scrapedMeta.location && <span className="inline-flex items-center gap-1 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-fg-3"><MapPin size={10} /> {scrapedMeta.location}</span>}
+              {scrapedMeta.title && <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[11px] font-medium text-accent-strong">{scrapedMeta.title}</span>}
+              {scrapedMeta.company && <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-fg-2">{scrapedMeta.company}</span>}
+              {scrapedMeta.location && <span className="inline-flex items-center gap-1 rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-fg-3"><MapPin size={10} /> {scrapedMeta.location}</span>}
             </div>
           )}
           <textarea
@@ -715,7 +715,7 @@ export default function TryPage() {
                   <li key={i} className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-2.5">
                     {(ch.section || ch.change_type) && (
                       <div className="mb-1 flex items-center gap-1.5">
-                        {ch.section && <span className="font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-accent-strong">{ch.section}</span>}
+                        {ch.section && <span className="font-ui text-[11px] font-semibold uppercase tracking-[0.1em] text-accent-strong">{ch.section}</span>}
                         {ch.change_type && <span className={`font-ui text-[9px] uppercase tracking-[0.08em] ${tone}`}>· {ch.change_type}</span>}
                       </div>
                     )}
@@ -766,7 +766,7 @@ export default function TryPage() {
         )}
         {stream.tokensUsed != null && (
           <div className="mt-4 border-t border-line pt-3">
-            <p className="font-ui text-[10px] uppercase tracking-[0.16em] text-fg-3">Tokens used</p>
+            <p className="font-ui text-[11px] uppercase tracking-[0.16em] text-fg-3">Tokens used</p>
             <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-fg">{stream.tokensUsed.toLocaleString()}</p>
           </div>
         )}
@@ -888,7 +888,7 @@ export default function TryPage() {
                 <button
                   onClick={handleCancel}
                   title="Cancel this run"
-                  className="flex items-center gap-1 rounded-[var(--radius-sm)] border border-line-2 px-1.5 py-0.5 font-ui text-[10px] font-medium text-fg-2 transition hover:border-err hover:text-err"
+                  className="flex items-center gap-1 rounded-[var(--radius-sm)] border border-line-2 px-1.5 py-0.5 font-ui text-[11px] font-medium text-fg-2 transition hover:border-err hover:text-err"
                 >
                   <Square size={9} className="fill-current" /> Stop
                 </button>
@@ -933,7 +933,7 @@ export default function TryPage() {
         <div className="flex-shrink-0 border-t border-line bg-surface">
           <div className="flex w-full items-center gap-2 px-3 py-1.5">
             <button onClick={() => setLogsOpen((v) => !v)} aria-expanded={logsOpen} className="flex flex-1 items-center gap-2 text-left">
-              <span className={`flex items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[10px] font-semibold ${
+              <span className={`flex items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[11px] font-semibold ${
                 stream.status === 'completed' ? 'bg-ok/10 text-ok' : stream.status === 'failed' ? 'bg-err/10 text-err' : 'bg-surface-2 text-fg-3'
               }`}>
                 {stream.status === 'completed' ? <Check size={10} /> : null}
@@ -947,7 +947,7 @@ export default function TryPage() {
                 onClick={copyLogs}
                 title="Copy all log output"
                 aria-label="Copy all log output"
-                className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[10px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
+                className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[11px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
               >
                 <Copy size={11} /> Copy
               </button>
@@ -969,10 +969,10 @@ export default function TryPage() {
       <header className="flex h-12 flex-shrink-0 items-center gap-2 border-b border-line bg-surface px-3 sm:gap-3">
         <Link href="/" className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-[var(--radius-sm)] bg-accent font-display text-sm font-bold text-accent-fg" title="Home">L</Link>
         <span className="hidden font-display text-sm font-semibold text-fg sm:inline">Résumé Studio</span>
-        <span className="hidden rounded-[var(--radius-sm)] bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-3 md:inline">resume.tex</span>
+        <span className="hidden rounded-[var(--radius-sm)] bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-fg-3 md:inline">resume.tex</span>
         <span
           title={persistState === 'saved' ? 'Draft autosaved to this browser' : 'Saving your draft locally…'}
-          className="hidden items-center gap-1 font-ui text-[10px] text-fg-3 lg:inline-flex"
+          className="hidden items-center gap-1 font-ui text-[11px] text-fg-3 lg:inline-flex"
         >
           {persistState === 'saved'
             ? <><Check size={10} className="text-ok" /> Saved locally</>
