@@ -306,6 +306,10 @@ export default function GlobalHeader() {
                         <Link href="/admin" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Admin</Link>
                       )}
                       <div className="my-1 h-px bg-line" />
+                      {/* Legal links, reachable from every app surface (the marketing footer is hidden here). */}
+                      <Link href="/privacy" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Privacy</Link>
+                      <Link href="/terms" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Terms</Link>
+                      <div className="my-1 h-px bg-line" />
                       <button
                         role="menuitem"
                         tabIndex={-1}
