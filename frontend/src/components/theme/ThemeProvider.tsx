@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { useSession } from '@/lib/auth-client'
+import { apiClient } from '@/lib/api-client'
 
 /**
  * Light/dark mode runtime (redesign, PRD 2026-08-03).
@@ -72,6 +73,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // picks it up instead of staying on this device's local/OS default.
   useEffect(() => {
     if (!userId) return
+    // Fast path: this device's cached account preference (avoids a flash while
+    // the network request is in flight).
     try {
       const cached = window.localStorage.getItem(acctKey(userId))
       if ((cached === 'light' || cached === 'dark') && cached !== mode) {
@@ -80,6 +83,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // localStorage unavailable (private mode, etc.) — fall back to device-local only.
     }
+    // Source of truth: the account's synced theme, so a user who set dark mode
+    // on another device sees it here too (true cross-device sync).
+    apiClient.getMe()
+      .then((me) => {
+        const t = me.preferences?.theme
+        if (t === 'light' || t === 'dark') {
+          try { window.localStorage.setItem(acctKey(userId), t) } catch { /* ignore */ }
+          applyMode(t)
+        }
+      })
+      .catch(() => { /* anonymous/offline — device-local value stands */ })
     // Only run when the account identity changes, not on every mode change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
@@ -93,6 +107,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         } catch {
           // Best-effort only — device-local cookie already covers this device.
         }
+        // Persist to the account so the choice follows the user across devices.
+        apiClient.updateMePreferences({ theme: m }).catch(() => { /* best-effort */ })
       }
     },
     [applyMode, userId],
