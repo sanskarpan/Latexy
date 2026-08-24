@@ -229,6 +229,18 @@ class MeResponse(BaseModel):
     id: str
     email: str
     plan: str
+    # Account-synced UI preferences (onboarding completion, theme). Cross-device,
+    # so a user isn't re-onboarded / reset to light on a new browser.
+    preferences: dict = {}
+
+
+class UserPreferencesUpdate(BaseModel):
+    has_onboarded: Optional[bool] = None
+    theme: Optional[str] = None  # 'light' | 'dark'
+
+
+def _user_preferences(user: User) -> dict:
+    return dict((user.user_metadata or {}).get("preferences") or {})
 
 
 @router.get("/me", response_model=MeResponse)
@@ -236,12 +248,44 @@ async def get_me(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(_require_user),
 ):
-    """Return the authenticated user's id, email, and subscription plan."""
+    """Return the authenticated user's id, email, subscription plan, and prefs."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    return MeResponse(id=user.id, email=user.email, plan=user.subscription_plan)
+    return MeResponse(
+        id=user.id, email=user.email, plan=user.subscription_plan,
+        preferences=_user_preferences(user),
+    )
+
+
+@router.patch("/me/preferences", response_model=MeResponse)
+async def update_me_preferences(
+    body: UserPreferencesUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(_require_user),
+):
+    """Merge account-synced UI preferences into the user's metadata."""
+    if body.theme is not None and body.theme not in ("light", "dark"):
+        raise HTTPException(status_code=422, detail="theme must be 'light' or 'dark'")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # JSONB columns need a fresh object assigned for SQLAlchemy to detect the change.
+    meta = dict(user.user_metadata or {})
+    prefs = dict(meta.get("preferences") or {})
+    if body.has_onboarded is not None:
+        prefs["has_onboarded"] = body.has_onboarded
+    if body.theme is not None:
+        prefs["theme"] = body.theme
+    meta["preferences"] = prefs
+    user.user_metadata = meta
+    await db.commit()
+
+    return MeResponse(id=user.id, email=user.email, plan=user.subscription_plan, preferences=prefs)
 
 
 @router.get("/config/entitlements")
