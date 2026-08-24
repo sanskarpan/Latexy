@@ -25,17 +25,43 @@ class AcademicCVReport:
         return asdict(self)
 
 
-_SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
-    "publications": re.compile(
-        r"\\section\*?\{(?:refereed\s+)?publications?|conference papers?|journal papers?\}",
+def _section_re(*keywords: str) -> re.Pattern[str]:
+    r"""
+    Build a heading matcher for a section named by any of ``keywords``.
+
+    Three things this gets right that a hand-written pattern kept getting wrong:
+
+    1. **The alternation is grouped.** Writing
+       ``r"\\section\*?\{publications?|conference papers?"`` parses as
+       *"\section{publications" OR "conference papers"* — the second branch is
+       not anchored to a section command at all, so a résumé that merely says
+       "I reviewed conference papers for NeurIPS" was credited with a
+       publications section.
+
+    2. **The keyword may appear anywhere inside the braces.** Real headings are
+       qualified: "Peer-Reviewed Publications", "Research Summary",
+       "Teaching \& Mentorship". Requiring the keyword first made the detector
+       miss our own ``academic/postdoc.tex``.
+
+    3. **Any command ending in "section" counts**, so user-defined wrappers
+       (``\ressection`` in ``ats_modern.tex``) are recognised alongside
+       ``\section`` and ``\subsection``.
+    """
+    alternatives = "|".join(keywords)
+    return re.compile(
+        r"\\[a-zA-Z]*section\*?\s*\{[^}]*(?:" + alternatives + r")[^}]*\}",
         re.I,
-    ),
-    "teaching": re.compile(r"\\section\*?\{teaching(?:\s+experience)?\}", re.I),
-    "grants": re.compile(r"\\section\*?\{grants?|fellowships?|awards?(?:\s*&\s*honors?)?\}", re.I),
-    "research": re.compile(r"\\section\*?\{research(?:\s+experience|\s+interests?)?\}", re.I),
-    "presentations": re.compile(r"\\section\*?\{conference presentations?|talks?|invited talks?\}", re.I),
-    "references": re.compile(r"\\section\*?\{references?\}", re.I),
-    "service": re.compile(r"\\section\*?\{academic service|service\}", re.I),
+    )
+
+
+_SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
+    "publications": _section_re(r"publications?", r"conference papers?", r"journal papers?"),
+    "teaching": _section_re(r"teaching", r"mentorship"),
+    "grants": _section_re(r"grants?", r"fellowships?", r"awards?", r"honou?rs?"),
+    "research": _section_re(r"research"),
+    "presentations": _section_re(r"presentations?", r"talks?"),
+    "references": _section_re(r"references?"),
+    "service": _section_re(r"academic service", r"service"),
 }
 
 _BIBLIOGRAPHY_PATTERNS = [
