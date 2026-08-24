@@ -1796,7 +1796,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         )}
 
         {/* Status bar */}
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line bg-bg px-3 py-1 text-[11px] uppercase tracking-[0.12em]">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line bg-bg px-3 py-1 text-[12px] uppercase tracking-[0.12em]">
           <span className="text-fg-3">
             {readOnly
               ? 'Read-only — job running'
@@ -1806,7 +1806,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           </span>
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-fg-3">
             {onAutoCompile && (
-              <span className="flex items-center gap-1 text-[11px] text-accent-strong">
+              <span className="flex items-center gap-1 text-[12px] text-accent-strong">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                 Auto
               </span>
@@ -1815,7 +1815,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             {(pageCount !== null && pageCount !== undefined) ? (
               <span
                 title={`Resume is ${pageCount} page${pageCount === 1 ? '' : 's'}`}
-                className={`text-[11px] font-medium px-1.5 py-0.5 rounded-[var(--radius-md)] ${
+                className={`text-[12px] font-medium px-1.5 py-0.5 rounded-[var(--radius-md)] ${
                   pageCount === 1
                     ? 'text-ok bg-ok/10'
                     : pageCount === 2
@@ -1828,7 +1828,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             ) : estimatedPageCount !== null ? (
               <span
                 title="Estimated page count (compile for exact count)"
-                className="text-[11px] text-fg-3 px-1.5"
+                className="text-[12px] text-fg-3 px-1.5"
               >
                 ~{estimatedPageCount} {estimatedPageCount === 1 ? 'page' : 'pages'}
               </span>
@@ -1837,7 +1837,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               <button
                 onClick={onSpellCheckToggle}
                 title={spellCheckEnabled ? 'Spell check on — click to disable' : 'Spell check off — click to enable'}
-                className={`flex items-center gap-1 text-[11px] transition ${
+                className={`flex items-center gap-1 text-[12px] transition ${
                   spellCheckEnabled
                     ? 'text-accent-strong hover:text-accent'
                     : 'text-fg-3 hover:text-fg-2'
@@ -1858,7 +1858,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             )}
             {(confidenceScore !== undefined || confidenceScoreLoading) && (
               confidenceScoreLoading ? (
-                <span className="flex items-center gap-1 text-[11px] text-fg-3">
+                <span className="flex items-center gap-1 text-[12px] text-fg-3">
                   <span className="h-1.5 w-1.5 animate-spin rounded-full border border-line-2 border-t-transparent" />
                   Quality
                 </span>
@@ -1868,7 +1868,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                     type="button"
                     onClick={onConfidenceBadgeClick}
                     title="Resume quality score — click to view details"
-                    className={`rounded-[var(--radius-md)] px-1.5 py-0.5 text-[11px] font-medium transition-colors cursor-pointer hover:brightness-110 ${
+                    className={`rounded-[var(--radius-md)] px-1.5 py-0.5 text-[12px] font-medium transition-colors cursor-pointer hover:brightness-110 ${
                       confidenceScore >= 80
                         ? 'text-ok bg-ok/10'
                         : confidenceScore >= 60
@@ -1881,7 +1881,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 ) : (
                   <span
                     title="Resume quality score"
-                    className={`rounded-[var(--radius-md)] px-1.5 py-0.5 text-[11px] font-medium ${
+                    className={`rounded-[var(--radius-md)] px-1.5 py-0.5 text-[12px] font-medium ${
                       confidenceScore >= 80
                         ? 'text-ok bg-ok/10'
                         : confidenceScore >= 60

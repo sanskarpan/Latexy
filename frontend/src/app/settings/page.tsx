@@ -7,6 +7,7 @@ import { Github } from '@/components/icons/brand-icons'
 import { apiClient, type NotificationPrefs, type GitHubStatusResponse, type ZoteroStatusResponse, type MendeleyStatusResponse, type DropboxStatusResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
 import { getNotificationPref, setNotificationPref } from '@/hooks/usePushNotifications'
+import { useOnboarding } from '@/components/onboarding/OnboardingFlow'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030'
 
@@ -15,7 +16,15 @@ function SettingsContent() {
   const router = useRouter()
   const pathname = usePathname()
   const { data: sessionData, isPending: sessionLoading } = useSession()
+  const { resetOnboarding } = useOnboarding()
   const settingsTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+
+  // Replay the first-run product tour: clear the completion flag (local + account)
+  // then head to the workspace, which re-opens onboarding when it isn't completed.
+  const handleReplayTour = () => {
+    resetOnboarding()
+    router.push('/workspace')
+  }
 
   // Clear all pending timers on unmount
   useEffect(() => () => {
@@ -839,6 +848,22 @@ function SettingsContent() {
               Notifications are blocked by your browser. Update your site permissions to enable them.
             </p>
           )}
+        </div>
+
+        {/* Getting started — replay the first-run product tour on demand. */}
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
+          <div className="flex items-center gap-2">
+            <BookOpen size={16} className="text-accent-strong" />
+            <h2 className="text-base font-semibold text-fg">Getting Started</h2>
+          </div>
+          <p className="mt-2 text-sm text-fg-2">Want a refresher? Replay the product tour that runs the first time you sign in.</p>
+          <button
+            type="button"
+            onClick={handleReplayTour}
+            className="mt-4 rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-sm font-medium text-fg transition hover:bg-surface-2"
+          >
+            Replay product tour
+          </button>
         </div>
       </div>
     </div>

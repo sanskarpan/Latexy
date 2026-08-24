@@ -601,16 +601,16 @@ export default function TryPage() {
         </button>
       </div>
       <div className="border-t border-line p-3">
-        <p className="mb-2 font-ui text-[11px] text-fg-3">Source</p>
+        <p className="mb-2 font-ui text-[12px] text-fg-3">Source</p>
         <div className="grid grid-cols-2 gap-1.5">
-          <button onClick={resetEditor} className="flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[11px] text-fg-2 transition hover:text-fg">
+          <button onClick={resetEditor} className="flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[12px] text-fg-2 transition hover:text-fg">
             <RotateCcw size={11} /> Reset
           </button>
-          <button onClick={clearEditor} className="flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[11px] text-fg-2 transition hover:text-fg">
+          <button onClick={clearEditor} className="flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[12px] text-fg-2 transition hover:text-fg">
             <X size={11} /> Clear
           </button>
         </div>
-        <button onClick={() => setShowImportModal(true)} className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[11px] text-fg-2 transition hover:text-fg">
+        <button onClick={() => setShowImportModal(true)} className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 bg-surface-2 px-2 py-1.5 font-ui text-[12px] text-fg-2 transition hover:text-fg">
           <Upload size={11} /> Import file (PDF · DOCX · TEX)
         </button>
       </div>
@@ -622,7 +622,7 @@ export default function TryPage() {
       {panelHead('AI Optimize')}
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="border-b border-line p-3">
-          <label className="font-ui text-[11px] text-fg-3">Target job</label>
+          <label className="font-ui text-[12px] text-fg-3">Target job</label>
           <div className="mt-1.5 flex gap-1.5">
             <input
               type="url"
@@ -644,9 +644,9 @@ export default function TryPage() {
           </div>
           {scrapedMeta && !scrapedMeta.error && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1">
-              {scrapedMeta.title && <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[11px] font-medium text-accent-strong">{scrapedMeta.title}</span>}
-              {scrapedMeta.company && <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-fg-2">{scrapedMeta.company}</span>}
-              {scrapedMeta.location && <span className="inline-flex items-center gap-1 rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-fg-3"><MapPin size={10} /> {scrapedMeta.location}</span>}
+              {scrapedMeta.title && <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[12px] font-medium text-accent-strong">{scrapedMeta.title}</span>}
+              {scrapedMeta.company && <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[12px] text-fg-2">{scrapedMeta.company}</span>}
+              {scrapedMeta.location && <span className="inline-flex items-center gap-1 rounded bg-surface-2 px-1.5 py-0.5 text-[12px] text-fg-3"><MapPin size={10} /> {scrapedMeta.location}</span>}
             </div>
           )}
           <textarea
@@ -665,7 +665,7 @@ export default function TryPage() {
           <button
             onClick={handleTrimToOnePage}
             disabled={isSubmitting || isProcessing}
-            className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 px-3 py-1.5 font-ui text-[11px] text-fg-2 transition hover:text-fg disabled:opacity-50"
+            className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 px-3 py-1.5 font-ui text-[12px] text-fg-2 transition hover:text-fg disabled:opacity-50"
           >
             Trim to one page
           </button>
@@ -673,17 +673,17 @@ export default function TryPage() {
         {optimizeSnapshot != null && (
           <div className="border-t border-line p-3">
             <div className="flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-accent/30 bg-accent-soft/40 px-3 py-2">
-              <span className="font-ui text-[11px] text-fg-2">AI rewrote your resume.</span>
+              <span className="font-ui text-[12px] text-fg-2">AI rewrote your resume.</span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setShowOptimizeDiff(true)}
-                  className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[11px] font-medium text-accent-strong transition hover:bg-surface-2"
+                  className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-accent-strong transition hover:bg-surface-2"
                 >
                   View diff
                 </button>
                 <button
                   onClick={() => revertOptimize()}
-                  className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[11px] font-medium text-fg-2 transition hover:bg-surface-2"
+                  className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-fg-2 transition hover:bg-surface-2"
                 >
                   Revert to original
                 </button>
@@ -706,7 +706,7 @@ export default function TryPage() {
         )}
         {stream.changesMade && stream.changesMade.length > 0 && (
           <div className="p-3">
-            <p className="mb-2 font-ui text-[11px] text-fg-3">{stream.changesMade.length} change{stream.changesMade.length !== 1 ? 's' : ''} applied</p>
+            <p className="mb-2 font-ui text-[12px] text-fg-3">{stream.changesMade.length} change{stream.changesMade.length !== 1 ? 's' : ''} applied</p>
             <ul className="space-y-1.5">
               {stream.changesMade.map((c, i) => {
                 const ch = (typeof c === 'string' ? { reason: c } : c) as { section?: string; change_type?: string; reason?: string }
@@ -715,11 +715,11 @@ export default function TryPage() {
                   <li key={i} className="rounded-[var(--radius-md)] border border-line bg-surface-2 p-2.5">
                     {(ch.section || ch.change_type) && (
                       <div className="mb-1 flex items-center gap-1.5">
-                        {ch.section && <span className="font-ui text-[11px] font-semibold uppercase tracking-[0.1em] text-accent-strong">{ch.section}</span>}
+                        {ch.section && <span className="font-ui text-[12px] font-semibold uppercase tracking-[0.1em] text-accent-strong">{ch.section}</span>}
                         {ch.change_type && <span className={`font-ui text-[9px] uppercase tracking-[0.08em] ${tone}`}>· {ch.change_type}</span>}
                       </div>
                     )}
-                    <p className="flex gap-1.5 font-body text-[11px] leading-relaxed text-fg-2">
+                    <p className="flex gap-1.5 font-body text-[12px] leading-relaxed text-fg-2">
                       <Check size={12} className={`mt-0.5 shrink-0 ${tone}`} />
                       <span>{ch.reason || '—'}</span>
                     </p>
@@ -736,7 +736,7 @@ export default function TryPage() {
   const atsPanel = (
     <div className="flex min-h-0 flex-1 flex-col">
       {panelHead('ATS Score', (
-        <button onClick={() => { setDeepPanelOpen(true); if (!deepAnalysisJobId) handleRunDeepAnalysis() }} disabled={isDeepAnalysisRunning} className="font-ui text-[11px] text-accent-strong transition hover:brightness-110 disabled:opacity-50">
+        <button onClick={() => { setDeepPanelOpen(true); if (!deepAnalysisJobId) handleRunDeepAnalysis() }} disabled={isDeepAnalysisRunning} className="font-ui text-[12px] text-accent-strong transition hover:brightness-110 disabled:opacity-50">
           {isDeepAnalysisRunning ? 'Analysing…' : 'Deep scan'}
         </button>
       ))}
@@ -744,14 +744,14 @@ export default function TryPage() {
         <p className="font-display text-5xl font-bold tabular-nums text-accent-strong">
           {atsDisplay != null ? atsDisplay : quickATSLoading ? '…' : '—'}
         </p>
-        <p className="mt-0.5 font-ui text-[11px] text-fg-3">out of 100</p>
+        <p className="mt-0.5 font-ui text-[12px] text-fg-3">out of 100</p>
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {categoryScores ? (
           <div className="space-y-3">
             {Object.entries(categoryScores).map(([key, val]) => (
               <div key={key}>
-                <div className="mb-1 flex justify-between font-ui text-[11px]">
+                <div className="mb-1 flex justify-between font-ui text-[12px]">
                   <span className="text-fg-2">{CATEGORY_LABELS[key] ?? key}</span>
                   <span className="tabular-nums text-fg-3">{val}</span>
                 </div>
@@ -766,7 +766,7 @@ export default function TryPage() {
         )}
         {stream.tokensUsed != null && (
           <div className="mt-4 border-t border-line pt-3">
-            <p className="font-ui text-[11px] uppercase tracking-[0.16em] text-fg-3">Tokens used</p>
+            <p className="font-ui text-[12px] uppercase tracking-[0.16em] text-fg-3">Tokens used</p>
             <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-fg">{stream.tokensUsed.toLocaleString()}</p>
           </div>
         )}
@@ -786,7 +786,7 @@ export default function TryPage() {
             <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-[var(--radius-md)] bg-accent-soft text-accent-strong"><s.icon size={15} /></span>
             <span>
               <span className="block font-ui text-[12px] font-medium text-fg">{s.label}</span>
-              <span className="block font-ui text-[11px] text-fg-3">{s.hint}</span>
+              <span className="block font-ui text-[12px] text-fg-3">{s.hint}</span>
             </span>
             <ChevronRight size={14} className="ml-auto text-fg-3" />
           </button>
@@ -797,7 +797,7 @@ export default function TryPage() {
 
   const templatesPanel = (
     <>
-      {panelHead('Templates', <Link href="/templates" className="font-ui text-[11px] text-accent-strong hover:brightness-110">Browse all →</Link>)}
+      {panelHead('Templates', <Link href="/templates" className="font-ui text-[12px] text-accent-strong hover:brightness-110">Browse all →</Link>)}
       <div className="grid grid-cols-2 gap-2 p-3">
         {['Minimal', 'Two-column', 'Academic', 'ATS-safe'].map((t) => (
           <Link
@@ -814,14 +814,14 @@ export default function TryPage() {
               <div className="mt-2 h-1 w-1/2 rounded bg-accent/40" />
               <div className="mt-1 h-1 w-full rounded bg-fg/10" />
             </div>
-            <span className="flex items-center justify-between font-ui text-[11px] text-fg-2">
+            <span className="flex items-center justify-between font-ui text-[12px] text-fg-2">
               {t}
               <ChevronRight size={12} className="text-fg-3 transition group-hover:text-accent-strong" />
             </span>
           </Link>
         ))}
       </div>
-      <p className="px-3 pb-3 font-ui text-[11px] leading-relaxed text-fg-3">Previews open the full gallery — your current draft stays saved.</p>
+      <p className="px-3 pb-3 font-ui text-[12px] leading-relaxed text-fg-3">Previews open the full gallery — your current draft stays saved.</p>
     </>
   )
 
@@ -837,12 +837,12 @@ export default function TryPage() {
           onClick={copySource}
           title="Copy LaTeX source"
           aria-label="Copy LaTeX source"
-          className="ml-auto flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[11px] text-fg-3 transition hover:bg-surface hover:text-fg"
+          className="ml-auto flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[12px] text-fg-3 transition hover:bg-surface hover:text-fg"
         >
           {sourceCopied ? <Check size={11} className="text-ok" /> : <Copy size={11} />}
           {sourceCopied ? 'Copied' : 'Copy'}
         </button>
-        <span className="font-ui text-[11px] text-fg-3">⌘F to find</span>
+        <span className="font-ui text-[12px] text-fg-3">⌘F to find</span>
       </div>
       <div className="relative min-h-0 flex-1">
         <LaTeXEditor
@@ -888,7 +888,7 @@ export default function TryPage() {
                 <button
                   onClick={handleCancel}
                   title="Cancel this run"
-                  className="flex items-center gap-1 rounded-[var(--radius-sm)] border border-line-2 px-1.5 py-0.5 font-ui text-[11px] font-medium text-fg-2 transition hover:border-err hover:text-err"
+                  className="flex items-center gap-1 rounded-[var(--radius-sm)] border border-line-2 px-1.5 py-0.5 font-ui text-[12px] font-medium text-fg-2 transition hover:border-err hover:text-err"
                 >
                   <Square size={9} className="fill-current" /> Stop
                 </button>
@@ -905,13 +905,13 @@ export default function TryPage() {
       {stream.pageCount !== null && stream.pageCount > 1 && (
         <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-warn/20 bg-warn/10 px-4 py-2">
           <span className="font-ui text-[12px] text-warn"><AlertTriangle size={11} className="mr-1 -mt-0.5 inline" /> {stream.pageCount} pages — most recruiters prefer 1.</span>
-          <button onClick={handleTrimToOnePage} disabled={isSubmitting || isProcessing} className="shrink-0 font-ui text-[11px] text-warn underline hover:brightness-110 disabled:opacity-50">Trim with AI →</button>
+          <button onClick={handleTrimToOnePage} disabled={isSubmitting || isProcessing} className="shrink-0 font-ui text-[12px] text-warn underline hover:brightness-110 disabled:opacity-50">Trim with AI →</button>
         </div>
       )}
       {stream.timeoutError && (
         <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-accent/20 bg-accent-soft px-4 py-2">
-          <span className="font-ui text-[11px] text-accent-strong"><Clock size={11} className="mr-1 -mt-0.5 inline" /> Compile timed out — {stream.timeoutError.plan} plan limit ({stream.timeoutError.plan === 'free' ? '30s' : stream.timeoutError.plan === 'basic' ? '120s' : '240s'})</span>
-          {flags.upgrade_ctas && <a href="/billing" className="shrink-0 font-ui text-[11px] font-medium text-accent-strong underline hover:brightness-110">Upgrade →</a>}
+          <span className="font-ui text-[12px] text-accent-strong"><Clock size={11} className="mr-1 -mt-0.5 inline" /> Compile timed out — {stream.timeoutError.plan} plan limit ({stream.timeoutError.plan === 'free' ? '30s' : stream.timeoutError.plan === 'basic' ? '120s' : '240s'})</span>
+          {flags.upgrade_ctas && <a href="/billing" className="shrink-0 font-ui text-[12px] font-medium text-accent-strong underline hover:brightness-110">Upgrade →</a>}
         </div>
       )}
 
@@ -933,7 +933,7 @@ export default function TryPage() {
         <div className="flex-shrink-0 border-t border-line bg-surface">
           <div className="flex w-full items-center gap-2 px-3 py-1.5">
             <button onClick={() => setLogsOpen((v) => !v)} aria-expanded={logsOpen} className="flex flex-1 items-center gap-2 text-left">
-              <span className={`flex items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[11px] font-semibold ${
+              <span className={`flex items-center gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[12px] font-semibold ${
                 stream.status === 'completed' ? 'bg-ok/10 text-ok' : stream.status === 'failed' ? 'bg-err/10 text-err' : 'bg-surface-2 text-fg-3'
               }`}>
                 {stream.status === 'completed' ? <Check size={10} /> : null}
@@ -947,7 +947,7 @@ export default function TryPage() {
                 onClick={copyLogs}
                 title="Copy all log output"
                 aria-label="Copy all log output"
-                className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[11px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
+                className="flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 font-ui text-[12px] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
               >
                 <Copy size={11} /> Copy
               </button>
@@ -969,10 +969,10 @@ export default function TryPage() {
       <header className="flex h-12 flex-shrink-0 items-center gap-2 border-b border-line bg-surface px-3 sm:gap-3">
         <Link href="/" className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-[var(--radius-sm)] bg-accent font-display text-sm font-bold text-accent-fg" title="Home">L</Link>
         <span className="hidden font-display text-sm font-semibold text-fg sm:inline">Résumé Studio</span>
-        <span className="hidden rounded-[var(--radius-sm)] bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-fg-3 md:inline">resume.tex</span>
+        <span className="hidden rounded-[var(--radius-sm)] bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-fg-3 md:inline">resume.tex</span>
         <span
           title={persistState === 'saved' ? 'Draft autosaved to this browser' : 'Saving your draft locally…'}
-          className="hidden items-center gap-1 font-ui text-[11px] text-fg-3 lg:inline-flex"
+          className="hidden items-center gap-1 font-ui text-[12px] text-fg-3 lg:inline-flex"
         >
           {persistState === 'saved'
             ? <><Check size={10} className="text-ok" /> Saved locally</>
@@ -992,7 +992,7 @@ export default function TryPage() {
         <button
           onClick={toggleAutoCompile}
           title="Auto-compile on change"
-          className={`hidden select-none items-center gap-1.5 rounded-[var(--radius-md)] border px-2 py-1.5 font-ui text-[11px] transition sm:flex ${
+          className={`hidden select-none items-center gap-1.5 rounded-[var(--radius-md)] border px-2 py-1.5 font-ui text-[12px] transition sm:flex ${
             autoCompile ? 'border-accent bg-accent-soft text-accent-strong' : 'border-line-2 text-fg-3 hover:text-fg'
           }`}
         >
@@ -1000,7 +1000,7 @@ export default function TryPage() {
         </button>
 
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => openTool('ats')} className="hidden items-center gap-1.5 rounded-[var(--radius-pill)] border border-line bg-surface-2 px-2.5 py-1 font-ui text-[11px] text-fg-2 transition hover:border-accent sm:flex">
+          <button onClick={() => openTool('ats')} className="hidden items-center gap-1.5 rounded-[var(--radius-pill)] border border-line bg-surface-2 px-2.5 py-1 font-ui text-[12px] text-fg-2 transition hover:border-accent sm:flex">
             <Gauge size={12} className="text-accent-strong" /> ATS <b className="tabular-nums text-accent-strong">{atsDisplay ?? '—'}</b>
           </button>
           <button
@@ -1013,13 +1013,13 @@ export default function TryPage() {
           <ModeToggle />
           <ExportDropdown latexContent={editorRef.current?.getValue() || latexContent} onPdfExport={handleDownload} />
           {resolvedSession ? (
-            <Link href="/dashboard" title="Dashboard" className="grid h-7 w-7 place-items-center rounded-[var(--radius-pill)] bg-accent-soft font-ui text-[11px] font-semibold text-accent-strong">
+            <Link href="/dashboard" title="Dashboard" className="grid h-7 w-7 place-items-center rounded-[var(--radius-pill)] bg-accent-soft font-ui text-[12px] font-semibold text-accent-strong">
               {(resolvedSession.user?.name || resolvedSession.user?.email || 'A').charAt(0).toUpperCase()}
             </Link>
           ) : (
             <div className="flex items-center gap-2">
               <span className="hidden font-ui text-[12px] text-fg-3 sm:inline">trials <b className="text-accent-strong">{trialsLabel}</b></span>
-              <Link href="/login" className="whitespace-nowrap rounded-[var(--radius-md)] border border-line-2 px-2.5 py-1.5 font-ui text-[11px] font-semibold text-fg transition hover:border-accent hover:text-accent-strong">Log in</Link>
+              <Link href="/login" className="whitespace-nowrap rounded-[var(--radius-md)] border border-line-2 px-2.5 py-1.5 font-ui text-[12px] font-semibold text-fg transition hover:border-accent hover:text-accent-strong">Log in</Link>
             </div>
           )}
         </div>
@@ -1028,10 +1028,10 @@ export default function TryPage() {
       {/* ── trial-exhausted banner ── */}
       {trialBlocked && (
         <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-x-2 gap-y-0.5 border-b border-warn/20 bg-warn/10 px-3 py-1.5 text-center">
-          <span className="font-ui text-[11px] text-warn">
+          <span className="font-ui text-[12px] text-warn">
             <AlertTriangle size={11} className="mr-1 -mt-0.5 inline" /> You&apos;ve used all your free compiles.
           </span>
-          <span className="font-ui text-[11px] text-fg-2">
+          <span className="font-ui text-[12px] text-fg-2">
             <Link href="/login" className="font-semibold text-accent-strong underline hover:brightness-110">Log in</Link>
             {flags.upgrade_ctas && <> or <a href="/billing" className="font-semibold text-accent-strong underline hover:brightness-110">upgrade</a></>} to continue.
           </span>

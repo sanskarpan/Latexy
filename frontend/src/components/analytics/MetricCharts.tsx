@@ -318,6 +318,7 @@ export function StatusDonutChart({
    *  rather than the full range-scoped distribution. */
   totalLabel?: string
 }) {
+  const [hovered, setHovered] = useState<string | null>(null)
   if (data.length === 0) {
     return <EmptyChart label="No run statuses to display." />
   }
@@ -338,10 +339,13 @@ export function StatusDonutChart({
   }
 
   const radius = Math.min(width, height) / 2
+  const pct = (v: number) => Math.round((v / total) * 100)
 
   const donutLabel = `${totalLabel === 'RUNS' ? 'Run statuses' : `Run statuses (${totalLabel.toLowerCase()})`}, ${total} total: ${filtered
-    .map((item) => `${item.name} ${item.value} (${Math.round((item.value / total) * 100)}%)`)
+    .map((item) => `${item.name} ${item.value} (${pct(item.value)}%)`)
     .join(', ')}.`
+
+  const hoveredItem = hovered ? filtered.find((i) => i.name === hovered) : null
 
   return (
     <div className="flex items-center gap-4">
@@ -357,28 +361,44 @@ export function StatusDonutChart({
             {(pie) =>
               pie.arcs.map((arc) => (
                 <g key={arc.data.name}>
-                  <path d={pie.path(arc) || undefined} fill={colors[arc.data.name] || 'var(--accent)'} />
+                  <path
+                    d={pie.path(arc) || undefined}
+                    fill={colors[arc.data.name] || 'var(--accent)'}
+                    opacity={hovered && hovered !== arc.data.name ? 0.35 : 1}
+                    style={{ cursor: 'pointer', transition: 'opacity 120ms' }}
+                    onMouseEnter={() => setHovered(arc.data.name)}
+                    onMouseLeave={() => setHovered(null)}
+                  />
                 </g>
               ))
             }
           </Pie>
-          <text textAnchor="middle" fill="var(--fg)" fontSize={24} fontWeight={700} dy={-4}>
-            {total}
+          {/* Center read-out: hovered slice's share, or the overall total. */}
+          <text textAnchor="middle" fill="var(--fg)" fontSize={hoveredItem ? 22 : 24} fontWeight={700} dy={-4}>
+            {hoveredItem ? `${pct(hoveredItem.value)}%` : total}
           </text>
           <text textAnchor="middle" fill="var(--fg-3)" fontSize={10} dy={14}>
-            {totalLabel}
+            {hoveredItem ? `${hoveredItem.name} · ${hoveredItem.value}` : totalLabel}
           </text>
         </Group>
       </svg>
 
       <div className="space-y-2 text-xs">
         {filtered.map((item) => (
-          <div key={item.name} className="flex items-center justify-between gap-4">
+          <div
+            key={item.name}
+            className={`flex items-center justify-between gap-4 rounded-[var(--radius-sm)] px-1.5 py-0.5 transition ${hovered === item.name ? 'bg-surface-2' : ''}`}
+            onMouseEnter={() => setHovered(item.name)}
+            onMouseLeave={() => setHovered(null)}
+          >
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[item.name] || 'var(--accent)' }} />
               <span className="uppercase tracking-[0.12em] text-fg-2">{item.name}</span>
             </div>
-            <span className="font-semibold text-fg">{item.value}</span>
+            <span className="tabular-nums">
+              <span className="font-semibold text-fg">{item.value}</span>
+              <span className="ml-1.5 text-fg-3">{pct(item.value)}%</span>
+            </span>
           </div>
         ))}
       </div>
