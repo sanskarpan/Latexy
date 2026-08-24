@@ -85,7 +85,9 @@ export default function RootLayout({
               richColors
               closeButton
               position="bottom-right"
-              duration={4000}
+              /* 6s is comfortable reading time (was 1.5s); every toast also has a
+                 close button so errors can be kept up / dismissed on demand. */
+              duration={6000}
               toastOptions={{
                 className: 'border border-line bg-surface text-fg',
               }}
