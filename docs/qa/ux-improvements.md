@@ -15,15 +15,16 @@
 
 ## ✅ Status (verified 2026-08-24 against `main`)
 
-Every **High (P0)** and **Medium (P1)** finding was re-checked against the current code. Each item below carries a `**Status:**` line. Low-severity items were not re-verified.
+Every finding — **High (P0)**, **Medium (P1)**, and **Low (P2)** — was re-checked against the current code. Each item below carries a `**Status:**` line.
 
 | Severity | Total | ✅ Fixed | 🟡 Partial | 🔴 Open |
 |---|---|---|---|---|
 | High (P0) | 23 | 23 | 0 | 0 |
 | Medium (P1) | 62 | 62 | 0 | 0 |
-| **P0 + P1** | **85** | **85** | **0** | **0** |
+| Low (P2) | 41 | 41 | 0 | 0 |
+| **All** | **126** | **126** | **0** | **0** |
 
-All P0 and P1 items are now resolved — the seven that were Partial/Open at the 2026-08-24 verification (AI-optimize diff/revert on `/try`, `/try` streaming scroll-jerk, Tracker within-column reorder, Dashboard chart tooltips, data-sourced changelog, theme toggle on the workspace fullscreen surfaces, and footer legal links) were completed in the follow-up pass.
+Every audit finding is resolved. The seven P0/P1 items that were Partial/Open at the 2026-08-24 verification (AI-optimize diff/revert on `/try`, `/try` streaming scroll-jerk, Tracker within-column reorder, Dashboard chart tooltips, data-sourced changelog, theme toggle on the workspace fullscreen surfaces, and footer legal links) and the six remaining P2 items (clickable Recent Activity, themed GitHub/Dropbox confirm, account-synced onboarding + theme, flash-free ModeToggle, and readability of the editor micro-copy) were completed in the follow-up passes.
 
 ## 🔴 Top priority — all high-severity items
 
@@ -131,26 +132,31 @@ All P0 and P1 items are now resolved — the seven that were Partial/Open at the
 - **Where:** `src/components/TemplatePreviewModal.tsx:208-221` · route `/templates`
 - **Problem:** When pdfFailed is true the PDF Preview tab is rendered disabled/greyed, but there's no tooltip, helper text, or label explaining that a rendered PDF isn't available for this template. The user just sees a dead, greyed tab and has to guess.
 - **Fix:** Add a title/tooltip or small 'PDF unavailable' caption on the disabled tab, or hide the PDF tab entirely when no PDF exists and default cleanly to LaTeX Source.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · 🐛 Bug — Marketing category badge is arbitrarily highlighted in accent while all others are neutral
 - **Where:** `src/components/TemplateCard.tsx:11-24` · route `/templates`
 - **Problem:** In the card's CATEGORY_STYLES map every category resolves to the neutral surface style except 'marketing', which is given accent (bg-accent-soft / text-accent-strong / border-accent). This makes marketing template badges stand out for no semantic reason and looks like a copy/paste leftover — visually inconsistent across the grid.
 - **Fix:** Make all category badges consistent (all neutral, or give every category a deliberate distinct color). Remove the special-case accent for 'marketing' unless it's intentional and applied system-wide.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Result count and empty state aren't announced to screen readers
 - **Where:** `src/app/templates/page.tsx:159-161` · route `/templates`
 - **Problem:** The 'N templates' count and the 'No templates found' empty state update live as the user types in search or switches category, but neither is in an aria-live region, so screen-reader users get no feedback that filtering changed the results.
 - **Fix:** Wrap the count (and empty-state message) in an aria-live="polite" region so filter results are announced as the user searches/filters.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Search doesn't match category label and there's no keyboard shortcut to focus it
 - **Where:** `src/app/templates/page.tsx:65-72` · route `/templates`
 - **Problem:** Client-side search matches name, description, and tags but not category_label, so typing e.g. 'finance' won't match a finance-labelled template unless the word also appears in its metadata. There's also no '/' or Cmd+K shortcut to focus the search field, which is standard for a browse/gallery surface.
 - **Fix:** Include t.category_label in the search predicate, and add a keyboard shortcut (e.g. '/') that focuses the search input.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Redundant/dead CATEGORY_STYLES map in the preview modal
 - **Where:** `src/components/TemplatePreviewModal.tsx:14-29` · route `/templates`
 - **Problem:** Every entry in the modal's CATEGORY_STYLES (plus DEFAULT_STYLE) maps to the identical ACCENT_CHIP object, so the entire lookup is dead weight and the per-category style variable never changes. It signals unfinished design intent (categories were presumably meant to be color-coded) and adds maintenance noise.
 - **Fix:** Either remove the map and use ACCENT_CHIP directly, or actually implement distinct per-category colors so the abstraction earns its place (and keep it consistent with the card's badge colors).
+- **Status:** ✅ Fixed
 
 
 ### Workspace & Resumes (29)
@@ -285,41 +291,49 @@ All P0 and P1 items are now resolved — the seven that were Partial/Open at the
 - **Where:** `src/app/workspace/cover-letters/page.tsx:206 (container is overflow-hidden) table L207` · route `/workspace/cover-letters`
 - **Problem:** The list view renders a 5-column table inside a container with 'overflow-hidden'. On narrow viewports the Company/Role, Resume, Tone, Date, and Actions columns are compressed and clipped rather than scrollable, degrading the list view on mobile.
 - **Fix:** Wrap the table in an 'overflow-x-auto' container (with a min-width on the table), or collapse to a stacked card layout below sm.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Search input lacks a label and a clear button
 - **Where:** `src/app/workspace/cover-letters/page.tsx:108-117` · route `/workspace/cover-letters`
 - **Problem:** The search input has only a placeholder and no aria-label/associated <label>, and there is no clear (x) control to reset the query — users must manually delete text to return to the full list. Minor a11y and convenience gap.
 - **Fix:** Add an aria-label (or visually-hidden label) and a clear button that appears when searchQuery is non-empty and resets query + page.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Template selection: no per-card loading state and title field feels disconnected
 - **Where:** `frontend/src/app/workspace/new/page.tsx TemplateCard grid (~475-483) disabled={isCreating}; title input at top (~240)` · route `/workspace/new`
 - **Problem:** Clicking a template immediately creates+navigates, but during creation all cards are only 'disabled' with no spinner indicating which one was chosen, so on a slow network the page looks frozen. Separately, the Resume Title field sits far above the gallery and is optional for templates (falls back to template name), so users often don't realize it applies to template creation.
 - **Fix:** Show a spinner/'Creating…' state on the specific clicked card, and surface the title inline (e.g., prompt for/confirm a title when a template is selected, or move a compact title field adjacent to the gallery).
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Two different 'Search' affordances are confusing
 - **Where:** `frontend/src/app/workspace/page.tsx 'Search' button→ProjectSearchModal (~612) vs inline title search input (~693)` · route `/workspace`
 - **Problem:** The header has a 'Search' button that opens a full-text ProjectSearchModal (⌘⇧F), while the toolbar below has an inline input placeholarded 'Search resume titles' that only filters titles. Both are called 'search' with no explanation of the difference, so users won't know which finds content vs. titles.
 - **Fix:** Differentiate the labels/placeholders (e.g., button → 'Search content ⌘⇧F', input → 'Filter by title') or unify them into one search that spans titles and content.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Native confirm() dialogs break the app's visual design
 - **Where:** `frontend/src/app/workspace/page.tsx archive confirm() (~569); edit page GitHub/Dropbox pull window.confirm (~1291, ~1340)` · route `/workspace`
 - **Problem:** Archive-from-card and the GitHub/Dropbox 'pull will overwrite' flows use the browser-native confirm()/window.confirm(). These render as unstyled OS dialogs inconsistent with the app's custom modal system used everywhere else (fork, translate, tag edit), producing a jarring, off-brand experience for consequential actions.
 - **Fix:** Replace native confirm() calls with the app's themed confirmation modal component for consistent styling and copy.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Recent Activity entries aren't clickable
 - **Where:** `frontend/src/app/workspace/page.tsx Recent Activity list (~1050-1056)` · route `/workspace`
 - **Problem:** The Recent Activity sidebar lists the last 5 runs (stage/status/time) but the entries are non-interactive divs. Users can't click a run to jump to its resume, logs, or result — the only navigation is the generic 'View Full History' link, so a specific recent run is a dead end.
 - **Fix:** Make each activity row link to the relevant job/resume (editor logs or run history detail) so users can act on a recent run directly.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Overlapping 'Apply to a job' and 'Track application' actions are confusing
 - **Where:** `frontend/src/app/workspace/page.tsx overflow menu 'Apply to a job' (~548) and 'Track application' (~551)` · route `/workspace`
 - **Problem:** The card overflow menu lists both 'Apply to a job' (ApplyModal) and 'Track application' (AddApplicationModal). The labels are near-synonymous and it's unclear how they differ or when to use which, creating decision friction for a job-application workflow.
 - **Fix:** Clarify the distinction in labels (e.g., 'Quick apply' vs 'Add to tracker'), add short helper text, or consolidate into a single applications action if they overlap significantly.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Saved cover letters are indistinguishable when company/role are blank
 - **Where:** `frontend/src/app/workspace/[resumeId]/cover-letter/page.tsx existing list label (~519-521)` · route `/workspace/[resumeId]/cover-letter`
 - **Problem:** Each saved cover letter is labeled company_name || role_title || 'Cover Letter'. Since company and role are optional at generation, multiple cover letters generated without them all display as 'Cover Letter' differentiated only by a date, making it hard to pick the right one from the history list.
 - **Fix:** Fall back to a snippet of the job description or an incrementing 'Cover Letter #N', and always show the date/time; consider allowing an inline rename.
+- **Status:** ✅ Fixed
 
 
 ### Résumé Studio (/try) (7)
@@ -358,11 +372,13 @@ All P0 and P1 items are now resolved — the seven that were Partial/Open at the
 - **Where:** `frontend/src/components/PDFPreview.tsx:344-367` · route `/try`
 - **Problem:** Zoom is only ±15% stepper buttons; clicking the '100%' label does nothing (no reset), there's no 'fit to width' control, no ⌘+/⌘- or Ctrl+scroll zoom, and multi-page documents show no 'Page X of N' indicator while scrolling. For a preview pane users compare against a real PDF viewer, these are noticeable ergonomics gaps.
 - **Fix:** Make the percentage label click reset to 100%/fit; add a 'Fit width' button; support keyboard/Ctrl-scroll zoom; and show a current-page/total-page indicator for multi-page resumes.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Three distinct import sources (GitHub / Portfolio URL / LinkedIn export) all open the same modal
 - **Where:** `frontend/src/app/try/page.tsx:540-544` · route `/try`
 - **Problem:** The Import panel lists GitHub ('Pull top projects'), Portfolio URL ('Scrape a page'), and LinkedIn export ('Upload archive') as three separate rows, but all three call setShowProjectsModal(true) — the identical modal. Users who click 'LinkedIn export' expecting an archive upload flow, or 'Portfolio URL' expecting a URL field, land in the same generic dialog, which reads as broken or mislabeled if the modal doesn't preselect their chosen source.
 - **Fix:** Pass the chosen source into ImportProjectsModal (e.g. a defaultTab/source prop) so the modal opens on the matching sub-flow, or collapse the rows into one honest 'Import projects' entry.
+- **Status:** ✅ Fixed
 
 
 ### Auth & Onboarding (14)
@@ -413,36 +429,43 @@ All P0 and P1 items are now resolved — the seven that were Partial/Open at the
 - **Where:** `src/components/onboarding/OnboardingFlow.tsx:270-281` · route `/workspace (OnboardingFlow)`
 - **Problem:** The segmented progress indicator is made of buttons that are only h-1.5 (6px) tall and full-width thin bars. They are the step-jump navigation (goToStep) but give no visual cue they are clickable, and future steps look inactive (bg-surface-2) yet are still clickable. The tiny hit area fails the 44px touch-target guideline and the interaction is undiscoverable.
 - **Fix:** Either make the segments clearly non-interactive (pure progress) and rely on Back/Next, or if step-jumping is desired, increase the interactive hit area (padded wrapper), add visible hover/focus states, distinct styling for completed vs current vs upcoming, and aria-current on the active step.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Confirm-mismatch and length only validated on submit; no live feedback or strength
 - **Where:** `src/app/reset-password/page.tsx:22-53, 102-128` · route `/reset-password`
 - **Problem:** Password rules on reset are checked only in handleSubmit: length<8 and mismatch surface as a single error block after the user presses submit, and there is no live 'passwords match' indicator or strength meter. Combined with the missing show/hide toggle, a user who mistypes the confirm field only learns after submitting, and cannot see either value to reconcile them.
 - **Fix:** Validate on blur/change: show an inline 'Passwords don't match' hint under the confirm field once both are non-empty, and a length/strength hint under the new-password field. Disable submit until both pass, or at minimum give real-time reassurance.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Reset-link sent state offers no 'resend' or 'wrong email' recovery
 - **Where:** `src/app/forgot-password/page.tsx:53-76` · route `/forgot-password`
 - **Problem:** After submitting, the success card correctly uses anti-enumeration copy but then only offers 'Back to sign in'. There is no way to resend the email, no 'didn't get it?' affordance, and no way to correct a mistyped address without navigating back and re-entering — a common need given the whole point is the user lost access.
 - **Fix:** In the sent state, add a 'Resend link' action (with a short cooldown) and a 'Use a different email' link that returns to the form (optionally preserving nothing, or letting them edit). Keep the anti-enumeration copy intact.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Server error passthrough can surface vague/technical messages; error not focus-announced
 - **Where:** `src/components/auth/SignInForm.tsx:47-57; src/components/auth/SignUpForm.tsx:28-40` · route `/login, /signup`
 - **Problem:** Errors fall back to generic strings ('Sign in failed', 'Sign up failed', 'An unexpected error occurred') and otherwise pass result.error.message straight through, which may be terse Better Auth codes. The error region is aria-live=polite (good) but focus is not moved to it and there's no field-level association, so a screen-reader user mid-form may not reliably hear it, and a sighted user who submitted from the button may not see an error rendered above.
 - **Fix:** Map common auth error codes to friendly copy (e.g. invalid credentials, email already registered, too many attempts). Associate the error with the form via aria-describedby and consider moving focus to the error summary on failure. Ensure the error is visible in-viewport after submit.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Onboarding completion is device-local only and re-triggers per browser
 - **Where:** `src/components/onboarding/OnboardingFlow.tsx:343-384; src/app/workspace/page.tsx:147-150` · route `/workspace (useOnboarding)`
 - **Problem:** Completion is stored solely in localStorage ('latexy_onboarding_completed'). A returning user on a new browser/device or after clearing storage will be shown the full onboarding again on /workspace, and conversely a user who completed it on one device sees no continuity. There is also no server-side 'has_onboarded' flag, so the nudge is not tied to the account. Skip and Complete are treated identically (both mark completed), which is reasonable but means a user who skipped can never intentionally re-open onboarding (resetOnboarding exists in the hook but is not wired to any UI).
 - **Fix:** Persist onboarding completion on the user record (server) and hydrate from session so it is consistent across devices; keep localStorage as a fast-path cache. Expose a 'Replay onboarding / product tour' entry point (e.g. in help or settings) that calls resetOnboarding+startOnboarding, since the capability already exists but is unreachable.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Free-plan limits are hardcoded in onboarding copy and may drift from real plan
 - **Where:** `src/components/onboarding/OnboardingFlow.tsx:181-186` · route `/workspace (OnboardingFlow step 4)`
 - **Problem:** Step 4 states 'Your free account includes 10 compilations a day and 3 AI optimizations a month' as static text branched only on userType==='premium'. These numbers are not sourced from the actual plan/entitlements, so if plan limits change (per MEMORY, free = 3 uses) the onboarding will show numbers that contradict the real limits enforced elsewhere — an easy source of user confusion and support tickets.
 - **Fix:** Drive the quota copy from the same plan/entitlements source the app uses to enforce limits, or soften to non-numeric copy ('generous free tier') if exact numbers can't be sourced reliably. At minimum reconcile the hardcoded values with the actual free-plan configuration.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Social sign-in shows 'Redirecting...' but no explanation if the OAuth popup/redirect stalls
 - **Where:** `src/components/auth/SignInForm.tsx:60-77; src/components/auth/SignUpForm.tsx:42-59` · route `/login, /signup`
 - **Problem:** handleSocial sets socialLoading and the button reads 'Redirecting...'; if the client returns without a url it releases and shows an error (good). But when data.url IS returned the code lets Better Auth navigate the browser — during any latency the user sees a disabled 'Redirecting...' with no timeout/fallback messaging, and both forms disable the entire form. There's no guard against a hung state where the redirect neither errors nor navigates.
 - **Fix:** Keep the current release-on-error logic, but add a soft timeout (e.g. after ~8s still 'Redirecting...') that surfaces a 'Taking longer than expected — try again' affordance and re-enables the button, so a stalled OAuth handshake isn't a dead end. Ensure the same behavior on the sign-up form.
+- **Status:** ✅ Fixed
 
 
 ### Dashboard, Tracker & Cover Letters (15)
@@ -505,31 +528,37 @@ All P0 and P1 items are now resolved — the seven that were Partial/Open at the
 - **Where:** `src/app/tracker/page.tsx: StatsBar returns null when 0 apps (L267); columns render 'Drop here' L252-256` · route `/tracker`
 - **Problem:** When a user has zero applications, the stats bar is hidden and the board renders 7 dashed 'Drop here' placeholders. There is no explanatory empty state pointing them at 'Add Application' or explaining the pipeline concept — it reads as broken/empty rather than ready-to-use.
 - **Fix:** Render a dedicated empty state when total applications is 0 (illustration + one-line explanation + a prominent 'Add your first application' CTA) instead of seven identical 'Drop here' columns.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · 🐛 Bug — 'Recent Runs' cards are dead ends — clicking a run does nothing
 - **Where:** `src/app/dashboard/page.tsx:274-282 (job rows are plain <div>)` · route `/dashboard`
 - **Problem:** Each recent run renders stage/status/timestamp in a non-interactive div. There is no way to open the job, view logs, or jump to its result from the dashboard — the primary 'what happened with my run' drill-down is missing. The 'Full history' link exists, but individual runs aren't actionable.
 - **Fix:** Make each recent-run row a link/button to the job detail (or /workspace/history filtered to that job) so users can inspect logs/results, with hover affordance and keyboard focus.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Status donut fallback is computed from only the last 10 jobs but presented as overall distribution
 - **Where:** `src/app/dashboard/page.tsx:93-102 (statusSeries fallback uses recentJobs) + heading 'Run Status Distribution' L254` · route `/dashboard`
 - **Problem:** When timeseries.status_distribution is absent, statusSeries is derived from recentJobs, which is explicitly sliced to the 10 most recent (L60). The donut's center shows that count as total 'RUNS' and the card is titled 'Run Status Distribution', implying it reflects the selected range — but it only reflects up to 10 jobs, which can badly misrepresent success/failure ratios.
 - **Fix:** Either always drive the donut from range-scoped server data, or when falling back to recentJobs label it explicitly (e.g. 'Last 10 runs') so the scope is honest.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — KPI values are unformatted and can render awkwardly (raw latency, no units guard)
 - **Where:** `src/app/dashboard/page.tsx:117-119 (avg_compilation_time) and 112-114 (success_rate)` · route `/dashboard`
 - **Problem:** 'Avg Compile Latency' prints `${analytics.avg_compilation_time}s` with no rounding/guard — a value like 3.4179 or 0 would render as '3.4179s' / '0s' with no context. There's no formatting layer, so backend precision leaks into the KPI and can look broken.
 - **Fix:** Round/format latency (e.g. toFixed(1) + graceful handling of 0/undefined as '—'), and consider a small trend indicator vs. the prior window to give the numbers meaning.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Feature-usage bar labels can collide with their value labels on short bars
 - **Where:** `src/components/analytics/MetricCharts.tsx:168-173` · route `/dashboard`
 - **Problem:** The category name is drawn at x=6 inside/over the bar and the value at x=max(barWidth-6,34), right-anchored. For short bars (small values) the value is pinned to x=34 while the name also starts at x=6, so on low-count features the name and the number overlap and become unreadable; the name in accent-fg over a low-opacity accent bar can also fail contrast.
 - **Fix:** Place category labels to the left of the bars (dedicated gutter) or above each bar, and position value labels outside the bar end when the bar is too short to contain them, ensuring no overlap and adequate contrast.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Card overflow menu can't be dismissed with Escape and isn't a real menu for a11y
 - **Where:** `src/app/tracker/page.tsx:182-217 (portal menu; only backdrop click closes it)` · route `/tracker`
 - **Problem:** The per-card Edit/Delete menu is closed only by clicking the full-screen backdrop button; there is no Escape-to-close (the keydown handler exists only in the EditApplicationModal, L586-590) and the popover lacks menu/menuitem roles and focus management. Keyboard users can't reliably open, navigate, or dismiss it.
 - **Fix:** Add Escape-to-close and focus the first item on open, restore focus to the trigger on close, and apply role='menu'/role='menuitem' (or adopt a headless menu primitive) for proper keyboard and screen-reader support.
+- **Status:** ✅ Fixed
 
 
 ### Billing, BYOK, Settings & Developer (20)
@@ -622,31 +651,37 @@ All P0 and P1 items are now resolved — the seven that were Partial/Open at the
 - **Where:** `frontend/src/app/settings/page.tsx:134-164` · route `/settings`
 - **Problem:** After returning from OAuth with ?github=connected (or dropbox/zotero/mendeley), the success banner shows for 5s but the query string is left in the URL. Reloading or sharing the URL re-triggers the 'connected successfully' message even though no new connection happened, which is misleading.
 - **Fix:** After handling the connected param, strip it with router.replace(pathname) / history.replaceState so a refresh doesn't replay the success state.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Monthly/Annual toggle is not exposed as a proper control to assistive tech
 - **Where:** `frontend/src/app/billing/page.tsx:375-388` · route `/billing`
 - **Problem:** The billing-period switch is two plain <button>s that only reflect state via background color. There is no role, aria-pressed, or grouping, so screen-reader users get no indication of which period is currently selected. The '20% off' savings is also only mentioned in body copy, not tied to the Annual button.
 - **Fix:** Use a radiogroup or aria-pressed on each button (aria-pressed={billingPeriod==='annual'}), group them with an accessible label ('Billing period'), and add a 'Save 20%' badge on the Annual option.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Free plan shows 'Select Plan' but selecting it only toasts 'already available'
 - **Where:** `frontend/src/app/billing/page.tsx:192-195` · route `/billing`
 - **Problem:** The free plan's PricingCard renders the same 'Select Plan' CTA as paid plans, but clicking it just shows toast.info('Free plan is already available.') regardless of the user's actual tier. The label implies an action; the result is a no-op message. It's also unhelpful for a user currently on a paid plan who might want to downgrade.
 - **Fix:** Relabel the free plan's button contextually — 'Current plan' (disabled) when on free, or 'Downgrade to Free' with a real flow when on a paid tier — rather than a generic 'Select Plan' that does nothing.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · 🐛 Bug — Empty-state can flash before keys finish loading
 - **Where:** `frontend/src/components/byok/APIKeyManager.tsx:34-70, 130-132` · route `/byok`
 - **Problem:** The single `loading` flag is cleared in fetchProviders' finally block, independent of fetchAPIKeys which runs in parallel and has no loading gate. If providers resolve before the keys request, the component leaves the loading state and renders 'No API Keys Yet' momentarily before the real keys pop in, making existing keys briefly appear deleted.
 - **Fix:** Track both requests' loading state (or gate the key list on its own flag) so the empty state only shows after the keys request has actually resolved to an empty array.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Key validation failure gives no actionable reason
 - **Where:** `frontend/src/components/byok/APIKeyManager.tsx:72-99` · route `/byok`
 - **Problem:** validateAPIKey discards any error detail and returns only a boolean; addAPIKey then shows the generic 'Key validation failed for selected provider'. Users can't tell whether the key is malformed, revoked, lacks permissions, or hit a provider outage — leaving them to guess how to fix it.
 - **Fix:** Surface the backend's validation error message/reason when available (e.g. 'Invalid API key', 'Insufficient quota') instead of a single catch-all string.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Rename button is always enabled, firing no-op saves for unchanged names
 - **Where:** `frontend/src/app/developer/page.tsx:125-137, 255-261` · route `/developer`
 - **Problem:** The per-key Rename button is only disabled while busy; it stays enabled when the field equals the current name or is unchanged, so clicking it issues a pointless rename request and a 'Key renamed' toast even though nothing changed. There's also no disabled state when the field is empty (handleRename returns early but the button still looks actionable).
 - **Fix:** Disable Rename when the trimmed value is empty or equals key.name, so it only acts on a genuine change.
+- **Status:** ✅ Fixed
 
 
 ### Global / Cross-cutting (21)
@@ -739,36 +774,43 @@ All P0 and P1 items are now resolved — the seven that were Partial/Open at the
 - **Where:** `src/components/theme/ThemeProvider.tsx:42-49` · route `all`
 - **Problem:** ThemeProvider persists mode to the latexy-theme cookie (per-browser) only. A signed-in user who picks dark mode on their laptop starts in OS-default on their phone. For an authenticated product, theme preference is a natural account setting.
 - **Fix:** On toggle, persist mode to the user profile via the API when authenticated, and hydrate from it on login so the preference follows the account across devices.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · 🐛 Bug — ModeToggle icon can flash the wrong glyph on first paint
 - **Where:** `src/components/theme/ThemeProvider.tsx:34-40; src/components/theme/ModeToggle.tsx:19-20` · route `all`
 - **Problem:** The pre-paint script sets data-mode correctly, but ThemeProvider initializes React state to 'light' and only reads the real mode in a post-mount effect (35-40). So on a dark-cookie load, ModeToggle first renders the Moon (light-mode) icon, then swaps to Sun after hydration — a visible icon flip. aria-label flips with it too.
 - **Fix:** Read the already-applied data-mode attribute lazily in useState initializer (guarded for SSR) so the first client render matches the pre-paint mode, or render the icon from a CSS-driven approach.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Logo always routes to marketing home even when signed in
 - **Where:** `src/components/GlobalHeader.tsx:104-106` · route `all`
 - **Problem:** The GlobalHeader logo Link always targets '/' (line 104). For an authenticated user on the dashboard/workspace, clicking the logo drops them onto the public marketing landing page rather than their app home (dashboard), which is the conventional and expected behavior.
 - **Fix:** Route the logo to '/dashboard' (or '/workspace') when isAuthenticated, and to '/' for guests.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — 404 page inherits the wrong aesthetic (compiler) for unknown paths
 - **Where:** `src/app/layout.tsx:41-50; src/app/not-found.tsx` · route `404`
 - **Problem:** The pre-paint script (layout.tsx 41-50) assigns data-aesthetic by matching pathname against a typeset whitelist; any unrecognized path (i.e. exactly the 404 cases) falls through to 'compiler', so the marketing-styled not-found page renders in the compiler dark-orange aesthetic instead of the typeset look its copy/design imply — an inconsistent brand moment.
 - **Fix:** Have not-found.tsx force data-aesthetic='typeset' (e.g. via a small inline script or wrapper attribute), or default unknown paths to 'typeset' in the bootstrap script.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Sign Out gives no pending feedback during async cleanup
 - **Where:** `src/components/GlobalHeader.tsx:86-96,185-190` · route `all`
 - **Problem:** handleSignOut (GlobalHeader 86-96) awaits clearAllDrafts/clearCompileQueue then signOut then a full-page redirect, but the Sign Out button shows no loading/disabled state. On a slow device the menu just sits there after the click, inviting a second click.
 - **Fix:** Add a signing-out state that disables the button and shows a spinner/'Signing out…' label until the redirect fires.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — No root loading.tsx for route-level transitions
 - **Where:** `src/app/ (missing loading.tsx)` · route `all`
 - **Problem:** There is no app/loading.tsx, so cross-route navigations that suspend show no global loading affordance — the previous page just hangs until the next renders. Per-page skeletons exist but there is no consistent top-level transition indicator.
 - **Fix:** Add a lightweight app/loading.tsx (e.g. a top progress bar or centered spinner using tokens) for route-level Suspense fallbacks.
+- **Status:** ✅ Fixed
 
 #### 🟡 Low · ✨ Improvement — Pervasive 10-11px muted (text-fg-3) micro-copy strains readability and contrast
 - **Where:** `frontend/src/app/try/page.tsx:373, 587, 719; frontend/src/components/LaTeXEditor.tsx:1792` · route `/try`
 - **Problem:** Panel headers, status bar, page-count badges, the 'trials N' counter, and shortcut hints are rendered at text-[10px]/[11px] in the lowest-contrast token (text-fg-3), often uppercase with wide letter-spacing. This is below comfortable reading size and likely fails WCAG AA contrast for small text against surface backgrounds, affecting low-vision users and anyone on a high-DPI laptop.
 - **Fix:** Bump the smallest interactive/labels to ~12px, reserve 10px for truly secondary decoration, and verify text-fg-3 on surface/surface-2 meets AA contrast; increase weight or darken the token where it fails.
+- **Status:** ✅ Fixed
 
 
 ### Other (3)
