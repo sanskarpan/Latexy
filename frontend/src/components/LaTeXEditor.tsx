@@ -70,7 +70,10 @@ function readVarBuffer(decoder: { arr: Uint8Array; pos: number }): Uint8Array {
 }
 
 export interface LaTeXEditorRef {
-  setValue: (value: string) => void
+  /** Replace the buffer. By default the view scrolls to the end; pass
+   *  `{ reveal: false }` for streaming updates so the viewport doesn't jerk
+   *  to the bottom on every token. */
+  setValue: (value: string, opts?: { reveal?: boolean }) => void
   getValue: () => string
   highlightLine: (line: number) => void
   applyFix: (line: number, correctedCode: string) => void
@@ -543,11 +546,15 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     }, [value, pageCount])
 
     useImperativeHandle(ref, () => ({
-      setValue(content: string) {
+      setValue(content: string, opts?: { reveal?: boolean }) {
         const model = editorRef.current?.getModel()
         if (!model) return
         model.setValue(content)
-        editorRef.current?.revealLine(model.getLineCount())
+        // Streaming updates pass reveal:false so the viewport stays put instead
+        // of yanking to the last line on every token.
+        if (opts?.reveal !== false) {
+          editorRef.current?.revealLine(model.getLineCount())
+        }
       },
       getValue() {
         return editorRef.current?.getValue() ?? ''
