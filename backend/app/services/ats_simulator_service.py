@@ -120,6 +120,24 @@ _ISSUE_META: Dict[str, dict] = {
         "description": "Complex layout environments (minipage, wrapfig) detected. Content "
                        "inside these may be parsed out-of-order.",
     },
+    # Universal résumé-quality issues (Textkernel parser codes) — see below.
+    "contact_not_at_top": {
+        "severity": "medium",
+        "description": "Contact details (email/phone) are not near the top. Many parsers only "
+                       "scan the header region for contact info and may miss them (Textkernel 311).",
+    },
+    "vertical_dates": {
+        "severity": "high",
+        "description": "Employment dates appear stacked on their own lines. Parsers expect the "
+                       "date range on the same line as the role/company and may drop or misread "
+                       "vertically-split dates (Textkernel 418).",
+    },
+    "missing_section_headers": {
+        "severity": "high",
+        "description": "No standard section header (Experience, Education, Skills, …) was found "
+                       "on its own line. Parsers rely on headers to segment the résumé; without "
+                       "them content is mislabeled or lost (Textkernel 325 / 412–414).",
+    },
 }
 
 # Per-issue recommendation
@@ -130,7 +148,82 @@ _ISSUE_RECOMMENDATIONS: Dict[str, str] = {
     "decorative_elements": "Remove decorative rules, coloured boxes, and embedded graphics.",
     "pdf_formatting": "Simplify the preamble. Avoid complex spacing/geometry beyond basic margins.",
     "complex_layouts": "Flatten the layout. Avoid wrapfig, minipage side-by-side arrangements.",
+    "contact_not_at_top": "Put your email and phone in the header, at the very top of the résumé.",
+    "vertical_dates": "Keep each date range on the same line as its job title/company "
+                      "(e.g. 'Software Engineer, Acme  2020–2023').",
+    "missing_section_headers": "Add clear, standard section headers on their own lines: "
+                               "Experience, Education, Skills.",
 }
+
+
+# ── Universal résumé-quality checks (Textkernel parser codes) ──────────────────
+# Textkernel (a major résumé-parsing vendor) publishes exactly what breaks parsing.
+# Unlike the per-ATS structural checks above, these apply to EVERY résumé and run
+# against the extracted plain text — what a parser actually sees. Each is
+# deliberately conservative so a clean résumé stays at zero issues; Textkernel's own
+# guidance is to surface ranked, actionable fixes, not a wall of codes that
+# frustrates candidates.
+#
+# Code 112 ("skills in a separate section rather than in work-history context") is
+# intentionally NOT implemented: a standalone Skills section is near-universal and
+# only "Suggested" severity, so flagging it would be noise on almost every résumé.
+
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_PHONE_RE = re.compile(r"(?:\+\d{1,3}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b")
+_DATE_ONLY_LINE_RE = re.compile(
+    r"^\s*(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+)?"
+    r"(?:19|20)\d{2}"
+    r"(?:\s*(?:[-–—]+|to)\s*(?:present|current|"
+    r"(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+)?(?:19|20)\d{2}))?"
+    r"\s*$",
+    re.IGNORECASE,
+)
+_SECTION_HEADER_LINE_RE = re.compile(
+    r"^\s*(?:work\s+|professional\s+)?"
+    r"(?:experience|employment|education|skills|projects?|"
+    r"summary|objective|certifications?|publications?|awards?|work\s+history)"
+    r"\s*:?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _detect_contact_not_at_top(lines: List[str]) -> bool:
+    """Textkernel 311 (Major): contact details exist but are not near the top."""
+    idx = None
+    for i, ln in enumerate(lines):
+        if _EMAIL_RE.search(ln) or _PHONE_RE.search(ln):
+            idx = i
+            break
+    if idx is None:
+        return False  # no contact at all is a different (fatal) code, not this one
+    top_window = max(3, len(lines) // 5)
+    return idx >= top_window
+
+
+def _detect_vertical_dates(lines: List[str]) -> bool:
+    """Textkernel 418 (Fatal): date ranges stacked vertically — 2+ date-only lines."""
+    date_only = sum(1 for ln in lines if _DATE_ONLY_LINE_RE.match(ln))
+    return date_only >= 2
+
+
+def _detect_missing_section_headers(lines: List[str]) -> bool:
+    """Textkernel 325 / 412–414 (Fatal): no standard section header on its own line."""
+    if len(lines) < 4:
+        return False  # too little content to judge
+    return not any(_SECTION_HEADER_LINE_RE.match(ln) for ln in lines)
+
+
+def _detect_quality_issues(plain_text: str) -> List[str]:
+    """Run the universal Textkernel résumé-quality checks over the extracted text."""
+    lines = [ln for ln in plain_text.splitlines() if ln.strip()]
+    issues: List[str] = []
+    if _detect_contact_not_at_top(lines):
+        issues.append("contact_not_at_top")
+    if _detect_vertical_dates(lines):
+        issues.append("vertical_dates")
+    if _detect_missing_section_headers(lines):
+        issues.append("missing_section_headers")
+    return issues
 
 # Generic recommendations by tier
 _TIER_RECOMMENDATIONS: Dict[str, List[str]] = {
@@ -236,8 +329,12 @@ class AtsSimulatorService:
             # Fallback: strip common LaTeX commands with a simple regex
             plain_text = self._naive_strip(latex_content)
 
-        # 2. Detect structural issues
+        # 2. Detect issues: per-ATS structural issues + universal Textkernel
+        #    résumé-quality issues (the latter always run, on the undistorted text).
         detected_issue_types = self._detect_issues(latex_content, profile["issues"])
+        for quality_issue in _detect_quality_issues(plain_text):
+            if quality_issue not in detected_issue_types:
+                detected_issue_types.append(quality_issue)
 
         # 3. Apply distortions for poor-tier parsers
         if profile["tier"] == "poor":
