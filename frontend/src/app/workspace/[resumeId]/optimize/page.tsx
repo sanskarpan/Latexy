@@ -14,6 +14,7 @@ import { useJobStream } from '@/hooks/useJobStream'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
+import ModeToggle from '@/components/theme/ModeToggle'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import ATSScoreCard from '@/components/ATSScoreCard'
@@ -181,7 +182,7 @@ export default function OptimizationSuitePage() {
 
   useEffect(() => {
     if (!stream.streamingLatex || !editorRef.current) return
-    editorRef.current.setValue(stream.streamingLatex)
+    editorRef.current.setValue(stream.streamingLatex, { reveal: false })
     // Keep live content (and thus the ATS badge) in sync with the optimize stream —
     // onChange does not fire for external setValue while the editor is read-only.
     setEditorContent(stream.streamingLatex)
@@ -529,6 +530,7 @@ export default function OptimizationSuitePage() {
               </div>
             )}
           </div>
+          <ModeToggle />
           <Link href={`/workspace/${resumeId}/edit`} className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2">
             Back to Editor
           </Link>

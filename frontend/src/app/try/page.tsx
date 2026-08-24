@@ -16,6 +16,7 @@ import { useJobStream } from '@/hooks/useJobStream'
 import { useTrialStatus } from '@/hooks/useTrialStatus'
 import LaTeXEditor, { LaTeXEditorRef } from '@/components/LaTeXEditor'
 import ModeToggle from '@/components/theme/ModeToggle'
+import DiffViewerModal from '@/components/DiffViewerModal'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
@@ -96,6 +97,12 @@ export default function TryPage() {
   const hasUnsavedRef = useRef(false)
   // Editor content captured immediately before a run, restored if the job is cancelled
   const preRunSnapshotRef = useRef<string | null>(null)
+  // Whether the in-flight run rewrites content (optimize/trim) vs. a plain compile.
+  const lastRunOptimizeRef = useRef(false)
+  // Pre-optimize content kept AFTER an optimize completes, so the user can review
+  // the diff or revert to the original (AI optimize is otherwise destructive).
+  const [optimizeSnapshot, setOptimizeSnapshot] = useState<string | null>(null)
+  const [showOptimizeDiff, setShowOptimizeDiff] = useState(false)
   // Whether the currently in-flight/active job was triggered by auto-compile
   // rather than a manual Recompile click — used so a failed auto-compile gets
   // the same failure toast a manual compile's submit-catch already gives it,
@@ -207,11 +214,18 @@ export default function TryPage() {
 
   useEffect(() => {
     if (stream.streamingLatex && editorRef.current) {
-      editorRef.current.setValue(stream.streamingLatex)
+      editorRef.current.setValue(stream.streamingLatex, { reveal: false })
       if (stream.status === 'completed' || stream.status === 'failed') {
         setLatexContent(stream.streamingLatex)
         // The AI-rewritten source is the new clean baseline
         cleanBaselineRef.current = stream.streamingLatex
+        // Keep the pre-optimize content so the user can diff or revert a completed
+        // optimize (otherwise the rewrite is destructive).
+        if (stream.status === 'completed' && lastRunOptimizeRef.current
+            && preRunSnapshotRef.current && preRunSnapshotRef.current !== stream.streamingLatex) {
+          setOptimizeSnapshot(preRunSnapshotRef.current)
+        }
+        lastRunOptimizeRef.current = false
       }
     }
   }, [stream.streamingLatex, stream.status])
@@ -285,6 +299,7 @@ export default function TryPage() {
     if (!currentContent.trim()) { toast.error('LaTeX content is required'); return }
     if (trialBlocked) { notifyTrialBlocked(); return }
     preRunSnapshotRef.current = currentContent
+    lastRunOptimizeRef.current = mode === 'combined'
     cleanBaselineRef.current = currentContent
     // Surface the result pane immediately on any submit (mobile lands on Editor otherwise)
     setMobilePane('pdf')
@@ -451,6 +466,7 @@ export default function TryPage() {
     if (!currentContent.trim()) return
     if (trialBlocked) { notifyTrialBlocked(); return }
     preRunSnapshotRef.current = currentContent
+    lastRunOptimizeRef.current = true
     cleanBaselineRef.current = currentContent
     setMobilePane('pdf')
     setIsSubmitting(true)
@@ -474,6 +490,18 @@ export default function TryPage() {
       setIsSubmitting(false)
     }
   }, [latexContent, jobDescription, resolvedSession, trialStatus, TRIM_INSTRUCTION, trialBlocked, notifyTrialBlocked])
+
+  // Revert a completed optimize back to the pre-optimize content.
+  const revertOptimize = useCallback((latex?: string) => {
+    const target = latex ?? optimizeSnapshot
+    if (target == null) return
+    editorRef.current?.setValue(target)
+    setLatexContent(target)
+    cleanBaselineRef.current = target
+    setOptimizeSnapshot(null)
+    setShowOptimizeDiff(false)
+    toast.success('Reverted to your original resume')
+  }, [optimizeSnapshot])
 
   const categoryScores = stream.atsDetails?.category_scores as Record<string, number> | undefined
 
@@ -642,6 +670,40 @@ export default function TryPage() {
             Trim to one page
           </button>
         </div>
+        {optimizeSnapshot != null && (
+          <div className="border-t border-line p-3">
+            <div className="flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-accent/30 bg-accent-soft/40 px-3 py-2">
+              <span className="font-ui text-[11px] text-fg-2">AI rewrote your resume.</span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setShowOptimizeDiff(true)}
+                  className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[11px] font-medium text-accent-strong transition hover:bg-surface-2"
+                >
+                  View diff
+                </button>
+                <button
+                  onClick={() => revertOptimize()}
+                  className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[11px] font-medium text-fg-2 transition hover:bg-surface-2"
+                >
+                  Revert to original
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {showOptimizeDiff && optimizeSnapshot != null && (
+          <DiffViewerModal
+            resumeId=""
+            checkpointA={null}
+            checkpointB={null}
+            parentLatex={optimizeSnapshot}
+            parentTitle="Original"
+            variantLatex={editorRef.current?.getValue() || latexContent}
+            variantTitle="AI Optimized"
+            onRestore={(latex) => revertOptimize(latex)}
+            onClose={() => setShowOptimizeDiff(false)}
+          />
+        )}
         {stream.changesMade && stream.changesMade.length > 0 && (
           <div className="p-3">
             <p className="mb-2 font-ui text-[11px] text-fg-3">{stream.changesMade.length} change{stream.changesMade.length !== 1 ? 's' : ''} applied</p>

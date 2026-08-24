@@ -77,6 +77,7 @@ import { GitMerge } from 'lucide-react'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { buildATSCategories, type SimulatorIssueSignal } from '@/lib/ats-categories'
+import ModeToggle from '@/components/theme/ModeToggle'
 import { useConfidenceScore } from '@/hooks/useConfidenceScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
 import { useSpellCheck, addWordToDict } from '@/hooks/useSpellCheck'
@@ -1167,7 +1168,7 @@ export default function ResumeEditPage() {
   // Stream AI tokens to Monaco in real-time (direct model mutation, no setState per token)
   useEffect(() => {
     if (!aiStream.streamingLatex || !editorRef.current) return
-    editorRef.current.setValue(aiStream.streamingLatex)
+    editorRef.current.setValue(aiStream.streamingLatex, { reveal: false })
   }, [aiStream.streamingLatex])
 
   // When AI completes, commit streamed content to React state + record optimization + track
@@ -1586,7 +1587,7 @@ export default function ResumeEditPage() {
   const handleApplyAnyway = useCallback(() => {
     if (!aiStream.streamingLatex) return
     pushUndo('Before apply (failed compile)')
-    editorRef.current?.setValue(aiStream.streamingLatex)
+    editorRef.current?.setValue(aiStream.streamingLatex, { reveal: false })
     setLatexContent(aiStream.streamingLatex)
     toast.success('Applied optimized LaTeX — fix the compile errors manually')
   }, [aiStream.streamingLatex, pushUndo])
@@ -2070,6 +2071,8 @@ export default function ResumeEditPage() {
             <Upload size={12} />
             Import
           </button>
+
+          <ModeToggle />
 
           <ExportDropdown resumeId={resumeId} variant="toolbar" />
 

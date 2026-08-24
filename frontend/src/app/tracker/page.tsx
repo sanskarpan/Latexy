@@ -18,6 +18,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import {
+  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
@@ -453,7 +454,19 @@ export default function TrackerPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [onlyThisWeek, setOnlyThisWeek] = useState(false)
   const [atsMin, setAtsMin] = useState(0)
-  const [sortBy, setSortBy] = useState<'recent' | 'ats' | 'company'>('recent')
+  const [sortBy, setSortBy] = useState<'recent' | 'ats' | 'company' | 'manual'>('recent')
+  // Per-column manual card order (app ids), persisted in the browser. The board
+  // has no backend position field, so a manual reorder is remembered locally and
+  // shown when the Sort control is set to "Manual" (dragging within a column
+  // switches into it) — no more silent snap-back on drop.
+  const [manualOrder, setManualOrder] = useState<Record<string, string[]>>({})
+  useEffect(() => {
+    try { setManualOrder(JSON.parse(localStorage.getItem('latexy_tracker_order') || '{}')) } catch { /* ignore */ }
+  }, [])
+  const persistManualOrder = useCallback((next: Record<string, string[]>) => {
+    setManualOrder(next)
+    try { localStorage.setItem('latexy_tracker_order', JSON.stringify(next)) } catch { /* ignore */ }
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -546,11 +559,24 @@ export default function TrackerPage() {
     const finalCol = COLUMNS.find((c) => c.id === overId)?.id ?? findColumn(overId)
     if (!finalCol) return
 
-    // Compare against sourceCol captured at drag start — boardData is already optimistically updated.
-    // Within-column drops are intentionally a no-op: the backend has no per-card position field,
-    // so card order is governed by the explicit Sort control (see cross_file_deps) rather than by
-    // manual drag, which avoids a reorder affordance that would silently revert on reload.
-    if (!sourceCol || sourceCol === finalCol) return
+    if (!sourceCol) return
+
+    // Within-column drop → reorder and remember it. The board has no backend
+    // position field, so the order is persisted in the browser and the Sort
+    // control switches to "Manual" so it actually displays (no silent snap-back).
+    if (sourceCol === finalCol) {
+      const displayed = filteredBoard[finalCol] ?? []
+      const oldIndex = displayed.findIndex((a) => a.id === activeId)
+      if (oldIndex === -1) return
+      let newIndex = displayed.findIndex((a) => a.id === overId)
+      if (newIndex === -1) newIndex = displayed.length - 1 // dropped on the column body → end
+      if (oldIndex !== newIndex) {
+        const reordered = arrayMove(displayed, oldIndex, newIndex)
+        persistManualOrder({ ...manualOrder, [finalCol]: reordered.map((a) => a.id) })
+      }
+      if (sortBy !== 'manual') setSortBy('manual')
+      return
+    }
 
     try {
       await apiClient.updateApplicationStatus(activeId, finalCol)
@@ -662,13 +688,17 @@ export default function TrackerPage() {
         apps = [...apps].sort((a, b) => (b.ats_score_at_submission ?? -1) - (a.ats_score_at_submission ?? -1))
       } else if (sortBy === 'company') {
         apps = [...apps].sort((a, b) => a.company_name.localeCompare(b.company_name))
+      } else if (sortBy === 'manual') {
+        const order = manualOrder[col.id] ?? []
+        const rank = (id: string) => { const i = order.indexOf(id); return i === -1 ? Number.MAX_SAFE_INTEGER : i }
+        apps = [...apps].sort((a, b) => (rank(a.id) - rank(b.id)) || (new Date(b.applied_at).getTime() - new Date(a.applied_at).getTime()))
       } else {
         apps = [...apps].sort((a, b) => new Date(b.applied_at).getTime() - new Date(a.applied_at).getTime())
       }
       out[col.id] = apps
     }
     return out
-  }, [boardData, searchQuery, onlyThisWeek, atsMin, sortBy])
+  }, [boardData, searchQuery, onlyThisWeek, atsMin, sortBy, manualOrder])
 
   if (sessionLoading || (isLoading && session)) {
     return (
@@ -772,12 +802,13 @@ export default function TrackerPage() {
         <select
           id="sort-by"
           value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as 'recent' | 'ats' | 'company')}
+          onChange={(e) => setSortBy(e.target.value as 'recent' | 'ats' | 'company' | 'manual')}
           className="rounded-[var(--radius-md)] border border-line bg-surface px-2.5 py-1.5 text-xs text-fg-2 outline-none transition focus:border-accent"
         >
           <option value="recent">Sort: Recent</option>
           <option value="ats">Sort: ATS</option>
           <option value="company">Sort: Company</option>
+          <option value="manual">Sort: Manual</option>
         </select>
 
         {filtersActive && (

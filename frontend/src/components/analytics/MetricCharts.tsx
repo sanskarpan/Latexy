@@ -1,3 +1,6 @@
+'use client'
+
+import { useState } from 'react'
 import { Group } from '@visx/group'
 import { scaleBand, scaleLinear, scaleTime } from '@visx/scale'
 import { AreaClosed, Bar, LinePath, Pie } from '@visx/shape'
@@ -23,6 +26,7 @@ export interface StatusPoint {
 const chartMargin = { top: 16, right: 16, bottom: 36, left: 46 }
 
 export function ActivityAreaChart({ data, width = 760, height = 280 }: { data: ActivityPoint[]; width?: number; height?: number }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   if (data.length === 0) {
     return <EmptyChart label="No activity data available yet." />
   }
@@ -129,6 +133,52 @@ export function ActivityAreaChart({ data, width = 760, height = 280 }: { data: A
           tickStroke="var(--line)"
           stroke="var(--line-2)"
           tickLabelProps={() => ({ fill: 'var(--fg-3)', fontSize: 10, textAnchor: 'middle', dy: 12 })}
+        />
+
+        {/* Hover read-out: guide line, point marker, and a value tooltip. */}
+        {hoverIdx != null && parsed[hoverIdx] && (() => {
+          const p = parsed[hoverIdx]
+          const cx = xScale(p.date) ?? 0
+          const cy = yScale(p.value) ?? 0
+          const label = `${p.date.getMonth() + 1}/${p.date.getDate()}`
+          const boxW = 96
+          const boxH = 34
+          const bx = Math.min(Math.max(cx - boxW / 2, 0), Math.max(0, xMax - boxW))
+          const by = Math.max(cy - boxH - 10, 0)
+          return (
+            <g pointerEvents="none">
+              <line x1={cx} y1={0} x2={cx} y2={yMax} stroke="var(--line-2)" strokeDasharray="3,3" />
+              <circle cx={cx} cy={cy} r={4} fill="var(--accent)" stroke="var(--bg)" strokeWidth={2} />
+              <rect x={bx} y={by} width={boxW} height={boxH} rx={6} fill="var(--surface)" stroke="var(--line)" />
+              <text x={bx + 9} y={by + 14} fontSize={10} fill="var(--fg-3)">{label}</text>
+              <text x={bx + 9} y={by + 27} fontSize={12} fontWeight={600} fill="var(--fg)">
+                {p.value} {p.value === 1 ? 'action' : 'actions'}
+              </text>
+            </g>
+          )
+        })()}
+
+        {/* Transparent overlay captures the pointer to drive the tooltip. */}
+        <rect
+          x={0}
+          y={0}
+          width={xMax}
+          height={yMax}
+          fill="transparent"
+          style={{ cursor: 'crosshair' }}
+          onMouseMove={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect()
+            if (rect.width === 0) return
+            const localX = ((e.clientX - rect.left) / rect.width) * xMax
+            let best = 0
+            let bestDist = Infinity
+            parsed.forEach((pt, i) => {
+              const d = Math.abs((xScale(pt.date) ?? 0) - localX)
+              if (d < bestDist) { bestDist = d; best = i }
+            })
+            setHoverIdx(best)
+          }}
+          onMouseLeave={() => setHoverIdx(null)}
         />
       </Group>
 
