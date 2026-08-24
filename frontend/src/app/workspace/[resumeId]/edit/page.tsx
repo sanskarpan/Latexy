@@ -76,6 +76,7 @@ import type { TrackedChange } from '@/lib/yjs-track-changes'
 import { GitMerge } from 'lucide-react'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
+import { buildATSCategories, type SimulatorIssueSignal } from '@/lib/ats-categories'
 import { useConfidenceScore } from '@/hooks/useConfidenceScore'
 import { useLatexLinter } from '@/hooks/useLatexLinter'
 import { useSpellCheck, addWordToDict } from '@/hooks/useSpellCheck'
@@ -831,6 +832,10 @@ export default function ResumeEditPage() {
 
   // Deep analysis (Layer 2)
   const [deepPanelOpen, setDeepPanelOpen] = useState(false)
+  // Textkernel simulator findings for the multi-dimensional score card (#1367).
+  // Fetched lazily when the panel opens (the strictest parser profile surfaces
+  // the most structural issues; the universal quality checks run for any profile).
+  const [simIssues, setSimIssues] = useState<SimulatorIssueSignal[]>([])
   const [deepAnalysisJobId, setDeepAnalysisJobId] = useState<string | null>(null)
   const [deepAnalysisUsesRemaining, setDeepAnalysisUsesRemaining] = useState<number | null>(null)
   const [isDeepRunning, setIsDeepRunning] = useState(false)
@@ -1038,7 +1043,50 @@ export default function ResumeEditPage() {
       .catch(e => console.error('Failed to load subscription plan', e))
   }, [sessionData, sessionLoading])
 
-  const { score: quickATSScore, loading: quickATSLoading, refetch: refetchATS } = useQuickATSScore(latexContent)
+  const {
+    score: quickATSScore,
+    loading: quickATSLoading,
+    refetch: refetchATS,
+    grade: quickATSGrade,
+    sectionsFound: quickSectionsFound,
+    missingSections: quickMissingSections,
+    keywordMatchPercent: quickKeywordMatch,
+  } = useQuickATSScore(latexContent)
+
+  // Fetch simulator findings when the analysis panel opens (and refresh on
+  // meaningful content change while it stays open). Best-effort — a failure
+  // just leaves the card driven by the quick-score signals alone.
+  useEffect(() => {
+    if (!deepPanelOpen || documentType === 'presentation') return
+    if (!latexContent || latexContent.length < 200) { setSimIssues([]); return }
+    let cancelled = false
+    apiClient
+      .simulateAts({ latex_content: latexContent, ats_name: 'taleo' })
+      .then((res) => { if (!cancelled) setSimIssues(res.issues ?? []) })
+      .catch(() => { if (!cancelled) setSimIssues([]) })
+    return () => { cancelled = true }
+  }, [deepPanelOpen, latexContent, documentType])
+
+  // Fold quick-score + simulator findings into the five named categories (#1367).
+  const atsCategories = useMemo(() => {
+    if (documentType === 'presentation') return []
+    return buildATSCategories({
+      quick: {
+        grade: quickATSGrade,
+        sectionsFound: quickSectionsFound,
+        missingSections: quickMissingSections,
+        keywordMatchPercent: quickKeywordMatch,
+      },
+      simulatorIssues: simIssues,
+      latexContent,
+    })
+  }, [documentType, quickATSGrade, quickSectionsFound, quickMissingSections, quickKeywordMatch, simIssues, latexContent])
+
+  // Deep-link a finding to its editor line, then step out of the way.
+  const handleJumpToFinding = useCallback((line: number) => {
+    setSyncFromLine(line)
+    setDeepPanelOpen(false)
+  }, [])
 
   const { result: confidenceResult, loading: confidenceLoading, refetch: refetchConfidence } = useConfidenceScore(latexContent)
   const [confidencePanelOpen, setConfidencePanelOpen] = useState(false)
@@ -3066,6 +3114,9 @@ export default function ResumeEditPage() {
         isRunning={isDeepRunning}
         hideUpgradeCtas={!flags.upgrade_ctas}
         resumeId={resumeId}
+        categories={atsCategories}
+        onJumpToLine={handleJumpToFinding}
+        quickGrade={quickATSGrade}
       />
 
       <ConfidenceScorePanel
