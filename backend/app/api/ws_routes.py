@@ -278,19 +278,19 @@ async def _job_ws_access_ok(job_id: str, user_id: Optional[str]) -> bool:
     """Return True if this connection may read/cancel the job.
 
     Owned jobs (meta.user_id set) require the matching authenticated user; owner-less
-    (anonymous/trial) jobs are accessible to anyone. Missing meta → allow (trial jobs,
-    or expired meta whose event stream has also expired).
+    (anonymous/trial) jobs are accessible to anyone. Every submitted job receives
+    metadata, so missing, unreadable, or malformed metadata cannot prove access.
     """
     try:
         r = await get_redis_client()
         meta_raw = await r.get(f"latexy:job:{job_id}:meta")
-    except Exception as exc:  # pragma: no cover - transient
+        if not meta_raw:
+            return False
+        job_owner = json.loads(meta_raw).get("user_id")
+        return job_owner is None or job_owner == user_id
+    except Exception as exc:  # pragma: no cover - transient/malformed
         logger.debug(f"WS ownership lookup failed for job {job_id}: {exc}")
-        return True
-    if not meta_raw:
-        return True
-    job_owner = json.loads(meta_raw).get("user_id")
-    return job_owner is None or job_owner == user_id
+        return False
 
 
 async def _send_error(
