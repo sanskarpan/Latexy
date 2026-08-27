@@ -4,7 +4,7 @@ import re
 import secrets
 import zipfile
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from jinja2 import Environment as _JinjaEnv
 from jinja2 import FileSystemLoader as _JinjaFSL
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -96,6 +96,9 @@ class ResumeResponse(ResumeBase):
     updated_at: datetime
     archived_at: Optional[datetime] = None
     pinned: bool = False
+    # Effective access for the caller. Owner-only endpoints can rely on the
+    # default; GET/PUT /resumes/{id} set this explicitly for collaborators.
+    access_role: Literal["owner", "editor", "commenter", "viewer"] = "owner"
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -139,7 +142,7 @@ def _typed_attr(obj: Any, name: str, expected_type: type | tuple[type, ...], def
     return value if isinstance(value, expected_type) else default
 
 
-def _resume_response_from_obj(resume: Any) -> ResumeResponse:
+def _resume_response_from_obj(resume: Any, *, access_role: str = "owner") -> ResumeResponse:
     """Serialize a Resume-like object with safe fallbacks for optional fields."""
     payload = {
         "id": str(resume.id),
@@ -166,6 +169,7 @@ def _resume_response_from_obj(resume: Any) -> ResumeResponse:
         "updated_at": resume.updated_at,
         "archived_at": getattr(resume, "archived_at", None),
         "pinned": bool(getattr(resume, "pinned", False)),
+        "access_role": access_role,
     }
     return ResumeResponse.model_validate(payload)
 
@@ -774,6 +778,39 @@ async def update_builder_resume(
     return _builder_payload(resume, template.category)
 
 
+_COLLABORATOR_ROLES = frozenset({"editor", "commenter", "viewer"})
+
+
+async def _get_resume_document_access(
+    db: AsyncSession,
+    resume_id: str,
+    user_id: str,
+) -> tuple[Resume, str]:
+    """Resolve owner/collaborator access without exposing unrelated resumes."""
+    ensure_uuid(resume_id, "Resume not found")
+    result = await db.execute(
+        select(Resume, ResumeCollaborator.role)
+        .outerjoin(
+            ResumeCollaborator,
+            and_(
+                ResumeCollaborator.resume_id == Resume.id,
+                ResumeCollaborator.user_id == user_id,
+            ),
+        )
+        .where(Resume.id == resume_id)
+    )
+    row = result.one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    resume, collaborator_role = row
+    if resume.user_id == user_id:
+        return resume, "owner"
+    if collaborator_role in _COLLABORATOR_ROLES:
+        return resume, collaborator_role
+    raise HTTPException(status_code=404, detail="Resume not found")
+
+
 @router.get("/{resume_id}", response_model=ResumeResponse)
 async def get_resume(
     resume_id: str,
@@ -781,23 +818,11 @@ async def get_resume(
     user_id: str = Depends(get_current_user_required)
 ):
     """Get a specific resume by ID."""
-    # resume_id is UUID-typed in the DB; a non-UUID path segment (e.g. an
-    # unmatched literal like "dashboard" falling through to this catch-all route)
-    # would otherwise raise asyncpg DataError -> 500. Treat it as 404.
-    try:
-        UUID(str(resume_id))
-    except (ValueError, AttributeError, TypeError):
-        raise HTTPException(status_code=404, detail="Resume not found")
+    resume, access_role = await _get_resume_document_access(db, resume_id, user_id)
     variant_count_sq = _variant_count_subquery()
-    result = await db.execute(
-        select(Resume, variant_count_sq)
-        .where(Resume.id == resume_id, Resume.user_id == user_id)
-    )
-    row = result.one_or_none()
-    if not row:
-        raise HTTPException(status_code=404, detail="Resume not found")
-    resume, vc = row
-    resp = _resume_response_from_obj(resume)
+    vc_result = await db.execute(select(variant_count_sq).where(Resume.id == resume_id))
+    vc = vc_result.scalar_one_or_none()
+    resp = _resume_response_from_obj(resume, access_role=access_role)
     resp.variant_count = vc or 0
     return resp
 
@@ -809,19 +834,9 @@ async def update_resume(
     user_id: str = Depends(get_current_user_required)
 ):
     """Update an existing resume."""
-    # A non-UUID path segment would reach Postgres and raise asyncpg DataError
-    # -> 500; guard it as a 404, consistent with GET /{resume_id}.
-    try:
-        UUID(str(resume_id))
-    except (ValueError, AttributeError, TypeError):
-        raise HTTPException(status_code=404, detail="Resume not found")
-    # Check ownership first
-    result = await db.execute(
-        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
-    )
-    resume = result.scalar_one_or_none()
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+    resume, access_role = await _get_resume_document_access(db, resume_id, user_id)
+    if access_role not in {"owner", "editor"}:
+        raise HTTPException(status_code=403, detail="This collaborator has read-only access")
 
     update_data = resume_in.model_dump(exclude_unset=True)
     latex_changed = (
@@ -857,7 +872,7 @@ async def update_resume(
         except Exception as exc:
             logger.warning(f"Failed to enqueue embedding for resume {resume.id}: {exc}")
 
-    return resume
+    return _resume_response_from_obj(resume, access_role=access_role)
 
 @router.delete("/{resume_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_resume(
