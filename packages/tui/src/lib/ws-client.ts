@@ -23,6 +23,7 @@ export class LatexyWSClient extends EventEmitter {
   private heartbeatTimer: NodeJS.Timeout | null = null
   private reconnectAttempt = 0
   private destroyed = false
+  private connectionGeneration = 0
   private subscriptions = new Map<string, string>()
 
   constructor() {
@@ -42,15 +43,38 @@ export class LatexyWSClient extends EventEmitter {
     // every reconnect after /logout a silent no-op: logging back in produced no job
     // events at all until the process was restarted.
     this.destroyed = false
-    this.openSocket()
+    const generation = ++this.connectionGeneration
+    void this.openSocket(generation)
   }
 
-  /** Backend auth reads the session token from ?token= only (see ws_routes._resolve_ws_user). */
-  private socketUrl(): string {
+  /** Exchange the reusable HTTP session for a short-lived, single-use WebSocket ticket. */
+  private async socketUrl(): Promise<string> {
     if (!this.token) return this.url
+
+    const ticketUrl = new URL(this.url)
+    ticketUrl.protocol = ticketUrl.protocol === 'wss:' ? 'https:' : 'http:'
+    ticketUrl.pathname = ticketUrl.pathname.replace(/\/ws\/jobs\/?$/, '/ws/ticket')
+    ticketUrl.search = ''
+    ticketUrl.hash = ''
+
+    const response = await fetch(ticketUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ purpose: 'jobs' }),
+    })
+    if (!response.ok) {
+      throw new Error(`WebSocket ticket request failed (${response.status})`)
+    }
+    const payload = await response.json() as { ticket?: unknown }
+    if (typeof payload.ticket !== 'string' || !payload.ticket) {
+      throw new Error('WebSocket ticket response was invalid')
+    }
+
     const url = new URL(this.url)
-    // set() (not append()) so reconnects via openSocket() cannot stack duplicate params
-    url.searchParams.set('token', this.token)
+    url.searchParams.set('ticket', payload.ticket)
     return url.toString()
   }
 
@@ -77,15 +101,25 @@ export class LatexyWSClient extends EventEmitter {
     }
   }
 
-  private openSocket(): void {
-    if (this.destroyed) return
+  private async openSocket(generation = this.connectionGeneration): Promise<void> {
+    if (this.destroyed || generation !== this.connectionGeneration) return
+    let socketUrl: string
+    try {
+      socketUrl = await this.socketUrl()
+    } catch (err) {
+      if (this.destroyed || generation !== this.connectionGeneration) return
+      this.emit('socket_error', {
+        message: err instanceof Error ? err.message : String(err),
+      })
+      this.scheduleReconnect()
+      return
+    }
+    if (this.destroyed || generation !== this.connectionGeneration) return
     // Replace, never stack. Without this the previous socket kept its 'message'
     // handler and went on publishing into the same client, so every event arrived
     // twice and the old socket stayed open until the server timed it out.
     this.teardownSocket()
-    this.ws = new WS(this.socketUrl(), {
-      headers: { Authorization: `Bearer ${this.token}` },
-    })
+    this.ws = new WS(socketUrl)
 
     this.ws.on('open', () => {
       this.reconnectAttempt = 0
@@ -200,7 +234,8 @@ export class LatexyWSClient extends EventEmitter {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.reconnectAttempt++
     const delay = Math.min(MIN_BACKOFF * 2 ** (this.reconnectAttempt - 1), MAX_BACKOFF)
-    this.reconnectTimer = setTimeout(() => this.openSocket(), delay)
+    const generation = ++this.connectionGeneration
+    this.reconnectTimer = setTimeout(() => { void this.openSocket(generation) }, delay)
   }
 
   private startHeartbeat(): void {
@@ -221,6 +256,7 @@ export class LatexyWSClient extends EventEmitter {
 
   destroy(): void {
     this.destroyed = true
+    this.connectionGeneration++
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
