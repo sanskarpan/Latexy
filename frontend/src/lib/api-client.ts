@@ -138,6 +138,11 @@ export interface JobSubmitResponse {
   estimated_time?: number
 }
 
+export interface WebSocketTicketResponse {
+  ticket: string
+  expires_in: number
+}
+
 export interface JobStateResponse {
   job_id?: string
   job_type?: JobType
@@ -1156,6 +1161,19 @@ class ApiClient {
 
   async health(): Promise<HealthResponse> {
     return this.request<HealthResponse>('/health')
+  }
+
+  async createWebSocketTicket(
+    purpose: 'jobs' | 'collab',
+    resumeId?: string,
+  ): Promise<WebSocketTicketResponse> {
+    return this.request<WebSocketTicketResponse>('/ws/ticket', {
+      method: 'POST',
+      body: JSON.stringify({
+        purpose,
+        resume_id: purpose === 'collab' ? resumeId : undefined,
+      }),
+    })
   }
 
   // ---------------------------------------------------------------- //

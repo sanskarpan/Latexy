@@ -3,10 +3,9 @@
  *
  * The collab relay closes the handshake with 4001 (unauthorised), 4003 (no collaborator
  * row) or 4004 (resume missing) — see backend/app/api/ws_routes.py. Only 4003 means the
- * user actually lost edit rights; 4001 in particular is also what a transient DB failure
- * looks like, because _validate_better_auth_session returns None on ANY exception. Losing
- * the relay must therefore never lock the owner out of their own buffer: REST autosave
- * keeps working regardless.
+ * user actually lost edit rights; 4001 can also mean a spent/expired one-time ticket or
+ * a transient Redis failure while consuming it. Losing the relay must therefore never
+ * lock the owner out of their own buffer: REST autosave keeps working regardless.
  */
 
 // Handshake rejections. Retrying them indefinitely can never succeed, so y-websocket must
@@ -18,8 +17,8 @@ export const TERMINAL_COLLAB_CLOSE_CODES = new Set([4001, 4003, 4004])
 // here as 4003 used to leave the promoted user read-only — with less access than before.
 export const COLLAB_CLOSE_ROLE_CHANGED = 4005
 
-// 4001 is not proof of a dead session, so give the handshake a couple of backed-off
-// retries before treating it as final.
+// 4001 is not proof of a dead session, so mint and try a couple of fresh tickets
+// before treating it as final.
 export const MAX_TRANSIENT_COLLAB_RETRIES = 2
 
 export type CollabCloseAction =

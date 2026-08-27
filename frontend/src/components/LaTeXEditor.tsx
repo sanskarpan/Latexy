@@ -9,7 +9,7 @@ import type { OnMount } from '@monaco-editor/react'
 import type { LogLine } from '@/hooks/useJobStream'
 import { BLANK_RESUME_TEMPLATE } from '@/lib/latex-templates'
 import ATSScoreBadge from '@/components/ATSScoreBadge'
-import { getCollabWebSocketUrl } from '@/lib/api-client'
+import { apiClient, getCollabWebSocketUrl } from '@/lib/api-client'
 import type { PresenceUser, ProofreadIssue, SpellCheckIssue } from '@/lib/api-client'
 import type { LintIssue } from '@/lib/latex-linter'
 import { addWordToDict, getPersonalDict } from '@/hooks/useSpellCheck'
@@ -145,7 +145,7 @@ interface LaTeXEditorProps {
   /** Resume ID used as the Y.js room name */
   collabResumeId?: string
   /** Current user info for cursor labelling */
-  collabUser?: { name: string; color: string; token: string }
+  collabUser?: { name: string; color: string }
   /** Known collaborator role; anything other than owner/editor forces read-only */
   collabRole?: string | null
   /** Fires when the set of remote-presence users changes */
@@ -1570,6 +1570,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           const { MonacoBinding } = await import('y-monaco')
 
           const ydoc = new Y.Doc()
+          const initialTicket = await apiClient.createWebSocketTicket('collab', collabResumeId)
 
           const provider = new WebsocketProvider(
             getCollabWebSocketUrl(),
@@ -1577,7 +1578,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             ydoc,
             {
               params: {
-                token: collabUser.token,
+                ticket: initialTicket.ticket,
                 name: collabUser.name,
                 color: collabUser.color,
               },
@@ -1629,16 +1630,38 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           // everything else leaves Monaco editable and falls back to REST autosave.
           let transientCollabRejections = 0
           let collabGiveUpNotified = false
+          let ticketRefreshInFlight = false
           provider.on('connection-close', (event: CloseEvent | null) => {
             const code = event?.code
             const action = classifyCollabClose(code, transientCollabRejections)
-            if (action === 'ignore') return
-            if (action === 'retry') {
-              // Could be a DB blip — let y-websocket's backoff have another go.
-              transientCollabRejections += 1
+            // provider.disconnect() clears shouldConnect before it emits close;
+            // that is intentional teardown and must not resurrect the socket.
+            if (action === 'ignore' && !provider.shouldConnect) return
+            // The handshake consumes its ticket. Stop y-websocket's built-in
+            // reconnect before it can replay that spent credential; a retry
+            // resumes only after authenticated HTTP mints a fresh one.
+            provider.shouldConnect = false
+            if (action === 'retry' || action === 'ignore') {
+              if (action === 'retry') transientCollabRejections += 1
+              if (ticketRefreshInFlight) return
+              ticketRefreshInFlight = true
+              void apiClient.createWebSocketTicket('collab', collabResumeId)
+                .then(({ ticket }) => {
+                  provider.params.ticket = ticket
+                  provider.shouldConnect = true
+                  provider.connect()
+                })
+                .catch(() => {
+                  if (!collabGiveUpNotified) {
+                    collabGiveUpNotified = true
+                    toast.warning('Live collaboration could not reconnect — your edits are still saved')
+                  }
+                })
+                .finally(() => {
+                  ticketRefreshInFlight = false
+                })
               return
             }
-            provider.shouldConnect = false
             // Deferred: y-websocket has not finished tearing this socket down yet.
             setTimeout(() => {
               try {

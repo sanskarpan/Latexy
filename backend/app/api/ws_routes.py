@@ -20,17 +20,21 @@ Server → Client:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import secrets
 import time
 import uuid
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.websockets import WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
 from ..core.event_bus import event_bus
 from ..core.logging import get_logger
 from ..core.redis import get_redis_client
+from ..middleware.auth_middleware import get_current_user_required
 from ..services.collab_manager import (
     collab_manager,
     handle_collab_message,
@@ -42,9 +46,63 @@ logger = get_logger(__name__)
 ws_router = APIRouter()
 
 _HEARTBEAT_INTERVAL = 30  # seconds
+_WS_TICKET_TTL_SECONDS = 60
+_WS_TICKET_KEY_PREFIX = "latexy:ws_ticket:"
 
 # Per-connection message rate limiting
 _ws_message_counts: dict = {}  # {connection_id: [timestamp, ...]}
+
+
+class WebSocketTicketRequest(BaseModel):
+    purpose: Literal["jobs", "collab"]
+    resume_id: Optional[str] = None
+
+
+class WebSocketTicketResponse(BaseModel):
+    ticket: str
+    expires_in: int
+
+
+def _ws_ticket_key(ticket: str) -> str:
+    # Redis snapshots/logging should not contain the bearer ticket itself. The
+    # random value only travels to the browser; Redis indexes its SHA-256 digest.
+    digest = hashlib.sha256(ticket.encode("utf-8")).hexdigest()
+    return f"{_WS_TICKET_KEY_PREFIX}{digest}"
+
+
+@ws_router.post("/ws/ticket", response_model=WebSocketTicketResponse)
+async def create_websocket_ticket(
+    body: WebSocketTicketRequest,
+    user_id: str = Depends(get_current_user_required),
+) -> WebSocketTicketResponse:
+    """Mint a short-lived, single-use ticket for one WebSocket purpose.
+
+    Browsers cannot attach an Authorization header to a WebSocket handshake.
+    Exchanging the normal session over authenticated HTTP prevents the reusable
+    seven-day Better Auth token from appearing in WebSocket URLs and access logs.
+    """
+    if body.purpose == "collab" and not body.resume_id:
+        raise HTTPException(status_code=400, detail="resume_id is required for collaboration tickets")
+    if body.purpose == "jobs" and body.resume_id is not None:
+        raise HTTPException(status_code=400, detail="resume_id is only valid for collaboration tickets")
+
+    ticket = secrets.token_urlsafe(32)
+    envelope = json.dumps({
+        "user_id": user_id,
+        "purpose": body.purpose,
+        "resume_id": body.resume_id,
+        "expires_at": time.time() + _WS_TICKET_TTL_SECONDS,
+    })
+    redis = await get_redis_client()
+    stored = await redis.set(
+        _ws_ticket_key(ticket),
+        envelope,
+        ex=_WS_TICKET_TTL_SECONDS,
+        nx=True,
+    )
+    if not stored:  # cryptographically improbable collision; fail closed.
+        raise HTTPException(status_code=503, detail="Could not create WebSocket ticket")
+    return WebSocketTicketResponse(ticket=ticket, expires_in=_WS_TICKET_TTL_SECONDS)
 
 
 def _check_rate_limit(connection_id: str, max_per_second: int = 20) -> bool:
@@ -68,10 +126,13 @@ async def jobs_websocket(websocket: WebSocket) -> None:
     connection_id = str(uuid.uuid4())
     logger.info("WebSocket connection accepted")
 
-    # Optional auth: authenticated clients pass ?token=<better-auth session token>.
-    # Anonymous connections are allowed (trial compiles), but per-job ownership is
-    # enforced on subscribe/cancel so a client can only touch owner-less jobs or its own.
-    ws_user_id: Optional[str] = await _resolve_ws_user(websocket)
+    # Authenticated clients exchange their reusable session credential over HTTP
+    # for a one-time ?ticket=. Anonymous trial sockets omit it entirely.
+    ticket_present = bool(websocket.query_params.get("ticket"))
+    ws_user_id = await _consume_ws_ticket(websocket, purpose="jobs")
+    if ticket_present and ws_user_id is None:
+        await websocket.close(code=4001, reason="Invalid or expired WebSocket ticket")
+        return
 
     # Track which jobs this connection is subscribed to (for cleanup)
     subscribed_jobs: set[str] = set()
@@ -180,18 +241,36 @@ async def jobs_websocket(websocket: WebSocket) -> None:
 #  Helpers                                                             #
 # ------------------------------------------------------------------ #
 
-async def _resolve_ws_user(websocket: WebSocket) -> Optional[str]:
-    """Validate the optional ?token= query param and return the user_id, or None."""
-    token = websocket.query_params.get("token")
-    if not token:
+async def _consume_ws_ticket(
+    websocket: WebSocket,
+    *,
+    purpose: Literal["jobs", "collab"],
+    resume_id: Optional[str] = None,
+) -> Optional[str]:
+    """Atomically consume a purpose-bound WebSocket ticket.
+
+    ``GETDEL`` makes tickets single-use even when two handshakes race. Any Redis
+    failure, malformed envelope, expiry, or scope mismatch fails closed.
+    """
+    ticket = websocket.query_params.get("ticket")
+    if not ticket:
         return None
     try:
-        from ..database.connection import get_async_db_session
-        from ..middleware.auth_middleware import _validate_better_auth_session
-        async with get_async_db_session() as db:
-            return await _validate_better_auth_session(token, db)
-    except Exception as exc:  # pragma: no cover - transient
-        logger.debug(f"WS token validation failed: {exc}")
+        redis = await get_redis_client()
+        raw = await redis.getdel(_ws_ticket_key(ticket))
+        if not raw:
+            return None
+        envelope = json.loads(raw)
+        if envelope.get("purpose") != purpose:
+            return None
+        if float(envelope.get("expires_at") or 0) <= time.time():
+            return None
+        if purpose == "collab" and envelope.get("resume_id") != resume_id:
+            return None
+        user_id = envelope.get("user_id")
+        return str(user_id) if user_id else None
+    except Exception as exc:  # pragma: no cover - transient/malformed
+        logger.debug("WS ticket validation failed: %s", exc)
         return None
 
 
@@ -300,7 +379,7 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
     """
     Y.js CRDT collaboration WebSocket for a specific resume.
 
-    Auth:       ?token=<better-auth-session-token>
+    Auth:       ?ticket=<short-lived single-use collaboration ticket>
     Permission: resume owner OR a row in resume_collaborators for this user.
                 The collaborator's role travels with the connection and is
                 enforced on every frame by collab_manager (viewers and
@@ -311,28 +390,19 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
     """
     from sqlalchemy import select as sa_select
 
-    from ..core.config import settings
     from ..database.connection import get_async_db_session
     from ..database.models import Resume, ResumeCollaborator
-    from ..middleware.auth_middleware import (
-        _validate_better_auth_session,
-        auth_middleware,
-    )
 
-    token: Optional[str] = websocket.query_params.get("token")
     # Sanitise display fields
     user_name = (websocket.query_params.get("name") or "Anonymous")[:60]
     user_color = (websocket.query_params.get("color") or "#7c3aed")[:20]
 
     # ── Auth ──────────────────────────────────────────────────────────────
-    user_id: Optional[str] = None
-    if token:
-        async with get_async_db_session() as db:
-            user_id = await _validate_better_auth_session(token, db)
-        # Legacy HS256 fallback — OFF by default. Mirrors the kill-switch that
-        # auth_middleware.get_current_user_optional applies to every HTTP route.
-        if not user_id and getattr(settings, "LEGACY_JWT_ENABLED", False):
-            user_id = auth_middleware.user_id(token)
+    user_id = await _consume_ws_ticket(
+        websocket,
+        purpose="collab",
+        resume_id=resume_id,
+    )
 
     if not user_id:
         await _close_expected_collab_rejection(

@@ -12,9 +12,9 @@ describe('classifyCollabClose', () => {
     expect(classifyCollabClose(undefined, 0)).toBe('ignore')
   })
 
-  it('retries 4001 before giving up — it is also what a DB blip looks like', () => {
-    // _validate_better_auth_session returns None on ANY exception, so the first 4001 must
-    // not be treated as a dead session
+  it('retries 4001 before giving up — a ticket may be expired or already consumed', () => {
+    // A fresh HTTP-minted ticket can recover the relay without treating the
+    // long-lived login session as invalid.
     for (let i = 0; i < MAX_TRANSIENT_COLLAB_RETRIES; i++) {
       expect(classifyCollabClose(4001, i)).toBe('retry')
     }

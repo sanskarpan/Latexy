@@ -30,9 +30,9 @@ export function AuthSync() {
     // so it is the only caller of markAuthResolved() — this is what releases
     // apiClient's auth-ready gate for anonymous visitors too.
     apiClient.markAuthResolved()
-    // Forward the same token to the WS handshake so the backend authorizes
-    // access to this user's own (owner-scoped) job streams.
-    wsClient.setToken(token)
+    // Tell the WS manager only whether it should mint an authenticated one-time
+    // ticket. The reusable Better Auth token must never enter a WebSocket URL.
+    wsClient.setAuthenticated(Boolean(token))
   }, [session, isPending])
 
   return null

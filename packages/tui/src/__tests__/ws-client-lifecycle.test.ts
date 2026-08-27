@@ -5,7 +5,7 @@
  * permanently disabled the client, a socket error that crashed the process, and
  * reconnects that stacked sockets so every event arrived twice.
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { LatexyWSClient } from '../lib/ws-client.js'
 
@@ -16,16 +16,30 @@ function client(): any {
 }
 
 describe('LatexyWSClient lifecycle', () => {
-  it('reconnects after destroy() — /logout must not disable the singleton', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue({ ticket: 'ticket', expires_in: 60 }),
+    }))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('reconnects after destroy() — /logout must not disable the singleton', async () => {
     // wsClient is module-level, and /logout calls destroy(). Latching `destroyed`
     // meant a subsequent login opened no socket at all: every job then looked
     // like it hung, with no events, until the process was restarted.
     const c = client()
     c.connect(DEAD_URL, 'tok')
+    await vi.waitFor(() => expect(c.ws).not.toBeNull())
     expect(c.ws, 'first connect should open a socket').not.toBeNull()
 
     c.destroy()
     c.connect(DEAD_URL, 'tok2')
+    await vi.waitFor(() => expect(c.ws).not.toBeNull())
     expect(c.ws, 'connect() after destroy() must open a new socket').not.toBeNull()
 
     c.destroy()
@@ -48,13 +62,15 @@ describe('LatexyWSClient lifecycle', () => {
     c.destroy()
   })
 
-  it('a second connect() replaces the socket instead of stacking one', () => {
+  it('a second connect() replaces the socket instead of stacking one', async () => {
     // An orphaned socket keeps its message handler and goes on publishing into
     // the same client, so every event is delivered twice.
     const c = client()
     c.connect(DEAD_URL, 'tok')
+    await vi.waitFor(() => expect(c.ws).not.toBeNull())
     const first = c.ws
     c.connect(DEAD_URL, 'tok')
+    await vi.waitFor(() => expect(c.ws).not.toBe(first))
     expect(c.ws, 'socket should have been replaced').not.toBe(first)
     expect(first.listenerCount('message'), 'old socket must be detached').toBe(0)
     c.destroy()
