@@ -45,7 +45,10 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
   }, [fetchSubscription])
 
   const handleCancel = async () => {
-    if (!subscription || !confirm('Cancel this subscription?')) return
+    if (
+      !subscription ||
+      !confirm('Cancel renewal? Your paid access will continue through the current billing cycle.')
+    ) return
     setIsCancelling(true)
     setCancelError(null)
     try {
@@ -97,6 +100,7 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
     )
   }
 
+  const cancellationScheduled = subscription.status === 'cancel_scheduled'
   const statusClass =
     subscription.status === 'active'
       ? 'text-ok border-ok/30 bg-ok/10'
@@ -107,13 +111,13 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-lg font-semibold text-fg">{subscription.planName}</h3>
         <span className={`rounded-full border px-2 py-1 text-xs uppercase tracking-wider ${statusClass}`}>
-          {subscription.status}
+          {cancellationScheduled ? 'Cancellation scheduled' : subscription.status}
         </span>
       </div>
 
       <div className="mt-2 text-sm text-fg-2">
         {subscription.currentPeriodEnd
-          ? `Renews on ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
+          ? `${cancellationScheduled ? 'Access until' : 'Renews on'} ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
           : 'No renewal date'}
       </div>
 
@@ -140,7 +144,7 @@ export default function SubscriptionManager({ authToken, billingStatus, onUpgrad
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           onClick={onUpgrade}
-          disabled={!billingStatus?.available}
+          disabled={!billingStatus?.available || cancellationScheduled}
           className="rounded-[var(--radius-md)] border border-line-2 px-3 py-2 text-sm text-fg hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Change Plan
