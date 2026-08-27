@@ -419,17 +419,21 @@ async def import_github_projects(
     if isinstance(user.subscription_plan, str) and user.subscription_plan:
         user_plan = user.subscription_plan
 
-    await enforce_external_budget(
-        "import-github",
-        client_id=f"user:{user_id}",
-        cost=1,
-        client_limit=_GITHUB_IMPORTS_PER_USER_HOUR,
-        global_limit=_GITHUB_IMPORTS_GLOBAL_PER_HOUR,
-        window_seconds=3600,
-    )
     quota_ticket = await entitlement_service.enforce_quota(
         "ai_assists", user_id=user_id, plan=user_plan
     )
+    try:
+        await enforce_external_budget(
+            "import-github",
+            client_id=f"user:{user_id}",
+            cost=1,
+            client_limit=_GITHUB_IMPORTS_PER_USER_HOUR,
+            global_limit=_GITHUB_IMPORTS_GLOBAL_PER_HOUR,
+            window_seconds=3600,
+        )
+    except Exception:
+        await entitlement_service.refund_quota(quota_ticket)
+        raise
 
     job_id = str(uuid.uuid4())
     redis = await get_redis_client()
