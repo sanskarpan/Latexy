@@ -356,6 +356,11 @@ test.describe('Project Search — workspace page', () => {
 // ------------------------------------------------------------------ //
 
 test.describe('Search API endpoint — live backend', () => {
+  test.skip(
+    !process.env.PLAYWRIGHT_REQUIRE_BACKEND && !process.env.AUDIT_BE,
+    'Live API contract checks require an explicitly configured backend',
+  )
+
   test('GET /resumes/search exists and rejects unauthenticated', async ({ request }) => {
     const resp = await request.get(`${BACKEND_URL}/resumes/search?q=hello`)
     expect([401, 403, 429]).toContain(resp.status())
