@@ -25,19 +25,41 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
 from ..database.connection import get_db
+from ..database.models import User
 from ..middleware.entitlements import require_feature
 from ..services import linkedin_import_service
 from ..services import url_projects_service as url_import
 from ..services.api_key_service import api_key_service
+from ..services.entitlement_service import QuotaTicket, entitlement_service
+from ..services.external_budget_service import enforce_external_budget
 from ..services.job_scraper_service import SSRFError
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/sources", tags=["sources"])
+
+_IMPORT_BUDGET_WINDOW = 3600
+_IMPORT_GLOBAL_LIMIT = 500
+_IMPORT_CLIENT_LIMITS = {
+    "url": 20,
+    "linkedin": 40,
+}
+
+
+async def _enforce_import_budget(source: str, user_id: str) -> None:
+    await enforce_external_budget(
+        f"import-{source}",
+        client_id=f"user:{user_id}",
+        cost=1,
+        client_limit=_IMPORT_CLIENT_LIMITS[source],
+        global_limit=_IMPORT_GLOBAL_LIMIT,
+        window_seconds=_IMPORT_BUDGET_WINDOW,
+    )
 
 
 # ── URL import (Phase 2) ─────────────────────────────────────────────────────
@@ -72,6 +94,16 @@ async def import_from_url(
     call. Runs synchronously in-request. Summarization uses the user's own LLM
     key when present (BYOK), otherwise the platform key.
     """
+    await _enforce_import_budget("url", user_id)
+
+    plan_result = await db.execute(
+        select(User.subscription_plan).where(User.id == user_id)
+    )
+    user_plan = plan_result.scalar_one_or_none() or "free"
+    quota_ticket: QuotaTicket = await entitlement_service.enforce_quota(
+        "ai_assists", user_id=user_id, plan=user_plan
+    )
+
     # Resolve the LLM key the same way optimize / GitHub import do: the user's
     # own OpenAI key (BYOK) when present, else the platform key (api_key=None →
     # extract_projects uses settings.OPENAI_API_KEY via the lazy openai client).
@@ -85,12 +117,15 @@ async def import_from_url(
     try:
         page_text = await url_import.fetch_url_text(body.url)
     except SSRFError as exc:
+        await entitlement_service.refund_quota(quota_ticket)
         logger.warning(f"Blocked URL import (SSRF/invalid) for user {user_id}: {exc}")
         raise HTTPException(status_code=400, detail="Invalid or disallowed URL")
     except ValueError as exc:
+        await entitlement_service.refund_quota(quota_ticket)
         logger.info(f"URL import fetch failed for {body.url!r}: {exc}")
         raise HTTPException(status_code=502, detail="Could not fetch the page. Check the URL and try again.")
     except Exception as exc:  # noqa: BLE001 — last-resort guard around the fetch
+        await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"Unexpected error fetching {body.url!r}: {exc}")
         raise HTTPException(status_code=500, detail="Unexpected error while fetching the page.")
 
@@ -98,6 +133,7 @@ async def import_from_url(
     try:
         projects = url_import.extract_projects(page_text, body.url, api_key)
     except Exception as exc:  # noqa: BLE001 — extract_projects already degrades, belt-and-braces
+        await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"Unexpected error extracting projects from {body.url!r}: {exc}")
         raise HTTPException(status_code=500, detail="Unexpected error while extracting projects.")
 
@@ -156,7 +192,7 @@ async def import_linkedin(
     Returns ``{projects: [ProjectEvidence]}``. A bad/unparseable file yields 422;
     an oversized upload yields 413.
     """
-    del user_id  # gating only; the parse is stateless
+    await _enforce_import_budget("linkedin", user_id)
 
     filename = file.filename or "upload"
     content_type = file.content_type or ""
