@@ -88,6 +88,7 @@ import MobileEditor from '@/components/MobileEditor'
 import OfflineBanner, { useOnlineStatus } from '@/components/OfflineBanner'
 import { saveDraft, getPendingDrafts, deleteDraft, pendingDraftCount } from '@/lib/offline-drafts'
 import { enqueueCompile, getQueuedCompiles, dequeueCompile } from '@/lib/compile-queue'
+import { canEditResume, type ResumeAccessRole } from '@/lib/resume-access'
 import { parseResume } from '@/lib/wysiwyg/latex-parser'
 import { serializeResume } from '@/lib/wysiwyg/latex-serializer'
 import type { ResumeDoc } from '@/lib/wysiwyg/document-model'
@@ -942,7 +943,9 @@ export default function ResumeEditPage() {
   // Collaboration (Feature 40)
   const [collabOpen, setCollabOpen] = useState(false)
   const [collabIsOwner, setCollabIsOwner] = useState(true)
+  const [collabRole, setCollabRole] = useState<ResumeAccessRole>('owner')
   const [presenceUsers, setPresenceUsers] = useState<import('@/lib/api-client').PresenceUser[]>([])
+  const collabCanEdit = canEditResume(collabRole)
 
   // Track Changes (Feature 41)
   const [trackedChanges, setTrackedChanges] = useState<TrackedChange[]>([])
@@ -1139,6 +1142,7 @@ export default function ResumeEditPage() {
 
         // Collaboration ownership (Feature 40)
         setCollabIsOwner(data.user_id === sessionUserId)
+        setCollabRole(data.access_role ?? (data.user_id === sessionUserId ? 'owner' : 'viewer'))
 
         setParentResumeId(data.parent_resume_id ?? null)
         // Fetch parent title if this is a variant
@@ -1468,11 +1472,16 @@ export default function ResumeEditPage() {
   }, [editorMode, latexContent, wysiwygDoc, resumeId, pushUndo])
 
   const handleWysiwygChange = useCallback((doc: ResumeDoc) => {
+    if (!collabCanEdit) return
     setWysiwygDoc(doc)
     setLatexContent(serializeResume(doc))
-  }, [])
+  }, [collabCanEdit])
 
   const handleSave = async () => {
+    if (!collabCanEdit) {
+      toast.error('This collaborator role has read-only access')
+      return
+    }
     const content = editorRef.current?.getValue() || latexContent
     // Offline: persist to IndexedDB instead of API (Feature 79C)
     if (!navigator.onLine) {
@@ -1872,6 +1881,7 @@ export default function ResumeEditPage() {
 
   // Silent debounced autosave — persists edits without an explicit Save click.
   const autoSave = useCallback(async () => {
+    if (!collabCanEdit) return
     const content = editorRef.current?.getValue() ?? latexContent
     setAutoSaving(true)
     try {
@@ -1884,15 +1894,15 @@ export default function ResumeEditPage() {
     } finally {
       setAutoSaving(false)
     }
-  }, [resumeId, title, latexContent])
+  }, [resumeId, title, latexContent, collabCanEdit])
 
   useEffect(() => {
     // Never autosave mid-job (AI/compile mutate the buffer) or while offline.
-    if (!isDirty || isAnyRunning || autoSaving) return
+    if (!collabCanEdit || !isDirty || isAnyRunning || autoSaving) return
     if (typeof navigator !== 'undefined' && !navigator.onLine) return
     const t = setTimeout(() => { void autoSave() }, 2500)
     return () => clearTimeout(t)
-  }, [isDirty, isAnyRunning, autoSaving, title, latexContent, autoSave])
+  }, [collabCanEdit, isDirty, isAnyRunning, autoSaving, title, latexContent, autoSave])
 
   // Warn before tab close / refresh / external navigation while dirty.
   useEffect(() => {
@@ -2045,6 +2055,7 @@ export default function ResumeEditPage() {
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            disabled={!collabCanEdit}
             className="w-[120px] min-w-0 max-w-[280px] bg-transparent text-sm font-medium text-fg-2 outline-none transition placeholder:text-fg-3 hover:text-fg focus:text-fg sm:w-auto"
             placeholder="Untitled"
           />
@@ -2205,7 +2216,7 @@ export default function ResumeEditPage() {
 
           <button
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || !collabCanEdit}
             className="flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-fg-3 transition hover:bg-surface-2 hover:text-fg disabled:opacity-40"
           >
             <Save size={12} />
@@ -2516,7 +2527,7 @@ export default function ResumeEditPage() {
           )}
           <div className="relative min-h-0 flex-1">
             {/* WYSIWYG mode (Feature 78) */}
-            {editorMode === 'wysiwyg' && wysiwygDoc ? (
+            {collabCanEdit && editorMode === 'wysiwyg' && wysiwygDoc ? (
               <div className="h-full overflow-auto p-4">
                 <WYSIWYGEditor
                   doc={wysiwygDoc}
@@ -2524,7 +2535,7 @@ export default function ResumeEditPage() {
                   hasRawEntries={wysiwygHasRaw}
                 />
               </div>
-            ) : editorMode === 'wysiwyg' && !wysiwygDoc ? (
+            ) : collabCanEdit && editorMode === 'wysiwyg' && !wysiwygDoc ? (
               <div className="flex h-full items-center justify-center text-[12px] text-fg-3">
                 Parsing…
               </div>
@@ -2536,12 +2547,14 @@ export default function ResumeEditPage() {
                 onChange={setLatexContent}
                 onSave={handleSave}
                 onCompile={runCompile}
+                readOnly={!collabCanEdit}
               />
             ) : (
             <LaTeXEditor
               ref={editorRef}
               value={latexContent}
               onChange={setLatexContent}
+              readOnly={!collabCanEdit}
               logLines={logLines}
               onSave={handleSave}
               onCompile={runCompile}
@@ -2577,6 +2590,7 @@ export default function ResumeEditPage() {
                 name: sessionData.user?.name || sessionData.user?.email || 'Anonymous',
                 color: `hsl(${Math.abs(sessionData.user?.id?.charCodeAt(0) ?? 0) % 360}, 70%, 60%)`,
               } : undefined}
+              collabRole={collabRole}
               onPresenceChange={setPresenceUsers}
               trackedChanges={trackedChanges}
               onTrackedChangesUpdate={setTrackedChanges}
