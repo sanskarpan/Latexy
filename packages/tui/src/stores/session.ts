@@ -13,8 +13,8 @@ export interface SessionState {
   isAuthenticated: boolean
 }
 
-const defaultBackendUrl = process.env['LATEXY_API_URL'] ?? DEFAULT_BACKEND_URL
-const defaultAppUrl = process.env['LATEXY_APP_URL'] ?? DEFAULT_APP_URL
+const defaultBackendUrl = process.env['LATEXY_API_URL'] || DEFAULT_BACKEND_URL
+const defaultAppUrl = process.env['LATEXY_APP_URL'] || DEFAULT_APP_URL
 
 /** Better Auth is mounted on the Next.js app, never on the FastAPI backend, so it needs its own origin. */
 export function appUrl(state: SessionState = $session.get()): string {
