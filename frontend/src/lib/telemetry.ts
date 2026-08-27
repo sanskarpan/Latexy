@@ -23,14 +23,23 @@ function randomHex(bytes: number): string {
   return Array.from(values, (value) => value.toString(16).padStart(2, '0')).join('')
 }
 
+let fallbackTraceId: string | null = null
+
 function getSessionTraceId(): string {
   if (typeof window === 'undefined') return '00000000000000000000000000000000'
   const key = 'latexy_trace_id'
-  const existing = sessionStorage.getItem(key)
-  if (existing) return existing
-  const traceId = randomHex(16)
-  sessionStorage.setItem(key, traceId)
-  return traceId
+  try {
+    const existing = window.sessionStorage?.getItem(key)
+    if (existing) return existing
+    const traceId = randomHex(16)
+    window.sessionStorage?.setItem(key, traceId)
+    return traceId
+  } catch {
+    // Storage can be unavailable in hardened/private browser contexts. Keep a
+    // stable in-memory trace ID so telemetry never blocks an application API call.
+    fallbackTraceId ??= randomHex(16)
+    return fallbackTraceId
+  }
 }
 
 export function createTraceHeaders(): Record<string, string> {

@@ -168,17 +168,19 @@ test.describe('/try page — ATS Quick Score badge', () => {
   })
 
   test('ATS badge renders in editor status bar', async ({ page }) => {
+    await page.clock.install()
     await page.goto('/try')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
     // Before debounce fires score is null — badge shows "ATS —"
-    await expect(page.getByText('ATS —')).toBeVisible()
+    await expect(page.getByText('ATS —').last()).toBeVisible()
   })
 
   test('ATS badge initially shows dash (no score yet)', async ({ page }) => {
+    await page.clock.install()
     await page.goto('/try')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
     // Before debounce fires, score is null → shows "ATS —"
-    await expect(page.getByText('ATS —')).toBeVisible()
+    await expect(page.getByText('ATS —').last()).toBeVisible()
   })
 
   test('ATS badge shows score after debounce fires', async ({ page }) => {
@@ -206,8 +208,8 @@ test.describe('/try page — ATS Quick Score badge', () => {
     await responsePromise
 
     const badge = page.getByTitle('Live ATS score (updates 10s after last change)')
-    await expect(badge).toHaveClass(/text-emerald-400/)
-    await expect(badge).toHaveClass(/bg-emerald-500\/10/)
+    await expect(badge).toHaveClass(/text-ok/)
+    await expect(badge).toHaveClass(/bg-ok\/10/)
   })
 
   test('ATS badge has correct color for medium score (60-79 = amber)', async ({ page }) => {
@@ -220,7 +222,7 @@ test.describe('/try page — ATS Quick Score badge', () => {
     await responsePromise
 
     const badge = page.getByTitle('Live ATS score (updates 10s after last change)')
-    await expect(badge).toHaveClass(/text-amber-400/)
+    await expect(badge).toHaveClass(/text-warn/)
     await expect(badge).toContainText('ATS 65')
   })
 
@@ -234,7 +236,7 @@ test.describe('/try page — ATS Quick Score badge', () => {
     await responsePromise
 
     const badge = page.getByTitle('Live ATS score (updates 10s after last change)')
-    await expect(badge).toHaveClass(/text-rose-400/)
+    await expect(badge).toHaveClass(/text-err/)
     await expect(badge).toContainText('ATS 45')
   })
 
@@ -292,7 +294,7 @@ test.describe('/try page — ATS Quick Score badge', () => {
     expect(capturedBody!.latex_content).toBeTruthy()
   })
 
-  test('ATS badge click opens Deep Analysis panel', async ({ page }) => {
+  test('ATS badge click opens the ATS tool panel', async ({ page }) => {
     await mockAtsQuickScore(page, MOCK_SCORE_HIGH)
     await page.clock.install()
     await page.goto('/try')
@@ -304,9 +306,9 @@ test.describe('/try page — ATS Quick Score badge', () => {
     const badge = page.getByTitle('Live ATS score (updates 10s after last change)')
     await badge.click()
 
-    // DeepAnalysisPanel renders with role="dialog" and aria-label="Deep AI Analysis"
-    await expect(page.getByRole('dialog', { name: 'Deep AI Analysis' })).toBeVisible()
-    await expect(page.getByText('Deep AI Analysis')).toBeVisible()
+    // The try-page badge opens the ATS drawer; Deep scan is a deliberate second action.
+    await expect(page.getByText('ATS Score', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Deep scan' })).toBeVisible()
   })
 
   test('loading spinner shows while fetching score', async ({ page }) => {
@@ -356,7 +358,7 @@ test.describe('/try page — ATS badge edge cases', () => {
     // Even on error, no crash — badge stays in "ATS —" state
     // No runtime JS errors
     expect(errors.filter((e) => !e.includes('Warning:'))).toEqual([])
-    await expect(page.getByText('ATS —')).toBeVisible()
+    await expect(page.getByText('ATS —').last()).toBeVisible()
   })
 
   test('no ats/quick-score call when resume content is very short', async ({ page }) => {
@@ -433,15 +435,17 @@ test.describe('/workspace/[resumeId]/edit — ATS Quick Score badge', () => {
   })
 
   test('ATS badge renders in editor status bar', async ({ page }) => {
+    await page.clock.install()
     await page.goto(`/workspace/${RESUME_ID}/edit`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
     await expect(page.locator('text=/ATS/').first()).toBeVisible()
   })
 
   test('ATS badge initially shows dash placeholder', async ({ page }) => {
+    await page.clock.install()
     await page.goto(`/workspace/${RESUME_ID}/edit`)
-    await page.waitForLoadState('networkidle')
-    await expect(page.getByText('ATS —')).toBeVisible()
+    await page.waitForLoadState('domcontentloaded')
+    await expect(page.getByText('ATS —').last()).toBeVisible()
   })
 
   test('ATS badge shows score after debounce fires', async ({ page }) => {
@@ -462,7 +466,7 @@ test.describe('/workspace/[resumeId]/edit — ATS Quick Score badge', () => {
     await page.clock.fastForward(11_000)
     await responsePromise
     const badge = page.getByTitle('Live ATS score (updates 10s after last change)')
-    await expect(badge).toHaveClass(/text-emerald-400/)
+    await expect(badge).toHaveClass(/text-ok/)
   })
 
   test('ATS badge click opens deep analysis panel on edit page', async ({ page }) => {
@@ -532,14 +536,14 @@ test.describe('/workspace/[resumeId]/optimize — ATS Quick Score badge', () => 
     await page.clock.install()
     await page.goto(`/workspace/${RESUME_ID}/optimize`)
     await page.waitForLoadState('domcontentloaded')
-    await expect(page.getByText('ATS —')).toBeVisible({ timeout: 3_000 })
+    await expect(page.getByText('ATS —').last()).toBeVisible({ timeout: 3_000 })
   })
 
   test('ATS badge initially shows dash', async ({ page }) => {
     await page.clock.install()
     await page.goto(`/workspace/${RESUME_ID}/optimize`)
     await page.waitForLoadState('domcontentloaded')
-    await expect(page.getByText('ATS —')).toBeVisible({ timeout: 3_000 })
+    await expect(page.getByText('ATS —').last()).toBeVisible({ timeout: 3_000 })
   })
 
   test('ATS badge shows score after debounce fires', async ({ page }) => {

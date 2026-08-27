@@ -11,7 +11,6 @@ export default function ContactForm() {
   return (
     <form
       className="grid grid-cols-2 gap-4 max-w-lg"
-      aria-disabled
       onSubmit={(e) => {
         // No contact endpoint exists — prevent submission entirely.
         e.preventDefault()

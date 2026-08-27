@@ -143,13 +143,14 @@ async function gotoEditPage(page: import('@playwright/test').Page) {
   ])
   await expect(page.getByText('LaTeX editor').first()).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText(/\d+ chars/).first()).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByRole('button', { name: /Linter/i })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('button', { name: /^More$/i })).toBeVisible({ timeout: 15_000 })
   await page.waitForTimeout(800)
 }
 
 /** Click the Linter tab in the right sidebar. */
 async function openLinterTab(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: /Linter/i }).click()
+  await page.getByRole('button', { name: /^More$/i }).click()
+  await page.getByRole('menuitem', { name: /^Linter/i }).click()
   // The panel is open once the issue/ATS sub-tabs and linting switch are rendered.
   await expect(page.getByRole('button', { name: /^Issues/i })).toBeVisible({ timeout: 5_000 })
   await expect(page.getByRole('button', { name: /^ATS Text/i })).toBeVisible({ timeout: 5_000 })
@@ -191,7 +192,8 @@ test.describe('Feature 29 — LaTeX Linter', () => {
 
   test('Linter tab appears in the right sidebar', async ({ page }) => {
     await gotoEditPage(page)
-    await expect(page.getByRole('button', { name: /Linter/i })).toBeVisible()
+    await page.getByRole('button', { name: /^More$/i }).click()
+    await expect(page.getByRole('menuitem', { name: /^Linter/i })).toBeVisible()
   })
 
   // ── 3. Panel opens ───────────────────────────────────────────────── //
@@ -225,10 +227,11 @@ test.describe('Feature 29 — LaTeX Linter', () => {
 
     // The count badge is a small element next to the Linter tab label
     // It contains a number > 0
-    const badge = page.locator('button:has-text("Linter") span').filter({ hasText: /^\d+$/ })
-    await expect(badge).toBeVisible({ timeout: 5_000 })
-    const text = await badge.textContent()
-    expect(Number(text)).toBeGreaterThan(0)
+    await page.getByRole('button', { name: /^More$/i }).click()
+    const linterItem = page.getByRole('menuitem', { name: /^Linter/i })
+    await expect(linterItem).toBeVisible({ timeout: 5_000 })
+    const text = await linterItem.textContent()
+    expect(Number(text?.match(/\d+/)?.[0])).toBeGreaterThan(0)
   })
 
   // ── 6. Clean LaTeX → no issues ──────────────────────────────────── //
@@ -256,9 +259,8 @@ test.describe('Feature 29 — LaTeX Linter', () => {
     // Panel should now show disabled state
     await expect(page.getByText('Linting is disabled')).toBeVisible({ timeout: 3_000 })
     // Count badge on tab should disappear (no issues when disabled)
-    await expect(
-      page.locator('button:has-text("Linter") span').filter({ hasText: /^\d+$/ })
-    ).not.toBeVisible({ timeout: 3_000 })
+    await page.getByRole('button', { name: /^More$/i }).click()
+    await expect(page.getByRole('menuitem', { name: /^Linter\s*$/i })).toBeVisible({ timeout: 3_000 })
   })
 
   // ── 8. Toggle re-enables linting ────────────────────────────────── //
