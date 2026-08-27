@@ -450,6 +450,10 @@ interface AIPanelProps {
   optLevel: OptLevel
   setOptLevel: (v: OptLevel) => void
   onRun: () => void
+  stagedLatex: string | null
+  onApply: () => void
+  onDiscard: () => void
+  onReview: () => void
   onApplyAnyway: () => void
   outline: OutlineItem[]
   targetSections: string[]
@@ -470,6 +474,10 @@ function AIPanel({
   optLevel,
   setOptLevel,
   onRun,
+  stagedLatex,
+  onApply,
+  onDiscard,
+  onReview,
   onApplyAnyway,
   outline,
   targetSections,
@@ -506,7 +514,7 @@ function AIPanel({
           {aiStream.streamingLatex && (
             <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-accent/20 bg-accent/5 px-3 py-2 text-[11px] text-accent-strong">
               <Sparkles size={11} />
-              <span>Streaming to editor in real-time…</span>
+              <span>Preparing a review candidate…</span>
             </div>
           )}
         </div>
@@ -517,13 +525,41 @@ function AIPanel({
           <div className="flex items-center gap-3 rounded-[var(--radius-lg)] border border-ok/20 bg-ok/10 p-3">
             <CheckCircle2 size={16} className="shrink-0 text-ok" />
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-ok">Optimization complete</p>
+              <p className="text-sm font-semibold text-ok">Optimization ready to review</p>
               <p className="truncate text-[10px] text-fg-3">
                 {aiStream.changesMade?.length ?? 0} changes ·{' '}
                 {aiStream.tokensUsed ? `${aiStream.tokensUsed.toLocaleString()} tokens` : 'PDF ready'}
               </p>
             </div>
           </div>
+
+          {stagedLatex && (
+            <div className="space-y-2 rounded-[var(--radius-lg)] border border-accent/25 bg-accent/10 p-3">
+              <p className="text-[11px] text-fg-2">
+                Your editor is unchanged. Review the candidate, then apply or discard it.
+              </p>
+              <button
+                onClick={onReview}
+                className="w-full rounded-[var(--radius-md)] border border-line-2 py-2 text-[11px] font-semibold text-fg-2 transition hover:bg-surface-2"
+              >
+                Review changes
+              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={onDiscard}
+                  className="rounded-[var(--radius-md)] border border-line-2 py-2 text-[11px] font-semibold text-fg-2 transition hover:bg-surface-2"
+                >
+                  Discard
+                </button>
+                <button
+                  onClick={onApply}
+                  className="rounded-[var(--radius-md)] bg-accent py-2 text-[11px] font-semibold text-accent-fg transition hover:brightness-110"
+                >
+                  Apply optimization
+                </button>
+              </div>
+            </div>
+          )}
 
           {aiStream.atsScore != null && (
             <div className="flex items-center gap-4 rounded-[var(--radius-lg)] border border-line bg-surface-2 p-4">
@@ -780,6 +816,8 @@ export default function ResumeEditPage() {
   const [optLevel, setOptLevel] = useState<OptLevel>('balanced')
   const [model, setModel] = useState<AIModel>('gpt-4o-mini')
   const [isAiSubmitting, setIsAiSubmitting] = useState(false)
+  const [stagedAiLatex, setStagedAiLatex] = useState<string | null>(null)
+  const aiBaselineRef = useRef<string | null>(null)
   // Feature 2: Multi-level undo stack (replaces single baselineLatex)
   const [undoStack, setUndoStack] = useState<Array<{ label: string; latex: string }>>([])
   // Feature 3: Section-specific optimization
@@ -1172,37 +1210,14 @@ export default function ResumeEditPage() {
     fetchResume()
   }, [resumeId, router, sessionData, sessionLoading, sessionUserId])
 
-  // Stream AI tokens to Monaco in real-time (direct model mutation, no setState per token)
+  // A completed rewrite remains staged until the user explicitly applies it.
+  // Streaming tokens never touch Monaco/React state, so autosave and collaboration
+  // continue to see the original document throughout the run and review period.
   useEffect(() => {
-    if (!aiStream.streamingLatex || !editorRef.current) return
-    editorRef.current.setValue(aiStream.streamingLatex, { reveal: false })
-  }, [aiStream.streamingLatex])
-
-  // When AI completes, commit streamed content to React state + record optimization + track
-  useEffect(() => {
-    if (aiStream.status === 'completed') {
-      const finalLatex = editorRef.current?.getValue() || ''
-      setLatexContent(finalLatex)
-      if (documentType !== 'presentation') {
-        apiClient.getAcademicCVReport(resumeId).then(setAcademicReport).catch(() => {})
-      }
-      // Feature 1: save optimization record
-      if (finalLatex && aiJobId) {
-        const baselineLatex = undoStack[undoStack.length - 1]?.latex || ''
-        apiClient.recordOptimization(resumeId, {
-          original_latex: baselineLatex,
-          optimized_latex: finalLatex,
-          changes_made: aiStream.changesMade,
-          ats_score: aiStream.atsScore ?? undefined,
-          tokens_used: aiStream.tokensUsed ?? undefined,
-          job_description: jobDescription.trim() || undefined,
-        }).catch(() => {}) // non-critical
-        // Track optimization for analytics
-        apiClient.trackOptimization(aiJobId, 'openai', model, aiStream.tokensUsed ?? undefined)
-        apiClient.trackFeatureUsage('ai_optimization')
-      }
+    if (aiStream.status === 'completed' && aiStream.streamingLatex) {
+      setStagedAiLatex(aiStream.streamingLatex)
     }
-  }, [aiStream.status, documentType, resumeId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [aiStream.status, aiStream.streamingLatex])
 
   // Track compilation completion for analytics
   useEffect(() => {
@@ -1569,6 +1584,9 @@ export default function ResumeEditPage() {
 
   const runAiOptimize = async () => {
     const content = editorRef.current?.getValue() || latexContent
+    aiBaselineRef.current = content
+    setStagedAiLatex(null)
+    setCompareData(null)
     setIsAiSubmitting(true)
     try {
       const r = await apiClient.optimizeAndCompile({
@@ -1584,7 +1602,6 @@ export default function ResumeEditPage() {
       })
       if (!r.success || !r.job_id) throw new Error(r.message)
       userInitiatedJobRef.current = true
-      pushUndo('Before AI optimization')
       setAiJobId(r.job_id)
       setLastStartedJobKind('ai')
       toast.success('AI optimization started')
@@ -1595,14 +1612,68 @@ export default function ResumeEditPage() {
     }
   }
 
-  // Fix 3: Apply optimized LaTeX even when compilation failed
+  const applyOptimizationCandidate = useCallback((candidate: string, record: boolean) => {
+    const current = editorRef.current?.getValue() || latexContent
+    const baseline = aiBaselineRef.current
+    if (baseline != null && current !== baseline) {
+      toast.error('Your resume changed while AI was working. Run optimization again to avoid losing edits.')
+      return false
+    }
+
+    pushUndo('Before AI optimization')
+    editorRef.current?.setValue(candidate, { reveal: false })
+    setLatexContent(candidate)
+    setStagedAiLatex(null)
+    setCompareData(null)
+
+    if (record && aiJobId) {
+      apiClient.recordOptimization(resumeId, {
+        original_latex: baseline || current,
+        optimized_latex: candidate,
+        changes_made: aiStream.changesMade,
+        ats_score: aiStream.atsScore ?? undefined,
+        tokens_used: aiStream.tokensUsed ?? undefined,
+        job_description: jobDescription.trim() || undefined,
+      }).catch(() => {})
+      apiClient.trackOptimization(aiJobId, 'openai', model, aiStream.tokensUsed ?? undefined)
+      apiClient.trackFeatureUsage('ai_optimization')
+    }
+    aiBaselineRef.current = null
+    return true
+  }, [aiJobId, aiStream.atsScore, aiStream.changesMade, aiStream.tokensUsed, jobDescription, latexContent, model, pushUndo, resumeId])
+
+  const handleApplyOptimization = useCallback(() => {
+    if (!stagedAiLatex) return
+    if (applyOptimizationCandidate(stagedAiLatex, true)) {
+      toast.success('Applied AI optimization')
+      if (documentType !== 'presentation') {
+        apiClient.getAcademicCVReport(resumeId).then(setAcademicReport).catch(() => {})
+      }
+    }
+  }, [applyOptimizationCandidate, documentType, resumeId, stagedAiLatex])
+
+  const handleDiscardOptimization = useCallback(() => {
+    setStagedAiLatex(null)
+    setCompareData(null)
+    aiBaselineRef.current = null
+    toast.success('Discarded AI optimization')
+  }, [])
+
+  const handleReviewOptimization = useCallback(() => {
+    if (!stagedAiLatex) return
+    setCompareData({
+      original: aiBaselineRef.current || latexContent,
+      optimized: stagedAiLatex,
+    })
+  }, [latexContent, stagedAiLatex])
+
+  // Explicit escape hatch when the rewrite completed but its compile failed.
   const handleApplyAnyway = useCallback(() => {
     if (!aiStream.streamingLatex) return
-    pushUndo('Before apply (failed compile)')
-    editorRef.current?.setValue(aiStream.streamingLatex, { reveal: false })
-    setLatexContent(aiStream.streamingLatex)
-    toast.success('Applied optimized LaTeX — fix the compile errors manually')
-  }, [aiStream.streamingLatex, pushUndo])
+    if (applyOptimizationCandidate(aiStream.streamingLatex, false)) {
+      toast.success('Applied optimized LaTeX — fix the compile errors manually')
+    }
+  }, [aiStream.streamingLatex, applyOptimizationCandidate])
 
   // Version history: restore from checkpoint
   const handleHistoryRestore = useCallback((latex: string) => {
@@ -2848,6 +2919,10 @@ export default function ResumeEditPage() {
                 optLevel={optLevel}
                 setOptLevel={setOptLevel}
                 onRun={runAiOptimize}
+                stagedLatex={stagedAiLatex}
+                onApply={handleApplyOptimization}
+                onDiscard={handleDiscardOptimization}
+                onReview={handleReviewOptimization}
                 onApplyAnyway={handleApplyAnyway}
                 outline={outline}
                 targetSections={targetSections}
