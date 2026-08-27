@@ -128,9 +128,11 @@ async function mockAuthAndApi(page: Page) {
 }
 
 async function openQuickTailorModal(page: Page) {
-  await page.goto('/workspace')
-  await page.waitForLoadState('networkidle')
-  await page.getByRole('button', { name: /tailor/i }).first().click()
+  await page.goto('/workspace', { waitUntil: 'domcontentloaded' })
+  const moreActions = page.getByRole('button', { name: 'More actions' }).first()
+  await expect(moreActions).toBeVisible()
+  await moreActions.click()
+  await page.getByRole('button', { name: /Tailor to a job/i }).first().click()
   await expect(page.getByRole('heading', { name: /quick tailor/i })).toBeVisible()
 }
 
@@ -141,10 +143,12 @@ async function openQuickTailorModal(page: Page) {
 test.describe('Quick Tailor — workspace integration', () => {
   test('Quick Tailor button is visible on resume card', async ({ page }) => {
     await mockAuthAndApi(page)
-    await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
+    await page.goto('/workspace', { waitUntil: 'domcontentloaded' })
 
-    const tailorBtn = page.getByRole('button', { name: /tailor/i }).first()
+    const moreActions = page.getByRole('button', { name: 'More actions' }).first()
+    await expect(moreActions).toBeVisible()
+    await moreActions.click()
+    const tailorBtn = page.getByRole('button', { name: /Tailor to a job/i }).first()
     await expect(tailorBtn).toBeVisible()
   })
 
@@ -238,8 +242,7 @@ test.describe('Quick Tailor — workspace integration', () => {
     await mockAuthAndApi(page)
     await openQuickTailorModal(page)
 
-    // X button is the only button in the header area without text
-    await page.locator('button[class*="rounded-md"][class*="p-1.5"]').click()
+    await page.getByRole('button', { name: /close quick tailor/i }).click()
     await expect(page.getByRole('heading', { name: /quick tailor/i })).not.toBeVisible()
   })
 
@@ -300,11 +303,12 @@ test.describe('Quick Tailor — error state', () => {
 test.describe('Quick Tailor — list view', () => {
   test('Quick Tailor (Tailor) button is visible in list view', async ({ page }) => {
     await mockAuthAndApi(page)
-    await page.goto('/workspace')
-    await page.waitForLoadState('networkidle')
+    await page.goto('/workspace', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('button', { name: /list/i })).toBeVisible()
 
     // Switch to list view
     await page.getByRole('button', { name: /list/i }).click()
-    await expect(page.getByRole('button', { name: /tailor/i }).first()).toBeVisible()
+    await page.getByRole('button', { name: 'More actions' }).first().click()
+    await expect(page.getByRole('button', { name: /tailor to a job/i }).first()).toBeVisible()
   })
 })
