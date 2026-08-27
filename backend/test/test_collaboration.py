@@ -872,42 +872,38 @@ class TestCollabWebSocket:
 
         return TestClient(app, raise_server_exceptions=False)
 
-    def test_legacy_jwt_rejected_when_flag_disabled(self) -> None:
-        """H3: a self-signed HS256 token must not authenticate the collab socket."""
+    def test_invalid_ticket_is_rejected(self) -> None:
+        """A missing, expired, reused, or wrong-scope ticket cannot authenticate."""
         from starlette.websockets import WebSocketDisconnect
 
-        import app.middleware.auth_middleware as am
-
-        with (
-            patch.object(am, "_validate_better_auth_session", AsyncMock(return_value=None)),
-            patch.object(am.auth_middleware, "user_id", lambda token: "legacy-user"),
-            patch.object(am.settings, "LEGACY_JWT_ENABLED", False),
+        with patch(
+            "app.api.ws_routes._consume_ws_ticket",
+            AsyncMock(return_value=None),
         ):
             with pytest.raises(WebSocketDisconnect) as exc:
-                with self._client().websocket_connect("/ws/collab/r1?token=legacy") as ws:
+                with self._client().websocket_connect("/ws/collab/r1?ticket=spent") as ws:
                     ws.receive_bytes()
 
         assert exc.value.code == 4001
 
-    def test_legacy_jwt_accepted_when_flag_enabled(self) -> None:
-        """With the migration flag on, the legacy path authenticates as before."""
+    def test_valid_ticket_reaches_document_authorization(self) -> None:
+        """A valid ticket supplies identity, then normal resume ACLs apply."""
         from starlette.websockets import WebSocketDisconnect
-
-        import app.middleware.auth_middleware as am
 
         db = self._db_returning(None)  # resume lookup → not found
 
         with (
-            patch.object(am, "_validate_better_auth_session", AsyncMock(return_value=None)),
-            patch.object(am.auth_middleware, "user_id", lambda token: "legacy-user"),
-            patch.object(am.settings, "LEGACY_JWT_ENABLED", True),
+            patch(
+                "app.api.ws_routes._consume_ws_ticket",
+                AsyncMock(return_value="ticket-user"),
+            ),
             patch(
                 "app.database.connection.get_async_db_session",
                 self._fake_db_session(db),
             ),
         ):
             with pytest.raises(WebSocketDisconnect) as exc:
-                with self._client().websocket_connect("/ws/collab/r1?token=legacy") as ws:
+                with self._client().websocket_connect("/ws/collab/r1?ticket=fresh") as ws:
                     ws.receive_bytes()
 
         # Got past auth (4001) and was rejected by the resume lookup instead.
@@ -915,8 +911,6 @@ class TestCollabWebSocket:
 
     def test_viewer_document_update_is_refused(self) -> None:
         """H1: a collaborator invited as viewer cannot mutate the shared doc."""
-        import app.middleware.auth_middleware as am
-
         resume = MagicMock()
         resume.id = "r-viewer"
         resume.user_id = "alice"
@@ -928,7 +922,10 @@ class TestCollabWebSocket:
         mock_redis.lrange.return_value = []
 
         with (
-            patch.object(am, "_validate_better_auth_session", AsyncMock(return_value="bob")),
+            patch(
+                "app.api.ws_routes._consume_ws_ticket",
+                AsyncMock(return_value="bob"),
+            ),
             patch(
                 "app.database.connection.get_async_db_session",
                 self._fake_db_session(db),
@@ -939,7 +936,7 @@ class TestCollabWebSocket:
             ),
         ):
             with self._client().websocket_connect(
-                "/ws/collab/r-viewer?token=bob-session"
+                "/ws/collab/r-viewer?ticket=viewer-ticket"
             ) as ws:
                 ws.send_bytes(_make_sync_update(b"\x01\x02\x03"))
                 notice = ws.receive_bytes()
@@ -952,8 +949,6 @@ class TestCollabWebSocket:
 
     def test_editor_document_update_is_accepted(self) -> None:
         """The same frame from an editor is persisted and fanned out."""
-        import app.middleware.auth_middleware as am
-
         resume = MagicMock()
         resume.id = "r-editor"
         resume.user_id = "alice"
@@ -965,7 +960,10 @@ class TestCollabWebSocket:
         mock_redis.lrange.return_value = []
 
         with (
-            patch.object(am, "_validate_better_auth_session", AsyncMock(return_value="bob")),
+            patch(
+                "app.api.ws_routes._consume_ws_ticket",
+                AsyncMock(return_value="bob"),
+            ),
             patch(
                 "app.database.connection.get_async_db_session",
                 self._fake_db_session(db),
@@ -976,7 +974,7 @@ class TestCollabWebSocket:
             ),
         ):
             with self._client().websocket_connect(
-                "/ws/collab/r-editor?token=bob-session"
+                "/ws/collab/r-editor?ticket=editor-ticket"
             ) as ws:
                 ws.send_bytes(_make_sync_update(b"\x01\x02\x03"))
                 ws.send_bytes(_make_sync_step1())
