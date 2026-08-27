@@ -1,11 +1,16 @@
 """Regression coverage for Redis provider capacity monitoring."""
 
+from unittest.mock import AsyncMock, Mock, patch
+
 import httpx
 import pytest
+import redis
+import redis.asyncio as aioredis
 import respx
 
 from app.core.config import settings
 from app.core.observability import classify_redis_error
+from app.core.redis import ObservedAsyncRedis, ObservedSyncRedis
 from app.services.redis_capacity_service import RedisCapacityService
 
 _DATABASE_ID = "db-capacity-test"
@@ -130,3 +135,37 @@ def test_redis_provider_errors_have_stable_alert_classes():
     assert classify_redis_error(ConnectionError("connection refused")) == "connection"
     assert classify_redis_error(RuntimeError("ERR max commands per second exceeded")) == "throttled"
     assert classify_redis_error(RuntimeError("WRONGTYPE")) == "other"
+
+
+async def test_async_redis_client_records_success_without_an_extra_command():
+    client = ObservedAsyncRedis.from_url(
+        "redis://localhost:6379/0",
+        dependency_role="cache",
+        decode_responses=True,
+    )
+    execute = AsyncMock(return_value=True)
+    with patch.object(aioredis.Redis, "execute_command", execute), \
+         patch("app.core.redis.record_redis_command") as record:
+        assert await client.ping() is True
+
+    execute.assert_awaited_once()
+    record.assert_called_once_with("cache")
+    await client.aclose()
+
+
+def test_sync_redis_client_records_provider_error_without_swallowing_it():
+    client = ObservedSyncRedis.from_url(
+        "redis://localhost:6379/0",
+        dependency_role="queue",
+        decode_responses=True,
+    )
+    error = redis.ResponseError("ERR max requests limit exceeded")
+    execute = Mock(side_effect=error)
+    with patch.object(redis.Redis, "execute_command", execute), \
+         patch("app.core.redis.record_redis_command") as record:
+        with pytest.raises(redis.ResponseError, match="max requests"):
+            client.ping()
+
+    execute.assert_called_once()
+    record.assert_called_once_with("queue", error)
+    client.close()
