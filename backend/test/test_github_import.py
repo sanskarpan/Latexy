@@ -1,7 +1,7 @@
 """Tests for GitHub project import (Feature 1 — external sources to resume)."""
 
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import text
@@ -348,14 +348,19 @@ class TestImportEndpoints:
 
     async def test_post_returns_job_id(self, client, auth_headers, db_session, monkeypatch):
         user_id = await _connect_github(db_session, auth_headers)
+        budget = AsyncMock()
+        monkeypatch.setattr(
+            "app.api.github_routes.enforce_external_budget", budget
+        )
 
         captured = {}
 
-        def _fake_submit(*, job_id, user_id, user_plan="free"):
+        def _fake_submit(*, job_id, user_id, user_plan="free", quota_refund=None):
             captured.update(
                 job_id=job_id,
                 user_id=user_id,
                 user_plan=user_plan,
+                quota_refund=quota_refund,
             )
             return job_id
 
@@ -365,8 +370,11 @@ class TestImportEndpoints:
         assert resp.status_code == 200
         body = resp.json()
         assert "job_id" in body and body["job_id"]
-        assert set(captured) == {"job_id", "user_id", "user_plan"}
+        assert set(captured) == {"job_id", "user_id", "user_plan", "quota_refund"}
         assert captured["job_id"] == body["job_id"]
+        assert captured["quota_refund"]["dimension"] == "ai_assists"
+        assert captured["quota_refund"]["user_id"] == user_id
+        assert budget.await_args.kwargs["client_id"] == f"user:{user_id}"
 
         from app.core.redis import get_redis_client
 
