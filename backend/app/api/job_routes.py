@@ -435,6 +435,7 @@ async def submit_job(
                 metadata=extra_meta,
                 compiler=compiler,
                 compile_settings=compile_settings,
+                quota_refund=quota_ticket.refund_payload() if quota_ticket else None,
             )
 
         elif request.job_type == "llm_optimization":
@@ -621,6 +622,7 @@ async def compile_watermarked(
             metadata={"ip_address": ip_address, "submitted_via": "watermark"},
             compiler=compiler,
             watermark=watermark,
+            quota_refund=quota_ticket.refund_payload() if quota_ticket else None,
         )
 
         return JobSubmissionResponse(
