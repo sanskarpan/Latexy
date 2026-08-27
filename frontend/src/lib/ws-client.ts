@@ -3,7 +3,7 @@
  *
  * Features:
  * - Single persistent WebSocket to /ws/jobs — a socket that is replaced
- *   (setToken/disconnect) is detached first so its late close event cannot
+ *   (auth change/disconnect) is detached first so its late close event cannot
  *   tear down or duplicate the live one
  * - Exponential backoff reconnect (100ms → 200ms → 400ms → … max 30s)
  * - Auto-resubscribes all pending jobs on reconnect, sending last_event_id
@@ -15,7 +15,7 @@
  * - Heartbeat ping every 25s when connected
  */
 
-import { getWebSocketUrl } from './api-client'
+import { apiClient, getWebSocketUrl } from './api-client'
 import type { AnyEvent } from './event-types'
 import { createTraceHeaders } from './telemetry'
 
@@ -63,10 +63,18 @@ export class WSClient {
   private _maxReconnectDelay = 30_000 // ms
   private _heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private _manuallyDisconnected = false
+  private _connectRequested = false
+  private _socketGeneration = 0
 
-  /** Better Auth session token, forwarded as ?token= so the backend can
-   *  authorize access to the user's own (owner-scoped) jobs. Null = anonymous. */
-  private _token: string | null = null
+  /** Whether the HTTP client can mint an authenticated one-time WS ticket. The
+   * reusable Better Auth credential stays inside apiClient and never enters a
+   * WebSocket URL. */
+  private _authenticated = false
+
+  constructor(
+    private readonly _ticketProvider: () => Promise<string> = async () =>
+      (await apiClient.createWebSocketTicket('jobs')).ticket,
+  ) {}
 
   /**
    * job_id → last received stream entry ID (for replay on reconnect).
@@ -84,6 +92,7 @@ export class WSClient {
 
   connect(): void {
     this._manuallyDisconnected = false
+    this._connectRequested = true
 
     if (this._ws && this._ws.readyState === WebSocket.OPEN) return
     if (this._ws && this._ws.readyState === WebSocket.CONNECTING) return
@@ -91,27 +100,22 @@ export class WSClient {
     this._openSocket()
   }
 
-  /** Set (or clear) the auth token used for the WS handshake. Reconnects if the
-   *  token changed while connected so the new identity takes effect. */
-  setToken(token: string | null): void {
-    if (this._token === token) return
-    this._token = token
-    // The existing socket was opened with the OLD token in its ?token= handshake
-    // query. Refresh it whenever a socket exists — including while it is still
-    // CONNECTING (a common race: the Better Auth session resolves just after the
-    // WS starts connecting, so the first socket is anonymous and would otherwise
-    // never pick up the token → the backend denies the user's own jobs).
-    // _closeSocket detaches handlers + stops the heartbeat; _openSocket rebuilds
-    // the ?token= handshake. onclose/onmessage also carry `this._ws !== ws`
-    // identity guards so a superseded socket can't race the reopen.
+  /** Reconnect when the resolved session changes between anonymous/authenticated.
+   * Authenticated handshakes mint a fresh purpose-bound, single-use ticket. */
+  setAuthenticated(authenticated: boolean): void {
+    if (this._authenticated === authenticated) return
+    this._authenticated = authenticated
+    this._socketGeneration++ // invalidate an in-flight ticket request
     if (this._ws) {
       this._closeSocket(1000, 'Reconnect with updated auth')
-      if (!this._manuallyDisconnected) this._openSocket()
     }
+    if (this._connectRequested && !this._manuallyDisconnected) this._openSocket()
   }
 
   disconnect(): void {
     this._manuallyDisconnected = true
+    this._connectRequested = false
+    this._socketGeneration++ // invalidate an in-flight ticket request
     this._cancelReconnect()
     if (this._ws) {
       this._closeSocket(1000, 'Client disconnect')
@@ -185,6 +189,26 @@ export class WSClient {
     // Never leave a previous socket attached — exactly one live socket per client.
     if (this._ws) this._closeSocket(1000, 'Replaced by new connection')
 
+    const generation = ++this._socketGeneration
+    if (!this._authenticated) {
+      this._createSocket(null, generation)
+      return
+    }
+
+    // Fetch over normal authenticated HTTP so the reusable session credential
+    // never appears in the WebSocket request URL. Every reconnect gets a new
+    // ticket because the backend atomically consumes it on first use.
+    void this._ticketProvider()
+      .then((ticket) => this._createSocket(ticket, generation))
+      .catch(() => {
+        if (generation === this._socketGeneration && !this._manuallyDisconnected) {
+          this._scheduleReconnect()
+        }
+      })
+  }
+
+  private _createSocket(ticket: string | null, generation: number): void {
+    if (generation !== this._socketGeneration || this._manuallyDisconnected) return
     try {
       const url = new URL(getWebSocketUrl())
       const traceHeaders = createTraceHeaders()
@@ -194,8 +218,8 @@ export class WSClient {
       if (traceHeaders['X-Request-ID']) {
         url.searchParams.set('request_id', traceHeaders['X-Request-ID'])
       }
-      if (this._token) {
-        url.searchParams.set('token', this._token)
+      if (ticket) {
+        url.searchParams.set('ticket', ticket)
       }
       const ws = new WebSocket(url.toString())
       this._ws = ws
@@ -218,7 +242,7 @@ export class WSClient {
       }
 
       ws.onclose = (event: CloseEvent) => {
-        // A socket replaced by setToken()/disconnect() closes asynchronously.
+        // A socket replaced by an auth change/disconnect closes asynchronously.
         // Without this identity check it would null out (and schedule a
         // reconnect for) the socket that already took its place.
         if (this._ws !== ws) return
