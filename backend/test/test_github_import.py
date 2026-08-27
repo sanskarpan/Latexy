@@ -48,6 +48,36 @@ def _repo(
     }
 
 
+class TestPublicOnlyRepositoryDiscovery:
+    def test_graphql_connection_filters_public_visibility(self):
+        assert "privacy: PUBLIC" in gh._CANDIDATES_QUERY
+        assert "isPrivate" in gh._REPO_FIELDS
+
+    def test_private_pinned_repository_is_rejected_defensively(self):
+        private_node = {
+            "name": "confidential-product",
+            "isPrivate": True,
+            "owner": {"login": "octocat"},
+            "readmeMd": {"byteSize": 4000},
+        }
+
+        assert gh._parse_repo_node(private_node, pinned=True) is None
+
+    def test_public_pinned_repository_remains_importable(self):
+        public_node = {
+            "name": "public-project",
+            "isPrivate": False,
+            "owner": {"login": "octocat"},
+            "readmeMd": {"byteSize": 4000},
+        }
+
+        parsed = gh._parse_repo_node(public_node, pinned=True)
+
+        assert parsed is not None
+        assert parsed["name"] == "public-project"
+        assert parsed["pinned"] is True
+
+
 class TestRankRepos:
     def test_orders_by_score_stars_dominate(self):
         repos = [
