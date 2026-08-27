@@ -6,6 +6,10 @@ const PORT = parseInt(process.env.PLAYWRIGHT_PORT ?? '5181')
 
 export default defineConfig({
   testDir: './e2e',
+  // The audit specs intentionally hit live services, write artifacts under
+  // /tmp, and require the documented audit user fixture. Run them explicitly;
+  // they are not deterministic members of the mocked regression suite.
+  testIgnore: ['**/audit-*.spec.ts'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 1,
