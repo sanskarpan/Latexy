@@ -1,3 +1,5 @@
+import { DEFAULT_BACKEND_URL } from './config.js'
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -322,7 +324,7 @@ function sleep(ms: number): Promise<void> {
 let _client: ApiClient | null = null
 
 export function getApiClient(): ApiClient {
-  if (!_client) _client = new ApiClient({ baseUrl: 'http://localhost:8030' })
+  if (!_client) _client = new ApiClient({ baseUrl: DEFAULT_BACKEND_URL })
   return _client
 }
 
