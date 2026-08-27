@@ -140,6 +140,21 @@ export default function ImportProjectsModal({
     }
   }, [beginGithub, source])
 
+  const connectGithubForImport = useCallback(async () => {
+    setPhase('checking')
+    setError(null)
+    try {
+      const { authorization_url: authorizationUrl } = await apiClient.startGitHubOAuth(
+        'import',
+        window.location.pathname,
+      )
+      window.location.assign(authorizationUrl)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start GitHub connection')
+      setPhase('error')
+    }
+  }, [])
+
   // ── URL: synchronous fetch + summarize ──────────────────────────────────────
   const runUrlImport = useCallback(async () => {
     const url = urlInput.trim()
@@ -356,11 +371,16 @@ export default function ImportProjectsModal({
               <div className="py-12 text-center">
                 <p className="text-sm text-fg-2">GitHub isn&apos;t connected yet.</p>
                 <p className="mx-auto mt-1 max-w-sm text-[11px] text-fg-3">
-                  Connect your account in Settings → GitHub Integration, then reopen this import.
+                  Connect with public-profile access only. Latexy will read public repository
+                  metadata and READMEs; this import grant cannot access private repositories.
                 </p>
-                <a href="/settings" className="mt-4 inline-block rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-semibold text-fg transition hover:bg-surface-2">
-                  Go to Settings
-                </a>
+                <button
+                  onClick={connectGithubForImport}
+                  className="mt-4 inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-semibold text-fg transition hover:bg-surface-2"
+                >
+                  <Github size={13} />
+                  Connect public GitHub projects
+                </button>
               </div>
             )}
             {phase === 'error' && (
