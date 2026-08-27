@@ -32,6 +32,7 @@ router = APIRouter(prefix="/github", tags=["github"])
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
+
 class GitHubStatusResponse(BaseModel):
     connected: bool
     username: Optional[str] = None
@@ -70,6 +71,7 @@ class GitHubImportResultResponse(BaseModel):
 
 # ── OAuth flow ───────────────────────────────────────────────────────────────
 
+
 @router.get("/connect", dependencies=[Depends(require_feature("integration_github"))])
 async def github_connect(
     user_id: str = Depends(get_current_user_required),
@@ -85,20 +87,20 @@ async def github_connect(
     nonce = secrets.token_urlsafe(32)
     await cache_manager.set(f"gh:oauth:{nonce}", user_id, ttl=600)  # 10 min TTL
 
-    params = urllib.parse.urlencode({
-        "client_id": settings.GITHUB_CLIENT_ID,
-        "redirect_uri": settings.GITHUB_OAUTH_REDIRECT_URI,
-        "scope": "repo",
-        "state": nonce,
-    })
+    params = urllib.parse.urlencode(
+        {
+            "client_id": settings.GITHUB_CLIENT_ID,
+            "redirect_uri": settings.GITHUB_OAUTH_REDIRECT_URI,
+            "scope": "repo",
+            "state": nonce,
+        }
+    )
     return RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
 
 
 def _github_error_redirect(reason: str) -> RedirectResponse:
     """Send the browser back to the settings page with a friendly error flag."""
-    return RedirectResponse(
-        f"{settings.FRONTEND_URL}/settings?github=error&reason={urllib.parse.quote(reason)}"
-    )
+    return RedirectResponse(f"{settings.FRONTEND_URL}/settings?github=error&reason={urllib.parse.quote(reason)}")
 
 
 @router.get("/callback")
@@ -167,9 +169,7 @@ async def github_callback(
 
     # Store on user
     await db.execute(
-        update(User)
-        .where(User.id == user_id)
-        .values(github_access_token=encrypted_token, github_username=username)
+        update(User).where(User.id == user_id).values(github_access_token=encrypted_token, github_username=username)
     )
     await db.commit()
 
@@ -178,6 +178,7 @@ async def github_callback(
 
 
 # ── Status + Disconnect ──────────────────────────────────────────────────────
+
 
 @router.get("/status", response_model=GitHubStatusResponse)
 async def github_status(
@@ -201,21 +202,14 @@ async def github_disconnect(
     user_id: str = Depends(get_current_user_required),
 ):
     """Clear GitHub token and disable sync on all resumes."""
-    await db.execute(
-        update(User)
-        .where(User.id == user_id)
-        .values(github_access_token=None, github_username=None)
-    )
-    await db.execute(
-        update(Resume)
-        .where(Resume.user_id == user_id)
-        .values(github_sync_enabled=False)
-    )
+    await db.execute(update(User).where(User.id == user_id).values(github_access_token=None, github_username=None))
+    await db.execute(update(Resume).where(Resume.user_id == user_id).values(github_sync_enabled=False))
     await db.commit()
     return {"success": True, "message": "GitHub disconnected"}
 
 
 # ── Per-resume sync endpoints ────────────────────────────────────────────────
+
 
 @router.post("/resumes/{resume_id}/enable", response_model=GitHubResumeStatus)
 async def enable_github_sync(
@@ -233,9 +227,7 @@ async def enable_github_sync(
             detail="GitHub not connected. Go to Settings → GitHub Integration to connect your account.",
         )
 
-    resume_result = await db.execute(
-        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
-    )
+    resume_result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
     resume = resume_result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -275,9 +267,7 @@ async def disable_github_sync(
     user_id: str = Depends(get_current_user_required),
 ):
     """Disable GitHub sync for a resume."""
-    resume_result = await db.execute(
-        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
-    )
+    resume_result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
     resume = resume_result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -305,9 +295,7 @@ async def push_to_github(
     if not user or not user.github_access_token:
         raise HTTPException(status_code=400, detail="GitHub not connected")
 
-    resume_result = await db.execute(
-        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
-    )
+    resume_result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
     resume = resume_result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -365,9 +353,7 @@ async def pull_from_github(
     if not user or not user.github_access_token:
         raise HTTPException(status_code=400, detail="GitHub not connected")
 
-    resume_result = await db.execute(
-        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
-    )
+    resume_result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
     resume = resume_result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -405,6 +391,7 @@ async def pull_from_github(
 
 # ── Resume GitHub status ─────────────────────────────────────────────────────
 
+
 @router.post("/import-projects", response_model=GitHubImportStartResponse)
 async def import_github_projects(
     db: AsyncSession = Depends(get_db),
@@ -440,7 +427,23 @@ async def import_github_projects(
         user_plan = user.subscription_plan
 
     job_id = str(uuid.uuid4())
+    redis = await get_redis_client()
+    result_key = gh_projects.import_result_key(job_id)
     try:
+        # Establish ownership before dispatch. Without this marker an arbitrary
+        # UUID looked like a legitimate pending job, and there was no owner to
+        # check until (or even after) the worker wrote its result.
+        await redis.setex(
+            result_key,
+            gh_projects.IMPORT_RESULT_TTL,
+            gh_projects.encode_result(
+                {
+                    "user_id": user_id,
+                    "status": "pending",
+                    "projects": [],
+                }
+            ),
+        )
         submit_github_import(
             job_id=job_id,
             user_id=user_id,
@@ -450,6 +453,14 @@ async def import_github_projects(
         )
     except Exception as exc:
         logger.error(f"Failed to submit GitHub import job {job_id}: {exc}")
+        try:
+            await redis.delete(result_key)
+        except Exception as cleanup_exc:
+            logger.warning(
+                "Failed to remove undispatched GitHub import marker %s: %s",
+                job_id,
+                cleanup_exc,
+            )
         raise HTTPException(
             status_code=503,
             detail="Failed to start GitHub import. Please try again.",
@@ -471,8 +482,10 @@ async def get_github_import_result(
     redis = await get_redis_client()
     raw = await redis.get(gh_projects.import_result_key(job_id))
     envelope = gh_projects.decode_result(raw)
-    if envelope is None:
-        return GitHubImportResultResponse(status="pending", projects=[])
+    # A miss, malformed/legacy ownerless envelope, and another user's job are
+    # deliberately indistinguishable so this endpoint cannot enumerate jobs.
+    if envelope is None or envelope.get("user_id") != user_id:
+        raise HTTPException(status_code=404, detail="Import job not found")
 
     return GitHubImportResultResponse(
         status=envelope.get("status", "pending"),
@@ -488,9 +501,7 @@ async def get_resume_github_status(
     user_id: str = Depends(get_current_user_required),
 ):
     """Get GitHub sync status for a resume."""
-    resume_result = await db.execute(
-        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
-    )
+    resume_result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
     resume = resume_result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
