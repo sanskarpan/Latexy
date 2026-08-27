@@ -480,6 +480,9 @@ async def compile_latex_endpoint(
         # Compile LaTeX
         result = await latex_service.compile_latex(latex_content)
 
+        if not result.success:
+            await entitlement_service.refund_quota(quota_ticket)
+
         # Schedule cleanup after retention period only if compilation was successful
         if result.success:
             job_dir = settings.TEMP_DIR / result.job_id
