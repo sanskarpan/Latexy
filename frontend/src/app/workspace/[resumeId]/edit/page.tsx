@@ -2576,7 +2576,6 @@ export default function ResumeEditPage() {
               collabUser={sessionData?.session?.token ? {
                 name: sessionData.user?.name || sessionData.user?.email || 'Anonymous',
                 color: `hsl(${Math.abs(sessionData.user?.id?.charCodeAt(0) ?? 0) % 360}, 70%, 60%)`,
-                token: sessionData.session.token,
               } : undefined}
               onPresenceChange={setPresenceUsers}
               trackedChanges={trackedChanges}
