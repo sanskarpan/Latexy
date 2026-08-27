@@ -26,13 +26,14 @@ from ..workers.event_publisher import get_worker_redis, is_cancelled, publish_ev
 logger = get_logger(__name__)
 
 
-def _store_result(job_id: str, payload: Dict[str, Any]) -> None:
-    """Persist the import result envelope to Redis with a ~1h TTL."""
+def _store_result(job_id: str, user_id: str, payload: Dict[str, Any]) -> None:
+    """Persist an owner-bound import result envelope with a ~1h TTL."""
     r = get_worker_redis()
+    owned_payload = {**payload, "user_id": user_id}
     r.setex(
         gh.import_result_key(job_id),
         gh.IMPORT_RESULT_TTL,
-        gh.encode_result(payload),
+        gh.encode_result(owned_payload),
     )
 
 
@@ -63,19 +64,26 @@ def import_github_projects_task(
     if job_id is None:
         job_id = str(uuid.uuid4())
 
+    if not user_id:
+        logger.error("Refusing ownerless GitHub import job %s", job_id)
+        return {"success": False, "job_id": job_id, "error": "user_id is required"}
+
     task_id = self.request.id
     worker_id = f"github-import-{task_id}"
     logger.info(f"GitHub import task {task_id} starting for job {job_id}")
 
     if not github_token:
-        publish_event(job_id, "job.failed", {
-            "stage": "github_import",
-            "error_code": "github_not_connected",
-            "error_message": "No GitHub token available for this import.",
-            "retryable": False,
-        })
-        _store_result(job_id, {"status": "failed", "projects": [],
-                               "error": "GitHub not connected"})
+        publish_event(
+            job_id,
+            "job.failed",
+            {
+                "stage": "github_import",
+                "error_code": "github_not_connected",
+                "error_message": "No GitHub token available for this import.",
+                "retryable": False,
+            },
+        )
+        _store_result(job_id, user_id, {"status": "failed", "projects": [], "error": "GitHub not connected"})
         return {"success": False, "job_id": job_id, "error": "GitHub not connected"}
 
     publish_event(job_id, "job.started", {"worker_id": worker_id, "stage": "github_import"})
@@ -84,23 +92,38 @@ def import_github_projects_task(
     # GitHub's secondary rate limits.
     client = httpx.Client(timeout=20)
     try:
-        publish_event(job_id, "job.progress", {
-            "percent": 10, "stage": "github_import",
-            "message": "Fetching your GitHub projects",
-        })
+        publish_event(
+            job_id,
+            "job.progress",
+            {
+                "percent": 10,
+                "stage": "github_import",
+                "message": "Fetching your GitHub projects",
+            },
+        )
         candidates = gh.fetch_candidate_repos(github_token, client=client)
 
-        publish_event(job_id, "job.progress", {
-            "percent": 25, "stage": "github_import",
-            "message": "Ranking your top projects",
-        })
+        publish_event(
+            job_id,
+            "job.progress",
+            {
+                "percent": 25,
+                "stage": "github_import",
+                "message": "Ranking your top projects",
+            },
+        )
         top = gh.rank_repos(candidates)
 
         if not top:
-            _store_result(job_id, {"status": "completed", "projects": []})
-            publish_event(job_id, "job.completed", {
-                "stage": "github_import", "project_count": 0,
-            })
+            _store_result(job_id, user_id, {"status": "completed", "projects": []})
+            publish_event(
+                job_id,
+                "job.completed",
+                {
+                    "stage": "github_import",
+                    "project_count": 0,
+                },
+            )
             logger.info(f"GitHub import job {job_id}: no eligible projects")
             return {"success": True, "job_id": job_id, "project_count": 0}
 
@@ -109,8 +132,7 @@ def import_github_projects_task(
         for idx, repo in enumerate(top):
             if is_cancelled(job_id):
                 publish_event(job_id, "job.cancelled", {})
-                _store_result(job_id, {"status": "failed", "projects": projects,
-                                       "error": "cancelled"})
+                _store_result(job_id, user_id, {"status": "failed", "projects": projects, "error": "cancelled"})
                 return {"success": False, "job_id": job_id, "cancelled": True}
 
             owner, name = repo["owner"], repo["name"]
@@ -127,44 +149,63 @@ def import_github_projects_task(
             projects.append(gh.build_project_evidence(repo, summary))
 
             percent = 25 + int(70 * (idx + 1) / total)
-            publish_event(job_id, "job.progress", {
-                "percent": percent, "stage": "github_import",
-                "message": f"Summarized {name}",
-            })
+            publish_event(
+                job_id,
+                "job.progress",
+                {
+                    "percent": percent,
+                    "stage": "github_import",
+                    "message": f"Summarized {name}",
+                },
+            )
 
-        _store_result(job_id, {"status": "completed", "projects": projects})
-        publish_event(job_id, "job.completed", {
-            "stage": "github_import", "project_count": len(projects),
-        })
+        _store_result(job_id, user_id, {"status": "completed", "projects": projects})
+        publish_event(
+            job_id,
+            "job.completed",
+            {
+                "stage": "github_import",
+                "project_count": len(projects),
+            },
+        )
         logger.info(f"GitHub import job {job_id}: {len(projects)} projects imported")
         return {"success": True, "job_id": job_id, "project_count": len(projects)}
 
     except SoftTimeLimitExceeded:
         logger.error(f"GitHub import task {task_id} exceeded soft time limit for job {job_id}")
-        publish_event(job_id, "job.failed", {
-            "stage": "github_import",
-            "error_code": "timeout",
-            "error_message": "Import exceeded time limit",
-            "retryable": False,
-        })
-        _store_result(job_id, {"status": "failed", "projects": [], "error": "timeout"})
+        publish_event(
+            job_id,
+            "job.failed",
+            {
+                "stage": "github_import",
+                "error_code": "timeout",
+                "error_message": "Import exceeded time limit",
+                "retryable": False,
+            },
+        )
+        _store_result(job_id, user_id, {"status": "failed", "projects": [], "error": "timeout"})
         return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
 
     except Exception as exc:
         from celery.exceptions import Retry
+
         if isinstance(exc, Retry):
             raise
         logger.error(f"GitHub import task {task_id} raised: {exc}")
         has_retries_left = self.request.retries < self.max_retries
-        publish_event(job_id, "job.failed", {
-            "stage": "github_import",
-            "error_code": "github_import_error",
-            "error_message": str(exc),
-            "retryable": has_retries_left,
-        })
+        publish_event(
+            job_id,
+            "job.failed",
+            {
+                "stage": "github_import",
+                "error_code": "github_import_error",
+                "error_message": str(exc),
+                "retryable": has_retries_left,
+            },
+        )
         if has_retries_left:
             raise self.retry(countdown=60, exc=exc)
-        _store_result(job_id, {"status": "failed", "projects": [], "error": str(exc)})
+        _store_result(job_id, user_id, {"status": "failed", "projects": [], "error": str(exc)})
         return {"success": False, "job_id": job_id, "error": str(exc)}
 
     finally:
@@ -174,6 +215,7 @@ def import_github_projects_task(
 # ------------------------------------------------------------------ #
 #  Submission helper                                                   #
 # ------------------------------------------------------------------ #
+
 
 def submit_github_import(
     job_id: str,
@@ -189,12 +231,16 @@ def submit_github_import(
     # unconditional apply_async() would hand back a job id for work nothing runs.
     if os.environ.get("DEPLOY_TARGET") == "modal":
         from ..core.modal_dispatch import spawn
-        spawn("run_github_import_task", {
-            "job_id": job_id,
-            "user_id": user_id,
-            "github_token": github_token,
-            "api_key": api_key,
-        })
+
+        spawn(
+            "run_github_import_task",
+            {
+                "job_id": job_id,
+                "user_id": user_id,
+                "github_token": github_token,
+                "api_key": api_key,
+            },
+        )
         logger.info(f"Dispatched GitHub import to Modal for job {job_id}")
         return job_id
 

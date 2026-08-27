@@ -1,18 +1,29 @@
 """Tests for GitHub project import (Feature 1 — external sources to resume)."""
 
 import uuid
+from unittest.mock import MagicMock, patch
 
 from sqlalchemy import text
 
 from app.services import github_projects_service as gh
 from app.services.encryption_service import encryption_service
+from app.workers.github_import_worker import _store_result
 
 # ── rank_repos (pure, no network) ────────────────────────────────────────────
 
 
-def _repo(name, *, stars=0, forks=0, pinned=False, archived=False,
-          readme_bytes=500, topics=None, description="A project",
-          pushed_at="2026-07-01T00:00:00Z"):
+def _repo(
+    name,
+    *,
+    stars=0,
+    forks=0,
+    pinned=False,
+    archived=False,
+    readme_bytes=500,
+    topics=None,
+    description="A project",
+    pushed_at="2026-07-01T00:00:00Z",
+):
     return {
         "name": name,
         "owner": "octocat",
@@ -91,8 +102,15 @@ class TestBuildProjectEvidence:
         assert "raw_excerpt" in ev
         # required keys, exactly
         assert set(ev.keys()) == {
-            "source", "title", "description", "tech", "metrics",
-            "dates", "url", "suggested_bullets", "raw_excerpt",
+            "source",
+            "title",
+            "description",
+            "tech",
+            "metrics",
+            "dates",
+            "url",
+            "suggested_bullets",
+            "raw_excerpt",
         }
 
     def test_falls_back_to_repo_description_when_summary_blank(self):
@@ -112,16 +130,42 @@ def test_result_envelope_round_trip():
     assert gh.decode_result("!!not-base64!!") is None
 
 
+def test_worker_result_envelope_is_owner_bound():
+    redis = MagicMock()
+    with patch(
+        "app.workers.github_import_worker.get_worker_redis",
+        return_value=redis,
+    ):
+        _store_result(
+            "job-1",
+            "user-1",
+            {"status": "completed", "projects": [{"title": "safe"}]},
+        )
+
+    key, ttl, raw = redis.setex.call_args.args
+    assert key == gh.import_result_key("job-1")
+    assert ttl == gh.IMPORT_RESULT_TTL
+    assert gh.decode_result(raw) == {
+        "user_id": "user-1",
+        "status": "completed",
+        "projects": [{"title": "safe"}],
+    }
+
+
 # ── Endpoint tests ───────────────────────────────────────────────────────────
 
 
-async def _connect_github(db_session, headers) -> str:
-    """Set an encrypted GitHub token on the auth_headers user; return user_id."""
+async def _user_id_for_headers(db_session, headers) -> str:
     row = await db_session.execute(
         text('SELECT "userId" FROM session WHERE token = :t'),
         {"t": headers["Authorization"].replace("Bearer ", "")},
     )
-    user_id = row.scalar_one()
+    return row.scalar_one()
+
+
+async def _connect_github(db_session, headers) -> str:
+    """Set an encrypted GitHub token on the auth_headers user; return user_id."""
+    user_id = await _user_id_for_headers(db_session, headers)
     await db_session.execute(
         text("UPDATE users SET github_access_token = :tok, github_username = 'octocat' WHERE id = :id"),
         {"tok": encryption_service.encrypt("gho_testtoken"), "id": user_id},
@@ -138,20 +182,21 @@ class TestImportEndpoints:
         assert "not connected" in resp.json()["detail"].lower()
 
     async def test_post_returns_job_id(self, client, auth_headers, db_session, monkeypatch):
-        await _connect_github(db_session, auth_headers)
+        user_id = await _connect_github(db_session, auth_headers)
 
         captured = {}
 
         def _fake_submit(*, job_id, user_id, github_token, api_key, user_plan="free"):
             captured.update(
-                job_id=job_id, user_id=user_id, github_token=github_token,
-                api_key=api_key, user_plan=user_plan,
+                job_id=job_id,
+                user_id=user_id,
+                github_token=github_token,
+                api_key=api_key,
+                user_plan=user_plan,
             )
             return job_id
 
-        monkeypatch.setattr(
-            "app.api.github_routes.submit_github_import", _fake_submit
-        )
+        monkeypatch.setattr("app.api.github_routes.submit_github_import", _fake_submit)
 
         resp = await client.post("/github/import-projects", headers=auth_headers)
         assert resp.status_code == 200
@@ -162,43 +207,170 @@ class TestImportEndpoints:
         assert captured["api_key"] is None
         assert captured["job_id"] == body["job_id"]
 
-    async def test_get_returns_pending_when_absent(self, client, auth_headers):
-        resp = await client.get(
-            f"/github/import-projects/{uuid.uuid4()}", headers=auth_headers
-        )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["status"] == "pending"
-        assert body["projects"] == []
-
-    async def test_get_returns_stored_evidence(self, client, auth_headers):
         from app.core.redis import get_redis_client
 
+        redis = await get_redis_client()
+        marker = gh.decode_result(await redis.get(gh.import_result_key(body["job_id"])))
+        assert marker == {
+            "user_id": user_id,
+            "status": "pending",
+            "projects": [],
+        }
+
+    async def test_get_returns_404_when_absent(self, client, auth_headers):
+        resp = await client.get(f"/github/import-projects/{uuid.uuid4()}", headers=auth_headers)
+        assert resp.status_code == 404
+
+    async def test_get_returns_pending_for_owned_marker(self, client, auth_headers, db_session):
+        from app.core.redis import get_redis_client
+
+        user_id = await _user_id_for_headers(db_session, auth_headers)
         job_id = str(uuid.uuid4())
-        projects = [{
-            "source": "github", "title": "acme", "description": "does things",
-            "tech": ["Python"], "metrics": {"stars": 9, "forks": 2},
-            "dates": {"last_active": "2026-07-01T00:00:00Z"},
-            "url": "https://github.com/octocat/acme",
-            "suggested_bullets": ["Built acme"], "raw_excerpt": "# acme",
-        }]
         redis = await get_redis_client()
         await redis.setex(
             gh.import_result_key(job_id),
             gh.IMPORT_RESULT_TTL,
-            gh.encode_result({"status": "completed", "projects": projects}),
+            gh.encode_result(
+                {
+                    "user_id": user_id,
+                    "status": "pending",
+                    "projects": [],
+                }
+            ),
         )
 
-        resp = await client.get(
-            f"/github/import-projects/{job_id}", headers=auth_headers
+        resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "status": "pending",
+            "projects": [],
+            "error": None,
+        }
+
+    async def test_get_returns_stored_evidence(self, client, auth_headers, db_session):
+        from app.core.redis import get_redis_client
+
+        user_id = await _user_id_for_headers(db_session, auth_headers)
+        job_id = str(uuid.uuid4())
+        projects = [
+            {
+                "source": "github",
+                "title": "acme",
+                "description": "does things",
+                "tech": ["Python"],
+                "metrics": {"stars": 9, "forks": 2},
+                "dates": {"last_active": "2026-07-01T00:00:00Z"},
+                "url": "https://github.com/octocat/acme",
+                "suggested_bullets": ["Built acme"],
+                "raw_excerpt": "# acme",
+            }
+        ]
+        redis = await get_redis_client()
+        await redis.setex(
+            gh.import_result_key(job_id),
+            gh.IMPORT_RESULT_TTL,
+            gh.encode_result(
+                {
+                    "user_id": user_id,
+                    "status": "completed",
+                    "projects": projects,
+                }
+            ),
         )
+
+        resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers)
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "completed"
         assert body["projects"] == projects
 
+    async def test_get_returns_owned_failure(self, client, auth_headers, db_session):
+        from app.core.redis import get_redis_client
+
+        user_id = await _user_id_for_headers(db_session, auth_headers)
+        job_id = str(uuid.uuid4())
+        redis = await get_redis_client()
+        await redis.setex(
+            gh.import_result_key(job_id),
+            gh.IMPORT_RESULT_TTL,
+            gh.encode_result(
+                {
+                    "user_id": user_id,
+                    "status": "failed",
+                    "projects": [],
+                    "error": "GitHub unavailable",
+                }
+            ),
+        )
+
+        resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "status": "failed",
+            "projects": [],
+            "error": "GitHub unavailable",
+        }
+
+    async def test_get_hides_another_users_job(self, client, auth_headers, auth_headers2, db_session):
+        from app.core.redis import get_redis_client
+
+        owner_id = await _user_id_for_headers(db_session, auth_headers)
+        job_id = str(uuid.uuid4())
+        redis = await get_redis_client()
+        await redis.setex(
+            gh.import_result_key(job_id),
+            gh.IMPORT_RESULT_TTL,
+            gh.encode_result(
+                {
+                    "user_id": owner_id,
+                    "status": "completed",
+                    "projects": [{"title": "private-to-owner"}],
+                }
+            ),
+        )
+
+        resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers2)
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Import job not found"
+
+    async def test_get_hides_legacy_ownerless_result(self, client, auth_headers):
+        from app.core.redis import get_redis_client
+
+        job_id = str(uuid.uuid4())
+        redis = await get_redis_client()
+        await redis.setex(
+            gh.import_result_key(job_id),
+            gh.IMPORT_RESULT_TTL,
+            gh.encode_result(
+                {
+                    "status": "completed",
+                    "projects": [{"title": "legacy"}],
+                }
+            ),
+        )
+
+        resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers)
+        assert resp.status_code == 404
+
+    async def test_submit_failure_removes_pending_marker(self, client, auth_headers, db_session, monkeypatch):
+        from app.core.redis import get_redis_client
+
+        await _connect_github(db_session, auth_headers)
+        captured_job_id = None
+
+        def _fail_submit(**kwargs):
+            nonlocal captured_job_id
+            captured_job_id = kwargs["job_id"]
+            raise RuntimeError("queue unavailable")
+
+        monkeypatch.setattr("app.api.github_routes.submit_github_import", _fail_submit)
+
+        resp = await client.post("/github/import-projects", headers=auth_headers)
+        assert resp.status_code == 503
+        assert captured_job_id is not None
+        redis = await get_redis_client()
+        assert await redis.get(gh.import_result_key(captured_job_id)) is None
+
     async def test_endpoints_require_auth(self, client):
         assert (await client.post("/github/import-projects")).status_code in (401, 403)
-        assert (
-            await client.get(f"/github/import-projects/{uuid.uuid4()}")
-        ).status_code in (401, 403)
+        assert (await client.get(f"/github/import-projects/{uuid.uuid4()}")).status_code in (401, 403)
