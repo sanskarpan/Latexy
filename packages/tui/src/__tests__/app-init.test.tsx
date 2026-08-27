@@ -12,6 +12,8 @@ Object.assign(fakeWsClient, {
 })
 
 vi.mock('../lib/config.js', () => ({
+  DEFAULT_BACKEND_URL: 'https://api.example.com',
+  DEFAULT_APP_URL: 'https://app.example.com',
   readConfig: vi.fn(async () => ({
     token: null, email: null, userId: null,
     backendUrl: 'http://localhost:8030',
