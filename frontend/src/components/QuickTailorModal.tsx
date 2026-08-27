@@ -121,6 +121,7 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
           </div>
           <button
             onClick={handleDismiss}
+            aria-label="Close Quick Tailor"
             className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={16} />
