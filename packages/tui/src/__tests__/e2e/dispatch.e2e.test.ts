@@ -25,6 +25,8 @@ vi.mock('../../lib/ws-client.js', () => ({
 }))
 
 vi.mock('../../lib/config.js', () => ({
+  DEFAULT_BACKEND_URL: 'https://api.example.com',
+  DEFAULT_APP_URL: 'https://app.example.com',
   writeConfig: vi.fn().mockResolvedValue(undefined),
   clearConfig: vi.fn().mockResolvedValue(undefined),
   readConfig: vi.fn().mockResolvedValue({ backendUrl: 'http://localhost:8030', sessionToken: null }),
