@@ -271,6 +271,21 @@ class Settings(BaseSettings):
     # Upstash Redis (for Modal deployment)
     UPSTASH_REDIS_REST_URL: str = Field(default="", description="Upstash Redis REST URL")
     UPSTASH_REDIS_REST_TOKEN: str = Field(default="", description="Upstash Redis REST token")
+    UPSTASH_MANAGEMENT_EMAIL: str = Field(
+        default="",
+        description="Upstash account email for read-only capacity monitoring",
+    )
+    UPSTASH_MANAGEMENT_API_KEY: str = Field(
+        default="",
+        description="Upstash Developer API key for read-only capacity monitoring",
+    )
+    UPSTASH_REDIS_DATABASE_ID: str = Field(
+        default="",
+        description="Upstash database ID whose monthly request capacity is monitored",
+    )
+    REDIS_CAPACITY_WARNING_RATIO: float = Field(default=0.80, gt=0, lt=1)
+    REDIS_CAPACITY_CRITICAL_RATIO: float = Field(default=0.95, gt=0, le=1)
+    REDIS_CAPACITY_CACHE_SECONDS: int = Field(default=300, ge=30, le=3600)
 
     # Celery Configuration
     CELERY_BROKER_URL: str = Field(default="redis://localhost:6379/0", description="Celery broker URL")
@@ -515,6 +530,23 @@ class Settings(BaseSettings):
         if billing_mode not in {"disabled", "auto", "required"}:
             raise ValueError(
                 "BILLING_MODE must be one of: disabled, auto, required."
+            )
+
+        if self.REDIS_CAPACITY_WARNING_RATIO >= self.REDIS_CAPACITY_CRITICAL_RATIO:
+            raise ValueError(
+                "REDIS_CAPACITY_WARNING_RATIO must be lower than "
+                "REDIS_CAPACITY_CRITICAL_RATIO."
+            )
+
+        capacity_credentials = (
+            self.UPSTASH_MANAGEMENT_EMAIL,
+            self.UPSTASH_MANAGEMENT_API_KEY,
+            self.UPSTASH_REDIS_DATABASE_ID,
+        )
+        if any(capacity_credentials) and not all(capacity_credentials):
+            raise ValueError(
+                "UPSTASH_MANAGEMENT_EMAIL, UPSTASH_MANAGEMENT_API_KEY, and "
+                "UPSTASH_REDIS_DATABASE_ID must be configured together."
             )
 
         if os.environ.get("SKIP_ENV_VALIDATION") == "true":
