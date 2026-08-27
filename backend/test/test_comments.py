@@ -202,6 +202,63 @@ class TestAddComment:
         assert resp.status_code == 404
 
 
+# ── Current workspace access on mutations ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+class TestWorkspaceMutationAccess:
+    @pytest.mark.parametrize("mutation", ["edit", "delete", "resolve"])
+    async def test_removed_member_cannot_mutate_old_workspace_comment(
+        self,
+        mutation: str,
+        client: AsyncClient,
+        auth_headers: dict,
+        db_session: AsyncSession,
+    ):
+        ws = await _create_workspace(client, auth_headers)
+        resume = await _create_resume(client, auth_headers)
+        await _share_resume(client, auth_headers, ws["id"], resume["id"])
+
+        member_id, token = await _create_member(db_session, client, auth_headers, ws["id"])
+        member_headers = {"Authorization": f"Bearer {token}"}
+        comment = await _add_comment(
+            client,
+            member_headers,
+            resume["id"],
+            content="Original workspace comment",
+            workspace_id=ws["id"],
+        )
+
+        removed = await client.delete(
+            f"/workspaces/{ws['id']}/members/{member_id}",
+            headers=auth_headers,
+        )
+        assert removed.status_code == 204, removed.text
+
+        comment_url = f"/resumes/{resume['id']}/comments/{comment['id']}"
+        if mutation == "edit":
+            response = await client.patch(
+                comment_url,
+                headers=member_headers,
+                json={"content": "Changed after removal"},
+            )
+        elif mutation == "delete":
+            response = await client.delete(comment_url, headers=member_headers)
+        else:
+            response = await client.patch(f"{comment_url}/resolve", headers=member_headers)
+
+        assert response.status_code == 403, response.text
+
+        listed = await client.get(
+            f"/resumes/{resume['id']}/comments?workspace_id={ws['id']}",
+            headers=auth_headers,
+        )
+        assert listed.status_code == 200, listed.text
+        stored = next(item for item in listed.json() if item["id"] == comment["id"])
+        assert stored["content"] == "Original workspace comment"
+        assert stored["resolved"] is False
+
+
 # ── Edit comment ──────────────────────────────────────────────────────────────
 
 
