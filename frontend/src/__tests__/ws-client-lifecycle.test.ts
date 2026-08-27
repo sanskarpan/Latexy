@@ -89,26 +89,31 @@ afterEach(() => {
 // ─── J1: socket identity ──────────────────────────────────────────────────────
 
 describe('WSClient — socket identity', () => {
-  test('setToken replaces the socket instead of leaking one', () => {
+  test('auth change replaces the socket with a one-time ticket and no session token', async () => {
+    client = new WSClient(async () => 'one-time-ticket')
     client.connect()
     const first = FakeWebSocket.instances[0]
     first.open()
 
-    client.setToken('tok-1')
+    client.setAuthenticated(true)
+    await Promise.resolve()
 
     expect(FakeWebSocket.instances).toHaveLength(2)
     expect(first.closeArgs).toEqual({ code: 1000, reason: 'Reconnect with updated auth' })
-    expect(FakeWebSocket.instances[1].url).toContain('token=tok-1')
+    expect(FakeWebSocket.instances[1].url).toContain('ticket=one-time-ticket')
+    expect(FakeWebSocket.instances[1].url).not.toContain('token=')
   })
 
-  test('a late close from the replaced socket does not disconnect the live one', () => {
+  test('a late close from the replaced socket does not disconnect the live one', async () => {
+    client = new WSClient(async () => 'one-time-ticket')
     const disconnected = vi.fn()
     client.on('disconnected', disconnected)
 
     client.connect()
     const first = FakeWebSocket.instances[0]
     first.open()
-    client.setToken('tok-1')
+    client.setAuthenticated(true)
+    await Promise.resolve()
     const second = FakeWebSocket.instances[1]
     second.open()
 
@@ -119,6 +124,42 @@ describe('WSClient — socket identity', () => {
     expect(disconnected).not.toHaveBeenCalled()
     expect(FakeWebSocket.instances).toHaveLength(2) // no reconnect storm
     expect(client.connected).toBe(true)
+  })
+
+  test('authenticated reconnects mint a fresh ticket', async () => {
+    const tickets = vi.fn()
+      .mockResolvedValueOnce('ticket-1')
+      .mockResolvedValueOnce('ticket-2')
+    client = new WSClient(tickets)
+    client.setAuthenticated(true)
+    client.connect()
+    await Promise.resolve()
+    const first = FakeWebSocket.instances[0]
+    first.open()
+
+    first.fireClose(false)
+    vi.advanceTimersByTime(100)
+    await Promise.resolve()
+
+    expect(tickets).toHaveBeenCalledTimes(2)
+    expect(FakeWebSocket.instances[0].url).toContain('ticket=ticket-1')
+    expect(FakeWebSocket.instances[1].url).toContain('ticket=ticket-2')
+  })
+
+  test('logout invalidates an in-flight authenticated ticket request', async () => {
+    let releaseTicket!: (ticket: string) => void
+    client = new WSClient(() => new Promise((resolve) => { releaseTicket = resolve }))
+    client.setAuthenticated(true)
+    client.connect()
+    expect(FakeWebSocket.instances).toHaveLength(0)
+
+    client.setAuthenticated(false)
+    expect(FakeWebSocket.instances).toHaveLength(1)
+    expect(FakeWebSocket.instances[0].url).not.toContain('ticket=')
+
+    releaseTicket('stale-auth-ticket')
+    await Promise.resolve()
+    expect(FakeWebSocket.instances).toHaveLength(1)
   })
 
   test('a real close of the live socket still reconnects with backoff', () => {
