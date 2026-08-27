@@ -9,8 +9,6 @@ import { useSession } from '@/lib/auth-client'
 import { getNotificationPref, setNotificationPref } from '@/hooks/usePushNotifications'
 import { useOnboarding } from '@/components/onboarding/OnboardingFlow'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030'
-
 function SettingsContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -74,11 +72,12 @@ function SettingsContent() {
   const [ghDisconnecting, setGhDisconnecting] = useState(false)
   const [ghError, setGhError] = useState<string | null>(null)
   const [ghSuccess, setGhSuccess] = useState<string | null>(null)
-  const ghCompletionStartedRef = useRef<string | null>(null)
+  const oauthCompletionStartedRef = useRef<string | null>(null)
 
   // Zotero (Feature 42)
   const [zotStatus, setZotStatus] = useState<ZoteroStatusResponse>({ connected: false, username: null, user_id: null })
   const [zotLoading, setZotLoading] = useState(true)
+  const [zotConnecting, setZotConnecting] = useState(false)
   const [zotDisconnecting, setZotDisconnecting] = useState(false)
   const [zotError, setZotError] = useState<string | null>(null)
   const [zotSuccess, setZotSuccess] = useState<string | null>(null)
@@ -86,6 +85,7 @@ function SettingsContent() {
   // Mendeley (Feature 42)
   const [menStatus, setMenStatus] = useState<MendeleyStatusResponse>({ connected: false, name: null })
   const [menLoading, setMenLoading] = useState(true)
+  const [menConnecting, setMenConnecting] = useState(false)
   const [menDisconnecting, setMenDisconnecting] = useState(false)
   const [menError, setMenError] = useState<string | null>(null)
   const [menSuccess, setMenSuccess] = useState<string | null>(null)
@@ -93,6 +93,7 @@ function SettingsContent() {
   // Dropbox (Feature 77)
   const [dbxStatus, setDbxStatus] = useState<DropboxStatusResponse>({ connected: false, display_name: null, account_id: null })
   const [dbxLoading, setDbxLoading] = useState(true)
+  const [dbxConnecting, setDbxConnecting] = useState(false)
   const [dbxDisconnecting, setDbxDisconnecting] = useState(false)
   const [dbxError, setDbxError] = useState<string | null>(null)
   const [dbxSuccess, setDbxSuccess] = useState<string | null>(null)
@@ -152,54 +153,96 @@ function SettingsContent() {
       .finally(() => setDbxLoading(false))
   }, [sessionData, sessionLoading])
 
-  // GitHub's public callback only returns a short-lived ticket. Exchange it
-  // through the authenticated API client so the backend can prove this browser
-  // is signed in as the same Latexy user who initiated the OAuth flow.
+  // Provider callbacks only return short-lived tickets. Exchange them through
+  // the authenticated client so the backend can prove this browser is signed
+  // in as the same Latexy user who initiated each OAuth flow.
   useEffect(() => {
-    const githubResult = searchParams.get('github')
+    const providers = ['github', 'zotero', 'mendeley', 'dropbox'] as const
+    type Provider = typeof providers[number]
+    const provider = providers.find((name) => {
+      const result = searchParams.get(name)
+      return result === 'complete' || result === 'error'
+    })
+    if (!provider) return
 
-    if (githubResult === 'error') {
+    const providerName = provider === 'github'
+      ? 'GitHub'
+      : `${provider[0].toUpperCase()}${provider.slice(1)}`
+    const setProviderError = (message: string | null) => {
+      if (provider === 'github') setGhError(message)
+      if (provider === 'zotero') setZotError(message)
+      if (provider === 'mendeley') setMenError(message)
+      if (provider === 'dropbox') setDbxError(message)
+    }
+    const setProviderConnecting = (value: boolean) => {
+      if (provider === 'github') setGhConnecting(value)
+      if (provider === 'zotero') setZotConnecting(value)
+      if (provider === 'mendeley') setMenConnecting(value)
+      if (provider === 'dropbox') setDbxConnecting(value)
+    }
+
+    if (searchParams.get(provider) === 'error') {
       const reason = searchParams.get('reason')
       const message = reason === 'access_denied'
-        ? 'GitHub authorization was cancelled.'
+        ? `${providerName} authorization was cancelled.`
         : reason === 'invalid_state'
-          ? 'The GitHub connection request expired. Please try again.'
-          : 'GitHub could not be connected. Please try again.'
-      setGhError(message)
+          ? `The ${providerName} connection request expired. Please try again.`
+          : `${providerName} could not be connected. Please try again.`
+      setProviderError(message)
       router.replace(pathname, { scroll: false })
       return
     }
 
-    if (githubResult !== 'complete' || sessionLoading) return
+    if (sessionLoading) return
 
     const ticket = searchParams.get('ticket')
     if (!ticket) {
-      setGhError('The GitHub connection request is incomplete. Please try again.')
+      setProviderError(`The ${providerName} connection request is incomplete. Please try again.`)
       router.replace(pathname, { scroll: false })
       return
     }
     if (!sessionData) {
-      setGhError('Sign in as the account that started this GitHub connection, then try again.')
+      setProviderError(`Sign in as the account that started this ${providerName} connection, then try again.`)
       router.replace(pathname, { scroll: false })
       return
     }
-    if (ghCompletionStartedRef.current === ticket) return
+    const completionKey = `${provider}:${ticket}`
+    if (oauthCompletionStartedRef.current === completionKey) return
 
-    ghCompletionStartedRef.current = ticket
+    oauthCompletionStartedRef.current = completionKey
     router.replace(pathname, { scroll: false })
-    setGhConnecting(true)
-    setGhError(null)
-    apiClient.completeGitHubOAuth(ticket)
-      .then(() => apiClient.getGitHubStatus())
-      .then((status) => {
-        setGhStatus(status)
+    setProviderConnecting(true)
+    setProviderError(null)
+
+    const complete = async (name: Provider) => {
+      if (name === 'github') {
+        await apiClient.completeGitHubOAuth(ticket)
+        setGhStatus(await apiClient.getGitHubStatus())
         setGhSuccess('GitHub account connected successfully!')
         scheduleTimer(() => setGhSuccess(null), 5000)
-      })
+      } else if (name === 'zotero') {
+        await apiClient.completeZoteroOAuth(ticket)
+        setZotStatus(await apiClient.getZoteroStatus())
+        setZotSuccess('Zotero connected successfully!')
+        scheduleTimer(() => setZotSuccess(null), 5000)
+      } else if (name === 'mendeley') {
+        await apiClient.completeMendeleyOAuth(ticket)
+        setMenStatus(await apiClient.getMendeleyStatus())
+        setMenSuccess('Mendeley connected successfully!')
+        scheduleTimer(() => setMenSuccess(null), 5000)
+      } else {
+        await apiClient.completeDropboxOAuth(ticket)
+        setDbxStatus(await apiClient.getDropboxStatus())
+        setDbxSuccess('Dropbox connected successfully!')
+        scheduleTimer(() => setDbxSuccess(null), 5000)
+      }
+    }
+
+    complete(provider)
       .catch((e: unknown) => {
-        setGhError(e instanceof Error ? e.message : 'Failed to complete GitHub connection')
+        setProviderError(e instanceof Error ? e.message : `Failed to complete ${providerName} connection`)
       })
-      .finally(() => setGhConnecting(false))
+      .finally(() => setProviderConnecting(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, router, searchParams, sessionData, sessionLoading])
 
@@ -347,8 +390,16 @@ function SettingsContent() {
     }
   }
 
-  function handleConnectZotero() {
-    window.location.href = `${API_BASE}/zotero/connect`
+  async function handleConnectZotero() {
+    setZotConnecting(true)
+    setZotError(null)
+    try {
+      const { authorization_url: authorizationUrl } = await apiClient.startZoteroOAuth()
+      window.location.assign(authorizationUrl)
+    } catch (e: unknown) {
+      setZotError(e instanceof Error ? e.message : 'Failed to start Zotero connection')
+      setZotConnecting(false)
+    }
   }
 
   async function handleDisconnectZotero() {
@@ -365,8 +416,16 @@ function SettingsContent() {
     }
   }
 
-  function handleConnectDropbox() {
-    window.location.href = `${API_BASE}/dropbox/connect`
+  async function handleConnectDropbox() {
+    setDbxConnecting(true)
+    setDbxError(null)
+    try {
+      const { authorization_url: authorizationUrl } = await apiClient.startDropboxOAuth()
+      window.location.assign(authorizationUrl)
+    } catch (e: unknown) {
+      setDbxError(e instanceof Error ? e.message : 'Failed to start Dropbox connection')
+      setDbxConnecting(false)
+    }
   }
 
   async function handleDisconnectDropbox() {
@@ -383,8 +442,16 @@ function SettingsContent() {
     }
   }
 
-  function handleConnectMendeley() {
-    window.location.href = `${API_BASE}/mendeley/connect`
+  async function handleConnectMendeley() {
+    setMenConnecting(true)
+    setMenError(null)
+    try {
+      const { authorization_url: authorizationUrl } = await apiClient.startMendeleyOAuth()
+      window.location.assign(authorizationUrl)
+    } catch (e: unknown) {
+      setMenError(e instanceof Error ? e.message : 'Failed to start Mendeley connection')
+      setMenConnecting(false)
+    }
   }
 
   async function handleDisconnectMendeley() {
@@ -593,10 +660,11 @@ function SettingsContent() {
               </p>
               <button
                 onClick={handleConnectZotero}
-                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110"
+                disabled={zotConnecting}
+                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <ExternalLink size={14} />
-                Connect Zotero
+                {zotConnecting ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+                {zotConnecting ? 'Connecting…' : 'Connect Zotero'}
               </button>
             </div>
           )}
@@ -661,10 +729,11 @@ function SettingsContent() {
               </p>
               <button
                 onClick={handleConnectMendeley}
-                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110"
+                disabled={menConnecting}
+                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <ExternalLink size={14} />
-                Connect Mendeley
+                {menConnecting ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+                {menConnecting ? 'Connecting…' : 'Connect Mendeley'}
               </button>
             </div>
           )}
@@ -727,10 +796,11 @@ function SettingsContent() {
               </p>
               <button
                 onClick={handleConnectDropbox}
-                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110"
+                disabled={dbxConnecting}
+                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Cloud size={14} />
-                Connect Dropbox
+                {dbxConnecting ? <Loader2 size={14} className="animate-spin" /> : <Cloud size={14} />}
+                {dbxConnecting ? 'Connecting…' : 'Connect Dropbox'}
               </button>
             </div>
           )}
