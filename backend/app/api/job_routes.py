@@ -1020,14 +1020,15 @@ async def cancel_job(
     try:
         r = await get_redis_client()
 
-        # Ownership check via meta; if meta is absent the job has already
-        # completed/expired — setting the cancel flag is a safe no-op.
+        # Every submitted job, including anonymous trial jobs, has metadata.
+        # Without it we cannot prove that this caller may mutate the job.
         meta_raw = await r.get(f"latexy:job:{job_id}:meta")
-        if meta_raw:
-            meta = json.loads(meta_raw)
-            job_owner = meta.get("user_id")
-            if job_owner is not None and job_owner != user_id:
-                raise HTTPException(status_code=403, detail="Access denied")
+        if not meta_raw:
+            raise HTTPException(status_code=404, detail="Job not found")
+        meta = json.loads(meta_raw)
+        job_owner = meta.get("user_id")
+        if job_owner is not None and job_owner != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
 
         await r.setex(f"latexy:job:{job_id}:cancel", 3600, "1")
 

@@ -18,6 +18,7 @@ from starlette.testclient import TestClient
 from app.api.ws_routes import (
     WebSocketTicketRequest,
     _consume_ws_ticket,
+    _job_ws_access_ok,
     _ws_ticket_key,
     create_websocket_ticket,
 )
@@ -29,6 +30,7 @@ from app.main import app
 
 def _make_mock_redis() -> MagicMock:
     r = MagicMock()
+    r.get = AsyncMock(return_value=json.dumps({"user_id": None}))
     r.setex = AsyncMock(return_value=True)
     r.publish = AsyncMock(return_value=1)
     return r
@@ -217,6 +219,44 @@ class TestWebSocketProtocol:
             msg = ws.receive_json()
 
         assert msg["type"] == "pong"
+
+
+@pytest.mark.asyncio
+class TestJobWebSocketAuthorization:
+    """Job channels require readable, valid ownership metadata."""
+
+    @pytest.mark.parametrize(
+        ("raw_meta", "user_id", "expected"),
+        [
+            (json.dumps({"user_id": None}), None, True),
+            (json.dumps({"user_id": "user-1"}), "user-1", True),
+            (json.dumps({"user_id": "user-1"}), "user-2", False),
+            (None, "user-1", False),
+            ("not-json", "user-1", False),
+        ],
+    )
+    async def test_access_requires_valid_metadata(
+        self,
+        raw_meta: str | None,
+        user_id: str | None,
+        expected: bool,
+    ):
+        redis = MagicMock()
+        redis.get = AsyncMock(return_value=raw_meta)
+        with patch(
+            "app.api.ws_routes.get_redis_client",
+            new_callable=AsyncMock,
+            return_value=redis,
+        ):
+            assert await _job_ws_access_ok("job-1", user_id) is expected
+
+    async def test_access_denied_when_redis_lookup_fails(self):
+        with patch(
+            "app.api.ws_routes.get_redis_client",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("redis unavailable"),
+        ):
+            assert await _job_ws_access_ok("job-1", "user-1") is False
 
 
 class TestWebSocketTickets:

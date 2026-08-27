@@ -59,6 +59,15 @@ async def _submit_latex_job(client: AsyncClient) -> dict | None:
     return resp.json()
 
 
+async def _seed_anonymous_job_meta(job_id: str) -> None:
+    r = await get_redis_client()
+    await r.setex(
+        f"latexy:job:{job_id}:meta",
+        3600,
+        json.dumps({"job_id": job_id, "user_id": None}),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Job submission → Redis state
 # ---------------------------------------------------------------------------
@@ -229,6 +238,7 @@ class TestCancelRedisState:
     async def test_cancel_sets_redis_flag(self, client: AsyncClient):
         """DELETE /jobs/{id} must write latexy:job:{id}:cancel = '1'."""
         job_id = str(uuid.uuid4())
+        await _seed_anonymous_job_meta(job_id)
         resp = await client.delete(f"/jobs/{job_id}")
         assert resp.status_code in (200, 204)
 
@@ -240,6 +250,7 @@ class TestCancelRedisState:
     async def test_cancel_flag_has_positive_ttl(self, client: AsyncClient):
         """Cancel flag TTL should be positive (not persisted forever)."""
         job_id = str(uuid.uuid4())
+        await _seed_anonymous_job_meta(job_id)
         await client.delete(f"/jobs/{job_id}")
 
         r = await get_redis_client()
@@ -249,6 +260,7 @@ class TestCancelRedisState:
     async def test_cancel_flag_ttl_not_exceeds_one_hour(self, client: AsyncClient):
         """Cancel flag TTL should be at most 1 hour (3600 seconds)."""
         job_id = str(uuid.uuid4())
+        await _seed_anonymous_job_meta(job_id)
         await client.delete(f"/jobs/{job_id}")
 
         r = await get_redis_client()
@@ -258,6 +270,7 @@ class TestCancelRedisState:
     async def test_cancel_is_idempotent(self, client: AsyncClient):
         """Calling cancel twice on the same job should not error."""
         job_id = str(uuid.uuid4())
+        await _seed_anonymous_job_meta(job_id)
         resp1 = await client.delete(f"/jobs/{job_id}")
         resp2 = await client.delete(f"/jobs/{job_id}")
 
@@ -270,6 +283,7 @@ class TestCancelRedisState:
 
     async def test_cancel_returns_success_body(self, client: AsyncClient):
         job_id = str(uuid.uuid4())
+        await _seed_anonymous_job_meta(job_id)
         resp = await client.delete(f"/jobs/{job_id}")
         assert resp.status_code in (200, 204)
         if resp.status_code == 200:
@@ -343,6 +357,8 @@ class TestMultiJobIsolation:
         """Cancelling job A must not write the cancel flag for job B."""
         job_a = str(uuid.uuid4())
         job_b = str(uuid.uuid4())
+
+        await _seed_anonymous_job_meta(job_a)
 
         await client.delete(f"/jobs/{job_a}")
 
