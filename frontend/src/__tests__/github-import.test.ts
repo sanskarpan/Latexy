@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { apiClient, type ProjectEvidence } from '../lib/api-client'
@@ -6,6 +9,11 @@ import {
   insertProjectLatex,
   projectsToLatex,
 } from '../lib/github-projects-latex'
+
+const SETTINGS_SOURCE = readFileSync(
+  fileURLToPath(new URL('../app/settings/page.tsx', import.meta.url)),
+  'utf8'
+)
 
 function mockFetch(responseBody: object) {
   vi.stubGlobal(
@@ -149,6 +157,14 @@ describe('GitHub import client', () => {
 })
 
 describe('GitHub OAuth client', () => {
+  test('settings uses the authenticated two-step handshake', () => {
+    expect(SETTINGS_SOURCE).toContain('apiClient.startGitHubOAuth()')
+    expect(SETTINGS_SOURCE).toContain('apiClient.completeGitHubOAuth(ticket)')
+    expect(SETTINGS_SOURCE).toContain('if (!sessionData)')
+    expect(SETTINGS_SOURCE).toContain('window.location.assign(authorizationUrl)')
+    expect(SETTINGS_SOURCE).not.toContain('`${API_BASE}/github/connect`')
+  })
+
   test('starts OAuth through an authenticated POST and returns the provider URL', async () => {
     mockFetch({ authorization_url: 'https://github.com/login/oauth/authorize?state=opaque' })
     apiClient.setAuthToken('latexy-session')
