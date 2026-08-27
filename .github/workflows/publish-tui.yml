@@ -1,0 +1,75 @@
+name: Publish TUI to npm
+
+on:
+  push:
+    tags:
+      - "tui-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Test and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: packages/tui
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      # npm trusted publishing requires npm >=11.5.1. Pinning the CLI keeps the
+      # authentication path reproducible even when the Node image changes.
+      - name: Install trusted-publishing npm CLI
+        run: npm install --global npm@11.10.1
+
+      - name: Validate tag and unpublished version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#tui-v}"
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="$(node -p "require('./package.json').version")"
+
+          if [[ "$GITHUB_REF_NAME" == "$tag_version" || "$tag_version" != "$package_version" ]]; then
+            echo "Tag $GITHUB_REF_NAME must exactly match tui-v$package_version" >&2
+            exit 1
+          fi
+
+          if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
+            echo "$package_name@$package_version is already published" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Verify package contents
+        run: npm pack --dry-run
+
+      - name: Publish with npm trusted publishing
+        run: npm publish --access public
