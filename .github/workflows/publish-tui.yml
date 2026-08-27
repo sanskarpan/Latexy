@@ -21,6 +21,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v5
         with:
@@ -44,6 +46,11 @@ jobs:
           tag_version="${GITHUB_REF_NAME#tui-v}"
           package_name="$(node -p "require('./package.json').name")"
           package_version="$(node -p "require('./package.json').version")"
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Refusing to publish a commit that is not on main" >&2
+            exit 1
+          fi
 
           if [[ "$GITHUB_REF_NAME" == "$tag_version" || "$tag_version" != "$package_version" ]]; then
             echo "Tag $GITHUB_REF_NAME must exactly match tui-v$package_version" >&2
