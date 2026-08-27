@@ -44,6 +44,24 @@ logger = get_logger(__name__)
 # Chars of cleaned page text handed to the LLM. ~4 chars/token → ~2000 tokens.
 _PAGE_TEXT_MAX_CHARS = 8000
 
+# Maximum decoded response bytes read from an upstream page.  This is enforced
+# while streaming, so a missing/dishonest Content-Length header or a compressed
+# response cannot make the importer buffer an unbounded body.
+_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+
+# URL import is intentionally a static text-page importer, not a generic file
+# downloader.  Keep this allow-list explicit so PDFs, images, archives, and
+# arbitrary binary downloads never reach the HTML parser or LLM.
+_ACCEPTED_CONTENT_TYPES = frozenset(
+    {
+        "application/xhtml+xml",
+        "application/xml",
+        "text/html",
+        "text/plain",
+        "text/xml",
+    }
+)
+
 # Timeout for the single static GET.
 _TIMEOUT = 15.0
 
@@ -65,6 +83,37 @@ _BROWSER_HEADERS: Dict[str, str] = {
 
 
 # ── Static fetch ─────────────────────────────────────────────────────────────
+
+
+def _validate_response_metadata(resp: httpx.Response) -> None:
+    """Reject non-textual or declared-oversized responses before reading."""
+    content_type = resp.headers.get("content-type", "").partition(";")[0].strip().lower()
+    if content_type not in _ACCEPTED_CONTENT_TYPES:
+        raise ValueError("URL returned a missing or unsupported Content-Type")
+
+    content_length = resp.headers.get("content-length")
+    if content_length:
+        try:
+            declared_bytes = int(content_length)
+        except ValueError:
+            declared_bytes = -1
+        if declared_bytes > _MAX_RESPONSE_BYTES:
+            raise ValueError(f"URL response exceeds the {_MAX_RESPONSE_BYTES}-byte limit")
+
+
+async def _read_response_body(resp: httpx.Response) -> str:
+    """Read and decode a response without exceeding ``_MAX_RESPONSE_BYTES``."""
+    body = bytearray()
+    async for chunk in resp.aiter_bytes():
+        if len(body) + len(chunk) > _MAX_RESPONSE_BYTES:
+            raise ValueError(f"URL response exceeds the {_MAX_RESPONSE_BYTES}-byte limit")
+        body.extend(chunk)
+
+    encoding = resp.charset_encoding or "utf-8"
+    try:
+        return body.decode(encoding, errors="replace")
+    except LookupError:
+        return body.decode("utf-8", errors="replace")
 
 
 async def fetch_url_text(url: str, *, client: Optional[httpx.AsyncClient] = None) -> str:
@@ -90,7 +139,11 @@ async def fetch_url_text(url: str, *, client: Optional[httpx.AsyncClient] = None
         transport=_SSRFGuardTransport(),
     )
     try:
-        resp = await client.get(url, headers=_BROWSER_HEADERS)
+        async with client.stream("GET", url, headers=_BROWSER_HEADERS) as resp:
+            if resp.status_code != 200:
+                raise ValueError(f"URL returned HTTP {resp.status_code}")
+            _validate_response_metadata(resp)
+            response_text = await _read_response_body(resp)
     except (httpx.ConnectError, httpx.UnsupportedProtocol) as exc:
         # The guard transport raises these when it blocks a non-public host or
         # a non-http(s) redirect hop — surface as an SSRF rejection.
@@ -101,10 +154,7 @@ async def fetch_url_text(url: str, *, client: Optional[httpx.AsyncClient] = None
         if owns_client:
             await client.aclose()
 
-    if resp.status_code != 200:
-        raise ValueError(f"URL returned HTTP {resp.status_code}")
-
-    return _html_to_clean_text(resp.text, max_length=_PAGE_TEXT_MAX_CHARS)
+    return _html_to_clean_text(response_text, max_length=_PAGE_TEXT_MAX_CHARS)
 
 
 # ── LLM extraction ───────────────────────────────────────────────────────────
