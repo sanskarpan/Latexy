@@ -9,7 +9,7 @@ from typing import List, Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +40,14 @@ _GITHUB_IMPORTS_GLOBAL_PER_HOUR = 500
 class GitHubStatusResponse(BaseModel):
     connected: bool
     username: Optional[str] = None
+
+
+class GitHubOAuthStartResponse(BaseModel):
+    authorization_url: str
+
+
+class GitHubOAuthCompleteRequest(BaseModel):
+    ticket: str = Field(max_length=256)
 
 
 class GitHubSyncResponse(BaseModel):
@@ -76,20 +84,24 @@ class GitHubImportResultResponse(BaseModel):
 # ── OAuth flow ───────────────────────────────────────────────────────────────
 
 
-@router.get("/connect", dependencies=[Depends(require_feature("integration_github"))])
+@router.post(
+    "/connect",
+    response_model=GitHubOAuthStartResponse,
+    dependencies=[Depends(require_feature("integration_github"))],
+)
 async def github_connect(
     user_id: str = Depends(get_current_user_required),
 ):
-    """Redirect to GitHub OAuth authorization URL."""
+    """Create an OAuth state for the authenticated user and return its URL."""
     if not settings.GITHUB_CLIENT_ID or not settings.GITHUB_CLIENT_SECRET:
         raise HTTPException(
             status_code=503,
             detail="GitHub integration is not configured. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET.",
         )
 
-    # Use a signed nonce instead of raw user_id to prevent CSRF
+    # The state is opaque in the browser and consumed atomically by the callback.
     nonce = secrets.token_urlsafe(32)
-    await cache_manager.set(f"gh:oauth:{nonce}", user_id, ttl=600)  # 10 min TTL
+    await cache_manager.set(f"gh:oauth:{nonce}", {"user_id": user_id}, ttl=600)
 
     params = urllib.parse.urlencode(
         {
@@ -99,7 +111,9 @@ async def github_connect(
             "state": nonce,
         }
     )
-    return RedirectResponse(f"https://github.com/login/oauth/authorize?{params}")
+    return GitHubOAuthStartResponse(
+        authorization_url=f"https://github.com/login/oauth/authorize?{params}"
+    )
 
 
 def _github_error_redirect(reason: str) -> RedirectResponse:
@@ -109,19 +123,62 @@ def _github_error_redirect(reason: str) -> RedirectResponse:
 
 @router.get("/callback")
 async def github_callback(
-    code: str = Query(...),
-    state: str = Query(""),
-    db: AsyncSession = Depends(get_db),
+    code: Optional[str] = Query(None, max_length=2048),
+    state: str = Query("", max_length=256),
+    error: Optional[str] = Query(None, max_length=128),
 ):
-    """Exchange code for access token and store it on the user."""
+    """Convert a provider callback into a short-lived completion ticket.
+
+    This public endpoint deliberately does not exchange the code or persist a
+    token. The browser must present the ticket through the authenticated
+    ``/complete`` endpoint, which proves it is still signed in as the Latexy
+    user who initiated the flow.
+    """
     if not state:
         return _github_error_redirect("missing_state")
 
-    # Validate the nonce — prevents CSRF account-binding attacks
-    user_id = await cache_manager.get(f"gh:oauth:{state}")
-    if not user_id:
+    oauth_state = await cache_manager.pop(f"gh:oauth:{state}")
+    if not isinstance(oauth_state, dict) or not oauth_state.get("user_id"):
         return _github_error_redirect("invalid_state")
-    await cache_manager.delete(f"gh:oauth:{state}")
+
+    if error:
+        reason = "access_denied" if error == "access_denied" else "provider_error"
+        return _github_error_redirect(reason)
+    if not code:
+        return _github_error_redirect("missing_code")
+
+    ticket = secrets.token_urlsafe(32)
+    await cache_manager.set(
+        f"gh:complete:{ticket}",
+        {"user_id": str(oauth_state["user_id"]), "code": code},
+        ttl=300,
+    )
+    query = urllib.parse.urlencode({"github": "complete", "ticket": ticket})
+    return RedirectResponse(f"{settings.FRONTEND_URL}/settings?{query}")
+
+
+@router.post("/complete")
+async def github_complete(
+    body: GitHubOAuthCompleteRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Exchange and persist a GitHub code only for its initiating user."""
+    ticket = body.ticket.strip()
+    if not ticket:
+        raise HTTPException(status_code=400, detail="Missing GitHub completion ticket")
+
+    completion = await cache_manager.pop(f"gh:complete:{ticket}")
+    if not isinstance(completion, dict):
+        raise HTTPException(status_code=400, detail="GitHub completion ticket is invalid or expired")
+
+    intended_user_id = str(completion.get("user_id") or "")
+    code = str(completion.get("code") or "")
+    if not intended_user_id or not code:
+        raise HTTPException(status_code=400, detail="GitHub completion ticket is invalid or expired")
+    if not secrets.compare_digest(intended_user_id, user_id):
+        logger.warning("Rejected cross-user GitHub OAuth completion")
+        raise HTTPException(status_code=403, detail="GitHub connection belongs to a different user")
 
     # Exchange code for token
     try:
@@ -140,33 +197,33 @@ async def github_callback(
             data = resp.json()
     except httpx.HTTPStatusError as exc:
         logger.error(f"GitHub token exchange failed: {exc.response.status_code}")
-        return _github_error_redirect("token_exchange_failed")
+        raise HTTPException(status_code=502, detail="GitHub token exchange failed") from exc
     except httpx.RequestError as exc:
         logger.error(f"GitHub connection error during token exchange: {exc}")
-        return _github_error_redirect("github_unavailable")
+        raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again") from exc
 
     access_token = data.get("access_token")
     if not access_token:
         error = data.get("error", "token_exchange_failed")
         logger.error(f"GitHub OAuth returned no access token: {error}")
-        return _github_error_redirect(str(error))
+        raise HTTPException(status_code=400, detail=f"GitHub authorization failed: {error}")
 
     # Get GitHub username
     try:
         gh_user = await github_sync_service.get_github_user(access_token)
     except httpx.HTTPStatusError as exc:
         logger.error(f"GitHub profile fetch failed: {exc.response.status_code}")
-        return _github_error_redirect("profile_fetch_failed")
+        raise HTTPException(status_code=502, detail="GitHub profile fetch failed") from exc
     except httpx.RequestError as exc:
         logger.error(f"GitHub connection error during profile fetch: {exc}")
-        return _github_error_redirect("github_unavailable")
+        raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again") from exc
 
     username = (gh_user.get("login") or "").strip()
     if not username:
         # Without a login every later push/pull would build an invalid URL and
         # 404; refuse to persist a half-connected account.
         logger.error("GitHub profile returned no login; aborting connect")
-        return _github_error_redirect("no_username")
+        raise HTTPException(status_code=502, detail="GitHub profile did not include a username")
 
     # Encrypt token before storing
     encrypted_token = encryption_service.encrypt(access_token)
@@ -177,8 +234,7 @@ async def github_callback(
     )
     await db.commit()
 
-    # Redirect to frontend settings page
-    return RedirectResponse(f"{settings.FRONTEND_URL}/settings?github=connected")
+    return {"success": True, "message": "GitHub account connected"}
 
 
 # ── Status + Disconnect ──────────────────────────────────────────────────────

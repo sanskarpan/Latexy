@@ -365,6 +365,27 @@ class CacheManager:
 
         return None
 
+    async def pop(self, key: str) -> Optional[Any]:
+        """Atomically get and delete a cache value.
+
+        One-time credentials such as OAuth states and completion tickets must
+        not be readable by two racing requests. Redis ``GETDEL`` provides that
+        guarantee without a separate read/delete window.
+        """
+        if not redis_cache_client:
+            raise RuntimeError("Redis cache client not initialized")
+
+        cache_key = f"{self.cache_prefix}{key}"
+        value = await redis_cache_client.getdel(cache_key)
+
+        if value:
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                return value
+
+        return None
+
     async def delete(self, key: str):
         """Delete cache value."""
         if not redis_cache_client:
