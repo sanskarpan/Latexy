@@ -1,0 +1,82 @@
+name: Deploy Modal Backend
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref or commit SHA to deploy
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: modal-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Migrate and deploy
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: Production
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      MODAL_ENVIRONMENT: main
+
+    steps:
+      - name: Check out the CI-validated revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.ref }}
+
+      - name: Record deployment revision
+        run: echo "DEPLOY_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install pinned Modal CLI
+        run: python -m pip install "modal==1.5.4"
+
+      # modal_app.py deliberately keeps migrations separate from API startup.
+      # Apply them first so incompatible application code is never made live.
+      - name: Apply production database migrations
+        working-directory: backend
+        run: modal run --env main modal_app.py::migrate
+
+      - name: Deploy backend with a rolling update
+        working-directory: backend
+        run: modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py
+
+      - name: Verify production backend health
+        env:
+          BACKEND_URL: https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run
+        run: |
+          for attempt in {1..18}; do
+            if curl --fail --silent --show-error --max-time 20 "$BACKEND_URL/health" \
+                | grep -q '"status":"healthy"' \
+              && curl --fail --silent --show-error --max-time 20 "$BACKEND_URL/readyz" \
+                | grep -q '"status":"ready"' \
+              && curl --fail --silent --show-error --max-time 20 "$BACKEND_URL/jobs/health" \
+                | grep -q '"status":"healthy"'; then
+              exit 0
+            fi
+            echo "Health check attempt ${attempt}/18 failed; retrying in 10s"
+            sleep 10
+          done
+          echo "Production backend did not become healthy after deployment" >&2
+          exit 1
