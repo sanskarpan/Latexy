@@ -9,7 +9,7 @@ from typing import List, Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,7 +47,7 @@ class GitHubOAuthStartResponse(BaseModel):
 
 
 class GitHubOAuthCompleteRequest(BaseModel):
-    ticket: str
+    ticket: str = Field(max_length=256)
 
 
 class GitHubSyncResponse(BaseModel):
@@ -123,9 +123,9 @@ def _github_error_redirect(reason: str) -> RedirectResponse:
 
 @router.get("/callback")
 async def github_callback(
-    code: Optional[str] = Query(None),
-    state: str = Query(""),
-    error: Optional[str] = Query(None),
+    code: Optional[str] = Query(None, max_length=2048),
+    state: str = Query("", max_length=256),
+    error: Optional[str] = Query(None, max_length=128),
 ):
     """Convert a provider callback into a short-lived completion ticket.
 
