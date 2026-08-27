@@ -11,6 +11,7 @@ that submit an optimization job therefore use ``pro_auth_headers`` — they are
 about job plumbing, not about the money meter.
 """
 
+import json
 import re
 import uuid
 from unittest.mock import patch
@@ -19,6 +20,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.core.redis import get_redis_client
 from app.database.models import Compilation
 
 VALID_LATEX = r"""
@@ -179,14 +181,41 @@ class TestJobCancellation:
     ):
         fake_id = str(uuid.uuid4())
         resp = await client.delete(f"/jobs/{fake_id}", headers=auth_headers)
-        # Should not crash — 200 (noop), 404, or 204
-        assert resp.status_code in (200, 204, 404)
+        assert resp.status_code == 404
+
+        r = await get_redis_client()
+        assert await r.get(f"latexy:job:{fake_id}:cancel") is None
 
     async def test_cancel_no_auth_required(self, client: AsyncClient):
-        """Cancel endpoint has no auth requirement; sets Redis flag and returns 200."""
+        """A valid anonymous job can be cancelled without authentication."""
         fake_id = str(uuid.uuid4())
+        r = await get_redis_client()
+        await r.setex(
+            f"latexy:job:{fake_id}:meta",
+            3600,
+            json.dumps({"job_id": fake_id, "user_id": None}),
+        )
+
         resp = await client.delete(f"/jobs/{fake_id}")
         assert resp.status_code in (200, 204)
+
+    async def test_cancel_owned_job_requires_matching_user(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        with patch("app.api.job_routes.submit_latex_compilation", return_value=None):
+            submit = await client.post(
+                "/jobs/submit",
+                json={"job_type": "latex_compilation", "latex_content": VALID_LATEX},
+                headers=auth_headers,
+            )
+        assert submit.status_code in (200, 202)
+        job_id = submit.json()["job_id"]
+
+        denied = await client.delete(f"/jobs/{job_id}")
+        assert denied.status_code == 403
+
+        allowed = await client.delete(f"/jobs/{job_id}", headers=auth_headers)
+        assert allowed.status_code == 200
 
 
 # ── PDF download ─────────────────────────────────────────────────────────────
