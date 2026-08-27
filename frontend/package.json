@@ -2,9 +2,12 @@
     "name": "Latexy-frontend",
     "version": "0.1.0",
     "private": true,
+    "engines": {
+        "node": "22.x"
+    },
     "scripts": {
         "dev": "next dev -p ${PORT:-5180}",
-        "build": "next build",
+        "build": "node scripts/validate-build.mjs preflight && next build && node scripts/validate-build.mjs artifacts",
         "start": "next start",
         "clean": "rm -rf .next && rm -f tsconfig.tsbuildinfo",
         "lint": "next lint",
