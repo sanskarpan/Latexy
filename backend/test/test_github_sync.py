@@ -1,6 +1,7 @@
 """Tests for GitHub sync (Feature 37)."""
 
 import base64
+import urllib.parse
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -192,6 +193,23 @@ class TestGitHubSyncService:
 
         assert user["login"] == "testuser"
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status_code", [204, 404])
+    async def test_revoke_oauth_grant_is_idempotent(self, service, status_code):
+        mock_response = MagicMock(status_code=status_code)
+        mock_client = AsyncMock()
+        mock_client.delete.return_value = mock_response
+
+        with patch("app.services.github_sync_service.httpx.AsyncClient") as MockClient:
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+            await service.revoke_oauth_grant("oauth-token", "client-id", "client-secret")
+
+        _, kwargs = mock_client.delete.call_args
+        assert kwargs["auth"] == ("client-id", "client-secret")
+        assert kwargs["json"] == {"access_token": "oauth-token"}
+        assert mock_response.raise_for_status.call_count == 0
+
 
 # ── Endpoint tests (via TestClient with dependency overrides) ────────────────
 
@@ -234,12 +252,67 @@ class TestGitHubEndpoints:
                 "https://github.com/login/oauth/authorize?"
             )
             assert "state=state-nonce" in result.authorization_url
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(result.authorization_url).query)
+            assert "scope" not in query
             mock_cache.set.assert_awaited_once_with(
-                "gh:oauth:state-nonce", {"user_id": "test-user-id"}, ttl=600
+                "gh:oauth:state-nonce",
+                {
+                    "user_id": "test-user-id",
+                    "purpose": "import",
+                    "return_to": None,
+                },
+                ttl=600,
             )
         finally:
             settings.GITHUB_CLIENT_ID = original_id
             settings.GITHUB_CLIENT_SECRET = original_secret
+
+    @pytest.mark.asyncio
+    async def test_connect_requests_repo_scope_only_for_private_sync(self):
+        from app.api.github_routes import github_connect
+
+        with (
+            patch.object(settings, "GITHUB_CLIENT_ID", "client-id"),
+            patch.object(settings, "GITHUB_CLIENT_SECRET", "client-secret"),
+            patch("app.api.github_routes.cache_manager") as mock_cache,
+            patch("app.api.github_routes.secrets.token_urlsafe", return_value="state-nonce"),
+        ):
+            mock_cache.set = AsyncMock()
+            result = await github_connect(
+                purpose="sync",
+                return_to="/workspace/resume-1/edit?import=github",
+                user_id="test-user-id",
+            )
+
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(result.authorization_url).query)
+        assert query["scope"] == ["repo"]
+        mock_cache.set.assert_awaited_once_with(
+            "gh:oauth:state-nonce",
+            {
+                "user_id": "test-user-id",
+                "purpose": "sync",
+                "return_to": "/workspace/resume-1/edit?import=github",
+            },
+            ttl=600,
+        )
+
+    @pytest.mark.asyncio
+    async def test_connect_drops_cross_origin_return_path(self):
+        from app.api.github_routes import github_connect
+
+        with (
+            patch.object(settings, "GITHUB_CLIENT_ID", "client-id"),
+            patch.object(settings, "GITHUB_CLIENT_SECRET", "client-secret"),
+            patch("app.api.github_routes.cache_manager") as mock_cache,
+        ):
+            mock_cache.set = AsyncMock()
+            await github_connect(
+                return_to="//evil.example/steal",
+                user_id="test-user-id",
+            )
+
+        payload = mock_cache.set.await_args.args[1]
+        assert payload["return_to"] is None
 
     @pytest.mark.asyncio
     async def test_cache_pop_uses_atomic_getdel(self):
@@ -354,6 +427,119 @@ class TestGitHubEndpoints:
         finally:
             app.dependency_overrides.pop(get_db, None)
 
+    def test_complete_records_actual_import_only_grant(self, authed_client):
+        """The token response, not the requested scope, defines capabilities."""
+        from app.database.connection import get_db
+        from app.main import app
+
+        mock_user = MagicMock()
+        mock_user.user_metadata = {"mendeley_name": "Keep me"}
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        mock_db.commit = AsyncMock()
+
+        token_resp = MagicMock()
+        token_resp.raise_for_status = MagicMock()
+        token_resp.json.return_value = {
+            "access_token": "oauth-token",
+            "scope": "",
+        }
+        mock_http = AsyncMock()
+        mock_http.post = AsyncMock(return_value=token_resp)
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+        try:
+            with (
+                patch("app.api.github_routes.cache_manager") as mock_cache,
+                patch("app.api.github_routes.httpx.AsyncClient") as MockClient,
+                patch(
+                    "app.api.github_routes.github_sync_service.get_github_user",
+                    new=AsyncMock(return_value={"login": "octocat"}),
+                ),
+                patch(
+                    "app.api.github_routes.encryption_service.encrypt",
+                    return_value="encrypted-token",
+                ),
+            ):
+                mock_cache.pop = AsyncMock(
+                    return_value={
+                        "user_id": "test-user-id",
+                        "code": "provider-code",
+                        "purpose": "import",
+                    }
+                )
+                MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+                MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+                resp = authed_client.post(
+                    "/github/complete",
+                    json={"ticket": "ticket-1"},
+                )
+
+            assert resp.status_code == 200
+            assert mock_user.github_access_token == "encrypted-token"
+            assert mock_user.github_username == "octocat"
+            assert mock_user.user_metadata == {
+                "mendeley_name": "Keep me",
+                "github_oauth": {"scopes": [], "purpose": "import"},
+            }
+            mock_db.commit.assert_awaited_once()
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    def test_status_exposes_import_and_private_sync_capabilities(self, authed_client):
+        from app.database.connection import get_db
+        from app.main import app
+
+        mock_user = MagicMock()
+        mock_user.github_access_token = "encrypted-token"
+        mock_user.github_username = "octocat"
+        mock_user.user_metadata = {
+            "github_oauth": {"scopes": [], "purpose": "import"}
+        }
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        app.dependency_overrides[get_db] = lambda: mock_db
+        try:
+            resp = authed_client.get("/github/status")
+            assert resp.status_code == 200
+            assert resp.json() == {
+                "connected": True,
+                "username": "octocat",
+                "public_import": True,
+                "private_sync": False,
+            }
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    def test_enable_sync_rejects_import_only_grant(self, authed_client):
+        from app.database.connection import get_db
+        from app.main import app
+
+        mock_user = MagicMock()
+        mock_user.github_access_token = "encrypted-token"
+        mock_user.user_metadata = {
+            "github_oauth": {"scopes": [], "purpose": "import"}
+        }
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        app.dependency_overrides[get_db] = lambda: mock_db
+        try:
+            resp = authed_client.post(
+                "/github/resumes/resume-1/enable",
+                json={"repo_name": "latexy-resumes"},
+            )
+            assert resp.status_code == 403
+            assert "private github sync permission" in resp.json()["detail"].lower()
+            assert mock_db.execute.await_count == 1
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
     def test_callback_invalid_state_redirects_with_error(self, authed_client):
         """An expired/invalid state redirects to settings instead of raising JSON 400."""
         from app.database.connection import get_db
@@ -407,7 +593,12 @@ class TestGitHubEndpoints:
         mock_cache.pop.assert_awaited_once_with("gh:oauth:valid")
         mock_cache.set.assert_awaited_once_with(
             "gh:complete:complete-ticket",
-            {"user_id": "test-user-id", "code": "provider-code"},
+            {
+                "user_id": "test-user-id",
+                "code": "provider-code",
+                "purpose": "import",
+                "return_to": None,
+            },
             ttl=300,
         )
         mock_http.assert_not_called()
@@ -473,22 +664,83 @@ class TestGitHubEndpoints:
         finally:
             app.dependency_overrides.pop(get_db, None)
 
-    def test_disconnect_clears_token(self, authed_client):
-        """DELETE /github/disconnect clears github fields."""
+    def test_disconnect_revokes_grant_before_clearing_token(self, authed_client):
+        """DELETE /github/disconnect revokes upstream and clears local fields."""
         from app.database.connection import get_db
         from app.main import app
 
+        mock_user = MagicMock()
+        mock_user.github_access_token = "encrypted-token"
+        mock_user.github_username = "octocat"
+        mock_user.user_metadata = {
+            "github_oauth": {"scopes": ["repo"], "purpose": "sync"},
+            "mendeley_name": "Keep me",
+        }
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
         mock_db = AsyncMock()
-        mock_db.execute = AsyncMock(return_value=MagicMock())
+        mock_db.execute = AsyncMock(return_value=mock_result)
         mock_db.commit = AsyncMock()
 
         app.dependency_overrides[get_db] = lambda: mock_db
         try:
-            resp = authed_client.delete("/github/disconnect")
+            with (
+                patch(
+                    "app.api.github_routes.encryption_service.decrypt",
+                    return_value="oauth-token",
+                ),
+                patch(
+                    "app.api.github_routes.github_sync_service.revoke_oauth_grant",
+                    new=AsyncMock(),
+                ) as revoke,
+            ):
+                resp = authed_client.delete("/github/disconnect")
             assert resp.status_code == 200
             data = resp.json()
             assert data["success"] is True
-            # Verify update calls were made (2 updates: users + resumes)
+            revoke.assert_awaited_once_with(
+                "oauth-token",
+                settings.GITHUB_CLIENT_ID,
+                settings.GITHUB_CLIENT_SECRET,
+            )
+            assert mock_user.github_access_token is None
+            assert mock_user.github_username is None
+            assert mock_user.user_metadata == {"mendeley_name": "Keep me"}
             assert mock_db.execute.call_count >= 2
+            mock_db.commit.assert_awaited_once()
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    def test_disconnect_keeps_local_token_when_revocation_fails(self, authed_client):
+        from app.database.connection import get_db
+        from app.main import app
+
+        mock_user = MagicMock()
+        mock_user.github_access_token = "encrypted-token"
+        mock_user.github_username = "octocat"
+        mock_user.user_metadata = {}
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        mock_db.commit = AsyncMock()
+        app.dependency_overrides[get_db] = lambda: mock_db
+        try:
+            with (
+                patch(
+                    "app.api.github_routes.encryption_service.decrypt",
+                    return_value="oauth-token",
+                ),
+                patch(
+                    "app.api.github_routes.github_sync_service.revoke_oauth_grant",
+                    new=AsyncMock(side_effect=httpx.ConnectError("offline")),
+                ),
+            ):
+                resp = authed_client.delete("/github/disconnect")
+
+            assert resp.status_code == 502
+            assert "nothing was disconnected" in resp.json()["detail"]
+            assert mock_user.github_access_token == "encrypted-token"
+            mock_db.commit.assert_not_awaited()
         finally:
             app.dependency_overrides.pop(get_db, None)

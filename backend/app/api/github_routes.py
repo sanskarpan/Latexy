@@ -4,7 +4,7 @@ import secrets
 import urllib.parse
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -40,6 +40,8 @@ _GITHUB_IMPORTS_GLOBAL_PER_HOUR = 500
 class GitHubStatusResponse(BaseModel):
     connected: bool
     username: Optional[str] = None
+    public_import: bool = False
+    private_sync: bool = False
 
 
 class GitHubOAuthStartResponse(BaseModel):
@@ -84,15 +86,40 @@ class GitHubImportResultResponse(BaseModel):
 # ── OAuth flow ───────────────────────────────────────────────────────────────
 
 
+def _safe_github_return_to(value: Optional[str]) -> Optional[str]:
+    """Allow only same-origin paths through the OAuth round trip."""
+    if not value or len(value) > 1024 or not value.startswith("/"):
+        return None
+    if value.startswith("//") or "\\" in value:
+        return None
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme or parsed.netloc:
+        return None
+    return value
+
+
+def _github_granted_scopes(user: User) -> set[str]:
+    """Return stored OAuth scopes, preserving legacy repo grants safely."""
+    metadata = user.user_metadata or {}
+    grant = metadata.get("github_oauth")
+    if isinstance(grant, dict) and isinstance(grant.get("scopes"), list):
+        return {str(scope).strip() for scope in grant["scopes"] if str(scope).strip()}
+    # Before scope metadata was recorded, every Latexy GitHub connection
+    # requested ``repo``. Treat those existing grants as sync-capable.
+    return {"repo"} if user.github_access_token else set()
+
+
 @router.post(
     "/connect",
     response_model=GitHubOAuthStartResponse,
     dependencies=[Depends(require_feature("integration_github"))],
 )
 async def github_connect(
+    purpose: Literal["import", "sync"] = "import",
+    return_to: Optional[str] = None,
     user_id: str = Depends(get_current_user_required),
 ):
-    """Create an OAuth state for the authenticated user and return its URL."""
+    """Create a purpose-scoped OAuth state for the authenticated user."""
     if not settings.GITHUB_CLIENT_ID or not settings.GITHUB_CLIENT_SECRET:
         raise HTTPException(
             status_code=503,
@@ -101,19 +128,28 @@ async def github_connect(
 
     # The state is opaque in the browser and consumed atomically by the callback.
     nonce = secrets.token_urlsafe(32)
-    await cache_manager.set(f"gh:oauth:{nonce}", {"user_id": user_id}, ttl=600)
-
-    params = urllib.parse.urlencode(
+    safe_return_to = _safe_github_return_to(return_to)
+    await cache_manager.set(
+        f"gh:oauth:{nonce}",
         {
-            "client_id": settings.GITHUB_CLIENT_ID,
-            "redirect_uri": settings.GITHUB_OAUTH_REDIRECT_URI,
-            "scope": "repo",
-            "state": nonce,
-        }
+            "user_id": user_id,
+            "purpose": purpose,
+            "return_to": safe_return_to,
+        },
+        ttl=600,
     )
-    return GitHubOAuthStartResponse(
-        authorization_url=f"https://github.com/login/oauth/authorize?{params}"
-    )
+
+    params_data = {
+        "client_id": settings.GITHUB_CLIENT_ID,
+        "redirect_uri": settings.GITHUB_OAUTH_REDIRECT_URI,
+        "state": nonce,
+    }
+    # Public profile/repository data needs no OAuth scope. The broad ``repo``
+    # grant is requested only when the user explicitly enables private sync.
+    if purpose == "sync":
+        params_data["scope"] = "repo"
+    params = urllib.parse.urlencode(params_data)
+    return GitHubOAuthStartResponse(authorization_url=f"https://github.com/login/oauth/authorize?{params}")
 
 
 def _github_error_redirect(reason: str) -> RedirectResponse:
@@ -148,12 +184,22 @@ async def github_callback(
         return _github_error_redirect("missing_code")
 
     ticket = secrets.token_urlsafe(32)
+    purpose = "sync" if oauth_state.get("purpose") == "sync" else "import"
+    return_to = _safe_github_return_to(oauth_state.get("return_to"))
     await cache_manager.set(
         f"gh:complete:{ticket}",
-        {"user_id": str(oauth_state["user_id"]), "code": code},
+        {
+            "user_id": str(oauth_state["user_id"]),
+            "code": code,
+            "purpose": purpose,
+            "return_to": return_to,
+        },
         ttl=300,
     )
-    query = urllib.parse.urlencode({"github": "complete", "ticket": ticket})
+    callback_params = {"github": "complete", "ticket": ticket}
+    if return_to:
+        callback_params["return_to"] = return_to
+    query = urllib.parse.urlencode(callback_params)
     return RedirectResponse(f"{settings.FRONTEND_URL}/settings?{query}")
 
 
@@ -228,10 +274,21 @@ async def github_complete(
     # Encrypt token before storing
     encrypted_token = encryption_service.encrypt(access_token)
 
-    # Store on user
-    await db.execute(
-        update(User).where(User.id == user_id).values(github_access_token=encrypted_token, github_username=username)
-    )
+    raw_scopes = str(data.get("scope") or "")
+    granted_scopes = sorted({scope.strip() for scope in raw_scopes.replace(",", " ").split() if scope.strip()})
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    metadata = dict(user.user_metadata or {})
+    metadata["github_oauth"] = {
+        "scopes": granted_scopes,
+        "purpose": "sync" if completion.get("purpose") == "sync" else "import",
+    }
+    user.github_access_token = encrypted_token
+    user.github_username = username
+    user.user_metadata = metadata
     await db.commit()
 
     return {"success": True, "message": "GitHub account connected"}
@@ -253,6 +310,8 @@ async def github_status(
     return GitHubStatusResponse(
         connected=bool(user.github_access_token),
         username=user.github_username,
+        public_import=bool(user.github_access_token),
+        private_sync="repo" in _github_granted_scopes(user),
     )
 
 
@@ -261,11 +320,47 @@ async def github_disconnect(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_required),
 ):
-    """Clear GitHub token and disable sync on all resumes."""
-    await db.execute(update(User).where(User.id == user_id).values(github_access_token=None, github_username=None))
+    """Revoke the GitHub grant, then clear local credentials and sync state."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.github_access_token:
+        try:
+            token = encryption_service.decrypt(user.github_access_token)
+            await github_sync_service.revoke_oauth_grant(
+                token,
+                settings.GITHUB_CLIENT_ID,
+                settings.GITHUB_CLIENT_SECRET,
+            )
+        except httpx.HTTPStatusError as exc:
+            logger.error(
+                "GitHub grant revocation failed with status %s",
+                exc.response.status_code,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="GitHub access could not be revoked; nothing was disconnected. Please try again.",
+            ) from exc
+        except httpx.RequestError as exc:
+            logger.error("GitHub is unavailable during grant revocation")
+            raise HTTPException(
+                status_code=502,
+                detail="GitHub is unavailable; nothing was disconnected. Please try again.",
+            ) from exc
+
+    metadata = dict(user.user_metadata or {})
+    metadata.pop("github_oauth", None)
+    user.github_access_token = None
+    user.github_username = None
+    user.user_metadata = metadata
     await db.execute(update(Resume).where(Resume.user_id == user_id).values(github_sync_enabled=False))
     await db.commit()
-    return {"success": True, "message": "GitHub disconnected"}
+    return {
+        "success": True,
+        "message": "GitHub authorization revoked and account disconnected",
+    }
 
 
 # ── Per-resume sync endpoints ────────────────────────────────────────────────
@@ -285,6 +380,11 @@ async def enable_github_sync(
         raise HTTPException(
             status_code=400,
             detail="GitHub not connected. Go to Settings → GitHub Integration to connect your account.",
+        )
+    if "repo" not in _github_granted_scopes(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Private GitHub sync permission is not enabled. Reconnect GitHub for private sync.",
         )
 
     resume_result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
@@ -354,6 +454,11 @@ async def push_to_github(
     user = user_result.scalar_one_or_none()
     if not user or not user.github_access_token:
         raise HTTPException(status_code=400, detail="GitHub not connected")
+    if "repo" not in _github_granted_scopes(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Private GitHub sync permission is not enabled. Reconnect GitHub for private sync.",
+        )
 
     resume_result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
     resume = resume_result.scalar_one_or_none()
@@ -412,6 +517,11 @@ async def pull_from_github(
     user = user_result.scalar_one_or_none()
     if not user or not user.github_access_token:
         raise HTTPException(status_code=400, detail="GitHub not connected")
+    if "repo" not in _github_granted_scopes(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Private GitHub sync permission is not enabled. Reconnect GitHub for private sync.",
+        )
 
     resume_result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
     resume = resume_result.scalar_one_or_none()

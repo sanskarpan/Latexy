@@ -66,6 +66,7 @@ _REPO_FIELDS = """
   url
   stargazerCount
   forkCount
+  isPrivate
   isArchived
   pushedAt
   primaryLanguage { name }
@@ -87,6 +88,7 @@ query {{
     repositories(
       first: 100
       ownerAffiliations: OWNER
+      privacy: PUBLIC
       isFork: false
       orderBy: {{ field: STARGAZERS, direction: DESC }}
     ) {{
@@ -109,7 +111,10 @@ def _readme_bytes(node: Dict[str, Any]) -> int:
 
 def _parse_repo_node(node: Dict[str, Any], pinned: bool) -> Optional[Dict[str, Any]]:
     """Normalize a GraphQL Repository node to a flat candidate dict."""
-    if not node or not node.get("name"):
+    # pinnedItems has no visibility filter, so enforce the public-only privacy
+    # contract again while parsing. This is intentionally defense in depth with
+    # the ``privacy: PUBLIC`` filter on the main repositories connection.
+    if not node or not node.get("name") or node.get("isPrivate") is not False:
         return None
 
     primary = node.get("primaryLanguage") or {}

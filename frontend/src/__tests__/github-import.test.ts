@@ -14,6 +14,10 @@ const SETTINGS_SOURCE = readFileSync(
   fileURLToPath(new URL('../app/settings/page.tsx', import.meta.url)),
   'utf8'
 )
+const IMPORT_MODAL_SOURCE = readFileSync(
+  fileURLToPath(new URL('../components/ImportProjectsModal.tsx', import.meta.url)),
+  'utf8'
+)
 
 function mockFetch(responseBody: object) {
   vi.stubGlobal(
@@ -158,7 +162,7 @@ describe('GitHub import client', () => {
 
 describe('GitHub OAuth client', () => {
   test('settings uses the authenticated two-step handshake', () => {
-    expect(SETTINGS_SOURCE).toContain('apiClient.startGitHubOAuth()')
+    expect(SETTINGS_SOURCE).toContain("apiClient.startGitHubOAuth('sync')")
     expect(SETTINGS_SOURCE).toContain('apiClient.completeGitHubOAuth(ticket)')
     expect(SETTINGS_SOURCE).toContain('if (!sessionData)')
     expect(SETTINGS_SOURCE).toContain('window.location.assign(authorizationUrl)')
@@ -172,12 +176,27 @@ describe('GitHub OAuth client', () => {
     const result = await apiClient.startGitHubOAuth()
 
     const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
-    expect(url).toContain('/github/connect')
+    expect(url).toContain('/github/connect?purpose=import')
     expect(init.method).toBe('POST')
     expect((init.headers as Record<string, string>).Authorization).toBe(
       'Bearer latexy-session'
     )
     expect(result.authorization_url).toContain('github.com/login/oauth/authorize')
+  })
+
+  test('private sync and public import request distinct authorization purposes', async () => {
+    mockFetch({ authorization_url: 'https://github.com/login/oauth/authorize?state=opaque' })
+    apiClient.setAuthToken('latexy-session')
+
+    await apiClient.startGitHubOAuth('sync', '/settings')
+
+    const [url] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+    expect(url).toContain('/github/connect?purpose=sync')
+    expect(url).toContain('return_to=%2Fsettings')
+    expect(SETTINGS_SOURCE).toContain("startGitHubOAuth('sync')")
+    expect(IMPORT_MODAL_SOURCE).toContain("'import',")
+    expect(IMPORT_MODAL_SOURCE).toContain('public repository')
+    expect(IMPORT_MODAL_SOURCE).toContain('cannot access private repositories')
   })
 
   test('completes a one-time ticket through the authenticated API', async () => {

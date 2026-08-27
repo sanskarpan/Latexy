@@ -692,6 +692,8 @@ export interface SpellCheckResponse {
 export interface GitHubStatusResponse {
   connected: boolean
   username: string | null
+  public_import: boolean
+  private_sync: boolean
 }
 
 export interface OAuthStartResponse {
@@ -2696,8 +2698,15 @@ class ApiClient {
     return this.request<GitHubStatusResponse>('/github/status')
   }
 
-  async startGitHubOAuth(): Promise<OAuthStartResponse> {
-    return this.request<OAuthStartResponse>('/github/connect', { method: 'POST' })
+  async startGitHubOAuth(
+    purpose: 'import' | 'sync' = 'import',
+    returnTo?: string,
+  ): Promise<OAuthStartResponse> {
+    const params = new URLSearchParams({ purpose })
+    if (returnTo) params.set('return_to', returnTo)
+    return this.request<OAuthStartResponse>(`/github/connect?${params.toString()}`, {
+      method: 'POST',
+    })
   }
 
   async completeGitHubOAuth(ticket: string): Promise<{ success: boolean; message: string }> {

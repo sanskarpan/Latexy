@@ -131,5 +131,32 @@ class GitHubSyncService:
             resp.raise_for_status()
             return resp.json()
 
+    async def revoke_oauth_grant(
+        self,
+        token: str,
+        client_id: str,
+        client_secret: str,
+    ) -> None:
+        """Revoke this user's complete OAuth app authorization at GitHub.
+
+        Revoking the grant (rather than only deleting Latexy's local token)
+        invalidates every token this OAuth app holds for the user. A 404 is
+        idempotent success: the user may already have revoked the app directly
+        in GitHub settings.
+        """
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.delete(
+                f"{GITHUB_API}/applications/{client_id}/grant",
+                auth=(client_id, client_secret),
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+                json={"access_token": token},
+            )
+            if resp.status_code in (204, 404):
+                return
+            resp.raise_for_status()
+
 
 github_sync_service = GitHubSyncService()
