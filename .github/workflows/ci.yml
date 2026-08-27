@@ -37,6 +37,7 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
+          activate-environment: true
       - name: Install linting deps
         run: uv pip install ruff
       - name: Run ruff
@@ -68,6 +69,7 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
+          activate-environment: true
           enable-cache: true
           cache-dependency-glob: "backend/requirements-dev.txt"
       - name: Install dependencies
@@ -126,6 +128,7 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
+          activate-environment: true
           enable-cache: true
           cache-dependency-glob: "backend/requirements-dev.txt"
 
@@ -280,6 +283,7 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
+          activate-environment: true
           enable-cache: true
           cache-dependency-glob: "backend/requirements-dev.txt"
 
