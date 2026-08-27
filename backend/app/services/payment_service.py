@@ -296,6 +296,8 @@ class PaymentService:
                 )
             )
             already_redeemed = redemption.scalar_one_or_none() is not None
+            if already_redeemed:
+                return {"valid": False, "message": "Coupon already used by this account"}
 
         discount_percent = int(coupon.discount_percent)
         offer_id = get_razorpay_offer_id(normalized_code)
@@ -321,6 +323,49 @@ class PaymentService:
             "message": "Coupon applied",
             "already_redeemed": already_redeemed,
         }
+
+    async def _reserve_coupon(
+        self,
+        db: AsyncSession,
+        code: str,
+        plan_id: str,
+        user_id: str,
+    ) -> tuple[bool, str]:
+        """Atomically reserve one coupon use before contacting Razorpay."""
+        result = await db.execute(
+            select(CouponCode)
+            .where(CouponCode.code == code)
+            .with_for_update()
+        )
+        coupon = result.scalar_one_or_none()
+        if coupon is None:
+            return False, "Invalid or expired code"
+
+        now = datetime.now(timezone.utc)
+        expires_at = coupon.expires_at
+        if expires_at and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        applicable = set(coupon.applicable_plans or [])
+        if expires_at and expires_at <= now:
+            return False, "Invalid or expired code"
+        if applicable and plan_id not in applicable and resolve_plan_family(plan_id) not in applicable:
+            return False, "Code not valid for this plan"
+        if coupon.max_uses is not None and int(coupon.used_count or 0) >= coupon.max_uses:
+            return False, "Invalid or expired code"
+
+        redemption = await db.execute(
+            select(CouponRedemption.id).where(
+                CouponRedemption.coupon_id == coupon.id,
+                CouponRedemption.user_id == user_id,
+            )
+        )
+        if redemption.scalar_one_or_none() is not None:
+            return False, "Coupon already used by this account"
+
+        coupon.used_count = int(coupon.used_count or 0) + 1
+        db.add(CouponRedemption(coupon_id=coupon.id, user_id=user_id))
+        await db.flush()
+        return True, ""
 
     async def _get_current_subscription(
         self,
@@ -771,6 +816,19 @@ class PaymentService:
                     if resolved is not None:
                         return resolved
 
+                if coupon_result and coupon_result.get("code"):
+                    reserved, reservation_error = await self._reserve_coupon(
+                        db,
+                        coupon_result["code"],
+                        concrete_plan_id,
+                        user_id,
+                    )
+                    if not reserved:
+                        # Release the coupon row lock before returning. No provider
+                        # object has been created at this point.
+                        await db.rollback()
+                        return {"success": False, "error": reservation_error}
+
                 result = await self._create_paid_subscription(
                     db=db,
                     user_id=user_id,
@@ -780,44 +838,15 @@ class PaymentService:
                     coupon_code=(coupon_result or {}).get("code"),
                     offer_id=(coupon_result or {}).get("offer_id"),
                 )
+                if not result.get("success") and coupon_result:
+                    # _create_paid_subscription commits the reservation together
+                    # with the local subscription only on success. Undo it when a
+                    # provider plan cannot be created.
+                    await db.rollback()
             finally:
                 await self._release_checkout_lock(user_id)
 
-            if (
-                result.get("success")
-                and coupon_result
-                and coupon_result.get("code")
-                and CouponCode is not None
-                and CouponRedemption is not None
-                and not coupon_result.get("already_redeemed")
-            ):
-                # DB-007: atomic UPDATE WHERE to eliminate TOCTOU race on used_count
-                coupon_code_val = coupon_result["code"]
-                # First resolve the coupon id (needed for CouponRedemption FK)
-                coupon_id_result = await db.execute(
-                    select(CouponCode.id).where(CouponCode.code == coupon_code_val)
-                )
-                coupon_id = coupon_id_result.scalar_one_or_none()
-                if coupon_id is not None:
-                    inc_result = await db.execute(
-                        update(CouponCode)
-                        .where(
-                            CouponCode.id == coupon_id,
-                            # max_uses NULL == unlimited; `used_count < NULL` is
-                            # NULL (never true), so guard the NULL case explicitly.
-                            (CouponCode.max_uses.is_(None))
-                            | (CouponCode.used_count < CouponCode.max_uses),
-                        )
-                        .values(used_count=CouponCode.used_count + 1)
-                        .returning(CouponCode.id)
-                    )
-                    if inc_result.scalar_one_or_none() is None:
-                        # Limit reached between validate and use — still return success
-                        # for subscription but skip redemption record
-                        logger.warning(f"Coupon {coupon_code_val} limit reached at redemption time")
-                    else:
-                        db.add(CouponRedemption(coupon_id=coupon_id, user_id=user_id))
-                        await db.commit()
+            if result.get("success") and coupon_result:
                 result["coupon"] = coupon_result
 
             return result

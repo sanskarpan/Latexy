@@ -693,6 +693,152 @@ class TestWebhookReplayProtection:
 
 @pytest.mark.asyncio
 class TestCouponSafety:
+    async def test_already_redeemed_coupon_is_rejected_before_provider_call(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        user_id, email = await _create_user(db_session, plan="free")
+        coupon_id = str(uuid.uuid4())
+        code = f"G5{uuid.uuid4().hex[:8].upper()}"
+        await db_session.execute(
+            text(
+                "INSERT INTO coupon_codes (id, code, discount_percent, applicable_plans, used_count) "
+                "VALUES (:id, :code, 20, ARRAY['pro'], 1)"
+            ),
+            {"id": coupon_id, "code": code},
+        )
+        await db_session.execute(
+            text(
+                "INSERT INTO coupon_redemptions (id, coupon_id, user_id) "
+                "VALUES (:id, :coupon_id, :user_id)"
+            ),
+            {"id": str(uuid.uuid4()), "coupon_id": coupon_id, "user_id": user_id},
+        )
+        await db_session.commit()
+
+        with patch(
+            "app.services.payment_service.get_razorpay_offer_id",
+            return_value="offer_test123",
+        ):
+            validated = await svc.validate_coupon(db_session, code, "pro", user_id=user_id)
+            result = await svc.create_subscription(
+                db_session,
+                user_id,
+                "pro",
+                email,
+                "Group G",
+                coupon_code=code,
+            )
+
+        assert validated == {
+            "valid": False,
+            "message": "Coupon already used by this account",
+        }
+        assert result["success"] is False
+        assert result["error"] == "Coupon already used by this account"
+        svc.client.customer.create.assert_not_called()
+        svc.client.subscription.create.assert_not_called()
+
+    async def test_coupon_exhausted_after_validation_is_rejected_before_provider_call(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        """The locked reservation must close the validation/provider TOCTOU window."""
+        user_id, email = await _create_user(db_session, plan="free")
+        coupon_id = str(uuid.uuid4())
+        code = f"G5{uuid.uuid4().hex[:8].upper()}"
+        await db_session.execute(
+            text(
+                "INSERT INTO coupon_codes "
+                "(id, code, discount_percent, applicable_plans, max_uses, used_count) "
+                "VALUES (:id, :code, 20, ARRAY['pro'], 1, 0)"
+            ),
+            {"id": coupon_id, "code": code},
+        )
+        await db_session.commit()
+
+        async def exhaust_coupon(_user_id: str) -> bool:
+            await db_session.execute(
+                text("UPDATE coupon_codes SET used_count = 1 WHERE id = :id"),
+                {"id": coupon_id},
+            )
+            await db_session.commit()
+            return True
+
+        with (
+            patch(
+                "app.services.payment_service.get_razorpay_offer_id",
+                return_value="offer_test123",
+            ),
+            patch.object(svc, "_acquire_checkout_lock", side_effect=exhaust_coupon),
+            patch.object(svc, "_release_checkout_lock", new=AsyncMock()),
+        ):
+            result = await svc.create_subscription(
+                db_session,
+                user_id,
+                "pro",
+                email,
+                "Group G",
+                coupon_code=code,
+            )
+
+        assert result["success"] is False
+        assert result["error"] == "Invalid or expired code"
+        svc.client.customer.create.assert_not_called()
+        svc.client.subscription.create.assert_not_called()
+
+    async def test_provider_setup_failure_rolls_back_coupon_reservation(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        user_id, email = await _create_user(db_session, plan="free")
+        coupon_id = str(uuid.uuid4())
+        code = f"G5{uuid.uuid4().hex[:8].upper()}"
+        await db_session.execute(
+            text(
+                "INSERT INTO coupon_codes (id, code, discount_percent, applicable_plans, used_count) "
+                "VALUES (:id, :code, 20, ARRAY['pro'], 0)"
+            ),
+            {"id": coupon_id, "code": code},
+        )
+        await db_session.commit()
+
+        with (
+            patch(
+                "app.services.payment_service.get_razorpay_offer_id",
+                return_value="offer_test123",
+            ),
+            patch("app.services.payment_service.get_razorpay_plan_id", return_value=None),
+            patch(
+                "app.services.payment_service.get_redis_cache_client",
+                new=AsyncMock(return_value=_FakeRedis()),
+            ),
+            patch.object(svc, "create_razorpay_plan", new=AsyncMock(return_value=None)),
+        ):
+            result = await svc.create_subscription(
+                db_session,
+                user_id,
+                "pro",
+                email,
+                "Group G",
+                coupon_code=code,
+            )
+
+        assert result["success"] is False
+        assert result["error"] == "Failed to create payment plan"
+        svc.client.customer.create.assert_not_called()
+        svc.client.subscription.create.assert_not_called()
+        used_count = (
+            await db_session.execute(
+                text("SELECT used_count FROM coupon_codes WHERE id = :id"), {"id": coupon_id}
+            )
+        ).scalar_one()
+        redemptions = (
+            await db_session.execute(
+                text("SELECT COUNT(*) FROM coupon_redemptions WHERE coupon_id = :id"),
+                {"id": coupon_id},
+            )
+        ).scalar_one()
+        assert used_count == 0
+        assert redemptions == 0
+
     async def test_discount_coupon_is_refused_and_not_redeemed(
         self, svc: PaymentService, db_session: AsyncSession
     ):
@@ -799,6 +945,23 @@ class TestCouponSafety:
         assert result["success"] is True, result
         payload = svc.client.subscription.create.call_args[0][0]
         assert payload["offer_id"] == "offer_test123"
+        used_count = (
+            await db_session.execute(
+                text("SELECT used_count FROM coupon_codes WHERE code = :code"), {"code": code}
+            )
+        ).scalar_one()
+        redemptions = (
+            await db_session.execute(
+                text(
+                    "SELECT COUNT(*) FROM coupon_redemptions cr "
+                    "JOIN coupon_codes cc ON cc.id = cr.coupon_id "
+                    "WHERE cc.code = :code AND cr.user_id = :user_id"
+                ),
+                {"code": code, "user_id": user_id},
+            )
+        ).scalar_one()
+        assert used_count == 1
+        assert redemptions == 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────
