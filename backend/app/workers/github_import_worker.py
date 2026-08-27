@@ -11,6 +11,7 @@ worker, so ``submit_github_import`` routes to the ``run_github_import_task``
 Modal function instead of enqueueing to a broker with no consumer.
 """
 
+import asyncio
 import os
 import uuid
 from typing import Any, Dict, List, Optional
@@ -24,6 +25,66 @@ from ..services import github_projects_service as gh
 from ..workers.event_publisher import get_worker_redis, is_cancelled, publish_event
 
 logger = get_logger(__name__)
+
+
+async def _resolve_import_credentials(
+    user_id: str,
+    session_factory=None,
+) -> tuple[Optional[str], Optional[str]]:
+    """Decrypt current credentials only inside the worker execution boundary."""
+    from sqlalchemy import select
+
+    from ..database.models import User, UserAPIKey
+    from ..services.api_key_service import api_key_service
+    from ..services.encryption_service import encryption_service
+
+    engine = None
+    if session_factory is None:
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from ..core.config import settings
+        from ..utils.db_url import normalize_database_url
+
+        if not settings.DATABASE_URL:
+            raise RuntimeError("Database is unavailable for credential resolution")
+        engine = create_async_engine(normalize_database_url(settings.DATABASE_URL), echo=False)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_factory() as db:
+            encrypted_github_token = await db.scalar(
+                select(User.github_access_token).where(User.id == user_id)
+            )
+            if not encrypted_github_token:
+                return None, None
+            github_token = encryption_service.decrypt(encrypted_github_token)
+
+            byok_result = await db.execute(
+                select(UserAPIKey.encrypted_key)
+                .where(
+                    UserAPIKey.user_id == user_id,
+                    UserAPIKey.provider == "openai",
+                    UserAPIKey.is_active,
+                )
+                .order_by(UserAPIKey.created_at.desc())
+                .limit(1)
+            )
+            encrypted_api_key = byok_result.scalar_one_or_none()
+            api_key = None
+            if encrypted_api_key:
+                try:
+                    api_key = api_key_service.encryption.decrypt(encrypted_api_key)
+                except Exception:
+                    # A broken/revoked BYOK key must not prevent the documented
+                    # platform-key fallback from serving the import.
+                    logger.warning(
+                        "Could not decrypt OpenAI BYOK key for GitHub import user %s; using platform fallback",
+                        user_id,
+                    )
+            return github_token, api_key
+    finally:
+        if engine is not None:
+            await engine.dispose()
 
 
 def _store_result(job_id: str, user_id: str, payload: Dict[str, Any]) -> None:
@@ -50,13 +111,11 @@ def import_github_projects_task(
     self,
     job_id: Optional[str] = None,
     user_id: Optional[str] = None,
-    github_token: Optional[str] = None,
-    api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Import + summarize a user's top public GitHub projects.
 
-    ``github_token`` authenticates the (public-only) GitHub reads; ``api_key`` is
-    the user's LLM key when BYOK, else the platform key, for README summarization.
+    Current credentials are loaded from the database and decrypted here, never
+    serialized into the Celery/Modal payload.
 
     Publishes: job.started, job.progress (per stage), job.completed / job.failed.
     Stores the result at ``latexy:github_import:{job_id}``.
@@ -72,26 +131,32 @@ def import_github_projects_task(
     worker_id = f"github-import-{task_id}"
     logger.info(f"GitHub import task {task_id} starting for job {job_id}")
 
-    if not github_token:
-        publish_event(
-            job_id,
-            "job.failed",
-            {
-                "stage": "github_import",
-                "error_code": "github_not_connected",
-                "error_message": "No GitHub token available for this import.",
-                "retryable": False,
-            },
-        )
-        _store_result(job_id, user_id, {"status": "failed", "projects": [], "error": "GitHub not connected"})
-        return {"success": False, "job_id": job_id, "error": "GitHub not connected"}
-
     publish_event(job_id, "job.started", {"worker_id": worker_id, "stage": "github_import"})
 
     # One HTTP client for every GitHub call → serial requests keep us clear of
     # GitHub's secondary rate limits.
-    client = httpx.Client(timeout=20)
+    client = None
     try:
+        github_token, api_key = asyncio.run(_resolve_import_credentials(user_id))
+        if not github_token:
+            publish_event(
+                job_id,
+                "job.failed",
+                {
+                    "stage": "github_import",
+                    "error_code": "github_not_connected",
+                    "error_message": "No GitHub token available for this import.",
+                    "retryable": False,
+                },
+            )
+            _store_result(
+                job_id,
+                user_id,
+                {"status": "failed", "projects": [], "error": "GitHub not connected"},
+            )
+            return {"success": False, "job_id": job_id, "error": "GitHub not connected"}
+
+        client = httpx.Client(timeout=20)
         publish_event(
             job_id,
             "job.progress",
@@ -209,7 +274,8 @@ def import_github_projects_task(
         return {"success": False, "job_id": job_id, "error": str(exc)}
 
     finally:
-        client.close()
+        if client is not None:
+            client.close()
 
 
 # ------------------------------------------------------------------ #
@@ -220,8 +286,6 @@ def import_github_projects_task(
 def submit_github_import(
     job_id: str,
     user_id: str,
-    github_token: str,
-    api_key: Optional[str] = None,
     user_plan: str = "free",
 ) -> str:
     """Enqueue import_github_projects_task on the llm queue (or Modal spawn)."""
@@ -237,8 +301,6 @@ def submit_github_import(
             {
                 "job_id": job_id,
                 "user_id": user_id,
-                "github_token": github_token,
-                "api_key": api_key,
             },
         )
         logger.info(f"Dispatched GitHub import to Modal for job {job_id}")
@@ -248,8 +310,6 @@ def submit_github_import(
         kwargs={
             "job_id": job_id,
             "user_id": user_id,
-            "github_token": github_token,
-            "api_key": api_key,
         },
         priority=priority,
         queue="llm",
