@@ -40,7 +40,15 @@ CouponRedemption = getattr(db_models, "CouponRedemption", None)
 # Statuses a Razorpay subscription can hold while it is still live, most
 # authoritative first. Used both to pick the "current" subscription when a user
 # has several rows and to refuse creating a second live subscription.
-LIVE_SUBSCRIPTION_STATUSES = ("active", "authenticated", "created", "pending", "paused")
+SCHEDULED_CANCEL_STATUS = "cancel_scheduled"
+LIVE_SUBSCRIPTION_STATUSES = (
+    SCHEDULED_CANCEL_STATUS,
+    "active",
+    "authenticated",
+    "created",
+    "pending",
+    "paused",
+)
 
 # Live statuses where nothing has been charged yet, so the subscription can be
 # abandoned/replaced without a refund.
@@ -517,7 +525,7 @@ class PaymentService:
         else:
             try:
                 self.client.subscription.cancel(
-                    existing.razorpay_subscription_id, {"cancel_at_cycle_end": 0}
+                    existing.razorpay_subscription_id, {"cancel_at_cycle_end": False}
                 )
                 settled = True
             except Exception as e:
@@ -1050,7 +1058,11 @@ class PaymentService:
             async with db.begin():
                 # Fetch user_id first so we can update User without a second SELECT
                 sub_result = await db.execute(
-                    select(Subscription.user_id, Subscription.plan_id).where(
+                    select(
+                        Subscription.user_id,
+                        Subscription.plan_id,
+                        Subscription.status,
+                    ).where(
                         Subscription.razorpay_subscription_id == subscription_id
                     )
                 )
@@ -1058,7 +1070,15 @@ class PaymentService:
                 if sub_row is None:
                     logger.warning(f"Subscription not found: {subscription_id}")
                     return {"success": False, "error": "Subscription not found"}
-                user_id_row, plan_id = sub_row
+                user_id_row, plan_id, local_status = sub_row
+                if local_status == SCHEDULED_CANCEL_STATUS:
+                    logger.info(
+                        f"Ignoring stale activation for cancellation-scheduled {subscription_id}"
+                    )
+                    return {
+                        "success": True,
+                        "message": "Subscription cancellation remains scheduled",
+                    }
 
                 await db.execute(
                     update(Subscription).where(
@@ -1116,14 +1136,17 @@ class PaymentService:
             async with db.begin():
                 sub_result = await db.execute(
                     select(
-                        Subscription.id, Subscription.user_id, Subscription.plan_id
+                        Subscription.id,
+                        Subscription.user_id,
+                        Subscription.plan_id,
+                        Subscription.status,
                     ).where(Subscription.razorpay_subscription_id == subscription_id)
                 )
                 sub_row = sub_result.one_or_none()
                 if sub_row is None:
                     logger.warning(f"Subscription not found for charge: {subscription_id}")
                     return {"success": False, "error": "Subscription not found"}
-                local_sub_id, user_id_row, plan_id = sub_row
+                local_sub_id, user_id_row, plan_id, local_status = sub_row
 
                 # The payment lives under payload.payment.entity for charged
                 # events (NOT subscription.latest_invoice).
@@ -1153,24 +1176,25 @@ class PaymentService:
                     )
                 )
 
-                # Advance the billing period and re-affirm active status so
-                # renewals extend the stored period instead of letting it lapse.
-                now = datetime.utcnow()
-                await db.execute(
-                    update(Subscription).where(
-                        Subscription.razorpay_subscription_id == subscription_id
-                    ).values(
-                        status="active",
-                        current_period_start=now,
-                        current_period_end=now + self._period_delta_for_plan(plan_id),
+                if local_status != SCHEDULED_CANCEL_STATUS:
+                    # Advance the billing period and re-affirm active status so
+                    # renewals extend the stored period instead of letting it lapse.
+                    now = datetime.utcnow()
+                    await db.execute(
+                        update(Subscription).where(
+                            Subscription.razorpay_subscription_id == subscription_id
+                        ).values(
+                            status="active",
+                            current_period_start=now,
+                            current_period_end=now + self._period_delta_for_plan(plan_id),
+                        )
                     )
-                )
-                await db.execute(
-                    update(User).where(User.id == user_id_row).values(
-                        subscription_plan=plan_id,
-                        subscription_status="active",
+                    await db.execute(
+                        update(User).where(User.id == user_id_row).values(
+                            subscription_plan=plan_id,
+                            subscription_status="active",
+                        )
                     )
-                )
 
             record_business_event("payment", "success")
             logger.info(f"Payment recorded for subscription: {subscription_id}")
@@ -1221,6 +1245,7 @@ class PaymentService:
                     update(User).where(User.id == user_id_row).values(
                         subscription_plan="free",
                         subscription_status=sub_status,
+                        subscription_id=None,
                     )
                 )
 
@@ -1311,6 +1336,7 @@ class PaymentService:
                     update(User).where(User.id == user_id_row).values(
                         subscription_plan="free",
                         subscription_status="cancelled",
+                        subscription_id=None,
                     )
                 )
 
@@ -1434,6 +1460,12 @@ class PaymentService:
                 # the user is still worth cancelling.
                 provider_subscription_id = user.subscription_id
 
+            if live is not None and live.status == SCHEDULED_CANCEL_STATUS:
+                return {
+                    "success": True,
+                    "message": "Cancellation is already scheduled for the end of the billing cycle.",
+                }
+
             if provider_subscription_id and not self.is_available():
                 return {
                     "success": False,
@@ -1443,9 +1475,10 @@ class PaymentService:
             # An unpaid subscription has no billing cycle to run out, so it is
             # cancelled immediately; a paying one runs to cycle end.
             unpaid_checkout = live is not None and live.status in UNPAID_SUBSCRIPTION_STATUSES
+            provider_is_terminal = False
 
             if provider_subscription_id and self.client:
-                cancel_at_cycle_end = 0 if unpaid_checkout else 1
+                cancel_at_cycle_end = not unpaid_checkout
                 try:
                     self.client.subscription.cancel(
                         provider_subscription_id, {"cancel_at_cycle_end": cancel_at_cycle_end}
@@ -1465,31 +1498,45 @@ class PaymentService:
                                 "provider. Please try again or contact support."
                             ),
                         }
+                    provider_is_terminal = True
 
-            # Update local records for the live subscriptions only; already
-            # cancelled/completed history keeps its original status.
+            cancellation_is_scheduled = bool(
+                provider_subscription_id and not unpaid_checkout and not provider_is_terminal
+            )
+
+            # A paid end-of-cycle cancellation remains live at Razorpay until
+            # the current term ends. Mirror that intermediate state locally so
+            # entitlements, team seats, and duplicate-checkout protection remain
+            # intact. The terminal webhook performs the eventual downgrade.
+            local_status = (
+                SCHEDULED_CANCEL_STATUS if cancellation_is_scheduled else "cancelled"
+            )
+            subscription_values: Dict[str, Any] = {"status": local_status}
+            if not cancellation_is_scheduled:
+                subscription_values["cancelled_at"] = datetime.utcnow()
             await db.execute(
                 update(Subscription).where(
                     Subscription.user_id == user_id,
                     Subscription.status.in_(LIVE_SUBSCRIPTION_STATUSES),
-                ).values(
-                    status="cancelled",
-                    cancelled_at=datetime.utcnow()
-                )
+                ).values(**subscription_values)
             )
 
-            user_values: Dict[str, Any] = {"subscription_status": "cancelled"}
-            if unpaid_checkout:
-                # The checkout died immediately, so nothing points at it any
-                # more; a paying subscription keeps its id until the cycle ends.
+            user_values: Dict[str, Any] = {"subscription_status": local_status}
+            if not cancellation_is_scheduled:
+                user_values["subscription_plan"] = "free"
                 user_values["subscription_id"] = None
             await db.execute(update(User).where(User.id == user_id).values(**user_values))
 
-            # Team owners lose their seats with their subscription.
-            if resolve_plan_family(user.subscription_plan) == "team":
+            # Team access lasts through a paid cancellation's period end.
+            if not cancellation_is_scheduled and resolve_plan_family(user.subscription_plan) == "team":
                 await self._revoke_team_seats(db, user_id)
 
             await db.commit()
+            if cancellation_is_scheduled:
+                return {
+                    "success": True,
+                    "message": "Cancellation scheduled for the end of the billing cycle.",
+                }
             return {"success": True, "message": "Subscription cancelled"}
 
         except Exception as e:
