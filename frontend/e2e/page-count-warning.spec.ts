@@ -67,6 +67,13 @@ async function mockAuth(page: import('@playwright/test').Page) {
   await page.route('**/api/auth/get-session', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_SESSION) })
   )
+  await page.route((url) => url.pathname === '/ws/ticket', (route) =>
+    route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ ticket: 'page-count-ticket', expires_in: 30 }),
+    })
+  )
 }
 
 async function mockCommonBackend(page: import('@playwright/test').Page) {
