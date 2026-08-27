@@ -284,7 +284,7 @@ class TestSingleLiveSubscription:
 
         assert result["success"] is True, result
         svc.client.subscription.cancel.assert_called_once_with(
-            _rz("switch"), {"cancel_at_cycle_end": 0}
+            _rz("switch"), {"cancel_at_cycle_end": False}
         )
         svc.client.subscription.create.assert_called_once()
 
@@ -356,7 +356,7 @@ class TestSingleLiveSubscription:
 
         assert result["success"] is True, result
         svc.client.subscription.cancel.assert_called_once_with(
-            _rz("abandoned_g2f"), {"cancel_at_cycle_end": 0}
+            _rz("abandoned_g2f"), {"cancel_at_cycle_end": False}
         )
 
         status = (
@@ -415,30 +415,68 @@ class TestCancellationHonesty:
         ).scalar_one()
         assert user_status == "active"
 
-    async def test_provider_success_cancels_local_records(
+    async def test_provider_success_schedules_cancellation_and_preserves_access(
         self, svc: PaymentService, db_session: AsyncSession
     ):
-        user_id, _ = await _create_user(
+        user_id, email = await _create_user(
             db_session, plan="pro", subscription_id=_rz("cancel_ok")
         )
-        await _add_subscription(db_session, user_id, "pro", "active", _rz("cancel_ok"))
+        await _add_subscription(
+            db_session,
+            user_id,
+            "pro",
+            "active",
+            _rz("cancel_ok"),
+            period_end_days=12,
+        )
 
         result = await svc.cancel_subscription(db_session, user_id)
 
         assert result["success"] is True
         svc.client.subscription.cancel.assert_called_once_with(
-            _rz("cancel_ok"), {"cancel_at_cycle_end": 1}
+            _rz("cancel_ok"), {"cancel_at_cycle_end": True}
         )
-        status = (
+        subscription_row = (
             await db_session.execute(
                 text(
-                    "SELECT status FROM subscriptions "
+                    "SELECT status, cancelled_at FROM subscriptions "
                     "WHERE razorpay_subscription_id = :rz"
                 ),
                 {"rz": _rz("cancel_ok")},
             )
-        ).scalar_one()
-        assert status == "cancelled"
+        ).one()
+        user_row = (
+            await db_session.execute(
+                text(
+                    "SELECT subscription_plan, subscription_status, subscription_id "
+                    "FROM users WHERE id = :uid"
+                ),
+                {"uid": user_id},
+            )
+        ).one()
+        assert subscription_row == ("cancel_scheduled", None)
+        assert user_row == ("pro", "cancel_scheduled", _rz("cancel_ok"))
+        assert "end of the billing cycle" in result["message"]
+
+        repeated = await svc.cancel_subscription(db_session, user_id)
+        assert repeated["success"] is True
+        assert "already scheduled" in repeated["message"]
+        svc.client.subscription.cancel.assert_called_once()
+
+        with patch(
+            "app.services.payment_service.get_redis_cache_client",
+            new=AsyncMock(return_value=_FakeRedis()),
+        ):
+            duplicate = await svc.create_subscription(
+                db_session,
+                user_id,
+                "basic",
+                email,
+                "Group G",
+            )
+        assert duplicate["success"] is False
+        assert "already have an active" in duplicate["error"]
+        svc.client.subscription.create.assert_not_called()
 
     async def test_already_cancelled_at_provider_still_clears_local_state(
         self, svc: PaymentService, db_session: AsyncSession
@@ -468,13 +506,16 @@ class TestCancellationHonesty:
             )
         ).scalar_one()
         assert status == "cancelled"
-        user_status = (
+        user_row = (
             await db_session.execute(
-                text("SELECT subscription_status FROM users WHERE id = :uid"),
+                text(
+                    "SELECT subscription_plan, subscription_status, subscription_id "
+                    "FROM users WHERE id = :uid"
+                ),
                 {"uid": user_id},
             )
-        ).scalar_one()
-        assert user_status == "cancelled"
+        ).one()
+        assert user_row == ("free", "cancelled", None)
 
     async def test_unknown_subscription_at_provider_still_clears_local_state(
         self, svc: PaymentService, db_session: AsyncSession
@@ -503,6 +544,97 @@ class TestCancellationHonesty:
         ).scalar_one()
         assert status == "cancelled"
 
+    async def test_stale_activation_does_not_undo_scheduled_cancellation(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        user_id, _ = await _create_user(
+            db_session,
+            plan="pro",
+            status="cancel_scheduled",
+            subscription_id=_rz("cancel_stale_activation"),
+        )
+        await _add_subscription(
+            db_session,
+            user_id,
+            "pro",
+            "cancel_scheduled",
+            _rz("cancel_stale_activation"),
+        )
+
+        result = await svc._handle_subscription_activated(
+            db_session, {"id": _rz("cancel_stale_activation")}
+        )
+
+        assert result["success"] is True
+        assert "remains scheduled" in result["message"]
+        user_status = (
+            await db_session.execute(
+                text("SELECT subscription_status FROM users WHERE id = :uid"),
+                {"uid": user_id},
+            )
+        ).scalar_one()
+        sub_status = (
+            await db_session.execute(
+                text("SELECT status FROM subscriptions WHERE user_id = :uid"),
+                {"uid": user_id},
+            )
+        ).scalar_one()
+        assert user_status == "cancel_scheduled"
+        assert sub_status == "cancel_scheduled"
+
+    async def test_stale_charge_is_recorded_without_undoing_scheduled_cancellation(
+        self, svc: PaymentService, db_session: AsyncSession
+    ):
+        user_id, _ = await _create_user(
+            db_session,
+            plan="pro",
+            status="cancel_scheduled",
+            subscription_id=_rz("cancel_stale_charge"),
+        )
+        await _add_subscription(
+            db_session,
+            user_id,
+            "pro",
+            "cancel_scheduled",
+            _rz("cancel_stale_charge"),
+        )
+        payment_id = f"pay_cancel_stale_{_RUN}"
+
+        result = await svc._handle_subscription_charged(
+            db_session,
+            {
+                "subscription": {"entity": {"id": _rz("cancel_stale_charge")}},
+                "payment": {
+                    "entity": {
+                        "id": payment_id,
+                        "amount": 19900,
+                        "currency": "INR",
+                        "method": "card",
+                    }
+                },
+            },
+        )
+
+        assert result["success"] is True
+        state = (
+            await db_session.execute(
+                text(
+                    "SELECT u.subscription_status, s.status "
+                    "FROM users u JOIN subscriptions s ON s.user_id = u.id "
+                    "WHERE u.id = :uid"
+                ),
+                {"uid": user_id},
+            )
+        ).one()
+        payment_count = (
+            await db_session.execute(
+                text("SELECT COUNT(*) FROM payments WHERE razorpay_payment_id = :pid"),
+                {"pid": payment_id},
+            )
+        ).scalar_one()
+        assert state == ("cancel_scheduled", "cancel_scheduled")
+        assert payment_count == 1
+
     async def test_abandoned_checkout_cancel_reaches_provider(
         self, svc: PaymentService, db_session: AsyncSession
     ):
@@ -519,7 +651,7 @@ class TestCancellationHonesty:
 
         assert result["success"] is True, result
         svc.client.subscription.cancel.assert_called_once_with(
-            _rz("cancel_abandoned"), {"cancel_at_cycle_end": 0}
+            _rz("cancel_abandoned"), {"cancel_at_cycle_end": False}
         )
         status = (
             await db_session.execute(
@@ -970,7 +1102,7 @@ class TestCouponSafety:
 
 @pytest.mark.asyncio
 class TestTeamSeatReconciliation:
-    async def test_owner_cancellation_revokes_seats(
+    async def test_owner_scheduled_cancellation_preserves_seats(
         self, svc: PaymentService, db_session: AsyncSession
     ):
         owner_id, _ = await _create_user(
@@ -989,7 +1121,7 @@ class TestTeamSeatReconciliation:
                 {"uid": owner_id},
             )
         ).scalar_one()
-        assert seat_status == "removed"
+        assert seat_status == "active"
 
         member = (
             await db_session.execute(
@@ -999,7 +1131,7 @@ class TestTeamSeatReconciliation:
                 {"uid": member_id},
             )
         ).fetchone()
-        assert member == ("free", "inactive")
+        assert member == ("team_member", "active")
 
     async def test_cancellation_webhook_revokes_seats(
         self, svc: PaymentService, db_session: AsyncSession
@@ -1007,7 +1139,13 @@ class TestTeamSeatReconciliation:
         owner_id, _ = await _create_user(
             db_session, plan="team", subscription_id=_rz("team_hook_g6")
         )
-        await _add_subscription(db_session, owner_id, "team", "active", _rz("team_hook_g6"))
+        await _add_subscription(
+            db_session,
+            owner_id,
+            "team",
+            "cancel_scheduled",
+            _rz("team_hook_g6"),
+        )
         member_id, member_email = await _create_user(db_session, plan="team_member")
         await _add_team_seat(db_session, owner_id, member_id, member_email)
 
@@ -1031,6 +1169,13 @@ class TestTeamSeatReconciliation:
             )
         ).scalar_one()
         assert member_plan == "free"
+        owner_subscription_id = (
+            await db_session.execute(
+                text("SELECT subscription_id FROM users WHERE id = :uid"),
+                {"uid": owner_id},
+            )
+        ).scalar_one_or_none()
+        assert owner_subscription_id is None
 
     async def test_halted_subscription_revokes_seats(
         self, svc: PaymentService, db_session: AsyncSession
@@ -1054,6 +1199,13 @@ class TestTeamSeatReconciliation:
             )
         ).scalar_one()
         assert member_plan == "free"
+        owner_subscription_id = (
+            await db_session.execute(
+                text("SELECT subscription_id FROM users WHERE id = :uid"),
+                {"uid": owner_id},
+            )
+        ).scalar_one_or_none()
+        assert owner_subscription_id is None
 
     async def test_non_team_cancellation_leaves_other_owners_seats_alone(
         self, svc: PaymentService, db_session: AsyncSession
