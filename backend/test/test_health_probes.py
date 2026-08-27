@@ -100,6 +100,7 @@ async def test_metrics_exposes_new_series(client: AsyncClient):
         "latexy_redis_provider_monthly_requests",
         "latexy_redis_provider_request_limit",
         "latexy_redis_provider_request_utilization_ratio",
+        "latexy_redis_provider_capacity_status",
     ):
         assert family in text, f"expected metric family {family} in /metrics output"
 
