@@ -836,6 +836,127 @@ class TestCollaboratorEndpoints:
             app.dependency_overrides.pop(get_db, None)
 
 
+@pytest.mark.asyncio
+class TestCollaboratorDocumentAccess:
+    """The REST document path must use the same role model as collaboration."""
+
+    @staticmethod
+    async def _user_id_for_headers(db, headers: dict) -> str:
+        from sqlalchemy import text
+
+        token = headers["Authorization"].removeprefix("Bearer ")
+        result = await db.execute(
+            text('SELECT "userId" FROM session WHERE token = :token'),
+            {"token": token},
+        )
+        return result.scalar_one()
+
+    async def _share_resume(self, client, db, owner_headers, collaborator_headers, role: str):
+        from sqlalchemy import text
+
+        created = await client.post(
+            "/resumes/",
+            headers=owner_headers,
+            json={"title": "Shared resume", "latex_content": "owner content"},
+        )
+        assert created.status_code == 201
+        resume_id = created.json()["id"]
+        owner_id = await self._user_id_for_headers(db, owner_headers)
+        collaborator_id = await self._user_id_for_headers(db, collaborator_headers)
+        await db.execute(
+            text(
+                "INSERT INTO resume_collaborators "
+                "(resume_id, user_id, role, invited_by) "
+                "VALUES (:resume_id, :user_id, :role, :invited_by)"
+            ),
+            {
+                "resume_id": resume_id,
+                "user_id": collaborator_id,
+                "role": role,
+                "invited_by": owner_id,
+            },
+        )
+        await db.commit()
+        return resume_id, collaborator_id
+
+    @pytest.mark.parametrize("role", ["editor", "commenter", "viewer"])
+    async def test_each_collaborator_role_can_load_document(
+        self, client, db_session, auth_headers, auth_headers2, role
+    ) -> None:
+        resume_id, _ = await self._share_resume(
+            client, db_session, auth_headers, auth_headers2, role
+        )
+
+        response = await client.get(f"/resumes/{resume_id}", headers=auth_headers2)
+
+        assert response.status_code == 200
+        assert response.json()["latex_content"] == "owner content"
+        assert response.json()["access_role"] == role
+
+    async def test_editor_can_persist_document(
+        self, client, db_session, auth_headers, auth_headers2
+    ) -> None:
+        resume_id, _ = await self._share_resume(
+            client, db_session, auth_headers, auth_headers2, "editor"
+        )
+
+        updated = await client.put(
+            f"/resumes/{resume_id}",
+            headers=auth_headers2,
+            json={"latex_content": "editor content"},
+        )
+        owner_view = await client.get(f"/resumes/{resume_id}", headers=auth_headers)
+
+        assert updated.status_code == 200
+        assert updated.json()["access_role"] == "editor"
+        assert owner_view.json()["latex_content"] == "editor content"
+
+    @pytest.mark.parametrize("role", ["commenter", "viewer"])
+    async def test_read_only_collaborator_cannot_persist_document(
+        self, client, db_session, auth_headers, auth_headers2, role
+    ) -> None:
+        resume_id, _ = await self._share_resume(
+            client, db_session, auth_headers, auth_headers2, role
+        )
+
+        denied = await client.put(
+            f"/resumes/{resume_id}",
+            headers=auth_headers2,
+            json={"latex_content": "unauthorized content"},
+        )
+        owner_view = await client.get(f"/resumes/{resume_id}", headers=auth_headers)
+
+        assert denied.status_code == 403
+        assert owner_view.json()["latex_content"] == "owner content"
+
+    async def test_revoked_collaborator_loses_rest_access(
+        self, client, db_session, auth_headers, auth_headers2
+    ) -> None:
+        from sqlalchemy import text
+
+        resume_id, collaborator_id = await self._share_resume(
+            client, db_session, auth_headers, auth_headers2, "editor"
+        )
+        await db_session.execute(
+            text(
+                "DELETE FROM resume_collaborators "
+                "WHERE resume_id = :resume_id AND user_id = :user_id"
+            ),
+            {"resume_id": resume_id, "user_id": collaborator_id},
+        )
+        await db_session.commit()
+
+        read = await client.get(f"/resumes/{resume_id}", headers=auth_headers2)
+        write = await client.put(
+            f"/resumes/{resume_id}",
+            headers=auth_headers2,
+            json={"latex_content": "after revocation"},
+        )
+
+        assert read.status_code == 404
+        assert write.status_code == 404
+
+
 # ── /ws/collab handshake ─────────────────────────────────────────────────────
 
 
