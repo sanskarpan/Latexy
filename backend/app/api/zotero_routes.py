@@ -105,6 +105,14 @@ class ZoteroStatusResponse(BaseModel):
     user_id: Optional[str] = None
 
 
+class ZoteroOAuthStartResponse(BaseModel):
+    authorization_url: str
+
+
+class ZoteroOAuthCompleteRequest(BaseModel):
+    ticket: str = Field(max_length=256)
+
+
 class ZoteroImportRequest(BaseModel):
     resume_id: str
     collection_key: Optional[str] = Field(None, max_length=20)
@@ -136,11 +144,15 @@ class ZoteroCollectionsResponse(BaseModel):
 # ── OAuth flow ───────────────────────────────────────────────────────────────
 
 
-@router.get("/connect", dependencies=[Depends(require_feature("integration_zotero"))])
+@router.post(
+    "/connect",
+    response_model=ZoteroOAuthStartResponse,
+    dependencies=[Depends(require_feature("integration_zotero"))],
+)
 async def zotero_connect(
     user_id: str = Depends(get_current_user_required),
 ):
-    """Step 1: Get request token and redirect to Zotero authorization."""
+    """Get a request token for the authenticated user and return its URL."""
     if not settings.ZOTERO_CLIENT_KEY or not settings.ZOTERO_CLIENT_SECRET or not settings.ZOTERO_REDIRECT_URI:
         raise HTTPException(
             status_code=503,
@@ -187,15 +199,15 @@ async def zotero_connect(
         logger.error(f"Zotero returned no request_token: {resp.text}")
         raise HTTPException(status_code=502, detail="Invalid response from Zotero OAuth")
 
-    # Store (user_id, token_secret) in Redis — 10-min TTL
+    # Keep the request-token secret server-side and bind it to the initiator.
     await cache_manager.set(
         f"zotero:reqsecret:{request_token}",
-        f"{user_id}:{request_token_secret}",
+        {"user_id": user_id, "request_token_secret": request_token_secret},
         ttl=600,
     )
 
-    return RedirectResponse(
-        f"{_ZOTERO_AUTHORIZE_URL}?oauth_token={request_token}"
+    return ZoteroOAuthStartResponse(
+        authorization_url=f"{_ZOTERO_AUTHORIZE_URL}?oauth_token={request_token}"
     )
 
 
@@ -208,17 +220,60 @@ def _zotero_error_redirect(reason: str) -> RedirectResponse:
 
 @router.get("/callback")
 async def zotero_callback(
-    oauth_token: str = Query(...),
-    oauth_verifier: str = Query(...),
-    db: AsyncSession = Depends(get_db),
+    oauth_token: Optional[str] = Query(None, max_length=512),
+    oauth_verifier: Optional[str] = Query(None, max_length=512),
+    denied: Optional[str] = Query(None, max_length=512),
 ):
-    """Step 2: Exchange verifier for access token, store on user."""
-    cached = await cache_manager.get(f"zotero:reqsecret:{oauth_token}")
-    if not cached:
+    """Convert Zotero's callback into a short-lived completion ticket."""
+    request_token = oauth_token or denied or ""
+    if not request_token:
+        return _zotero_error_redirect("missing_state")
+    cached = await cache_manager.pop(f"zotero:reqsecret:{request_token}")
+    if not isinstance(cached, dict) or not cached.get("user_id"):
         return _zotero_error_redirect("invalid_state")
-    await cache_manager.delete(f"zotero:reqsecret:{oauth_token}")
+    if denied:
+        return _zotero_error_redirect("access_denied")
+    if not oauth_verifier or not cached.get("request_token_secret"):
+        return _zotero_error_redirect("missing_verifier")
 
-    user_id, request_token_secret = cached.split(":", 1)
+    ticket = secrets.token_urlsafe(32)
+    await cache_manager.set(
+        f"zotero:complete:{ticket}",
+        {
+            "user_id": str(cached["user_id"]),
+            "oauth_token": request_token,
+            "oauth_verifier": oauth_verifier,
+            "request_token_secret": str(cached["request_token_secret"]),
+        },
+        ttl=300,
+    )
+    query = urllib.parse.urlencode({"zotero": "complete", "ticket": ticket})
+    return RedirectResponse(f"{settings.FRONTEND_URL}/settings?{query}")
+
+
+@router.post("/complete")
+async def zotero_complete(
+    body: ZoteroOAuthCompleteRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Exchange and persist Zotero credentials for the initiating user only."""
+    ticket = body.ticket.strip()
+    if not ticket:
+        raise HTTPException(status_code=400, detail="Missing Zotero completion ticket")
+    completion = await cache_manager.pop(f"zotero:complete:{ticket}")
+    if not isinstance(completion, dict):
+        raise HTTPException(status_code=400, detail="Zotero completion ticket is invalid or expired")
+
+    intended_user_id = str(completion.get("user_id") or "")
+    oauth_token = str(completion.get("oauth_token") or "")
+    oauth_verifier = str(completion.get("oauth_verifier") or "")
+    request_token_secret = str(completion.get("request_token_secret") or "")
+    if not all((intended_user_id, oauth_token, oauth_verifier, request_token_secret)):
+        raise HTTPException(status_code=400, detail="Zotero completion ticket is invalid or expired")
+    if not secrets.compare_digest(intended_user_id, user_id):
+        logger.warning("Rejected cross-user Zotero OAuth completion")
+        raise HTTPException(status_code=403, detail="Zotero connection belongs to a different user")
 
     # Build OAuth header for access-token exchange
     extra = {"oauth_verifier": oauth_verifier}
@@ -242,10 +297,10 @@ async def zotero_callback(
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
             logger.error(f"Zotero access token error: {exc.response.text}")
-            return _zotero_error_redirect("token_exchange_failed")
+            raise HTTPException(status_code=502, detail="Zotero token exchange failed") from exc
         except httpx.RequestError as exc:
             logger.error(f"Zotero connection error during token exchange: {exc}")
-            return _zotero_error_redirect("zotero_unavailable")
+            raise HTTPException(status_code=502, detail="Zotero is unavailable, please try again") from exc
 
     params = dict(urllib.parse.parse_qsl(resp.text))
     access_token = params.get("oauth_token", "")
@@ -254,14 +309,14 @@ async def zotero_callback(
     zotero_username = params.get("username", "")
 
     if not access_token or not zotero_user_id:
-        return _zotero_error_redirect("invalid_token_response")
+        raise HTTPException(status_code=400, detail="Zotero returned an invalid token response")
 
     # Encrypt and store in user.user_metadata
     encrypted_token = encryption_service.encrypt(access_token)
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        return _zotero_error_redirect("user_not_found")
+        raise HTTPException(status_code=404, detail="User not found")
 
     meta = dict(user.user_metadata or {})
     meta["zotero_token"] = encrypted_token
@@ -270,7 +325,7 @@ async def zotero_callback(
     user.user_metadata = meta
     await db.commit()
 
-    return RedirectResponse(f"{settings.FRONTEND_URL}/settings?zotero=connected")
+    return {"success": True, "message": "Zotero account connected"}
 
 
 @router.get("/status", response_model=ZoteroStatusResponse)
