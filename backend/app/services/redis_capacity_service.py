@@ -18,7 +18,7 @@ import httpx
 
 from ..core.config import settings
 from ..core.logging import get_logger
-from ..core.observability import set_redis_capacity_metrics
+from ..core.observability import set_redis_capacity_metrics, set_redis_capacity_status
 
 logger = get_logger(__name__)
 
@@ -85,6 +85,7 @@ class RedisCapacityService:
             if not force and self._cached is not None and now < self._cache_until:
                 return self._cached
             result = await self._fetch()
+            set_redis_capacity_status(result.status)
             self._cached = result
             self._cache_until = now + settings.REDIS_CAPACITY_CACHE_SECONDS
             return result
