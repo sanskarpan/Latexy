@@ -694,6 +694,10 @@ export interface GitHubStatusResponse {
   username: string | null
 }
 
+export interface GitHubOAuthStartResponse {
+  authorization_url: string
+}
+
 export interface GitHubResumeStatus {
   github_sync_enabled: boolean
   github_repo_name: string | null
@@ -2690,6 +2694,17 @@ class ApiClient {
 
   async getGitHubStatus(): Promise<GitHubStatusResponse> {
     return this.request<GitHubStatusResponse>('/github/status')
+  }
+
+  async startGitHubOAuth(): Promise<GitHubOAuthStartResponse> {
+    return this.request<GitHubOAuthStartResponse>('/github/connect', { method: 'POST' })
+  }
+
+  async completeGitHubOAuth(ticket: string): Promise<{ success: boolean; message: string }> {
+    return this.request('/github/complete', {
+      method: 'POST',
+      body: JSON.stringify({ ticket }),
+    })
   }
 
   async disconnectGitHub(): Promise<{ success: boolean; message: string }> {
