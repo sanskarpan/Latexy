@@ -166,7 +166,7 @@ test.describe('Billing page', () => {
     await page.goto('/billing')
     await page.getByPlaceholder('SAVE20').fill('SAVE20')
     await page.getByRole('button', { name: 'Apply' }).click()
-    await expect(page.getByText('Coupon applied (20% off)')).toBeVisible()
+    await expect(page.getByText('SAVE20 · 20% off')).toBeVisible()
 
     await expect(page.getByRole('heading', { name: 'Team seats' })).toBeVisible()
     await page.getByPlaceholder('teammate@company.com').fill('newhire@example.com')
@@ -255,13 +255,13 @@ test.describe('Developer portal', () => {
     })
 
     await page.goto('/developer')
-    await expect(page.getByRole('heading', { name: 'Developer API' })).toBeVisible()
-    await expect(page.getByText('Current plan: pro • 1000 requests/day')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'API keys' })).toBeVisible()
+    await expect(page.getByText('Current plan: pro · 1000 requests/day')).toBeVisible()
     await expect(page.getByText('lx_sk_abcd1234')).toBeVisible()
 
     await page.getByPlaceholder('Production integration').fill('CI pipeline')
     await page.getByRole('button', { name: 'Create key' }).click()
-    await expect(page.getByText('Copy this key now. It will never be shown again.')).toBeVisible()
+    await expect(page.getByText('Copy this key now — it will never be shown again')).toBeVisible()
     await expect(page.locator('code', { hasText: 'lx_sk_full_ci_key_value' })).toBeVisible()
   })
 })
