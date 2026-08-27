@@ -21,7 +21,6 @@ from ..database.models import Resume, User
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
 from ..services import github_projects_service as gh_projects
-from ..services.api_key_service import api_key_service
 from ..services.encryption_service import encryption_service
 from ..services.github_sync_service import github_sync_service
 from ..workers.github_import_worker import submit_github_import
@@ -411,17 +410,6 @@ async def import_github_projects(
             detail="GitHub not connected. Go to Settings → GitHub Integration to connect your account.",
         )
 
-    github_token = encryption_service.decrypt(user.github_access_token)
-
-    # Resolve the LLM key the same way optimize/cover-letter do: the user's own
-    # OpenAI key (BYOK) when present, else fall back to the platform key inside
-    # the worker (api_key=None → worker uses settings.OPENAI_API_KEY).
-    api_key = None
-    try:
-        api_key = await api_key_service.get_user_provider(db, user_id, "openai")
-    except Exception:
-        api_key = None
-
     user_plan = "free"
     if isinstance(user.subscription_plan, str) and user.subscription_plan:
         user_plan = user.subscription_plan
@@ -447,8 +435,6 @@ async def import_github_projects(
         submit_github_import(
             job_id=job_id,
             user_id=user_id,
-            github_token=github_token,
-            api_key=api_key,
             user_plan=resolve_plan_family(user_plan),
         )
     except Exception as exc:
