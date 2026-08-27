@@ -23,6 +23,7 @@ from ..core.celery_app import celery_app, get_task_priority
 from ..core.logging import get_logger
 from ..services import github_projects_service as gh
 from ..workers.event_publisher import get_worker_redis, is_cancelled, publish_event
+from ..workers.quota_refund import refund_quota_once
 
 logger = get_logger(__name__)
 
@@ -111,6 +112,7 @@ def import_github_projects_task(
     self,
     job_id: Optional[str] = None,
     user_id: Optional[str] = None,
+    quota_refund: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Import + summarize a user's top public GitHub projects.
 
@@ -123,9 +125,19 @@ def import_github_projects_task(
     if job_id is None:
         job_id = str(uuid.uuid4())
 
+    def _terminal_failure(result: Dict[str, Any]) -> Dict[str, Any]:
+        refund_quota_once(
+            job_id,
+            quota_refund,
+            expected_dimension="ai_assists",
+        )
+        return result
+
     if not user_id:
         logger.error("Refusing ownerless GitHub import job %s", job_id)
-        return {"success": False, "job_id": job_id, "error": "user_id is required"}
+        return _terminal_failure(
+            {"success": False, "job_id": job_id, "error": "user_id is required"}
+        )
 
     task_id = self.request.id
     worker_id = f"github-import-{task_id}"
@@ -154,7 +166,9 @@ def import_github_projects_task(
                 user_id,
                 {"status": "failed", "projects": [], "error": "GitHub not connected"},
             )
-            return {"success": False, "job_id": job_id, "error": "GitHub not connected"}
+            return _terminal_failure(
+                {"success": False, "job_id": job_id, "error": "GitHub not connected"}
+            )
 
         client = httpx.Client(timeout=20)
         publish_event(
@@ -198,7 +212,9 @@ def import_github_projects_task(
             if is_cancelled(job_id):
                 publish_event(job_id, "job.cancelled", {})
                 _store_result(job_id, user_id, {"status": "failed", "projects": projects, "error": "cancelled"})
-                return {"success": False, "job_id": job_id, "cancelled": True}
+                return _terminal_failure(
+                    {"success": False, "job_id": job_id, "cancelled": True}
+                )
 
             owner, name = repo["owner"], repo["name"]
             readme = gh.fetch_repo_readme(github_token, owner, name, client=client)
@@ -249,7 +265,9 @@ def import_github_projects_task(
             },
         )
         _store_result(job_id, user_id, {"status": "failed", "projects": [], "error": "timeout"})
-        return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
+        return _terminal_failure(
+            {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
+        )
 
     except Exception as exc:
         from celery.exceptions import Retry
@@ -271,7 +289,9 @@ def import_github_projects_task(
         if has_retries_left:
             raise self.retry(countdown=60, exc=exc)
         _store_result(job_id, user_id, {"status": "failed", "projects": [], "error": str(exc)})
-        return {"success": False, "job_id": job_id, "error": str(exc)}
+        return _terminal_failure(
+            {"success": False, "job_id": job_id, "error": str(exc)}
+        )
 
     finally:
         if client is not None:
@@ -287,9 +307,16 @@ def submit_github_import(
     job_id: str,
     user_id: str,
     user_plan: str = "free",
+    quota_refund: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Enqueue import_github_projects_task on the llm queue (or Modal spawn)."""
     priority = get_task_priority(user_plan)
+    payload: Dict[str, Any] = {
+        "job_id": job_id,
+        "user_id": user_id,
+    }
+    if quota_refund is not None:
+        payload["quota_refund"] = quota_refund
 
     # On Modal there is no Celery worker consuming the llm queue, so an
     # unconditional apply_async() would hand back a job id for work nothing runs.
@@ -298,19 +325,13 @@ def submit_github_import(
 
         spawn(
             "run_github_import_task",
-            {
-                "job_id": job_id,
-                "user_id": user_id,
-            },
+            payload,
         )
         logger.info(f"Dispatched GitHub import to Modal for job {job_id}")
         return job_id
 
     import_github_projects_task.apply_async(
-        kwargs={
-            "job_id": job_id,
-            "user_id": user_id,
-        },
+        kwargs=payload,
         priority=priority,
         queue="llm",
     )
