@@ -101,6 +101,19 @@ async def _assert_can_comment(
         raise HTTPException(status_code=403, detail="You do not have access to this resume")
 
 
+async def _assert_current_comment_workspace_access(
+    comment: ResumeComment, user_id: str, db: AsyncSession
+) -> None:
+    """Recheck live workspace access before mutating a workspace comment."""
+    if comment.workspace_id:
+        await _assert_workspace_access(
+            comment.resume_id,
+            comment.workspace_id,
+            user_id,
+            db,
+        )
+
+
 def _comment_to_response(comment: ResumeComment, author: Optional[User] = None) -> CommentResponse:
     return CommentResponse(
         id=comment.id,
@@ -202,6 +215,7 @@ async def update_comment(
     comment = result.scalar_one_or_none()
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
+    await _assert_current_comment_workspace_access(comment, user_id, db)
     if comment.author_id != user_id:
         raise HTTPException(status_code=403, detail="You can only edit your own comments")
 
@@ -231,6 +245,7 @@ async def delete_comment(
     comment = result.scalar_one_or_none()
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
+    await _assert_current_comment_workspace_access(comment, user_id, db)
     if comment.author_id != user_id:
         raise HTTPException(status_code=403, detail="You can only delete your own comments")
 
@@ -257,6 +272,7 @@ async def resolve_comment(
     comment = result.scalar_one_or_none()
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
+    await _assert_current_comment_workspace_access(comment, user_id, db)
 
     # Only the resume owner or the comment author may resolve
     if user_id != resume.user_id and user_id != comment.author_id:
