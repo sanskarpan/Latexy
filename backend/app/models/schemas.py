@@ -4,7 +4,7 @@ Pydantic models for request/response schemas.
 
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CompilationResponse(BaseModel):
@@ -24,6 +24,8 @@ class HealthResponse(BaseModel):
     latex_available: bool
     database: str = "ok"
     redis: str = "ok"
+    redis_cache: str = "ok"
+    redis_capacity: dict[str, object] = Field(default_factory=dict)
     # Object storage was unprobed, so /health reported "healthy" while every
     # template thumbnail and preview PDF returned 502 Storage unavailable.
     storage: str = "ok"
