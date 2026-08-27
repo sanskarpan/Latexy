@@ -4,6 +4,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -385,6 +386,25 @@ class TestImportEndpoints:
             "status": "pending",
             "projects": [],
         }
+
+    async def test_budget_rejection_refunds_reserved_quota(
+        self, client, auth_headers, db_session
+    ):
+        await _connect_github(db_session, auth_headers)
+        with (
+            patch(
+                "app.api.github_routes.enforce_external_budget",
+                AsyncMock(side_effect=HTTPException(status_code=429, detail="limited")),
+            ),
+            patch(
+                "app.api.github_routes.entitlement_service.refund_quota",
+                AsyncMock(),
+            ) as refund,
+        ):
+            resp = await client.post("/github/import-projects", headers=auth_headers)
+
+        assert resp.status_code == 429
+        refund.assert_awaited_once()
 
     async def test_get_returns_404_when_absent(self, client, auth_headers):
         resp = await client.get(f"/github/import-projects/{uuid.uuid4()}", headers=auth_headers)
