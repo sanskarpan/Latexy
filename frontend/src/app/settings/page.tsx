@@ -70,9 +70,11 @@ function SettingsContent() {
   // GitHub
   const [ghStatus, setGhStatus] = useState<GitHubStatusResponse>({ connected: false, username: null })
   const [ghLoading, setGhLoading] = useState(true)
+  const [ghConnecting, setGhConnecting] = useState(false)
   const [ghDisconnecting, setGhDisconnecting] = useState(false)
   const [ghError, setGhError] = useState<string | null>(null)
   const [ghSuccess, setGhSuccess] = useState<string | null>(null)
+  const ghCompletionStartedRef = useRef<string | null>(null)
 
   // Zotero (Feature 42)
   const [zotStatus, setZotStatus] = useState<ZoteroStatusResponse>({ connected: false, username: null, user_id: null })
@@ -149,6 +151,57 @@ function SettingsContent() {
       })
       .finally(() => setDbxLoading(false))
   }, [sessionData, sessionLoading])
+
+  // GitHub's public callback only returns a short-lived ticket. Exchange it
+  // through the authenticated API client so the backend can prove this browser
+  // is signed in as the same Latexy user who initiated the OAuth flow.
+  useEffect(() => {
+    const githubResult = searchParams.get('github')
+
+    if (githubResult === 'error') {
+      const reason = searchParams.get('reason')
+      const message = reason === 'access_denied'
+        ? 'GitHub authorization was cancelled.'
+        : reason === 'invalid_state'
+          ? 'The GitHub connection request expired. Please try again.'
+          : 'GitHub could not be connected. Please try again.'
+      setGhError(message)
+      router.replace(pathname, { scroll: false })
+      return
+    }
+
+    if (githubResult !== 'complete' || sessionLoading) return
+
+    const ticket = searchParams.get('ticket')
+    if (!ticket) {
+      setGhError('The GitHub connection request is incomplete. Please try again.')
+      router.replace(pathname, { scroll: false })
+      return
+    }
+    if (!sessionData) {
+      setGhError('Sign in as the account that started this GitHub connection, then try again.')
+      router.replace(pathname, { scroll: false })
+      return
+    }
+    if (ghCompletionStartedRef.current === ticket) return
+
+    ghCompletionStartedRef.current = ticket
+    router.replace(pathname, { scroll: false })
+    setGhConnecting(true)
+    setGhError(null)
+    apiClient.completeGitHubOAuth(ticket)
+      .then(() => apiClient.getGitHubStatus())
+      .then((status) => {
+        setGhStatus(status)
+        setGhSuccess('GitHub account connected successfully!')
+        scheduleTimer(() => setGhSuccess(null), 5000)
+      })
+      .catch((e: unknown) => {
+        setGhError(e instanceof Error ? e.message : 'Failed to complete GitHub connection')
+      })
+      .finally(() => setGhConnecting(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, router, searchParams, sessionData, sessionLoading])
 
   // Show success message after OAuth redirect
   useEffect(() => {
@@ -282,10 +335,16 @@ function SettingsContent() {
     }
   }
 
-  function handleConnectGitHub() {
-    // Redirect to backend OAuth flow — need auth token in header, but this is a redirect.
-    // We'll open in same window; the backend will redirect back to /settings?github=connected
-    window.location.href = `${API_BASE}/github/connect`
+  async function handleConnectGitHub() {
+    setGhConnecting(true)
+    setGhError(null)
+    try {
+      const { authorization_url: authorizationUrl } = await apiClient.startGitHubOAuth()
+      window.location.assign(authorizationUrl)
+    } catch (e: unknown) {
+      setGhError(e instanceof Error ? e.message : 'Failed to start GitHub connection')
+      setGhConnecting(false)
+    }
   }
 
   function handleConnectZotero() {
@@ -465,10 +524,11 @@ function SettingsContent() {
               </p>
               <button
                 onClick={handleConnectGitHub}
-                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-surface-2 px-4 py-2 text-sm font-semibold text-fg ring-1 ring-line transition hover:bg-surface-2 hover:brightness-110"
+                disabled={ghConnecting}
+                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-surface-2 px-4 py-2 text-sm font-semibold text-fg ring-1 ring-line transition hover:bg-surface-2 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Github size={14} />
-                Connect GitHub
+                {ghConnecting ? <Loader2 size={14} className="animate-spin" /> : <Github size={14} />}
+                {ghConnecting ? 'Connecting…' : 'Connect GitHub'}
               </button>
             </div>
           )}
