@@ -20,6 +20,7 @@ import DiffViewerModal from '@/components/DiffViewerModal'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
 import { DEMO_RESUME_TEMPLATE } from '@/lib/latex-templates'
+import { insertProjectLatex } from '@/lib/github-projects-latex'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 
 const LogViewer = dynamic(() => import('@/components/LogViewer'))
@@ -1157,8 +1158,9 @@ export default function TryPage() {
         isOpen={showProjectsModal}
         onClose={() => setShowProjectsModal(false)}
         onInsert={(latex: string) => {
-          editorRef.current?.setValue(latex)
-          setLatexContent(latex)
+          setLatexContent((current) =>
+            insertProjectLatex(editorRef.current, current, latex)
+          )
           setShowProjectsModal(false)
           toast.success('Imported into editor')
         }}

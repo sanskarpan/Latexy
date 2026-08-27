@@ -16,6 +16,12 @@ export interface ProjectSelection {
   bullets: string[]
 }
 
+/** Minimal editor surface needed to insert a generated project block. */
+export interface ProjectInsertEditor {
+  insertAtCursor: (text: string) => void
+  getValue: () => string
+}
+
 const _LATEX_ESCAPES: Record<string, string> = {
   '\\': '\\textbackslash{}',
   '&': '\\&',
@@ -74,4 +80,25 @@ export function projectsToLatex(selections: ProjectSelection[]): string {
 
   const blocks = usable.map(projectBlock).join('\n\n\\smallskip\n\n')
   return `% Projects imported from GitHub — edit freely\n${blocks}\n`
+}
+
+/**
+ * Insert an imported project block without replacing the existing résumé.
+ * Returns the complete post-insert buffer for React state synchronization. If
+ * the editor is temporarily unavailable, append safely rather than discarding
+ * either the current document or the selected projects.
+ */
+export function insertProjectLatex(
+  editor: ProjectInsertEditor | null,
+  currentLatex: string,
+  snippet: string
+): string {
+  if (!snippet) return currentLatex
+  if (editor) {
+    editor.insertAtCursor(snippet)
+    return editor.getValue()
+  }
+
+  const separator = currentLatex && !currentLatex.endsWith('\n') ? '\n' : ''
+  return `${currentLatex}${separator}${snippet}`
 }

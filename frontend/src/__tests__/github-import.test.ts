@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { apiClient, type ProjectEvidence } from '../lib/api-client'
-import { escapeLatex, projectsToLatex } from '../lib/github-projects-latex'
+import {
+  escapeLatex,
+  insertProjectLatex,
+  projectsToLatex,
+} from '../lib/github-projects-latex'
 
 function mockFetch(responseBody: object) {
   vi.stubGlobal(
@@ -83,6 +87,44 @@ describe('projectsToLatex', () => {
     ])
     expect(out).toContain('\\smallskip')
     expect(out).toContain('\\textbf{second}')
+  })
+})
+
+describe('insertProjectLatex', () => {
+  test('inserts at the editor cursor and returns the complete buffer', () => {
+    let buffer = 'before-after'
+    const cursor = 7
+    const editor = {
+      insertAtCursor: vi.fn((snippet: string) => {
+        buffer = `${buffer.slice(0, cursor)}${snippet}${buffer.slice(cursor)}`
+      }),
+      getValue: vi.fn(() => buffer),
+    }
+
+    const result = insertProjectLatex(editor, 'stale state', 'PROJECT')
+
+    expect(editor.insertAtCursor).toHaveBeenCalledWith('PROJECT')
+    expect(result).toBe('before-PROJECTafter')
+  })
+
+  test('appends safely when the editor is temporarily unavailable', () => {
+    expect(insertProjectLatex(null, 'existing resume', 'PROJECT')).toBe(
+      'existing resume\nPROJECT'
+    )
+    expect(insertProjectLatex(null, 'existing resume\n', 'PROJECT')).toBe(
+      'existing resume\nPROJECT'
+    )
+  })
+
+  test('ignores an empty snippet without touching the editor', () => {
+    const editor = {
+      insertAtCursor: vi.fn(),
+      getValue: vi.fn(() => 'changed'),
+    }
+
+    expect(insertProjectLatex(editor, 'existing resume', '')).toBe('existing resume')
+    expect(editor.insertAtCursor).not.toHaveBeenCalled()
+    expect(editor.getValue).not.toHaveBeenCalled()
   })
 })
 
