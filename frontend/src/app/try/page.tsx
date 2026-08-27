@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   AlertTriangle, Check, ChevronDown, ChevronRight, Clock, Copy, DownloadCloud,
   FileCode2, Files, Gauge, GitBranch, LayoutTemplate, Link2, Loader2, MapPin,
-  PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, Play, RotateCcw,
+  LogIn, PanelLeft, PanelLeftClose, PanelRight, PanelRightClose, Play, RotateCcw,
   Sparkles, Square, Upload, X, Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -30,6 +30,7 @@ const MultiFormatUpload = dynamic(() => import('@/components/MultiFormatUpload')
 const ExportDropdown = dynamic(() => import('@/components/ExportDropdown'))
 const ErrorExplainerPanel = dynamic(() => import('@/components/ErrorExplainerPanel'))
 const ImportProjectsModal = dynamic(() => import('@/components/ImportProjectsModal'))
+const LOGIN_TO_TRY = '/login?redirect=%2Ftry'
 
 const CATEGORY_LABELS: Record<string, string> = {
   formatting: 'Formatting',
@@ -119,7 +120,7 @@ export default function TryPage() {
   const { state: stream } = useJobStream(activeJobId)
   const { state: deepStream } = useJobStream(deepAnalysisJobId)
   const trialStatus = useTrialStatus()
-  const { data: session } = useSession()
+  const { data: session, isPending: sessionPending } = useSession()
   const resolvedSession = hydrated ? session : null
   // When trial_limits flag is off, every visitor can run without restriction
   const effectiveCanRun = flags.trial_limits ? trialStatus.canRun : true
@@ -202,6 +203,18 @@ export default function TryPage() {
     } catch {
       toast.error('Could not save to this browser')
     }
+  }, [latexContent, jobDescription])
+
+  const continueToLogin = useCallback(() => {
+    // The login round-trip returns to /try. Persist synchronously so an edit
+    // made inside the autosave debounce window is not lost during navigation.
+    try {
+      localStorage.setItem('latexy_try_latex', editorRef.current?.getValue() ?? latexContent)
+      localStorage.setItem('latexy_try_jd', jobDescription)
+    } catch {
+      /* localStorage unavailable — login must still remain reachable */
+    }
+    window.location.assign(LOGIN_TO_TRY)
   }, [latexContent, jobDescription])
 
   // Track desktop breakpoint so the resizable split (inline width %) applies
@@ -837,10 +850,22 @@ export default function TryPage() {
       {panelHead('Import')}
       <div className="space-y-2 p-3">
         {[
-          { icon: GitBranch, label: 'Import projects', hint: 'GitHub · Portfolio URL · LinkedIn export', onClick: () => setShowProjectsModal(true) },
-          { icon: Upload, label: 'Existing file', hint: 'PDF · DOCX · TEX', onClick: () => setShowImportModal(true) },
+          {
+            icon: resolvedSession ? GitBranch : LogIn,
+            label: resolvedSession ? 'Import projects' : 'Log in to import projects',
+            hint: resolvedSession ? 'GitHub · Portfolio URL · LinkedIn export' : 'Authentication required for connected sources',
+            onClick: resolvedSession ? () => setShowProjectsModal(true) : continueToLogin,
+            disabled: !hydrated || sessionPending,
+          },
+          {
+            icon: Upload,
+            label: 'Existing file',
+            hint: resolvedSession ? 'PDF · DOCX · TEX' : 'TEX locally · log in for other formats',
+            onClick: () => setShowImportModal(true),
+            disabled: false,
+          },
         ].map((s) => (
-          <button key={s.label} onClick={s.onClick} className="flex w-full items-center gap-3 rounded-[var(--radius-md)] border border-line bg-surface-2 p-2.5 text-left transition hover:border-accent">
+          <button key={s.label} onClick={s.onClick} disabled={s.disabled} className="flex w-full items-center gap-3 rounded-[var(--radius-md)] border border-line bg-surface-2 p-2.5 text-left transition hover:border-accent disabled:cursor-wait disabled:opacity-60">
             <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-[var(--radius-md)] bg-accent-soft text-accent-strong"><s.icon size={15} /></span>
             <span>
               <span className="block font-ui text-[12px] font-medium text-fg">{s.label}</span>
@@ -1232,8 +1257,18 @@ export default function TryPage() {
                 <X size={16} />
               </button>
             </div>
-            <p className="mb-5 text-xs text-fg-3">This will replace the current editor content.</p>
+            {resolvedSession ? (
+              <p className="mb-5 text-xs text-fg-3">This will replace the current editor content.</p>
+            ) : (
+              <div className="mb-5 rounded-[var(--radius-md)] border border-line bg-surface-2 p-3 text-xs leading-relaxed text-fg-2">
+                LaTeX source files are imported locally. To convert PDF, Word, images, or other formats,{' '}
+                <button onClick={continueToLogin} className="font-semibold text-accent-strong underline hover:brightness-110">
+                  log in and return here
+                </button>.
+              </div>
+            )}
             <MultiFormatUpload
+              serverConversionEnabled={Boolean(resolvedSession)}
               onFileUpload={(content) => {
                 if (content) {
                   editorRef.current?.setValue(content)
