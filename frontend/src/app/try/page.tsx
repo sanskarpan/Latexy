@@ -100,9 +100,10 @@ export default function TryPage() {
   const preRunSnapshotRef = useRef<string | null>(null)
   // Whether the in-flight run rewrites content (optimize/trim) vs. a plain compile.
   const lastRunOptimizeRef = useRef(false)
-  // Pre-optimize content kept AFTER an optimize completes, so the user can review
-  // the diff or revert to the original (AI optimize is otherwise destructive).
+  // Optimization output stays staged until explicit approval. After apply, the
+  // original is retained so the user can still diff or revert it.
   const [optimizeSnapshot, setOptimizeSnapshot] = useState<string | null>(null)
+  const [stagedOptimization, setStagedOptimization] = useState<string | null>(null)
   const [showOptimizeDiff, setShowOptimizeDiff] = useState(false)
   // Whether the currently in-flight/active job was triggered by auto-compile
   // rather than a manual Recompile click — used so a failed auto-compile gets
@@ -214,20 +215,11 @@ export default function TryPage() {
   }, [])
 
   useEffect(() => {
-    if (stream.streamingLatex && editorRef.current) {
-      editorRef.current.setValue(stream.streamingLatex, { reveal: false })
-      if (stream.status === 'completed' || stream.status === 'failed') {
-        setLatexContent(stream.streamingLatex)
-        // The AI-rewritten source is the new clean baseline
-        cleanBaselineRef.current = stream.streamingLatex
-        // Keep the pre-optimize content so the user can diff or revert a completed
-        // optimize (otherwise the rewrite is destructive).
-        if (stream.status === 'completed' && lastRunOptimizeRef.current
-            && preRunSnapshotRef.current && preRunSnapshotRef.current !== stream.streamingLatex) {
-          setOptimizeSnapshot(preRunSnapshotRef.current)
-        }
-        lastRunOptimizeRef.current = false
-      }
+    if (stream.status === 'completed' && lastRunOptimizeRef.current) {
+      if (stream.streamingLatex) setStagedOptimization(stream.streamingLatex)
+      lastRunOptimizeRef.current = false
+    } else if (stream.status === 'failed' && lastRunOptimizeRef.current) {
+      lastRunOptimizeRef.current = false
     }
   }, [stream.streamingLatex, stream.status])
 
@@ -301,6 +293,11 @@ export default function TryPage() {
     if (trialBlocked) { notifyTrialBlocked(); return }
     preRunSnapshotRef.current = currentContent
     lastRunOptimizeRef.current = mode === 'combined'
+    if (mode === 'combined') {
+      setStagedOptimization(null)
+      setOptimizeSnapshot(null)
+      setShowOptimizeDiff(false)
+    }
     cleanBaselineRef.current = currentContent
     // Surface the result pane immediately on any submit (mobile lands on Editor otherwise)
     setMobilePane('pdf')
@@ -320,7 +317,7 @@ export default function TryPage() {
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to submit job')
       setActiveJobId(response.job_id)
       if (!resolvedSession) trialStatus.incrementUsage()
-      toast.success('Job submitted. Streaming updates live.')
+      toast.success(mode === 'combined' ? 'Optimization started. Your resume stays unchanged until you apply it.' : 'Job submitted.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Submission failed')
     } finally {
@@ -332,11 +329,8 @@ export default function TryPage() {
     if (!activeJobId) return
     try {
       await apiClient.cancelJob(activeJobId)
-      // Restore the editor to its pre-run state (optimize overwrites it live).
-      if (preRunSnapshotRef.current != null) {
-        editorRef.current?.setValue(preRunSnapshotRef.current)
-        setLatexContent(preRunSnapshotRef.current)
-      }
+      setStagedOptimization(null)
+      lastRunOptimizeRef.current = false
       setActiveJobId(null)
       toast.success('Compile cancelled')
     } catch (error) {
@@ -468,6 +462,9 @@ export default function TryPage() {
     if (trialBlocked) { notifyTrialBlocked(); return }
     preRunSnapshotRef.current = currentContent
     lastRunOptimizeRef.current = true
+    setStagedOptimization(null)
+    setOptimizeSnapshot(null)
+    setShowOptimizeDiff(false)
     cleanBaselineRef.current = currentContent
     setMobilePane('pdf')
     setIsSubmitting(true)
@@ -491,6 +488,30 @@ export default function TryPage() {
       setIsSubmitting(false)
     }
   }, [latexContent, jobDescription, resolvedSession, trialStatus, TRIM_INSTRUCTION, trialBlocked, notifyTrialBlocked])
+
+  const applyStagedOptimization = useCallback(() => {
+    if (!stagedOptimization) return
+    const current = editorRef.current?.getValue() || latexContent
+    const baseline = preRunSnapshotRef.current
+    if (baseline != null && current !== baseline) {
+      toast.error('Your resume changed while AI was working. Run optimization again to avoid losing edits.')
+      return
+    }
+    editorRef.current?.setValue(stagedOptimization)
+    setLatexContent(stagedOptimization)
+    cleanBaselineRef.current = stagedOptimization
+    setOptimizeSnapshot(baseline)
+    setStagedOptimization(null)
+    setShowOptimizeDiff(false)
+    toast.success('Applied AI optimization')
+  }, [latexContent, stagedOptimization])
+
+  const discardStagedOptimization = useCallback(() => {
+    setStagedOptimization(null)
+    setShowOptimizeDiff(false)
+    preRunSnapshotRef.current = null
+    toast.success('Discarded AI optimization')
+  }, [])
 
   // Revert a completed optimize back to the pre-optimize content.
   const revertOptimize = useCallback((latex?: string) => {
@@ -671,6 +692,35 @@ export default function TryPage() {
             Trim to one page
           </button>
         </div>
+        {stagedOptimization != null && (
+          <div className="border-t border-line p-3">
+            <div className="rounded-[var(--radius-md)] border border-accent/30 bg-accent-soft/40 px-3 py-2">
+              <p className="font-ui text-[12px] font-medium text-fg-2">
+                AI optimization is ready. Your resume is still unchanged.
+              </p>
+              <div className="mt-2 grid grid-cols-3 gap-1">
+                <button
+                  onClick={() => setShowOptimizeDiff(true)}
+                  className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-accent-strong transition hover:bg-surface-2"
+                >
+                  Review diff
+                </button>
+                <button
+                  onClick={discardStagedOptimization}
+                  className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-fg-2 transition hover:bg-surface-2"
+                >
+                  Discard
+                </button>
+                <button
+                  onClick={applyStagedOptimization}
+                  className="rounded-[var(--radius-sm)] bg-accent px-2 py-1 font-ui text-[12px] font-semibold text-accent-fg transition hover:brightness-110"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {optimizeSnapshot != null && (
           <div className="border-t border-line p-3">
             <div className="flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-accent/30 bg-accent-soft/40 px-3 py-2">
@@ -692,22 +742,29 @@ export default function TryPage() {
             </div>
           </div>
         )}
-        {showOptimizeDiff && optimizeSnapshot != null && (
+        {showOptimizeDiff && (stagedOptimization != null || optimizeSnapshot != null) && (
           <DiffViewerModal
             resumeId=""
             checkpointA={null}
             checkpointB={null}
-            parentLatex={optimizeSnapshot}
+            parentLatex={stagedOptimization != null ? (preRunSnapshotRef.current || latexContent) : optimizeSnapshot!}
             parentTitle="Original"
-            variantLatex={editorRef.current?.getValue() || latexContent}
+            variantLatex={stagedOptimization ?? editorRef.current?.getValue() ?? latexContent}
             variantTitle="AI Optimized"
-            onRestore={(latex) => revertOptimize(latex)}
+            onRestore={(latex) => {
+              if (stagedOptimization != null) {
+                if (latex === stagedOptimization) applyStagedOptimization()
+                else discardStagedOptimization()
+              } else {
+                revertOptimize(latex)
+              }
+            }}
             onClose={() => setShowOptimizeDiff(false)}
           />
         )}
         {stream.changesMade && stream.changesMade.length > 0 && (
           <div className="p-3">
-            <p className="mb-2 font-ui text-[12px] text-fg-3">{stream.changesMade.length} change{stream.changesMade.length !== 1 ? 's' : ''} applied</p>
+            <p className="mb-2 font-ui text-[12px] text-fg-3">{stream.changesMade.length} change{stream.changesMade.length !== 1 ? 's' : ''} {stagedOptimization ? 'ready for review' : 'applied'}</p>
             <ul className="space-y-1.5">
               {stream.changesMade.map((c, i) => {
                 const ch = (typeof c === 'string' ? { reason: c } : c) as { section?: string; change_type?: string; reason?: string }
