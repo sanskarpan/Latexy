@@ -128,6 +128,18 @@ export default function ImportProjectsModal({
     }
   }, [startGithubImport])
 
+  const retry = useCallback(() => {
+    clearTimer()
+    setProjects([])
+    setSelection({})
+    setError(null)
+    if (source === 'github') {
+      void beginGithub()
+    } else {
+      setPhase('input')
+    }
+  }, [beginGithub, source])
+
   // ── URL: synchronous fetch + summarize ──────────────────────────────────────
   const runUrlImport = useCallback(async () => {
     const url = urlInput.trim()
@@ -199,6 +211,19 @@ export default function ImportProjectsModal({
       else bullets.add(bi)
       return { ...prev, [i]: { ...prev[i], bullets } }
     })
+
+  const updateProject = (i: number, patch: Partial<ProjectEvidence>) =>
+    setProjects((prev) => prev.map((project, index) => (
+      index === i ? { ...project, ...patch } : project
+    )))
+
+  const updateBullet = (i: number, bi: number, value: string) =>
+    setProjects((prev) => prev.map((project, index) => {
+      if (index !== i) return project
+      const suggested_bullets = [...project.suggested_bullets]
+      suggested_bullets[bi] = value
+      return { ...project, suggested_bullets }
+    }))
 
   const selectedCount = Object.values(selection).filter((s) => s.included).length
 
@@ -343,7 +368,7 @@ export default function ImportProjectsModal({
                 <div className="mx-auto max-w-md rounded-[var(--radius-md)] border border-err/20 bg-err/10 px-4 py-3 text-sm text-err">
                   {error || 'Something went wrong.'}
                 </div>
-                <button onClick={reset} className="mt-4 rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-semibold text-fg transition hover:bg-surface-2">
+                <button onClick={retry} className="mt-4 rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-semibold text-fg transition hover:bg-surface-2">
                   Try again
                 </button>
               </div>
@@ -366,7 +391,12 @@ export default function ImportProjectsModal({
                         <input type="checkbox" checked={sel.included} onChange={() => toggleProject(i)} className="mt-1 h-3.5 w-3.5 accent-accent" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <p className="truncate text-sm font-semibold text-fg">{p.title}</p>
+                            <input
+                              aria-label={`Project title ${i + 1}`}
+                              value={p.title}
+                              onChange={(event) => updateProject(i, { title: event.target.value })}
+                              className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-sm font-semibold text-fg outline-none transition hover:border-line focus:border-accent focus:bg-bg"
+                            />
                             {p.metrics?.stars > 0 && (
                               <span className="flex items-center gap-0.5 text-[10px] text-fg-3"><Star size={10} /> {p.metrics.stars}</span>
                             )}
@@ -374,7 +404,14 @@ export default function ImportProjectsModal({
                               <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-fg-3 hover:text-fg-2"><ExternalLink size={11} /></a>
                             )}
                           </div>
-                          {p.description && <p className="mt-0.5 text-[11px] leading-relaxed text-fg-2">{p.description}</p>}
+                          <textarea
+                            aria-label={`Project description ${i + 1}`}
+                            value={p.description}
+                            onChange={(event) => updateProject(i, { description: event.target.value })}
+                            rows={2}
+                            placeholder="Add a concise project description"
+                            className="mt-1 w-full resize-y rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] leading-relaxed text-fg-2 outline-none transition placeholder:text-fg-3 hover:border-line focus:border-accent focus:bg-bg"
+                          />
                           {p.tech?.length > 0 && (
                             <div className="mt-1 flex flex-wrap gap-1">
                               {p.tech.slice(0, 8).map((t) => (
@@ -385,10 +422,23 @@ export default function ImportProjectsModal({
                           {sel.included && p.suggested_bullets.length > 0 && (
                             <div className="mt-2 space-y-1">
                               {p.suggested_bullets.map((b, bi) => (
-                                <label key={bi} className="flex cursor-pointer items-start gap-2 text-[11px] text-fg-2">
-                                  <input type="checkbox" checked={sel.bullets.has(bi)} onChange={() => toggleBullet(i, bi)} className="mt-0.5 h-3 w-3 accent-accent" />
-                                  <span className="leading-relaxed">{b}</span>
-                                </label>
+                                <div key={bi} className="flex items-start gap-2 text-[11px] text-fg-2">
+                                  <input
+                                    aria-label={`Include project bullet ${i + 1}.${bi + 1}`}
+                                    type="checkbox"
+                                    checked={sel.bullets.has(bi)}
+                                    onChange={() => toggleBullet(i, bi)}
+                                    className="mt-1 h-3 w-3 accent-accent"
+                                  />
+                                  <textarea
+                                    aria-label={`Project bullet ${i + 1}.${bi + 1}`}
+                                    value={b}
+                                    onChange={(event) => updateBullet(i, bi, event.target.value)}
+                                    disabled={!sel.bullets.has(bi)}
+                                    rows={2}
+                                    className="min-w-0 flex-1 resize-y rounded border border-transparent bg-transparent px-1 py-0.5 leading-relaxed outline-none transition hover:border-line focus:border-accent focus:bg-bg disabled:opacity-50"
+                                  />
+                                </div>
                               ))}
                             </div>
                           )}
