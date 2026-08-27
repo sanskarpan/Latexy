@@ -236,6 +236,21 @@ describe('WSClient — server error frames', () => {
 // ─── J3 / J4: replay ──────────────────────────────────────────────────────────
 
 describe('WSClient — replay', () => {
+  test('the first subscription lazily opens the shared socket', () => {
+    expect(FakeWebSocket.instances).toHaveLength(0)
+
+    client.subscribe('job-1')
+
+    expect(FakeWebSocket.instances).toHaveLength(1)
+    const ws = FakeWebSocket.instances[0]
+    expect(ws.subscribeFrames).toEqual([])
+
+    ws.open()
+    expect(ws.subscribeFrames).toEqual([
+      { type: 'subscribe', job_id: 'job-1', last_event_id: '0' },
+    ])
+  })
+
   test('the first subscribe replays from the start of the stream', () => {
     client.connect()
     const ws = FakeWebSocket.instances[0]
