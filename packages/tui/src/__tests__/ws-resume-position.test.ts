@@ -10,7 +10,7 @@
  * Verified against the real backend during the round-4 audit: subscribing to a
  * finished job with last_event_id='0' replayed all 20 of its events.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WebSocketServer, type WebSocket as WSSocket } from 'ws'
 
 import { LatexyWSClient } from '../lib/ws-client.js'
@@ -22,6 +22,12 @@ describe('websocket resume position', () => {
   const subscribeFrames: Array<Record<string, unknown>> = []
 
   beforeEach(async () => {
+    let ticket = 0
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ticket: `ticket-${++ticket}`, expires_in: 60 }),
+    })))
     subscribeFrames.length = 0
     sockets = []
     server = new WebSocketServer({ port: 0 })
@@ -39,6 +45,7 @@ describe('websocket resume position', () => {
   afterEach(async () => {
     for (const s of sockets) { try { s.terminate() } catch { /* gone */ } }
     await new Promise<void>(r => server.close(() => r()))
+    vi.unstubAllGlobals()
   })
 
   async function connected(client: LatexyWSClient): Promise<void> {
@@ -58,7 +65,7 @@ describe('websocket resume position', () => {
   it('resubscribes from the last event it received, not from the start', async () => {
     const client = new LatexyWSClient()
     client.drain()
-    client.connect(`ws://127.0.0.1:${port}`, 'tok')
+    client.connect(`ws://127.0.0.1:${port}/ws/jobs`, 'tok')
     await connected(client)
 
     client.subscribe('job-1', '0')
@@ -84,7 +91,7 @@ describe('websocket resume position', () => {
   it('does not resurrect a subscription that was already released', async () => {
     const client = new LatexyWSClient()
     client.drain()
-    client.connect(`ws://127.0.0.1:${port}`, 'tok')
+    client.connect(`ws://127.0.0.1:${port}/ws/jobs`, 'tok')
     await connected(client)
 
     client.subscribe('job-2', '0')
