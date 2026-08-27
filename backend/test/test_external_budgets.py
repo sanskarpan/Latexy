@@ -165,6 +165,32 @@ class TestRouteWiring:
         assert response.status_code == 400
         refund.assert_awaited_once_with(ticket)
 
+    async def test_url_budget_rejection_refunds_reserved_quota(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        ticket = _ticket()
+        with (
+            patch(
+                "app.api.sources_routes.entitlement_service.enforce_quota",
+                AsyncMock(return_value=ticket),
+            ),
+            patch(
+                "app.api.sources_routes.entitlement_service.refund_quota",
+                AsyncMock(),
+            ) as refund,
+            patch(
+                "app.api.sources_routes._enforce_import_budget",
+                AsyncMock(side_effect=HTTPException(status_code=429, detail="limited")),
+            ),
+        ):
+            response = await client.post(
+                "/sources/import-url",
+                json={"url": "https://example.com"},
+                headers=auth_headers,
+            )
+        assert response.status_code == 429
+        refund.assert_awaited_once_with(ticket)
+
     async def test_linkedin_import_has_dedicated_budget(
         self, client: AsyncClient, auth_headers: dict
     ):
