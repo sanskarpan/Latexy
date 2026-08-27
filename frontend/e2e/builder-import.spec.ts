@@ -2,6 +2,14 @@ import { expect, test, type Page } from '@playwright/test'
 
 async function mockWorkspaceSupport(page: Page) {
   await page.route('**/ws/**', (route) => route.abort())
+  await page.route('**/api/auth/get-session', (route) =>
+    route.fulfill({
+      json: {
+        user: { id: 'builder-user', email: 'builder@example.com', name: 'Builder User' },
+        session: { id: 'builder-session', userId: 'builder-user', token: 'builder-token' },
+      },
+    }),
+  )
   await page.route((url) => {
     return url.pathname.startsWith('/templates') || url.pathname === '/tenants/current-context'
   }, async (route) => {
@@ -39,9 +47,11 @@ async function openBuilderMode(page: Page) {
   await mockWorkspaceSupport(page)
   await page.goto('/workspace/new', { waitUntil: 'domcontentloaded' })
   await expect(page.getByText('No templates found')).toBeVisible()
-  await page.locator('input[placeholder*="Q3 2026"]').fill('Builder Import Resume')
-  await page.locator('button').filter({ hasText: 'Import from Builder' }).last().click({ force: true })
+  await page.getByRole('button', { name: /Import Builder Export/ }).click()
   await expect(page.getByText('Which resume builder are you importing from?')).toBeVisible()
+  const title = page.locator('input[placeholder*="Q3 2026"]')
+  await title.fill('Builder Import Resume')
+  await expect(title).toHaveValue('Builder Import Resume')
 }
 
 test.describe('Builder Import Wizard', () => {
