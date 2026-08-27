@@ -63,6 +63,15 @@ class TestPublicOnlyRepositoryDiscovery:
 
         assert gh._parse_repo_node(private_node, pinned=True) is None
 
+    def test_missing_visibility_is_rejected_fail_closed(self):
+        malformed_node = {
+            "name": "unknown-visibility",
+            "owner": {"login": "octocat"},
+            "readmeMd": {"byteSize": 4000},
+        }
+
+        assert gh._parse_repo_node(malformed_node, pinned=True) is None
+
     def test_public_pinned_repository_remains_importable(self):
         public_node = {
             "name": "public-project",
