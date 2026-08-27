@@ -8,7 +8,7 @@ from typing import Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +33,14 @@ class DropboxStatusResponse(BaseModel):
     connected: bool
     display_name: Optional[str] = None
     account_id: Optional[str] = None
+
+
+class DropboxOAuthStartResponse(BaseModel):
+    authorization_url: str
+
+
+class DropboxOAuthCompleteRequest(BaseModel):
+    ticket: str = Field(max_length=256)
 
 
 class DropboxResumeStatus(BaseModel):
@@ -122,11 +130,15 @@ async def _run_with_dropbox_token(user: User, db: AsyncSession, op):
 # ── OAuth flow ────────────────────────────────────────────────────────────────
 
 
-@router.get("/connect", dependencies=[Depends(require_feature("integration_dropbox"))])
+@router.post(
+    "/connect",
+    response_model=DropboxOAuthStartResponse,
+    dependencies=[Depends(require_feature("integration_dropbox"))],
+)
 async def dropbox_connect(
     user_id: str = Depends(get_current_user_required),
 ):
-    """Redirect user to Dropbox OAuth 2.0 authorization URL."""
+    """Create an OAuth state for the authenticated user and return its URL."""
     if not settings.DROPBOX_APP_KEY or not settings.DROPBOX_APP_SECRET:
         raise HTTPException(
             status_code=503,
@@ -135,7 +147,7 @@ async def dropbox_connect(
 
     # CSRF nonce — stored in Redis for 10 minutes
     nonce = secrets.token_urlsafe(32)
-    await cache_manager.set(f"dbx:oauth:{nonce}", user_id, ttl=600)
+    await cache_manager.set(f"dbx:oauth:{nonce}", {"user_id": user_id}, ttl=600)
 
     params = urllib.parse.urlencode({
         "client_id": settings.DROPBOX_APP_KEY,
@@ -144,7 +156,9 @@ async def dropbox_connect(
         "token_access_type": "offline",  # request a refresh token
         "state": nonce,
     })
-    return RedirectResponse(f"https://www.dropbox.com/oauth2/authorize?{params}")
+    return DropboxOAuthStartResponse(
+        authorization_url=f"https://www.dropbox.com/oauth2/authorize?{params}"
+    )
 
 
 def _dropbox_error_redirect(reason: str) -> RedirectResponse:
@@ -156,19 +170,53 @@ def _dropbox_error_redirect(reason: str) -> RedirectResponse:
 
 @router.get("/callback")
 async def dropbox_callback(
-    code: str = Query(...),
-    state: str = Query(""),
-    db: AsyncSession = Depends(get_db),
+    code: Optional[str] = Query(None, max_length=2048),
+    state: str = Query("", max_length=256),
+    error: Optional[str] = Query(None, max_length=128),
 ):
-    """Exchange the authorization code for access + refresh tokens."""
+    """Convert a provider callback into a short-lived completion ticket."""
     if not state:
         return _dropbox_error_redirect("missing_state")
 
-    # Validate CSRF nonce
-    user_id = await cache_manager.get(f"dbx:oauth:{state}")
-    if not user_id:
+    oauth_state = await cache_manager.pop(f"dbx:oauth:{state}")
+    if not isinstance(oauth_state, dict) or not oauth_state.get("user_id"):
         return _dropbox_error_redirect("invalid_state")
-    await cache_manager.delete(f"dbx:oauth:{state}")
+    if error:
+        reason = "access_denied" if error == "access_denied" else "provider_error"
+        return _dropbox_error_redirect(reason)
+    if not code:
+        return _dropbox_error_redirect("missing_code")
+
+    ticket = secrets.token_urlsafe(32)
+    await cache_manager.set(
+        f"dbx:complete:{ticket}",
+        {"user_id": str(oauth_state["user_id"]), "code": code},
+        ttl=300,
+    )
+    query = urllib.parse.urlencode({"dropbox": "complete", "ticket": ticket})
+    return RedirectResponse(f"{settings.FRONTEND_URL}/settings?{query}")
+
+
+@router.post("/complete")
+async def dropbox_complete(
+    body: DropboxOAuthCompleteRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Exchange and persist Dropbox credentials for the initiating user only."""
+    ticket = body.ticket.strip()
+    if not ticket:
+        raise HTTPException(status_code=400, detail="Missing Dropbox completion ticket")
+    completion = await cache_manager.pop(f"dbx:complete:{ticket}")
+    if not isinstance(completion, dict):
+        raise HTTPException(status_code=400, detail="Dropbox completion ticket is invalid or expired")
+    intended_user_id = str(completion.get("user_id") or "")
+    code = str(completion.get("code") or "")
+    if not intended_user_id or not code:
+        raise HTTPException(status_code=400, detail="Dropbox completion ticket is invalid or expired")
+    if not secrets.compare_digest(intended_user_id, user_id):
+        logger.warning("Rejected cross-user Dropbox OAuth completion")
+        raise HTTPException(status_code=403, detail="Dropbox connection belongs to a different user")
 
     # Exchange code for tokens
     try:
@@ -187,17 +235,17 @@ async def dropbox_callback(
             data = resp.json()
     except httpx.HTTPStatusError as exc:
         logger.error(f"Dropbox token exchange failed: {exc.response.status_code}")
-        return _dropbox_error_redirect("token_exchange_failed")
+        raise HTTPException(status_code=502, detail="Dropbox token exchange failed") from exc
     except httpx.RequestError as exc:
         logger.error(f"Dropbox connection error during token exchange: {exc}")
-        return _dropbox_error_redirect("dropbox_unavailable")
+        raise HTTPException(status_code=502, detail="Dropbox is unavailable, please try again") from exc
 
     access_token = data.get("access_token")
     refresh_token = data.get("refresh_token")
     if not access_token:
         error = data.get("error", "token_exchange_failed")
         logger.error(f"Dropbox OAuth returned no access token: {error}")
-        return _dropbox_error_redirect(str(error))
+        raise HTTPException(status_code=400, detail=f"Dropbox authorization failed: {error}")
 
     # Fetch account info (for a human-readable display name)
     account_id = ""
@@ -218,7 +266,7 @@ async def dropbox_callback(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        return _dropbox_error_redirect("user_not_found")
+        raise HTTPException(status_code=404, detail="User not found")
 
     user.dropbox_access_token = encrypted_access
     user.dropbox_refresh_token = encrypted_refresh
@@ -232,7 +280,7 @@ async def dropbox_callback(
     await db.commit()
 
     logger.info(f"Dropbox connected for user {user_id} (account: {account_id})")
-    return RedirectResponse(f"{settings.FRONTEND_URL}/settings?dropbox=connected")
+    return {"success": True, "message": "Dropbox account connected"}
 
 
 # ── Status + Disconnect ───────────────────────────────────────────────────────
