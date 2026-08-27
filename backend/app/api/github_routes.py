@@ -22,12 +22,17 @@ from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
 from ..services import github_projects_service as gh_projects
 from ..services.encryption_service import encryption_service
+from ..services.entitlement_service import entitlement_service
+from ..services.external_budget_service import enforce_external_budget
 from ..services.github_sync_service import github_sync_service
 from ..workers.github_import_worker import submit_github_import
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/github", tags=["github"])
+
+_GITHUB_IMPORTS_PER_USER_HOUR = 20
+_GITHUB_IMPORTS_GLOBAL_PER_HOUR = 500
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -414,6 +419,18 @@ async def import_github_projects(
     if isinstance(user.subscription_plan, str) and user.subscription_plan:
         user_plan = user.subscription_plan
 
+    await enforce_external_budget(
+        "import-github",
+        client_id=f"user:{user_id}",
+        cost=1,
+        client_limit=_GITHUB_IMPORTS_PER_USER_HOUR,
+        global_limit=_GITHUB_IMPORTS_GLOBAL_PER_HOUR,
+        window_seconds=3600,
+    )
+    quota_ticket = await entitlement_service.enforce_quota(
+        "ai_assists", user_id=user_id, plan=user_plan
+    )
+
     job_id = str(uuid.uuid4())
     redis = await get_redis_client()
     result_key = gh_projects.import_result_key(job_id)
@@ -436,8 +453,10 @@ async def import_github_projects(
             job_id=job_id,
             user_id=user_id,
             user_plan=resolve_plan_family(user_plan),
+            quota_refund=quota_ticket.refund_payload(),
         )
     except Exception as exc:
+        await entitlement_service.refund_quota(quota_ticket)
         logger.error(f"Failed to submit GitHub import job {job_id}: {exc}")
         try:
             await redis.delete(result_key)
