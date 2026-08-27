@@ -1240,9 +1240,10 @@ export default function TryPage() {
         isOpen={showProjectsModal}
         onClose={() => setShowProjectsModal(false)}
         onInsert={(latex: string) => {
-          setLatexContent((current) =>
-            insertProjectLatex(editorRef.current, current, latex)
-          )
+          // Monaco insertion is a side effect, so keep it outside a React state
+          // updater (development Strict Mode may evaluate updaters twice).
+          const nextLatex = insertProjectLatex(editorRef.current, latexContent, latex)
+          setLatexContent(nextLatex)
           setShowProjectsModal(false)
           toast.success('Imported into editor')
         }}
