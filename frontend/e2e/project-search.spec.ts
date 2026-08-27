@@ -1,5 +1,7 @@
 import { test, expect, type Page, type Route } from '@playwright/test'
 
+const BACKEND_URL = process.env.AUDIT_BE ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8030'
+
 // ------------------------------------------------------------------ //
 //  Mock data                                                          //
 // ------------------------------------------------------------------ //
@@ -287,12 +289,15 @@ test.describe('Project Search — workspace page', () => {
     await page.locator('input[placeholder*="Search across all resumes"]').fill('SRCH_UNIQ_42')
     const resultSpan = page.locator('span.truncate', { hasText: 'Software Engineer Resume' })
     await expect(resultSpan).toBeVisible({ timeout: 3000 })
-    // Race waitForURL and click: the edit page strips ?line= via replaceState after mounting,
-    // so we must catch the URL before the effect runs.
-    await Promise.all([
-      page.waitForURL(/line=4/, { timeout: 8000 }),
-      resultSpan.click(),
-    ])
+    // The edit page consumes ?line= immediately and removes it with replaceState.
+    // Capture same-document History API navigation events so the transient URL
+    // cannot disappear between Playwright polling intervals.
+    const cdp = await page.context().newCDPSession(page)
+    const navigatedUrls: string[] = []
+    cdp.on('Page.navigatedWithinDocument', (event) => navigatedUrls.push(event.url))
+    await cdp.send('Page.enable')
+    await resultSpan.click()
+    await expect.poll(() => navigatedUrls.some((url) => url.includes('line=4'))).toBe(true)
   })
 
   test('X button clears query and results', async ({ page }) => {
@@ -352,12 +357,12 @@ test.describe('Project Search — workspace page', () => {
 
 test.describe('Search API endpoint — live backend', () => {
   test('GET /resumes/search exists and rejects unauthenticated', async ({ request }) => {
-    const resp = await request.get('http://localhost:8031/resumes/search?q=hello')
+    const resp = await request.get(`${BACKEND_URL}/resumes/search?q=hello`)
     expect([401, 403, 429]).toContain(resp.status())
   })
 
   test('GET /resumes/search?q=x (1 char) returns 422', async ({ request }) => {
-    const resp = await request.get('http://localhost:8031/resumes/search?q=x')
+    const resp = await request.get(`${BACKEND_URL}/resumes/search?q=x`)
     // Auth and rate-limiting middleware may run before validation in live stacks.
     expect([401, 403, 422, 429]).toContain(resp.status())
   })
