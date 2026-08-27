@@ -1,10 +1,11 @@
 import { readConfig } from './lib/config.js'
 import type { LatexyConfig } from './lib/config.js'
 import { initApiClient } from './lib/api-client.js'
+import type { ApiClient } from './lib/api-client.js'
 import { wsClient } from './lib/ws-client.js'
 import type { WSServerError } from './lib/ws-client.js'
 import { resolveAtsScore } from './lib/event-types.js'
-import type { AnyEvent, JobCompletedEvent, JobFailedEvent } from './lib/event-types.js'
+import type { AnyEvent, JobCancelledEvent, JobCompletedEvent, JobFailedEvent } from './lib/event-types.js'
 import { readFile, writeFile } from 'node:fs/promises'
 import { basename } from 'node:path'
 
@@ -18,7 +19,20 @@ const RATE_LIMIT_RETRY_MS = 1_000
 const MAX_RATE_LIMIT_RETRIES = 5
 
 /** Headless flags that consume the following token as their value. */
-const VALUE_FLAGS = new Set(['--resume-id', '--compiler', '--output'])
+const VALUE_FLAGS = new Set([
+  '--resume-id', '--compiler', '--output', '--jd', '--level', '--model',
+  '--industry', '--page', '--limit',
+])
+
+type AuthenticatedConfig = LatexyConfig & { token: string }
+type TerminalJobEvent = JobCompletedEvent | JobFailedEvent | JobCancelledEvent
+
+interface JobResultEnvelope {
+  success: boolean
+  job_id: string
+  result?: Record<string, unknown> | null
+  error?: string | null
+}
 
 export interface HeadlessArgs {
   flags: Record<string, string>
@@ -71,7 +85,7 @@ function log(msg: string): void {
   process.stderr.write(msg + '\n')
 }
 
-async function waitForJob(jobId: string, token: string, wsUrl: string): Promise<JobCompletedEvent | JobFailedEvent> {
+async function waitForJob(jobId: string, token: string, wsUrl: string): Promise<TerminalJobEvent> {
   return new Promise((resolve, reject) => {
     wsClient.connect(wsUrl, token)
     wsClient.drain()
@@ -87,9 +101,11 @@ async function waitForJob(jobId: string, token: string, wsUrl: string): Promise<
     const cleanup = (): void => {
       clearTimeout(timeout)
       for (const t of retryTimers) clearTimeout(t)
+      wsClient.off('server_error', onServerError)
+      wsClient.off('event', onEvent)
     }
 
-    wsClient.on('server_error', (err: WSServerError) => {
+    const onServerError = (err: WSServerError): void => {
       // Per-job rejections are tagged with job_id — ignore the ones that aren't ours
       if (err.job_id && err.job_id !== jobId) return
       if (err.code === 'rate_limited') {
@@ -104,18 +120,21 @@ async function waitForJob(jobId: string, token: string, wsUrl: string): Promise<
       cleanup()
       wsClient.destroy()
       reject(new Error(`Event stream rejected by server (${err.code}): ${err.message}`))
-    })
+    }
 
-    wsClient.on('event', (ev: AnyEvent) => {
+    const onEvent = (ev: AnyEvent): void => {
       if (ev.job_id !== jobId) return
       if (ev.type === 'log.line') log(ev.line)
-      if (ev.type === 'job.progress') log(`[${ev.percent}%] ${ev.stage}`)
-      if (ev.type === 'job.completed' || ev.type === 'job.failed') {
+      if (ev.type === 'job.progress') log(`[${ev.percent}%] ${ev.message || ev.stage}`)
+      if (ev.type === 'job.completed' || ev.type === 'job.failed' || ev.type === 'job.cancelled') {
         cleanup()
         wsClient.destroy()
         resolve(ev)
       }
-    })
+    }
+
+    wsClient.on('server_error', onServerError)
+    wsClient.on('event', onEvent)
   })
 }
 
@@ -137,6 +156,77 @@ async function withReachableBackend<T>(backendUrl: string, fn: () => Promise<T>)
       + 'Set LATEXY_API_URL or fix backendUrl in ~/.config/latexy/config.toml.'
     )
   }
+}
+
+async function authenticatedCommand(
+  command: (cfg: AuthenticatedConfig, client: ApiClient) => Promise<number>,
+): Promise<number> {
+  const cfg = await readConfig()
+  if (!cfg.token) {
+    out({ success: false, error: 'Not authenticated. Set LATEXY_SESSION_TOKEN env var.' })
+    return 2
+  }
+
+  const authenticated = { ...cfg, token: cfg.token }
+  const client = initApiClient(cfg.backendUrl, cfg.token)
+  try {
+    return await command(authenticated, client)
+  } catch (err) {
+    if (!(err instanceof BackendUnreachableError)) throw err
+    out({ success: false, error: err.message })
+    return 4
+  }
+}
+
+async function resolveHeadlessJobDescription(client: ApiClient, value: string): Promise<string> {
+  if (/^https?:\/\//i.test(value)) {
+    const scraped = await client.post<{ description?: string | null; error?: string | null }>(
+      '/scrape-job-description',
+      { url: value },
+    )
+    if (scraped.description) return scraped.description
+    throw new Error(`Could not read job posting: ${scraped.error ?? 'no description found'}`)
+  }
+
+  try {
+    return await readFile(value, 'utf-8')
+  } catch {
+    // A non-path value is accepted as literal JD text, matching interactive mode.
+    return value
+  }
+}
+
+async function waitForResult(
+  cfg: AuthenticatedConfig,
+  client: ApiClient,
+  jobId: string,
+): Promise<number> {
+  const ev = await waitForJob(jobId, cfg.token, client.getWsUrl())
+  if (ev.type === 'job.failed') {
+    out({
+      success: false,
+      job_id: jobId,
+      error: ev.error_message,
+      error_code: ev.error_code,
+      retryable: ev.retryable,
+    })
+    return 1
+  }
+  if (ev.type === 'job.cancelled') {
+    out({ success: false, job_id: jobId, error: 'Job was cancelled', error_code: 'cancelled', retryable: false })
+    return 1
+  }
+
+  const envelope = await withReachableBackend(cfg.backendUrl, () =>
+    client.get<JobResultEnvelope>(`/jobs/${jobId}/result`)
+  )
+  if (!envelope.success) {
+    out({ success: false, job_id: jobId, error: envelope.error ?? 'Job failed' })
+    return 1
+  }
+
+  out({ ...(envelope.result ?? {}), success: true, job_id: jobId })
+  return 0
 }
 
 async function headlessCompile(args: string[]): Promise<number> {
@@ -244,17 +334,124 @@ async function compileJob(cfg: LatexyConfig & { token: string }, args: string[])
   }
 }
 
+async function headlessOptimize(args: string[]): Promise<number> {
+  return authenticatedCommand(async (cfg, client) => {
+    const { flags, positional } = parseHeadlessArgs(args)
+    const resumeId = positional[0]
+    const jdInput = flags['--jd']
+    const level = flags['--level'] ?? 'balanced'
+
+    if (!resumeId || !jdInput) {
+      out({ success: false, error: 'Usage: latexy optimize <resume-id> --jd <file|url|text> [--level <level>] [--model <model>]' })
+      return 3
+    }
+    if (!['conservative', 'balanced', 'aggressive'].includes(level)) {
+      out({ success: false, error: `Invalid optimization level: ${level}` })
+      return 3
+    }
+
+    log(`Optimizing resume ${resumeId}…`)
+    const submitted = await withReachableBackend(cfg.backendUrl, async () => {
+      const resume = await client.get<{ latex_content: string }>(`/resumes/${resumeId}`)
+      const jobDescription = await resolveHeadlessJobDescription(client, jdInput)
+      return client.post<{ job_id: string }>('/jobs/submit', {
+        job_type: 'llm_optimization',
+        latex_content: resume.latex_content,
+        job_description: jobDescription,
+        optimization_level: level,
+        model: flags['--model'],
+        metadata: { resume_id: resumeId },
+      })
+    })
+
+    log(`Job submitted: ${submitted.job_id}`)
+    return waitForResult(cfg, client, submitted.job_id)
+  })
+}
+
+async function headlessAts(args: string[]): Promise<number> {
+  return authenticatedCommand(async (cfg, client) => {
+    const { flags, positional } = parseHeadlessArgs(args)
+    const action = positional[0]
+    const resumeId = positional[1]
+    if (action !== 'score' || !resumeId) {
+      out({ success: false, error: 'Usage: latexy ats score <resume-id> [--jd <file|url|text>] [--industry <name>]' })
+      return 3
+    }
+
+    log(`Scoring resume ${resumeId}…`)
+    const submitted = await withReachableBackend(cfg.backendUrl, async () => {
+      const resume = await client.get<{ latex_content: string }>(`/resumes/${resumeId}`)
+      const jdInput = flags['--jd']
+      const jobDescription = jdInput
+        ? await resolveHeadlessJobDescription(client, jdInput)
+        : undefined
+      return client.post<{ job_id: string }>('/jobs/submit', {
+        job_type: 'ats_scoring',
+        latex_content: resume.latex_content,
+        job_description: jobDescription,
+        industry: flags['--industry'],
+        metadata: { resume_id: resumeId },
+      })
+    })
+
+    log(`Job submitted: ${submitted.job_id}`)
+    return waitForResult(cfg, client, submitted.job_id)
+  })
+}
+
+async function headlessStatus(args: string[]): Promise<number> {
+  return authenticatedCommand(async (cfg, client) => {
+    const { positional } = parseHeadlessArgs(args)
+    const jobId = positional[0]
+    if (!jobId) {
+      out({ success: false, error: 'Usage: latexy status <job-id> [--wait]' })
+      return 3
+    }
+
+    if (args.includes('--wait')) return waitForResult(cfg, client, jobId)
+
+    const state = await withReachableBackend(cfg.backendUrl, () =>
+      client.get<Record<string, unknown>>(`/jobs/${jobId}/state`)
+    )
+    out({ ...state, success: true, job_id: jobId })
+    return 0
+  })
+}
+
+async function headlessList(args: string[]): Promise<number> {
+  return authenticatedCommand(async (cfg, client) => {
+    const { flags } = parseHeadlessArgs(args)
+    const page = Number(flags['--page'] ?? '1')
+    const limit = Number(flags['--limit'] ?? '100')
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+      out({ success: false, error: '--page must be >= 1 and --limit must be between 1 and 100' })
+      return 3
+    }
+
+    const response = await withReachableBackend(cfg.backendUrl, () =>
+      client.get<Record<string, unknown>>(`/resumes/?page=${page}&limit=${limit}`)
+    )
+    out({ ...response, success: true })
+    return 0
+  })
+}
+
 export async function runHeadless(subcommand: string | undefined, args: string[]): Promise<number> {
   try {
     switch (subcommand) {
       case 'compile': return await headlessCompile(args.slice(1))
+      case 'optimize': return await headlessOptimize(args.slice(1))
+      case 'ats': return await headlessAts(args.slice(1))
+      case 'status': return await headlessStatus(args.slice(1))
+      case 'list': return await headlessList(args.slice(1))
       default:
         out({
           success: false,
           // String(undefined) printed the literal text "undefined" at the user.
           error: subcommand === undefined
-            ? 'No subcommand given. Usage: latexy compile <file.tex|--resume-id <uuid>> [--compiler <name>] [--output <file.pdf>]'
-            : `Unknown subcommand: ${subcommand}. Available: compile`,
+            ? 'No subcommand given. Available: compile, optimize, ats, status, list'
+            : `Unknown subcommand: ${subcommand}. Available: compile, optimize, ats, status, list`,
         })
         return 3
     }
