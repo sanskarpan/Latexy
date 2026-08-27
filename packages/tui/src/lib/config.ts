@@ -15,8 +15,11 @@ export interface LatexyConfig {
   activeProvider: string | null
 }
 
-export const DEFAULT_BACKEND_URL = 'http://localhost:8030'
-export const DEFAULT_APP_URL = 'http://localhost:5180'
+/** Public service origins used by a fresh CLI install. Local and self-hosted
+ * deployments can still override either value through config.toml or env. */
+export const DEFAULT_BACKEND_URL =
+  'https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run'
+export const DEFAULT_APP_URL = 'https://latexy.xyz'
 
 const DEFAULT_CONFIG: LatexyConfig = {
   token: null,

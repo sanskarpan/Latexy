@@ -5,9 +5,9 @@
 ## Install
 
 ```bash
-npm install -g latexy
+npm install -g @sanskarpan/latexy
 # or
-pnpm add -g latexy
+pnpm add -g @sanskarpan/latexy
 ```
 
 ## Quick start
@@ -89,18 +89,24 @@ Exit codes:
 Config file: `~/.config/latexy/config.toml`
 
 ```toml
-backendUrl = "https://api.latexy.com"
+backendUrl = "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run"
+appUrl = "https://latexy.xyz"
 defaultResumeId = "uuid-of-your-default-resume"
 ```
+
+Fresh installs use those live SaaS endpoints automatically. Set both URL values
+when connecting to a local or self-hosted deployment; `appUrl` is the Next.js
+origin that hosts authentication, while `backendUrl` is the FastAPI origin.
 
 Environment variable overrides:
 
 | Variable | Description |
 |----------|-------------|
-| `LATEXY_API_URL` | Backend URL |
+| `LATEXY_API_URL` | FastAPI backend URL |
+| `LATEXY_APP_URL` | Next.js app and authentication URL |
 | `LATEXY_SESSION_TOKEN` | Auth token (skips interactive login) |
 
 ## Requirements
 
 - Node.js >= 22
-- A Latexy account at [latexy.com](https://latexy.com)
+- A Latexy account at [latexy.xyz](https://latexy.xyz)

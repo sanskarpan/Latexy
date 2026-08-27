@@ -27,14 +27,16 @@ describe('config', () => {
   it('returns defaults when config file missing', async () => {
     const { readConfig } = await import('../lib/config.js')
     const cfg = await readConfig()
-    expect(cfg.backendUrl).toBe('http://localhost:8030')
+    expect(cfg.backendUrl).toBe(
+      'https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run',
+    )
     expect(cfg.token).toBeNull()
   })
 
   it('defaults appUrl to the Next.js app origin (Better Auth lives there)', async () => {
     const { readConfig } = await import('../lib/config.js')
     const cfg = await readConfig()
-    expect(cfg.appUrl).toBe('http://localhost:5180')
+    expect(cfg.appUrl).toBe('https://latexy.xyz')
   })
 
   it('LATEXY_API_URL / LATEXY_APP_URL win over a stale on-disk config', async () => {

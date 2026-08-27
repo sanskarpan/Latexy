@@ -1,4 +1,5 @@
 import { atom } from 'nanostores'
+import { DEFAULT_APP_URL, DEFAULT_BACKEND_URL } from '../lib/config.js'
 
 export interface SessionState {
   token: string | null
@@ -12,8 +13,8 @@ export interface SessionState {
   isAuthenticated: boolean
 }
 
-const defaultBackendUrl = process.env['LATEXY_API_URL'] ?? 'http://localhost:8030'
-const defaultAppUrl = process.env['LATEXY_APP_URL'] ?? 'http://localhost:5180'
+const defaultBackendUrl = process.env['LATEXY_API_URL'] || DEFAULT_BACKEND_URL
+const defaultAppUrl = process.env['LATEXY_APP_URL'] || DEFAULT_APP_URL
 
 /** Better Auth is mounted on the Next.js app, never on the FastAPI backend, so it needs its own origin. */
 export function appUrl(state: SessionState = $session.get()): string {

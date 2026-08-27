@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { $session, appUrl } from '../stores/session.js'
 
 const initial = $session.get()
@@ -10,13 +10,18 @@ describe('session appUrl', () => {
 
   it('defaults to the Next.js app origin, not the FastAPI backend', () => {
     const state = $session.get()
-    expect(state.backendUrl).toBe('http://localhost:8030')
-    expect(appUrl(state)).toBe('http://localhost:5180')
+    expect(state.backendUrl).toBe(
+      'https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run',
+    )
+    expect(state.wsUrl).toBe(
+      'wss://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/ws/jobs',
+    )
+    expect(appUrl(state)).toBe('https://latexy.xyz')
   })
 
   it('falls back to the default when app init omits appUrl', () => {
     const { appUrl: _omitted, ...rest } = $session.get()
-    expect(appUrl(rest)).toBe('http://localhost:5180')
+    expect(appUrl(rest)).toBe('https://latexy.xyz')
   })
 
   it('returns the appUrl held in the store — the no-arg form LoginOverlay uses', () => {
@@ -24,5 +29,22 @@ describe('session appUrl', () => {
     expect(appUrl()).toBe('https://latexy.example.com')
     expect(appUrl($session.get()) + '/api/auth/sign-in/email')
       .toBe('https://latexy.example.com/api/auth/sign-in/email')
+  })
+
+  it('ignores empty environment overrides', async () => {
+    process.env['LATEXY_API_URL'] = ''
+    process.env['LATEXY_APP_URL'] = ''
+    vi.resetModules()
+    try {
+      const { $session: freshSession, appUrl: freshAppUrl } =
+        await import('../stores/session.js')
+      expect(freshSession.get().backendUrl).toBe(
+        'https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run',
+      )
+      expect(freshAppUrl(freshSession.get())).toBe('https://latexy.xyz')
+    } finally {
+      delete process.env['LATEXY_API_URL']
+      delete process.env['LATEXY_APP_URL']
+    }
   })
 })

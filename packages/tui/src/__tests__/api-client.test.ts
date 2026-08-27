@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { ApiClient, ApiError } from '../lib/api-client.js'
+import { ApiClient, ApiError, getApiClient } from '../lib/api-client.js'
+
+describe('default API client', () => {
+  it('uses the live backend before explicit initialization', () => {
+    expect(getApiClient().getWsUrl()).toBe(
+      'wss://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/ws/jobs',
+    )
+  })
+})
 
 describe('ApiClient', () => {
   let client: ApiClient
