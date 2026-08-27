@@ -1,6 +1,6 @@
 """E2E tests for liveness/readiness probes and the Prometheus scrape endpoint."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
@@ -25,7 +25,8 @@ async def test_readyz_ok_when_dependencies_up(client: AsyncClient):
         async def ping(self):
             return True
 
-    with patch.object(routes._redis_manager, "redis_client", _FakeRedis()):
+    with patch.object(routes._redis_manager, "redis_client", _FakeRedis()), \
+         patch.object(routes._redis_manager, "redis_cache_client", _FakeRedis()):
         resp = await client.get("/readyz")
 
     assert resp.status_code == 200
@@ -33,6 +34,24 @@ async def test_readyz_ok_when_dependencies_up(client: AsyncClient):
     assert body["status"] == "ready"
     assert body["checks"]["database"] == "ok"
     assert body["checks"]["redis"] == "ok"
+    assert body["checks"]["redis_cache"] == "ok"
+
+
+async def test_readyz_503_when_cache_redis_is_down(client: AsyncClient):
+    """Security/quota metadata Redis is critical even when the queue Redis works."""
+    from app.api import routes
+
+    class _FakeRedis:
+        async def ping(self):
+            return True
+
+    with patch.object(routes._redis_manager, "redis_client", _FakeRedis()), \
+         patch.object(routes._redis_manager, "redis_cache_client", None):
+        resp = await client.get("/readyz")
+
+    assert resp.status_code == 503
+    assert resp.json()["checks"]["redis"] == "ok"
+    assert resp.json()["checks"]["redis_cache"] == "unavailable"
 
 
 async def test_readyz_503_when_database_down(client: AsyncClient):
@@ -78,6 +97,10 @@ async def test_metrics_exposes_new_series(client: AsyncClient):
         "latexy_jobs_submitted_total",
         "latexy_trial_uses_total",
         "latexy_db_pool_connections",
+        "latexy_redis_provider_monthly_requests",
+        "latexy_redis_provider_request_limit",
+        "latexy_redis_provider_request_utilization_ratio",
+        "latexy_redis_provider_capacity_status",
     ):
         assert family in text, f"expected metric family {family} in /metrics output"
 
@@ -99,13 +122,43 @@ async def test_health_reports_storage_ok_when_reachable(client: AsyncClient):
     from app.api import routes
 
     with patch.object(storage_service, "probe", lambda: (True, "ok")), \
-         patch.object(routes._redis_manager, "redis_client", _FakeRedis()):
+         patch.object(routes._redis_manager, "redis_client", _FakeRedis()), \
+         patch.object(routes._redis_manager, "redis_cache_client", _FakeRedis()):
         resp = await client.get("/health")
 
     assert resp.status_code == 200
     body = resp.json()
     assert body["storage"] == "ok"
+    assert body["redis_cache"] == "ok"
     assert body["status"] == "healthy"
+
+
+async def test_health_degrades_at_critical_provider_capacity(client: AsyncClient):
+    from app.api import routes
+    from app.services import storage_service
+    from app.services.redis_capacity_service import RedisCapacitySnapshot
+
+    class _FakeRedis:
+        async def ping(self):
+            return True
+
+    capacity = RedisCapacitySnapshot(
+        provider="upstash",
+        status="critical",
+        configured=True,
+        monthly_requests=950,
+        request_limit=1000,
+        utilization_ratio=0.95,
+    )
+    with patch.object(storage_service, "probe", lambda: (True, "ok")), \
+         patch.object(routes._redis_manager, "redis_client", _FakeRedis()), \
+         patch.object(routes._redis_manager, "redis_cache_client", _FakeRedis()), \
+         patch.object(routes.redis_capacity_service, "snapshot", AsyncMock(return_value=capacity)):
+        resp = await client.get("/health")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "degraded"
+    assert resp.json()["redis_capacity"]["status"] == "critical"
 
 
 async def test_health_degrades_when_storage_unreachable(client: AsyncClient):

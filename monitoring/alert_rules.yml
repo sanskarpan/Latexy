@@ -137,6 +137,61 @@ groups:
           description: "Redis rejected {{ $value }} connections in the last minute."
           runbook: "docs/observability/runbooks.md#redisdown--redishighmemory"
 
+      - alert: RedisApplicationDependencyDown
+        expr: latexy_redis_dependency_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Latexy Redis dependency is unavailable"
+          description: "The application Redis role {{ $labels.role }} has failed commands for at least one minute."
+          runbook: "docs/observability/runbooks.md#redis-provider-request-capacity"
+
+      - alert: RedisProviderCapacityWarning
+        expr: latexy_redis_provider_capacity_status{status="warning"} == 1
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Redis monthly request capacity above warning threshold"
+          description: "Rotate or upgrade the provider before the request cap is exhausted."
+          runbook: "docs/observability/runbooks.md#redis-provider-request-capacity"
+
+      - alert: RedisProviderCapacityCritical
+        expr: latexy_redis_provider_capacity_status{status=~"critical|exhausted"} == 1
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Redis monthly request capacity is critical"
+          description: "The configured provider is at or beyond the critical request-capacity threshold."
+          runbook: "docs/observability/runbooks.md#redis-provider-request-capacity"
+
+      - alert: RedisProviderHardExhaustion
+        expr: max_over_time(latexy_redis_provider_exhausted[5m]) == 1
+        for: 0m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Redis rejected a command because its request quota is exhausted"
+          description: "The {{ $labels.role }} Redis client received a hard provider request-limit error."
+          runbook: "docs/observability/runbooks.md#redis-provider-request-capacity"
+
+      - alert: RedisCapacityMonitorBlind
+        expr: latexy_redis_provider_capacity_status{status=~"unconfigured|misconfigured|unavailable"} == 1
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Redis provider capacity monitoring is blind"
+          description: "Capacity metadata is {{ $labels.status }}; restore monitoring before the provider reaches a hard cap."
+          runbook: "docs/observability/runbooks.md#redis-provider-request-capacity"
+
   - name: latexy.postgres
     rules:
       - alert: PostgresDown

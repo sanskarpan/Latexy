@@ -140,6 +140,43 @@ DB_POOL_CONNECTIONS = Gauge(
     "SQLAlchemy async engine connection-pool state.",
     ["state"],  # size|checked_out|overflow
 )
+REDIS_COMMANDS_TOTAL = Counter(
+    "latexy_redis_commands_total",
+    "Redis commands observed by the application clients.",
+    ["role", "status"],  # role: queue|cache; status: success|error
+)
+REDIS_PROVIDER_ERRORS_TOTAL = Counter(
+    "latexy_redis_provider_errors_total",
+    "Redis provider errors grouped into actionable, low-cardinality classes.",
+    ["role", "kind"],
+)
+REDIS_DEPENDENCY_UP = Gauge(
+    "latexy_redis_dependency_up",
+    "Whether the latest Redis command for a dependency role succeeded.",
+    ["role"],
+)
+REDIS_PROVIDER_EXHAUSTED = Gauge(
+    "latexy_redis_provider_exhausted",
+    "Whether the Redis provider has reported hard request-quota exhaustion.",
+    ["role"],
+)
+REDIS_PROVIDER_MONTHLY_REQUESTS = Gauge(
+    "latexy_redis_provider_monthly_requests",
+    "Provider-reported Redis requests in the current billing month.",
+)
+REDIS_PROVIDER_REQUEST_LIMIT = Gauge(
+    "latexy_redis_provider_request_limit",
+    "Provider-reported Redis request limit for the current billing month.",
+)
+REDIS_PROVIDER_REQUEST_UTILIZATION = Gauge(
+    "latexy_redis_provider_request_utilization_ratio",
+    "Provider-reported monthly Redis requests divided by the request limit.",
+)
+REDIS_PROVIDER_CAPACITY_STATUS = Gauge(
+    "latexy_redis_provider_capacity_status",
+    "One-hot status of Redis provider capacity monitoring.",
+    ["status"],
+)
 
 
 def _set_if_provided(var: ContextVar[str | None], value: str | None) -> Token[str | None] | None:
@@ -235,6 +272,78 @@ def record_frontend_event(kind: str, name: str, route: str, value: float | None 
     FRONTEND_TELEMETRY_EVENTS_TOTAL.labels(kind=kind, name=name, route=normalized_route).inc()
     if kind == "web_vital" and value is not None:
         FRONTEND_WEB_VITAL_VALUE.labels(name=name, route=normalized_route).observe(value)
+
+
+def classify_redis_error(exc: BaseException) -> str:
+    """Map provider/client errors to stable alert labels without leaking details."""
+    message = str(exc).lower()
+    if "max requests limit exceeded" in message or "request quota" in message:
+        return "request_quota_exhausted"
+    if "max commands per second" in message or "throttl" in message:
+        return "throttled"
+    if "timeout" in message or "timed out" in message:
+        return "timeout"
+    if any(marker in message for marker in (
+        "connection refused",
+        "connection reset",
+        "connection closed",
+        "name or service not known",
+        "nodename nor servname provided",
+    )):
+        return "connection"
+    return "other"
+
+
+def record_redis_command(role: str, error: BaseException | None = None) -> str | None:
+    """Record one Redis command and return its error class, if any.
+
+    This is deliberately local Prometheus instrumentation; it never performs an
+    extra Redis operation merely to count an operation, which would accelerate a
+    request-capped provider toward exhaustion.
+    """
+    normalized_role = role if role in {"queue", "cache"} else "unknown"
+    if error is None:
+        REDIS_COMMANDS_TOTAL.labels(role=normalized_role, status="success").inc()
+        REDIS_DEPENDENCY_UP.labels(role=normalized_role).set(1)
+        REDIS_PROVIDER_EXHAUSTED.labels(role=normalized_role).set(0)
+        return None
+
+    kind = classify_redis_error(error)
+    REDIS_COMMANDS_TOTAL.labels(role=normalized_role, status="error").inc()
+    REDIS_PROVIDER_ERRORS_TOTAL.labels(role=normalized_role, kind=kind).inc()
+    if kind in {"request_quota_exhausted", "timeout", "connection"}:
+        REDIS_DEPENDENCY_UP.labels(role=normalized_role).set(0)
+    if kind == "request_quota_exhausted":
+        REDIS_PROVIDER_EXHAUSTED.labels(role=normalized_role).set(1)
+    return kind
+
+
+def set_redis_capacity_metrics(monthly_requests: int, request_limit: int) -> None:
+    """Publish provider-level capacity data obtained from the management API."""
+    requests = max(0, int(monthly_requests))
+    limit = max(0, int(request_limit))
+    REDIS_PROVIDER_MONTHLY_REQUESTS.set(requests)
+    REDIS_PROVIDER_REQUEST_LIMIT.set(limit)
+    REDIS_PROVIDER_REQUEST_UTILIZATION.set(requests / limit if limit else 0)
+
+
+def set_redis_capacity_status(status: str) -> None:
+    """Publish one low-cardinality capacity-monitor state for alerting."""
+    known = {
+        "ok",
+        "warning",
+        "critical",
+        "exhausted",
+        "unavailable",
+        "misconfigured",
+        "unconfigured",
+        "not_applicable",
+    }
+    normalized = status if status in known else "unavailable"
+    for candidate in known:
+        REDIS_PROVIDER_CAPACITY_STATUS.labels(status=candidate).set(
+            1 if candidate == normalized else 0
+        )
 
 
 def _as_number(value: Any) -> float | None:
