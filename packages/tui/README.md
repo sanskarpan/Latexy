@@ -17,11 +17,16 @@ latexy                                         # interactive mode
 latexy compile my-resume.tex                   # compile a local .tex file
 latexy compile --resume-id <uuid>              # compile by resume ID
 latexy compile --resume-id <uuid> --output out.pdf
+latexy optimize <uuid> --jd job-description.txt
+latexy ats score <uuid> --jd job-description.txt
+latexy status <job-id> --wait
+latexy list
 ```
 
 ## Authentication
 
-In interactive mode, run `/login` to open the sign-in overlay.
+Interactive mode opens the sign-in overlay automatically when no valid session
+is available.
 
 For CI / headless use, set the `LATEXY_SESSION_TOKEN` env var:
 
@@ -72,17 +77,32 @@ When stdout is not a TTY (CI pipelines, scripts), Latexy runs in headless mode a
 
 ```bash
 latexy compile --resume-id <uuid> --json
-# → { "success": true, "pages": 2, "size_bytes": 45123, "ats_score": 84 }
+# → { "success": true, "job_id": "…", "pages": 2, "ats_score": null, "compilation_time_ms": 1450, "compiler": "pdflatex" }
+
+latexy optimize <uuid> --jd job-description.txt --level balanced --json
+# → { "success": true, "job_id": "…", "optimized_latex": "…", "changes_made": [...] }
+
+latexy ats score <uuid> --jd job-description.txt --industry software_engineering --json
+# → { "success": true, "job_id": "…", "ats_score": 87.5, "category_scores": {...} }
+
+latexy status <job-id> --json                 # current state, without blocking
+latexy status <job-id> --wait --json          # wait and return the final result
+latexy list --page 1 --limit 100 --json
 ```
+
+`--jd` accepts a local file, an HTTP(S) job-posting URL, or literal job-description
+text. Progress and compiler logs are written to stderr; stdout contains exactly
+one JSON document, so it can be piped directly to `jq`.
 
 Exit codes:
 
 | Code | Meaning |
 |------|---------|
 | `0` | Success |
-| `1` | Compilation failed |
+| `1` | Command or asynchronous job failed |
 | `2` | Not authenticated |
 | `3` | Unknown subcommand / invalid args |
+| `4` | Backend unreachable |
 
 ## Configuration
 
