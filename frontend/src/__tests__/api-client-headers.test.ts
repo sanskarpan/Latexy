@@ -44,4 +44,22 @@ describe('ApiClient header behavior', () => {
     const headers = init.headers as Record<string, string>
     expect(headers['Content-Type']).toBe('application/json')
   })
+
+  test('mints a scoped WebSocket ticket over authenticated HTTP', async () => {
+    mockFetch({ ticket: 'single-use', expires_in: 60 })
+    apiClient.setAuthToken('reusable-session')
+
+    const result = await apiClient.createWebSocketTicket('collab', 'resume-1')
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+    const headers = init.headers as Record<string, string>
+    expect(url).toContain('/ws/ticket')
+    expect(headers.Authorization).toBe('Bearer reusable-session')
+    expect(JSON.parse(String(init.body))).toEqual({
+      purpose: 'collab',
+      resume_id: 'resume-1',
+    })
+    expect(String(init.body)).not.toContain('reusable-session')
+    expect(result).toEqual({ ticket: 'single-use', expires_in: 60 })
+  })
 })
