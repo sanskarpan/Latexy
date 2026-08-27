@@ -65,9 +65,10 @@ test.describe('/admin — page load', () => {
     expect(errors.filter((e) => !e.toLowerCase().includes('warning'))).toHaveLength(0)
   })
 
-  test('shows "Feature Flags" heading', async ({ page }) => {
+  test('shows the control-plane heading', async ({ page }) => {
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Feature Flags' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Control Plane' })).toBeVisible()
+    await expect(page.getByRole('tab', { name: 'Feature Flags' })).toHaveAttribute('aria-selected', 'true')
   })
 
   test('renders all 6 feature flag rows', async ({ page }) => {
@@ -88,26 +89,24 @@ test.describe('/admin — page load', () => {
 
   test('each flag row has a toggle button', async ({ page }) => {
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
-    const toggles = page.getByRole('button', { name: /Toggle/i })
+    const toggles = page.getByRole('switch', { name: /Toggle/i })
     await expect(toggles).toHaveCount(6)
   })
 
   test('enabled flags have orange toggle indicator', async ({ page }) => {
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
     // trial_limits is enabled — its toggle button uses orange background classes
-    const trialToggle = page.getByRole('button', { name: 'Toggle Trial Limits' })
+    const trialToggle = page.getByRole('switch', { name: 'Toggle Trial Limits' })
     await expect(trialToggle).toBeVisible()
-    const cls = await trialToggle.getAttribute('class')
-    expect(cls).toContain('orange')
+    await expect(trialToggle).toBeChecked()
   })
 
   test('disabled flags have non-orange toggle', async ({ page }) => {
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
     // billing is disabled
-    const billingToggle = page.getByRole('button', { name: 'Toggle Billing & Payments' })
+    const billingToggle = page.getByRole('switch', { name: 'Toggle Billing & Payments' })
     await expect(billingToggle).toBeVisible()
-    const cls = await billingToggle.getAttribute('class')
-    expect(cls).not.toContain('orange')
+    await expect(billingToggle).not.toBeChecked()
   })
 
   test('shows "Admin" sub-label above heading', async ({ page }) => {
@@ -136,7 +135,7 @@ test.describe('/admin — 403 forbidden', () => {
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
     await expect(page.getByText('Not authorized')).toBeVisible({ timeout: 8_000 })
     await expect(page.getByText('Trial Limits')).not.toBeVisible()
-    await expect(page.getByRole('button', { name: /Toggle/i })).toHaveCount(0)
+    await expect(page.getByRole('switch', { name: /Toggle/i })).toHaveCount(0)
   })
 
   test('shows admin access hint', async ({ page }) => {
@@ -181,7 +180,7 @@ test.describe('/admin — toggle flags', () => {
 
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
 
-    const trialToggle = page.getByRole('button', { name: 'Toggle Trial Limits' })
+    const trialToggle = page.getByRole('switch', { name: 'Toggle Trial Limits' })
     await trialToggle.click()
     await page.waitForTimeout(500)
 
@@ -200,17 +199,13 @@ test.describe('/admin — toggle flags', () => {
 
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
 
-    const trialToggle = page.getByRole('button', { name: 'Toggle Trial Limits' })
-    // Before: orange (enabled)
-    const beforeClass = await trialToggle.getAttribute('class')
-    expect(beforeClass).toContain('orange')
+    const trialToggle = page.getByRole('switch', { name: 'Toggle Trial Limits' })
+    await expect(trialToggle).toBeChecked()
 
     await trialToggle.click()
     await page.waitForTimeout(500)
 
-    // After: not orange (disabled)
-    const afterClass = await trialToggle.getAttribute('class')
-    expect(afterClass).not.toContain('orange')
+    await expect(trialToggle).not.toBeChecked()
   })
 
   test('toggle sends correct enabled value (true → false)', async ({ page }) => {
@@ -225,7 +220,7 @@ test.describe('/admin — toggle flags', () => {
 
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
     // billing is currently false → clicking toggles to true
-    const billingToggle = page.getByRole('button', { name: 'Toggle Billing & Payments' })
+    const billingToggle = page.getByRole('switch', { name: 'Toggle Billing & Payments' })
     await billingToggle.click()
     await page.waitForTimeout(300)
 
@@ -241,7 +236,7 @@ test.describe('/admin — toggle flags', () => {
     )
 
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
-    await page.getByRole('button', { name: 'Toggle Trial Limits' }).click()
+    await page.getByRole('switch', { name: 'Toggle Trial Limits' }).click()
     await page.waitForTimeout(500)
 
     expect(errors.filter((e) => !e.toLowerCase().includes('warning'))).toHaveLength(0)
@@ -259,7 +254,7 @@ test.describe('/admin — navigation', () => {
     await mockAdminFlagsSuccess(page)
 
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Feature Flags' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Control Plane' })).toBeVisible()
     expect(page.url()).toContain('/admin')
   })
 })
