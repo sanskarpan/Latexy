@@ -226,7 +226,9 @@ export default function DiffViewerModal({
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
             <button
+              type="button"
               onClick={onClose}
+              aria-label="Close comparison"
               className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             >
               <X size={16} />
