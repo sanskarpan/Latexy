@@ -3,11 +3,18 @@
 import uuid
 from unittest.mock import MagicMock, patch
 
+import pytest
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.services import github_projects_service as gh
+from app.services.api_key_service import api_key_service
 from app.services.encryption_service import encryption_service
-from app.workers.github_import_worker import _store_result
+from app.workers.github_import_worker import (
+    _resolve_import_credentials,
+    _store_result,
+    submit_github_import,
+)
 
 # ── rank_repos (pure, no network) ────────────────────────────────────────────
 
@@ -152,6 +159,105 @@ def test_worker_result_envelope_is_owner_bound():
     }
 
 
+def test_submission_payload_contains_identifiers_not_credentials(monkeypatch):
+    monkeypatch.setenv("DEPLOY_TARGET", "modal")
+    with patch("app.core.modal_dispatch.spawn") as spawn:
+        submit_github_import("job-1", "user-1", user_plan="pro")
+
+    function_name, payload = spawn.call_args.args
+    assert function_name == "run_github_import_task"
+    assert payload == {"job_id": "job-1", "user_id": "user-1"}
+    assert "github_token" not in payload
+    assert "api_key" not in payload
+
+
+def test_celery_submission_payload_contains_no_credentials(monkeypatch):
+    monkeypatch.delenv("DEPLOY_TARGET", raising=False)
+    with patch(
+        "app.workers.github_import_worker.import_github_projects_task.apply_async"
+    ) as apply_async:
+        submit_github_import("job-2", "user-2", user_plan="free")
+
+    payload = apply_async.call_args.kwargs["kwargs"]
+    assert payload == {"job_id": "job-2", "user_id": "user-2"}
+    assert "github_token" not in payload
+    assert "api_key" not in payload
+
+
+async def test_worker_resolves_current_credentials(db_session, auth_headers):
+    user_id = await _connect_github(db_session, auth_headers)
+    encrypted_api_key = api_key_service.encryption.encrypt("sk-worker-only")
+    await db_session.execute(
+        text(
+            "INSERT INTO user_api_keys "
+            "(id, user_id, provider, encrypted_key, key_name, is_active) "
+            "VALUES (:id, :user_id, 'openai', :encrypted_key, 'Worker test', true)"
+        ),
+        {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "encrypted_key": encrypted_api_key,
+        },
+    )
+    await db_session.commit()
+
+    github_token, api_key = await _resolve_import_credentials(
+        user_id,
+        async_sessionmaker(db_session.bind, expire_on_commit=False),
+    )
+
+    assert github_token == "gho_testtoken"
+    assert api_key == "sk-worker-only"
+
+
+async def test_worker_reads_revoked_github_state_at_execution(db_session, auth_headers):
+    user_id = await _user_id_for_headers(db_session, auth_headers)
+
+    github_token, api_key = await _resolve_import_credentials(
+        user_id,
+        async_sessionmaker(db_session.bind, expire_on_commit=False),
+    )
+
+    assert github_token is None
+    assert api_key is None
+
+
+async def test_worker_uses_platform_fallback_for_undecryptable_byok(db_session, auth_headers):
+    user_id = await _connect_github(db_session, auth_headers)
+    await db_session.execute(
+        text(
+            "INSERT INTO user_api_keys "
+            "(id, user_id, provider, encrypted_key, key_name, is_active) "
+            "VALUES (:id, :user_id, 'openai', 'not-encrypted', 'Broken key', true)"
+        ),
+        {"id": str(uuid.uuid4()), "user_id": user_id},
+    )
+    await db_session.commit()
+
+    github_token, api_key = await _resolve_import_credentials(
+        user_id,
+        async_sessionmaker(db_session.bind, expire_on_commit=False),
+    )
+
+    assert github_token == "gho_testtoken"
+    assert api_key is None
+
+
+async def test_worker_fails_closed_for_undecryptable_github_token(db_session, auth_headers):
+    user_id = await _user_id_for_headers(db_session, auth_headers)
+    await db_session.execute(
+        text("UPDATE users SET github_access_token = 'not-encrypted' WHERE id = :id"),
+        {"id": user_id},
+    )
+    await db_session.commit()
+
+    with pytest.raises(Exception):
+        await _resolve_import_credentials(
+            user_id,
+            async_sessionmaker(db_session.bind, expire_on_commit=False),
+        )
+
+
 # ── Endpoint tests ───────────────────────────────────────────────────────────
 
 
@@ -186,12 +292,10 @@ class TestImportEndpoints:
 
         captured = {}
 
-        def _fake_submit(*, job_id, user_id, github_token, api_key, user_plan="free"):
+        def _fake_submit(*, job_id, user_id, user_plan="free"):
             captured.update(
                 job_id=job_id,
                 user_id=user_id,
-                github_token=github_token,
-                api_key=api_key,
                 user_plan=user_plan,
             )
             return job_id
@@ -202,9 +306,7 @@ class TestImportEndpoints:
         assert resp.status_code == 200
         body = resp.json()
         assert "job_id" in body and body["job_id"]
-        # the decrypted GitHub token is handed to the worker; no BYOK key → None
-        assert captured["github_token"] == "gho_testtoken"
-        assert captured["api_key"] is None
+        assert set(captured) == {"job_id", "user_id", "user_plan"}
         assert captured["job_id"] == body["job_id"]
 
         from app.core.redis import get_redis_client
