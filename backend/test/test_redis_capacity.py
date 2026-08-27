@@ -7,8 +7,9 @@ import pytest
 import redis
 import redis.asyncio as aioredis
 import respx
+from pydantic import ValidationError
 
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.observability import classify_redis_error
 from app.core.redis import ObservedAsyncRedis, ObservedSyncRedis
 from app.services.redis_capacity_service import RedisCapacityService
@@ -27,6 +28,25 @@ def _configure_monitor(monkeypatch) -> None:
     monkeypatch.setattr(settings, "REDIS_CAPACITY_WARNING_RATIO", 0.80)
     monkeypatch.setattr(settings, "REDIS_CAPACITY_CRITICAL_RATIO", 0.95)
     monkeypatch.setattr(settings, "REDIS_CAPACITY_CACHE_SECONDS", 300)
+
+
+def test_capacity_threshold_order_is_validated(monkeypatch):
+    monkeypatch.setenv("SKIP_ENV_VALIDATION", "true")
+    with pytest.raises(ValidationError, match="WARNING_RATIO must be lower"):
+        Settings(
+            _env_file=None,
+            REDIS_CAPACITY_WARNING_RATIO=0.95,
+            REDIS_CAPACITY_CRITICAL_RATIO=0.90,
+        )
+
+
+def test_partial_management_credentials_are_rejected(monkeypatch):
+    monkeypatch.setenv("SKIP_ENV_VALIDATION", "true")
+    with pytest.raises(ValidationError, match="must be configured together"):
+        Settings(
+            _env_file=None,
+            UPSTASH_MANAGEMENT_EMAIL="ops@example.com",
+        )
 
 
 async def test_capacity_monitor_is_explicitly_unconfigured(monkeypatch):
