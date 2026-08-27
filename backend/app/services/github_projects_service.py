@@ -114,7 +114,7 @@ def _parse_repo_node(node: Dict[str, Any], pinned: bool) -> Optional[Dict[str, A
     # pinnedItems has no visibility filter, so enforce the public-only privacy
     # contract again while parsing. This is intentionally defense in depth with
     # the ``privacy: PUBLIC`` filter on the main repositories connection.
-    if not node or not node.get("name") or node.get("isPrivate") is True:
+    if not node or not node.get("name") or node.get("isPrivate") is not False:
         return None
 
     primary = node.get("primaryLanguage") or {}
