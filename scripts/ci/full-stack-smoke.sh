@@ -29,7 +29,10 @@ export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 export NEXT_TELEMETRY_DISABLED=1
 
 backend_pid=""
+frontend_pid=""
 started_backend=0
+started_frontend=0
+frontend_log="$(mktemp -t latexy-frontend-smoke.XXXXXX)"
 backend_alembic=()
 backend_uvicorn=()
 
@@ -42,10 +45,15 @@ else
 fi
 
 cleanup() {
+  if [[ "$started_frontend" -eq 1 ]] && [[ -n "$frontend_pid" ]] && kill -0 "$frontend_pid" 2>/dev/null; then
+    kill "$frontend_pid" 2>/dev/null || true
+    wait "$frontend_pid" 2>/dev/null || true
+  fi
   if [[ "$started_backend" -eq 1 ]] && [[ -n "$backend_pid" ]] && kill -0 "$backend_pid" 2>/dev/null; then
     kill "$backend_pid" 2>/dev/null || true
     wait "$backend_pid" 2>/dev/null || true
   fi
+  rm -f "$frontend_log"
 }
 
 trap cleanup EXIT
@@ -78,10 +86,49 @@ else
   curl -fsS "http://127.0.0.1:${BACKEND_PORT}/health" >/dev/null
 fi
 
+if curl -fsS "http://127.0.0.1:${FRONTEND_PORT}/" >/dev/null 2>&1; then
+  echo "==> Reusing existing frontend on :${FRONTEND_PORT}"
+else
+  echo "==> Starting frontend on :${FRONTEND_PORT}"
+  (
+    cd "$FRONTEND_DIR"
+    pnpm dev --port "$FRONTEND_PORT"
+  ) >"$frontend_log" 2>&1 &
+  frontend_pid=$!
+  started_frontend=1
+
+  echo "==> Waiting for frontend readiness"
+  for _ in $(seq 1 60); do
+    if curl -fsS "http://127.0.0.1:${FRONTEND_PORT}/" >/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+
+  if ! curl -fsS "http://127.0.0.1:${FRONTEND_PORT}/" >/dev/null; then
+    cat "$frontend_log"
+    exit 1
+  fi
+fi
+
 echo "==> Running Playwright full-stack smoke"
-(
+if ! (
   cd "$FRONTEND_DIR"
   PLAYWRIGHT_REQUIRE_BACKEND=1 \
   PLAYWRIGHT_PORT="$FRONTEND_PORT" \
   pnpm exec playwright test e2e/full-stack-smoke.spec.ts --project=chromium --workers=1
-)
+); then
+  if [[ "$started_frontend" -eq 1 ]]; then
+    cat "$frontend_log"
+  fi
+  exit 1
+fi
+
+if [[ "$started_frontend" -eq 1 ]]; then
+  if grep -Eiq 'Error handling upgrade request|uncaughtException|unhandledRejection|TypeError:|ReferenceError:' "$frontend_log"; then
+    echo "ERROR: frontend server emitted an unexpected exception during smoke" >&2
+    cat "$frontend_log"
+    exit 1
+  fi
+  echo "==> Frontend server log contains no unexpected exceptions"
+fi
