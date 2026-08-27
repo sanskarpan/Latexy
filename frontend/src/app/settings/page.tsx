@@ -66,7 +66,12 @@ function SettingsContent() {
   }, [])
 
   // GitHub
-  const [ghStatus, setGhStatus] = useState<GitHubStatusResponse>({ connected: false, username: null })
+  const [ghStatus, setGhStatus] = useState<GitHubStatusResponse>({
+    connected: false,
+    username: null,
+    public_import: false,
+    private_sync: false,
+  })
   const [ghLoading, setGhLoading] = useState(true)
   const [ghConnecting, setGhConnecting] = useState(false)
   const [ghDisconnecting, setGhDisconnecting] = useState(false)
@@ -220,6 +225,10 @@ function SettingsContent() {
         setGhStatus(await apiClient.getGitHubStatus())
         setGhSuccess('GitHub account connected successfully!')
         scheduleTimer(() => setGhSuccess(null), 5000)
+        const returnTo = searchParams.get('return_to')
+        if (returnTo?.startsWith('/') && !returnTo.startsWith('//') && !returnTo.includes('\\')) {
+          router.replace(returnTo)
+        }
       } else if (name === 'zotero') {
         await apiClient.completeZoteroOAuth(ticket)
         setZotStatus(await apiClient.getZoteroStatus())
@@ -365,12 +374,12 @@ function SettingsContent() {
   }
 
   async function handleDisconnectGitHub() {
-    if (!confirm('Disconnect GitHub? This will disable sync on all your resumes.')) return
+    if (!confirm('Disconnect GitHub? Latexy will revoke its GitHub authorization and disable sync on all your resumes. Imported resume text will remain.')) return
     setGhDisconnecting(true)
     setGhError(null)
     try {
       await apiClient.disconnectGitHub()
-      setGhStatus({ connected: false, username: null })
+      setGhStatus({ connected: false, username: null, public_import: false, private_sync: false })
     } catch (e: unknown) {
       setGhError(e instanceof Error ? e.message : 'Failed to disconnect')
     } finally {
@@ -382,7 +391,7 @@ function SettingsContent() {
     setGhConnecting(true)
     setGhError(null)
     try {
-      const { authorization_url: authorizationUrl } = await apiClient.startGitHubOAuth()
+      const { authorization_url: authorizationUrl } = await apiClient.startGitHubOAuth('sync')
       window.location.assign(authorizationUrl)
     } catch (e: unknown) {
       setGhError(e instanceof Error ? e.message : 'Failed to start GitHub connection')
@@ -557,7 +566,9 @@ function SettingsContent() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-fg break-words">Connected as <span className="text-ok">{ghStatus.username}</span></p>
                     <p className="text-[11px] text-fg-3">
-                      Resume sync enabled. Toggle per-resume in the editor.
+                      {ghStatus.private_sync
+                        ? 'Private resume sync is authorized. Toggle it per resume in the editor.'
+                        : 'Connected for public-project import only. Private repositories are not accessible.'}
                     </p>
                   </div>
                 </div>
@@ -581,13 +592,28 @@ function SettingsContent() {
                   {ghDisconnecting ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
                   {ghDisconnecting ? 'Disconnecting…' : 'Disconnect'}
                 </button>
+                {!ghStatus.private_sync && (
+                  <button
+                    onClick={handleConnectGitHub}
+                    disabled={ghConnecting}
+                    className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-surface-2 px-3 py-1.5 text-[11px] font-medium text-fg ring-1 ring-line transition hover:brightness-110 disabled:opacity-40"
+                  >
+                    {ghConnecting ? <Loader2 size={11} className="animate-spin" /> : <Github size={11} />}
+                    {ghConnecting ? 'Authorizing…' : 'Enable private sync'}
+                  </button>
+                )}
               </div>
+              <p className="text-[10px] leading-relaxed text-fg-3">
+                Disconnect revokes Latexy&apos;s authorization at GitHub and removes the stored token.
+                Resume text you already imported or synced is not deleted.
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
               <p className="text-[12px] text-fg-3">
                 Connect your GitHub account to sync resume LaTeX source to a private repository.
-                Push from the editor manually to save a version in Git.
+                This requests read/write access to your repositories because GitHub OAuth cannot
+                make private source-code access read-only. Push from the editor manually to save a version in Git.
               </p>
               <button
                 onClick={handleConnectGitHub}
