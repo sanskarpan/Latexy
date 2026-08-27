@@ -139,6 +139,11 @@ worker_image = (
 _secrets = [
     modal.Secret.from_name("latexy-backend-secrets"),
     modal.Secret.from_name("latexy-storage"),
+    # Redis is isolated so exhausted/rotated Upstash credentials can be
+    # replaced without recreating the opaque all-in-one backend secret.
+    # Keep this last: its queue/cache settings intentionally override the
+    # legacy Redis values still present in latexy-backend-secrets.
+    modal.Secret.from_name("latexy-redis"),
 ]
 
 
