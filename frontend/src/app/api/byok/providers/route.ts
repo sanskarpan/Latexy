@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { BACKEND_URL, authHeaders } from '../_forward';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const response = await fetch(`${BACKEND_URL}/byok/providers`, {

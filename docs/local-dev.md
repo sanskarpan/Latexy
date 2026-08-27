@@ -92,7 +92,7 @@ call is a no-op if `latexy-postgres` is already running.
 
 - Docker + Docker Compose
 - Python 3.12/3.13 with `pip install -r backend/requirements.txt` (inside `.venv`)
-- Node.js 20+ with `pnpm install` in `frontend/`
+- Node.js 22.x with `pnpm install` in `frontend/`
 - `.venv` or `venv` inside `backend/` (scripts auto-detect whichever exists)
 
 ---
@@ -204,8 +204,8 @@ Volumes are also slot-specific (`backend_temp_2`, `celery_beat_data_2`).
 |------|---------|------------|-------|
 | `backend/Dockerfile` | **Dev** | `python:3.13-slim` | Includes texlive, tesseract. Source mounted as volume for hot-reload. |
 | `backend/Dockerfile.prod` | **Production** | `python:3.11-slim` (multi-stage) | Builder stage for pip deps, production stage with texlive. Runs 4 uvicorn workers on port 8000. |
-| `frontend/Dockerfile.dev` | **Dev** | `node:20-alpine` | pnpm, source mounted as volume. Accepts `PORT` env var. |
-| `frontend/Dockerfile.prod` | **Production** | `node:18-alpine` (multi-stage) | Standalone Next.js build with `dumb-init`. Runs on port 3000. |
+| `frontend/Dockerfile.dev` | **Dev** | `node:22-alpine` | pnpm, source mounted as volume. Accepts `PORT` env var. |
+| `frontend/Dockerfile.prod` | **Production** | `node:22-alpine` (multi-stage) | Standalone Next.js build with `dumb-init`. Runs on port 5180. |
 
 ### Production stack
 
