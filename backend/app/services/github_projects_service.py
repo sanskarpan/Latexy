@@ -352,16 +352,17 @@ def summarize_project(
     repo: Dict[str, Any],
     readme: Optional[str],
     languages: Dict[str, int],
-    api_key: str,
+    api_key: Optional[str],
     *,
     client: Any = None,
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Summarize one project into ``{summary, suggested_bullets, tech}`` via the LLM.
 
-    The README is truncated to ~1500 tokens before it reaches the prompt. On any
-    LLM error the function degrades to a metadata-only summary rather than raising
-    so a single bad repo never fails the whole import.
+    The README is truncated to ~1500 tokens before it reaches the prompt. The
+    caller's BYOK key takes precedence over the platform OpenAI key. On any LLM
+    error, or when neither key exists, the function degrades to a metadata-only
+    summary so a single bad repo never fails the whole import.
     """
     truncated_readme = (readme or "")[:_README_TRUNCATE_CHARS]
     lang_names = list(languages.keys())
@@ -378,7 +379,8 @@ def summarize_project(
 
     fallback_tech = list(dict.fromkeys(lang_names + (repo.get("topics") or [])))[:8]
 
-    if not api_key:
+    effective_api_key = api_key or settings.OPENAI_API_KEY
+    if not effective_api_key:
         return {
             "summary": repo.get("description") or "",
             "suggested_bullets": [],
@@ -389,7 +391,7 @@ def summarize_project(
         if client is None:
             import openai  # noqa: PLC0415 — lazy so import stays cheap/offline-safe
 
-            client = openai.OpenAI(api_key=api_key)
+            client = openai.OpenAI(api_key=effective_api_key)
         response = client.chat.completions.create(
             model=model or settings.OPENAI_MODEL,
             messages=[

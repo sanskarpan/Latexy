@@ -84,6 +84,65 @@ class TestRankRepos:
         assert len(ranked) == 6
 
 
+# ── summarize_project (BYOK → platform → metadata fallback) ─────────────────
+
+
+def _summary_client():
+    client = MagicMock()
+    response = MagicMock()
+    response.choices = [MagicMock()]
+    response.choices[0].message.content = (
+        '{"summary":"Platform summary","suggested_bullets":["Built a service"],'
+        '"tech":["Python"]}'
+    )
+    client.chat.completions.create.return_value = response
+    return client
+
+
+class TestSummarizeProject:
+    def test_platform_key_used_when_byok_missing(self, monkeypatch):
+        monkeypatch.setattr(gh.settings, "OPENAI_API_KEY", "sk-platform")
+        client = _summary_client()
+        with patch("openai.OpenAI", return_value=client) as openai_client:
+            summary = gh.summarize_project(
+                _repo("acme"), "# Acme\nA useful project", {"Python": 100}, None
+            )
+
+        openai_client.assert_called_once_with(api_key="sk-platform")
+        assert summary["summary"] == "Platform summary"
+        assert summary["suggested_bullets"] == ["Built a service"]
+
+    def test_byok_key_takes_precedence_over_platform_key(self, monkeypatch):
+        monkeypatch.setattr(gh.settings, "OPENAI_API_KEY", "sk-platform")
+        client = _summary_client()
+        with patch("openai.OpenAI", return_value=client) as openai_client:
+            gh.summarize_project(
+                _repo("acme"),
+                "# Acme\nA useful project",
+                {"Python": 100},
+                "sk-user",
+            )
+
+        openai_client.assert_called_once_with(api_key="sk-user")
+
+    def test_no_available_key_degrades_to_metadata(self, monkeypatch):
+        monkeypatch.setattr(gh.settings, "OPENAI_API_KEY", "")
+        with patch("openai.OpenAI") as openai_client:
+            summary = gh.summarize_project(
+                _repo("acme", description="Metadata description"),
+                "# Acme\nA useful project",
+                {"Python": 100},
+                None,
+            )
+
+        openai_client.assert_not_called()
+        assert summary == {
+            "summary": "Metadata description",
+            "suggested_bullets": [],
+            "tech": ["Python"],
+        }
+
+
 # ── build_project_evidence (pure) ────────────────────────────────────────────
 
 

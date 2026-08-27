@@ -241,15 +241,17 @@ def extract_projects(
 ) -> List[Dict[str, Any]]:
     """Extract up to 5 ``ProjectEvidence`` records from page text via ONE LLM call.
 
-    On any LLM error, missing key, or unparseable output the function degrades to
-    a single metadata-only project mined from the page title (or ``[]`` when even
-    that is absent) rather than raising — a flaky provider never fails the import.
+    The caller's BYOK key takes precedence over the platform OpenAI key. On any
+    LLM error, when neither key exists, or on unparseable output the function
+    degrades to a single metadata-only project mined from the page title (or
+    ``[]`` when even that is absent) rather than raising.
     """
     truncated = (page_text or "")[:_PAGE_TEXT_MAX_CHARS]
     if not truncated.strip():
         return []
 
-    if not api_key:
+    effective_api_key = api_key or settings.OPENAI_API_KEY
+    if not effective_api_key:
         logger.info("extract_projects: no LLM key, degrading to page metadata")
         return _degrade_to_metadata(truncated, source_url)
 
@@ -259,7 +261,7 @@ def extract_projects(
         if client is None:
             import openai  # noqa: PLC0415 — lazy so import stays cheap/offline-safe
 
-            client = openai.OpenAI(api_key=api_key)
+            client = openai.OpenAI(api_key=effective_api_key)
         response = client.chat.completions.create(
             model=model or settings.OPENAI_MODEL,
             messages=[
