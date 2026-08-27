@@ -15,19 +15,55 @@ from app.services.job_scraper_service import SSRFError
 
 
 class _FakeResp:
-    def __init__(self, status_code: int, text: str):
+    def __init__(
+        self,
+        status_code: int,
+        body: str | bytes,
+        *,
+        content_type: str | None = "text/html; charset=utf-8",
+        content_length: int | None = None,
+        chunks: list[bytes] | None = None,
+    ):
         self.status_code = status_code
-        self.text = text
+        self.headers = {}
+        if content_type is not None:
+            self.headers["content-type"] = content_type
+        if content_length is not None:
+            self.headers["content-length"] = str(content_length)
+        self.charset_encoding = "utf-8"
+        self._chunks = chunks or [body.encode() if isinstance(body, str) else body]
+        self.iterated_chunks = 0
+        self.exited = False
+
+    async def aiter_bytes(self):
+        for chunk in self._chunks:
+            self.iterated_chunks += 1
+            yield chunk
 
 
-class _FakeAsyncClient:
-    """Minimal stand-in for httpx.AsyncClient with a canned GET response."""
-
+class _FakeStream:
     def __init__(self, resp: _FakeResp):
         self._resp = resp
 
-    async def get(self, url, headers=None):
+    async def __aenter__(self):
         return self._resp
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        self._resp.exited = True
+
+
+class _FakeAsyncClient:
+    """Minimal stand-in for a streaming httpx client with a canned response."""
+
+    def __init__(self, resp: _FakeResp):
+        self._resp = resp
+        self.closed = False
+
+    def stream(self, method, url, headers=None):
+        return _FakeStream(self._resp)
+
+    async def aclose(self):
+        self.closed = True
 
 
 def _fake_llm(content: str):
@@ -80,6 +116,80 @@ class TestFetchUrlText:
         client = _FakeAsyncClient(_FakeResp(404, "nope"))
         with pytest.raises(ValueError):
             await url_import.fetch_url_text("https://example.com", client=client)
+
+    async def test_accepts_parameterized_text_content_type(self, monkeypatch):
+        monkeypatch.setattr(url_import, "_assert_public_url", lambda url: None)
+        resp = _FakeResp(
+            200,
+            "<h1>Café Projects</h1>",
+            content_type="Text/HTML; Charset=UTF-8",
+        )
+        text = await url_import.fetch_url_text(
+            "https://example.com", client=_FakeAsyncClient(resp)
+        )
+        assert "Café Projects" in text
+
+    @pytest.mark.parametrize(
+        "content_type",
+        [None, "application/octet-stream", "application/pdf", "image/png"],
+    )
+    async def test_rejects_missing_or_unsupported_content_type(
+        self, monkeypatch, content_type
+    ):
+        monkeypatch.setattr(url_import, "_assert_public_url", lambda url: None)
+        resp = _FakeResp(200, b"binary", content_type=content_type)
+        with pytest.raises(ValueError, match="Content-Type"):
+            await url_import.fetch_url_text(
+                "https://example.com", client=_FakeAsyncClient(resp)
+            )
+        assert resp.iterated_chunks == 0
+        assert resp.exited is True
+
+    async def test_rejects_declared_oversized_response_before_reading(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(url_import, "_assert_public_url", lambda url: None)
+        resp = _FakeResp(
+            200,
+            "small body",
+            content_length=url_import._MAX_RESPONSE_BYTES + 1,
+        )
+        with pytest.raises(ValueError, match="exceeds"):
+            await url_import.fetch_url_text(
+                "https://example.com", client=_FakeAsyncClient(resp)
+            )
+        assert resp.iterated_chunks == 0
+
+    async def test_rejects_stream_that_crosses_response_limit(self, monkeypatch):
+        monkeypatch.setattr(url_import, "_assert_public_url", lambda url: None)
+        resp = _FakeResp(
+            200,
+            b"",
+            chunks=[b"a" * url_import._MAX_RESPONSE_BYTES, b"b"],
+        )
+        with pytest.raises(ValueError, match="exceeds"):
+            await url_import.fetch_url_text(
+                "https://example.com", client=_FakeAsyncClient(resp)
+            )
+        assert resp.iterated_chunks == 2
+        assert resp.exited is True
+
+    async def test_closes_owned_client_but_not_injected_client(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(url_import, "_assert_public_url", lambda url: None)
+        injected_resp = _FakeResp(200, "<p>injected</p>")
+        injected = _FakeAsyncClient(injected_resp)
+        await url_import.fetch_url_text("https://example.com", client=injected)
+        assert injected.closed is False
+        assert injected_resp.exited is True
+
+        owned_resp = _FakeResp(200, "<p>owned</p>")
+        owned = _FakeAsyncClient(owned_resp)
+        monkeypatch.setattr(url_import.httpx, "AsyncClient", lambda **kwargs: owned)
+        await url_import.fetch_url_text("https://example.com")
+        assert owned.closed is True
+        assert owned_resp.exited is True
 
 
 # ── extract_projects (LLM → ProjectEvidence) ─────────────────────────────────
