@@ -186,6 +186,10 @@ describe('headless command parity', () => {
 
     sessionToken = 'tok'
     stdout = ''
+    getMock.mockRejectedValueOnce(Object.assign(new Error('Session expired'), { status: 401 }))
+    expect(await runHeadless('list', ['list'])).toBe(2)
+
+    stdout = ''
     expect(await runHeadless('optimize', ['optimize', 'resume-1', '--jd', 'JD', '--level', 'reckless'])).toBe(3)
 
     stdout = ''
