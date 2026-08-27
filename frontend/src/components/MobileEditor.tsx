@@ -35,6 +35,7 @@ interface MobileEditorProps {
   onChange: (value: string) => void
   onSave?: () => void
   onCompile?: () => void
+  readOnly?: boolean
 }
 
 const darkTheme = EditorView.theme(
@@ -78,7 +79,7 @@ const TOOLBAR_ITEMS = [
 ]
 
 const MobileEditor = forwardRef<LaTeXEditorRef, MobileEditorProps>(
-  function MobileEditor({ value, onChange, onSave, onCompile }, ref) {
+  function MobileEditor({ value, onChange, onSave, onCompile, readOnly = false }, ref) {
     const containerRef = useRef<HTMLDivElement>(null)
     const viewRef = useRef<EditorView | null>(null)
     const onChangeRef = useRef(onChange)
@@ -133,6 +134,7 @@ const MobileEditor = forwardRef<LaTeXEditorRef, MobileEditorProps>(
           keymap.of([...defaultKeymap, ...historyKeymap]),
           updateListener,
           EditorView.lineWrapping,
+          EditorView.editable.of(!readOnly),
         ],
       })
 
@@ -144,7 +146,7 @@ const MobileEditor = forwardRef<LaTeXEditorRef, MobileEditorProps>(
         viewRef.current = null
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []) // intentionally only once
+    }, [readOnly])
 
     // Sync external value changes (e.g. AI optimisation result)
     useEffect(() => {
@@ -195,6 +197,7 @@ const MobileEditor = forwardRef<LaTeXEditorRef, MobileEditorProps>(
               key={label}
               title={label}
               onClick={() => insertSnippet(insert, cursorOffset)}
+              disabled={readOnly}
               className="flex h-7 w-7 items-center justify-center rounded text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             >
               <Icon size={14} />
@@ -211,7 +214,7 @@ const MobileEditor = forwardRef<LaTeXEditorRef, MobileEditorProps>(
               Compile
             </button>
           )}
-          {onSave && (
+          {onSave && !readOnly && (
             <button
               title="Save"
               onClick={onSave}
