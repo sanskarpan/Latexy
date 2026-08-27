@@ -292,6 +292,7 @@ export interface ResumeBase {
 export interface ResumeResponse extends ResumeBase {
   id: string
   user_id: string
+  access_role?: import('@/lib/resume-access').ResumeAccessRole
   parent_resume_id?: string | null
   variant_count?: number
   selected_template_id?: string | null
