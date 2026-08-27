@@ -21,6 +21,8 @@ const ACCEPTED_EXTENSIONS = new Set([
 ])
 
 const ACCEPTED_FORMATS = Array.from(ACCEPTED_EXTENSIONS).map(e => `.${e}`).join(',')
+const LOCAL_EXTENSIONS = new Set(['tex', 'latex', 'ltx'])
+const LOCAL_FORMATS = Array.from(LOCAL_EXTENSIONS).map(e => `.${e}`).join(',')
 
 // Per-format file size limits in bytes (mirrors backend format_detection.py)
 const SIZE_LIMITS: Record<string, number> = {
@@ -76,9 +78,14 @@ function getFormatLabel(filename: string): string {
 interface MultiFormatUploadProps {
   onFileUpload: (content: string) => void
   sourceHint?: string
+  serverConversionEnabled?: boolean
 }
 
-export default function MultiFormatUpload({ onFileUpload, sourceHint }: MultiFormatUploadProps) {
+export default function MultiFormatUpload({
+  onFileUpload,
+  sourceHint,
+  serverConversionEnabled = true,
+}: MultiFormatUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -103,6 +110,10 @@ export default function MultiFormatUpload({ onFileUpload, sourceHint }: MultiFor
 
     if (!ACCEPTED_EXTENSIONS.has(ext)) {
       return `Unsupported file type ".${ext}". Supported: PDF, Word, LaTeX, Markdown, JSON, YAML, HTML, images, and more.`
+    }
+
+    if (!serverConversionEnabled && !LOCAL_EXTENSIONS.has(ext)) {
+      return 'Log in to convert PDF, Word, image, and other resume formats. LaTeX files stay local and can be imported now.'
     }
 
     if (file.size === 0) {
@@ -285,18 +296,20 @@ export default function MultiFormatUpload({ onFileUpload, sourceHint }: MultiFor
         </div>
 
         <h3 className="text-sm font-semibold text-fg mb-1">
-          Upload Resume
+          {serverConversionEnabled ? 'Upload Resume' : 'Upload LaTeX Source'}
         </h3>
 
         <p className="text-xs text-fg-3 mb-5">
-          Drop any resume file here, or click to browse
+          {serverConversionEnabled
+            ? 'Drop any resume file here, or click to browse'
+            : 'Drop a .tex, .latex, or .ltx file here, or click to browse'}
         </p>
 
         <label className="rounded-[var(--radius-md)] bg-accent font-semibold text-accent-fg hover:brightness-110 cursor-pointer inline-flex items-center gap-2 px-4 py-2 text-sm">
           <input
             ref={inputRef}
             type="file"
-            accept={ACCEPTED_FORMATS}
+            accept={serverConversionEnabled ? ACCEPTED_FORMATS : LOCAL_FORMATS}
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -305,7 +318,9 @@ export default function MultiFormatUpload({ onFileUpload, sourceHint }: MultiFor
         </label>
 
         <p className="text-[11px] text-fg-3 mt-4 leading-relaxed">
-          PDF · Word · Markdown · LaTeX · JSON · YAML · HTML · images · and more
+          {serverConversionEnabled
+            ? 'PDF · Word · Markdown · LaTeX · JSON · YAML · HTML · images · and more'
+            : 'LaTeX source files are read only in this browser and are never uploaded'}
         </p>
       </div>
     </div>
