@@ -361,10 +361,13 @@ test.describe('DiffViewerModal — fullscreen toggle', () => {
     await page.getByTitle('Fullscreen').click()
     await page.getByTitle('Exit fullscreen').click()
 
-    // Back to normal: should have rounded-2xl
+    // Back to the constrained dialog layout.
     const modal = page.locator('.fixed.inset-0').last().locator('> div').first()
     const cls = await modal.getAttribute('class')
-    expect(cls).toContain('rounded-2xl')
+    expect(cls).not.toContain('h-screen')
+    expect(cls).not.toContain('w-screen')
+    expect(cls).toContain('h-[85vh]')
+    expect(cls).toContain('w-[95vw]')
   })
 
   test('fullscreen button title toggles between "Fullscreen" and "Exit fullscreen"', async ({ page }) => {
@@ -536,8 +539,7 @@ test.describe('DiffViewerModal — header structure', () => {
     await page.getByRole('button', { name: 'Compare Selected' }).click()
     await expect(page.getByText('Compare Versions')).toBeVisible({ timeout: 8_000 })
 
-    // Close via X button (last svg button in modal header)
-    await page.locator('.fixed.inset-0 button[class*="rounded-lg p-1.5"]').last().click()
+    await page.getByRole('button', { name: 'Close comparison' }).click()
     await expect(page.getByText('Compare Versions')).not.toBeVisible()
   })
 })
