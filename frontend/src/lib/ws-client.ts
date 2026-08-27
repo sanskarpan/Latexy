@@ -145,7 +145,17 @@ export class WSClient {
     const requested = lastEventId ?? known ?? '0'
     const from = known && requested === '0' ? known : requested
     this._subscriptions.set(jobId, from)
-    this._sendSubscribe(jobId, from)
+
+    // The application shell no longer opens a socket for every anonymous
+    // marketing-page visit. The first real job subscription owns connection
+    // startup; once the handshake completes, `onopen` replays every entry in
+    // `_subscriptions`, including this one. Existing/open connections can send
+    // the frame immediately.
+    if (!this._connectRequested) {
+      this.connect()
+    } else {
+      this._sendSubscribe(jobId, from)
+    }
   }
 
   /** Number of jobs currently subscribed on this connection. Used to decide
