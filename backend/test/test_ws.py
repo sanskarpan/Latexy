@@ -7,12 +7,20 @@ the protocol tests; the auth/Redis integration is covered by test_auth.py
 and test_jobs.py which use the async ASGI transport.
 """
 
+import json
+import time
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.testclient import TestClient
 
+from app.api.ws_routes import (
+    WebSocketTicketRequest,
+    _consume_ws_ticket,
+    _ws_ticket_key,
+    create_websocket_ticket,
+)
 from app.main import app
 
 # ---------------------------------------------------------------------------
@@ -209,3 +217,92 @@ class TestWebSocketProtocol:
             msg = ws.receive_json()
 
         assert msg["type"] == "pong"
+
+
+class TestWebSocketTickets:
+    """Reusable login sessions are exchanged for scoped, one-use WS tickets."""
+
+    @pytest.mark.asyncio
+    async def test_ticket_is_hashed_at_rest_and_scope_is_recorded(self):
+        redis = MagicMock()
+        redis.set = AsyncMock(return_value=True)
+        with patch(
+            "app.api.ws_routes.get_redis_client",
+            new_callable=AsyncMock,
+            return_value=redis,
+        ):
+            response = await create_websocket_ticket(
+                WebSocketTicketRequest(purpose="collab", resume_id="resume-1"),
+                user_id="user-1",
+            )
+
+        key, raw = redis.set.call_args.args[:2]
+        kwargs = redis.set.call_args.kwargs
+        assert response.ticket not in key
+        assert key == _ws_ticket_key(response.ticket)
+        assert kwargs == {"ex": response.expires_in, "nx": True}
+        assert json.loads(raw) | {"expires_at": 0} == {
+            "user_id": "user-1",
+            "purpose": "collab",
+            "resume_id": "resume-1",
+            "expires_at": 0,
+        }
+
+    @pytest.mark.asyncio
+    async def test_ticket_is_single_use_and_resume_bound(self):
+        envelope = json.dumps({
+            "user_id": "user-1",
+            "purpose": "collab",
+            "resume_id": "resume-1",
+            "expires_at": time.time() + 30,
+        })
+        redis = MagicMock()
+        redis.getdel = AsyncMock(side_effect=[envelope, None])
+        websocket = MagicMock()
+        websocket.query_params = {"ticket": "one-use"}
+        with patch(
+            "app.api.ws_routes.get_redis_client",
+            new_callable=AsyncMock,
+            return_value=redis,
+        ):
+            first = await _consume_ws_ticket(
+                websocket,
+                purpose="collab",
+                resume_id="resume-1",
+            )
+            reused = await _consume_ws_ticket(
+                websocket,
+                purpose="collab",
+                resume_id="resume-1",
+            )
+
+        assert first == "user-1"
+        assert reused is None
+        assert redis.getdel.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_wrong_purpose_or_resume_fails_closed(self):
+        websocket = MagicMock()
+        websocket.query_params = {"ticket": "scoped"}
+        envelope = json.dumps({
+            "user_id": "user-1",
+            "purpose": "collab",
+            "resume_id": "resume-1",
+            "expires_at": time.time() + 30,
+        })
+        redis = MagicMock()
+        redis.getdel = AsyncMock(side_effect=[envelope, envelope])
+        with patch(
+            "app.api.ws_routes.get_redis_client",
+            new_callable=AsyncMock,
+            return_value=redis,
+        ):
+            wrong_purpose = await _consume_ws_ticket(websocket, purpose="jobs")
+            wrong_resume = await _consume_ws_ticket(
+                websocket,
+                purpose="collab",
+                resume_id="resume-2",
+            )
+
+        assert wrong_purpose is None
+        assert wrong_resume is None
