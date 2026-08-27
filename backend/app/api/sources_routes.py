@@ -94,8 +94,6 @@ async def import_from_url(
     call. Runs synchronously in-request. Summarization uses the user's own LLM
     key when present (BYOK), otherwise the platform key.
     """
-    await _enforce_import_budget("url", user_id)
-
     plan_result = await db.execute(
         select(User.subscription_plan).where(User.id == user_id)
     )
@@ -103,6 +101,11 @@ async def import_from_url(
     quota_ticket: QuotaTicket = await entitlement_service.enforce_quota(
         "ai_assists", user_id=user_id, plan=user_plan
     )
+    try:
+        await _enforce_import_budget("url", user_id)
+    except Exception:
+        await entitlement_service.refund_quota(quota_ticket)
+        raise
 
     # Resolve the LLM key the same way optimize / GitHub import do: the user's
     # own OpenAI key (BYOK) when present, else the platform key (api_key=None →
