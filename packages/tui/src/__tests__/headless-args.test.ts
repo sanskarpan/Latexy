@@ -33,6 +33,23 @@ describe('parseHeadlessArgs', () => {
     }
   })
 
+  it('keeps headless workflow option values out of positional command arguments', () => {
+    const parsed = parseHeadlessArgs([
+      '--json', 'optimize', 'resume-1', '--jd', 'job.txt', '--level', 'balanced',
+      '--model', 'gpt-test', '--industry', 'technology', '--page', '2', '--limit', '25',
+    ])
+
+    expect(parsed.positional).toEqual(['optimize', 'resume-1'])
+    expect(parsed.flags).toMatchObject({
+      '--jd': 'job.txt',
+      '--level': 'balanced',
+      '--model': 'gpt-test',
+      '--industry': 'technology',
+      '--page': '2',
+      '--limit': '25',
+    })
+  })
+
   it('a value-flag with no value does not swallow the next flag or the path', () => {
     expect(paths(['compile', 'cv.tex', '--output'])).toEqual(['compile', 'cv.tex'])
     expect(paths(['compile', '--output', '--json', 'cv.tex'])).toEqual(['compile', 'cv.tex'])
