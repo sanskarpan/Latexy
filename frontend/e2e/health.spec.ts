@@ -5,6 +5,7 @@ import { test, expect } from '@playwright/test'
 // ------------------------------------------------------------------ //
 
 test('backend health endpoint is reachable', async ({ request }) => {
+  test.skip(!process.env.PLAYWRIGHT_REQUIRE_BACKEND, 'Backend health requires an explicitly started backend')
   const res = await request.get('http://localhost:8030/health')
   expect(res.status()).toBe(200)
   const body = await res.json()
