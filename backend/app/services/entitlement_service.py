@@ -116,6 +116,20 @@ class QuotaTicket:
             return None
         return max(0, self.limit - self.used)
 
+    def refund_payload(self, *, cost: int = 1) -> dict[str, Any]:
+        """Return the minimal, JSON-safe data a background worker needs.
+
+        Workers cannot use this dataclass directly because Celery/Modal cross a
+        serialization boundary.  The job id is deliberately supplied by the
+        worker when refunding, so callers cannot choose the idempotency key.
+        """
+        return {
+            "dimension": self.dimension,
+            "user_id": self.user_id,
+            "period": self.period,
+            "cost": cost,
+        }
+
 
 def _current_period(window: str = "month") -> str:
     """Return the current quota period key for ``window`` (UTC).

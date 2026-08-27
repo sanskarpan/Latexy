@@ -165,6 +165,7 @@ async def compile_v1(
             user_plan=plan_id,
             metadata={"submitted_via": "developer_api", "developer_key_id": api_key.id},
             compiler=compiler,
+            quota_refund=quota_ticket.refund_payload() if quota_ticket else None,
         )
     except Exception:
         # The job never made it onto the queue — give the plan allowance back.
