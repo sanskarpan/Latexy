@@ -11,6 +11,7 @@ import redis.asyncio as aioredis
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..core.observability import record_redis_command
 
 logger = get_logger(__name__)
 
@@ -19,6 +20,50 @@ redis_client: Optional[aioredis.Redis] = None
 redis_cache_client: Optional[aioredis.Redis] = None
 sync_redis_client: Optional[redis.Redis] = None
 sync_redis_cache_client: Optional[redis.Redis] = None
+
+
+class ObservedAsyncRedis(aioredis.Redis):
+    """Redis client that records commands without issuing metering commands."""
+
+    def __init__(self, *args, dependency_role: str, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._dependency_role = dependency_role
+
+    @classmethod
+    def from_url(cls, url: str, *, dependency_role: str, **kwargs):
+        pool = aioredis.ConnectionPool.from_url(url, **kwargs)
+        return cls(connection_pool=pool, dependency_role=dependency_role)
+
+    async def execute_command(self, *args, **options):
+        try:
+            result = await super().execute_command(*args, **options)
+        except Exception as exc:
+            record_redis_command(self._dependency_role, exc)
+            raise
+        record_redis_command(self._dependency_role)
+        return result
+
+
+class ObservedSyncRedis(redis.Redis):
+    """Synchronous counterpart used by Celery and worker event publishing."""
+
+    def __init__(self, *args, dependency_role: str, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._dependency_role = dependency_role
+
+    @classmethod
+    def from_url(cls, url: str, *, dependency_role: str, **kwargs):
+        pool = redis.ConnectionPool.from_url(url, **kwargs)
+        return cls(connection_pool=pool, dependency_role=dependency_role)
+
+    def execute_command(self, *args, **options):
+        try:
+            result = super().execute_command(*args, **options)
+        except Exception as exc:
+            record_redis_command(self._dependency_role, exc)
+            raise
+        record_redis_command(self._dependency_role)
+        return result
 
 
 class RedisManager:
@@ -36,8 +81,9 @@ class RedisManager:
 
         try:
             # Async Redis client for job queue
-            redis_client = aioredis.from_url(
+            redis_client = ObservedAsyncRedis.from_url(
                 settings.REDIS_URL,
+                dependency_role="queue",
                 password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
                 max_connections=settings.REDIS_MAX_CONNECTIONS,
                 decode_responses=True,
@@ -45,8 +91,9 @@ class RedisManager:
             )
 
             # Async Redis client for caching
-            redis_cache_client = aioredis.from_url(
+            redis_cache_client = ObservedAsyncRedis.from_url(
                 settings.REDIS_CACHE_URL,
+                dependency_role="cache",
                 password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
                 max_connections=settings.REDIS_MAX_CONNECTIONS,
                 decode_responses=True,
@@ -54,16 +101,18 @@ class RedisManager:
             )
 
             # Sync Redis client for Celery
-            sync_redis_client = redis.from_url(
+            sync_redis_client = ObservedSyncRedis.from_url(
                 settings.REDIS_URL,
+                dependency_role="queue",
                 password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
                 max_connections=settings.REDIS_MAX_CONNECTIONS,
                 decode_responses=True,
                 retry_on_timeout=True
             )
 
-            sync_redis_cache_client = redis.from_url(
+            sync_redis_cache_client = ObservedSyncRedis.from_url(
                 settings.REDIS_CACHE_URL,
+                dependency_role="cache",
                 password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
                 max_connections=settings.REDIS_MAX_CONNECTIONS,
                 decode_responses=True,
@@ -442,8 +491,9 @@ def get_sync_redis_client() -> redis.Redis:
     # Pre-init fallback: build the client (and its connection pool) once and
     # reuse it, rather than creating a new pool on every call.
     if _fallback_sync_redis_client is None:
-        _fallback_sync_redis_client = redis.from_url(
+        _fallback_sync_redis_client = ObservedSyncRedis.from_url(
             settings.REDIS_URL,
+            dependency_role="queue",
             password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
             max_connections=settings.REDIS_MAX_CONNECTIONS,
             decode_responses=True,
