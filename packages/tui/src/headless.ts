@@ -457,6 +457,8 @@ export async function runHeadless(subcommand: string | undefined, args: string[]
     }
   } catch (err) {
     out({ success: false, error: String(err) })
+    if (err != null && typeof err === 'object' && (err as { status?: unknown }).status === 401) return 2
+    if (err instanceof BackendUnreachableError) return 4
     return 1
   }
 }
