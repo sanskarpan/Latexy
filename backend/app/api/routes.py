@@ -28,6 +28,7 @@ from ..services.latex_compiler import latex_compiler
 from ..services.latex_service import latex_service
 from ..services.llm_service import llm_service
 from ..services.payment_service import payment_service
+from ..services.redis_capacity_service import redis_capacity_service
 from ..services.trial_service import TRIAL_LIMIT as _TRIAL_LIMIT
 from ..services.trial_service import get_trial_limit_for_user, trial_service
 from ..utils.file_utils import get_job_files, validate_file_upload, validate_job_id
@@ -319,6 +320,7 @@ async def health_check():
     # OBS-001: probe DB and Redis connectivity
     db_status = "ok"
     redis_status = "ok"
+    redis_cache_status = "ok"
 
     try:
         from sqlalchemy import text
@@ -337,6 +339,18 @@ async def health_check():
     except Exception as exc:
         logger.warning("Health check: redis unavailable: %s", exc)
         redis_status = "unavailable"
+
+    try:
+        cache = _redis_manager.redis_cache_client
+        if cache is not None:
+            await cache.ping()
+        else:
+            redis_cache_status = "unavailable"
+    except Exception as exc:
+        logger.warning("Health check: cache Redis unavailable: %s", exc)
+        redis_cache_status = "unavailable"
+
+    capacity = await redis_capacity_service.snapshot()
 
     # Object storage was the one backing service left unprobed, so this endpoint
     # answered "healthy" while every template thumbnail and preview PDF returned
@@ -362,7 +376,9 @@ async def health_check():
         not latex_available
         or db_status != "ok"
         or redis_status != "ok"
+        or redis_cache_status != "ok"
         or storage_status != "ok"
+        or capacity.status in {"critical", "exhausted", "misconfigured"}
     ):
         status = "degraded"
     else:
@@ -374,6 +390,8 @@ async def health_check():
         latex_available=latex_available,
         database=db_status,
         redis=redis_status,
+        redis_cache=redis_cache_status,
+        redis_capacity=capacity.public_dict(),
         storage=storage_status,
     )
 
@@ -392,7 +410,7 @@ async def readyz():
     status when the service cannot serve requests.
     """
     from fastapi.responses import JSONResponse
-    checks = {"database": "ok", "redis": "ok"}
+    checks = {"database": "ok", "redis": "ok", "redis_cache": "ok"}
     try:
         from sqlalchemy import text
         async with get_async_db_session() as session:
@@ -407,6 +425,14 @@ async def readyz():
             checks["redis"] = "unavailable"
     except Exception:
         checks["redis"] = "unavailable"
+    try:
+        cache = _redis_manager.redis_cache_client
+        if cache is not None:
+            await cache.ping()
+        else:
+            checks["redis_cache"] = "unavailable"
+    except Exception:
+        checks["redis_cache"] = "unavailable"
     ready = all(v == "ok" for v in checks.values())
     return JSONResponse(
         status_code=200 if ready else 503,
@@ -417,6 +443,10 @@ async def readyz():
 @router.get("/metrics", include_in_schema=False)
 async def metrics():
     """Prometheus scrape endpoint for backend metrics."""
+    # Refresh authoritative provider-capacity gauges on the scrape path. The
+    # service caches this management-API call, so scraping never amplifies
+    # Upstash traffic or exposes management credentials.
+    await redis_capacity_service.snapshot()
     # Sample live DB connection-pool saturation at scrape time.
     try:
         from ..core.observability import set_db_pool_stats
