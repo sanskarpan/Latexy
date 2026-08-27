@@ -84,10 +84,9 @@ export const WSProvider: React.FC<WSProviderProps> = ({ children }) => {
     wsClient.on('disconnected', onDisconnected)
     wsClient.on('error', onServerError)
 
-    // Connect the singleton (noop if already connected)
-    wsClient.connect()
-
-    // Reflect current state in case the socket was already open
+    // A socket is opened lazily by the first job subscription. Keeping the
+    // provider mounted globally still exposes connection/error state without
+    // spending a persistent backend connection on marketing and idle pages.
     setConnected(wsClient.connected)
 
     return () => {
