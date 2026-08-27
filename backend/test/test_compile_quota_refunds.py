@@ -32,7 +32,7 @@ class TestAtomicWorkerRefund:
         redis.eval.side_effect = [1, 0]
         payload = _ticket().refund_payload()
 
-        with patch("app.workers.latex_worker.get_worker_redis", return_value=redis):
+        with patch("app.workers.quota_refund.get_worker_redis", return_value=redis):
             assert latex_worker._refund_compile_quota_once("job-1", payload) is True
             assert latex_worker._refund_compile_quota_once("job-1", payload) is False
 

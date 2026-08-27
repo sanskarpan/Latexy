@@ -7,11 +7,13 @@ import re
 import time
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from ..core.logging import get_logger
 from ..middleware.entitlements import require_feature_optional
+from ..middleware.rate_limiting import client_ip_id
+from ..services.external_budget_service import enforce_external_budget
 from ..services.publications_service import latex_escape
 from ..services.reference_service import reference_service
 
@@ -19,10 +21,30 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/references", tags=["references"])
 
-# Global cap on concurrent outbound reference fetches across all requests.
-# These endpoints are effectively public, so this bounds the amplification of
-# outbound traffic to Crossref/arXiv/ORCID and protects the httpx pool.
+# Per-process backpressure for the local httpx pool. The Redis budget below is
+# the cross-container authority; this semaphore only prevents one process from
+# opening too many outbound sockets at once.
 _OUTBOUND_FETCH_SEMAPHORE = asyncio.Semaphore(20)
+
+_REFERENCE_CLIENT_UNITS_PER_MINUTE = 60
+_REFERENCE_GLOBAL_UNITS_PER_MINUTE = 600
+_REFERENCE_BUDGET_WINDOW = 60
+
+
+async def _enforce_reference_budget(request: Request, cost: int) -> None:
+    if cost < 1:
+        return
+    await enforce_external_budget(
+        "references",
+        # This endpoint is intentionally public, so an arbitrary unverified
+        # Bearer header must not mint a fresh bucket. Use the trusted peer/proxy
+        # identity until authentication has produced a verified user id.
+        client_id=client_ip_id(request),
+        cost=cost,
+        client_limit=_REFERENCE_CLIENT_UNITS_PER_MINUTE,
+        global_limit=_REFERENCE_GLOBAL_UNITS_PER_MINUTE,
+        window_seconds=_REFERENCE_BUDGET_WINDOW,
+    )
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -130,6 +152,7 @@ async def _fetch_one(identifier: str) -> BibTeXEntry:
 )
 async def fetch_references(
     request: FetchReferencesRequest,
+    http_request: Request,
 ):
     """Fetch BibTeX for a list of DOI or arXiv identifiers (max 20, concurrent)."""
     start = time.monotonic()
@@ -142,6 +165,14 @@ async def fetch_references(
         if stripped and stripped not in seen:
             seen.add(stripped)
             unique_ids.append(stripped)
+
+    # Weight by actual upstream amplification, not by HTTP request count.
+    fetch_units = sum(
+        1
+        for ident in unique_ids
+        if reference_service.normalize_identifier(ident)[1] is not None
+    )
+    await _enforce_reference_budget(http_request, fetch_units)
 
     tasks = [asyncio.create_task(_fetch_one(ident)) for ident in unique_ids]
     done, pending = await asyncio.wait(tasks, timeout=30.0)
@@ -244,6 +275,7 @@ class FetchOrcidRequest(BaseModel):
 )
 async def fetch_orcid_publications(
     request: FetchOrcidRequest,
+    http_request: Request,
 ):
     """
     Fetch publications from a public ORCID profile.
@@ -259,6 +291,10 @@ async def fetch_orcid_publications(
             status_code=422,
             detail="Invalid ORCID identifier. Expected format: 0000-0001-2345-6789 or https://orcid.org/...",
         )
+
+    # Reserve the ORCID profile request first; DOI enrichment is charged below
+    # only after the returned work list tells us how many Crossref calls exist.
+    await _enforce_reference_budget(http_request, 1)
 
     try:
         works = await reference_service.fetch_orcid_works(normalized, request.max_results)
@@ -277,6 +313,7 @@ async def fetch_orcid_publications(
 
     # Concurrent Crossref fetches for works with DOI
     if doi_indices:
+        await _enforce_reference_budget(http_request, len(doi_indices))
         doi_tasks = [asyncio.create_task(_fetch_one(works[i]["doi"])) for i in doi_indices]
         done, pending = await asyncio.wait(doi_tasks, timeout=25.0)
         for t in pending:

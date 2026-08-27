@@ -46,6 +46,7 @@ from ..workers.event_publisher import (
     publish_event,
     publish_job_result,
 )
+from ..workers.quota_refund import refund_quota_once
 
 logger = get_logger(__name__)
 
@@ -70,21 +71,6 @@ _HOST_PDFTOTEXT_CANDIDATES = (
 _WATERMARK_RE = re.compile(r"^[A-Za-z0-9 \-\.]+$")
 _WATERMARK_MAX_LEN = 30
 
-_QUOTA_REFUND_TTL = 40 * 86400
-_REFUND_COMPILE_QUOTA = """
-if not redis.call('SET', KEYS[2], '1', 'NX', 'EX', ARGV[2]) then
-  return 0
-end
-local current = tonumber(redis.call('GET', KEYS[1]) or '0')
-local refund = tonumber(ARGV[1])
-if current > 0 and current <= refund then
-  redis.call('SET', KEYS[1], '0', 'KEEPTTL')
-elseif current > refund then
-  redis.call('DECRBY', KEYS[1], refund)
-end
-return 1
-"""
-
 _PDFTOTEXT_FALLBACK_PATHS = (
     "/opt/homebrew/bin/pdftotext",
     "/usr/local/bin/pdftotext",
@@ -96,50 +82,12 @@ def _refund_compile_quota_once(
     job_id: str,
     quota_refund: Optional[Dict[str, Any]],
 ) -> bool:
-    """Refund a terminal failed compile exactly once per job.
-
-    The API only attaches this trusted payload to authenticated, metered compile
-    jobs.  A Lua guard makes duplicate task delivery and replayed terminal paths
-    harmless.  Refund failure is best-effort and must not hide the real compile
-    result from the client.
-    """
-    if not quota_refund:
-        return False
-
-    dimension = quota_refund.get("dimension")
-    user_id = quota_refund.get("user_id")
-    period = quota_refund.get("period")
-    cost = quota_refund.get("cost", 1)
-    if (
-        dimension != "compilations"
-        or not isinstance(user_id, str)
-        or not user_id
-        or not isinstance(period, str)
-        or not re.fullmatch(r"\d{6}(?:\d{2})?", period)
-        or not isinstance(cost, int)
-        or isinstance(cost, bool)
-        or cost < 1
-    ):
-        logger.error("Invalid compile quota refund payload for job %s", job_id)
-        return False
-
-    counter_key = f"latexy:quota:{dimension}:{user_id}:{period}"
-    marker_key = f"latexy:quota-refund:{dimension}:{job_id}"
-    try:
-        refunded = get_worker_redis().eval(
-            _REFUND_COMPILE_QUOTA,
-            2,
-            counter_key,
-            marker_key,
-            cost,
-            _QUOTA_REFUND_TTL,
-        )
-        if refunded:
-            logger.info("Refunded compile quota for failed job %s", job_id)
-        return bool(refunded)
-    except Exception as exc:
-        logger.warning("Compile quota refund failed for job %s: %s", job_id, exc)
-        return False
+    """Compatibility wrapper for the compile worker's terminal paths."""
+    return refund_quota_once(
+        job_id,
+        quota_refund,
+        expected_dimension="compilations",
+    )
 
 
 # ------------------------------------------------------------------ #
