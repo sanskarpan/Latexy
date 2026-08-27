@@ -213,14 +213,61 @@ def authed_client():
 class TestGitHubEndpoints:
     """Integration-style tests for GitHub route handlers."""
 
+    @pytest.mark.asyncio
+    async def test_connect_returns_authorization_url_and_binds_state(self):
+        """OAuth starts through an authenticated JSON request, not a bare redirect."""
+        from app.api.github_routes import github_connect
+
+        original_id = settings.GITHUB_CLIENT_ID
+        original_secret = settings.GITHUB_CLIENT_SECRET
+        try:
+            settings.GITHUB_CLIENT_ID = "client-id"
+            settings.GITHUB_CLIENT_SECRET = "client-secret"
+            with (
+                patch("app.api.github_routes.cache_manager") as mock_cache,
+                patch("app.api.github_routes.secrets.token_urlsafe", return_value="state-nonce"),
+            ):
+                mock_cache.set = AsyncMock()
+                result = await github_connect(user_id="test-user-id")
+
+            assert result.authorization_url.startswith(
+                "https://github.com/login/oauth/authorize?"
+            )
+            assert "state=state-nonce" in result.authorization_url
+            mock_cache.set.assert_awaited_once_with(
+                "gh:oauth:state-nonce", {"user_id": "test-user-id"}, ttl=600
+            )
+        finally:
+            settings.GITHUB_CLIENT_ID = original_id
+            settings.GITHUB_CLIENT_SECRET = original_secret
+
+    @pytest.mark.asyncio
+    async def test_cache_pop_uses_atomic_getdel(self):
+        """One-time OAuth records are consumed with Redis GETDEL."""
+        from app.core import redis as redis_module
+
+        original = redis_module.redis_cache_client
+        mock_redis = AsyncMock()
+        mock_redis.getdel = AsyncMock(
+            return_value='{"user_id":"test-user-id","code":"provider-code"}'
+        )
+        redis_module.redis_cache_client = mock_redis
+        try:
+            result = await redis_module.cache_manager.pop("gh:complete:ticket")
+        finally:
+            redis_module.redis_cache_client = original
+
+        assert result == {"user_id": "test-user-id", "code": "provider-code"}
+        mock_redis.getdel.assert_awaited_once_with("cache:gh:complete:ticket")
+
     def test_connect_without_config_returns_503(self, authed_client):
-        """GET /github/connect returns 503 when GitHub not configured."""
+        """POST /github/connect returns 503 when GitHub is not configured."""
         original_id = settings.GITHUB_CLIENT_ID
         original_secret = settings.GITHUB_CLIENT_SECRET
         try:
             settings.GITHUB_CLIENT_ID = ""
             settings.GITHUB_CLIENT_SECRET = ""
-            resp = authed_client.get("/github/connect", follow_redirects=False)
+            resp = authed_client.post("/github/connect")
             assert resp.status_code == 503
         finally:
             settings.GITHUB_CLIENT_ID = original_id
@@ -266,8 +313,8 @@ class TestGitHubEndpoints:
         finally:
             app.dependency_overrides.pop(get_db, None)
 
-    def test_callback_empty_username_redirects_with_error(self, authed_client):
-        """A profile with no login must not connect; redirect to settings with an error."""
+    def test_complete_empty_username_fails_without_persisting(self, authed_client):
+        """A profile with no login must not persist a half-connected account."""
         from app.database.connection import get_db
         from app.main import app
 
@@ -292,19 +339,16 @@ class TestGitHubEndpoints:
                     new=AsyncMock(return_value={"login": ""}),
                 ),
             ):
-                mock_cache.get = AsyncMock(return_value="test-user-id")
-                mock_cache.delete = AsyncMock()
+                mock_cache.pop = AsyncMock(
+                    return_value={"user_id": "test-user-id", "code": "abc"}
+                )
                 MockClient.return_value.__aenter__ = AsyncMock(return_value=mock_http)
                 MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
-                resp = authed_client.get(
-                    "/github/callback?code=abc&state=xyz", follow_redirects=False
-                )
+                resp = authed_client.post("/github/complete", json={"ticket": "ticket-1"})
 
-            assert resp.status_code in (302, 307)
-            location = resp.headers.get("location", "")
-            assert "github=error" in location
-            assert "no_username" in location
+            assert resp.status_code == 502
+            assert "username" in resp.json()["detail"].lower()
             # Token must NOT be persisted
             mock_db.commit.assert_not_called()
         finally:
@@ -319,13 +363,113 @@ class TestGitHubEndpoints:
         app.dependency_overrides[get_db] = lambda: mock_db
         try:
             with patch("app.api.github_routes.cache_manager") as mock_cache:
-                mock_cache.get = AsyncMock(return_value=None)
+                mock_cache.pop = AsyncMock(return_value=None)
                 resp = authed_client.get(
                     "/github/callback?code=abc&state=stale", follow_redirects=False
                 )
             assert resp.status_code in (302, 307)
             assert "github=error" in resp.headers.get("location", "")
             assert "invalid_state" in resp.headers.get("location", "")
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    def test_callback_denial_without_code_redirects_with_friendly_error(self, authed_client):
+        """Provider denial must not fall through to FastAPI's raw 422 response."""
+        with patch("app.api.github_routes.cache_manager") as mock_cache:
+            mock_cache.pop = AsyncMock(return_value={"user_id": "test-user-id"})
+            resp = authed_client.get(
+                "/github/callback?error=access_denied&state=valid",
+                follow_redirects=False,
+            )
+
+        assert resp.status_code in (302, 307)
+        assert "github=error" in resp.headers["location"]
+        assert "access_denied" in resp.headers["location"]
+        mock_cache.set.assert_not_called()
+
+    def test_callback_only_issues_completion_ticket(self, authed_client):
+        """The public callback stores a ticket but never exchanges or persists a token."""
+        with (
+            patch("app.api.github_routes.cache_manager") as mock_cache,
+            patch("app.api.github_routes.secrets.token_urlsafe", return_value="complete-ticket"),
+            patch("httpx.AsyncClient") as mock_http,
+        ):
+            mock_cache.pop = AsyncMock(return_value={"user_id": "test-user-id"})
+            mock_cache.set = AsyncMock()
+            resp = authed_client.get(
+                "/github/callback?code=provider-code&state=valid",
+                follow_redirects=False,
+            )
+
+        assert resp.status_code in (302, 307)
+        assert "github=complete" in resp.headers["location"]
+        assert "ticket=complete-ticket" in resp.headers["location"]
+        mock_cache.pop.assert_awaited_once_with("gh:oauth:valid")
+        mock_cache.set.assert_awaited_once_with(
+            "gh:complete:complete-ticket",
+            {"user_id": "test-user-id", "code": "provider-code"},
+            ttl=300,
+        )
+        mock_http.assert_not_called()
+
+    def test_complete_rejects_cross_user_ticket_before_exchange(self, authed_client):
+        """A victim browser cannot attach its GitHub grant to the attacker's account."""
+        from app.database.connection import get_db
+        from app.main import app
+
+        mock_db = AsyncMock()
+        app.dependency_overrides[get_db] = lambda: mock_db
+        try:
+            with (
+                patch("app.api.github_routes.cache_manager") as mock_cache,
+                patch("httpx.AsyncClient") as mock_http,
+            ):
+                mock_cache.pop = AsyncMock(
+                    return_value={"user_id": "attacker-user", "code": "victim-code"}
+                )
+                resp = authed_client.post(
+                    "/github/complete", json={"ticket": "stolen-ticket"}
+                )
+
+            assert resp.status_code == 403
+            assert "different user" in resp.json()["detail"].lower()
+            mock_cache.pop.assert_awaited_once_with("gh:complete:stolen-ticket")
+            mock_http.assert_not_called()
+            mock_db.execute.assert_not_called()
+            mock_db.commit.assert_not_called()
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    def test_complete_ticket_is_single_use(self, authed_client):
+        """An atomically consumed completion ticket cannot be replayed."""
+        from app.database.connection import get_db
+        from app.main import app
+
+        mock_db = AsyncMock()
+        app.dependency_overrides[get_db] = lambda: mock_db
+        try:
+            with (
+                patch("app.api.github_routes.cache_manager") as mock_cache,
+                patch("httpx.AsyncClient") as mock_http,
+            ):
+                mock_cache.pop = AsyncMock(
+                    side_effect=[
+                        {"user_id": "other-user", "code": "provider-code"},
+                        None,
+                    ]
+                )
+                first = authed_client.post(
+                    "/github/complete", json={"ticket": "one-time-ticket"}
+                )
+                replay = authed_client.post(
+                    "/github/complete", json={"ticket": "one-time-ticket"}
+                )
+
+            assert first.status_code == 403
+            assert replay.status_code == 400
+            assert "invalid or expired" in replay.json()["detail"].lower()
+            assert mock_cache.pop.await_count == 2
+            mock_http.assert_not_called()
         finally:
             app.dependency_overrides.pop(get_db, None)
 
