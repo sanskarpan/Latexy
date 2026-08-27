@@ -694,7 +694,7 @@ export interface GitHubStatusResponse {
   username: string | null
 }
 
-export interface GitHubOAuthStartResponse {
+export interface OAuthStartResponse {
   authorization_url: string
 }
 
@@ -2696,8 +2696,8 @@ class ApiClient {
     return this.request<GitHubStatusResponse>('/github/status')
   }
 
-  async startGitHubOAuth(): Promise<GitHubOAuthStartResponse> {
-    return this.request<GitHubOAuthStartResponse>('/github/connect', { method: 'POST' })
+  async startGitHubOAuth(): Promise<OAuthStartResponse> {
+    return this.request<OAuthStartResponse>('/github/connect', { method: 'POST' })
   }
 
   async completeGitHubOAuth(ticket: string): Promise<{ success: boolean; message: string }> {
@@ -2792,6 +2792,17 @@ class ApiClient {
     return this.request<DropboxStatusResponse>('/dropbox/status')
   }
 
+  async startDropboxOAuth(): Promise<OAuthStartResponse> {
+    return this.request<OAuthStartResponse>('/dropbox/connect', { method: 'POST' })
+  }
+
+  async completeDropboxOAuth(ticket: string): Promise<{ success: boolean; message: string }> {
+    return this.request('/dropbox/complete', {
+      method: 'POST',
+      body: JSON.stringify({ ticket }),
+    })
+  }
+
   async disconnectDropbox(): Promise<{ success: boolean; message: string }> {
     return this.request('/dropbox/disconnect', { method: 'DELETE' })
   }
@@ -2832,6 +2843,17 @@ class ApiClient {
     return this.request<ZoteroStatusResponse>('/zotero/status')
   }
 
+  async startZoteroOAuth(): Promise<OAuthStartResponse> {
+    return this.request<OAuthStartResponse>('/zotero/connect', { method: 'POST' })
+  }
+
+  async completeZoteroOAuth(ticket: string): Promise<{ success: boolean; message: string }> {
+    return this.request('/zotero/complete', {
+      method: 'POST',
+      body: JSON.stringify({ ticket }),
+    })
+  }
+
   async disconnectZotero(): Promise<{ success: boolean; message: string }> {
     return this.request('/zotero/disconnect', { method: 'DELETE' })
   }
@@ -2853,6 +2875,17 @@ class ApiClient {
 
   async getMendeleyStatus(): Promise<MendeleyStatusResponse> {
     return this.request<MendeleyStatusResponse>('/mendeley/status')
+  }
+
+  async startMendeleyOAuth(): Promise<OAuthStartResponse> {
+    return this.request<OAuthStartResponse>('/mendeley/connect', { method: 'POST' })
+  }
+
+  async completeMendeleyOAuth(ticket: string): Promise<{ success: boolean; message: string }> {
+    return this.request('/mendeley/complete', {
+      method: 'POST',
+      body: JSON.stringify({ ticket }),
+    })
   }
 
   async disconnectMendeley(): Promise<{ success: boolean; message: string }> {

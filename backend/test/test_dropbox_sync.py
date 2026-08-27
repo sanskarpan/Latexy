@@ -129,17 +129,88 @@ class TestDropboxEndpoints:
     """Integration-style tests for Dropbox route handlers."""
 
     def test_connect_without_config_returns_503(self, authed_client):
-        """GET /dropbox/connect returns 503 when Dropbox is not configured."""
+        """POST /dropbox/connect returns 503 when Dropbox is not configured."""
         original_key = settings.DROPBOX_APP_KEY
         original_secret = settings.DROPBOX_APP_SECRET
         try:
             settings.DROPBOX_APP_KEY = ""
             settings.DROPBOX_APP_SECRET = ""
-            resp = authed_client.get("/dropbox/connect", follow_redirects=False)
+            resp = authed_client.post("/dropbox/connect")
             assert resp.status_code == 503
         finally:
             settings.DROPBOX_APP_KEY = original_key
             settings.DROPBOX_APP_SECRET = original_secret
+
+    def test_callback_only_issues_completion_ticket(self, authed_client):
+        """The public callback must not exchange or store Dropbox credentials."""
+        with (
+            patch("app.api.dropbox_routes.cache_manager") as mock_cache,
+            patch("app.api.dropbox_routes.secrets.token_urlsafe", return_value="ticket-1"),
+            patch("httpx.AsyncClient") as mock_http,
+        ):
+            mock_cache.pop = AsyncMock(return_value={"user_id": "test-user-id"})
+            mock_cache.set = AsyncMock()
+            resp = authed_client.get(
+                "/dropbox/callback?code=victim-code&state=valid",
+                follow_redirects=False,
+            )
+
+        assert resp.status_code in (302, 307)
+        assert "dropbox=complete" in resp.headers["location"]
+        assert "ticket=ticket-1" in resp.headers["location"]
+        mock_cache.pop.assert_awaited_once_with("dbx:oauth:valid")
+        mock_cache.set.assert_awaited_once_with(
+            "dbx:complete:ticket-1",
+            {"user_id": "test-user-id", "code": "victim-code"},
+            ttl=300,
+        )
+        mock_http.assert_not_called()
+
+    def test_complete_rejects_cross_user_and_replay(self, authed_client):
+        """A mismatched Dropbox grant is consumed before exchange and cannot replay."""
+        from app.database.connection import get_db
+        from app.main import app
+
+        mock_db = AsyncMock()
+        app.dependency_overrides[get_db] = lambda: mock_db
+        try:
+            with (
+                patch("app.api.dropbox_routes.cache_manager") as mock_cache,
+                patch("httpx.AsyncClient") as mock_http,
+            ):
+                mock_cache.pop = AsyncMock(
+                    side_effect=[
+                        {"user_id": "attacker-user", "code": "victim-code"},
+                        None,
+                    ]
+                )
+                first = authed_client.post(
+                    "/dropbox/complete", json={"ticket": "one-time-ticket"}
+                )
+                replay = authed_client.post(
+                    "/dropbox/complete", json={"ticket": "one-time-ticket"}
+                )
+
+            assert first.status_code == 403
+            assert replay.status_code == 400
+            assert mock_cache.pop.await_count == 2
+            mock_http.assert_not_called()
+            mock_db.execute.assert_not_called()
+            mock_db.commit.assert_not_called()
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+
+    def test_callback_denial_without_code_is_friendly(self, authed_client):
+        with patch("app.api.dropbox_routes.cache_manager") as mock_cache:
+            mock_cache.pop = AsyncMock(return_value={"user_id": "test-user-id"})
+            resp = authed_client.get(
+                "/dropbox/callback?error=access_denied&state=valid",
+                follow_redirects=False,
+            )
+
+        assert resp.status_code in (302, 307)
+        assert "access_denied" in resp.headers["location"]
+        mock_cache.set.assert_not_called()
 
     def test_status_unauthenticated_returns_401(self):
         """GET /dropbox/status without auth returns 401."""

@@ -181,12 +181,10 @@ class TestZoteroConnect:
         with patch("app.api.zotero_routes.settings") as mock_settings:
             mock_settings.ZOTERO_CLIENT_KEY = ""
             mock_settings.ZOTERO_CLIENT_SECRET = ""
-            resp = await client.get(
-                "/zotero/connect", headers=auth_headers, follow_redirects=False
-            )
+            resp = await client.post("/zotero/connect", headers=auth_headers)
         assert resp.status_code == 503
 
-    async def test_connect_redirects_to_zotero(
+    async def test_connect_returns_zotero_authorization_url(
         self, client: AsyncClient, auth_headers: dict
     ):
         mock_resp = MagicMock()
@@ -208,12 +206,87 @@ class TestZoteroConnect:
             mock_instance.post = AsyncMock(return_value=mock_resp)
             mock_client_cls.return_value = mock_instance
 
+            resp = await client.post("/zotero/connect", headers=auth_headers)
+
+        assert resp.status_code == 200
+        assert "zotero.org/oauth/authorize" in resp.json()["authorization_url"]
+
+    async def test_callback_only_issues_completion_ticket(
+        self, client: AsyncClient
+    ):
+        with (
+            patch("app.api.zotero_routes.cache_manager") as mock_cache,
+            patch("app.api.zotero_routes.secrets.token_urlsafe", return_value="ticket-1"),
+            patch("httpx.AsyncClient") as mock_http,
+        ):
+            mock_cache.pop = AsyncMock(return_value={
+                "user_id": "user-1",
+                "request_token_secret": "request-secret",
+            })
+            mock_cache.set = AsyncMock()
             resp = await client.get(
-                "/zotero/connect", headers=auth_headers, follow_redirects=False
+                "/zotero/callback?oauth_token=request-token&oauth_verifier=verifier",
+                follow_redirects=False,
             )
 
         assert resp.status_code in (302, 307)
-        assert "zotero.org/oauth/authorize" in resp.headers.get("location", "")
+        assert "zotero=complete" in resp.headers["location"]
+        assert "ticket=ticket-1" in resp.headers["location"]
+        mock_cache.set.assert_awaited_once_with(
+            "zotero:complete:ticket-1",
+            {
+                "user_id": "user-1",
+                "oauth_token": "request-token",
+                "oauth_verifier": "verifier",
+                "request_token_secret": "request-secret",
+            },
+            ttl=300,
+        )
+        mock_http.assert_not_called()
+
+    async def test_complete_rejects_cross_user_and_replay(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        with (
+            patch("app.api.zotero_routes.cache_manager") as mock_cache,
+            patch("httpx.AsyncClient") as mock_http,
+        ):
+            mock_cache.pop = AsyncMock(side_effect=[{
+                "user_id": "different-user",
+                "oauth_token": "request-token",
+                "oauth_verifier": "verifier",
+                "request_token_secret": "request-secret",
+            }, None])
+            first = await client.post(
+                "/zotero/complete",
+                json={"ticket": "one-time-ticket"},
+                headers=auth_headers,
+            )
+            replay = await client.post(
+                "/zotero/complete",
+                json={"ticket": "one-time-ticket"},
+                headers=auth_headers,
+            )
+
+        assert first.status_code == 403
+        assert replay.status_code == 400
+        assert mock_cache.pop.await_count == 2
+        mock_http.assert_not_called()
+
+    async def test_denial_without_verifier_is_friendly(self, client: AsyncClient):
+        with patch("app.api.zotero_routes.cache_manager") as mock_cache:
+            mock_cache.pop = AsyncMock(return_value={
+                "user_id": "user-1",
+                "request_token_secret": "request-secret",
+            })
+            resp = await client.get(
+                "/zotero/callback?denied=request-token",
+                follow_redirects=False,
+            )
+
+        assert resp.status_code in (302, 307)
+        assert "access_denied" in resp.headers["location"]
+        mock_cache.set.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -584,12 +657,10 @@ class TestMendeleyConnect:
         with patch("app.api.mendeley_routes.settings") as mock_settings:
             mock_settings.MENDELEY_CLIENT_ID = ""
             mock_settings.MENDELEY_CLIENT_SECRET = ""
-            resp = await client.get(
-                "/mendeley/connect", headers=auth_headers, follow_redirects=False
-            )
+            resp = await client.post("/mendeley/connect", headers=auth_headers)
         assert resp.status_code == 503
 
-    async def test_connect_redirects_to_mendeley(
+    async def test_connect_returns_mendeley_authorization_url(
         self, client: AsyncClient, auth_headers: dict
     ):
         with (
@@ -600,12 +671,72 @@ class TestMendeleyConnect:
             mock_settings.MENDELEY_CLIENT_SECRET = "msec"
             mock_settings.MENDELEY_REDIRECT_URI = "http://localhost/cb"
             mock_cache.set = AsyncMock()
+            resp = await client.post("/mendeley/connect", headers=auth_headers)
+
+        assert resp.status_code == 200
+        assert "mendeley.com/oauth/authorize" in resp.json()["authorization_url"]
+
+    async def test_callback_only_issues_completion_ticket(self, client: AsyncClient):
+        with (
+            patch("app.api.mendeley_routes.cache_manager") as mock_cache,
+            patch("app.api.mendeley_routes.secrets.token_urlsafe", return_value="ticket-1"),
+            patch("httpx.AsyncClient") as mock_http,
+        ):
+            mock_cache.pop = AsyncMock(return_value={"user_id": "user-1"})
+            mock_cache.set = AsyncMock()
             resp = await client.get(
-                "/mendeley/connect", headers=auth_headers, follow_redirects=False
+                "/mendeley/callback?code=victim-code&state=valid",
+                follow_redirects=False,
             )
 
         assert resp.status_code in (302, 307)
-        assert "mendeley.com/oauth/authorize" in resp.headers.get("location", "")
+        assert "mendeley=complete" in resp.headers["location"]
+        assert "ticket=ticket-1" in resp.headers["location"]
+        mock_cache.set.assert_awaited_once_with(
+            "mendeley:complete:ticket-1",
+            {"user_id": "user-1", "code": "victim-code"},
+            ttl=300,
+        )
+        mock_http.assert_not_called()
+
+    async def test_complete_rejects_cross_user_and_replay(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        with (
+            patch("app.api.mendeley_routes.cache_manager") as mock_cache,
+            patch("httpx.AsyncClient") as mock_http,
+        ):
+            mock_cache.pop = AsyncMock(side_effect=[
+                {"user_id": "different-user", "code": "victim-code"},
+                None,
+            ])
+            first = await client.post(
+                "/mendeley/complete",
+                json={"ticket": "one-time-ticket"},
+                headers=auth_headers,
+            )
+            replay = await client.post(
+                "/mendeley/complete",
+                json={"ticket": "one-time-ticket"},
+                headers=auth_headers,
+            )
+
+        assert first.status_code == 403
+        assert replay.status_code == 400
+        assert mock_cache.pop.await_count == 2
+        mock_http.assert_not_called()
+
+    async def test_denial_without_code_is_friendly(self, client: AsyncClient):
+        with patch("app.api.mendeley_routes.cache_manager") as mock_cache:
+            mock_cache.pop = AsyncMock(return_value={"user_id": "user-1"})
+            resp = await client.get(
+                "/mendeley/callback?error=access_denied&state=valid",
+                follow_redirects=False,
+            )
+
+        assert resp.status_code in (302, 307)
+        assert "access_denied" in resp.headers["location"]
+        mock_cache.set.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

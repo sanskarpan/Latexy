@@ -7,7 +7,7 @@ from typing import Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +40,14 @@ class MendeleyStatusResponse(BaseModel):
     name: Optional[str] = None
 
 
+class MendeleyOAuthStartResponse(BaseModel):
+    authorization_url: str
+
+
+class MendeleyOAuthCompleteRequest(BaseModel):
+    ticket: str = Field(max_length=256)
+
+
 class MendeleyImportRequest(BaseModel):
     resume_id: str
     group_id: Optional[str] = None
@@ -55,11 +63,15 @@ class MendeleyImportResponse(BaseModel):
 # ── OAuth flow ───────────────────────────────────────────────────────────────
 
 
-@router.get("/connect", dependencies=[Depends(require_feature("integration_mendeley"))])
+@router.post(
+    "/connect",
+    response_model=MendeleyOAuthStartResponse,
+    dependencies=[Depends(require_feature("integration_mendeley"))],
+)
 async def mendeley_connect(
     user_id: str = Depends(get_current_user_required),
 ):
-    """Redirect to Mendeley OAuth 2.0 authorization."""
+    """Create an OAuth state for the authenticated user and return its URL."""
     if not settings.MENDELEY_CLIENT_ID or not settings.MENDELEY_CLIENT_SECRET or not settings.MENDELEY_REDIRECT_URI:
         raise HTTPException(
             status_code=503,
@@ -67,7 +79,7 @@ async def mendeley_connect(
         )
 
     state = secrets.token_urlsafe(32)
-    await cache_manager.set(f"mendeley:state:{state}", user_id, ttl=600)
+    await cache_manager.set(f"mendeley:state:{state}", {"user_id": user_id}, ttl=600)
 
     params = urllib.parse.urlencode({
         "client_id": settings.MENDELEY_CLIENT_ID,
@@ -76,7 +88,9 @@ async def mendeley_connect(
         "scope": "all",
         "state": state,
     })
-    return RedirectResponse(f"{_MENDELEY_AUTH_URL}?{params}")
+    return MendeleyOAuthStartResponse(
+        authorization_url=f"{_MENDELEY_AUTH_URL}?{params}"
+    )
 
 
 def _mendeley_error_redirect(reason: str) -> RedirectResponse:
@@ -88,18 +102,53 @@ def _mendeley_error_redirect(reason: str) -> RedirectResponse:
 
 @router.get("/callback")
 async def mendeley_callback(
-    code: str = Query(...),
-    state: str = Query(""),
-    db: AsyncSession = Depends(get_db),
+    code: Optional[str] = Query(None, max_length=2048),
+    state: str = Query("", max_length=256),
+    error: Optional[str] = Query(None, max_length=128),
 ):
-    """Exchange code for access token and store on user."""
+    """Convert a provider callback into a short-lived completion ticket."""
     if not state:
         return _mendeley_error_redirect("missing_state")
 
-    user_id = await cache_manager.get(f"mendeley:state:{state}")
-    if not user_id:
+    oauth_state = await cache_manager.pop(f"mendeley:state:{state}")
+    if not isinstance(oauth_state, dict) or not oauth_state.get("user_id"):
         return _mendeley_error_redirect("invalid_state")
-    await cache_manager.delete(f"mendeley:state:{state}")
+    if error:
+        reason = "access_denied" if error == "access_denied" else "provider_error"
+        return _mendeley_error_redirect(reason)
+    if not code:
+        return _mendeley_error_redirect("missing_code")
+
+    ticket = secrets.token_urlsafe(32)
+    await cache_manager.set(
+        f"mendeley:complete:{ticket}",
+        {"user_id": str(oauth_state["user_id"]), "code": code},
+        ttl=300,
+    )
+    query = urllib.parse.urlencode({"mendeley": "complete", "ticket": ticket})
+    return RedirectResponse(f"{settings.FRONTEND_URL}/settings?{query}")
+
+
+@router.post("/complete")
+async def mendeley_complete(
+    body: MendeleyOAuthCompleteRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_required),
+):
+    """Exchange and persist Mendeley credentials for the initiating user only."""
+    ticket = body.ticket.strip()
+    if not ticket:
+        raise HTTPException(status_code=400, detail="Missing Mendeley completion ticket")
+    completion = await cache_manager.pop(f"mendeley:complete:{ticket}")
+    if not isinstance(completion, dict):
+        raise HTTPException(status_code=400, detail="Mendeley completion ticket is invalid or expired")
+    intended_user_id = str(completion.get("user_id") or "")
+    code = str(completion.get("code") or "")
+    if not intended_user_id or not code:
+        raise HTTPException(status_code=400, detail="Mendeley completion ticket is invalid or expired")
+    if not secrets.compare_digest(intended_user_id, user_id):
+        logger.warning("Rejected cross-user Mendeley OAuth completion")
+        raise HTTPException(status_code=403, detail="Mendeley connection belongs to a different user")
 
     async with httpx.AsyncClient(timeout=15) as client:
         try:
@@ -116,17 +165,17 @@ async def mendeley_callback(
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
             logger.error(f"Mendeley token exchange error: {exc.response.text}")
-            return _mendeley_error_redirect("token_exchange_failed")
+            raise HTTPException(status_code=502, detail="Mendeley token exchange failed") from exc
         except httpx.RequestError as exc:
             logger.error(f"Mendeley connection error: {exc}")
-            return _mendeley_error_redirect("mendeley_unavailable")
+            raise HTTPException(status_code=502, detail="Mendeley is unavailable, please try again") from exc
 
     token_data = resp.json()
     access_token = token_data.get("access_token", "")
     refresh_token = token_data.get("refresh_token", "")
 
     if not access_token:
-        return _mendeley_error_redirect("invalid_token_response")
+        raise HTTPException(status_code=400, detail="Mendeley authorization returned no access token")
 
     # Get user profile for display name
     display_name = ""
@@ -146,7 +195,7 @@ async def mendeley_callback(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
-        return _mendeley_error_redirect("user_not_found")
+        raise HTTPException(status_code=404, detail="User not found")
 
     meta = dict(user.user_metadata or {})
     meta["mendeley_token"] = encryption_service.encrypt(access_token)
@@ -157,7 +206,7 @@ async def mendeley_callback(
     user.user_metadata = meta
     await db.commit()
 
-    return RedirectResponse(f"{settings.FRONTEND_URL}/settings?mendeley=connected")
+    return {"success": True, "message": "Mendeley account connected"}
 
 
 @router.get("/status", response_model=MendeleyStatusResponse)
