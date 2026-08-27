@@ -10,13 +10,18 @@ describe('session appUrl', () => {
 
   it('defaults to the Next.js app origin, not the FastAPI backend', () => {
     const state = $session.get()
-    expect(state.backendUrl).toBe('http://localhost:8030')
-    expect(appUrl(state)).toBe('http://localhost:5180')
+    expect(state.backendUrl).toBe(
+      'https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run',
+    )
+    expect(state.wsUrl).toBe(
+      'wss://sanskarpandey2004--latexy-backend-fastapi-app.modal.run/ws/jobs',
+    )
+    expect(appUrl(state)).toBe('https://latexy.xyz')
   })
 
   it('falls back to the default when app init omits appUrl', () => {
     const { appUrl: _omitted, ...rest } = $session.get()
-    expect(appUrl(rest)).toBe('http://localhost:5180')
+    expect(appUrl(rest)).toBe('https://latexy.xyz')
   })
 
   it('returns the appUrl held in the store — the no-arg form LoginOverlay uses', () => {
