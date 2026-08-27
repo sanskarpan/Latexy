@@ -251,11 +251,15 @@ function BillingPageContent() {
     }
   }, [currentSubscription?.planId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Downgrading to Free cancels the active paid subscription (there is no
-  // separate "switch to free" endpoint). Confirm first since this is
-  // destructive to the user's current plan/benefits.
+  // Selecting Free schedules a paid subscription to end with its current
+  // billing cycle. Razorpay keeps it active until then, so the UI must not
+  // claim that the account was downgraded immediately.
   const handleDowngradeToFree = async () => {
-    if (!confirm('Downgrade to the Free plan? This cancels your current subscription.')) return
+    if (
+      !confirm(
+        'Cancel renewal and switch to Free after this billing cycle? Your paid access continues until then.',
+      )
+    ) return
     setActivePlan('free')
     const result = await apiClient.cancelSubscription()
     setActivePlan(null)
@@ -263,7 +267,7 @@ function BillingPageContent() {
       toast.error(result.error || 'Failed to downgrade to Free')
       return
     }
-    toast.success('Downgraded to the Free plan.')
+    toast.success(result.message || 'Cancellation scheduled for the end of the billing cycle.')
     const refreshed = await apiClient.getCurrentSubscription()
     if (refreshed.success && refreshed.data) {
       setCurrentSubscription(refreshed.data)
