@@ -42,14 +42,14 @@ Today the AI optimizer rewrites the *existing* resume text; it has no access to 
 
 | Capability | Status | Location |
 |---|---|---|
-| GitHub OAuth (connect/callback/status/disconnect), Fernet-encrypted token on `User` | **EXISTS** — but scope is `repo` and it's used only to **sync `.tex` files to a private repo** (backup), not to read profile/repos | `backend/app/api/github_routes.py`, `github_sync_service.py`, `User.github_access_token/username` (`models.py:48-49`) |
+| GitHub OAuth (connect/callback/status/disconnect), Fernet-encrypted token on `User` | **SHIPPED** — purpose-scoped authorization: public import requests no OAuth scope; private `.tex` sync explicitly requests `repo`. Granted capabilities are recorded, and disconnect revokes the GitHub app grant before local deletion. | `backend/app/api/github_routes.py`, `github_sync_service.py`, `User.github_access_token/username` (`models.py:48-49`) |
 | Authenticated GitHub httpx client + token decryption | **EXISTS** (reuse) | `github_sync_service.py` |
 | SSRF-guarded URL fetcher + readability HTML→clean-text + JSON-LD + platform handlers + 24h cache | **EXISTS** (production-grade, used by the job-description scraper) | `backend/app/services/job_scraper_service.py` (`_SSRFGuardTransport`, `_assert_public_url`, `_html_to_clean_text`, `_extract_generic_html`) |
 | "Pull external structured data → format → insert into resume" flow | **EXISTS** as ORCID publications → LaTeX block | `ai_routes.py:1782` `POST /generate-publications`, frontend `PublicationsPanel` |
 | Resume parsers (PDF/DOCX → text) | **EXISTS** | `backend/app/parsers/`, `MultiFormatUpload` |
 | Fernet token encryption | **EXISTS** (reuse) | `encryption_service.py` |
 | Entitlement gating (`require_feature` + admin matrix) + quota (`enforce_quota`) | **EXISTS** (reuse) | `feature_registry.py`, `middleware/entitlements.py`, `PLAN_QUOTAS` in `config.py` |
-| **GitHub repo listing / README reading / project extraction** | **ABSENT** — the `repo` scope grant is broad enough, but no code consumes it | net-new |
+| **GitHub repo listing / README reading / project extraction** | **SHIPPED** — GraphQL discovery and defensive parsing both enforce public visibility; candidates are reviewed before insertion | `github_projects_service.py`, `github_import_worker.py`, `ImportProjectsModal.tsx` |
 | **LinkedIn** import (OAuth/scrape/parse) | **ABSENT** — frontend `workspace/new` has an instructional "save-to-PDF then upload" stub only | net-new (compliant path) |
 | **"Paste project links / describe projects" input + generic URL project ingest** | **ABSENT** | net-new (reuses scraper) |
 
@@ -119,8 +119,8 @@ ProjectEvidence { source, title, description, tech[],
 
 **Cross-cutting:**
 - **Explicit opt-in per source.** GitHub consent copy: *"Latexy will read your **public** GitHub repositories (names, descriptions, READMEs, languages, stars) to suggest resume content. We do not read private repositories. You can disconnect anytime."*
-- **Narrowest scope:** for the import, request read-only `public_repo`/`read:user` — do **not** reuse the sync feature's write-capable `repo` scope for a read-only import (consider a separate, tighter grant).
-- **Encrypted tokens** (Fernet, already in place); **delete/disconnect** purges `ingested_projects` + revokes tokens (GDPR erasure).
+- **Narrowest scope:** public import requests **no OAuth scope**, which GitHub defines as read-only access to public information. Do not request `public_repo`: despite its name, it includes write access. Private resume sync separately and explicitly requests `repo`, because GitHub OAuth does not offer read-only private source-code access.
+- **Encrypted tokens** (Fernet, already in place); **disconnect** revokes the complete GitHub app authorization, removes the encrypted local token/capability metadata, and disables per-resume sync. Import candidates are ephemeral Redis job results rather than durable `ingested_projects`; already accepted resume text remains user content.
 - **Never auto-write to the resume** — human review required.
 - **URLs:** SSRF guard mandatory, robots.txt honored, provenance logged.
 
@@ -148,7 +148,7 @@ ProjectEvidence { source, title, description, tech[],
 ## 11. Open decisions for founder
 
 1. **Positioning:** lead marketing with **GitHub import** as the developer differentiator? (Recommended.)
-2. **Scope tightening:** accept a second, read-only GitHub OAuth grant (`public_repo`) for imports, or reuse the existing `repo` token to avoid a second consent screen? (Recommend the tighter scope for trust.)
+2. **Scope tightening — RESOLVED:** public import uses an unscoped OAuth token; private sync requests `repo` only when selected. A future GitHub App migration could make private-repository permissions finer-grained and short-lived.
 3. **Insert model:** should imported projects feed the *optimizer prompt* as evidence, or generate a standalone **Projects/Experience section** the user drops in (ORCID-style)? (Recommend: both — evidence for optimize, and a "generate section" quick action.)
 4. **Tier & quota:** which plans get imports, and what monthly cap (reuse `ai_assists` vs a new `imports` dimension)?
 5. **LinkedIn UX:** ship the async data-archive path in v1, or start with just resume-PDF upload (fastest) and add archive later?
