@@ -172,6 +172,11 @@ REDIS_PROVIDER_REQUEST_UTILIZATION = Gauge(
     "latexy_redis_provider_request_utilization_ratio",
     "Provider-reported monthly Redis requests divided by the request limit.",
 )
+REDIS_PROVIDER_CAPACITY_STATUS = Gauge(
+    "latexy_redis_provider_capacity_status",
+    "One-hot status of Redis provider capacity monitoring.",
+    ["status"],
+)
 
 
 def _set_if_provided(var: ContextVar[str | None], value: str | None) -> Token[str | None] | None:
@@ -320,6 +325,25 @@ def set_redis_capacity_metrics(monthly_requests: int, request_limit: int) -> Non
     REDIS_PROVIDER_MONTHLY_REQUESTS.set(requests)
     REDIS_PROVIDER_REQUEST_LIMIT.set(limit)
     REDIS_PROVIDER_REQUEST_UTILIZATION.set(requests / limit if limit else 0)
+
+
+def set_redis_capacity_status(status: str) -> None:
+    """Publish one low-cardinality capacity-monitor state for alerting."""
+    known = {
+        "ok",
+        "warning",
+        "critical",
+        "exhausted",
+        "unavailable",
+        "misconfigured",
+        "unconfigured",
+        "not_applicable",
+    }
+    normalized = status if status in known else "unavailable"
+    for candidate in known:
+        REDIS_PROVIDER_CAPACITY_STATUS.labels(status=candidate).set(
+            1 if candidate == normalized else 0
+        )
 
 
 def _as_number(value: Any) -> float | None:
