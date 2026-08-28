@@ -33,6 +33,12 @@ from app.database.models import ResumeTemplate
 from app.services import storage_service
 
 
+def _raise_if_failed(failed: int) -> None:
+    """Make batch failures visible to Modal and CI callers."""
+    if failed:
+        raise RuntimeError(f"template asset generation failed for {failed} template(s)")
+
+
 def _db_url() -> str:
     from app.utils.db_url import normalize_database_url
     url = os.environ.get("DATABASE_URL", "")
@@ -85,9 +91,14 @@ async def main():
                         )
                         if result.returncode != 0 and _pass == 1:
                             print(f"FAIL (pdflatex exit {result.returncode})")
-                            stderr = result.stderr.decode(errors="replace")[-500:] if result.stderr else ""
-                            if stderr:
-                                print(f"    stderr: {stderr}")
+                            output = (result.stdout or b"").decode(errors="replace")
+                            stderr = (result.stderr or b"").decode(errors="replace")
+                            diagnostic = "\n".join(
+                                line for line in f"{output}\n{stderr}".splitlines()
+                                if line.startswith("!") or line.startswith("l.")
+                            )[-1000:]
+                            if diagnostic:
+                                print(f"    diagnostics:\n{diagnostic}")
                             ok = False
 
                     if not ok:
@@ -127,6 +138,7 @@ async def main():
         await engine.dispose()
 
     print(f"\nDone: {compiled} compiled, {skipped} skipped, {failed} failed")
+    _raise_if_failed(failed)
 
 
 if __name__ == "__main__":
