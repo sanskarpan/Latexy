@@ -202,7 +202,7 @@ test.describe('Cover Letters Listing Page (/workspace/cover-letters)', () => {
     const viewLink = page.locator('article').first().getByText('View')
     await expect(viewLink).toHaveAttribute(
       'href',
-      `/workspace/${MOCK_RESUME.id}/cover-letter`
+      `/workspace/${MOCK_RESUME.id}/cover-letter?cl=${MOCK_COVER_LETTERS[0].id}`
     )
   })
 
@@ -271,6 +271,7 @@ test.describe('Cover Letters Listing Page (/workspace/cover-letters)', () => {
     await expect(page.locator('article')).toHaveCount(3)
     const firstCard = page.locator('article').first()
     await firstCard.getByText('Delete').click()
+    await firstCard.getByRole('button', { name: /Confirm delete cover letter/ }).click()
     await expect(page.locator('article')).toHaveCount(2)
   })
 
@@ -625,6 +626,7 @@ test.describe('Cover Letter Generation Page', () => {
   test('generate button disabled when no job description', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
     await page.waitForLoadState('networkidle')
+    await page.locator('textarea[placeholder*="Paste the job description"]').fill('')
     const btn = page.getByRole('button', { name: /Generate Cover Letter/ })
     await expect(btn).toBeDisabled()
   })
@@ -649,10 +651,8 @@ test.describe('Cover Letter Generation Page', () => {
   test('loads most recent cover letter into editor on page load', async ({ page }) => {
     await page.goto(`/workspace/${resumeId}/cover-letter`)
     await page.waitForLoadState('networkidle')
-    // The first CL (Acme Corp) should be highlighted as active in the sidebar
-    // Active card uniquely has bg-violet-500/10 (tone/length buttons use bg-violet-500/20)
-    const activeCard = page.locator('.border-violet-400\\/40.bg-violet-500\\/10')
-    await expect(activeCard).toBeVisible()
+    const activeCard = page.getByRole('button', { name: /Acme Corp/ })
+    await expect(activeCard).toHaveAttribute('aria-pressed', 'true')
   })
 
   test('has Back to Editor link', async ({ page }) => {
@@ -692,7 +692,7 @@ test.describe('Cover Letter Generation Page', () => {
     await page.waitForLoadState('networkidle')
     const conversational = page.getByRole('button', { name: 'Conversational' })
     await conversational.click()
-    await expect(conversational).toHaveClass(/bg-violet-500/)
+    await expect(conversational).toHaveAttribute('aria-pressed', 'true')
   })
 
   test('length selection changes active state', async ({ page }) => {
@@ -700,7 +700,7 @@ test.describe('Cover Letter Generation Page', () => {
     await page.waitForLoadState('networkidle')
     const detailed = page.getByRole('button', { name: 'Detailed' })
     await detailed.click()
-    await expect(detailed).toHaveClass(/bg-violet-500/)
+    await expect(detailed).toHaveAttribute('aria-pressed', 'true')
   })
 
   test('generation request sends correct data', async ({ page }) => {
@@ -793,6 +793,7 @@ test.describe('Cover Letter Generation Page', () => {
     // There might be multiple Delete buttons (sidebar items)
     const sidebarDeletes = page.locator('.max-h-48 button:has-text("Delete")')
     await sidebarDeletes.first().click()
+    await page.getByRole('button', { name: /Confirm delete cover letter/ }).click()
 
     await expect(page.getByText('Previous Cover Letters (1)')).toBeVisible()
   })
