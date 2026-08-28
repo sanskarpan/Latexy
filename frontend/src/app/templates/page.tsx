@@ -10,19 +10,10 @@ import { apiClient } from '@/lib/api-client'
 import type { TemplateResponse, TemplateCategoryCount } from '@/lib/api-client'
 import TemplateCard from '@/components/TemplateCard'
 import TemplatePreviewModal from '@/components/TemplatePreviewModal'
+import { TEMPLATE_CATEGORY_ORDER } from '@/lib/template-categories'
 
 // ------------------------------------------------------------------ //
 //  Category tab order                                                 //
-// ------------------------------------------------------------------ //
-
-const CATEGORY_ORDER = [
-  'software_engineering', 'finance', 'academic', 'creative',
-  'minimal', 'ats_safe', 'two_column', 'executive',
-  'marketing', 'medical', 'legal', 'graduate',
-]
-
-// ------------------------------------------------------------------ //
-//  Page component                                                     //
 // ------------------------------------------------------------------ //
 
 export default function TemplatesPage() {
@@ -92,8 +83,8 @@ export default function TemplatesPage() {
   // Sorted category tabs
   const sortedCategories = useMemo(() =>
     [...categories].sort((a, b) => {
-      const ia = CATEGORY_ORDER.indexOf(a.category)
-      const ib = CATEGORY_ORDER.indexOf(b.category)
+      const ia = TEMPLATE_CATEGORY_ORDER.indexOf(a.category)
+      const ib = TEMPLATE_CATEGORY_ORDER.indexOf(b.category)
       return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
     }),
   [categories])
@@ -113,7 +104,7 @@ export default function TemplatesPage() {
     setUsingTemplateId(id)
     try {
       const result = await apiClient.useTemplate(id)
-      toast.success('Resume created from template')
+      toast.success('Document created from template')
       router.push(`/workspace/${result.resume_id}/edit`)
     } catch {
       toast.error('Failed to create resume from template')
@@ -152,11 +143,11 @@ export default function TemplatesPage() {
           <header>
             <p className="font-ui text-xs uppercase tracking-[0.18em] text-fg-3">Library</p>
             <h1 className="mt-4 max-w-[18ch] text-balance font-display text-[clamp(2.4rem,6vw,4.4rem)] font-semibold leading-[0.98] tracking-[-0.025em] text-fg">
-              Résumé <span className="text-accent">templates</span>, ready to use.
+              LaTeX <span className="text-accent">templates</span>, ready to use.
             </h1>
             <p className="mt-6 max-w-[52ch] font-body text-lg text-fg-2">
-              Browse professional LaTeX templates across industries. Preview any template, then
-              use it to start building.
+              Browse professional résumé, academic, and presentation templates. Preview any
+              template, then use it to start building.
             </p>
           </header>
 
