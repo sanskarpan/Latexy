@@ -47,7 +47,7 @@ export default function ATSTextView({ extractedText, pageCount }: ATSTextViewPro
       <div className="flex h-full flex-col items-center justify-center gap-2 py-12 text-center">
         <Info size={20} className="text-fg-3" />
         <p className="text-[11px] text-fg-3">No extracted text yet.</p>
-        <p className="text-[10px] text-fg-3">Compile your resume to see what an ATS reads.</p>
+        <p className="text-[10px] text-fg-3">Compile your resume to inspect its extracted PDF text.</p>
       </div>
     )
   }
@@ -77,7 +77,7 @@ export default function ATSTextView({ extractedText, pageCount }: ATSTextViewPro
         </div>
 
         <p className="text-[10px] text-fg-3">
-          Plain text extracted from your compiled PDF — exactly what an ATS parser reads.
+          Plain text recovered by Latexy from your compiled PDF. Employer parsers may differ.
           {pageCount != null && <span className="ml-1 text-fg-3">{pageCount} page{pageCount === 1 ? '' : 's'}.</span>}
         </p>
 
