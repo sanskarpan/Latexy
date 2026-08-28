@@ -24,7 +24,7 @@ const problems = [
   {
     quip: '“The ATS ate my formatting.”',
     title: 'Parse-clean by design.',
-    body: 'Single-column, standard headings, real text — the formatting where ATS value is actually won, not keyword-stuffed to a fake score.',
+    body: 'Single-column, standard headings, real text — structure that preserves clean text extraction without keyword-stuffing to chase a score.',
   },
 ]
 
