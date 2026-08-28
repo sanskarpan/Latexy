@@ -3616,7 +3616,7 @@ export interface TemplateResponse {
   thumbnail_url: string | null
   pdf_url: string | null
   sort_order: number
-  document_type?: string
+  document_type: 'resume' | 'presentation' | 'academic_cv'
 }
 
 export interface TemplateDetailResponse extends TemplateResponse {
