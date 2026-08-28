@@ -2,7 +2,9 @@
 
 > Source of truth for the production-readiness QA audit (Aug 2026).
 > Environments: **prod** = latexy.xyz (Vercel) + Modal backend; **local** = dev.sh stack (backend :8030 / frontend :5180).
-> Test accounts (prod): `admin-test@latexy.xyz` / `LatexyAdmin!2026x` (admin+unlimited), `pro-test@latexy.xyz` / `LatexyPro!2026x` (unlimited).
+> Production test-account credentials must never be stored in the repository. Obtain
+> short-lived QA access through the project owner or the approved secret manager, and
+> rotate credentials after each audit window.
 
 ## Severity legend
 - **P0 / Critical** — app unusable, major workflow fully broken, data-loss/security
