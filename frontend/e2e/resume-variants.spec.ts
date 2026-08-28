@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Route } from '@playwright/test'
+import { test, expect, type Locator, type Page, type Route } from '@playwright/test'
 
 // ------------------------------------------------------------------ //
 //  Mock data                                                          //
@@ -213,6 +213,21 @@ async function mockAuthAndApi(page: Page) {
   })
 }
 
+async function openResumeAction(page: Page, scope: Locator, action: 'Fork a variant' | 'Compare with parent') {
+  await scope.getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('button', { name: action }).click()
+}
+
+async function openFirstFork(page: Page) {
+  const parentCard = page.locator('article').filter({ hasText: PARENT_RESUME.title }).first()
+  await openResumeAction(page, parentCard, 'Fork a variant')
+}
+
+async function openFirstCompare(page: Page) {
+  const variantCard = page.locator('article').filter({ hasText: VARIANT_A.title }).first()
+  await openResumeAction(page, variantCard, 'Compare with parent')
+}
+
 
 // ------------------------------------------------------------------ //
 //  Workspace page — variant grouping and display                      //
@@ -295,14 +310,18 @@ test.describe('Workspace — Variant Grouping', () => {
     const badge = page.locator('button').filter({ hasText: '2' }).first()
     await badge.click()
 
-    const compareBtn = page.getByRole('button', { name: 'Compare' }).first()
-    await expect(compareBtn).toBeVisible()
+    const variantCard = page.locator('article').filter({ hasText: VARIANT_A.title }).first()
+    await variantCard.getByRole('button', { name: 'More actions' }).click()
+    await expect(page.getByRole('button', { name: 'Compare with parent' })).toBeVisible()
   })
 
   test('all cards have Fork button', async ({ page }) => {
-    const forkButtons = page.getByRole('button', { name: 'Fork' })
-    // Parent + standalone = at least 2 Fork buttons
-    await expect(forkButtons.first()).toBeVisible()
+    for (const title of [PARENT_RESUME.title, STANDALONE_RESUME.title]) {
+      const card = page.locator('article').filter({ hasText: title }).first()
+      await card.getByRole('button', { name: 'More actions' }).click()
+      await expect(page.getByRole('button', { name: 'Fork a variant' })).toBeVisible()
+      await page.locator('button[aria-hidden="true"]').click({ position: { x: 1, y: 1 } })
+    }
   })
 })
 
@@ -320,16 +339,14 @@ test.describe('Workspace — Fork Modal', () => {
   })
 
   test('clicking Fork opens fork modal', async ({ page }) => {
-    const forkBtn = page.getByRole('button', { name: 'Fork' }).first()
-    await forkBtn.click()
+    await openFirstFork(page)
 
     await expect(page.getByRole('heading', { name: 'Create Variant' })).toBeVisible()
     await expect(page.locator('input[placeholder="Variant title"]')).toBeVisible()
   })
 
   test('fork modal has pre-filled title with "Variant"', async ({ page }) => {
-    const forkBtn = page.getByRole('button', { name: 'Fork' }).first()
-    await forkBtn.click()
+    await openFirstFork(page)
 
     const input = page.locator('input[placeholder="Variant title"]')
     const value = await input.inputValue()
@@ -337,8 +354,7 @@ test.describe('Workspace — Fork Modal', () => {
   })
 
   test('fork modal can be closed with Cancel', async ({ page }) => {
-    const forkBtn = page.getByRole('button', { name: 'Fork' }).first()
-    await forkBtn.click()
+    await openFirstFork(page)
     await expect(page.getByRole('heading', { name: 'Create Variant' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Cancel' }).click()
@@ -347,8 +363,7 @@ test.describe('Workspace — Fork Modal', () => {
   })
 
   test('fork modal can be closed with Escape', async ({ page }) => {
-    const forkBtn = page.getByRole('button', { name: 'Fork' }).first()
-    await forkBtn.click()
+    await openFirstFork(page)
     await expect(page.locator('input[placeholder="Variant title"]')).toBeVisible()
 
     await page.keyboard.press('Escape')
@@ -356,8 +371,7 @@ test.describe('Workspace — Fork Modal', () => {
   })
 
   test('fork modal can be closed by clicking backdrop', async ({ page }) => {
-    const forkBtn = page.getByRole('button', { name: 'Fork' }).first()
-    await forkBtn.click()
+    await openFirstFork(page)
     await expect(page.locator('input[placeholder="Variant title"]')).toBeVisible()
 
     // Click on the backdrop (the fixed overlay)
@@ -378,8 +392,7 @@ test.describe('Workspace — Fork Modal', () => {
       })
     })
 
-    const forkBtn = page.getByRole('button', { name: 'Fork' }).first()
-    await forkBtn.click()
+    await openFirstFork(page)
 
     const input = page.locator('input[placeholder="Variant title"]')
     await input.clear()
@@ -403,8 +416,7 @@ test.describe('Workspace — Fork Modal', () => {
       })
     })
 
-    const forkBtn = page.getByRole('button', { name: 'Fork' }).first()
-    await forkBtn.click()
+    await openFirstFork(page)
 
     const input = page.locator('input[placeholder="Variant title"]')
     await input.clear()
@@ -435,8 +447,7 @@ test.describe('Workspace — Compare with Parent', () => {
     await badge.click()
 
     // Click Compare
-    const compareBtn = page.getByRole('button', { name: 'Compare' }).first()
-    await compareBtn.click()
+    await openFirstCompare(page)
 
     // Diff modal should open
     await expect(page.getByText('Compare Versions')).toBeVisible()
@@ -446,8 +457,7 @@ test.describe('Workspace — Compare with Parent', () => {
     const badge = page.locator('button').filter({ hasText: '2' }).first()
     await badge.click()
 
-    const compareBtn = page.getByRole('button', { name: 'Compare' }).first()
-    await compareBtn.click()
+    await openFirstCompare(page)
 
     // Should show parent and variant titles as labels in the diff modal
     const modal = page.locator('.fixed.inset-0').last()
@@ -458,8 +468,7 @@ test.describe('Workspace — Compare with Parent', () => {
     const badge = page.locator('button').filter({ hasText: '2' }).first()
     await badge.click()
 
-    const compareBtn = page.getByRole('button', { name: 'Compare' }).first()
-    await compareBtn.click()
+    await openFirstCompare(page)
 
     await expect(page.getByRole('button', { name: 'Restore to Parent' })).toBeVisible()
   })
@@ -468,8 +477,7 @@ test.describe('Workspace — Compare with Parent', () => {
     const badge = page.locator('button').filter({ hasText: '2' }).first()
     await badge.click()
 
-    const compareBtn = page.getByRole('button', { name: 'Compare' }).first()
-    await compareBtn.click()
+    await openFirstCompare(page)
 
     await expect(page.getByRole('button', { name: 'Keep Variant' })).toBeVisible()
   })
@@ -478,13 +486,10 @@ test.describe('Workspace — Compare with Parent', () => {
     const badge = page.locator('button').filter({ hasText: '2' }).first()
     await badge.click()
 
-    const compareBtn = page.getByRole('button', { name: 'Compare' }).first()
-    await compareBtn.click()
+    await openFirstCompare(page)
 
     await expect(page.getByText('Compare Versions')).toBeVisible()
-    // Close via X
-    const closeBtn = page.locator('.fixed.inset-0 button').filter({ has: page.locator('svg') }).last()
-    await closeBtn.click()
+    await page.getByRole('button', { name: 'Close comparison' }).click()
     await expect(page.getByText('Compare Versions')).not.toBeVisible()
   })
 
@@ -492,8 +497,7 @@ test.describe('Workspace — Compare with Parent', () => {
     const badge = page.locator('button').filter({ hasText: '2' }).first()
     await badge.click()
 
-    const compareBtn = page.getByRole('button', { name: 'Compare' }).first()
-    await compareBtn.click()
+    await openFirstCompare(page)
 
     await expect(page.getByText('Compare Versions')).toBeVisible()
     await page.keyboard.press('Escape')
@@ -545,8 +549,9 @@ test.describe('Workspace — List View Variants', () => {
     const expandBtn = page.locator('tr').filter({ hasText: 'Full Stack Developer Resume' }).first().locator('button').first()
     await expandBtn.click()
 
-    const compareBtn = page.getByRole('button', { name: 'Compare' }).first()
-    await expect(compareBtn).toBeVisible()
+    const variantRow = page.locator('tr').filter({ hasText: VARIANT_A.title })
+    await variantRow.getByRole('button', { name: 'More actions' }).click()
+    await expect(page.getByRole('button', { name: 'Compare with parent' })).toBeVisible()
   })
 
   test('list view variant rows show "variant" label', async ({ page }) => {
@@ -564,10 +569,9 @@ test.describe('Workspace — List View Variants', () => {
     const expandBtn = page.locator('tr').filter({ hasText: 'Full Stack Developer Resume' }).first().locator('button').first()
     await expandBtn.click()
 
-    // Variant rows should have Fork button
     const variantRow = page.locator('tr').filter({ hasText: 'Google' })
-    const forkBtn = variantRow.getByRole('button', { name: 'Fork' })
-    await expect(forkBtn).toBeVisible()
+    await variantRow.getByRole('button', { name: 'More actions' }).click()
+    await expect(page.getByRole('button', { name: 'Fork a variant' })).toBeVisible()
   })
 })
 
@@ -626,7 +630,7 @@ test.describe('Workspace — Updated workflow tip', () => {
   })
 
   test('workflow tip mentions Fork', async ({ page }) => {
-    await expect(page.getByText('Fork')).toBeTruthy()
+    await expect(page.getByText('Fork', { exact: true })).toBeVisible()
   })
 })
 
@@ -830,7 +834,7 @@ test.describe('DiffViewerModal — Parent-diff mode', () => {
     // Open diff via variant compare
     const badge = page.locator('button').filter({ hasText: '2' }).first()
     await badge.click()
-    await page.getByRole('button', { name: 'Compare' }).first().click()
+    await openFirstCompare(page)
 
     await page.waitForTimeout(1000)
     expect(errors).toEqual([])
@@ -849,7 +853,7 @@ test.describe('DiffViewerModal — Parent-diff mode', () => {
 
     const badge = page.locator('button').filter({ hasText: '2' }).first()
     await badge.click()
-    await page.getByRole('button', { name: 'Compare' }).first().click()
+    await openFirstCompare(page)
 
     await expect(page.getByRole('button', { name: 'Restore to Parent' })).toBeVisible()
     await page.getByRole('button', { name: 'Restore to Parent' }).click()
@@ -887,8 +891,7 @@ test.describe('API route verification', () => {
     await page.waitForLoadState('networkidle')
 
     // Open fork modal and submit
-    const forkBtn = page.getByRole('button', { name: 'Fork' }).first()
-    await forkBtn.click()
+    await openFirstFork(page)
     await page.getByRole('button', { name: 'Create Variant' }).click()
     await page.waitForTimeout(500)
 
@@ -912,7 +915,7 @@ test.describe('API route verification', () => {
     // Expand variants and click Compare
     const badge = page.locator('button').filter({ hasText: '2' }).first()
     await badge.click()
-    await page.getByRole('button', { name: 'Compare' }).first().click()
+    await openFirstCompare(page)
     await page.waitForTimeout(500)
 
     expect(apiCalls.some(u => u.includes('/diff-with-parent'))).toBe(true)
