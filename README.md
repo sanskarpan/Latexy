@@ -285,6 +285,22 @@ WebSocket event types: `job.queued` · `job.started` · `job.progress` · `job.p
 
 ## Deployment
 
+### Managed Latexy SaaS
+
+Production releases are revision-driven:
+
+1. Pull requests must pass `.github/workflows/ci.yml` before merge.
+2. Vercel's GitHub integration deploys the Next.js frontend from `main`.
+3. A successful `main` CI run triggers `.github/workflows/deploy-modal.yml` for the exact tested
+   commit. That workflow runs database migrations, performs a rolling Modal backend deployment,
+   and verifies `/health`, `/readyz`, and `/jobs/health`.
+
+The Modal workflow also supports a manual dispatch with an explicit Git ref for recovery. Production
+Modal deployment requires the `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` GitHub environment secrets;
+frontend environment values are managed in Vercel. CI has safe test fallbacks for its signing
+secrets, while service-specific integration credentials remain optional unless their tests require
+them. See [`docs/HANDOFF.md`](docs/HANDOFF.md) for the current release and verification contract.
+
 ### Docker Compose (single server)
 
 ```bash
@@ -303,9 +319,8 @@ make k8s-status        # kubectl get pods/services/pvc -n latexy
 
 ### CI / CD
 
-GitHub Actions runs on every push: lint → test → build. See `.github/workflows/ci.yml`.
-
-Required repository secrets: `CI_DATABASE_URL`, `CI_JWT_SECRET_KEY`, `CI_BETTER_AUTH_SECRET`.
+GitHub Actions runs privacy/security guards plus backend, frontend, TUI, and deployment-parity
+checks. See `.github/workflows/ci.yml`.
 
 ---
 
