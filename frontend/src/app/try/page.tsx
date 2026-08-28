@@ -1048,6 +1048,7 @@ export default function TryPage() {
 
   return (
     <div className="fixed inset-0 top-0 flex flex-col bg-bg text-fg">
+      <h1 className="sr-only">Résumé Studio</h1>
       {/* ── top project bar ── */}
       <header className="flex h-12 flex-shrink-0 items-center gap-2 border-b border-line bg-surface px-3 sm:gap-3">
         <Link href="/" className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-[var(--radius-sm)] bg-accent font-display text-sm font-bold text-accent-fg" title="Home">L</Link>
