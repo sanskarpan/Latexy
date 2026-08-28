@@ -429,7 +429,8 @@ test.describe('Feature 23 — AI Writing Assistant', () => {
     await page.waitForTimeout(500)
 
     expect(errors.filter((e) => !e.includes('Warning:'))).toEqual([])
-    await expect(page.locator('.z-50')).toBeVisible({ timeout: 3_000 })
+    await expect(page.getByText('Choose an action')).toBeVisible({ timeout: 3_000 })
+    await expect(page.getByRole('button', { name: /Improve/i })).toBeVisible()
   })
 
   // ── 12. Regenerate calls API again ─────────────────────────────── //
