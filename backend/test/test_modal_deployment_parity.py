@@ -30,6 +30,7 @@ BACKEND = Path(__file__).resolve().parents[1]
 MODAL_APP = BACKEND / "modal_app.py"
 WORKERS = BACKEND / "app" / "workers"
 DOCKERFILE = BACKEND / "Dockerfile"
+DEPLOY_WORKFLOW = BACKEND.parent / ".github" / "workflows" / "deploy-modal.yml"
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -122,6 +123,27 @@ def _dispatch_sites() -> list[tuple[str, str, bool]]:
             has_modal = 'DEPLOY_TARGET' in src and '"modal"' in src and "spawn(" in src
             sites.append((path.name, fn.name, has_modal))
     return sites
+
+
+def test_modal_delivery_synchronizes_templates_and_assets_after_deploy():
+    """New source templates must become usable without a manual production repair."""
+    workflow = DEPLOY_WORKFLOW.read_text(encoding="utf-8")
+    deploy = workflow.index('modal deploy --env main --strategy rolling --tag "$DEPLOY_SHA" modal_app.py')
+    sync = workflow.index("modal run --env main modal_app.py::sync_templates")
+    backfill = workflow.index("modal run --env main scripts/backfill_template_assets.py")
+    health = workflow.index("Verify production backend health")
+    catalog = workflow.index("Verify source template catalog and assets")
+
+    assert deploy < sync < backfill < health < catalog
+    assert "sync_templates" in _modal_function_names()
+
+    tree = _parse(MODAL_APP)
+    sync_fn = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "sync_templates"
+    )
+    source = ast.get_source_segment(MODAL_APP.read_text(encoding="utf-8"), sync_fn) or ""
+    assert "app.scripts.seed_templates" in source
 
 
 # ── 1. task dispatch parity ──────────────────────────────────────────────────
