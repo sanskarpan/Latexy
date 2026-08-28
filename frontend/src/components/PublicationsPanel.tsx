@@ -12,6 +12,14 @@ const PUB_TYPES = [
   { key: 'book_chapter', label: 'Book Chapter' },
 ] as const
 
+const CITATION_STYLES = [
+  { key: 'cv', label: 'CV', description: 'Authors, title, venue, year' },
+  { key: 'apa', label: 'APA', description: 'Author–date academic style' },
+  { key: 'ieee', label: 'IEEE', description: 'Technical citation style' },
+] as const
+
+type CitationStyle = (typeof CITATION_STYLES)[number]['key']
+
 interface PublicationsPanelProps {
   insertAtCursor: (text: string) => void
 }
@@ -21,6 +29,7 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
   const [yearFrom, setYearFrom] = useState('')
   const [yearTo, setYearTo] = useState('')
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
+  const [citationStyle, setCitationStyle] = useState<CitationStyle>('cv')
   const [publications, setPublications] = useState<PublicationOut[]>([])
   const [selectedPubs, setSelectedPubs] = useState<Set<number>>(new Set())
   const [latexSection, setLatexSection] = useState('')
@@ -64,6 +73,7 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
         year_from: yearFrom ? parseInt(yearFrom, 10) : undefined,
         year_to: yearTo ? parseInt(yearTo, 10) : undefined,
         pub_types: selectedTypes.length > 0 ? selectedTypes : undefined,
+        citation_style: citationStyle,
       })
       setPublications(data.publications)
       setLatexSection(data.latex_section)
@@ -90,6 +100,14 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
   const pubTypeLabel = (pub_type: string) =>
     PUB_TYPES.find(t => t.key === pub_type)?.label ?? pub_type
 
+  const handleCitationStyleChange = (style: CitationStyle) => {
+    setCitationStyle(style)
+    setPublications([])
+    setSelectedPubs(new Set())
+    setLatexSection('')
+    setHasFetched(false)
+  }
+
   return (
     <div className="space-y-5">
       {/* ORCID ID input */}
@@ -109,6 +127,40 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
           Find your ORCID iD at orcid.org — it's free and identifies you across publications.
         </p>
       </div>
+
+      <fieldset>
+        <legend className="mb-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
+          Citation style
+        </legend>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {CITATION_STYLES.map(style => (
+            <label
+              key={style.key}
+              className={`cursor-pointer rounded-[var(--radius-md)] border px-3 py-2 transition ${
+                citationStyle === style.key
+                  ? 'border-accent bg-accent-soft'
+                  : 'border-line bg-bg hover:border-line-2'
+              }`}
+            >
+              <span className="flex items-center gap-2 text-xs font-semibold text-fg">
+                <input
+                  type="radio"
+                  name="citation-style"
+                  value={style.key}
+                  checked={citationStyle === style.key}
+                  onChange={() => handleCitationStyleChange(style.key)}
+                  disabled={isLoading}
+                  className="accent-accent"
+                />
+                {style.label}
+              </span>
+              <span className="mt-1 block pl-5 text-[11px] text-fg-3">
+                {style.description}
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       {/* Filters row */}
       <div className="flex flex-wrap gap-4">
