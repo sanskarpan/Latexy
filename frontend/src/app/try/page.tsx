@@ -889,7 +889,7 @@ export default function TryPage() {
     <>
       {panelHead('Templates', <Link href="/templates" className="font-ui text-[12px] text-accent-strong hover:brightness-110">Browse all →</Link>)}
       <div className="grid grid-cols-2 gap-2 p-3">
-        {['Minimal', 'Two-column', 'Academic', 'ATS-safe'].map((t) => (
+        {['Minimal', 'Two-column', 'Academic', 'Classic'].map((t) => (
           <Link
             key={t}
             href="/templates"
