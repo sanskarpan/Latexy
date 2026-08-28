@@ -381,7 +381,7 @@ test.describe('Template Gallery with mocked API', () => {
     await card.hover()
     await card.getByRole('button', { name: 'Preview' }).click()
     // No thumbnail/pdf_url: falls back to showing latex content directly
-    await expect(page.getByRole('button', { name: 'LaTeX Source' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'LaTeX Source', exact: true })).toBeVisible()
     await expect(page.getByText('\\documentclass{article}')).toBeVisible()
   })
 
