@@ -176,6 +176,16 @@ async function mockEditPageJobs(page: Page) {
   await page.route('**/ws/**', (route) => route.abort())
 }
 
+function workspaceResumeCard(page: Page, title: string) {
+  return page.locator('article').filter({ hasText: title })
+}
+
+async function openWorkspaceShare(page: Page, title: string, hasExistingLink = false) {
+  const card = workspaceResumeCard(page, title)
+  await card.getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('button', { name: hasExistingLink ? 'Manage share link' : 'Share' }).click()
+}
+
 
 // ------------------------------------------------------------------ //
 //  Workspace page — Share button on resume cards                      //
@@ -198,39 +208,36 @@ test.describe('Workspace — Share button on resume cards', () => {
   })
 
   test('resume cards have Share buttons', async ({ page }) => {
-    const shareButtons = page.getByRole('button', { name: 'Share' })
-    await expect(shareButtons.first()).toBeVisible()
-    // Both resumes should have Share buttons
-    await expect(shareButtons).toHaveCount(2)
+    const noShareCard = workspaceResumeCard(page, RESUME_NO_SHARE.title)
+    await noShareCard.getByRole('button', { name: 'More actions' }).click()
+    await expect(page.getByRole('button', { name: 'Share' })).toBeVisible()
+    await page.locator('button[aria-hidden="true"]').click({ position: { x: 1, y: 1 } })
+
+    const sharedCard = workspaceResumeCard(page, RESUME_WITH_SHARE.title)
+    await sharedCard.getByRole('button', { name: 'More actions' }).click()
+    await expect(page.getByRole('button', { name: 'Manage share link' })).toBeVisible()
   })
 
   test('resume with no share token shows inactive Share button', async ({ page }) => {
-    const noShareCard = page.locator('article').filter({ hasText: 'Software Engineer Resume' })
-    const shareBtn = noShareCard.getByRole('button', { name: 'Share' })
-    await expect(shareBtn).toBeVisible()
-    // Inactive = zinc color, not sky
-    const cls = await shareBtn.getAttribute('class')
-    expect(cls).not.toMatch(/text-sky/)
+    const noShareCard = workspaceResumeCard(page, RESUME_NO_SHARE.title)
+    await noShareCard.getByRole('button', { name: 'More actions' }).click()
+    await expect(page.getByRole('button', { name: 'Share' })).toBeVisible()
   })
 
   test('resume with existing share token shows active Share button', async ({ page }) => {
-    const shareCard = page.locator('article').filter({ hasText: 'Product Manager Resume' })
-    const shareBtn = shareCard.getByRole('button', { name: 'Share' })
-    await expect(shareBtn).toBeVisible()
-    // Active = sky color class
-    await expect(shareBtn).toHaveClass(/text-sky/)
+    const shareCard = workspaceResumeCard(page, RESUME_WITH_SHARE.title)
+    await shareCard.getByRole('button', { name: 'More actions' }).click()
+    await expect(page.getByRole('button', { name: 'Manage share link' })).toBeVisible()
   })
 
   test('clicking Share on a resume opens the ShareResumeModal', async ({ page }) => {
-    const noShareCard = page.locator('article').filter({ hasText: 'Software Engineer Resume' })
-    await noShareCard.getByRole('button', { name: 'Share' }).click()
+    await openWorkspaceShare(page, RESUME_NO_SHARE.title)
 
     await expect(page.getByRole('heading', { name: 'Share Resume' })).toBeVisible()
   })
 
   test('share modal shows correct resume title', async ({ page }) => {
-    const noShareCard = page.locator('article').filter({ hasText: 'Software Engineer Resume' })
-    await noShareCard.getByRole('button', { name: 'Share' }).click()
+    await openWorkspaceShare(page, RESUME_NO_SHARE.title)
 
     // The modal subtitle includes the resume title
     await expect(page.locator('p').filter({ hasText: 'Software Engineer Resume' }).first()).toBeVisible()
@@ -249,8 +256,7 @@ test.describe('ShareResumeModal — generate link flow', () => {
     await mockWorkspaceApi(page)
     await page.goto('/workspace')
     await page.waitForLoadState('networkidle')
-    const noShareCard = page.locator('article').filter({ hasText: 'Software Engineer Resume' })
-    await noShareCard.getByRole('button', { name: 'Share' }).click()
+    await openWorkspaceShare(page, RESUME_NO_SHARE.title)
     await expect(page.getByRole('heading', { name: 'Share Resume' })).toBeVisible()
   })
 
@@ -330,8 +336,7 @@ test.describe('ShareResumeModal — existing share link state', () => {
     await mockWorkspaceApi(page)
     await page.goto('/workspace')
     await page.waitForLoadState('networkidle')
-    const shareCard = page.locator('article').filter({ hasText: 'Product Manager Resume' })
-    await shareCard.getByRole('button', { name: 'Share' }).click()
+    await openWorkspaceShare(page, RESUME_WITH_SHARE.title, true)
     await expect(page.getByRole('heading', { name: 'Share Resume' })).toBeVisible()
   })
 
@@ -365,8 +370,7 @@ test.describe('ShareResumeModal — revoke link flow', () => {
     await mockWorkspaceApi(page)
     await page.goto('/workspace')
     await page.waitForLoadState('networkidle')
-    const shareCard = page.locator('article').filter({ hasText: 'Product Manager Resume' })
-    await shareCard.getByRole('button', { name: 'Share' }).click()
+    await openWorkspaceShare(page, RESUME_WITH_SHARE.title, true)
     await expect(page.getByRole('heading', { name: 'Share Resume' })).toBeVisible()
   })
 
@@ -432,8 +436,7 @@ test.describe('ShareResumeModal — close behaviours', () => {
     await mockWorkspaceApi(page)
     await page.goto('/workspace')
     await page.waitForLoadState('networkidle')
-    const noShareCard = page.locator('article').filter({ hasText: 'Software Engineer Resume' })
-    await noShareCard.getByRole('button', { name: 'Share' }).click()
+    await openWorkspaceShare(page, RESUME_NO_SHARE.title)
     await expect(page.getByRole('heading', { name: 'Share Resume' })).toBeVisible()
   })
 
@@ -501,33 +504,28 @@ test.describe('Edit page — Share button in header', () => {
     await page.goto(`/workspace/${RESUME_NO_SHARE.id}/edit`)
     await page.waitForLoadState('networkidle')
 
-    await expect(page.getByRole('button', { name: 'Share' }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Share resume' })).toBeVisible()
   })
 
-  test('Share button on edit page (no token) is not highlighted sky blue', async ({ page }) => {
+  test('Share button identifies a resume without an existing link', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_NO_SHARE.id}/edit`)
     await page.waitForLoadState('networkidle')
 
-    const shareBtn = page.getByRole('button', { name: 'Share' }).first()
-    await expect(shareBtn).toBeVisible()
-    const cls = await shareBtn.getAttribute('class') ?? ''
-    expect(cls).not.toMatch(/text-sky/)
+    await expect(page.getByRole('button', { name: 'Share resume' })).toBeVisible()
   })
 
-  test('Share button on edit page (with token) is highlighted sky blue', async ({ page }) => {
+  test('Share button identifies a resume with an existing link', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_WITH_SHARE.id}/edit`)
     await page.waitForLoadState('networkidle')
 
-    const shareBtn = page.getByRole('button', { name: 'Share' }).first()
-    await expect(shareBtn).toBeVisible()
-    await expect(shareBtn).toHaveClass(/text-sky/)
+    await expect(page.getByRole('button', { name: 'Manage share link' })).toBeVisible()
   })
 
   test('clicking Share on edit page opens ShareResumeModal', async ({ page }) => {
     await page.goto(`/workspace/${RESUME_NO_SHARE.id}/edit`)
     await page.waitForLoadState('networkidle')
 
-    await page.getByRole('button', { name: 'Share' }).first().click()
+    await page.getByRole('button', { name: 'Share resume' }).click()
     await expect(page.getByRole('heading', { name: 'Share Resume' })).toBeVisible()
   })
 
@@ -735,8 +733,7 @@ test.describe('API route verification — share endpoints', () => {
       }
     })
 
-    const noShareCard = page.locator('article').filter({ hasText: 'Software Engineer Resume' })
-    await noShareCard.getByRole('button', { name: 'Share' }).click()
+    await openWorkspaceShare(page, RESUME_NO_SHARE.title)
     await page.getByRole('button', { name: 'Generate shareable link' }).click()
     await page.waitForTimeout(500)
 
@@ -755,8 +752,7 @@ test.describe('API route verification — share endpoints', () => {
       }
     })
 
-    const shareCard = page.locator('article').filter({ hasText: 'Product Manager Resume' })
-    await shareCard.getByRole('button', { name: 'Share' }).click()
+    await openWorkspaceShare(page, RESUME_WITH_SHARE.title, true)
     await page.getByText('Revoke link').click()
     await page.getByRole('button', { name: 'Revoke permanently' }).click()
     await page.waitForTimeout(500)
@@ -789,8 +785,7 @@ test.describe('API route verification — share endpoints', () => {
   })
 
   test('share link URL contains token', async ({ page }) => {
-    const noShareCard = page.locator('article').filter({ hasText: 'Software Engineer Resume' })
-    await noShareCard.getByRole('button', { name: 'Share' }).click()
+    await openWorkspaceShare(page, RESUME_NO_SHARE.title)
     await page.getByRole('button', { name: 'Generate shareable link' }).click()
     await page.waitForTimeout(500)
 
@@ -798,8 +793,7 @@ test.describe('API route verification — share endpoints', () => {
   })
 
   test('share link URL contains /r/ path', async ({ page }) => {
-    const noShareCard = page.locator('article').filter({ hasText: 'Software Engineer Resume' })
-    await noShareCard.getByRole('button', { name: 'Share' }).click()
+    await openWorkspaceShare(page, RESUME_NO_SHARE.title)
     await page.getByRole('button', { name: 'Generate shareable link' }).click()
     await page.waitForTimeout(500)
 
@@ -814,15 +808,15 @@ test.describe('API route verification — share endpoints', () => {
 
 test.describe('Resume list — share_token reflected in card state', () => {
 
-  test('workspace shows active Share button for resumes with existing token', async ({ page }) => {
+  test('workspace shows manage action for resumes with existing token', async ({ page }) => {
     await mockAuth(page)
     await mockWorkspaceApi(page, [RESUME_WITH_SHARE])
     await page.goto('/workspace')
     await page.waitForLoadState('networkidle')
 
-    const shareBtn = page.getByRole('button', { name: 'Share' }).first()
-    await expect(shareBtn).toBeVisible()
-    await expect(shareBtn).toHaveClass(/text-sky/)
+    const shareCard = workspaceResumeCard(page, RESUME_WITH_SHARE.title)
+    await shareCard.getByRole('button', { name: 'More actions' }).click()
+    await expect(page.getByRole('button', { name: 'Manage share link' })).toBeVisible()
   })
 
   test('after generating link, modal shows the new share URL', async ({ page }) => {
@@ -831,8 +825,7 @@ test.describe('Resume list — share_token reflected in card state', () => {
     await page.goto('/workspace')
     await page.waitForLoadState('networkidle')
 
-    const noShareCard = page.locator('article').filter({ hasText: 'Software Engineer Resume' })
-    await noShareCard.getByRole('button', { name: 'Share' }).click()
+    await openWorkspaceShare(page, RESUME_NO_SHARE.title)
     await page.getByRole('button', { name: 'Generate shareable link' }).click()
     await page.waitForTimeout(500)
 
