@@ -339,6 +339,26 @@ class TestPublicationsServiceUnit:
         result = PublicationsService().format_as_latex([pub])
         assert r"\textit{}" not in result
 
+    def test_apa_style_uses_author_date_order(self) -> None:
+        pub = Publication("Paper Title", ["A. Author"], "Journal", 2024, None, None, "journal")
+
+        result = PublicationsService().format_entry(pub, "apa")
+
+        assert result == r"A. Author. (2024). Paper Title. \textit{Journal}."
+
+    def test_ieee_style_uses_technical_citation_order(self) -> None:
+        pub = Publication("Paper Title", ["A. Author"], "Journal", 2024, None, None, "journal")
+
+        result = PublicationsService().format_entry(pub, "ieee")
+
+        assert result == r"A. Author, ``Paper Title,'' \textit{Journal}, 2024."
+
+    def test_unknown_citation_style_is_rejected(self) -> None:
+        pub = Publication("Paper Title", [], "", None, None, None, "journal")
+
+        with pytest.raises(ValueError, match="Unsupported citation style"):
+            PublicationsService().format_entry(pub, "unknown")
+
     # 58U-13 — audit fix: TeX specials in third-party metadata are escaped ──────
     def test_latex_escape_helper(self) -> None:
         from app.services.publications_service import latex_escape
@@ -500,6 +520,30 @@ class TestPublicationsEndpoint:
         assert len(pubs) == 1
         assert pubs[0]["pub_type"] == "conference"
         assert all(p["pub_type"] == "conference" for p in pubs)
+
+    async def test_apa_citation_style_formats_section_and_entries(
+        self, client: AsyncClient
+    ) -> None:
+        with _patch_orcid(_make_200(MOCK_ORCID_RESPONSE)):
+            resp = await client.post(
+                "/ai/generate-publications",
+                json={"identifier": VALID_ORCID, "citation_style": "apa"},
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "(2023). Deep Learning for Resume Parsing." in body["latex_section"]
+        assert body["publications"][0]["latex_entry"] in body["latex_section"]
+
+    async def test_unknown_citation_style_returns_422(
+        self, client: AsyncClient
+    ) -> None:
+        resp = await client.post(
+            "/ai/generate-publications",
+            json={"identifier": VALID_ORCID, "citation_style": "unknown"},
+        )
+
+        assert resp.status_code == 422
 
     # 58I-09 ─────────────────────────────────────────────────────────────────
     async def test_latex_section_contains_enumerate_and_section(
