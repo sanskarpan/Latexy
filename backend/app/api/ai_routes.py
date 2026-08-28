@@ -1789,6 +1789,7 @@ class PublicationOut(BaseModel):
     doi: Optional[str]
     url: Optional[str]
     pub_type: str
+    latex_entry: str
 
 
 class PublicationsResponse(BaseModel):
@@ -1800,7 +1801,7 @@ class PublicationsResponse(BaseModel):
 def _pubs_cache_key(identifier: str, year_from: Optional[int], year_to: Optional[int], pub_types: Optional[List[str]]) -> str:
     payload = f"{identifier}|{year_from}|{year_to}|{sorted(pub_types or [])}"
     digest = hashlib.sha256(payload.encode()).hexdigest()[:16]
-    return f"ai:publications:{digest}"
+    return f"ai:publications:v2:{digest}"
 
 
 @router.post("/generate-publications", response_model=PublicationsResponse)
@@ -1852,6 +1853,7 @@ async def generate_publications(
             doi=p.doi,
             url=p.url,
             pub_type=p.pub_type,
+            latex_entry=publications_service.format_entry(p),
         )
         for p in pubs
     ]
