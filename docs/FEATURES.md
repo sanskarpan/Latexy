@@ -6,7 +6,13 @@
 >
 > **Companion document:** `research/COMPETITIVE-ANALYSIS.md` — pricing, positioning, performance measurements and the strategic argument. This file is the feature inventory; that one is the reasoning.
 
-**Last verified:** 2026-08-12 · re-verified against `main` @ `d76f8765`
+**Last full catalog verification:** 2026-08-12 · against `main` @ `d76f8765`
+
+**P0 delivery reconciliation:** 2026-08-28
+
+> This is a point-in-time research catalog, not the live issue board. Linked GitHub issues are
+> authoritative for delivery state after the dates above. The P0 items below were reconciled on
+> 2026-08-28; later sections retain their original research snapshot unless explicitly noted.
 
 > **Revision note (2026-08-12) — this file was audited against the legacy catalog and corrected.** A line-by-line reconciliation of all **92** legacy entries (Part F) found that this catalog, while accurate about competitors, **under-counted Latexy's own shipped features**: **19 of 92** legacy entries are shipped in the codebase yet were absent from or misdescribed in Part C — including the resume heatmap, the LaTeX package-manager UI, the TikZ editor, industry-specific ATS calibration, keyword density, and **Canva/Figma export**. That is the same class of staleness this file criticises the legacy version for, inverted. All 19 are now corrected and Part F records the full mapping so the claim is checkable.
 >
@@ -118,7 +124,7 @@ These were built, are in the codebase today, and were **missing from this catalo
 | `feature_flags` | 32 rows, **0 disabled** in production | Machinery works; nothing uses it to differentiate. |
 | `activeModel` / `activeProvider` | declared in `packages/tui/src/lib/config.ts`, never read or written | `/model` lists providers but persists no choice. Dead config. |
 | Template `is_premium` | **no such column** in `resume_templates` | Premium templates are not modelled at all. |
-| 84 of 147 templates are test fixtures | all created 2026-03-11, all `is_active` (issue #1147) | Only **63 genuine**. Gallery is 57% junk. |
+| Template catalog cleanup | Production now returns **51 active templates**; `Clean Simple` remains present and #1147 is open | Bulk fixture cleanup shipped; finish the remaining template validation tracked by #1147. |
 | `Clean Simple` template | fails `pdflatex exit 1` | Can never render a preview. |
 
 ---
@@ -138,29 +144,31 @@ These were built, are in the codebase today, and were **missing from this catalo
 
 ## P0 — ships now
 
-### B1. Compile latency: 37s → target < 10s · **L** · status ➖ · [#1281](https://github.com/sanskarpan/Latexy/issues/1281)
-Measured median **37.23s** end-to-end (5 consecutive production runs, 36.9–40.1s); server-reported LaTeX work **15.6s**; **18.2s** of pipeline overhead. Anonymous `/try` is **37.2s** — a new user's first impression. Overleaf's *free-tier restriction* is a 10s timeout [V — docs.overleaf.com/.../plan-limits] and it documents accepting only ~1s of container overhead per compile [V — overleaf/clsi#142].
+### B1. Compile latency: 37s → target < 10s · **L** · status ✅ · [#1281](https://github.com/sanskarpan/Latexy/issues/1281)
+The original audit measured a **37.23s** median. After the Modal image reduction and timing instrumentation, production verification on 2026-08-24 measured a **5.47s median** through the async job path; the issue is closed. Cold-start reduction remains separate follow-up work rather than part of this warm-path target.
 
-Sub-tasks, in order:
+Original ordered sub-tasks (retained for decision provenance; items 1–2 are complete and 3–4 were
+deferred after the target was met):
+
 1. **Drop `texlive-fonts-extra`** — **1,665 MB of the 1,750 MB** install (95%); fontspec/microtype/enumitem live in `texlive-latex-recommended` [V — packages.debian.org]. **S**
 2. Instrument the 18.2s of non-LaTeX overhead before optimising it (8.2s queued→processing, 4.1s submit POST). **S**
 3. Evaluate lazy image loading (SOCI / stargz — reported 6m59s→21.1s pulls [S]) over Modal memory snapshots, which Modal's own docs say *won't* help storage-bound init [V]. **M**
 4. Only then consider Tectonic or Typst. **Typst now carries an India-specific caveat**: open bugs #8062 (*"Hyphenation skips words containing Virama and combining marks, breaking Indic script support"*) and #6339 (*"Poor paragraphs… with Indic scripts"*) [V] — a Typst pivot would forfeit B10. Tectonic (images ~56–75 MB vs ~2.3 GB [C], but compile speed is *contested* — a user reports xelatex 2× faster single-threaded, 8× at 10-way concurrency [V — tectonic#1153]) or Typst (105.7ms vs pdflatex 329.1ms, third-party hyperfine [V]). **L**
 
-### B2. Colocate Redis · **S** · status ❌ · [#1282](https://github.com/sanskarpan/Latexy/issues/1282)
-Upstash resolves to `global-as1.upstash.io` (Asia primary); Neon and Modal are both Ashburn, Virginia. Measured **99.3ms** Redis round-trip vs **6.9ms** Neon. The rate limiter runs an `INCR` Lua script on **every request** (`rate_limiting.py:162-181`), so every request crosses an ocean. **The cache is 14× slower than the database it protects.**
+### B2. Colocate Redis · **S** · status ✅ · [#1282](https://github.com/sanskarpan/Latexy/issues/1282)
+Redis was migrated from the Asia endpoint to Upstash AWS `us-east-1`, colocated with Modal and Neon. Production verification on 2026-08-24 measured a **3.9ms median** `INCR` round trip, down from 99.3ms; the issue is closed.
 
-### B3. Fix the pricing inversion · **S** · status ❌ · [#1283](https://github.com/sanskarpan/Latexy/issues/1283)
-Free = 10 compiles/**day** (~300/mo); Basic ₹299 = 50/**month** (`config.py:761`). The first paid tier is a downgrade on the headline dimension.
+### B3. Fix the pricing inversion · **S** · status ✅ · [#1283](https://github.com/sanskarpan/Latexy/issues/1283)
+Basic now enforces and advertises **400 compiles/month**, above Free's worst-case monthly equivalent. The fix and regression coverage shipped through PR #1549; the issue is closed.
 
-### B4. Template gallery cleanup · **S** · status ❌ · [#1147](https://github.com/sanskarpan/Latexy/issues/1147)
-Deactivate the 84 test fixtures (#1147 — 0 resumes reference them, safe); fix or retire `Clean Simple`. Gallery goes 147→63 genuine.
+### B4. Template gallery cleanup · **S** · status ➖ · [#1147](https://github.com/sanskarpan/Latexy/issues/1147)
+Production returns **51 active templates** as of 2026-08-28, so the original 147-row fixture exposure is no longer current. `Clean Simple` remains in the catalog and #1147 remains open for final validation/reconciliation.
 
-### B5. Deploy the storage fix · **S** · status ➖ · [#1284](https://github.com/sanskarpan/Latexy/issues/1284)
-All 147 thumbnails and preview PDFs return `502 Storage unavailable` (0/20 sampled). Fixed in PR #1146, undeployed.
+### B5. Deploy the storage fix · **S** · status ✅ · [#1284](https://github.com/sanskarpan/Latexy/issues/1284)
+The R2 wiring from PR #1146 is deployed. Production verification on 2026-08-24 confirmed thumbnail and preview-PDF redirects resolve to real R2 assets with HTTP 200; the issue is closed.
 
-### B6. Annual SKUs + GST-inclusive display · **S** · status ➖ · [#1285](https://github.com/sanskarpan/Latexy/issues/1285)
-Every verified India comparable discounts annual heavily — Google One ~17%, JioHotstar ~39%, Coursera 44% [V] — because Indian consumers avoid recurring mandates, and Razorpay e-mandate churn is real. Show GST-inclusive round numbers; 18% at checkout is a documented abandonment cause.
+### B6. Annual SKUs + GST-inclusive display · **S** · status ✅ · [#1285](https://github.com/sanskarpan/Latexy/issues/1285)
+Basic, Pro, and BYOK annual SKUs now carry a 20% discount, checkout validates configured Razorpay annual plan IDs, and the billing UI identifies prices as GST-inclusive. The work shipped through PR #1549; the issue is closed.
 
 ## P1 — next
 
@@ -902,7 +910,7 @@ Most of Part D is a set of decisions **not** to build, and those correctly have 
 | **D4** | Verify no session recording on editor surfaces, and add a guard | [1410](https://github.com/sanskarpan/Latexy/issues/1410) |
 | **D5** | Audit our own marketing copy for unsubstantiated and ATS-emulation claims | [1411](https://github.com/sanskarpan/Latexy/issues/1411) |
 
-**D5 matters most, because we are currently committing one of the sins Part D rejects:** the gallery advertises **147 templates when only 63 are genuine** (#1147). Any "147 templates" claim is inflated *today*.
+**D5 originally found a real violation:** the gallery advertised 147 templates while many rows were fixtures. Production now returns **51 active templates**; #1147 remains open for the residual `Clean Simple` validation and catalog reconciliation.
 
 The remaining **24 Part D rows stay as refusals with stated reasons** — that is their purpose. Each reason is recorded so the decision can be revisited if the reasoning changes, which is not the same as being a backlog item.
 
@@ -954,7 +962,7 @@ Honest gaps. Each would change a recommendation above.
 
 | legacy | feature | legacy pri | verdict | where it lives now |
 |---|---|---|---|---|
-| 1.1 | Template Gallery (50+ Templates) | P0 | ✅ shipped, but see **B4** | **63 genuine** templates (legacy claimed 2) — but 84 of 147 rows are test fixtures and `Clean Simple` cannot compile |
+| 1.1 | Template Gallery (50+ Templates) | P0 | ✅ shipped, but see **B4** | **51 active** production templates as of 2026-08-28; `Clean Simple` still requires the validation tracked by #1147 |
 | 1.2 | Document Version History + Diff | P0 | ✅ shipped | already covered |
 | 1.3 | Compile-on-Save / Auto-Compile | P0 | ⬜ backlog | B19.2 → **B19.2** [#1352](https://github.com/sanskarpan/Latexy/issues/1352) |
 | 1.4 | Multiple LaTeX Compilers (XeLaTeX, LuaLaTeX) | P1 | ✅ shipped | already covered |
