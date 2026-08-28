@@ -107,7 +107,7 @@ export default function LandingPage() {
           {problems.map((p) => (
             <article key={p.title} className="bg-surface p-6">
               <span className="font-ui text-[0.72rem] italic text-fg-3">{p.quip}</span>
-              <h3 className="mt-3 font-display text-xl font-semibold text-fg">{p.title}</h3>
+              <h2 className="mt-3 font-display text-xl font-semibold text-fg">{p.title}</h2>
               <p className="mt-2 font-body text-sm leading-relaxed text-fg-2">{p.body}</p>
             </article>
           ))}
