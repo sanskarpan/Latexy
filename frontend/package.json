@@ -16,6 +16,7 @@
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "test": "playwright test",
+        "test:quality": "playwright test --config=playwright.quality.config.ts",
         "test:unit": "vitest run",
         "test:ui": "playwright test --ui",
         "test:headed": "playwright test --headed"
