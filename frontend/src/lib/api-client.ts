@@ -3955,6 +3955,7 @@ export interface PublicationOut {
   doi: string | null
   url: string | null
   pub_type: string
+  latex_entry: string
 }
 
 export interface GeneratePublicationsResponse {
