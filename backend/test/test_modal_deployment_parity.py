@@ -150,15 +150,7 @@ def test_modal_delivery_synchronizes_templates_and_assets_after_deploy():
 
 # Dispatchers that still have no Modal branch, and therefore never run in
 # production. Each entry is a real, tracked gap — not an approval.
-KNOWN_UNWIRED_DISPATCHERS = {
-    # Beat entry point: it fans out per-user digest tasks with apply_async. On
-    # Modal it is reached through scheduled_weekly_digest, which runs this
-    # function's body — so the fan-out inside it still targets a broker with no
-    # consumer. Left as a tracked gap rather than a fake fix: EMAIL_ENABLED is
-    # false, so nothing is dropped today, and wiring it properly means giving the
-    # per-user sends their own Modal function.
-    ("email_worker.py", "_async_fan_out_weekly_digest"),
-}
+KNOWN_UNWIRED_DISPATCHERS = set()
 
 
 def test_every_dispatcher_has_a_modal_branch():
