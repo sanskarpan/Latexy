@@ -16,6 +16,7 @@ import { useJobStream } from '@/hooks/useJobStream'
 import { useTrialStatus } from '@/hooks/useTrialStatus'
 import LaTeXEditor, { LaTeXEditorRef } from '@/components/LaTeXEditor'
 import ModeToggle from '@/components/theme/ModeToggle'
+import ChangeReviewModal from '@/components/ChangeReviewModal'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import { useQuickATSScore } from '@/hooks/useQuickATSScore'
@@ -502,21 +503,23 @@ export default function TryPage() {
     }
   }, [latexContent, jobDescription, resolvedSession, trialStatus, TRIM_INSTRUCTION, trialBlocked, notifyTrialBlocked])
 
-  const applyStagedOptimization = useCallback(() => {
-    if (!stagedOptimization) return
+  const applyStagedOptimization = useCallback((reviewedLatex?: string) => {
+    const nextLatex = reviewedLatex ?? stagedOptimization
+    if (!nextLatex) return false
     const current = editorRef.current?.getValue() || latexContent
     const baseline = preRunSnapshotRef.current
     if (baseline != null && current !== baseline) {
       toast.error('Your resume changed while AI was working. Run optimization again to avoid losing edits.')
-      return
+      return false
     }
-    editorRef.current?.setValue(stagedOptimization)
-    setLatexContent(stagedOptimization)
-    cleanBaselineRef.current = stagedOptimization
+    editorRef.current?.setValue(nextLatex)
+    setLatexContent(nextLatex)
+    cleanBaselineRef.current = nextLatex
     setOptimizeSnapshot(baseline)
     setStagedOptimization(null)
     setShowOptimizeDiff(false)
-    toast.success('Applied AI optimization')
+    if (reviewedLatex == null) toast.success('Applied AI optimization')
+    return true
   }, [latexContent, stagedOptimization])
 
   const discardStagedOptimization = useCallback(() => {
@@ -716,7 +719,7 @@ export default function TryPage() {
                   onClick={() => setShowOptimizeDiff(true)}
                   className="rounded-[var(--radius-sm)] px-2 py-1 font-ui text-[12px] font-medium text-accent-strong transition hover:bg-surface-2"
                 >
-                  Review diff
+                  Review changes
                 </button>
                 <button
                   onClick={discardStagedOptimization}
@@ -725,7 +728,7 @@ export default function TryPage() {
                   Discard
                 </button>
                 <button
-                  onClick={applyStagedOptimization}
+                  onClick={() => applyStagedOptimization()}
                   className="rounded-[var(--radius-sm)] bg-accent px-2 py-1 font-ui text-[12px] font-semibold text-accent-fg transition hover:brightness-110"
                 >
                   Apply
@@ -755,23 +758,27 @@ export default function TryPage() {
             </div>
           </div>
         )}
-        {showOptimizeDiff && (stagedOptimization != null || optimizeSnapshot != null) && (
+        {showOptimizeDiff && stagedOptimization != null && (
+          <ChangeReviewModal
+            originalLatex={preRunSnapshotRef.current || latexContent}
+            optimizedLatex={stagedOptimization}
+            changeReasons={stream.changesMade?.map((change) =>
+              typeof change === 'string' ? { reason: change } : change
+            )}
+            onApply={applyStagedOptimization}
+            onClose={() => setShowOptimizeDiff(false)}
+          />
+        )}
+        {showOptimizeDiff && stagedOptimization == null && optimizeSnapshot != null && (
           <DiffViewerModal
             resumeId=""
             checkpointA={null}
             checkpointB={null}
-            parentLatex={stagedOptimization != null ? (preRunSnapshotRef.current || latexContent) : optimizeSnapshot!}
+            parentLatex={optimizeSnapshot}
             parentTitle="Original"
-            variantLatex={stagedOptimization ?? editorRef.current?.getValue() ?? latexContent}
+            variantLatex={editorRef.current?.getValue() ?? latexContent}
             variantTitle="AI Optimized"
-            onRestore={(latex) => {
-              if (stagedOptimization != null) {
-                if (latex === stagedOptimization) applyStagedOptimization()
-                else discardStagedOptimization()
-              } else {
-                revertOptimize(latex)
-              }
-            }}
+            onRestore={revertOptimize}
             onClose={() => setShowOptimizeDiff(false)}
           />
         )}
