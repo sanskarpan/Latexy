@@ -268,10 +268,7 @@ test.describe('Guided Resume Builder', () => {
     await expect(page.getByText('All changes saved')).toBeVisible({ timeout: 8000 })
 
     await page.getByRole('button', { name: 'Add certification' }).click()
-    const certificationCard = page
-      .getByRole('button', { name: 'Remove certification' })
-      .locator('xpath=ancestor::div[contains(@class, "rounded-2xl")][1]')
-    await certificationCard.locator('input').nth(0).fill('AWS Certified Developer')
+    await page.getByLabel('Name', { exact: true }).fill('AWS Certified Developer')
     await expect(page.getByText('AWS Certified Developer')).toBeVisible()
 
     await page.locator('select').selectOption(BUILDER_TEMPLATES[1].id)
