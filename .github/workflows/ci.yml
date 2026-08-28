@@ -12,7 +12,7 @@ on:
     branches: [main, develop]
 
 jobs:
-  # ── Privacy guards ───────────────────────────────────────────────────────────
+  # ── Security and privacy guards ─────────────────────────────────────────────
   # Enforces the "no session recording on document surfaces" principle (#1410):
   # fails the build if a keystroke-capture / heatmap SDK (Clarity, Hotjar,
   # FullStory, Inspectlet, LogRocket, Qualaroo, Smartlook, Mouseflow) is
@@ -24,6 +24,8 @@ jobs:
       - uses: actions/checkout@v7
       - name: Assert no session-recording SDKs in shipped frontend code
         run: bash scripts/ci/no-session-recording.sh
+      - name: Assert documentation contains no plaintext account credentials
+        run: bash scripts/ci/no-plaintext-credentials.sh
 
   # ── Backend ────────────────────────────────────────────────────────────────
   backend-lint:
