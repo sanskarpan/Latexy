@@ -122,7 +122,7 @@ async def _async_send_weekly_digest(user_id: str) -> None:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from ..core.config import settings
-    from ..database.models import Compilation, Resume, User
+    from ..database.models import Compilation, Optimization, Resume, User
     from ..services.email_service import email_service, render_weekly_digest_email
     from ..utils.db_url import normalize_database_url
 
@@ -158,16 +158,27 @@ async def _async_send_weekly_digest(user_id: str) -> None:
             )
             resume_count: int = resume_result.scalar_one() or 0
 
-            # Compilation count + avg ATS score this week
+            # Compilation count this week
             compile_result = await session.execute(
-                select(func.count(), func.avg(Compilation.ats_score)).where(
+                select(func.count()).select_from(Compilation).where(
                     Compilation.user_id == user_id,
                     Compilation.created_at >= since,
                 )
             )
-            row = compile_result.one()
-            compilation_count: int = row[0] or 0
-            avg_ats: Optional[float] = float(row[1]) if row[1] else None
+            compilation_count: int = compile_result.scalar_one() or 0
+
+            # ATS scores belong to optimization history, not compilations.
+            ats_result = await session.execute(
+                select(func.avg(Optimization.ats_score)).where(
+                    Optimization.user_id == user_id,
+                    Optimization.created_at >= since,
+                    Optimization.ats_score.is_not(None),
+                )
+            )
+            avg_ats_value = ats_result.scalar_one_or_none()
+            avg_ats: Optional[float] = (
+                float(avg_ats_value) if avg_ats_value is not None else None
+            )
 
             # Stale resumes: not updated in 90+ days, not archived
             stale_result = await session.execute(
@@ -244,6 +255,11 @@ async def _async_fan_out_weekly_digest() -> None:
 
         logger.info(f"EMAIL: fanning out weekly digest to {len(user_ids)} users")
         for uid in user_ids:
+            if os.environ.get("DEPLOY_TARGET") == "modal":
+                from ..core.modal_dispatch import spawn
+
+                spawn("run_weekly_digest_task", {"user_id": str(uid)})
+                continue
             send_weekly_digest.apply_async(args=[uid], queue="email", countdown=1)
     except Exception as exc:
         logger.error(f"EMAIL: fan-out weekly digest failed: {exc}", exc_info=True)
