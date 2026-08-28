@@ -11,6 +11,10 @@ const WORKSPACE_SOURCE = readFileSync(
   fileURLToPath(new URL('../app/workspace/[resumeId]/edit/page.tsx', import.meta.url)),
   'utf8'
 )
+const CHANGE_REVIEW_SOURCE = readFileSync(
+  fileURLToPath(new URL('../components/ChangeReviewModal.tsx', import.meta.url)),
+  'utf8'
+)
 
 const DIRECT_STREAM_MUTATIONS = [
   /\.setValue\((?:aiStream|stream)\.streamingLatex/,
@@ -29,9 +33,14 @@ describe('optimization review staging', () => {
 
   test('trial editor exposes explicit review, discard, and apply controls', () => {
     expect(TRY_SOURCE).toContain('setStagedOptimization(stream.streamingLatex)')
-    expect(TRY_SOURCE).toContain('Review diff')
+    expect(TRY_SOURCE).toContain('Review changes')
     expect(TRY_SOURCE).toContain('discardStagedOptimization')
     expect(TRY_SOURCE).toContain('applyStagedOptimization')
+    expect(TRY_SOURCE).toContain('<ChangeReviewModal')
+    expect(TRY_SOURCE).toContain('changeReasons={stream.changesMade?.map')
+    expect(TRY_SOURCE).toContain('onApply={applyStagedOptimization}')
+    expect(CHANGE_REVIEW_SOURCE).toContain('const applied = await onApply(res.latex)')
+    expect(CHANGE_REVIEW_SOURCE).toContain('if (applied === false) return')
   })
 
   test('trial cancellation no longer restores a stale pre-run snapshot', () => {
