@@ -589,7 +589,7 @@ test.describe('Workspace — Search across variants', () => {
   })
 
   test('searching for "Data Science" shows only standalone resume', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder="Search resume titles"]')
+    const searchInput = page.getByRole('textbox', { name: 'Filter resumes by title' })
     await searchInput.fill('Data Science')
 
     await expect(page.getByText('Data Science Resume')).toBeVisible()
@@ -598,7 +598,7 @@ test.describe('Workspace — Search across variants', () => {
   })
 
   test('searching for "Google" shows variant result (variant becomes orphan in grouping)', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder="Search resume titles"]')
+    const searchInput = page.getByRole('textbox', { name: 'Filter resumes by title' })
     await searchInput.fill('Google')
 
     // The Google variant matches the search
