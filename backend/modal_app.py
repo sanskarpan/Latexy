@@ -367,6 +367,18 @@ def run_email_task(payload: dict) -> None:
     send_job_completion_email.apply(kwargs=payload, throw=False)
 
 
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=180,
+    scaledown_window=60,
+)
+def run_weekly_digest_task(payload: dict) -> None:
+    """Send one user's weekly digest from the Modal scheduler fan-out."""
+    from app.workers.email_worker import send_weekly_digest
+    send_weekly_digest.apply(kwargs=payload, throw=False)
+
+
 # ---------------------------------------------------------------------------
 # Scheduled functions
 # ---------------------------------------------------------------------------
