@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import List, Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -183,6 +184,10 @@ class PublicationsService:
             "\\end{enumerate}"
         )
 
+    def format_entry(self, pub: Publication) -> str:
+        """Return one escaped publication entry without list markup."""
+        return self._format_entry(pub)
+
     @staticmethod
     def _format_entry(pub: Publication) -> str:
         """Format a single publication as a LaTeX \\item string.
@@ -209,10 +214,9 @@ class PublicationsService:
         # in \detokenize so special characters cannot terminate the argument.
         doi_str = ""
         if pub.doi:
-            doi_str = (
-                f" \\href{{https://doi.org/{pub.doi}}}"
-                f"{{\\detokenize{{{pub.doi}}}}}"
-            )
+            encoded_doi = quote(pub.doi, safe="/:._-()")
+            href_target = f"https://doi.org/{encoded_doi}".replace("%", r"\%")
+            doi_str = f" \\href{{{href_target}}}{{{latex_escape(pub.doi)}}}"
 
         parts = [p for p in [authors_str, title_str, venue_str, year_str] if p]
         entry = " ".join(parts)
