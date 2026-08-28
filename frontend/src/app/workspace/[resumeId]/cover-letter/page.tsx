@@ -436,8 +436,10 @@ export default function CoverLetterPage() {
               {TONE_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
+                  type="button"
                   onClick={() => setTone(opt.value)}
                   disabled={isProcessing}
+                  aria-pressed={tone === opt.value}
                   title={opt.desc}
                   className={`flex-1 rounded-[var(--radius-md)] border px-3 py-2 text-xs font-medium transition ${
                     tone === opt.value
@@ -460,8 +462,10 @@ export default function CoverLetterPage() {
               {LENGTH_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
+                  type="button"
                   onClick={() => setLengthPref(opt.value)}
                   disabled={isProcessing}
+                  aria-pressed={lengthPref === opt.value}
                   title={opt.desc}
                   className={`flex-1 rounded-[var(--radius-md)] border px-3 py-2 text-xs font-medium transition ${
                     lengthPref === opt.value
@@ -570,6 +574,7 @@ export default function CoverLetterPage() {
                   >
                     <button
                       onClick={() => loadCoverLetter(cl)}
+                      aria-pressed={activeCoverLetterId === cl.id}
                       className="flex-1 text-left"
                     >
                       <p className="text-xs font-medium text-fg truncate" title={label}>
