@@ -4,6 +4,8 @@ import { useEffect, useState, useRef } from 'react'
 import { X, FileText, Code, Copy, Check, Download, Loader2 } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import type { TemplateDetailResponse } from '@/lib/api-client'
+import { shouldCloseTemplatePreview } from '@/lib/template-use'
+import type { TemplateUseResult } from '@/lib/template-use'
 
 // ------------------------------------------------------------------ //
 //  Category label map                                                 //
@@ -26,7 +28,7 @@ interface TemplatePreviewModalProps {
   templateId: string | null
   /** Invoked when the user commits to the template. May return a promise so the
    *  modal can show an in-flight state and only close on completion. */
-  onUse: (id: string) => void | Promise<void>
+  onUse: (id: string) => TemplateUseResult | Promise<TemplateUseResult>
   onClose: () => void
 }
 
@@ -78,8 +80,11 @@ export default function TemplatePreviewModal({
     if (!template || using) return
     setUsing(true)
     try {
-      await onUse(template.id)
-      onClose()
+      const result = await onUse(template.id)
+      if (shouldCloseTemplatePreview(result)) onClose()
+    } catch {
+      // The caller owns the user-facing error. Keep the preview open so the
+      // user can retry instead of losing their context.
     } finally {
       setUsing(false)
     }
