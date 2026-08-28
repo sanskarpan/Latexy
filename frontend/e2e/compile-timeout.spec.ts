@@ -366,7 +366,7 @@ test.describe('/try page — compile timeout banner', () => {
     await expect(page.getByText(/Upgrade for longer timeouts/i)).not.toBeVisible()
   })
 
-  test('banner is orange-themed', async ({ page }) => {
+  test('timeout banner is exposed as live status', async ({ page }) => {
     await mockSubmitJob(page, JOB_ID_COMPILE)
     await mockWebSocketTimeout(page, JOB_ID_COMPILE, 'free')
 
@@ -376,8 +376,7 @@ test.describe('/try page — compile timeout banner', () => {
     await page.getByRole('button', { name: /Compile/i }).first().click()
 
     await expect(page.getByText(/Compile timed out/)).toBeVisible({ timeout: 15_000 })
-    const banner = page.locator('[class*="orange"]').filter({ hasText: /Compile timed out/ })
-    await expect(banner.first()).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByRole('status', { name: 'Compile timeout' })).toBeVisible({ timeout: 5_000 })
   })
 
   test('/try page loads without JS errors', async ({ page }) => {
@@ -408,8 +407,9 @@ test.describe('/workspace/edit — compile stream timeout banner', () => {
     await page.waitForSelector('.monaco-editor', { timeout: 20_000 })
 
     await expect(page.getByText(/Compile timed out/)).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText(/free plan limit/)).toBeVisible({ timeout: 5_000 })
-    await expect(page.getByText('30s')).toBeVisible({ timeout: 5_000 })
+    const timeoutStatus = page.getByRole('status', { name: 'Compile timeout' })
+    await expect(timeoutStatus).toContainText('free plan limit', { timeout: 5_000 })
+    await expect(timeoutStatus).toContainText('30s', { timeout: 5_000 })
   })
 
   test('compile stream timeout banner shows correct pro plan duration (240s)', async ({ page }) => {
@@ -420,8 +420,9 @@ test.describe('/workspace/edit — compile stream timeout banner', () => {
     await page.waitForSelector('.monaco-editor', { timeout: 20_000 })
 
     await expect(page.getByText(/Compile timed out/)).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText(/pro plan limit/)).toBeVisible({ timeout: 5_000 })
-    await expect(page.getByText('240s')).toBeVisible({ timeout: 5_000 })
+    const timeoutStatus = page.getByRole('status', { name: 'Compile timeout' })
+    await expect(timeoutStatus).toContainText('pro plan limit', { timeout: 5_000 })
+    await expect(timeoutStatus).toContainText('240s', { timeout: 5_000 })
   })
 
   test('compile timeout banner has "Upgrade for longer timeouts →" link to /billing', async ({ page }) => {
