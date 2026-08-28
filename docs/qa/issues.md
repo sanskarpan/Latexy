@@ -1,6 +1,9 @@
-# Latexy — QA Audit Issue Register
+# Latexy — QA Audit Issue Register (historical snapshot)
 
-> Source of truth for the production-readiness QA audit (Aug 2026).
+> This file preserves the findings from the original August 2026 audit; it is not the live
+> backlog. GitHub epic [#1621](https://github.com/sanskarpan/Latexy/issues/1621) and its linked
+> issues are the current source of truth. Statuses below were reconciled on 2026-08-28.
+>
 > Environments: **prod** = latexy.xyz (Vercel) + Modal backend; **local** = dev.sh stack (backend :8030 / frontend :5180).
 > Production test-account credentials must never be stored in the repository. Obtain
 > short-lived QA access through the project owner or the approved secret manager, and
@@ -18,9 +21,11 @@
 | P0 | 1 | 0 | 1 |
 | P1 | 0 | 0 | 0 |
 | P2 | 0 | 2 | 2 |
-| P3 | 1 | 1 | 2 |
+| P3 | 0 | 2 | 2 |
 
-_P0 (ISSUE-001) is a user-side billing fix. P2×2 + P3×1 code bugs are **fixed + regression-tested locally** (pending commit/deploy). OBS-001 is a low-priority note._
+_ISSUE-001 recorded an external provider-credit failure and needs revalidation against the current
+production secret/billing state. ISSUE-002–004 shipped in PR #1117. OBS-001 was resolved by
+#1550/#1560 and the production sweep merged through PR #1572._
 
 ## Clean bill (verified NO issues)
 - **Security:** no IDOR (cross-user resume/job access blocked), no auth bypass on protected endpoints, no admin privilege escalation, no weak `X-Admin-Secret` write, no plaintext BYOK key leak, public `references`/`config` endpoints leak nothing sensitive.
@@ -37,13 +42,13 @@ _P0 (ISSUE-001) is a user-side billing fix. P2×2 + P3×1 code bugs are **fixed 
 - **Area:** LLM optimization / AI (optimize, tailor, cover letter, deep analysis — any shared-key LLM feature)
 - **Route:** `/try` (AI Optimize), plus any AI-backed endpoint; job_type `combined` / `llm`
 - **Type:** Infrastructure / Configuration (external integration)
-- **Status:** Open (fix is user-side: billing/keys)
+- **Status:** Needs revalidation (external provider billing/secret state)
 
 ### Description
 Every LLM-backed feature that uses the platform's shared OpenAI key fails on production. Compile (no LLM) and ATS quick-score (local scoring) are unaffected.
 
 ### Steps to Reproduce
-1. Log in on prod as `pro-test@latexy.xyz`.
+1. Log in on prod with an approved, short-lived QA account.
 2. `POST /jobs/submit` with `job_type=combined` (or use /try → AI Optimize).
 3. Poll `/jobs/{id}/state` → `status=failed, stage=llm_optimization`.
 
@@ -69,7 +74,7 @@ None (root issue). Blocks verification of all AI journeys on prod.
 One of: (a) add credits / rotate `OPENAI_API_KEY` to a funded key + redeploy; (b) switch default provider to a funded `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` / `GEMINI_API_KEY` (all supported via `llm_provider_service.py`); (c) rely on BYOK per-user keys. Requires user's billing access.
 
 ### Verification
-Re-run `job_type=combined` as `pro-test` on prod → job completes with optimized_latex + ATS score.
+Re-run `job_type=combined` with the approved QA account → job completes with optimized_latex + ATS score.
 
 ### Regression Risk
 Low (config change). If switching provider, verify model/prompt compatibility.
@@ -78,7 +83,7 @@ Low (config change). If switching provider, verify model/prompt compatibility.
 ## ISSUE-002 — `PUT /resumes/{id}` with non-UUID id returns 500
 
 - **Severity:** Medium — **Priority:** P2 — **Area:** Resume CRUD — **Route:** `PUT /resumes/{resume_id}`
-- **Type:** Validation / Runtime — **Status:** Resolved (fixed + regression-tested; pending deploy)
+- **Type:** Validation / Runtime — **Status:** Deployed (PR #1117, merged 2026-08-09)
 - **Dependencies:** shared root cause with ISSUE-003.
 - **Fix:** `UUID()` guard added to `update_resume` (resume_routes.py). **Verified:** Yes (404). **Regression Tested:** Yes (test_qa_audit_fixes.py).
 
@@ -102,7 +107,7 @@ Add the same UUID guard to `update_resume` (and `delete_resume`, `update_resume_
 ## ISSUE-003 — `DELETE /resumes/{id}` with non-UUID id returns 500
 
 - **Severity:** Medium — **Priority:** P2 — **Area:** Resume CRUD — **Route:** `DELETE /resumes/{resume_id}`
-- **Type:** Validation / Runtime — **Status:** Resolved (fixed + regression-tested; pending deploy)
+- **Type:** Validation / Runtime — **Status:** Deployed (PR #1117, merged 2026-08-09)
 - **Dependencies:** same root cause as ISSUE-002.
 - **Fix:** `UUID()` guard added to `delete_resume` + `update_resume_settings`. **Verified:** Yes (404). **Regression Tested:** Yes.
 
@@ -123,7 +128,7 @@ Same UUID guard; test asserts 404 for non-UUID and 204 for owned delete.
 ## ISSUE-004 — `POST /ats/recommendations` accepts out-of-range `ats_score`
 
 - **Severity:** Low — **Priority:** P3 — **Area:** ATS — **Route:** `POST /ats/recommendations`
-- **Type:** Input validation gap — **Status:** Resolved (fixed + regression-tested; pending deploy)
+- **Type:** Input validation gap — **Status:** Deployed (PR #1117, merged 2026-08-09)
 - **Fix:** `Field(ge=0, le=100)` on `ats_score`. **Verified:** Yes (422 out-of-range / 200 valid). **Regression Tested:** Yes.
 
 ### Steps to Reproduce
@@ -141,7 +146,10 @@ Add `Field(ge=0, le=100)` to the ats_score field (or clamp). Test asserts 422 fo
 ---
 <!-- New issues appended below by the audit. -->
 
-## OBS-001 — 429 on `/api/auth/get-session` degrades to silent logged-out/blank
+## OBS-001 — 429 on `/api/auth/get-session` degraded to silent logged-out/blank
 
-- **Severity:** Low — **Priority:** P3 (resilience observation) — **Area:** Auth/resilience — **Status:** Noted (not scheduled)
-- Under rate-limiting, a 429 on the Better Auth session probe makes the app treat the user as logged out → protected pages render login/blank instead of retry-with-backoff. Only reproduces under heavy request rates (self-inflicted during sweeps); real single-user impact is negligible. Consider backoff/retry on session-probe 429.
+- **Severity:** Low — **Priority:** P3 (resilience observation) — **Area:** Auth/resilience — **Status:** Deployed
+- Under rate-limiting, a 429 on the Better Auth session probe made the app treat the user as logged
+  out. Issue #1550 introduced the shared `useRequireAuth` behavior and rate-limit bucket hardening;
+  issue #1560 preserved the last confirmed session in `GlobalHeader` during transient failures.
+  The focused fixes landed in PRs #1561 and #1571 and were integrated to production by PR #1572.
