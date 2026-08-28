@@ -1769,6 +1769,7 @@ class PublicationsRequest(BaseModel):
     year_from: Optional[int] = Field(None, ge=1900, le=2100)
     year_to: Optional[int] = Field(None, ge=1900, le=2100)
     pub_types: Optional[List[str]] = None
+    citation_style: Literal["cv", "apa", "ieee"] = "cv"
 
     @field_validator("identifier")
     @classmethod
@@ -1798,10 +1799,10 @@ class PublicationsResponse(BaseModel):
     cached: bool
 
 
-def _pubs_cache_key(identifier: str, year_from: Optional[int], year_to: Optional[int], pub_types: Optional[List[str]]) -> str:
-    payload = f"{identifier}|{year_from}|{year_to}|{sorted(pub_types or [])}"
+def _pubs_cache_key(identifier: str, year_from: Optional[int], year_to: Optional[int], pub_types: Optional[List[str]], citation_style: str) -> str:
+    payload = f"{identifier}|{year_from}|{year_to}|{sorted(pub_types or [])}|{citation_style}"
     digest = hashlib.sha256(payload.encode()).hexdigest()[:16]
-    return f"ai:publications:v2:{digest}"
+    return f"ai:publications:v3:{digest}"
 
 
 @router.post("/generate-publications", response_model=PublicationsResponse)
@@ -1811,7 +1812,11 @@ async def generate_publications(
 ) -> PublicationsResponse:
     """Fetch publications from ORCID and return as LaTeX bibliography block (Feature 58)."""
     cache_key = _pubs_cache_key(
-        request.identifier, request.year_from, request.year_to, request.pub_types
+        request.identifier,
+        request.year_from,
+        request.year_to,
+        request.pub_types,
+        request.citation_style,
     )
 
     # Try cache first (best-effort — fail open if Redis is not initialized)
@@ -1842,7 +1847,9 @@ async def generate_publications(
     if request.pub_types:
         pubs = [p for p in pubs if p.pub_type in request.pub_types]
 
-    latex_section = publications_service.format_as_latex(pubs)
+    latex_section = publications_service.format_as_latex(
+        pubs, citation_style=request.citation_style
+    )
 
     pubs_out = [
         PublicationOut(
@@ -1853,7 +1860,7 @@ async def generate_publications(
             doi=p.doi,
             url=p.url,
             pub_type=p.pub_type,
-            latex_entry=publications_service.format_entry(p),
+            latex_entry=publications_service.format_entry(p, request.citation_style),
         )
         for p in pubs
     ]
