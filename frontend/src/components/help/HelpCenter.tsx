@@ -83,7 +83,7 @@ const faqData: FAQItem[] = [
   {
     id: 'what-is-latexy',
     question: 'What is Latexy and how does it work?',
-    answer: 'Latexy is an AI-powered resume optimization platform that helps you create ATS-friendly resumes using LaTeX. It combines professional typesetting with artificial intelligence to optimize your resume content for specific job descriptions, ensuring better compatibility with Applicant Tracking Systems (ATS).',
+    answer: 'Latexy is an AI-powered LaTeX resume platform with professional typesetting, job-targeted rewriting, text-extraction diagnostics, and heuristic document checks. Its scores do not emulate an employer ATS or predict a hiring outcome.',
     category: 'getting-started',
     tags: ['basics', 'overview', 'ats']
   },
@@ -465,4 +465,3 @@ export function useHelpCenter() {
     closeHelp
   }
 }
-
