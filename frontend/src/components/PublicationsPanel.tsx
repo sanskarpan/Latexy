@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { BookOpen, Loader2, Plus } from 'lucide-react'
 import { apiClient, type PublicationOut } from '@/lib/api-client'
+import { buildPublicationSection } from '@/lib/publication-format'
 
 const PUB_TYPES = [
   { key: 'journal', label: 'Journal' },
@@ -82,23 +83,8 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
     const section =
       selected.length === publications.length && latexSection
         ? latexSection
-        : buildLatexFromSelected(selected)
+        : buildPublicationSection(selected)
     insertAtCursor('\n' + section + '\n')
-  }
-
-  const buildLatexFromSelected = (pubs: PublicationOut[]): string => {
-    const items = pubs.map(p => {
-      const authorStr = p.authors.length > 0 ? p.authors.join(', ') + '.' : ''
-      const titleStr = `\`\`${p.title}.''`
-      const venueStr = p.venue ? `\\textit{${p.venue}}` : ''
-      const yearStr = p.year ? String(p.year) : ''
-      const doiStr = p.doi ? ` \\href{https://doi.org/${p.doi}}{${p.doi}}` : ''
-      const parts = [authorStr, titleStr, venueStr, yearStr].filter(Boolean)
-      let entry = parts.join(' ')
-      if (parts.length > 0) entry = entry.replace(/\.$/, '') + '.'
-      return `  \\item ${entry}${doiStr}`
-    })
-    return `\\section{Publications}\n\\begin{enumerate}\n${items.join('\n')}\n\\end{enumerate}`
   }
 
   const pubTypeLabel = (pub_type: string) =>
