@@ -26,6 +26,8 @@ jobs:
         run: bash scripts/ci/no-session-recording.sh
       - name: Assert documentation contains no plaintext account credentials
         run: bash scripts/ci/no-plaintext-credentials.sh
+      - name: Assert public copy avoids unsubstantiated ATS and catalog claims
+        run: bash scripts/ci/no-unsubstantiated-marketing-claims.sh
 
   # ── Backend ────────────────────────────────────────────────────────────────
   backend-lint:
