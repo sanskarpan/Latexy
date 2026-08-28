@@ -124,8 +124,6 @@ These were built, are in the codebase today, and were **missing from this catalo
 | `feature_flags` | 32 rows, **0 disabled** in production | Machinery works; nothing uses it to differentiate. |
 | `activeModel` / `activeProvider` | declared in `packages/tui/src/lib/config.ts`, never read or written | `/model` lists providers but persists no choice. Dead config. |
 | Template `is_premium` | **no such column** in `resume_templates` | Premium templates are not modelled at all. |
-| Template catalog cleanup | Production now returns **51 active templates**; `Clean Simple` remains present and #1147 is open | Bulk fixture cleanup shipped; finish the remaining template validation tracked by #1147. |
-| `Clean Simple` template | fails `pdflatex exit 1` | Can never render a preview. |
 
 ---
 
@@ -161,8 +159,8 @@ Redis was migrated from the Asia endpoint to Upstash AWS `us-east-1`, colocated 
 ### B3. Fix the pricing inversion · **S** · status ✅ · [#1283](https://github.com/sanskarpan/Latexy/issues/1283)
 Basic now enforces and advertises **400 compiles/month**, above Free's worst-case monthly equivalent. The fix and regression coverage shipped through PR #1549; the issue is closed.
 
-### B4. Template gallery cleanup · **S** · status ➖ · [#1147](https://github.com/sanskarpan/Latexy/issues/1147)
-Production returns **51 active templates** as of 2026-08-28, so the original 147-row fixture exposure is no longer current. `Clean Simple` remains in the catalog and #1147 remains open for final validation/reconciliation.
+### B4. Template gallery cleanup · **S** · status ✅ · [#1147](https://github.com/sanskarpan/Latexy/issues/1147)
+The 84 test fixtures are no longer active, and `Clean Simple` compiles successfully with working PNG/PDF assets after the direct `cm-super` dependency fix. The source-owned catalog now contains 56 templates (51 résumé/academic templates plus five Beamer presentations); #1687 added automatic production synchronization and asset backfill so the source inventory cannot silently drift from the live gallery again.
 
 ### B5. Deploy the storage fix · **S** · status ✅ · [#1284](https://github.com/sanskarpan/Latexy/issues/1284)
 The R2 wiring from PR #1146 is deployed. Production verification on 2026-08-24 confirmed thumbnail and preview-PDF redirects resolve to real R2 assets with HTTP 200; the issue is closed.
@@ -910,7 +908,7 @@ Most of Part D is a set of decisions **not** to build, and those correctly have 
 | **D4** | Verify no session recording on editor surfaces, and add a guard | [1410](https://github.com/sanskarpan/Latexy/issues/1410) |
 | **D5** | Audit our own marketing copy for unsubstantiated and ATS-emulation claims | [1411](https://github.com/sanskarpan/Latexy/issues/1411) |
 
-**D5 originally found a real violation:** the gallery advertised 147 templates while many rows were fixtures. Production now returns **51 active templates**; #1147 remains open for the residual `Clean Simple` validation and catalog reconciliation.
+**D5 originally found a real violation:** the gallery advertised 147 templates while many rows were fixtures. The fixtures have been removed, `Clean Simple` is healthy, and #1687 makes the 56-file source catalog and its generated assets part of automatic production delivery.
 
 The remaining **24 Part D rows stay as refusals with stated reasons** — that is their purpose. Each reason is recorded so the decision can be revisited if the reasoning changes, which is not the same as being a backlog item.
 
@@ -962,7 +960,7 @@ Honest gaps. Each would change a recommendation above.
 
 | legacy | feature | legacy pri | verdict | where it lives now |
 |---|---|---|---|---|
-| 1.1 | Template Gallery (50+ Templates) | P0 | ✅ shipped, but see **B4** | **51 active** production templates as of 2026-08-28; `Clean Simple` still requires the validation tracked by #1147 |
+| 1.1 | Template Gallery (50+ Templates) | P0 | ✅ shipped | **56 source-owned templates**: 51 résumé/academic templates and 5 Beamer presentations; production synchronization is enforced by #1687 |
 | 1.2 | Document Version History + Diff | P0 | ✅ shipped | already covered |
 | 1.3 | Compile-on-Save / Auto-Compile | P0 | ⬜ backlog | B19.2 → **B19.2** [#1352](https://github.com/sanskarpan/Latexy/issues/1352) |
 | 1.4 | Multiple LaTeX Compilers (XeLaTeX, LuaLaTeX) | P1 | ✅ shipped | already covered |
