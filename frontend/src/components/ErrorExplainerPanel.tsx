@@ -33,6 +33,7 @@ export default function ErrorExplainerPanel({
 
   return (
     <div
+      aria-hidden={!isOpen}
       className="overflow-hidden border-t border-line transition-all duration-200"
       style={{ height: isOpen ? '13rem' : 0 }}
     >
@@ -60,6 +61,8 @@ export default function ErrorExplainerPanel({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close error explanation"
+            disabled={!isOpen}
             className="rounded-[var(--radius-md)] p-1 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
             <X size={14} />
@@ -98,6 +101,7 @@ export default function ErrorExplainerPanel({
                   </pre>
                   <button
                     onClick={onApplyFix}
+                    disabled={!isOpen}
                     className="rounded-[var(--radius-md)] bg-ok/20 py-1.5 text-[11px] font-semibold text-ok ring-1 ring-ok/30 transition hover:bg-ok/30"
                   >
                     Apply Fix
