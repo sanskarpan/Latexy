@@ -2298,7 +2298,8 @@ export default function ResumeEditPage() {
 
           <button
             onClick={() => setShareModalOpen(true)}
-            title="Share resume"
+            title={shareToken ? 'Manage share link' : 'Share resume'}
+            aria-label={shareToken ? 'Manage share link' : 'Share resume'}
             className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium transition ${
               shareToken
                 ? 'text-accent-strong hover:bg-accent/10 hover:text-accent-strong'
