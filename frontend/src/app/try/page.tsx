@@ -992,9 +992,9 @@ export default function TryPage() {
         </div>
       )}
       {stream.timeoutError && (
-        <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-accent/20 bg-accent-soft px-4 py-2">
+        <div role="status" aria-live="polite" aria-label="Compile timeout" className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-accent/20 bg-accent-soft px-4 py-2">
           <span className="font-ui text-[12px] text-accent-strong"><Clock size={11} className="mr-1 -mt-0.5 inline" /> Compile timed out — {stream.timeoutError.plan} plan limit ({stream.timeoutError.plan === 'free' ? '30s' : stream.timeoutError.plan === 'basic' ? '120s' : '240s'})</span>
-          {flags.upgrade_ctas && <a href="/billing" className="shrink-0 font-ui text-[12px] font-medium text-accent-strong underline hover:brightness-110">Upgrade →</a>}
+          {flags.upgrade_ctas && <a href="/billing" className="shrink-0 font-ui text-[12px] font-medium text-accent-strong underline hover:brightness-110">Upgrade for longer timeouts →</a>}
         </div>
       )}
 
