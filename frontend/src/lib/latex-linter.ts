@@ -121,14 +121,14 @@ const PER_LINE_RULES: PerLineRule[] = [
   {
     id: 'multicol-ats-risk',
     pattern: /\\usepackage(?:\[[^\]]*\])?\{multicols?\}|\\begin\{multicols\*?\}/g,
-    message: 'Multi-column layouts are read left-to-right across both columns by most ATS parsers, mixing section content into gibberish. Use a single-column layout for ATS-safe output.',
+    message: 'Multi-column layouts can interleave section content during PDF text extraction. Use a single-column layout when reading order matters, then inspect the extracted-text view.',
     severity: 'warning',
     fixable: false,
   },
   {
     id: 'fontawesome-ats-risk',
     pattern: /\\usepackage(?:\[[^\]]*\])?\{fontawesome/g,
-    message: 'FontAwesome icon characters render as unrecognised symbols in ATS plain-text extraction. Replace icon bullets with standard text or • characters.',
+    message: 'FontAwesome icon characters can render as unrecognised symbols during PDF text extraction. Replace icon bullets with standard text or • characters.',
     severity: 'info',
     fixable: false,
   },
