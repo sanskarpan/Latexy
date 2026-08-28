@@ -3,8 +3,8 @@ import { MotionItem, MotionReveal, MotionStagger } from '@/components/marketing/
 
 const faqs = [
   {
-    q: 'How does Latexy improve ATS score?',
-    a: 'Latexy analyzes job description context, maps resume content against target signals, and suggests optimized rewrite paths.',
+    q: 'What does the Latexy score measure?',
+    a: 'It reports heuristic checks for structure, text extraction, and job-description keyword coverage. It does not emulate an employer ATS or predict a hiring outcome.',
   },
   {
     q: 'Can I use my own model provider?',
