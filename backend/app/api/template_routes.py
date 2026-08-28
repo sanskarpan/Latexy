@@ -44,7 +44,7 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 VALID_CATEGORIES = frozenset({
     "software_engineering", "finance", "academic", "creative",
     "minimal", "ats_safe", "two_column", "executive",
-    "marketing", "medical", "legal", "graduate",
+    "marketing", "medical", "legal", "graduate", "presentation",
 })
 
 CATEGORY_LABELS: dict[str, str] = {
@@ -60,6 +60,7 @@ CATEGORY_LABELS: dict[str, str] = {
     "medical":              "Medical / Healthcare",
     "legal":                "Legal",
     "graduate":             "Graduate / Entry-Level",
+    "presentation":         "Presentations",
 }
 
 # ------------------------------------------------------------------ #
@@ -82,6 +83,7 @@ class TemplateResponse(BaseModel):
     thumbnail_url: Optional[str]
     pdf_url: Optional[str]
     sort_order: int
+    document_type: str
 
 
 class TemplateDetailResponse(TemplateResponse):
@@ -148,6 +150,7 @@ def _to_response(t: ResumeTemplate, request: Request) -> TemplateResponse:
         thumbnail_url=f"{base}/templates/{t.id}/thumbnail",
         pdf_url=f"{base}/templates/{t.id}/pdf",
         sort_order=t.sort_order,
+        document_type=t.document_type,
     )
 
 
@@ -163,6 +166,7 @@ def _to_detail(t: ResumeTemplate, request: Request) -> TemplateDetailResponse:
         thumbnail_url=f"{base}/templates/{t.id}/thumbnail",
         pdf_url=f"{base}/templates/{t.id}/pdf",
         sort_order=t.sort_order,
+        document_type=t.document_type,
         latex_content=t.latex_content,
     )
 
@@ -356,6 +360,7 @@ async def use_template(
         latex_content=t.latex_content,
         is_template=False,
         tags=[t.category],
+        document_type=t.document_type,
     )
     db.add(resume)
     await db.commit()
@@ -372,15 +377,17 @@ async def create_template(
     _: None = Depends(require_template_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    category = _require_valid_category(body.category)
     template = ResumeTemplate(
         name=body.name.strip(),
         description=body.description.strip() if body.description else None,
-        category=_require_valid_category(body.category),
+        category=category,
         tags=[tag.strip() for tag in body.tags if tag.strip()],
         thumbnail_url=body.thumbnail_url.strip() if body.thumbnail_url else None,
         latex_content=body.latex_content,
         is_active=body.is_active,
         sort_order=body.sort_order,
+        document_type="presentation" if category == "presentation" else "resume",
     )
     db.add(template)
     await db.commit()
@@ -409,6 +416,7 @@ async def update_template(
     template.latex_content = body.latex_content
     template.is_active = body.is_active
     template.sort_order = body.sort_order
+    template.document_type = "presentation" if template.category == "presentation" else "resume"
     await db.commit()
     await db.refresh(template)
     return _to_detail(template, request)
