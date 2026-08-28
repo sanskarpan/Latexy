@@ -3,12 +3,12 @@
 
 
 
-AI-powered LaTeX resume builder. Paste your `.tex` source, describe the role, and get an ATS-optimized resume compiled to PDF — in seconds.
+AI-powered LaTeX resume builder. Paste your `.tex` source, describe the role, and create a job-targeted resume compiled to PDF.
 
-- **50+ resume templates** — professional LaTeX templates across 12 industries, with PDF thumbnails and live preview
+- **Resume templates** — a curated LaTeX gallery with PDF thumbnails and live preview
 - **ATS scoring** — rule-based analysis with section detection, keyword coverage, and formatting checks
-- **ATS pre-flight** — extracted plain text from the compiled PDF shows exactly what an ATS parser reads; detects ligature garbling and multi-column layout issues
-- **LaTeX linter** — client-side rule engine with 15+ checks (ATS risks, common errors, glyphtounicode) and one-click auto-fix
+- **PDF text pre-flight** — inspect Latexy's extracted text and detect ligature garbling or multi-column reading-order issues
+- **LaTeX linter** — client-side checks for extraction risks, common errors, and `glyphtounicode`, with one-click fixes
 - **LLM optimization** — GPT-4o / GPT-4o-mini rewrites your resume content for the target JD
 - **Semantic matching** — pgvector cosine similarity ranks your resumes against any job description
 - **Deep analysis** — section-by-section LLM breakdown with strength/improvement per section
@@ -16,6 +16,8 @@ AI-powered LaTeX resume builder. Paste your `.tex` source, describe the role, an
 - **Multi-format import** — upload PDF, Word, Markdown, or LaTeX files and convert to editable `.tex`
 - **BYOK** — bring your own OpenAI / Anthropic / Gemini / OpenRouter key
 - **Subscription tiers** — Free · Basic · Pro · BYOK
+
+Latexy's scores are heuristic document checks. They do not emulate an employer ATS or predict a hiring outcome.
 
 ---
 
@@ -91,7 +93,7 @@ Storage
 |-------|-------------|
 | `/` | Landing page |
 | `/login`, `/signup` | Authentication |
-| `/templates` | Public template library — browse, preview, and use 50+ templates |
+| `/templates` | Public template library — browse, preview, and use the current catalog |
 | `/dashboard` | Analytics KPI cards, activity chart, recent runs |
 | `/workspace` | Resume list (grid/table), search, create/edit/optimize |
 | `/workspace/new` | Create resume from template, blank, or file import |
