@@ -405,3 +405,22 @@ class TestSendJobCompletionEmailTask:
         """send_weekly_digest_to_all is registered as a Celery task."""
         from app.workers.email_worker import send_weekly_digest_to_all
         assert hasattr(send_weekly_digest_to_all, "apply_async")
+
+    def test_weekly_digest_averages_optimization_scores(self):
+        """Weekly digest must query the model that actually owns ats_score."""
+        import inspect
+
+        from app.workers.email_worker import _async_send_weekly_digest
+
+        source = inspect.getsource(_async_send_weekly_digest)
+        assert "func.avg(Optimization.ats_score)" in source
+        assert "Compilation.ats_score" not in source
+
+    def test_modal_fan_out_targets_weekly_digest_function(self):
+        """Modal production must not enqueue digest work to an idle Celery queue."""
+        import inspect
+
+        from app.workers.email_worker import _async_fan_out_weekly_digest
+
+        source = inspect.getsource(_async_fan_out_weekly_digest)
+        assert 'spawn("run_weekly_digest_task"' in source
