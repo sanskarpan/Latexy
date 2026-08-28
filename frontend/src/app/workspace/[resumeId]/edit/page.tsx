@@ -3356,7 +3356,7 @@ export default function ResumeEditPage() {
 
       {/* ── TIMEOUT BANNER (compile stream) ── */}
       {compileStream.errorCode === 'compile_timeout' && compileStream.timeoutError && (
-        <div className="flex shrink-0 items-center justify-between border-t border-accent/20 bg-accent/10 px-3 py-1.5">
+        <div role="status" aria-live="polite" aria-label="Compile timeout" className="flex shrink-0 items-center justify-between border-t border-accent/20 bg-accent/10 px-3 py-1.5">
           <span className="text-[11px] text-accent-strong">
             ⏱ Compile timed out — {compileStream.timeoutError.plan} plan limit (
             {compileStream.timeoutError.plan === 'free' ? '30s'
