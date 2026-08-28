@@ -145,6 +145,10 @@ export default function NewResumePage() {
 
   // ---- handlers ----
   const handleUseTemplate = useCallback(async (id: string) => {
+    if (isCreating) {
+      if (creatingTemplateId !== id) toast('Another template is already being created')
+      return false
+    }
     const trimmedTitle = title.trim()
     const template = templates.find(t => t.id === id)
     const finalTitle = trimmedTitle || template?.name || 'Untitled Resume'
@@ -155,25 +159,24 @@ export default function NewResumePage() {
       const result = await apiClient.useTemplate(id, finalTitle)
       toast.success('Resume created from template')
       router.push(`/workspace/${result.resume_id}/edit`)
+      return true
     } catch {
       toast.error('Failed to create resume')
       setIsCreating(false)
       setCreatingTemplateId(null)
+      return false
     }
-  }, [title, templates, router])
+  }, [title, templates, router, isCreating, creatingTemplateId])
 
   const handleSelectTemplate = useCallback((id: string) => {
-    handleUseTemplate(id)
+    void handleUseTemplate(id)
   }, [handleUseTemplate])
 
   const handlePreviewTemplate = useCallback((id: string) => {
     setPreviewTemplateId(id)
   }, [])
 
-  const handleUseFromPreview = useCallback((id: string) => {
-    setPreviewTemplateId(null)
-    handleUseTemplate(id)
-  }, [handleUseTemplate])
+  const handleUseFromPreview = useCallback((id: string) => handleUseTemplate(id), [handleUseTemplate])
 
   const handleCreate = async () => {
     const trimmedTitle = title.trim()
@@ -506,7 +509,7 @@ export default function NewResumePage() {
                       template={template}
                       onSelect={handleSelectTemplate}
                       onPreview={handlePreviewTemplate}
-                      disabled={isCreating}
+                      disabled={creatingTemplateId === template.id}
                     />
                     {creatingTemplateId === template.id && (
                       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] bg-[color:var(--overlay)] backdrop-blur-[1px]">
