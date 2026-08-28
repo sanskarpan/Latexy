@@ -18,7 +18,7 @@ import { TEMPLATE_CATEGORY_ORDER } from '@/lib/template-categories'
 
 export default function TemplatesPage() {
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session, isPending: sessionPending } = useSession()
 
   const [templates, setTemplates] = useState<TemplateResponse[]>([])
   const [categories, setCategories] = useState<TemplateCategoryCount[]>([])
@@ -94,24 +94,30 @@ export default function TemplatesPage() {
   }, [])
 
   const handleUseTemplate = useCallback(async (id: string) => {
-    if (usingTemplateId) return
+    if (sessionPending) return false
+    if (usingTemplateId) {
+      if (usingTemplateId !== id) toast('Another template is already being created')
+      return false
+    }
     if (!session) {
       toast('Sign in to use templates')
       const dest = `/templates?use=${id}`
       router.push(`/login?redirect=${encodeURIComponent(dest)}`)
-      return
+      return false
     }
     setUsingTemplateId(id)
     try {
       const result = await apiClient.useTemplate(id)
       toast.success('Document created from template')
       router.push(`/workspace/${result.resume_id}/edit`)
+      return true
     } catch {
       toast.error('Failed to create resume from template')
+      return false
     } finally {
       setUsingTemplateId(null)
     }
-  }, [session, router, usingTemplateId])
+  }, [session, sessionPending, router, usingTemplateId])
 
   // The modal awaits this and shows its own "Creating…" state, then closes
   // itself via onClose (success navigates away, unmounting it).
@@ -120,13 +126,13 @@ export default function TemplatesPage() {
   // Resume the "Use Template" flow after returning from login (?use=<id>).
   const [autoUseHandled, setAutoUseHandled] = useState(false)
   useEffect(() => {
-    if (autoUseHandled || loading) return
+    if (autoUseHandled || loading || sessionPending) return
     const useId = new URLSearchParams(window.location.search).get('use')
     if (!useId) return
     setAutoUseHandled(true)
     router.replace('/templates')
     if (session) handleUseTemplate(useId)
-  }, [autoUseHandled, loading, session, router, handleUseTemplate])
+  }, [autoUseHandled, loading, session, sessionPending, router, handleUseTemplate])
 
   const tabClass = (isActive: boolean) =>
     `inline-flex min-h-[36px] items-center rounded-[var(--radius-pill)] border px-4 py-1.5 font-ui text-xs uppercase tracking-[0.08em] transition duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg motion-reduce:transition-none ${
