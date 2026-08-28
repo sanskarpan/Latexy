@@ -3945,6 +3945,7 @@ export interface GeneratePublicationsRequest {
   year_from?: number | null
   year_to?: number | null
   pub_types?: string[]     // ["journal", "conference", "preprint", "book_chapter"]
+  citation_style?: 'cv' | 'apa' | 'ieee'
 }
 
 export interface PublicationOut {
