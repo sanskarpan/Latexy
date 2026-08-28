@@ -471,9 +471,9 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
             <div>
               <p className="font-medium mb-1">Score Interpretation:</p>
               <p>
-                {score >= 80 && "Excellent! Your resume is highly ATS-compatible and should pass most automated screening systems."}
-                {score >= 60 && score < 80 && "Good compatibility with room for improvement. Consider addressing the recommendations to boost your score."}
-                {score < 60 && "Your resume may face challenges with ATS systems. Focus on the recommendations to improve compatibility."}
+                {score >= 80 && "Strong result on Latexy's document checks. Review the details below; this score does not predict an employer's screening decision."}
+                {score >= 60 && score < 80 && "Several checks pass, with specific improvements available below. This score is guidance, not an ATS outcome prediction."}
+                {score < 60 && "Several document checks need attention. Work through the recommendations; no score can predict an employer's ATS decision."}
               </p>
             </div>
           </div>
