@@ -13,7 +13,7 @@
 | Global / Cross-cutting | 21 | 2 |
 | Other | 3 | 2 |
 
-## ✅ Status (verified 2026-08-24 against `main`)
+## ✅ Status (verified 2026-08-28 against `main`)
 
 Every finding — **High (P0)**, **Medium (P1)**, and **Low (P2)** — was re-checked against the current code. Each item below carries a `**Status:**` line.
 
@@ -25,6 +25,12 @@ Every finding — **High (P0)**, **Medium (P1)**, and **Low (P2)** — was re-ch
 | **All** | **126** | **126** | **0** | **0** |
 
 Every audit finding is resolved. The seven P0/P1 items that were Partial/Open at the 2026-08-24 verification (AI-optimize diff/revert on `/try`, `/try` streaming scroll-jerk, Tracker within-column reorder, Dashboard chart tooltips, data-sourced changelog, theme toggle on the workspace fullscreen surfaces, and footer legal links) and the six remaining P2 items (clickable Recent Activity, themed GitHub/Dropbox confirm, account-synced onboarding + theme, flash-free ModeToggle, and readability of the editor micro-copy) were completed in the follow-up passes.
+
+The 2026-08-28 revalidation also closed stale duplicate tracker items #1157, #1158,
+#1160, #1161, #1164, and #1165. Residual template-use edge cases were corrected
+under #1162 and #1166: only the active card is disabled, competing clicks receive
+feedback, authentication restoration waits for session resolution, and preview
+dialogs close only after a document is actually created.
 
 ## 🔴 Top priority — all high-severity items
 
@@ -832,4 +838,3 @@ Every audit finding is resolved. The seven P0/P1 items that were Partial/Open at
 - **Problem:** The Clear button calls clearEditor() which sets content to '' immediately. Combined with no persistence, a mis-click destroys the user's resume with only Monaco undo (which is lost on reload) as recovery. Reset (to demo template) is similarly unguarded. There is no confirmation on either destructive action.
 - **Fix:** Add a confirm step (or an inline undo toast — 'Cleared · Undo') for Clear and Reset, especially since there is no persistent backup of the user's content.
 - **Status:** ✅ Fixed
-
