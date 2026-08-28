@@ -1,12 +1,37 @@
 # PRD: External Sources → Resume ("Import your real projects")
 
-- **Status:** Draft for review (no implementation this session)
+- **Status:** Shipped baseline; follow-up product decisions remain
 - **Date:** 2026-08-02
+- **Reconciled:** 2026-08-28 against current `main`
 - **Owner:** TBD
 - **Tier:** Premium / AI-personalization (optional, opt-in)
 - **Related:** [Input-Driven Optimization PRD](2026-08-02-input-driven-optimization.md)
 
 ---
+
+## Implementation reconciliation (2026-08-28)
+
+All three compliant import paths described by this PRD are implemented in
+source and share the editable `ProjectEvidence` review UI:
+
+- GitHub: authenticated, owner-bound asynchronous import at
+  `POST /github/import-projects` and `GET /github/import-projects/{job_id}`;
+  credentials are resolved inside the worker and results expire from Redis.
+- Public URL: authenticated `POST /sources/import-url`, with SSRF, redirect,
+  response-size/content-type, quota, and distributed external-budget guards.
+- LinkedIn/user resume: authenticated multipart
+  `POST /sources/import-linkedin`; it parses only user-uploaded exports or
+  resume files and never contacts LinkedIn.
+- `ImportProjectsModal.tsx` lets users select and edit projects/bullets before
+  insertion. Anonymous `/try` keeps local `.tex` import available but sends
+  server-backed source imports through a clear login flow.
+
+The implementation deliberately differs from the original data-model sketch:
+there are no durable `external_source_connections` or `ingested_projects`
+tables. Existing encrypted user integration fields are reused, and GitHub
+candidates use owner-bound Redis envelopes with a short TTL. Accepted text is
+ordinary user-authored resume content. Treat the remaining sections as design
+rationale unless a statement is explicitly marked shipped.
 
 ## 1. Summary
 
@@ -50,14 +75,14 @@ Today the AI optimizer rewrites the *existing* resume text; it has no access to 
 | Fernet token encryption | **EXISTS** (reuse) | `encryption_service.py` |
 | Entitlement gating (`require_feature` + admin matrix) + quota (`enforce_quota`) | **EXISTS** (reuse) | `feature_registry.py`, `middleware/entitlements.py`, `PLAN_QUOTAS` in `config.py` |
 | **GitHub repo listing / README reading / project extraction** | **SHIPPED** — GraphQL discovery and defensive parsing both enforce public visibility; candidates are reviewed before insertion | `github_projects_service.py`, `github_import_worker.py`, `ImportProjectsModal.tsx` |
-| **LinkedIn** import (OAuth/scrape/parse) | **ABSENT** — frontend `workspace/new` has an instructional "save-to-PDF then upload" stub only | net-new (compliant path) |
-| **"Paste project links / describe projects" input + generic URL project ingest** | **ABSENT** | net-new (reuses scraper) |
+| **LinkedIn/user-resume file import** | **SHIPPED** — parses user-owned LinkedIn export ZIPs and resume files only; no OAuth or scrape path | `sources_routes.py`, `linkedin_import_service.py`, `ImportProjectsModal.tsx` |
+| **Generic public URL project ingest** | **SHIPPED** — static SSRF-guarded fetch, bounded response, LLM extraction with platform fallback, editable review | `sources_routes.py`, `url_projects_service.py`, `ImportProjectsModal.tsx` |
 
 **Takeaway:** GitHub import is ~50% plumbing you already own (OAuth + encrypted token + authed client). URL ingest reuses the SSRF scraper. Only the *consumers* are net-new.
 
 ## 5. Proposed solution — phased
 
-### Phase 1 — GitHub import (BUILD FIRST)
+### Phase 1 — GitHub import (SHIPPED)
 
 **Why first:** official API (zero ToS risk), effectively free rate limits, highest recruiter signal, and half-built.
 
@@ -78,22 +103,23 @@ penalize/exclude: isFork, isArchived, README<100 chars
 
 **LLM summarization:** truncate/summarize each README (first ~1,500 tokens or an "extract what/why/tech" pass) before it hits the prompt. Under **BYOK this runs on the user's own key → ~zero marginal cost to Latexy.**
 
-### Phase 2 — Portfolio / project URL ingest
+### Phase 2 — Portfolio / project URL ingest (SHIPPED)
 
 Generalize `job_scraper_service` into a shared `ContentIngestService` and add `POST /ingest/url`. **Static fetch only** (Trafilatura or the existing scorer); **skip JS-heavy pages** with a clear "couldn't read this page" message rather than spinning up headless Chrome. Honor **robots.txt**; enforce the existing **SSRF guard**, redirect/size/content-type/timeout caps on every fetch. LLM structures cleaned text into `ProjectEvidence`. Lower signal-to-noise than GitHub → build after it.
 
-### Phase 3 — LinkedIn via user-owned data (COMPLIANT ONLY)
+### Phase 3 — LinkedIn via user-owned data (SHIPPED, COMPLIANT ONLY)
 
 Three user-initiated, ToS-safe paths (no automated access, ever):
 1. **Upload LinkedIn data archive** (Settings → Data Privacy → *Get a copy of your data* → parse `Positions.csv`, `Skills.csv`, `Education.csv`, `Profile.csv`). Note: the large archive takes 24–72h for the user to generate → async "come back later" UX.
 2. **Upload existing resume PDF/DOCX** — reuse `backend/app/parsers/`. Fastest, highest-conversion; covers most users.
 3. **Paste public profile text** — user-initiated copy = compliant.
 
-## 6. Data model & API
+## 6. Shipped data flow & API
 
-**New tables:**
-- `external_source_connections(id, user_id, provider, encrypted_token, scopes, connected_at, expires_at)` — reuse the Fernet encryption pattern.
-- `ingested_projects(id, user_id, source, evidence_json, raw_hash, fetched_at, expires_at)` — cache normalized evidence.
+The proposed new tables were not required. GitHub reuses the encrypted
+integration state on `User`; the worker stores an owner-bound result envelope
+in Redis for roughly one hour. URL and uploaded-file imports return candidates
+directly. No raw external-source archive is persisted by these routes.
 
 **Normalized shape** (decouples ingestion from optimization):
 ```
@@ -101,13 +127,15 @@ ProjectEvidence { source, title, description, tech[],
                   metrics{stars,forks,...}, dates, url, raw_excerpt, confidence }
 ```
 
-**Endpoints (all gated + metered):**
-- `POST /github/import-projects` → job id; `GET /github/import-projects/{id}` → candidate evidence
-- `POST /ingest/url` → evidence for one URL
-- `POST /import/linkedin-archive` (ZIP) / reuse resume-upload → evidence
-- Evidence feeds either the optimizer's new `evidence:` prompt block or a "generate Projects section" insert (clone the ORCID publications pattern).
+**Endpoints (all feature-gated; AI paths are metered):**
+- `POST /github/import-projects` → job id; `GET /github/import-projects/{id}` → owner-bound candidate evidence
+- `POST /sources/import-url` → evidence for one public URL
+- `POST /sources/import-linkedin` → evidence from a user-owned ZIP/PDF/DOCX upload
+- Selected, editable evidence is converted to LaTeX and inserted only after the user confirms it.
 
-**Caching:** normalized evidence in Postgres + Redis hot layer (`latexy:ingest:{user}:{source}`, TTL ~24h) keyed by content hash. GitHub data changes slowly — don't re-fetch/re-spend LLM on every edit.
+**Caching:** GitHub import results are ephemeral Redis data keyed by job id and
+bound to the initiating user. Durable normalized-evidence storage remains a
+future optimization, not shipped behavior.
 
 ## 7. Legal & privacy (must-dos) ⚠️
 
