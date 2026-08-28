@@ -51,6 +51,7 @@ async def _insert_template(db_session, **kwargs) -> ResumeTemplate:
         latex_content=_VALID_LATEX,
         is_active=True,
         sort_order=0,
+        document_type="resume",
     )
     defaults.update(kwargs)
     # Ensure test prefix for cleanup
@@ -133,6 +134,19 @@ class TestListTemplates:
         assert t1.id in ids
         assert t2.id not in ids
 
+    async def test_filter_by_presentation_category(self, client: AsyncClient, db_session):
+        presentation = await _insert_template(
+            db_session,
+            name="test_tmpl_Beamer Madrid",
+            category="presentation",
+            document_type="presentation",
+        )
+        resp = await client.get("/templates/?category=presentation")
+        assert resp.status_code == 200
+        matching = next(item for item in resp.json() if item["id"] == presentation.id)
+        assert matching["category_label"] == "Presentations"
+        assert matching["document_type"] == "presentation"
+
     async def test_filter_by_invalid_category_returns_400(self, client: AsyncClient):
         resp = await client.get("/templates/?category=not_a_real_category_xyz")
         assert resp.status_code == 400
@@ -198,7 +212,7 @@ class TestGetTemplate:
         t = await _insert_template(db_session)
         data = (await client.get(f"/templates/{t.id}")).json()
         for field in ("id", "name", "description", "category", "category_label", "tags",
-                      "thumbnail_url", "pdf_url", "sort_order", "latex_content"):
+                      "thumbnail_url", "pdf_url", "sort_order", "document_type", "latex_content"):
             assert field in data
 
     async def test_invalid_uuid_returns_404(self, client: AsyncClient):
@@ -293,6 +307,25 @@ class TestUseTemplate:
         assert resume_resp.status_code == 200
         resume_data = resume_resp.json()
         assert resume_data["latex_content"] == _VALID_LATEX_2
+
+    async def test_presentation_template_preserves_document_type(self, client: AsyncClient, db_session):
+        template = await _insert_template(
+            db_session,
+            name="test_tmpl_Beamer Pitch",
+            category="presentation",
+            document_type="presentation",
+        )
+        headers = await _create_auth_headers(db_session)
+        resp = await client.post(
+            f"/templates/{template.id}/use",
+            json={"title": "Investor Deck"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+        resume_resp = await client.get(f"/resumes/{resp.json()['resume_id']}", headers=headers)
+        assert resume_resp.status_code == 200
+        assert resume_resp.json()["document_type"] == "presentation"
 
     async def test_returns_401_without_auth(self, client: AsyncClient, db_session):
         t = await _insert_template(db_session)
