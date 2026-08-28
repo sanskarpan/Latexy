@@ -40,7 +40,7 @@ export default function ChangeReviewModal({
   originalLatex: string
   optimizedLatex: string
   changeReasons?: Array<{ section?: string; change_type?: string; reason?: string }>
-  onApply: (latex: string) => void
+  onApply: (latex: string) => boolean | void | Promise<boolean | void>
   onClose: () => void
 }) {
   const [hunks, setHunks] = useState<ChangeHunk[] | null>(null)
@@ -116,7 +116,8 @@ export default function ChangeReviewModal({
         hunks: payloadHunks,
         accepted_ids: acceptedIds,
       })
-      onApply(res.latex)
+      const applied = await onApply(res.latex)
+      if (applied === false) return
       toast.success(
         acceptedIds.length === hunks.length
           ? 'Applied all changes'
