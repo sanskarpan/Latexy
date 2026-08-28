@@ -45,7 +45,7 @@ test('GitHub OAuth starts and completes through authenticated one-time requests'
       }),
     })
   )
-  await page.route('**/github/connect', async (route) => {
+  await page.route((url) => url.pathname === '/github/connect', async (route) => {
     expect(route.request().method()).toBe('POST')
     expect(await route.request().headerValue('authorization')).toBe(
       'Bearer latexy-session'
