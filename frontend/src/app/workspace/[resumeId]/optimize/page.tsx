@@ -897,7 +897,7 @@ export default function OptimizationSuitePage() {
                 <>
                   <p className="mb-5 text-sm text-fg-2">
                     Fetch your publications from ORCID and insert a formatted bibliography section
-                    directly into your resume. Filter by year range or publication type.
+                    directly into your resume. Choose a citation style, year range, and publication type.
                   </p>
                   <PublicationsPanel insertAtCursor={(text) => editorRef.current?.insertAtCursor(text)} />
                 </>
