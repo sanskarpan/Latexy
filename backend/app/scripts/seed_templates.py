@@ -54,6 +54,30 @@ def _pretty_name(stem: str) -> str:
     return stem.replace("_", " ").title()
 
 
+def _reconcile_existing_template(
+    template,
+    *,
+    latex_content: str,
+    category: str,
+    sort_order: int,
+    document_type: str,
+) -> bool:
+    """Restore every source-owned field, including accidentally deactivated rows."""
+    canonical = {
+        "latex_content": latex_content,
+        "tags": [category],
+        "sort_order": sort_order,
+        "document_type": document_type,
+        "is_active": True,
+    }
+    changed = False
+    for field, value in canonical.items():
+        if getattr(template, field) != value:
+            setattr(template, field, value)
+            changed = True
+    return changed
+
+
 async def seed():
     from app.core.config import settings
     from app.utils.db_url import normalize_database_url
@@ -100,11 +124,13 @@ async def seed():
                 doc_type = CATEGORY_DOCUMENT_TYPE.get(category, "resume")
 
                 if existing:
-                    # Update latex_content in case template was edited
-                    if existing.latex_content != latex_content:
-                        existing.latex_content = latex_content
-                        existing.sort_order = sort_order
-                        existing.document_type = doc_type
+                    if _reconcile_existing_template(
+                        existing,
+                        latex_content=latex_content,
+                        category=category,
+                        sort_order=sort_order,
+                        document_type=doc_type,
+                    ):
                         updated += 1
                         print(f"  UPDATED  {category}/{name}")
                     else:
