@@ -13,7 +13,7 @@ const EXPORT_FORMATS = [
   { key: 'docx',  label: 'Word',       icon: FileText, desc: 'Microsoft Word (.docx)' },
   { key: 'md',    label: 'Markdown',   icon: File,     desc: 'Markdown (.md)' },
   { key: 'html',  label: 'HTML',       icon: Globe,    desc: 'Web page (.html)' },
-  { key: 'txt',   label: 'Plain Text', icon: File,     desc: 'ATS-safe plain text (.txt)' },
+  { key: 'txt',   label: 'Plain Text', icon: File,     desc: 'Unformatted plain text (.txt)' },
   { key: 'json',  label: 'JSON',       icon: Database, desc: 'JSON Resume format (.json)' },
   { key: 'yaml',  label: 'YAML',       icon: Database, desc: 'YAML resume (.yaml)' },
   { key: 'xml',   label: 'XML',        icon: Database, desc: 'XML resume (.xml)' },
