@@ -491,6 +491,23 @@ def migrate() -> None:
         raise RuntimeError(f"alembic upgrade failed with code {result.returncode}")
 
 
+@app.function(image=migrate_image, secrets=_secrets, timeout=900)
+def sync_templates() -> None:
+    """Reconcile the production template catalog with the source-owned seed files."""
+    import subprocess
+
+    result = subprocess.run(
+        ["python", "-m", "app.scripts.seed_templates"],
+        cwd="/backend",
+        capture_output=True,
+        text=True,
+    )
+    print(result.stdout)
+    if result.returncode != 0:
+        print(result.stderr)
+        raise RuntimeError(f"template synchronization failed with code {result.returncode}")
+
+
 # ---------------------------------------------------------------------------
 # FastAPI ASGI endpoint
 # ---------------------------------------------------------------------------
