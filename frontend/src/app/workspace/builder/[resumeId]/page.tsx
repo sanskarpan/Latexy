@@ -1055,8 +1055,9 @@ export default function BuilderResumePage() {
                       ['URL', 'url'],
                     ].map(([label, key]) => (
                       <div key={key}>
-                        <FieldLabel>{label}</FieldLabel>
+                        <FieldLabel htmlFor={`certification-${entry.id}-${key}`}>{label}</FieldLabel>
                         <TextInput
+                          id={`certification-${entry.id}-${key}`}
                           type="text"
                           value={entry[key as keyof typeof entry] as string}
                           onFocus={() => setActiveSection('certifications')}
