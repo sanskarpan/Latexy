@@ -23,6 +23,16 @@ def test_presentation_seed_inventory_contains_all_five_beamer_templates():
     assert CATEGORY_DOCUMENT_TYPE["presentation"] == "presentation"
 
 
+def test_presentation_sources_are_self_contained_for_the_production_toolchain():
+    templates = Path(__file__).parents[1] / "app" / "data" / "templates" / "presentation"
+    sources = {path.name: path.read_text(encoding="utf-8") for path in templates.glob("*.tex")}
+
+    assert "\\usepackage[scale=2]{ccicons}" not in sources["beamer_metropolis.tex"]
+    assert "\\includegraphics" not in sources["beamer_metropolis.tex"]
+    assert "\\themename" not in sources["beamer_metropolis.tex"]
+    assert "{\\raise" not in sources["beamer_pitch.tex"]
+
+
 def test_reconcile_reactivates_and_restores_source_owned_fields():
     existing = SimpleNamespace(
         latex_content="stale",
