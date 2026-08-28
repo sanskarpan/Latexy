@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 ORCID_API_BASE = "https://pub.orcid.org/v3.0"
 
 _KNOWN_PUB_TYPES = {"journal", "conference", "preprint", "book_chapter"}
+_CITATION_STYLES = {"cv", "apa", "ieee"}
 
 # TeX special characters that must be escaped when interpolating third-party
 # (ORCID/Crossref) text into a LaTeX document.
@@ -158,10 +159,13 @@ class PublicationsService:
         self,
         pubs: List[Publication],
         sort_by: str = "year",
+        citation_style: str = "cv",
     ) -> str:
         """Return a complete \\section{Publications}\\begin{enumerate}...\\end{enumerate} block."""
         if not pubs:
             return ""
+
+        self._validate_citation_style(citation_style)
 
         if sort_by == "year":
             sorted_pubs = sorted(
@@ -174,7 +178,7 @@ class PublicationsService:
 
         items: List[str] = []
         for pub in sorted_pubs:
-            items.append(self._format_entry(pub))
+            items.append(self._format_entry(pub, citation_style))
 
         entries = "\n".join(f"  \\item {item}" for item in items)
         return (
@@ -184,44 +188,63 @@ class PublicationsService:
             "\\end{enumerate}"
         )
 
-    def format_entry(self, pub: Publication) -> str:
+    def format_entry(self, pub: Publication, citation_style: str = "cv") -> str:
         """Return one escaped publication entry without list markup."""
-        return self._format_entry(pub)
+        self._validate_citation_style(citation_style)
+        return self._format_entry(pub, citation_style)
 
     @staticmethod
-    def _format_entry(pub: Publication) -> str:
+    def _validate_citation_style(citation_style: str) -> None:
+        if citation_style not in _CITATION_STYLES:
+            raise ValueError(f"Unsupported citation style: {citation_style}")
+
+    @staticmethod
+    def _format_entry(pub: Publication, citation_style: str) -> str:
         """Format a single publication as a LaTeX \\item string.
 
         All free-text fields (title/venue/authors/DOI) come from third-party
         metadata and are escaped to avoid broken compiles or LaTeX injection.
         """
-        # Authors
-        if pub.authors:
-            authors_str = ", ".join(latex_escape(a) for a in pub.authors) + "."
-        else:
-            authors_str = ""
+        authors = ", ".join(latex_escape(a) for a in pub.authors)
+        title = latex_escape(pub.title).rstrip(".")
+        venue = latex_escape(pub.venue)
+        year = str(pub.year) if pub.year else ""
 
-        # Title in double-quotes
-        title_str = f"``{latex_escape(pub.title)}.''"
-
-        # Venue in italics
-        venue_str = f"\\textit{{{latex_escape(pub.venue)}}}" if pub.venue else ""
-
-        # Year
-        year_str = str(pub.year) if pub.year else ""
-
-        # DOI hyperlink — the display text is escaped; the URL target is wrapped
-        # in \detokenize so special characters cannot terminate the argument.
+        # DOI hyperlink — escape the display text and percent-encode the URL
+        # target so third-party metadata cannot terminate either argument.
         doi_str = ""
         if pub.doi:
             encoded_doi = quote(pub.doi, safe="/:._-()")
             href_target = f"https://doi.org/{encoded_doi}".replace("%", r"\%")
             doi_str = f" \\href{{{href_target}}}{{{latex_escape(pub.doi)}}}"
 
-        parts = [p for p in [authors_str, title_str, venue_str, year_str] if p]
-        entry = " ".join(parts)
-        if parts:
-            entry = entry.rstrip(".") + "."
+        if citation_style == "apa":
+            parts = [
+                f"{authors}." if authors else "",
+                f"({year})." if year else "(n.d.).",
+                f"{title}.",
+                f"\\textit{{{venue}}}." if venue else "",
+            ]
+            entry = " ".join(part for part in parts if part)
+        elif citation_style == "ieee":
+            parts = [
+                f"{authors}," if authors else "",
+                f"``{title},''",
+                f"\\textit{{{venue}}}," if venue else "",
+                f"{year}." if year else "",
+            ]
+            entry = " ".join(part for part in parts if part).rstrip(",")
+            if not entry.endswith("."):
+                entry += "."
+        else:
+            parts = [
+                f"{authors}." if authors else "",
+                f"``{title}.''",
+                f"\\textit{{{venue}}}" if venue else "",
+                year,
+            ]
+            entry = " ".join(part for part in parts if part).rstrip(".") + "."
+
         if doi_str:
             entry += doi_str
 
