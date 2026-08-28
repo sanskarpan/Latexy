@@ -23,7 +23,7 @@ const resources = [
   },
   {
     title: 'Templates',
-    text: 'LaTeX-ready templates designed for ATS readability and strong visual hierarchy.',
+    text: 'LaTeX-ready templates designed for readable text extraction and strong visual hierarchy.',
     cta: 'Open Studio',
     href: '/try',
   },
