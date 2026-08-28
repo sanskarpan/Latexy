@@ -33,7 +33,7 @@ const capabilities = [
 ]
 
 const facts: [string, string][] = [
-  ['Compile speed', 'Sub-second'],
+  ['Compile processing', 'Queued with live logs'],
   ['Model providers', 'OpenAI · Anthropic · Gemini · OpenRouter'],
   ['Change review', 'Per-line accept / reject / edit'],
   ['Engines', 'pdflatex · xelatex · lualatex'],
@@ -50,8 +50,8 @@ export default function PlatformPage() {
             A full execution layer for <span className="text-accent">résumé operations.</span>
           </h1>
           <p className="mt-6 max-w-[46ch] font-body text-lg text-fg-2">
-            Latexy is built for job seekers and teams that need deterministic output, measurable ATS
-            performance, and high iteration speed.
+            Latexy is built for job seekers and teams that need deterministic output, inspectable
+            document checks, and a fast iteration workflow.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Link
@@ -91,7 +91,7 @@ export default function PlatformPage() {
       <div className="border-y border-line bg-surface-2">
         <div className="mx-auto flex max-w-6xl flex-wrap gap-x-8 gap-y-2 px-5 py-3 font-ui text-xs text-fg-3 sm:px-8">
           <span><span className="text-fg">Deterministic</span> compiles</span>
-          <span><span className="text-fg">Measurable</span> ATS performance</span>
+          <span><span className="text-fg">Inspectable</span> document checks</span>
           <span><span className="text-accent-strong">BYOK</span> — your key, your models</span>
           <span><span className="text-fg">Real-time</span> job streaming</span>
         </div>
