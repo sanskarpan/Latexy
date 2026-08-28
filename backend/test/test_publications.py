@@ -275,6 +275,40 @@ class TestPublicationsServiceUnit:
             "Newest publication should appear before older one"
         )
 
+    def test_format_entry_escapes_external_metadata_and_doi_display(self) -> None:
+        pub = Publication(
+            r"Research & \input{bad}",
+            ["A_B"],
+            "Systems % Safety",
+            2026,
+            "10.1234/a_b",
+            None,
+            "journal",
+        )
+
+        result = PublicationsService().format_entry(pub)
+
+        assert r"Research \& \textbackslash{}input\{bad\}" in result
+        assert r"A\_B" in result
+        assert r"Systems \% Safety" in result
+        assert r"\href{https://doi.org/10.1234/a_b}{10.1234/a\_b}" in result
+
+    def test_format_entry_encodes_doi_argument_terminators(self) -> None:
+        pub = Publication(
+            "Safe title",
+            [],
+            "Safe venue",
+            2026,
+            r"10.1234/a}\input{bad}",
+            None,
+            "journal",
+        )
+
+        result = PublicationsService().format_entry(pub)
+
+        assert r"\href{https://doi.org/10.1234/a\%7D\%5Cinput\%7Bbad\%7D}" in result
+        assert r"{10.1234/a\}\textbackslash{}input\{bad\}}" in result
+
     # 58U-07 ─────────────────────────────────────────────────────────────────
     def test_map_work_type_journal(self) -> None:
         assert PublicationsService._map_work_type("journal-article") == "journal"
@@ -365,6 +399,7 @@ class TestPublicationsEndpoint:
         assert "cached" in body
         assert isinstance(body["publications"], list)
         assert len(body["publications"]) == 3
+        assert all(publication["latex_entry"] for publication in body["publications"])
         assert isinstance(body["cached"], bool)
 
     # 58I-02 ─────────────────────────────────────────────────────────────────
