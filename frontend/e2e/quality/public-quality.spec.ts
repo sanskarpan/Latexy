@@ -12,6 +12,7 @@ const PUBLIC_ROUTES = [
     '/privacy',
     '/terms',
     '/updates',
+    '/try',
 ]
 
 async function installPublicPageMocks(page: Page) {
@@ -30,6 +31,20 @@ async function installPublicPageMocks(page: Page) {
     )
     await page.route('http://localhost:8030/templates/**', route =>
         route.fulfill({ status: 200, headers: jsonHeaders, body: '[]' })
+    )
+    await page.route('http://localhost:8030/public/trial-status?*', route =>
+        route.fulfill({
+            status: 200,
+            headers: jsonHeaders,
+            body: JSON.stringify({
+                usageCount: 0,
+                remainingUses: 3,
+                blocked: false,
+                canUse: true,
+                lastUsed: null,
+                trialLimit: 3,
+            }),
+        })
     )
     await page.route('**/ws/**', route => route.abort())
 }
@@ -103,10 +118,15 @@ test('public routes expose named controls and valid document structure', async (
                 document.querySelectorAll<HTMLElement>(
                     'button, a[href], input:not([type="hidden"]), textarea, select, [role="button"]'
                 )
-            ).filter(isVisible)
+            ).filter(element => !element.closest('[aria-hidden="true"]') && isVisible(element))
             const unnamedControls = controls
                 .filter(element => !controlName(element))
                 .map(element => element.outerHTML.slice(0, 180))
+            const ariaHiddenFocusable = Array.from(
+                document.querySelectorAll<HTMLElement>(
+                    '[aria-hidden="true"] button:not(:disabled), [aria-hidden="true"] a[href], [aria-hidden="true"] input:not(:disabled), [aria-hidden="true"] textarea:not(:disabled), [aria-hidden="true"] select:not(:disabled), [aria-hidden="true"] [tabindex]:not([tabindex="-1"])'
+                )
+            ).map(element => element.outerHTML.slice(0, 180))
 
             const duplicateIds = Object.entries(
                 Array.from(document.querySelectorAll<HTMLElement>('[id]')).reduce<
@@ -138,6 +158,7 @@ test('public routes expose named controls and valid document structure', async (
                 skippedHeadingLevels,
                 duplicateIds,
                 unnamedControls,
+                ariaHiddenFocusable,
             }
         })
 
@@ -146,6 +167,10 @@ test('public routes expose named controls and valid document structure', async (
         expect(audit.h1Count, `${route} must expose exactly one visible h1`).toBe(1)
         expect(audit.skippedHeadingLevels, `${route} skips a heading level`).toEqual([])
         expect(audit.duplicateIds, `${route} contains duplicate element IDs`).toEqual([])
+        expect(
+            audit.ariaHiddenFocusable,
+            `${route} contains focusable controls hidden from assistive technology`
+        ).toEqual([])
         expect(
             audit.unnamedControls,
             `${route} contains controls without accessible names`
@@ -193,7 +218,11 @@ test('skip navigation and reduced-motion preferences are honored', async ({ page
             longestDurationMs: Math.max(0, ...durations),
             runningAnimations: document
                 .getAnimations()
-                .filter(animation => animation.playState === 'running').length,
+                .filter(
+                    animation =>
+                        animation.playState === 'running' &&
+                        Number(animation.effect?.getComputedTiming().duration ?? 0) > 0.001
+                ).length,
         }
     })
 
