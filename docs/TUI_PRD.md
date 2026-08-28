@@ -3,7 +3,26 @@
 **Document version:** 1.0  
 **Date:** 2026-06-15  
 **Author:** Latexy Engineering  
-**Status:** Draft — pre-implementation
+**Status:** Requirements baseline — TypeScript/Ink source implementation shipped; npm delivery pending
+
+**Reconciled against source:** 2026-08-28
+
+---
+
+## Implementation reconciliation (2026-08-28)
+
+This document records the original product requirements. The implementation changed stacks during
+delivery: the authoritative client now lives in `packages/tui` and uses TypeScript, React, and Ink
+on Node.js 22+, not Python and Textual. The detailed architecture, implementation plan, state-model
+pseudocode, and dependency choices in Sections 5–11 are retained as historical design context and
+must not be used as setup or operating instructions. Use `packages/tui/README.md`,
+`packages/tui/package.json`, and the source code for current behavior.
+
+The source package is version 1.0.4 and includes the interactive application plus headless
+`compile`, `optimize`, `ats`, `status`, and `list` commands. Fresh installs target the production
+Latexy frontend and Modal backend, with environment overrides for local/self-hosted deployments.
+The public npm registry is still on 1.0.3 because trusted-publisher binding requires an npm account
+owner; delivery is tracked in GitHub issues #1668 and #1670.
 
 ---
 
@@ -57,7 +76,7 @@ Four categories of users work outside the browser by preference or necessity:
    optimization as part of automated workflows.
 4. **Developers** building on the Latexy API who need a fast feedback loop for testing jobs.
 
-The web frontend cannot serve these users well. A Python/Textual TUI can expose every Latexy
+The web frontend cannot serve these users well. A rich terminal client can expose every Latexy
 feature in a rich, interactive terminal interface that runs over SSH, in Docker, or locally.
 
 ### Goals
@@ -71,8 +90,8 @@ within the TUI — the primary competitive differentiator vs. a plain CLI.
 **G3 — CI/CD compatibility:** Provide a non-interactive `--json` mode for every command so
 scripts and pipelines can consume structured output.
 
-**G4 — Zero-dependency install:** Single `pip install latexy-tui` or a standalone binary.
-No browser required at runtime.
+**G4 — Simple install:** Single `npm install -g @sanskarpan/latexy` installation.
+No browser is required at runtime after authentication is configured.
 
 **G5 — Offline awareness:** When the backend is unreachable, the TUI shows a clear degraded
 state and offers a reconnect command.
@@ -501,14 +520,19 @@ and update tenant settings.
 **TUI-110** — Every TUI command must support a `--json` flag that outputs structured JSON to
 stdout and suppresses all terminal UI rendering.
 
-**TUI-111** — The TUI must exit with code 0 on job success, code 1 on job failure, and code 2
-on authentication or network errors.
+**TUI-111** — The TUI exits with code 0 on success, code 1 when a command or asynchronous job
+fails, code 2 when authentication is missing, code 3 for an unknown command or invalid arguments,
+and code 4 when the backend is unreachable.
 
 **TUI-112** — The TUI must support environment variables for all configuration:
-- `LATEXY_API_URL` — backend URL (default `http://localhost:8030`)
+- `LATEXY_API_URL` — FastAPI backend URL (defaults to the production Modal backend)
+- `LATEXY_APP_URL` — Next.js application and Better Auth origin (defaults to `https://latexy.xyz`)
 - `LATEXY_SESSION_TOKEN` — pre-authenticated session token
-- `LATEXY_EMAIL` / `LATEXY_PASSWORD` — credentials for automatic login
-- `LATEXY_DEFAULT_RESUME_ID` — resume to use when not specified
+- `LATEXY_EMAIL` / `LATEXY_PASSWORD` — optional initial values for the interactive login overlay;
+  headless commands require `LATEXY_SESSION_TOKEN`
+
+The persisted `defaultResumeId` setting supplies a default resume when one is not specified; there
+is no `LATEXY_DEFAULT_RESUME_ID` environment override in the current implementation.
 
 **TUI-113** — The TUI must provide a `compile` subcommand: `latexy compile <file.tex> [--compiler pdflatex] [--output resume.pdf] [--json]`.
 
@@ -584,6 +608,9 @@ operations that require a display server.
 ---
 
 ## 5. Architecture
+
+> **Historical design:** Sections 5–11 describe the original Python/Textual proposal. The shipped
+> architecture is the TypeScript/Ink implementation documented in `packages/tui/README.md`.
 
 ### 5.1 Connection to the Backend
 
@@ -1176,7 +1203,7 @@ class AppState:
     resumes: list[ResumeItem] = field(default_factory=list)
     active_jobs: dict[str, JobState] = field(default_factory=dict)   # job_id → JobState
     health_status: str = "unknown"    # healthy | degraded | unhealthy | unknown
-    api_url: str = "http://localhost:8030"
+    api_url: str = "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run"
     ws_connected: bool = False
     last_health_check: float = 0.0
     selected_resume_id: Optional[str] = None
@@ -1296,23 +1323,15 @@ Alternatives considered: `urwid` (older API, less modern), `blessed` (too low-le
 
 ### 11.6 Configuration
 
-**tomllib** (Python 3.11+ stdlib) + **tomli-w** for writing TOML config files.
+The historical design proposed **tomllib** (Python 3.11+ stdlib) + **tomli-w**. The shipped client
+uses `@iarna/toml` from TypeScript.
 
 Config file location: `~/.config/latexy/config.toml`
 
 ```toml
-[auth]
-email = "user@example.com"
-session_token = "sess_..."
-
-[api]
-url = "http://localhost:8030"
-ws_url = "ws://localhost:8030/ws/jobs"
-
-[tui]
-editor = ""    # empty = use $EDITOR env var
-color_theme = "dark"
-default_compiler = "pdflatex"
+backendUrl = "https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run"
+appUrl = "https://latexy.xyz"
+defaultResumeId = "uuid-of-your-default-resume"
 ```
 
 ### 11.7 Clipboard
@@ -1327,9 +1346,10 @@ Rendered with `rich.syntax.Syntax(diff_text, "diff")` for colour-coded output.
 
 ### 11.9 Package Distribution
 
-- **PyPI**: `pip install latexy-tui` — entry point `latexy-tui` for interactive mode.
-- **Standalone binary**: `pyinstaller --onefile` for environments without Python.
-- **Docker**: `FROM python:3.11-slim; RUN pip install latexy-tui` for containerised CI/CD use.
+- **npm**: `npm install -g @sanskarpan/latexy` — entry point `latexy` for interactive and
+  headless modes.
+- **Source runtime**: Node.js 22+.
+- **Registry status (2026-08-28)**: source is 1.0.4; npm remains 1.0.3 pending #1668/#1670.
 
 ### 11.10 Dependency Matrix
 
@@ -1345,8 +1365,8 @@ Rendered with `rich.syntax.Syntax(diff_text, "diff")` for colour-coded output.
 | click | >=8.0 | CLI argument parsing (CI/CD mode) |
 | python-dotenv | >=1.0 | .env file support for CI/CD |
 
-**Python version:** 3.11+ (required for `tomllib` stdlib and `match` statement pattern matching
-used in event dispatch).
+**Current runtime:** Node.js 22+. The dependency table above is the superseded Python proposal;
+the current dependency manifest is `packages/tui/package.json`.
 
 ---
 
