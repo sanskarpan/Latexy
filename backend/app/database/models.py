@@ -42,7 +42,12 @@ class User(Base):
     email_notifications: Mapped[Optional[Dict]] = mapped_column(
         JSONB,
         nullable=True,
-        default=lambda: {"job_completed": True, "weekly_digest": False},
+        default=lambda: {
+            "job_completed": True,
+            "job_failed": True,
+            "share_viewed": False,
+            "weekly_digest": False,
+        },
     )
     # GitHub integration (Feature 37)
     github_access_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
