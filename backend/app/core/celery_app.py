@@ -4,6 +4,7 @@ Celery application configuration for Phase 8.
 
 from __future__ import annotations
 
+import os
 import socket
 import sys
 from time import perf_counter
@@ -30,12 +31,23 @@ _task_start_times: dict[str, float] = {}
 # On Modal, worker tasks execute in-process (`.apply()`) and results are never
 # read from the Celery backend, so we disable eager-result storage there.
 _IS_MODAL = (settings.DEPLOY_TARGET or "").lower() == "modal"
+# ``task_ignore_result`` controls persistence, but Celery's eager ``Task.apply``
+# still touches ``task.backend`` while tracing. Passing a configured rediss URL
+# here therefore initializes RedisBackend even though Modal never reads it (and
+# can abort every wrapper before the task body runs). Explicitly select Celery's
+# DisabledBackend on Modal so an environment-level result URL cannot override it.
+_RESULT_BACKEND = "disabled://" if _IS_MODAL else settings.CELERY_RESULT_BACKEND
+if _IS_MODAL:
+    # Celery itself re-reads this environment variable and gives it precedence
+    # over both constructor and runtime config. Override it process-locally;
+    # Settings has already loaded, and Modal has no result consumer.
+    os.environ["CELERY_RESULT_BACKEND"] = "disabled://"
 
 # Create Celery instance
 celery_app = Celery(
     "latexy",
     broker=settings.CELERY_BROKER_URL,
-    backend=settings.CELERY_RESULT_BACKEND,
+    backend=_RESULT_BACKEND,
     include=[
         "app.workers.latex_worker",
         "app.workers.llm_worker",
