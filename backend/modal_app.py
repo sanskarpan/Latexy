@@ -373,6 +373,30 @@ def run_email_task(payload: dict) -> None:
     timeout=180,
     scaledown_window=60,
 )
+def run_job_failure_email_task(payload: dict) -> None:
+    """Transactional terminal job-failure email."""
+    from app.workers.email_worker import send_job_failure_email
+    send_job_failure_email.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=180,
+    scaledown_window=60,
+)
+def run_share_viewed_email_task(payload: dict) -> None:
+    """Transactional notification for a debounced public resume view."""
+    from app.workers.email_worker import send_share_viewed_email
+    send_share_viewed_email.apply(kwargs=payload, throw=False)
+
+
+@app.function(
+    image=worker_image,
+    secrets=_secrets,
+    timeout=180,
+    scaledown_window=60,
+)
 def run_weekly_digest_task(payload: dict) -> None:
     """Send one user's weekly digest from the Modal scheduler fan-out."""
     from app.workers.email_worker import send_weekly_digest
