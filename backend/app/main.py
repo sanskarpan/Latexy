@@ -166,6 +166,12 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Latexy Backend shutting down...")
+    # Collaboration bridges own Redis Pub/Sub connections and must finish
+    # their asynchronous unsubscribe/close paths while Redis and the event
+    # loop are still available.
+    from .services.collab_manager import collab_manager
+
+    await collab_manager.shutdown()
     await close_db()
     await redis_manager.close_redis()
 
