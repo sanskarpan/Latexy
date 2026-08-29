@@ -108,11 +108,10 @@ These were built, are in the codebase today, and were **missing from this catalo
 | **Score history / error history** | `GET /resumes/{id}/score-history`, `/error-history` | 3.13, 5.18 |
 | **Project-level tags** | `/resumes/{id}/tags` | 1.14 |
 | **Before/after optimization comparison** | `VersionHistoryPanel.tsx` + `/diff-with-parent` | 3.11 |
-| **Email notification preferences** | `GET`/`PUT /settings/notifications`, `user.email_notifications` | 2.8 — **➖, see below** |
+| **Email notifications** | Resend/SMTP delivery for completion, terminal failure, debounced share views, and weekly digests; per-trigger `GET`/`PUT /settings/notifications` preferences | 2.8 — ✅ |
 | **Browser push notifications** | `usePushNotifications` hook with a real `Notification.requestPermission()` path; wired into `settings/page.tsx:247`, the editor and `/optimize` | 4.13 — ✅ |
 
-**One of these is honestly partial, and the caveat matters:**
-- **Email notifications (2.8)** — preferences are stored and editable, but the email worker is a **stub that only logs**. The UI implies delivery that does not happen. Tracked as **B29**.
+**Email notification status (corrected 2026-08-30):** the former B29 stub is no longer present. Transactional delivery uses Resend or SMTP, Modal defines production task entry points for every trigger, terminal failures are Redis-deduplicated, share views reuse the analytics debounce, and the weekly digest has a production Modal schedule. Delivery remains operator-gated by `EMAIL_ENABLED` and provider credentials.
 
 **Corrected 2026-08-12 after re-verifying against `main`:** an earlier revision of this file recorded **browser push (4.13)** as partial — a toggle that never requested permission. That was true at `308b7513`; it is **no longer true.** `settings/page.tsx:247` now calls `Notification.requestPermission()`, handles the `denied` state, and refuses to persist the preference ON when permission is not granted. Issue **#1213** described code that had since been fixed; it was verified and closed on 2026-08-13, along with 20 others found by the same sweep.
 
@@ -440,7 +439,7 @@ Two real audiences: peer review on Reddit/Discord (where people currently hand-b
 | **B28** [#1310](https://github.com/sanskarpan/Latexy/issues/1310) | Real-time debounced ATS score + multi-dimensional score card | Legacy 2.3 (**P0**) and 2.7. Scoring exists but is request-scoped, not live.  **2 children below** |
 | ↳ **B28a** [#1366](https://github.com/sanskarpan/Latexy/issues/1366) | Real-time debounced ATS score in the editor | |
 | ↳ **B28b** [#1367](https://github.com/sanskarpan/Latexy/issues/1367) | Multi-dimensional score card with deep links | |
-| **B29** [#1311](https://github.com/sanskarpan/Latexy/issues/1311) | Email notification delivery — the worker is a stub | Legacy 2.8. Preferences are stored and editable; **nothing is ever sent.** |
+| **B29** [#1311](https://github.com/sanskarpan/Latexy/issues/1311) | Email notification delivery | ✅ Shipped: completion, terminal failure, debounced share-view, and weekly-digest delivery through Resend/SMTP with Modal parity and per-trigger preferences. |
 | **B30** [#1312](https://github.com/sanskarpan/Latexy/issues/1312) | Real-time page-count / overflow warning | Legacy 3.2 (**P0**). `page_count` is already parsed server-side but never surfaced as a warning. |
 | **B31** [#1313](https://github.com/sanskarpan/Latexy/issues/1313) | AI writing assistant / chat over the document | Legacy 3.6 + C2 'AI chat over the document' + 'LLM tool-calling into editor state'. |
 | **B32** [#1314](https://github.com/sanskarpan/Latexy/issues/1314) | Two-way Git sync (currently import-only) | Legacy 1.12 + C7 'Git bridge'. `/github` has 11 routes but only imports. |
@@ -820,7 +819,7 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | Mobile app / PWA | Kickresume (premium) [V] | ❌ |
 | Offline mode | desktop editors [V] | ❌ |
 | Passkey / 2FA | Reactive Resume [V] | ❌ |
-| Email notifications | most [C] | ➖ prefs stored, **worker is a stub** |
+| Email notifications | most [C] | ✅ completion, failure, share-view, and weekly-digest delivery |
 | Browser push notifications | — | ✅ `usePushNotifications` + permission flow |
 | White-label / careers-centre edition | — | ❌ |
 | Referral / affiliate programme | several [S] | ❌ |
@@ -987,7 +986,7 @@ Honest gaps. Each would change a recommendation above.
 | 2.5 | LinkedIn Profile Import (Structured) | P1 | ✅ shipped | already covered |
 | 2.6 | Interview Question Generator | P1 | ✅ shipped | already covered |
 | 2.7 | Multi-Dimensional Score Card | P1 | ⬜ backlog | C3 (score exists; multi-dimensional card partial) → **B28b** [#1367](https://github.com/sanskarpan/Latexy/issues/1367) |
-| 2.8 | Email Notifications | P1 | 🟠 partial | A2b ➖ prefs stored, **email worker is a stub** → **B29** [#1311](https://github.com/sanskarpan/Latexy/issues/1311) |
+| 2.8 | Email Notifications | P1 | ✅ shipped | Resend/SMTP delivery, per-trigger preferences, Modal parity, and deduplicated/debounced triggers → **B29** [#1311](https://github.com/sanskarpan/Latexy/issues/1311) |
 | 2.9 | Resume View Analytics (Link Tracking) | P2 | ✅ shipped | already covered |
 | 2.10 | Multilingual Resume Translation | P2 | ✅ shipped | already covered |
 | 2.11 | Salary Estimator from Resume | P2 | ✅ shipped | already covered |
