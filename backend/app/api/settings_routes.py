@@ -22,6 +22,8 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 
 class NotificationPrefs(BaseModel):
     job_completed: bool = True
+    job_failed: bool = True
+    share_viewed: bool = False
     weekly_digest: bool = False
 
 
@@ -39,6 +41,8 @@ async def get_notification_prefs(
     prefs = user.email_notifications or {}
     return NotificationPrefs(
         job_completed=prefs.get("job_completed", True),
+        job_failed=prefs.get("job_failed", True),
+        share_viewed=prefs.get("share_viewed", False),
         weekly_digest=prefs.get("weekly_digest", False),
     )
 
@@ -57,6 +61,8 @@ async def update_notification_prefs(
 
     user.email_notifications = {
         "job_completed": body.job_completed,
+        "job_failed": body.job_failed,
+        "share_viewed": body.share_viewed,
         "weekly_digest": body.weekly_digest,
     }
     await db.commit()
