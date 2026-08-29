@@ -92,8 +92,8 @@ class TestPerModelPricing:
 # ── Fallback scoping (#5) + usage_stats cleanup (#18) ────────────────────────
 
 
-@pytest.mark.asyncio
 class TestGenerateFallbackScoping:
+    @pytest.mark.asyncio
     async def test_fallback_off_by_default(self):
         svc = MultiProviderLLMService()
         svc.add_provider("openai_userA", _FakeProvider("k", fail=True, tag="A"))
@@ -102,6 +102,7 @@ class TestGenerateFallbackScoping:
         with pytest.raises(RuntimeError):
             await svc.generate(req, provider_name="openai_userA")
 
+    @pytest.mark.asyncio
     async def test_fallback_scoped_to_same_user(self):
         svc = MultiProviderLLMService()
         svc.add_provider("openai_userA", _FakeProvider("k", fail=True, tag="A"))
@@ -111,6 +112,7 @@ class TestGenerateFallbackScoping:
         resp = await svc.generate(req, provider_name="openai_userA", fallback=True)
         assert resp.provider == "A2", "must fall back only to the SAME user's provider"
 
+    @pytest.mark.asyncio
     async def test_no_cross_user_fallback(self):
         svc = MultiProviderLLMService()
         svc.add_provider("openai_userA", _FakeProvider("k", fail=True, tag="A"))
