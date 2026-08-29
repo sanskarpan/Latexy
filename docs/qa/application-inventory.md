@@ -708,7 +708,7 @@ Config: `backend/app/core/celery_app.py` — task routes by module → queue; pr
 | `converter_worker.py` | `convert_document_task` (`:26`) | `llm` | `/formats/upload` (non-LaTeX), builder seed-upload conversion |
 | `github_import_worker.py` | `import_github_projects_task` (`:41`) | `llm` | `/github/import-projects` |
 | `auto_save_worker.py` | `record_auto_save_checkpoint` (`:21`) | `cleanup` | Editor auto-save (submitted from resume edit paths) |
-| `email_worker.py` | `send_job_completion_email` (`:27`), `send_weekly_digest` (`:113`), `send_weekly_digest_to_all` (`:213`) | `email` | Job completion; **Beat: weekly digest Mon 09:00 UTC** |
+| `email_worker.py` | `send_job_completion_email`, `send_job_failure_email`, `send_share_viewed_email`, `send_weekly_digest`, `send_weekly_digest_to_all` | `email` | Completion; Redis-deduplicated terminal failure; analytics-debounced share view; **weekly digest Mon 09:00 UTC** (Celery Beat and Modal cron) |
 | `cleanup_worker.py` | `cleanup_temp_files_task` (`:33`), `cleanup_expired_jobs_task` (`:398`), `health_check_task` (`:640`) | `cleanup` | **Beat: every 30m / every 1h / every 5m**; also `/jobs/system/cleanup` (admin) |
 | `event_publisher.py` | (not a task) | — | Sync Redis publish helpers used by all workers (`publish_event`, `publish_job_result`, `is_cancelled`) |
 | `storage_guard.py` | (not a task) | — | Compilation-DB bookkeeping helpers |
@@ -724,7 +724,7 @@ Config: `backend/app/core/celery_app.py` — task routes by module → queue; pr
 | **Gemini / OpenRouter** | `llm_provider_service.py` | httpx/requests | BYOK / multi-provider LLM |
 | **Razorpay** | `payment_service.py` | `razorpay` SDK | Subscriptions, `/billing/webhook` (HMAC) |
 | **MinIO / S3** | `storage_service.py` | `boto3` | PDF/thumbnail/template object storage, presigned URLs |
-| **Email** | `email_service.py` | `resend` (default) or SMTP (`smtplib`) via httpx | Job completion, weekly digest, verification |
+| **Email** | `email_service.py` | `resend` (default) or SMTP (`smtplib`) via httpx | Job completion/failure, shared-resume views, weekly digest, verification |
 | **GitHub** | `github_sync_service.py`, `github_projects_service.py` | httpx (OAuth) | Resume repo sync, project import |
 | **Dropbox** | `dropbox_sync_service.py` | httpx (OAuth) | Resume file sync |
 | **Zotero / Mendeley** | `reference_service.py`, `publications_service.py` | httpx (OAuth 1.0a / 2.0) | Bibliography import |
