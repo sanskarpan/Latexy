@@ -124,6 +124,7 @@ def render_job_completed_email(
     resume_url: str,
 ) -> tuple[str, str]:
     """Returns (html_body, text_body) for a job-completed notification."""
+    safe_user_name = escape(user_name)
     job_label = "optimization" if job_type == "llm_optimization" else "compilation"
     score_line = f"ATS score: <strong>{ats_score:.0f}/100</strong>" if ats_score else ""
     score_text = f"ATS score: {ats_score:.0f}/100" if ats_score else ""
@@ -133,7 +134,7 @@ def render_job_completed_email(
 <body style="font-family:Arial,sans-serif;background:#0d0d0d;color:#e4e4e7;padding:32px;max-width:520px;margin:auto">
   <div style="background:#18181b;border:1px solid #27272a;border-radius:12px;padding:28px">
     <h2 style="color:#a78bfa;margin-top:0">Your resume {job_label} is complete 🎉</h2>
-    <p>Hi {user_name},</p>
+    <p>Hi {safe_user_name},</p>
     <p>Your resume {job_label} finished successfully. {score_line}</p>
     <p style="margin-top:24px">
       <a href="{resume_url}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">
@@ -158,6 +159,107 @@ def render_job_completed_email(
     return html, text
 
 
+def render_job_failed_email(
+    user_name: str,
+    job_type: str,
+    workspace_url: str,
+) -> tuple[str, str]:
+    """Return a generic failure notice without exposing worker error details."""
+    safe_user_name = escape(user_name)
+    job_label = {
+        "llm_optimization": "resume optimization",
+        "latex_compilation": "resume compilation",
+        "compilation": "resume compilation",
+        "ats_deep": "ATS analysis",
+        "cover_letter": "cover letter generation",
+        "interview_prep": "interview preparation",
+        "document_conversion": "document conversion",
+    }.get(job_type, "resume job")
+
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;background:#0d0d0d;color:#e4e4e7;padding:32px;max-width:520px;margin:auto">
+  <div style="background:#18181b;border:1px solid #27272a;border-radius:12px;padding:28px">
+    <h2 style="color:#f87171;margin-top:0">Your {job_label} did not finish</h2>
+    <p>Hi {safe_user_name},</p>
+    <p>Latexy could not finish your {job_label}. Open your workspace to review the job and try again.</p>
+    <p style="margin-top:24px">
+      <a href="{workspace_url}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">
+        Open your workspace
+      </a>
+    </p>
+    <p style="color:#71717a;font-size:12px;margin-top:28px">
+      No resume content or internal error details are included in this email.<br>
+      <a href="{settings.FRONTEND_URL}/settings" style="color:#a78bfa">Manage preferences</a>
+    </p>
+  </div>
+</body>
+</html>"""
+
+    text = (
+        f"Your {job_label} did not finish\n\n"
+        f"Hi {user_name},\n\n"
+        f"Latexy could not finish your {job_label}. "
+        "Open your workspace to review the job and try again.\n\n"
+        f"Open your workspace: {workspace_url}\n\n"
+        "No resume content or internal error details are included in this email.\n"
+        f"Manage notification preferences: {settings.FRONTEND_URL}/settings"
+    )
+    return html, text
+
+
+def render_share_viewed_email(
+    user_name: str,
+    resume_title: str,
+    resume_url: str,
+    country_code: Optional[str] = None,
+    referrer: Optional[str] = None,
+) -> tuple[str, str]:
+    """Return a privacy-minimized notification for a newly recorded share view."""
+    safe_user_name = escape(user_name)
+    safe_title = escape(resume_title or "Untitled resume")
+    detail_parts = []
+    if country_code:
+        detail_parts.append(f"country: {escape(country_code)}")
+    if referrer:
+        detail_parts.append(f"referrer: {escape(referrer)}")
+    detail_html = (
+        f"<p style=\"color:#a1a1aa;font-size:13px\">View details: {', '.join(detail_parts)}</p>"
+        if detail_parts else ""
+    )
+    detail_text = f"\nView details: {', '.join(detail_parts)}" if detail_parts else ""
+
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;background:#0d0d0d;color:#e4e4e7;padding:32px;max-width:520px;margin:auto">
+  <div style="background:#18181b;border:1px solid #27272a;border-radius:12px;padding:28px">
+    <h2 style="color:#a78bfa;margin-top:0">Your shared resume was viewed</h2>
+    <p>Hi {safe_user_name},</p>
+    <p>A new visitor viewed <strong>{safe_title}</strong>.</p>
+    {detail_html}
+    <p style="margin-top:24px">
+      <a href="{resume_url}" style="background:#7c3aed;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">
+        Open your resume
+      </a>
+    </p>
+    <p style="color:#71717a;font-size:12px;margin-top:28px">
+      Repeat views from the same browser are debounced.<br>
+      <a href="{settings.FRONTEND_URL}/settings" style="color:#a78bfa">Manage preferences</a>
+    </p>
+  </div>
+</body>
+</html>"""
+
+    text = (
+        "Your shared resume was viewed\n\n"
+        f"Hi {user_name},\n\n"
+        f"A new visitor viewed {resume_title or 'Untitled resume'}.{detail_text}\n\n"
+        f"Open your resume: {resume_url}\n\n"
+        f"Manage notification preferences: {settings.FRONTEND_URL}/settings"
+    )
+    return html, text
+
+
 def render_weekly_digest_email(
     user_name: str,
     resume_count: int,
@@ -175,6 +277,7 @@ def render_weekly_digest_email(
         stale_resumes: List of dicts with ``id``, ``title``, ``days_since_updated``
                        for resumes not updated in 90+ days (very_stale).
     """
+    safe_user_name = escape(user_name)
     score_line = f"<li>Average ATS score: <strong>{avg_ats_score:.0f}/100</strong></li>" if avg_ats_score else ""
     score_text = f"Average ATS score: {avg_ats_score:.0f}/100\n" if avg_ats_score else ""
 
@@ -217,7 +320,7 @@ def render_weekly_digest_email(
 <body style="font-family:Arial,sans-serif;background:#0d0d0d;color:#e4e4e7;padding:32px;max-width:520px;margin:auto">
   <div style="background:#18181b;border:1px solid #27272a;border-radius:12px;padding:28px">
     <h2 style="color:#a78bfa;margin-top:0">Your weekly Latexy summary</h2>
-    <p>Hi {user_name}, here's what you achieved this week:</p>
+    <p>Hi {safe_user_name}, here's what you achieved this week:</p>
     <ul style="line-height:1.8">
       <li>Resumes: <strong>{resume_count}</strong></li>
       <li>Compilations: <strong>{compilation_count}</strong></li>
