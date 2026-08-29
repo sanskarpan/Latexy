@@ -1,13 +1,14 @@
 """Tests for Feature 43: Resume View Analytics."""
 
 import uuid as _uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select as _select
 from sqlalchemy import text as _text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 
 # ─── Fixtures / helpers ───────────────────────────────────────────────────────
 
@@ -126,6 +127,119 @@ class TestResumeViewRecording:
         call_args = mock_record.call_args
         assert call_args.args[2] == info["resume_id"]
         assert call_args.args[3] == share_token
+        assert call_args.args[4] == str(user_id)
+        assert call_args.args[5] == "Analytics Test Resume"
+
+    async def test_new_view_commits_before_notification_dispatch(self):
+        from app.api.routes import _record_resume_view
+
+        request = Request({
+            "type": "http",
+            "method": "GET",
+            "path": "/share/token",
+            "headers": [(b"user-agent", b"Test Browser")],
+            "client": ("203.0.113.4", 443),
+        })
+        db = MagicMock()
+        db.commit = AsyncMock()
+        db.rollback = AsyncMock()
+        redis = AsyncMock()
+        redis.set.return_value = True
+
+        with (
+            patch("app.core.redis.redis_cache_client", redis),
+            patch("app.api.routes.settings.GEOIP_PROVIDER_URL", ""),
+            patch(
+                "app.workers.email_worker.submit_share_viewed_email",
+                return_value=True,
+            ) as submit,
+        ):
+            recorded = await _record_resume_view(
+                request,
+                db,
+                "resume-123",
+                "share-token",
+                "owner-123",
+                "My Resume",
+            )
+
+        assert recorded is True
+        db.add.assert_called_once()
+        db.commit.assert_awaited_once()
+        submit.assert_called_once_with(
+            "owner-123", "resume-123", "My Resume", None, None
+        )
+
+    async def test_debounced_view_does_not_persist_or_notify(self):
+        from app.api.routes import _record_resume_view
+
+        request = Request({
+            "type": "http",
+            "method": "GET",
+            "path": "/share/token",
+            "headers": [(b"user-agent", b"Test Browser")],
+            "client": ("203.0.113.4", 443),
+        })
+        db = MagicMock()
+        db.commit = AsyncMock()
+        db.rollback = AsyncMock()
+        redis = AsyncMock()
+        redis.set.return_value = False
+
+        with (
+            patch("app.core.redis.redis_cache_client", redis),
+            patch("app.workers.email_worker.submit_share_viewed_email") as submit,
+        ):
+            recorded = await _record_resume_view(
+                request,
+                db,
+                "resume-123",
+                "share-token",
+                "owner-123",
+                "My Resume",
+            )
+
+        assert recorded is False
+        db.add.assert_not_called()
+        db.commit.assert_not_awaited()
+        submit.assert_not_called()
+
+    async def test_failed_commit_releases_debounce_claim_for_retry(self):
+        from app.api.routes import _record_resume_view
+
+        request = Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/share/token",
+                "headers": [(b"user-agent", b"Test Browser")],
+                "client": ("203.0.113.4", 443),
+            }
+        )
+        db = MagicMock()
+        db.commit = AsyncMock(side_effect=RuntimeError("database unavailable"))
+        db.rollback = AsyncMock()
+        redis = AsyncMock()
+        redis.set.return_value = True
+
+        with (
+            patch("app.core.redis.redis_cache_client", redis),
+            patch("app.api.routes.settings.GEOIP_PROVIDER_URL", ""),
+            patch("app.workers.email_worker.submit_share_viewed_email") as submit,
+        ):
+            recorded = await _record_resume_view(
+                request,
+                db,
+                "resume-123",
+                "share-token",
+                "owner-123",
+                "My Resume",
+            )
+
+        assert recorded is False
+        db.rollback.assert_awaited_once()
+        redis.delete.assert_awaited_once()
+        submit.assert_not_called()
 
     async def test_invalid_share_token_returns_404(self, client: AsyncClient):
         """Unknown share token → 404."""
