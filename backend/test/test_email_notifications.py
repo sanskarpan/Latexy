@@ -6,6 +6,7 @@ Tests cover:
 - send_email() calls Resend API with correct payload
 - send_email() falls back gracefully when RESEND_API_KEY is missing
 - render_job_completed_email() returns non-empty html + text
+- failure and share-view templates escape user-controlled HTML
 - render_weekly_digest_email() returns non-empty html + text
 - GET /settings/notifications requires auth
 - GET /settings/notifications returns default prefs
@@ -16,6 +17,7 @@ Tests cover:
 
 from __future__ import annotations
 
+import os
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -146,6 +148,41 @@ class TestEmailTemplates:
 
         assert "Bob" in html
 
+    def test_job_failure_template_is_generic_and_escapes_name(self):
+        from app.services.email_service import render_job_failed_email
+
+        with patch("app.services.email_service.settings") as ms:
+            ms.FRONTEND_URL = "http://localhost:5180"
+            html, text = render_job_failed_email(
+                '<img src=x onerror="alert(1)">',
+                "latex_compilation",
+                "http://localhost:5180/workspace",
+            )
+
+        assert "<img" not in html
+        assert "&lt;img" in html
+        assert "internal error details" in html
+        assert "resume compilation" in text
+
+    def test_share_view_template_escapes_analytics_fields(self):
+        from app.services.email_service import render_share_viewed_email
+
+        with patch("app.services.email_service.settings") as ms:
+            ms.FRONTEND_URL = "http://localhost:5180"
+            html, text = render_share_viewed_email(
+                "Alice <admin>",
+                '<script>alert("x")</script>',
+                "http://localhost:5180/workspace/resume/edit",
+                "US",
+                "https://example.com/<tag>",
+            )
+
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
+        assert "Alice &lt;admin&gt;" in html
+        assert "https://example.com/&lt;tag&gt;" in html
+        assert "shared resume was viewed" in text
+
     def test_weekly_digest_html_non_empty(self):
         """render_weekly_digest_email returns non-empty HTML."""
         from app.services.email_service import render_weekly_digest_email
@@ -254,6 +291,8 @@ class TestNotificationPrefsEndpoints:
             assert resp.status_code == 200
             data = resp.json()
             assert data["job_completed"] is True
+            assert data["job_failed"] is True
+            assert data["share_viewed"] is False
             assert data["weekly_digest"] is False
         finally:
             app_with_settings_routes.dependency_overrides.pop(get_current_user_required, None)
@@ -293,12 +332,19 @@ class TestNotificationPrefsEndpoints:
             ) as client:
                 resp = await client.put(
                     "/settings/notifications",
-                    json={"job_completed": False, "weekly_digest": True},
+                    json={
+                        "job_completed": False,
+                        "job_failed": False,
+                        "share_viewed": True,
+                        "weekly_digest": True,
+                    },
                 )
 
             assert resp.status_code == 200
             data = resp.json()
             assert data["job_completed"] is False
+            assert data["job_failed"] is False
+            assert data["share_viewed"] is True
             assert data["weekly_digest"] is True
             mock_session.commit.assert_awaited_once()
         finally:
@@ -395,11 +441,94 @@ class TestSendJobCompletionEmailTask:
         from app.workers.email_worker import send_job_completion_email
         assert hasattr(send_job_completion_email, "apply_async")
         assert hasattr(send_job_completion_email, "delay")
+        assert Exception in send_job_completion_email.autoretry_for
 
     def test_weekly_digest_task_registered(self):
         """send_weekly_digest is registered as a Celery task."""
         from app.workers.email_worker import send_weekly_digest
         assert hasattr(send_weekly_digest, "apply_async")
+        assert Exception in send_weekly_digest.autoretry_for
+
+    def test_failure_and_share_view_tasks_registered(self):
+        from app.workers.email_worker import send_job_failure_email, send_share_viewed_email
+
+        for task in (send_job_failure_email, send_share_viewed_email):
+            assert hasattr(task, "apply_async")
+            assert Exception in task.autoretry_for
+            assert task.max_retries >= 1
+
+    def test_modal_trigger_dispatch_targets_deployed_functions(self):
+        import inspect
+
+        from app.workers.email_worker import (
+            submit_job_failure_email,
+            submit_share_viewed_email,
+        )
+
+        assert 'spawn("run_job_failure_email_task"' in inspect.getsource(
+            submit_job_failure_email
+        )
+        assert 'spawn("run_share_viewed_email_task"' in inspect.getsource(
+            submit_share_viewed_email
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("worker_name", "preference_key", "preference_value", "should_send"),
+        [
+            ("_async_send_job_failure", "job_failed", True, True),
+            ("_async_send_job_failure", "job_failed", False, False),
+            ("_async_send_share_viewed", "share_viewed", True, True),
+            ("_async_send_share_viewed", "share_viewed", False, False),
+        ],
+    )
+    async def test_trigger_workers_honor_preferences(
+        self,
+        worker_name,
+        preference_key,
+        preference_value,
+        should_send,
+    ):
+        from app.workers import email_worker
+
+        user = MagicMock()
+        user.name = "Alice"
+        user.email = "alice@example.com"
+        user.email_notifications = {preference_key: preference_value}
+        query_result = MagicMock()
+        query_result.scalar_one_or_none.return_value = user
+        session = AsyncMock()
+        session.execute.return_value = query_result
+
+        context = MagicMock()
+        context.__aenter__ = AsyncMock(return_value=session)
+        context.__aexit__ = AsyncMock(return_value=False)
+        session_factory = MagicMock(return_value=context)
+        engine = MagicMock()
+        engine.dispose = AsyncMock()
+
+        worker = getattr(email_worker, worker_name)
+        args = (
+            ("user-1", "latex_compilation", "job-1")
+            if worker_name == "_async_send_job_failure"
+            else ("user-1", "resume-1", "My Resume", None, None)
+        )
+
+        with (
+            patch.dict(os.environ, {"DATABASE_URL": "postgresql://example/test"}),
+            patch("app.core.config.settings.EMAIL_ENABLED", True),
+            patch("app.core.config.settings.FRONTEND_URL", "http://localhost:5180"),
+            patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=engine),
+            patch("sqlalchemy.ext.asyncio.async_sessionmaker", return_value=session_factory),
+            patch(
+                "app.services.email_service.email_service.send_email",
+                new_callable=AsyncMock,
+            ) as send,
+        ):
+            await worker(*args)
+
+        assert send.await_count == int(should_send)
+        engine.dispose.assert_awaited_once()
 
     def test_fan_out_task_registered(self):
         """send_weekly_digest_to_all is registered as a Celery task."""
