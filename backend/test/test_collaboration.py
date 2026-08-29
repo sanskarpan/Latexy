@@ -147,26 +147,70 @@ class TestCollabRoom:
 # ── CollabManager ────────────────────────────────────────────────────────────
 
 
+class _BlockingPubSub:
+    """Pub/Sub stub that stays alive until its listener task is cancelled."""
+
+    def __init__(self) -> None:
+        self._block = asyncio.Event()
+        self.unsubscribed = False
+        self.closed = False
+
+    async def listen(self):
+        await self._block.wait()
+        yield  # pragma: no cover - cancellation is the expected exit
+
+    async def unsubscribe(self, channel: str) -> None:
+        self.unsubscribed = True
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture
+async def managed_collab_manager():
+    """Yield a manager whose listener tasks are always awaited at teardown."""
+    manager = CollabManager()
+    pubsubs: list[_BlockingPubSub] = []
+
+    async def _subscribe(_resume_id: str):
+        pubsub = _BlockingPubSub()
+        pubsubs.append(pubsub)
+        return pubsub
+
+    with patch(
+        "app.services.collab_manager._subscribe",
+        _subscribe,
+    ):
+        yield manager, pubsubs
+    await manager.shutdown()
+
+
 class TestCollabManager:
     @pytest.mark.asyncio
-    async def test_get_or_create_returns_same_room(self) -> None:
-        mgr = CollabManager()
+    async def test_get_or_create_returns_same_room(self, managed_collab_manager) -> None:
+        mgr, _ = managed_collab_manager
         r1 = await mgr.get_or_create("abc")
         r2 = await mgr.get_or_create("abc")
         assert r1 is r2
 
     @pytest.mark.asyncio
-    async def test_maybe_cleanup_removes_empty_room(self) -> None:
-        mgr = CollabManager()
+    async def test_maybe_cleanup_removes_empty_room(self, managed_collab_manager) -> None:
+        mgr, pubsubs = managed_collab_manager
         await mgr.get_or_create("abc")
+        listener = mgr._listeners["abc"]
+        pubsub = pubsubs[0]
+        await asyncio.sleep(0)
         await mgr.maybe_cleanup("abc")
+        assert listener.done()
+        assert pubsub.unsubscribed is True
+        assert pubsub.closed is True
         # Room was empty, should be gone
         r2 = await mgr.get_or_create("abc")
         assert r2 is not None  # new room created
 
     @pytest.mark.asyncio
-    async def test_maybe_cleanup_keeps_non_empty_room(self) -> None:
-        mgr = CollabManager()
+    async def test_maybe_cleanup_keeps_non_empty_room(self, managed_collab_manager) -> None:
+        mgr, _ = managed_collab_manager
         room = await mgr.get_or_create("xyz")
         ws = AsyncMock()
         await room.add("c1", ws, {})
@@ -451,6 +495,27 @@ class TestCrossProcessFanout:
             assert len(subscribed) == 2
 
             second.cancel()
+            await second
+
+    @pytest.mark.asyncio
+    async def test_shutdown_awaits_every_listener_cleanup(self) -> None:
+        mgr = CollabManager()
+        pubsubs: list[_BlockingPubSub] = []
+
+        async def _fake_subscribe(_resume_id: str):
+            pubsub = _BlockingPubSub()
+            pubsubs.append(pubsub)
+            return pubsub
+
+        with patch("app.services.collab_manager._subscribe", _fake_subscribe):
+            await mgr.get_or_create("r1")
+            await mgr.get_or_create("r2")
+            await mgr.shutdown()
+
+        assert mgr._listeners == {}
+        assert mgr._rooms == {}
+        assert len(pubsubs) == 2
+        assert all(pubsub.unsubscribed and pubsub.closed for pubsub in pubsubs)
 
     @pytest.mark.asyncio
     async def test_bridge_finally_untracks_itself_when_still_registered(self) -> None:
@@ -1055,6 +1120,10 @@ class TestCollabWebSocket:
                 "app.services.collab_manager.get_redis_client",
                 AsyncMock(return_value=mock_redis),
             ),
+            patch(
+                "app.services.collab_manager._subscribe",
+                AsyncMock(return_value=None),
+            ),
         ):
             with self._client().websocket_connect(
                 "/ws/collab/r-viewer?ticket=viewer-ticket"
@@ -1092,6 +1161,10 @@ class TestCollabWebSocket:
             patch(
                 "app.services.collab_manager.get_redis_client",
                 AsyncMock(return_value=mock_redis),
+            ),
+            patch(
+                "app.services.collab_manager._subscribe",
+                AsyncMock(return_value=None),
             ),
         ):
             with self._client().websocket_connect(
