@@ -197,6 +197,58 @@ def test_every_spawned_function_exists_in_modal_app():
     )
 
 
+def test_modal_task_apply_never_initializes_configured_result_backend():
+    """Modal's in-process Task.apply must use DisabledBackend, even with rediss configured.
+
+    ``task_ignore_result`` alone is insufficient: Celery's eager tracer still
+    accesses ``task.backend`` before invoking the task body. A production secret
+    containing a rediss URL without Celery's query parameters exposed this by
+    aborting every Modal wrapper during RedisBackend construction.
+    """
+    import subprocess
+    import sys
+
+    script = """
+from app.core.celery_app import celery_app
+from app.workers import email_worker
+
+async def no_op(*args, **kwargs):
+    return None
+
+email_worker._async_send_job_failure = no_op
+result = email_worker.send_job_failure_email.apply(
+    kwargs={
+        "user_id": "00000000-0000-0000-0000-000000000000",
+        "job_type": "latex_compilation",
+        "job_id": "modal-backend-regression",
+    },
+    throw=True,
+)
+assert result.successful()
+assert celery_app.conf.result_backend == "disabled://"
+assert type(celery_app.backend).__name__ == "DisabledBackend"
+"""
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(BACKEND),
+        "SKIP_ENV_VALIDATION": "true",
+        "DEPLOY_TARGET": "modal",
+        "CELERY_BROKER_URL": "redis://localhost:6379/0",
+        # Deliberately invalid for Celery RedisBackend. The test only passes if
+        # Modal never constructs that backend.
+        "CELERY_RESULT_BACKEND": "rediss://example.invalid:6380/0",
+    }
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=BACKEND.parent,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
 # ── 2. native dependency parity ──────────────────────────────────────────────
 
 
