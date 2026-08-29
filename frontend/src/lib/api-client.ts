@@ -3716,6 +3716,8 @@ export interface QuickScoreResponse {
 
 export interface NotificationPrefs {
   job_completed: boolean
+  job_failed: boolean
+  share_viewed: boolean
   weekly_digest: boolean
 }
 
