@@ -285,6 +285,7 @@ class CollabManager:
         self._lock = asyncio.Lock()
 
     async def get_or_create(self, resume_id: str) -> CollabRoom:
+        listener_started: Optional[asyncio.Event] = None
         async with self._lock:
             if resume_id not in self._rooms:
                 self._rooms[resume_id] = CollabRoom(resume_id)
@@ -295,22 +296,61 @@ class CollabManager:
                 # the task spins up are not lost (same ordering as EventBus).
                 pubsub = await _subscribe(resume_id)
                 if pubsub is not None:
+                    listener_started = asyncio.Event()
                     self._listeners[resume_id] = asyncio.create_task(
-                        self._bridge(resume_id, pubsub),
+                        self._bridge(resume_id, pubsub, listener_started),
                         name=f"collab:{resume_id}",
                     )
 
-            return self._rooms[resume_id]
+            room = self._rooms[resume_id]
+
+        # Do not hand ownership of the room back until the bridge has entered
+        # its try/finally.  Otherwise immediate cleanup can cancel a task
+        # before its coroutine starts, leaving the already-open Pub/Sub object
+        # with no finally block capable of closing it.
+        if listener_started is not None:
+            await listener_started.wait()
+        return room
 
     async def maybe_cleanup(self, resume_id: str) -> None:
         """Remove the room and its Redis listener if no clients remain."""
+        task: Optional[asyncio.Task] = None
         async with self._lock:
             room = self._rooms.get(resume_id)
             if room is not None and room.size == 0:
                 del self._rooms[resume_id]
                 task = self._listeners.pop(resume_id, None)
-                if task is not None and not task.done():
-                    task.cancel()
+
+        # Await cancellation outside the manager lock.  The bridge performs
+        # asynchronous Redis cleanup in ``finally``; fire-and-forget
+        # cancellation otherwise lets that work survive the request (and, in
+        # tests, the event loop) that owned the room.
+        if task is not None:
+            await self._stop_listener(task)
+
+    async def shutdown(self) -> None:
+        """Cancel and await every Redis bridge owned by this process."""
+        async with self._lock:
+            tasks = list(self._listeners.values())
+            self._listeners.clear()
+            self._rooms.clear()
+
+        if tasks:
+            await asyncio.gather(
+                *(self._stop_listener(task) for task in tasks),
+            )
+
+    @staticmethod
+    async def _stop_listener(task: asyncio.Task) -> None:
+        """Cancel one listener and wait until its Pub/Sub cleanup finishes."""
+        if not task.done():
+            task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            # A task cancelled before its coroutine first runs cannot execute
+            # the bridge's own CancelledError handler.
+            pass
 
     async def revoke_access(
         self,
@@ -352,9 +392,20 @@ class CollabManager:
 
     # ── Internal: cross-process bridge ────────────────────────────────────
 
-    async def _bridge(self, resume_id: str, pubsub: Any) -> None:
+    async def _bridge(
+        self,
+        resume_id: str,
+        pubsub: Any,
+        started: Optional[asyncio.Event] = None,
+    ) -> None:
         """Apply envelopes published by other API workers to the local room."""
         channel = f"{_COLLAB_CHANNEL_PREFIX}{resume_id}"
+        # Capture this while the loop is known to be alive.  Calling
+        # asyncio.current_task() from ``finally`` is unsafe when Python closes
+        # a coroutine during event-loop teardown.
+        listener_task = asyncio.current_task()
+        if started is not None:
+            started.set()
         try:
             async for message in pubsub.listen():
                 if message["type"] != "message":
@@ -394,7 +445,7 @@ class CollabManager:
             # Only de-register if we are still the registered listener: a
             # rejoin during our (awaiting) teardown may already have installed
             # a newer task, and clobbering it would leak an untracked bridge.
-            if self._listeners.get(resume_id) is asyncio.current_task():
+            if self._listeners.get(resume_id) is listener_task:
                 self._listeners.pop(resume_id, None)
             try:
                 await pubsub.unsubscribe(channel)
