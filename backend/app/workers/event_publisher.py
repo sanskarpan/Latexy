@@ -135,8 +135,46 @@ def publish_event(
     # 3. Update state snapshot (for REST polling fallback)
     _update_state_snapshot(r, job_id, event_type, payload_extra, ttl)
 
+    # 4. A terminal failure has many worker call sites. Dispatch its optional
+    # email here so every job type is covered, with Redis NX preventing duplicate
+    # messages when signal recovery and a task handler publish the same outcome.
+    if event_type == "job.failed":
+        _submit_job_failure_email_once(r, job_id, ttl)
+
     logger.debug(f"[{job_id}] Published {event_type} (seq={seq})")
     return entry_id
+
+
+def _submit_job_failure_email_once(r: redis.Redis, job_id: str, ttl: int) -> None:
+    """Best-effort, deduplicated dispatch for an owned terminal job failure."""
+    dedupe_key = f"latexy:job:{job_id}:failure-email-enqueued"
+    try:
+        raw_meta = r.get(f"latexy:job:{job_id}:meta")
+        if not raw_meta:
+            return
+        if isinstance(raw_meta, bytes):
+            raw_meta = raw_meta.decode("utf-8")
+        meta = json.loads(raw_meta)
+        user_id = meta.get("user_id")
+        if not user_id:
+            return
+
+        claimed = r.set(dedupe_key, "1", ex=ttl, nx=True)
+        if not claimed:
+            return
+
+        from .email_worker import submit_job_failure_email
+
+        if not submit_job_failure_email(
+            str(user_id),
+            str(meta.get("job_type") or "resume_job"),
+            job_id,
+        ):
+            # Dispatch never left this process; release the claim so a later
+            # terminal recovery event can retry instead of silently losing it.
+            r.delete(dedupe_key)
+    except Exception as exc:
+        logger.warning("[%s] Failed to dispatch job-failure email: %s", job_id, exc)
 
 
 def _update_state_snapshot(
