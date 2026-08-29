@@ -3,6 +3,8 @@ Email notification worker — Feature 19.
 
 Tasks:
   send_job_completion_email  — triggered after successful optimization/compile
+  send_job_failure_email     — triggered once for a terminal job.failed event
+  send_share_viewed_email    — triggered after a debounced public share view
   send_weekly_digest         — per-user weekly summary (called by beat fan-out)
   send_weekly_digest_to_all  — Celery Beat entry point; fans out to per-user tasks
 
@@ -27,6 +29,9 @@ logger = logging.getLogger(__name__)
 @celery_app.task(
     name="app.workers.email_worker.send_job_completion_email",
     queue="email",
+    autoretry_for=(Exception,),
+    retry_backoff=5,
+    retry_jitter=True,
     max_retries=2,
     default_retry_delay=30,
     ignore_result=True,
@@ -88,14 +93,199 @@ async def _async_send_job_completion(
 
         html, text = render_job_completed_email(user_name, job_type, ats_score, resume_url)
         job_label = "optimization" if job_type == "llm_optimization" else "compilation"
-        await email_service.send_email(
+        sent = await email_service.send_email(
             to=user.email,
             subject=f"Your resume {job_label} is complete",
             html_body=html,
             text_body=text,
         )
+        if not sent:
+            raise RuntimeError("email provider did not accept completion email")
     except Exception as exc:
         logger.error(f"EMAIL: completion email failed for user {user_id}: {exc}", exc_info=True)
+        raise
+    finally:
+        await engine.dispose()
+
+
+# ── send_job_failure_email ────────────────────────────────────────────────────
+
+@celery_app.task(
+    name="app.workers.email_worker.send_job_failure_email",
+    queue="email",
+    autoretry_for=(Exception,),
+    retry_backoff=5,
+    retry_jitter=True,
+    max_retries=2,
+    default_retry_delay=30,
+    ignore_result=True,
+    soft_time_limit=30,
+    time_limit=60,
+)
+def send_job_failure_email(user_id: str, job_type: str, job_id: str) -> None:
+    """Send a terminal job-failure email when the user has opted in."""
+    asyncio.run(_async_send_job_failure(user_id, job_type, job_id))
+
+
+async def _async_send_job_failure(user_id: str, job_type: str, job_id: str) -> None:
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from ..core.config import settings
+    from ..database.models import User
+    from ..services.email_service import email_service, render_job_failed_email
+    from ..utils.db_url import normalize_database_url
+
+    if not settings.EMAIL_ENABLED:
+        return
+
+    raw_url = os.environ.get("DATABASE_URL", "")
+    if not raw_url:
+        logger.warning("EMAIL: DATABASE_URL not set, skipping failure email")
+        return
+
+    engine = create_async_engine(normalize_database_url(raw_url), echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_factory() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+
+        if not user:
+            logger.warning("EMAIL: user %s not found for failed job %s", user_id, job_id)
+            return
+
+        prefs: Dict = user.email_notifications or {}
+        if not prefs.get("job_failed", True):
+            return
+
+        user_name = user.name or user.email.split("@")[0]
+        workspace_url = f"{settings.FRONTEND_URL}/workspace"
+        html, text = render_job_failed_email(user_name, job_type, workspace_url)
+        sent = await email_service.send_email(
+            to=user.email,
+            subject="A Latexy job could not finish",
+            html_body=html,
+            text_body=text,
+        )
+        if not sent:
+            raise RuntimeError("email provider did not accept failure email")
+    except Exception as exc:
+        logger.error(
+            "EMAIL: failure email failed for user %s, job %s: %s",
+            user_id,
+            job_id,
+            exc,
+            exc_info=True,
+        )
+        raise
+    finally:
+        await engine.dispose()
+
+
+# ── send_share_viewed_email ───────────────────────────────────────────────────
+
+@celery_app.task(
+    name="app.workers.email_worker.send_share_viewed_email",
+    queue="email",
+    autoretry_for=(Exception,),
+    retry_backoff=5,
+    retry_jitter=True,
+    max_retries=2,
+    default_retry_delay=30,
+    ignore_result=True,
+    soft_time_limit=30,
+    time_limit=60,
+)
+def send_share_viewed_email(
+    user_id: str,
+    resume_id: str,
+    resume_title: str,
+    country_code: Optional[str] = None,
+    referrer: Optional[str] = None,
+) -> None:
+    """Send an email for a newly persisted, debounced public share view."""
+    asyncio.run(
+        _async_send_share_viewed(
+            user_id,
+            resume_id,
+            resume_title,
+            country_code,
+            referrer,
+        )
+    )
+
+
+async def _async_send_share_viewed(
+    user_id: str,
+    resume_id: str,
+    resume_title: str,
+    country_code: Optional[str],
+    referrer: Optional[str],
+) -> None:
+    from urllib.parse import quote
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from ..core.config import settings
+    from ..database.models import User
+    from ..services.email_service import email_service, render_share_viewed_email
+    from ..utils.db_url import normalize_database_url
+
+    if not settings.EMAIL_ENABLED:
+        return
+
+    raw_url = os.environ.get("DATABASE_URL", "")
+    if not raw_url:
+        logger.warning("EMAIL: DATABASE_URL not set, skipping share-view email")
+        return
+
+    engine = create_async_engine(normalize_database_url(raw_url), echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_factory() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+
+        if not user:
+            logger.warning("EMAIL: user %s not found for resume %s", user_id, resume_id)
+            return
+
+        prefs: Dict = user.email_notifications or {}
+        if not prefs.get("share_viewed", False):
+            return
+
+        user_name = user.name or user.email.split("@")[0]
+        resume_url = (
+            f"{settings.FRONTEND_URL}/workspace/{quote(str(resume_id), safe='')}/edit"
+        )
+        html, text = render_share_viewed_email(
+            user_name,
+            resume_title,
+            resume_url,
+            country_code,
+            referrer,
+        )
+        sent = await email_service.send_email(
+            to=user.email,
+            subject="Your shared resume was viewed",
+            html_body=html,
+            text_body=text,
+        )
+        if not sent:
+            raise RuntimeError("email provider did not accept share-view email")
+    except Exception as exc:
+        logger.error(
+            "EMAIL: share-view email failed for user %s, resume %s: %s",
+            user_id,
+            resume_id,
+            exc,
+            exc_info=True,
+        )
+        raise
     finally:
         await engine.dispose()
 
@@ -105,6 +295,9 @@ async def _async_send_job_completion(
 @celery_app.task(
     name="app.workers.email_worker.send_weekly_digest",
     queue="email",
+    autoretry_for=(Exception,),
+    retry_backoff=5,
+    retry_jitter=True,
     max_retries=1,
     ignore_result=True,
     soft_time_limit=60,
@@ -202,14 +395,17 @@ async def _async_send_weekly_digest(user_id: str) -> None:
         html, text = render_weekly_digest_email(
             user_name, resume_count, compilation_count, avg_ats, stale_resumes or None
         )
-        await email_service.send_email(
+        sent = await email_service.send_email(
             to=user.email,
             subject="Your weekly Latexy summary",
             html_body=html,
             text_body=text,
         )
+        if not sent:
+            raise RuntimeError("email provider did not accept weekly digest")
     except Exception as exc:
         logger.error(f"EMAIL: weekly digest failed for user {user_id}: {exc}", exc_info=True)
+        raise
     finally:
         await engine.dispose()
 
@@ -294,3 +490,45 @@ def submit_job_completion_email(
         )
     except Exception as exc:
         logger.debug("Failed to enqueue completion email: %s", exc)
+
+
+def submit_job_failure_email(user_id: str, job_type: str, job_id: str) -> bool:
+    """Queue one terminal failure email through the active deployment runtime."""
+    try:
+        payload = {"user_id": user_id, "job_type": job_type, "job_id": job_id}
+        if os.environ.get("DEPLOY_TARGET") == "modal":
+            from ..core.modal_dispatch import spawn
+            spawn("run_job_failure_email_task", payload)
+        else:
+            send_job_failure_email.apply_async(kwargs=payload, queue="email", countdown=1)
+        return True
+    except Exception as exc:
+        logger.debug("Failed to enqueue job-failure email: %s", exc)
+        return False
+
+
+def submit_share_viewed_email(
+    user_id: str,
+    resume_id: str,
+    resume_title: str,
+    country_code: Optional[str] = None,
+    referrer: Optional[str] = None,
+) -> bool:
+    """Queue a debounced share-view email through the active deployment runtime."""
+    try:
+        payload = {
+            "user_id": user_id,
+            "resume_id": resume_id,
+            "resume_title": resume_title,
+            "country_code": country_code,
+            "referrer": referrer,
+        }
+        if os.environ.get("DEPLOY_TARGET") == "modal":
+            from ..core.modal_dispatch import spawn
+            spawn("run_share_viewed_email_task", payload)
+        else:
+            send_share_viewed_email.apply_async(kwargs=payload, queue="email", countdown=1)
+        return True
+    except Exception as exc:
+        logger.debug("Failed to enqueue share-view email: %s", exc)
+        return False
