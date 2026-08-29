@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
-import { Bell, BookOpen, Mail, Calendar, Loader2, CheckCircle, Monitor, Unlink, ExternalLink, Cloud, LogIn } from 'lucide-react'
+import { Bell, BookOpen, Mail, Calendar, Loader2, CheckCircle, Monitor, Unlink, ExternalLink, Cloud, LogIn, CircleAlert, Eye } from 'lucide-react'
 import { Github } from '@/components/icons/brand-icons'
 import { apiClient, type NotificationPrefs, type GitHubStatusResponse, type ZoteroStatusResponse, type MendeleyStatusResponse, type DropboxStatusResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -39,7 +39,12 @@ function SettingsContent() {
   }
 
   // Notification prefs
-  const [prefs, setPrefs] = useState<NotificationPrefs>({ job_completed: true, weekly_digest: false })
+  const [prefs, setPrefs] = useState<NotificationPrefs>({
+    job_completed: true,
+    job_failed: true,
+    share_viewed: false,
+    weekly_digest: false,
+  })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -868,7 +873,9 @@ function SettingsContent() {
                   </div>
                 </div>
                 <button
+                  type="button"
                   role="switch"
+                  aria-label="Job completion emails"
                   aria-checked={prefs.job_completed}
                   disabled={saving}
                   onClick={() => persistPrefs({ ...prefs, job_completed: !prefs.job_completed })}
@@ -892,6 +899,86 @@ function SettingsContent() {
 
               <div className="border-t border-line" />
 
+              {/* Job failed toggle */}
+              <label className="flex items-start justify-between gap-4 cursor-pointer">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-err/10">
+                    <CircleAlert size={13} className="text-err" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-fg">Job failure emails</p>
+                    <p className="mt-0.5 text-[11px] text-fg-3">
+                      Receive an email when a resume job cannot finish after retries
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Job failure emails"
+                  aria-checked={prefs.job_failed}
+                  disabled={saving}
+                  onClick={() => persistPrefs({ ...prefs, job_failed: !prefs.job_failed })}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault()
+                      persistPrefs({ ...prefs, job_failed: !prefs.job_failed })
+                    }
+                  }}
+                  className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
+                    prefs.job_failed ? 'bg-accent' : 'bg-surface-2'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-fg shadow transition-transform ${
+                      prefs.job_failed ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </label>
+
+              <div className="border-t border-line" />
+
+              {/* Share viewed toggle */}
+              <label className="flex items-start justify-between gap-4 cursor-pointer">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+                    <Eye size={13} className="text-accent-strong" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-fg">Shared resume view emails</p>
+                    <p className="mt-0.5 text-[11px] text-fg-3">
+                      Receive an email for each new debounced visitor to a shared resume
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Shared resume view emails"
+                  aria-checked={prefs.share_viewed}
+                  disabled={saving}
+                  onClick={() => persistPrefs({ ...prefs, share_viewed: !prefs.share_viewed })}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault()
+                      persistPrefs({ ...prefs, share_viewed: !prefs.share_viewed })
+                    }
+                  }}
+                  className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
+                    prefs.share_viewed ? 'bg-accent' : 'bg-surface-2'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-fg shadow transition-transform ${
+                      prefs.share_viewed ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </label>
+
+              <div className="border-t border-line" />
+
               {/* Weekly digest toggle */}
               <label className="flex items-start justify-between gap-4 cursor-pointer">
                 <div className="flex items-start gap-3">
@@ -906,7 +993,9 @@ function SettingsContent() {
                   </div>
                 </div>
                 <button
+                  type="button"
                   role="switch"
+                  aria-label="Weekly digest emails"
                   aria-checked={prefs.weekly_digest}
                   disabled={saving}
                   onClick={() => persistPrefs({ ...prefs, weekly_digest: !prefs.weekly_digest })}
