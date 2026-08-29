@@ -1264,13 +1264,17 @@ async def _record_resume_view(
     db: AsyncSession,
     resume_id: str,
     share_token: str,
-) -> None:
+    owner_user_id: str,
+    resume_title: str,
+) -> bool:
     """Insert a resume_views row with atomic Redis SET-NX 5-minute debounce (Feature 43)."""
     import hashlib
 
     from ..core.redis import redis_cache_client
     from ..database.models import ResumeView
 
+    redis_key: Optional[str] = None
+    debounce_claimed = False
     try:
         ip = request.client.host if request.client else "unknown"
         ua = request.headers.get("user-agent", "")
@@ -1285,7 +1289,8 @@ async def _record_resume_view(
         if redis_cache_client:
             claimed = await redis_cache_client.set(redis_key, "1", ex=300, nx=True)
             if not claimed:
-                return  # already counted recently (another request beat us)
+                return False  # already counted recently (another request beat us)
+            debounce_claimed = True
 
         # Country detection via configurable GeoIP provider
         country_code: Optional[str] = None
@@ -1314,10 +1319,32 @@ async def _record_resume_view(
         db.add(view)
         await db.commit()
 
+        # The notification corresponds to a durable analytics row, never to a
+        # mere request. Its worker checks the owner's opt-in before sending.
+        try:
+            from ..workers.email_worker import submit_share_viewed_email
+
+            submit_share_viewed_email(
+                owner_user_id,
+                resume_id,
+                resume_title,
+                country_code,
+                referrer,
+            )
+        except Exception as exc:
+            logger.warning("Failed to dispatch resume-view notification: %s", exc)
+        return True
+
     except Exception as exc:
         # Never let analytics failure break the share page
         logger.warning(f"Failed to record resume view: {exc}")
         await db.rollback()
+        if debounce_claimed and redis_cache_client and redis_key:
+            try:
+                await redis_cache_client.delete(redis_key)
+            except Exception:
+                pass
+        return False
 
 
 class SharedResumeResponse(BaseModel):
@@ -1389,7 +1416,14 @@ async def get_shared_resume(
         if pdf_url:
             # Record view only when a real PDF is being served (Feature 43)
             try:
-                await _record_resume_view(request, db, resume.id, share_token)
+                await _record_resume_view(
+                    request,
+                    db,
+                    resume.id,
+                    share_token,
+                    resume.user_id,
+                    resume.title,
+                )
             except Exception as exc:
                 logger.warning(f"View recording failed: {exc}")
             return SharedResumeResponse(
@@ -1455,7 +1489,14 @@ async def get_shared_resume(
 
     # Record view only when a real PDF is being served (Feature 43)
     try:
-        await _record_resume_view(request, db, resume.id, share_token)
+        await _record_resume_view(
+            request,
+            db,
+            resume.id,
+            share_token,
+            resume.user_id,
+            resume.title,
+        )
     except Exception as exc:
         logger.warning(f"View recording failed: {exc}")
 
