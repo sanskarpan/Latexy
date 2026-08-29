@@ -41,6 +41,8 @@ def mock_r():
     m.incr.return_value = 1
     m.xadd.return_value = "1700000000000-0"
     m.exists.return_value = 0
+    m.get.return_value = None
+    m.set.return_value = True
     ep._worker_redis = m
     return m
 
@@ -233,6 +235,49 @@ class TestPublishEvent:
         })
         state = json.loads(mock_r.setex.call_args[0][2])
         assert state["status"] == "failed"
+
+    def test_job_failed_dispatches_owned_email_once(self, mock_r, job_id):
+        mock_r.get.return_value = json.dumps({
+            "user_id": "user-123",
+            "job_type": "latex_compilation",
+        })
+        mock_r.set.side_effect = [True, False]
+        with patch(
+            "app.workers.email_worker.submit_job_failure_email",
+            return_value=True,
+        ) as submit:
+            publish_event(job_id, "job.failed", {"stage": "worker"})
+            publish_event(job_id, "job.failed", {"stage": "worker"})
+
+        # Redis owns the cross-process exactly-once claim. Simulate the second
+        # NX refusal after checking both attempts use the same dedupe key.
+        assert mock_r.set.call_count == 2
+        first_key = mock_r.set.call_args_list[0].args[0]
+        second_key = mock_r.set.call_args_list[1].args[0]
+        assert first_key == second_key == f"latexy:job:{job_id}:failure-email-enqueued"
+        submit.assert_called_once_with(
+            "user-123", "latex_compilation", job_id
+        )
+
+    def test_job_failed_skips_anonymous_job(self, mock_r, job_id):
+        mock_r.get.return_value = json.dumps({"user_id": None, "job_type": "compilation"})
+        with patch("app.workers.email_worker.submit_job_failure_email") as submit:
+            publish_event(job_id, "job.failed", {"stage": "worker"})
+        submit.assert_not_called()
+
+    def test_job_failed_releases_claim_when_dispatch_fails(self, mock_r, job_id):
+        mock_r.get.return_value = json.dumps({
+            "user_id": "user-123",
+            "job_type": "llm_optimization",
+        })
+        with patch(
+            "app.workers.email_worker.submit_job_failure_email",
+            return_value=False,
+        ):
+            publish_event(job_id, "job.failed", {"stage": "worker"})
+        mock_r.delete.assert_called_once_with(
+            f"latexy:job:{job_id}:failure-email-enqueued"
+        )
 
     def test_state_status_cancelled_for_job_cancelled(self, mock_r, job_id):
         publish_event(job_id, "job.cancelled", {})
