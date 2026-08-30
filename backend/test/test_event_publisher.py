@@ -100,6 +100,20 @@ class TestInitializeWorkerRedis:
             mock_client.close.assert_called_once()
             assert ep._worker_redis is None
 
+    def test_failed_reinitialization_keeps_existing_client(self):
+        existing = MagicMock()
+        replacement = MagicMock()
+        replacement.ping.side_effect = ConnectionError("refused")
+        ep._worker_redis = existing
+
+        with patch("redis.from_url", return_value=replacement):
+            with pytest.raises(ConnectionError):
+                initialize_worker_redis("redis://localhost:6379/0")
+
+        replacement.close.assert_called_once()
+        existing.close.assert_not_called()
+        assert ep._worker_redis is existing
+
     def test_passes_decode_responses_true(self):
         with patch("redis.from_url") as mock_from_url:
             mock_from_url.return_value = MagicMock()
