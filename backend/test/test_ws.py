@@ -7,6 +7,7 @@ the protocol tests; the auth/Redis integration is covered by test_auth.py
 and test_jobs.py which use the async ASGI transport.
 """
 
+import asyncio
 import json
 import time
 import uuid
@@ -19,10 +20,30 @@ from app.api.ws_routes import (
     WebSocketTicketRequest,
     _consume_ws_ticket,
     _job_ws_access_ok,
+    _stop_background_task,
     _ws_ticket_key,
     create_websocket_ticket,
 )
 from app.main import app
+
+
+@pytest.mark.asyncio
+async def test_background_task_stop_awaits_finally_cleanup() -> None:
+    cleanup_complete = asyncio.Event()
+
+    async def _background() -> None:
+        try:
+            await asyncio.sleep(3600)
+        finally:
+            await asyncio.sleep(0)
+            cleanup_complete.set()
+
+    task = asyncio.create_task(_background())
+    await asyncio.sleep(0)
+    await _stop_background_task(task, "test task")
+
+    assert task.done()
+    assert cleanup_complete.is_set()
 
 # ---------------------------------------------------------------------------
 # Shared mock: patch event_bus and redis for all WebSocket tests
