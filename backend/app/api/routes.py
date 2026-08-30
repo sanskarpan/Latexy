@@ -516,7 +516,7 @@ async def compile_latex_endpoint(
         # Schedule cleanup after retention period only if compilation was successful
         if result.success:
             job_dir = settings.TEMP_DIR / result.job_id
-            asyncio.create_task(latex_service.cleanup_temp_files_delayed(job_dir, settings.PDF_RETENTION_TIME))
+            latex_service.schedule_temp_cleanup(job_dir, settings.PDF_RETENTION_TIME)
 
         return result
 
@@ -777,7 +777,7 @@ async def optimize_and_compile_resume(
         # Schedule cleanup after retention period only if compilation was successful
         if compilation_result.success:
             job_dir = settings.TEMP_DIR / compilation_result.job_id
-            asyncio.create_task(latex_service.cleanup_temp_files_delayed(job_dir, settings.PDF_RETENTION_TIME))
+            latex_service.schedule_temp_cleanup(job_dir, settings.PDF_RETENTION_TIME)
 
         return {
             "optimization": optimization_result,
@@ -976,7 +976,7 @@ async def compile_latex_anonymous(
         # Schedule cleanup after retention period only if compilation was successful
         if result.success:
             job_dir = settings.TEMP_DIR / result.job_id
-            asyncio.create_task(latex_service.cleanup_temp_files_delayed(job_dir, settings.PDF_RETENTION_TIME))
+            latex_service.schedule_temp_cleanup(job_dir, settings.PDF_RETENTION_TIME)
 
         return result
 
