@@ -607,31 +607,43 @@ class EntitlementService:
 
     async def _read_from_redis(self) -> Optional[dict]:
         """Read + parse the entitlements blob from Redis (async). None on miss/error."""
+        r = None
         try:
             import redis.asyncio as aioredis
 
             from ..core.config import settings
             r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
             raw = await r.get(REDIS_BLOB_KEY)
-            await r.aclose()
             if raw is None:
                 return None
             return json.loads(raw)
         except Exception as exc:
             logger.debug(f"entitlement_service._read_from_redis error: {exc}")
             return None
+        finally:
+            if r is not None:
+                try:
+                    await r.aclose()
+                except Exception as exc:
+                    logger.debug(f"entitlement_service Redis close error: {exc}")
 
     async def _push_to_redis(self, blob: dict) -> None:
         """Write the entitlements blob to Redis (async, best-effort)."""
+        r = None
         try:
             import redis.asyncio as aioredis
 
             from ..core.config import settings
             r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
             await r.set(REDIS_BLOB_KEY, json.dumps(blob))
-            await r.aclose()
         except Exception as exc:
             logger.debug(f"entitlement_service._push_to_redis error: {exc}")
+        finally:
+            if r is not None:
+                try:
+                    await r.aclose()
+                except Exception as exc:
+                    logger.debug(f"entitlement_service Redis close error: {exc}")
 
     def _sync_read_from_redis(self) -> Optional[dict]:
         """Read + parse the entitlements blob from Redis (sync). None on miss/error."""
@@ -647,6 +659,7 @@ class EntitlementService:
             pass
 
         # 2. Direct sync connection (non-worker context).
+        r = None
         try:
             import redis as _redis
 
@@ -658,13 +671,18 @@ class EntitlementService:
                 socket_timeout=1,
             )
             raw = r.get(REDIS_BLOB_KEY)
-            r.close()
             if raw is None:
                 return None
             return json.loads(raw)
         except Exception as exc:
             logger.debug(f"entitlement_service._sync_read_from_redis error: {exc}")
             return None
+        finally:
+            if r is not None:
+                try:
+                    r.close()
+                except Exception as exc:
+                    logger.debug(f"entitlement_service Redis close error: {exc}")
 
 
 # ---------------------------------------------------------------------- #
