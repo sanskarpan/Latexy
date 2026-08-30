@@ -449,9 +449,13 @@ class CollabManager:
                 self._listeners.pop(resume_id, None)
             try:
                 await pubsub.unsubscribe(channel)
-                await pubsub.aclose()
             except Exception as exc:
-                logger.debug("Collab: bridge cleanup failed: %s", exc)
+                logger.debug("Collab: bridge unsubscribe failed: %s", exc)
+            finally:
+                try:
+                    await pubsub.aclose()
+                except Exception as exc:
+                    logger.debug("Collab: bridge close failed: %s", exc)
 
 
 # Module-level singleton used by the WebSocket handler.
@@ -463,12 +467,25 @@ collab_manager = CollabManager()
 async def _subscribe(resume_id: str) -> Optional[Any]:
     """Subscribe to this room's Pub/Sub channel; None if Redis is unavailable."""
     channel = f"{_COLLAB_CHANNEL_PREFIX}{resume_id}"
+    pubsub = None
     try:
         r = await get_redis_client()
         pubsub = r.pubsub()
         await pubsub.subscribe(channel)
         return pubsub
+    except asyncio.CancelledError:
+        if pubsub is not None:
+            try:
+                await pubsub.aclose()
+            except Exception as cleanup_exc:
+                logger.debug("Collab: cancelled subscribe cleanup failed: %s", cleanup_exc)
+        raise
     except Exception as exc:
+        if pubsub is not None:
+            try:
+                await pubsub.aclose()
+            except Exception as cleanup_exc:
+                logger.debug("Collab: failed subscribe cleanup failed: %s", cleanup_exc)
         logger.warning("Collab: Pub/Sub subscribe failed for %s: %s", resume_id[:8], exc)
         return None
 
