@@ -261,6 +261,15 @@ def _get_broker_redis():
     return _broker_redis_client
 
 
+def _close_broker_redis() -> None:
+    """Close and forget the queue-depth sampler client for this process."""
+    global _broker_redis_client
+    client = _broker_redis_client
+    _broker_redis_client = None
+    if client is not None:
+        client.close()
+
+
 @celery_app.task(name="app.core.celery_app.sample_queue_depths")
 def sample_queue_depths():
     """Sample pending depth of each Celery queue and export it as a gauge.
@@ -367,8 +376,16 @@ def close_worker_process(sender=None, **kwargs):
     from ..core.redis import redis_manager
     from ..workers.event_publisher import close_worker_redis
 
-    close_worker_redis()
-    redis_manager.close_sync_redis()
+    cleanups = (
+        ("event publisher", close_worker_redis),
+        ("queue sampler", _close_broker_redis),
+        ("core Redis", redis_manager.close_sync_redis),
+    )
+    for owner, cleanup in cleanups:
+        try:
+            cleanup()
+        except Exception as exc:
+            logger.warning("Worker process: failed to close %s client: %s", owner, exc)
 
 
 def _extract_job_id(args, kwargs) -> str | None:
