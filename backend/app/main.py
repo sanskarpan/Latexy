@@ -23,6 +23,7 @@ from .middleware.request_context import RequestContextMiddleware
 from .middleware.security_headers import SecurityHeadersMiddleware
 from .middleware.tenant_middleware import TenantMiddleware
 from .services.latex_compiler import latex_compiler
+from .services.latex_service import latex_service
 
 # Setup logging
 setup_logging()
@@ -171,6 +172,7 @@ async def lifespan(app: FastAPI):
     # and the event loop are still available.
     from .services.collab_manager import collab_manager
 
+    await latex_service.shutdown_cleanup_tasks()
     await event_bus.shutdown()
     await collab_manager.shutdown()
     await close_db()
