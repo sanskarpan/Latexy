@@ -31,6 +31,14 @@ _REFERENCE_GLOBAL_UNITS_PER_MINUTE = 600
 _REFERENCE_BUDGET_WINDOW = 60
 
 
+async def _cancel_and_wait(tasks: set[asyncio.Task]) -> None:
+    """Cancel timed-out upstream calls and await their client cleanup."""
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 async def _enforce_reference_budget(request: Request, cost: int) -> None:
     if cost < 1:
         return
@@ -178,8 +186,7 @@ async def fetch_references(
     done, pending = await asyncio.wait(tasks, timeout=30.0)
 
     # Cancel tasks that did not finish in time
-    for t in pending:
-        t.cancel()
+    await _cancel_and_wait(pending)
 
     # Collect results in original order
     task_index = {t: i for i, t in enumerate(tasks)}
@@ -316,8 +323,7 @@ async def fetch_orcid_publications(
         await _enforce_reference_budget(http_request, len(doi_indices))
         doi_tasks = [asyncio.create_task(_fetch_one(works[i]["doi"])) for i in doi_indices]
         done, pending = await asyncio.wait(doi_tasks, timeout=25.0)
-        for t in pending:
-            t.cancel()
+        await _cancel_and_wait(pending)
 
         task_map = {t: doi_indices[j] for j, t in enumerate(doi_tasks)}
         for t in done:
