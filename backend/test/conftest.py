@@ -122,11 +122,15 @@ def check_infrastructure():
         return
     import redis as sync_redis
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    r = None
     try:
         r = sync_redis.from_url(redis_url, socket_connect_timeout=3)
         r.ping()
     except Exception as e:
         pytest.fail(f"Redis not available at {redis_url}: {e}. Start Redis before running tests.")
+    finally:
+        if r is not None:
+            r.close()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -138,9 +142,12 @@ def reset_test_redis():
     import redis as sync_redis
 
     client = sync_redis.from_url(_TEST_REDIS_URL, socket_connect_timeout=3)
-    client.flushdb()
-    yield
-    client.flushdb()
+    try:
+        client.flushdb()
+        yield
+        client.flushdb()
+    finally:
+        client.close()
 
 from app.database.connection import get_db
 from app.main import app
@@ -154,8 +161,8 @@ from app.main import app
 
 
 @pytest.fixture(autouse=True)
-def _reset_async_redis_singletons():
-    """Drop the async Redis client singletons before each test.
+async def _reset_async_redis_singletons():
+    """Close Redis client singletons around every test.
 
     aioredis connection pools bind to the event loop that created their
     connections. A test that drives a coroutine via ``asyncio.run()`` (its own
@@ -165,18 +172,18 @@ def _reset_async_redis_singletons():
     closed" — which surfaces, since the quota meter added in this branch, as a
     503 on the first authenticated job submission that runs afterwards.
 
-    Clearing the async singletons (module globals + manager attributes) forces
-    each test to lazily re-init the clients on its own running loop via
-    get_redis_client()/get_redis_cache_client(). Sync clients are untouched (no
-    loop affinity), and production is single-loop so this is test-only.
+    Closing rather than merely clearing the module references releases each
+    pool while pytest's session-scoped asyncio loop is still alive.  Merely
+    assigning ``None`` made passing tests leak queue/cache sockets and deferred
+    ``ResourceWarning`` messages into unrelated later tests.
     """
     import app.core.redis as _redis_mod
 
-    _redis_mod.redis_client = None
-    _redis_mod.redis_cache_client = None
-    _redis_mod.redis_manager.redis_client = None
-    _redis_mod.redis_manager.redis_cache_client = None
-    yield
+    await _redis_mod.redis_manager.close_redis()
+    try:
+        yield
+    finally:
+        await _redis_mod.redis_manager.close_redis()
 
 
 @pytest.fixture(autouse=True)
