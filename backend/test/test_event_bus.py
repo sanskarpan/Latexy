@@ -136,7 +136,8 @@ class TestSubscribeDisconnect:
     @pytest.mark.asyncio
     async def test_subscribe_creates_listener_task(self):
         bus = EventBusManager()
-        redis, _ = _make_redis()
+        stop = asyncio.Event()
+        redis, _ = _make_redis(blocking=True, stop_event=stop)
         await bus.init(redis)
         job_id = str(uuid.uuid4())
         ws = _make_ws()
@@ -147,6 +148,7 @@ class TestSubscribeDisconnect:
         task = bus._listeners[job_id]
         assert isinstance(task, asyncio.Task)
 
+        stop.set()
         await _cancel_task(task)
 
     @pytest.mark.asyncio
@@ -629,3 +631,162 @@ class TestEventBusRegressions:
             {f"latexy:stream:{job_id}": "0-0"},
             count=500,
         )
+
+    @pytest.mark.asyncio
+    async def test_disconnect_awaits_pubsub_cleanup(self):
+        """Returning from disconnect means the listener owns no live transport."""
+        stop = asyncio.Event()
+        redis, pubsub = _make_redis(blocking=True, stop_event=stop)
+        bus = EventBusManager()
+        await bus.init(redis)
+        ws = _make_ws()
+
+        await bus.subscribe("job-1", ws)
+        task = bus._listeners["job-1"]
+        await bus.disconnect("job-1", ws)
+
+        assert task.done()
+        pubsub.unsubscribe.assert_awaited_once_with("latexy:events:job-1")
+        pubsub.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_failed_subscription_closes_candidate_and_rolls_back_socket(self):
+        redis, pubsub = _make_redis()
+        pubsub.subscribe.side_effect = ConnectionError("Redis unavailable")
+        bus = EventBusManager()
+        await bus.init(redis)
+        ws = _make_ws()
+
+        with pytest.raises(ConnectionError, match="Redis unavailable"):
+            await bus.subscribe("job-1", ws)
+
+        assert bus._connections == {}
+        assert bus._listeners == {}
+        pubsub.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_concurrent_subscribers_share_one_pubsub_listener(self):
+        pubsub = _make_pubsub(blocking=True, stop_event=asyncio.Event())
+        subscribe_started = asyncio.Event()
+        release_subscribe = asyncio.Event()
+
+        async def _slow_subscribe(_channel: str) -> None:
+            subscribe_started.set()
+            await release_subscribe.wait()
+
+        pubsub.subscribe.side_effect = _slow_subscribe
+        redis = AsyncMock()
+        redis.xread = AsyncMock(return_value=[])
+        redis.pubsub = MagicMock(return_value=pubsub)
+        bus = EventBusManager()
+        await bus.init(redis)
+
+        first = asyncio.create_task(bus.subscribe("job-1", _make_ws()))
+        await asyncio.wait_for(subscribe_started.wait(), timeout=2)
+        second = asyncio.create_task(bus.subscribe("job-1", _make_ws()))
+        release_subscribe.set()
+        await asyncio.gather(first, second)
+
+        assert redis.pubsub.call_count == 1
+        assert len(bus._listeners) == 1
+        await bus.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_slow_teardown_does_not_untrack_replacement_listener(self):
+        """A re-subscribe during Redis cleanup must keep the new task tracked."""
+        old = _make_pubsub(blocking=True, stop_event=asyncio.Event())
+        new = _make_pubsub(blocking=True, stop_event=asyncio.Event())
+        cleanup_started = asyncio.Event()
+        release_cleanup = asyncio.Event()
+
+        async def _slow_unsubscribe(_channel: str) -> None:
+            cleanup_started.set()
+            await release_cleanup.wait()
+
+        old.unsubscribe.side_effect = _slow_unsubscribe
+        redis = AsyncMock()
+        redis.xread = AsyncMock(return_value=[])
+        redis.pubsub = MagicMock(side_effect=[old, new])
+        bus = EventBusManager()
+        await bus.init(redis)
+        first_ws = _make_ws()
+        second_ws = _make_ws()
+
+        await bus.subscribe("job-1", first_ws)
+        first = bus._listeners["job-1"]
+        disconnecting = asyncio.create_task(bus.disconnect("job-1", first_ws))
+        await asyncio.wait_for(cleanup_started.wait(), timeout=2)
+
+        await bus.subscribe("job-1", second_ws)
+        second = bus._listeners["job-1"]
+        assert second is not first
+
+        release_cleanup.set()
+        await disconnecting
+
+        assert first.done()
+        assert bus._listeners.get("job-1") is second
+        assert not second.done()
+        await bus.shutdown()
+
+    @pytest.mark.asyncio
+    async def test_shutdown_awaits_all_listener_cleanup_and_resets_state(self):
+        pubsubs = [
+            _make_pubsub(blocking=True, stop_event=asyncio.Event()),
+            _make_pubsub(blocking=True, stop_event=asyncio.Event()),
+        ]
+        redis = AsyncMock()
+        redis.xread = AsyncMock(return_value=[])
+        redis.pubsub = MagicMock(side_effect=pubsubs)
+        bus = EventBusManager()
+        await bus.init(redis)
+
+        await bus.subscribe("job-1", _make_ws())
+        await bus.subscribe("job-2", _make_ws())
+        tasks = list(bus._listeners.values())
+        await bus.shutdown()
+
+        assert all(task.done() for task in tasks)
+        assert all(pubsub.unsubscribe.await_count == 1 for pubsub in pubsubs)
+        assert all(pubsub.aclose.await_count == 1 for pubsub in pubsubs)
+        assert bus._listeners == {}
+        assert bus._connections == {}
+        assert bus._redis is None
+
+    @pytest.mark.asyncio
+    async def test_dead_last_socket_does_not_make_listener_await_itself(self):
+        pubsub = _make_pubsub()
+
+        async def _one_message():
+            yield {"type": "message", "data": "payload"}
+
+        pubsub.listen = _one_message
+        redis = AsyncMock()
+        redis.xread = AsyncMock(return_value=[])
+        redis.pubsub = MagicMock(return_value=pubsub)
+        bus = EventBusManager()
+        await bus.init(redis)
+        ws = _make_ws()
+        ws.send_text.side_effect = ConnectionError("socket closed")
+
+        await bus.subscribe("job-1", ws)
+        await asyncio.sleep(0)
+
+        assert bus._connections == {}
+        assert bus._listeners == {}
+        pubsub.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_failure_does_not_skip_pubsub_close(self):
+        stop = asyncio.Event()
+        redis, pubsub = _make_redis(blocking=True, stop_event=stop)
+        pubsub.unsubscribe.side_effect = ConnectionError("unsubscribe failed")
+        bus = EventBusManager()
+        await bus.init(redis)
+        ws = _make_ws()
+
+        await bus.subscribe("job-1", ws)
+        await bus.disconnect("job-1", ws)
+
+        pubsub.unsubscribe.assert_awaited_once()
+        pubsub.aclose.assert_awaited_once()
