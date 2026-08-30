@@ -227,11 +227,7 @@ async def jobs_websocket(websocket: WebSocket) -> None:
     except Exception as exc:
         logger.error(f"WS handler error: {exc}")
     finally:
-        heartbeat_task.cancel()
-        try:
-            await heartbeat_task
-        except asyncio.CancelledError:
-            pass
+        await _stop_background_task(heartbeat_task, "jobs heartbeat")
         _ws_message_counts.pop(connection_id, None)
         await event_bus.disconnect_all(websocket)
         logger.info("WebSocket connection closed")
@@ -332,6 +328,18 @@ async def _heartbeat(websocket: WebSocket) -> None:
         pass
     except Exception:
         pass
+
+
+async def _stop_background_task(task: asyncio.Task, owner: str) -> None:
+    """Cancel one request-owned task and await its terminal cleanup."""
+    if not task.done():
+        task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    except Exception as exc:
+        logger.debug("%s stopped with an error: %s", owner, exc)
 
 
 async def _close_expected_collab_rejection(
@@ -490,7 +498,7 @@ async def collab_websocket(websocket: WebSocket, resume_id: str) -> None:
     except Exception as exc:
         logger.error("Collab: handler error: %s", exc)
     finally:
-        heartbeat_task.cancel()
+        await _stop_background_task(heartbeat_task, "collaboration heartbeat")
         await room.remove(client_id)
         await collab_manager.maybe_cleanup(resume_id)
         logger.info(
