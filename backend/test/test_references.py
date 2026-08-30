@@ -11,10 +11,13 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
+
+from app.api.reference_routes import _cancel_and_wait
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +66,25 @@ def _mock_httpx_response(status_code: int, text: str):
     resp.status_code = status_code
     resp.text = text
     return resp
+
+
+@pytest.mark.asyncio
+async def test_timed_out_fetch_tasks_are_awaited_through_cleanup() -> None:
+    cleanup_complete = asyncio.Event()
+
+    async def _fetch() -> None:
+        try:
+            await asyncio.sleep(3600)
+        finally:
+            await asyncio.sleep(0)
+            cleanup_complete.set()
+
+    task = asyncio.create_task(_fetch())
+    await asyncio.sleep(0)
+    await _cancel_and_wait({task})
+
+    assert task.done()
+    assert cleanup_complete.is_set()
 
 
 # ── Service unit tests ─────────────────────────────────────────────────────────
