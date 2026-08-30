@@ -173,8 +173,11 @@ class LaTeXCompiler:
                     return False, self._parse_latex_error(error_msg)
 
             except asyncio.TimeoutError:
-                process.kill()
+                await self._kill_and_wait(process)
                 return False, f"Compilation timeout after {timeout} seconds"
+            except asyncio.CancelledError:
+                await self._kill_and_wait(process)
+                raise
 
         except Exception as e:
             logger.error(f"Local compilation error: {e}")
@@ -214,12 +217,25 @@ class LaTeXCompiler:
                     return False, self._parse_latex_error(error_msg)
 
             except asyncio.TimeoutError:
-                process.kill()
+                await self._kill_and_wait(process)
                 return False, f"Compilation timeout after {timeout} seconds"
+            except asyncio.CancelledError:
+                await self._kill_and_wait(process)
+                raise
 
         except Exception as e:
             logger.error(f"Docker compilation error: {e}")
             return False, str(e)
+
+    @staticmethod
+    async def _kill_and_wait(process: asyncio.subprocess.Process) -> None:
+        """Terminate a child and reap its subprocess transport."""
+        if process.returncode is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+        await process.wait()
 
     def _parse_latex_error(self, error_output: str) -> str:
         """Parse LaTeX error output to extract meaningful error message."""
