@@ -24,6 +24,7 @@ from app.services.collab_manager import (
     _decode_varuint,
     _encode_varbuffer,
     _encode_varuint,
+    _subscribe,
     handle_collab_message,
 )
 
@@ -524,6 +525,42 @@ class TestCrossProcessFanout:
         mgr._listeners["r1"] = task
         await task
         assert "r1" not in mgr._listeners
+
+    @pytest.mark.asyncio
+    async def test_bridge_closes_pubsub_when_unsubscribe_fails(self) -> None:
+        class _BrokenUnsubscribePubSub(_BlockingPubSub):
+            async def unsubscribe(self, channel: str) -> None:
+                self.unsubscribed = True
+                raise ConnectionError("unsubscribe failed")
+
+        mgr = CollabManager()
+        pubsub = _BrokenUnsubscribePubSub()
+
+        async def _fake_subscribe(_resume_id: str):
+            return pubsub
+
+        with patch("app.services.collab_manager._subscribe", _fake_subscribe):
+            await mgr.get_or_create("r1")
+            await mgr.maybe_cleanup("r1")
+
+        assert pubsub.unsubscribed is True
+        assert pubsub.closed is True
+
+    @pytest.mark.asyncio
+    async def test_failed_subscribe_closes_partial_pubsub(self) -> None:
+        pubsub = AsyncMock()
+        pubsub.subscribe.side_effect = ConnectionError("Redis unavailable")
+        redis = AsyncMock()
+        redis.pubsub = MagicMock(return_value=pubsub)
+
+        with patch(
+            "app.services.collab_manager.get_redis_client",
+            AsyncMock(return_value=redis),
+        ):
+            result = await _subscribe("r1")
+
+        assert result is None
+        pubsub.aclose.assert_awaited_once()
 
 
 # ── Route-level revocation wiring (H2) ───────────────────────────────────────
