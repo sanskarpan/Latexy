@@ -122,6 +122,10 @@ class EventBusManager:
             try:
                 await listener_started.wait()
             except BaseException:
+                # Cancellation may win the scheduling race before the new
+                # listener has entered its try/finally.  Let it claim cleanup
+                # ownership before stopping it.
+                await listener_started.wait()
                 await self.disconnect(job_id, websocket)
                 raise
 
