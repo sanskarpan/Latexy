@@ -101,6 +101,29 @@ async def test_one_broken_client_does_not_skip_remaining_cleanup(
     sync_client.close.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_close_does_not_capture_a_concurrently_reinitialized_sync_client(
+    isolated_redis_globals,
+) -> None:
+    manager = isolated_redis_globals
+    async_client = AsyncMock()
+    old_sync = MagicMock()
+    replacement_sync = MagicMock()
+
+    async def _install_replacement_during_async_close() -> None:
+        redis_module.sync_redis_client = replacement_sync
+
+    async_client.aclose.side_effect = _install_replacement_during_async_close
+    redis_module.redis_client = async_client
+    redis_module.sync_redis_client = old_sync
+
+    await manager.close_redis()
+
+    old_sync.close.assert_called_once()
+    replacement_sync.close.assert_not_called()
+    assert redis_module.sync_redis_client is replacement_sync
+
+
 def test_sync_cleanup_is_idempotent(isolated_redis_globals) -> None:
     manager = isolated_redis_globals
     client = MagicMock()
