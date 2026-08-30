@@ -134,6 +134,10 @@ class RedisManager:
 
         except Exception as e:
             logger.error(f"Failed to initialize Redis connections: {e}")
+            # from_url() allocates pools before the connectivity probes run.
+            # A failed probe must release every partially-created pool instead
+            # of leaving it reachable through the module globals.
+            await self.close_redis()
             raise
 
     async def close_redis(self):
