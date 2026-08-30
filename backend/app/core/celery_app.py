@@ -11,7 +11,13 @@ from time import perf_counter
 
 from celery import Celery
 from celery.schedules import crontab
-from celery.signals import task_failure, task_postrun, task_prerun, worker_process_init
+from celery.signals import (
+    task_failure,
+    task_postrun,
+    task_prerun,
+    worker_process_init,
+    worker_process_shutdown,
+)
 
 from ..core.config import settings
 from ..core.logging import get_logger
@@ -333,8 +339,12 @@ def _install_darwin_fork_safe_resolver() -> None:
 def init_worker_process(sender=None, **kwargs):
     """
     Called once per Celery worker OS process on startup.
-    Initialises both the synchronous Redis client (for event_publisher)
-    and the async Redis clients (for cleanup/health tasks that use asyncio.run()).
+    Initialises the synchronous Redis client used by event_publisher.
+
+    Async Redis clients deliberately do not live in Celery worker globals:
+    creating them with ``asyncio.run()`` binds their sockets to a loop that is
+    closed as soon as this signal returns. Worker paths use the synchronous
+    publisher/health clients or create and dispose task-local async resources.
     """
     # Must run before anything in this process resolves a hostname.
     _install_darwin_fork_safe_resolver()
@@ -350,15 +360,15 @@ def init_worker_process(sender=None, **kwargs):
         logger.error(f"Worker process: failed to initialise Redis: {exc}")
         raise
 
-    # Also init async Redis so tasks using asyncio.run(redis_manager.*()) work
-    try:
-        import asyncio  # noqa: I001
 
-        from ..core.redis import redis_manager
-        asyncio.run(redis_manager.init_redis())
-        logger.info("Worker process: async Redis initialised")
-    except Exception as exc:
-        logger.warning(f"Worker process: async Redis init failed (non-critical): {exc}")
+@worker_process_shutdown.connect
+def close_worker_process(sender=None, **kwargs):
+    """Release worker-owned Redis pools before the child process exits."""
+    from ..core.redis import redis_manager
+    from ..workers.event_publisher import close_worker_redis
+
+    close_worker_redis()
+    redis_manager.close_sync_redis()
 
 
 def _extract_job_id(args, kwargs) -> str | None:
