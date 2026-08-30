@@ -160,6 +160,10 @@ class RedisManager:
         redis_cache_client = None
         self.redis_client = None
         self.redis_cache_client = None
+        # Snapshot/clear synchronous clients before the first await as well.
+        # A concurrent lazy re-initialization may then install a new generation
+        # without this shutdown pass accidentally closing it later.
+        self.close_sync_redis()
 
         for client in async_clients.values():
             try:
@@ -167,7 +171,6 @@ class RedisManager:
             except Exception as exc:
                 logger.error("Error closing async Redis connection: %s", exc)
 
-        self.close_sync_redis()
         logger.info("Redis connections closed")
 
     def close_sync_redis(self) -> None:
