@@ -95,7 +95,7 @@ class EventBusManager:
                 pubsub = self._redis.pubsub()
                 try:
                     await pubsub.subscribe(channel)
-                except BaseException:
+                except (asyncio.CancelledError, Exception):
                     self._connections[job_id].discard(websocket)
                     if not self._connections[job_id]:
                         self._connections.pop(job_id, None)
@@ -121,7 +121,7 @@ class EventBusManager:
         if listener_started is not None:
             try:
                 await listener_started.wait()
-            except BaseException:
+            except asyncio.CancelledError:
                 # Cancellation may win the scheduling race before the new
                 # listener has entered its try/finally.  Let it claim cleanup
                 # ownership before stopping it.
