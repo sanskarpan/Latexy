@@ -143,7 +143,11 @@ jobs:
         run: uv run alembic upgrade head
 
       - name: Run tests
-        run: uv run pytest --tb=short -q
+        run: >-
+          uv run pytest --tb=short -q
+          -W error::ResourceWarning
+          -W error::RuntimeWarning
+          -W error::pytest.PytestUnraisableExceptionWarning
 
   # ── Frontend ───────────────────────────────────────────────────────────────
   frontend-lint:
