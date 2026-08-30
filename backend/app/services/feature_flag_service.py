@@ -107,6 +107,7 @@ class FeatureFlagService:
             pass
 
         # 2. Direct sync connection (FastAPI / non-worker context)
+        r = None
         try:
             import redis as _redis
 
@@ -114,25 +115,36 @@ class FeatureFlagService:
             r = _redis.from_url(settings.REDIS_URL, decode_responses=True,
                                 socket_connect_timeout=1, socket_timeout=1)
             val = r.get(redis_key)
-            r.close()
             if val is None:
                 return True
             return val == "1"
         except Exception as exc:
             logger.debug(f"sync_get_flag({key}) Redis error: {exc}")
             return True  # fail open
+        finally:
+            if r is not None:
+                try:
+                    r.close()
+                except Exception as exc:
+                    logger.debug(f"sync_get_flag({key}) Redis close error: {exc}")
 
     async def _push_to_redis(self, key: str, enabled: bool) -> None:
         """Write flag value to Redis (async, best-effort)."""
+        r = None
         try:
             import redis.asyncio as aioredis
 
             from ..core.config import settings
             r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
             await r.set(f"{REDIS_KEY_PREFIX}{key}", "1" if enabled else "0")
-            await r.aclose()
         except Exception as exc:
             logger.debug(f"_push_to_redis({key}) error: {exc}")
+        finally:
+            if r is not None:
+                try:
+                    await r.aclose()
+                except Exception as exc:
+                    logger.debug(f"_push_to_redis({key}) Redis close error: {exc}")
 
 
 # Module-level singleton
