@@ -692,6 +692,33 @@ class TestEventBusRegressions:
         await bus.shutdown()
 
     @pytest.mark.asyncio
+    async def test_cancelled_subscribe_waits_for_listener_cleanup_ownership(self):
+        redis, pubsub = _make_redis(blocking=True, stop_event=asyncio.Event())
+        bus = EventBusManager()
+        await bus.init(redis)
+        enter_listener = asyncio.Event()
+        original_listener = bus._pubsub_listener
+
+        async def _delayed_listener(job_id, candidate, started):
+            await enter_listener.wait()
+            await original_listener(job_id, candidate, started)
+
+        bus._pubsub_listener = _delayed_listener
+        subscribing = asyncio.create_task(bus.subscribe("job-1", _make_ws()))
+        await asyncio.sleep(0)
+        subscribing.cancel()
+        await asyncio.sleep(0)
+        enter_listener.set()
+
+        with pytest.raises(asyncio.CancelledError):
+            await subscribing
+
+        assert bus._connections == {}
+        assert bus._listeners == {}
+        pubsub.unsubscribe.assert_awaited_once()
+        pubsub.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_slow_teardown_does_not_untrack_replacement_listener(self):
         """A re-subscribe during Redis cleanup must keep the new task tracked."""
         old = _make_pubsub(blocking=True, stop_event=asyncio.Event())
