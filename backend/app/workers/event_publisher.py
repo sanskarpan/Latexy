@@ -43,8 +43,8 @@ def initialize_worker_redis(redis_url: str, password: Optional[str] = None) -> N
     Create a fresh synchronous Redis connection for this worker process.
     Called from the worker_process_init Celery signal in celery_app.py.
     """
-    global _worker_redis
-    _worker_redis = redis.from_url(
+    close_worker_redis()
+    client = redis.from_url(
         redis_url,
         password=password or None,
         max_connections=5,
@@ -53,9 +53,30 @@ def initialize_worker_redis(redis_url: str, password: Optional[str] = None) -> N
         socket_connect_timeout=5,
         socket_timeout=10,
     )
-    # Verify connectivity
-    _worker_redis.ping()
+    try:
+        # Verify connectivity before publishing the process-wide reference.
+        client.ping()
+    except Exception:
+        client.close()
+        raise
+
+    global _worker_redis
+    _worker_redis = client
     logger.info(f"Worker Redis client initialized (PID {os.getpid()})")
+
+
+def close_worker_redis() -> None:
+    """Close and forget the synchronous client owned by this worker process."""
+    global _worker_redis
+
+    client = _worker_redis
+    _worker_redis = None
+    if client is None:
+        return
+    try:
+        client.close()
+    except Exception as exc:
+        logger.warning("Failed to close worker Redis client: %s", exc)
 
 
 def get_worker_redis() -> redis.Redis:
