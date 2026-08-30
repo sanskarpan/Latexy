@@ -9,7 +9,7 @@ prefork child segfaulted the first time a task resolved an external hostname
 from __future__ import annotations
 
 import socket
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import app.core.celery_app as ca
 
@@ -88,6 +88,8 @@ class TestWorkerRedisLifecycle:
         init_async_redis.assert_not_called()
 
     def test_process_shutdown_closes_worker_owned_sync_clients(self):
+        sampler = MagicMock()
+        ca._broker_redis_client = sampler
         with (
             patch("app.workers.event_publisher.close_worker_redis") as close_publisher,
             patch("app.core.redis.redis_manager.close_sync_redis") as close_sync,
@@ -95,4 +97,21 @@ class TestWorkerRedisLifecycle:
             ca.close_worker_process()
 
         close_publisher.assert_called_once_with()
+        sampler.close.assert_called_once_with()
+        assert ca._broker_redis_client is None
+        close_sync.assert_called_once_with()
+
+    def test_process_shutdown_attempts_every_cleanup_after_one_failure(self):
+        sampler = MagicMock()
+        ca._broker_redis_client = sampler
+        with (
+            patch(
+                "app.workers.event_publisher.close_worker_redis",
+                side_effect=ConnectionError("publisher close failed"),
+            ),
+            patch("app.core.redis.redis_manager.close_sync_redis") as close_sync,
+        ):
+            ca.close_worker_process()
+
+        sampler.close.assert_called_once_with()
         close_sync.assert_called_once_with()
