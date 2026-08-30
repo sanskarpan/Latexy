@@ -1,6 +1,6 @@
 """Regression tests for process-owned Redis client cleanup."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -78,6 +78,42 @@ async def test_close_redis_closes_unique_clients_and_clears_every_reference(
     assert manager.redis_cache_client is None
     assert manager.sync_redis_client is None
     assert manager.sync_redis_cache_client is None
+
+
+@pytest.mark.asyncio
+async def test_failed_initialization_closes_every_partial_pool(
+    isolated_redis_globals,
+) -> None:
+    manager = isolated_redis_globals
+    queue = AsyncMock()
+    cache = AsyncMock()
+    cache.ping.side_effect = ConnectionError("cache unavailable")
+    sync_queue = MagicMock()
+    sync_cache = MagicMock()
+
+    with (
+        patch.object(
+            redis_module.ObservedAsyncRedis,
+            "from_url",
+            side_effect=[queue, cache],
+        ),
+        patch.object(
+            redis_module.ObservedSyncRedis,
+            "from_url",
+            side_effect=[sync_queue, sync_cache],
+        ),
+    ):
+        with pytest.raises(ConnectionError, match="cache unavailable"):
+            await manager.init_redis()
+
+    queue.aclose.assert_awaited_once()
+    cache.aclose.assert_awaited_once()
+    sync_queue.close.assert_called_once()
+    sync_cache.close.assert_called_once()
+    assert redis_module.redis_client is None
+    assert redis_module.redis_cache_client is None
+    assert redis_module.sync_redis_client is None
+    assert redis_module.sync_redis_cache_client is None
 
 
 @pytest.mark.asyncio
