@@ -15,6 +15,7 @@ import pytest
 
 import app.workers.event_publisher as ep
 from app.workers.event_publisher import (
+    close_worker_redis,
     get_worker_redis,
     initialize_worker_redis,
     is_cancelled,
@@ -96,6 +97,8 @@ class TestInitializeWorkerRedis:
             mock_from_url.return_value = mock_client
             with pytest.raises(ConnectionError):
                 initialize_worker_redis("redis://localhost:6379/0")
+            mock_client.close.assert_called_once()
+            assert ep._worker_redis is None
 
     def test_passes_decode_responses_true(self):
         with patch("redis.from_url") as mock_from_url:
@@ -132,7 +135,24 @@ class TestInitializeWorkerRedis:
         with patch("redis.from_url", side_effect=[first, second]):
             initialize_worker_redis("redis://localhost:6379/0")
             initialize_worker_redis("redis://localhost:6379/0")
+        first.close.assert_called_once()
         assert ep._worker_redis is second
+
+
+class TestCloseWorkerRedis:
+    def test_closes_and_clears_process_client(self):
+        client = MagicMock()
+        ep._worker_redis = client
+
+        close_worker_redis()
+
+        client.close.assert_called_once()
+        assert ep._worker_redis is None
+
+    def test_is_idempotent(self):
+        close_worker_redis()
+        close_worker_redis()
+        assert ep._worker_redis is None
 
 
 # ── publish_event ──────────────────────────────────────────────────────────────
