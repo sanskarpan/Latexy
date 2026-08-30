@@ -376,6 +376,7 @@ class LaTeXService:
         """Initialize the LaTeX service."""
         # Ensure temp directory exists
         settings.TEMP_DIR.mkdir(exist_ok=True)
+        self._cleanup_tasks: set[asyncio.Task] = set()
 
     def validate_latex_content(self, content: str) -> bool:
         """Basic validation of LaTeX content."""
@@ -599,6 +600,26 @@ class LaTeXService:
         """Clean up temporary files after a delay."""
         await asyncio.sleep(delay)
         self.cleanup_temp_files(job_dir)
+
+    def schedule_temp_cleanup(self, job_dir: Path, delay: int = 5) -> asyncio.Task:
+        """Schedule a delayed cleanup and retain ownership until it finishes."""
+        task = asyncio.create_task(
+            self.cleanup_temp_files_delayed(job_dir, delay),
+            name=f"latex-cleanup:{job_dir.name}",
+        )
+        self._cleanup_tasks.add(task)
+        task.add_done_callback(self._cleanup_tasks.discard)
+        return task
+
+    async def shutdown_cleanup_tasks(self) -> None:
+        """Cancel and await every delayed cleanup still owned by this process."""
+        tasks = list(self._cleanup_tasks)
+        self._cleanup_tasks.clear()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # Global service instance
