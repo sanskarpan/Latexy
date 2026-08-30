@@ -137,30 +137,67 @@ class RedisManager:
             raise
 
     async def close_redis(self):
-        """Close Redis connections."""
-        global redis_client, redis_cache_client, sync_redis_client, sync_redis_cache_client
+        """Close every Redis client owned by this process.
 
-        try:
-            if redis_client:
-                await redis_client.aclose()
-                redis_client = None
+        Clear references before awaiting network cleanup so a concurrent caller
+        cannot acquire a client that is already closing.  Each client is then
+        closed independently: one broken pool must not prevent the remaining
+        queue/cache and sync/fallback pools from releasing their sockets.
+        """
+        global redis_client, redis_cache_client
 
-            if redis_cache_client:
-                await redis_cache_client.aclose()
-                redis_cache_client = None
+        async_clients = {
+            id(client): client
+            for client in (
+                redis_client,
+                redis_cache_client,
+                self.redis_client,
+                self.redis_cache_client,
+            )
+            if client is not None
+        }
+        redis_client = None
+        redis_cache_client = None
+        self.redis_client = None
+        self.redis_cache_client = None
 
-            if sync_redis_client:
-                sync_redis_client.close()
-                sync_redis_client = None
+        for client in async_clients.values():
+            try:
+                await client.aclose()
+            except Exception as exc:
+                logger.error("Error closing async Redis connection: %s", exc)
 
-            if sync_redis_cache_client:
-                sync_redis_cache_client.close()
-                sync_redis_cache_client = None
+        self.close_sync_redis()
+        logger.info("Redis connections closed")
 
-            logger.info("Redis connections closed")
+    def close_sync_redis(self) -> None:
+        """Close every synchronous Redis pool owned by this process."""
+        global sync_redis_client, sync_redis_cache_client
+        global _fallback_sync_redis_client
 
-        except Exception as e:
-            logger.error(f"Error closing Redis connections: {e}")
+        clients = {
+            id(client): client
+            for client in (
+                sync_redis_client,
+                sync_redis_cache_client,
+                self.sync_redis_client,
+                self.sync_redis_cache_client,
+                _fallback_sync_redis_client,
+            )
+            if client is not None
+        }
+
+        sync_redis_client = None
+        sync_redis_cache_client = None
+        _fallback_sync_redis_client = None
+        self.sync_redis_client = None
+        self.sync_redis_cache_client = None
+
+        for client in clients.values():
+            try:
+                client.close()
+            except Exception as exc:
+                logger.error("Error closing sync Redis connection: %s", exc)
 
     async def health_check(self) -> Dict[str, bool]:
         """Check Redis connection health."""
