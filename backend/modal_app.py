@@ -625,7 +625,11 @@ def scheduled_cleanup_temp_files() -> None:
     secrets=_secrets,
     timeout=300,
 )
-def scheduled_health_check() -> None:
+# This intentionally uses a new Modal name. The v49 registration used the old
+# name as a scheduled function; replacing it in place can leave server-side
+# schedule metadata associated with that name during rollout. The retention
+# behavior is deployment-dependent, so never restore the old function name.
+def run_scheduled_health_check() -> None:
     """Worker health check runner (beat: every 300s).
 
     The cadence is owned by ``scheduled_five_minute_maintenance`` so this
@@ -714,10 +718,10 @@ def scheduled_five_minute_maintenance() -> None:
     spawn_failures = []
 
     try:
-        scheduled_health_check.spawn()
+        run_scheduled_health_check.spawn()
     except Exception as exc:
         print(f"scheduled health-check spawn failed: {type(exc).__name__}")
-        spawn_failures.append("scheduled_health_check")
+        spawn_failures.append("run_scheduled_health_check")
 
     try:
         scheduled_tracker_notifications.spawn()
