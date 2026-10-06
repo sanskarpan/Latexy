@@ -5,6 +5,8 @@ Wraps boto3 for uploading, downloading, and checking objects in the configured b
 Uses a module-level singleton client to avoid per-request client creation overhead.
 """
 
+import hashlib
+import re
 import threading
 import time
 
@@ -16,6 +18,46 @@ from ..core.config import settings
 from ..core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def compilation_pdf_key(job_id: str, owner_token: str) -> str:
+    """Return an immutable, owner-scoped compilation PDF key.
+
+    The owner token is hashed rather than embedded directly so Redis/Celery
+    identifiers and separators cannot influence the storage path. A new owner
+    epoch therefore cannot overwrite an earlier owner's object.
+    """
+    if not isinstance(job_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,255}", job_id):
+        raise ValueError("invalid job id")
+    if not isinstance(owner_token, str) or not owner_token:
+        raise ValueError("owner token is required")
+    token_hash = hashlib.sha256(owner_token.encode("utf-8")).hexdigest()[:32]
+    return f"compilations/{job_id}/finalization-{token_hash}.pdf"
+
+
+def upload_compilation_pdf(job_id: str, owner_token: str, data: bytes) -> tuple[str, str]:
+    """Upload an owner-scoped PDF and return ``(key, sha256)``."""
+    if not isinstance(data, bytes) or not data:
+        raise ValueError("PDF data is required")
+    key = compilation_pdf_key(job_id, owner_token)
+    digest = hashlib.sha256(data).hexdigest()
+    upload_bytes(key, data, "application/pdf")
+    return key, digest
+
+
+class StorageObjectTooLarge(ValueError):
+    """Raised when an object exceeds a caller-provided download limit."""
+
+
+def _declared_size(metadata: dict) -> int | None:
+    """Parse optional object-size metadata without trusting malformed values."""
+    value = metadata.get("ContentLength")
+    try:
+        size = int(value)
+    except (TypeError, ValueError):
+        return None
+    return size if size >= 0 else None
+
 
 _client = None
 _client_lock = threading.Lock()
@@ -58,12 +100,50 @@ def upload_bytes(key: str, data: bytes, content_type: str = "application/octet-s
     logger.info(f"Uploaded {key} ({len(data)} bytes)")
 
 
-def download_bytes(key: str) -> bytes | None:
-    """Download an object from the bucket. Returns None if not found."""
+def download_bytes(key: str, max_bytes: int | None = None) -> bytes | None:
+    """Download an object, optionally enforcing a hard in-memory byte limit."""
+    if max_bytes is not None and max_bytes < 0:
+        raise ValueError("max_bytes must be non-negative")
     client = _get_client()
     try:
+        if max_bytes is not None:
+            try:
+                metadata = client.head_object(Bucket=settings.MINIO_BUCKET, Key=key)
+            except ClientError as exc:
+                if exc.response["Error"]["Code"] in ("404", "NoSuchKey"):
+                    return None
+                # Some S3-compatible policies permit GET but not HEAD. The GET
+                # response is checked below in that case.
+                metadata = {}
+            declared_size = _declared_size(metadata)
+            if declared_size is not None and declared_size > max_bytes:
+                raise StorageObjectTooLarge("storage object exceeds byte limit")
+
         response = client.get_object(Bucket=settings.MINIO_BUCKET, Key=key)
-        return response["Body"].read()
+        body = response["Body"]
+        try:
+            if max_bytes is None:
+                return body.read()
+
+            declared_size = _declared_size(response)
+            if declared_size is not None and declared_size > max_bytes:
+                raise StorageObjectTooLarge("storage object exceeds byte limit")
+
+            chunks: list[bytes] = []
+            total = 0
+            while total <= max_bytes:
+                chunk = body.read(min(64 * 1024, max_bytes - total + 1))
+                if not chunk:
+                    break
+                if total + len(chunk) > max_bytes:
+                    raise StorageObjectTooLarge("storage object exceeds byte limit")
+                chunks.append(chunk)
+                total += len(chunk)
+            return b"".join(chunks)
+        finally:
+            close = getattr(body, "close", None)
+            if close is not None:
+                close()
     except ClientError as e:
         if e.response["Error"]["Code"] == "NoSuchKey":
             return None
