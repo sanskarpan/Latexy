@@ -5,14 +5,16 @@ export function extractJobPosting(doc = document, currentUrl = location.href) {
   const text = (value, max = MAX_SHORT, preserveLines = false) => {
     if (typeof value !== 'string') return ''
     const normalized = value
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ')
       .replace(/<br\s*\/?>|<\/(?:p|li|div|h[1-6])>/gi, '\n')
       .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;|&#160;/gi, ' ')
-      .replace(/&amp;/gi, '&')
-      .replace(/&quot;|&#34;/gi, '"')
-      .replace(/&#39;|&apos;/gi, "'")
+      // Decode once: an encoded ampersand must not expose another entity
+      // to a later replacement pass. This output is plain text, not HTML.
+      .replace(/&(?:nbsp|#160|amp|quot|#34|#39|apos);/gi, (entity) => ({
+        '&nbsp;': ' ', '&#160;': ' ', '&amp;': '&', '&quot;': '"',
+        '&#34;': '"', '&#39;': "'", '&apos;': "'",
+      })[entity.toLowerCase()])
     return (preserveLines
       ? normalized
           .split(/\r?\n/)
