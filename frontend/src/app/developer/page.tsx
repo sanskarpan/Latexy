@@ -27,10 +27,11 @@ const fieldInput =
 const label = 'font-ui text-[0.62rem] uppercase tracking-[0.16em] text-fg-3'
 
 export default function DeveloperPage() {
-  const { session, isPending } = useRequireAuth()
+  const { session, isPending, error: sessionError } = useRequireAuth()
   const sessionToken = session?.session?.token ?? null
 
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [keys, setKeys] = useState<DeveloperKey[]>([])
   const [usage, setUsage] = useState<DeveloperUsageResponse | null>(null)
   const [createName, setCreateName] = useState('')
@@ -47,22 +48,30 @@ export default function DeveloperPage() {
   const load = async () => {
     if (!sessionToken) return
     setLoading(true)
-    const [keysResult, usageResult] = await Promise.all([
-      apiClient.getDeveloperKeys(),
-      apiClient.getDeveloperUsage(),
-    ])
-    if (keysResult.success && keysResult.data) {
-      setKeys(keysResult.data)
-      setRenaming(Object.fromEntries(keysResult.data.map((key) => [key.id, key.name])))
-    } else {
-      toast.error(keysResult.error || 'Failed to load developer keys')
+    setLoadError(null)
+    try {
+      const [keysResult, usageResult] = await Promise.all([
+        apiClient.getDeveloperKeys(),
+        apiClient.getDeveloperUsage(),
+      ])
+      const failures: string[] = []
+      if (keysResult.success && keysResult.data) {
+        setKeys(keysResult.data)
+        setRenaming(Object.fromEntries(keysResult.data.map((key) => [key.id, key.name])))
+      } else {
+        failures.push(keysResult.error || 'Failed to load developer keys')
+      }
+      if (usageResult.success && usageResult.data) {
+        setUsage(usageResult.data)
+      } else {
+        failures.push(usageResult.error || 'Failed to load developer usage')
+      }
+      if (failures.length) setLoadError(failures.join(' · '))
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Failed to load the developer portal')
+    } finally {
+      setLoading(false)
     }
-    if (usageResult.success && usageResult.data) {
-      setUsage(usageResult.data)
-    } else {
-      toast.error(usageResult.error || 'Failed to load developer usage')
-    }
-    setLoading(false)
   }
 
   useEffect(() => {
@@ -159,7 +168,7 @@ console.log(payload);`,
     await load()
   }
 
-  if (isPending || !session) {
+  if (isPending) {
     return (
       <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8">
         <div className="border border-line bg-surface p-6 font-ui text-sm text-fg-3 sm:p-8">
@@ -168,6 +177,20 @@ console.log(payload);`,
       </div>
     )
   }
+
+  if (sessionError && !session) {
+    return (
+      <div className="mx-auto max-w-3xl px-5 py-16 sm:px-8">
+        <div role="alert" className="border border-err/20 bg-err/10 p-6 text-center">
+          <h1 className="font-display text-2xl font-semibold text-fg">Developer portal could not verify your session</h1>
+          <p className="mt-2 font-body text-sm text-fg-2">Check your connection and retry.</p>
+          <button type="button" onClick={() => window.location.reload()} className={`${primaryBtn} mt-5`}>Retry</button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!session) return null
 
   return (
     <div className="bg-bg text-fg">
@@ -254,6 +277,13 @@ console.log(payload);`,
             </div>
           </div>
         )}
+
+        {loadError ? (
+          <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 border border-err/20 bg-err/10 p-4 font-ui text-sm text-err">
+            <span>{loadError}</span>
+            <button type="button" onClick={() => void load()} className={ghostBtn}>Retry</button>
+          </div>
+        ) : null}
 
         {loading ? (
           <div className="border border-line bg-surface p-4 font-ui text-sm text-fg-3">Loading keys…</div>
