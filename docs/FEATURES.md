@@ -8,6 +8,13 @@
 
 **Last full catalog verification:** 2026-08-12 · against `main` @ `d76f8765`
 
+> **Current-source reconciliation (2026-09-26).** The shipped-status rows called out
+> in B50 and B58 were rechecked against the local working tree, its mounted
+> OpenAPI schema, and focused backend/frontend contract tests. The current local
+> contract is **322 HTTP paths / 377 OpenAPI operations**, **44** App Router
+> pages, and the two WebSocket paths listed below. This is a source-level
+> reconciliation, not a claim about what is currently deployed.
+
 **P0 delivery reconciliation:** 2026-08-28
 
 > This is a point-in-time research catalog, not the live issue board. Linked GitHub issues are
@@ -56,7 +63,7 @@
 
 # Part A — What Latexy already ships
 
-**Ground truth:** 290 backend routes across 48 path domains (`backend/app/api/*.py`, aggregated in `routes.py:43-213`, mounted at `main.py:253`), 38 frontend pages, 33 TUI commands.
+**Ground truth (recomputed 2026-09-26):** the mounted FastAPI app exposes **322 HTTP paths / 377 OpenAPI operations**, plus **2 WebSocket paths** (`/ws/jobs` and `/ws/collab/{resume_id}`); the static route declarations in `backend/app/api/*.py` can differ because the aggregator mounts routers. There are **44** frontend pages and 33 TUI commands. Reproduce the HTTP totals with `curl -fsS http://127.0.0.1:8030/openapi.json` and count `paths` plus method objects with `operationId`; reproduce pages with `rg --files frontend/src/app -g 'page.tsx' | wc -l`.
 
 This section exists because the previous catalog, this report's own first draft, and the README all **understated** what is built. Two corrections were made to `COMPETITIVE-ANALYSIS.md` on the strength of it.
 
@@ -75,13 +82,13 @@ This section exists because the previous catalog, this report's own first draft,
 
 ## A2. Shipped, by domain
 
-**Resume core (49 routes)** — CRUD, `/fork`, `/variants`, `/merge`, `/diff-with-parent`, `/checkpoints` (+`/content`, delete), `/restore-optimization/:id`, `/optimization-history`, `/score-history`, `/error-history`, `/pin`+`/unpin`, `/archive`+`/unarchive`, `/tags`, `/search`, `/settings`, `/stats`, `/analytics`, `/share`, `/export/bulk`, `/quick-tailor`, `/academic-cv-convert`, `/academic-cv-report`, `/generate-portfolio`, `/generate-references`, `/builder` + `/builder/templates` + `/builder/seed-upload`, `/collaborators`, `/comments`
+**Resume core (49 paths / 61 OpenAPI operations)** — CRUD, `/fork`, `/variants`, `/variant-visibility`, `/merge`, `/diff-with-parent`, `/checkpoints` (+`/content`, delete), `/restore-optimization/:id`, `/optimization-history`, `/score-history`, `/error-history`, `/pin`+`/unpin`, `/archive`+`/unarchive`, `/tags`, `/search`, `/settings`, `/stats`, `/analytics`, `/share`, `/export/bulk`, `/quick-tailor`, `/academic-cv-convert`, `/academic-cv-report`, `/generate-portfolio`, `/generate-references`, `/builder` + `/builder/templates` + `/builder/seed-upload`, `/collaborators`, `/comments`
 
-**AI (15 routes)** — `generate-bullets`, `rewrite`, `generate-summary`, `generate-publications`, `proofread`, `spell-check`, `explain-error`, `translate`, `salary-estimate`, `reorder-sections`, `standardize-dates`, `format-contacts`, `age-analysis`, `confidence-score`, `personas`
+**AI (25 paths / 26 OpenAPI operations)** — `generate-bullets`, `rewrite`, `generate-summary`, `generate-publications`, `proofread`, `spell-check`, `explain-error`, `translate`, `salary-estimate`, `reorder-sections`, `standardize-dates`, `format-contacts`, `age-analysis`, `confidence-score`, `personas`, plus the current document-assistant, phrase-library, math/table, and related AI operations
 
-**ATS (13)** · **Templates (11)** · **Export (5) + Formats (6)** · **Cover letters (7)** · **Interview prep (3)** · **Optimize (3)** · **Tracker (7)** · **Apply (7)** · **Analytics (11)** · **BYOK (12)** · **Jobs (11)** · **Workspaces (15) + Teams (4) + Tenants (9)** · **GitHub (11) · Dropbox (9) · Zotero (7) · Mendeley (5)** · **Portfolio (5)** incl. custom-domain verify · **Career (4)** · **References (3)** incl. `fetch-orcid` · **Snippets · Macros · Admin (7) · Settings · Telemetry · Sources (2)** incl. `import-linkedin`
+**ATS (14 paths / 14 operations)** · **Templates (9 / 13)** · **Export (8 / 8) + document delivery (3 / 3) + Google Drive (6 / 6) + Formats (6 / 6)** · **Cover letters (5 / 7)** · **Interview prep (3 / 4)** · **Optimize (3 / 3)** · **Tracker (20 / 36)** incl. core applications plus saved jobs, alerts, reminders, interviews/ICS, companies, contacts, stale prompts, and review-only email parsing · **Outreach (1 / 1)** · **Apply (7 / 7)** · **Analytics (11 / 11)** · **BYOK (11 / 12)** · **Jobs (11 / 11)** · **Workspaces (10 / 16) + Teams (4 / 5) + Tenants (14 / 15)** · **GitHub (12 / 12) · Dropbox (10 / 10) · Zotero (8 / 8) · Mendeley (6 / 6)** · **Portfolio (6 / 6)** incl. custom-domain verify · **Career (5 / 5)** · **References (4 / 4)** incl. `fetch-orcid` · **Snippets (4 / 8) · Macros (3 / 5) · Admin (9 / 9) · Settings (1 / 2) · Telemetry (1 / 1) · Sources (2 / 2)** incl. `import-linkedin`
 
-**Frontend (38 pages)** — incl. `/try` anonymous, `/workspace/builder/*` WYSIWYG, `/workspace/[id]/batch-tailor`, `/career`, `/cover-letter`, `/optimize`, `/merge`, `/history`, `/workspaces/[id]/recruiter`, `/u/[username]` portfolio, `/r/[token]` share, `/developer`, `/byok`, `/tracker`, `/templates`, `/admin/tenant`
+**Frontend (44 pages)** — incl. `/try` anonymous, `/two-factor` sign-in challenge, `/workspace/builder/*` WYSIWYG, `/workspace/variant/[resumeId]`, `/workspace/[resumeId]/batch-tailor`, `/workspace/[resumeId]/career`, `/workspace/[resumeId]/cover-letter`, `/workspace/[resumeId]/optimize`, `/workspace/merge`, `/workspace/history`, `/workspaces/[workspaceId]/recruiter`, `/u/[username]` portfolio, `/r/[token]` share, `/developer`, `/byok`, `/tracker`, `/templates`, `/admin/tenant`
 
 **Editor** — LaTeX linter (`LinterPanel.tsx`), LanguageTool spell/grammar (`ai_routes.py:693`), SyncTeX (13 refs in `routes.py`), multi-compiler (pdflatex/xelatex/lualatex), share tokens, QR insertion (`QrCodeInserter.tsx`), contact formatter
 
@@ -134,7 +141,7 @@ These were built, are in the codebase today, and were **missing from this catalo
 >
 > **Part D is deliberately not fully filed.** 24 of its 29 rows are decisions *not* to build and correctly have no issue; the **5 rows that hide real engineering or verification work** are filed as **D1–D5 (#1407–#1411)**. The two bundles — **B18** (#1302, 7 items) and **B19** (#1303, 15 items) — carry GitHub task-list checklists rather than 22 separate micro-issues, since each sub-item is under a week; say the word and they can be split out.
 >
-> **The accounting closes.** Part C lists **117 absent features**. Every one now resolves to a backlog item above (**86 items**, counting bundle sub-items) or to an **explicit refusal with a reason** in Part D (**29 rows**). An earlier revision of this file tracked only 29 items against those 117 absences, which left several legacy **P0** features — real-time ATS scoring, page-count warning, email delivery — with no owner at all.
+> **The accounting closes.** Every Part C row marked absent or partial resolves to a backlog item above or to an **explicit refusal with a reason** in Part D. The row-level status is authoritative; it is deliberately not repeated as a hard-coded total here because shipped follow-up children are reconciled independently as they land. An earlier revision tracked only 29 items and left several legacy **P0** features — real-time ATS scoring, page-count warning, email delivery — with no owner at all.
 >
 > **Not double-filed:** issues **#1157–#1280** are the UX-defect audit from `docs/qa/ux-improvements.md` and deliberately do not overlap this backlog. Three genuine intersections are cross-referenced in the relevant items (#1245, #1247, #1213).
 
@@ -169,15 +176,15 @@ Basic, Pro, and BYOK annual SKUs now carry a 20% discount, checkout validates co
 
 ## P1 — next
 
-### B7. Bullet-variant library with diff view · **M** · status ➖ · [#1286](https://github.com/sanskarpan/Latexy/issues/1286)
+### B7. Bullet-variant library with diff view · **M** · status ✅ · [#1286](https://github.com/sanskarpan/Latexy/issues/1286)
 **The highest-upvoted unmet need in the user research**, and users hand-build it: *"I keep a 'master resume' and pick and choose… I'm slowly working on a project that lets me tick off various accomplishments"* [V]. The named failure mode is shipping a duplicated bullet after manual copy-paste [V]. Wants **3 rewrite options per bullet** and format-preserving, reviewable edits.
 
-**Most of this exists**: `POST /ai/generate-bullets`, `POST /ai/rewrite`, `/resumes/:id/variants`, `/checkpoints`, `resume_diff_service.py`, `/diff-with-parent`. Missing: the library UI and the per-JD variant model. **Also note: no surveyed product exposes resume-version diffing as a user-facing feature** — Latexy already has the engine.
+The selection-based writing assistant now generates exactly three distinct alternatives, shows each against the struck-through source, and applies only the option the user chooses. Sets persist per résumé, source-bullet fingerprint, and job-description fingerprint with a user-defined target label; the job-description body is not retained. The backend rejects structural LaTeX drift, repeated options, unchanged output, and bullets already present in the saved résumé, while the client blocks duplicates introduced by unsaved edits. The same widget exposes the saved library, regeneration, copy, apply, and deletion. **Also note: no surveyed product exposes resume-version diffing as a user-facing feature** — Latexy already has the full-document engine as well.
 
-### B8. Lower-friction LinkedIn on-ramp · **S** · status ➖ · [#1287](https://github.com/sanskarpan/Latexy/issues/1287)
+### B8. Lower-friction LinkedIn on-ramp · **S** · status ✅ · [#1287](https://github.com/sanskarpan/Latexy/issues/1287)
 `POST /sources/import-linkedin` **exists** (`sources_routes.py:142`, feature-gated on `ai_import_linkedin`, UI at `/workspace/new`) but requires the user to request and download a LinkedIn archive, which LinkedIn takes hours to produce. Teal and Kickresume import from a URL or extension. **The work is the on-ramp, not the importer.** **The archive path is not a shortcut — it is the only compliant route that exists.** LinkedIn's *entire* self-serve API surface is three permissions: `profile` (name, headline, photo), `email` via Sign in with LinkedIn (OIDC), and `w_member_social`. Its own docs state *"Open Permissions are the only permissions available to all developers without special approval"* — **no jobs, no search, no connections, no full-profile read, at any tier**, and Compliance APIs are formally closed and *"may not be requested"* [V]. Anything marketed as a "LinkedIn Job Search API" is third-party scraping.
 
-So B8 is strictly a UX problem: make the archive request → upload flow as painless as possible (clear instructions, resumable upload, partial import while the archive is pending). **Do not attempt profile-URL import** — Teal and Kickresume achieve it via browser extension, i.e. the user's own authenticated session, which is a different mechanism and a different risk profile.
+The creation and editor import flows now link to LinkedIn's user-owned archive request, explain the immediate partial PDF/DOCX option, and persist only a request timestamp so the user can close and return when the ZIP is ready. A successful ZIP import clears that marker. Storage denial or malformed state cannot block import. **No profile-URL import was added** — Teal and Kickresume achieve it via browser extension, i.e. the user's own authenticated session, which is a different mechanism and a different risk profile.
 
 ### B9. Tagged / accessible PDF (PDF/UA-2) · **M** · status ❌ · **nobody has this** · [#1288](https://github.com/sanskarpan/Latexy/issues/1288)
 LaTeX ships this now: one line before `\documentclass` —
@@ -245,7 +252,7 @@ Plus text-layer failure signatures from their conversion codes: `ovIsImage`, `ov
 ### B9c. Verify and advertise the extraction contract · **S** · status ✅ · **measured** · [#1290](https://github.com/sanskarpan/Latexy/issues/1290)
 The concrete thing separating a good PDF from a bad one is whether fonts are embedded **with a ToUnicode CMap**. Without it a viewer can draw a selection box while extraction returns garbage — the reported Figma failure mode.
 
-**Measured on a real production template** (`Phd Applicant`, 119 KB), 2026-08-11:
+**Measured first on a real production template** (`Phd Applicant`, 119 KB), 2026-08-11:
 
 ```
 pdffonts  → 6 fonts, all  emb=yes  sub=yes  uni=yes      ← ToUnicode present on every font
@@ -257,6 +264,14 @@ pdftotext → 314 words extracted (Affinda OCRs below 25)
 
 **Latexy's output satisfies the contract.** That is a checkable, demonstrable claim — and unlike an ATS score, a user can verify it themselves. This is the honest version of "ATS-friendly."
 
+The 2026-09-08 source-wide verification supersedes the single-template sample as
+the release gate: all **60 canonical seeded templates** compile with the default
+LuaLaTeX engine, every embedded font reports `uni=yes`, every output extracts at
+least 25 words, and no extracted line begins with a stray contact separator. The
+matrix found one real wrap defect in `software_engineering/swe_clean.tex`; the
+two-line contact layout fixes it. A dedicated CI job reruns the discovery-based
+matrix, so the count is never hard-coded.
+
 **The competitive angle, and a claim to NOT make yet.** "Canva resumes fail ATS" is folklore — **no primary or secondary report was found attributing Canva failures to unextractable text** [V, searched]. What is documented is narrower and more useful:
 
 - **Canva's default export appears to keep a real text layer.** The documented hazard is a separate **"Flatten PDF" checkbox**, offered on both PDF Standard and PDF Print, which Canva's own help says *"converts the file into a static image"* and *"merges all design elements into a single image"* [V]. A flattened resume has no text layer and would hit Textkernel's `ovIsImage` / Affinda's sub-25-word OCR path. Whether it is ever default-on: could not determine.
@@ -265,10 +280,30 @@ pdftotext → 314 words extracted (Affinda OCRs below 25)
 
 **Do not publish a comparative claim until we run the matrix ourselves**: export one identical resume from Canva (Standard, Standard+Flatten, Print), Figma and Express (±tags), then run `pdffonts` and `pdftotext` on each. That converts the whole question from folklore to a table we can show. It needs accounts we do not have.
 
-*One thing to investigate, not yet a defect:* my crude symbol-ratio calculation gave **6.7%**, above the 5% threshold Textkernel documents for `ovProbableGarbageInText`. My counting method almost certainly differs from theirs (I counted all non-alphanumerics, including the `@`, `+` and `.` that any resume legitimately contains). But the template's `\quad|\quad` separators do surface as **leading `|` characters on contact lines**, which is worth checking against contact-block parsing given code 311. Verify before treating as either safe or broken.
+The earlier separator question is resolved: the full matrix found one leading `|`
+line, in `swe_clean`, and the corrected contact layout now extracts without it.
+The old 6.7% crude symbol ratio remains unsuitable as a product claim because its
+counting method includes legitimate email, phone, and URL punctuation.
 
-### B10. Devanagari / Indic script resumes · **M** · status ❌ · **nobody has this** · [#1291](https://github.com/sanskarpan/Latexy/issues/1291)
-`modal_app.py:58` installs `texlive-lang-english` only, so a Hindi/Marathi/Tamil resume cannot compile today. **No resume product supports Indic scripts as a documented feature, and no Devanagari CV template exists in LaTeX or Typst** [V].
+### B10. Devanagari / Hindi resumes · **M** · status ✅ · **measured** · [#1291](https://github.com/sanskarpan/Latexy/issues/1291)
+Latexy now ships an actual Hindi résumé template and the complete runtime needed
+to compile it. The Modal compiler/API image and both Docker backend images install
+`fonts-noto-core` (alongside existing `fonts-lohit-deva`) and LuaHBTeX. The template and Hindi translation path use
+`babel` plus explicit `Renderer=HarfBuzz,Script=Devanagari`. The selected Noto
+Sans Devanagari regular/bold faces use an explicit fake-slant policy because no
+italic face is shipped; this is required by the deployed TeX Live 2022 stack.
+Hindi translation variants deterministically
+replace conflicting pdfLaTeX encoding/language declarations and persist
+`compiler=lualatex`; incomplete model output is rejected before a variant is
+created. The workspace explains the compiler choice when Hindi is selected.
+
+The production-parity 2026-09-08 matrix discovered and compiled all **60** seeded
+templates in the exact Modal worker image. Every font reported `uni=yes`, every
+document extracted at least 25 words, no line began with a stray separator, and
+the Hindi name, section heading, and work phrase round-tripped exactly through
+`pdftotext`. The CI contract installs the same Devanagari font and repeats those
+exact phrase assertions. This closes the implemented Devanagari/Hindi scope; it
+does **not** claim Tamil or other non-Devanagari scripts.
 
 **A nine-product sweep of the mid-tier long tail sharpens this rather than overturning it** [V]. Only **two of nine** support non-Latin script at all: Reactive Resume (56 UI locales, 22 non-Latin, real RTL plumbing) and **Resume.io**, which is the one genuine competitor here — it supports Japanese kana/kanji, Greek, Russian/Bulgarian/Serbian Cyrillic and **Hindi (Devanagari)**, across 27 locale-native brand domains. Every other product is Latin-only: Kickresume 6 locales all Latin and **explicitly scoped to "any left-to-right language" — RTL out of scope**; Novoresume 5, all Latin; Enhancv 13, all Latin, and notably **no Bulgarian despite being a Bulgarian company**; Teal English-only, stating *"We do not have the capability to change language features just yet."*
 
@@ -294,15 +329,21 @@ Two qualifications, so this is not overstated: Resume.io's own doc is **internal
 | *`texlive-lang-other` (hyphenation only — skippable)* | *75.4 MB* |
 | *`fonts-noto-extra` — **avoid*** | *334 MB* |
 
-**Minimum viable Devanagari ≈ 52 MB**, or ~95 MB with Noto instead of Lohit. XeLaTeX looks cheaper at 16 MB until you count its `texlive-latex-extra` dependency (97 MB → 113 MB real cost). *[Arithmetic on verified per-package figures; not yet validated by an image build.]*
+**Minimum viable Devanagari ≈ 52 MB**, or ~95 MB with Noto instead of Lohit. XeLaTeX looks cheaper at 16 MB until you count its `texlive-latex-extra` dependency (97 MB → 113 MB real cost). *[Arithmetic on verified per-package figures; the Noto template rerun remains pending an image build.]*
 
 **Engine forcing function.** `tagpdf` v1.0d states the **xelatex route is "basically untested" and not recommended**, and that Lua mode *"is the future and the only one that will be usable for larger documents"* [V]. So **tagging + Devanagari ⇒ LuaLaTeX + luahbtex**. If B9 ships, this constraint is nearly free; if it doesn't, tagging alone does not justify an engine migration.
 
-**Untested interaction — do this before shipping.** A search of `latex3/tagpdf` issues for devanagari / harfbuzz / indic returned **zero results** [V]. Whether HarfBuzz-shaped Devanagari produces correct ToUnicode/ActualText under tagging is **undetermined**, and tagpdf devotes a whole section to "real space glyphs" — precisely where shaped-script extraction tends to break. **Compile a Devanagari resume with and without `tagging=on` and diff `pdftotext` output.**
+**Tagged-PDF interaction tested, but unavailable on the current runtime.** The
+untagged document passes the exact extraction checks above. A reproducible
+`verify-indic-tagging.sh` probe also tried
+`\DocumentMetadata{lang=hi-IN,tagging=on}` in the Modal image, but LaTeX2e
+2022-11-01 rejects the unknown `document/metadata/tagging` key before producing
+a PDF. Therefore #1291 does not advertise tagged Hindi output; enabling and then
+re-running this probe belongs to the separate TeX Live/PDF-UA upgrade in #1288.
 
 **Relevant to B1:** this weakens the Typst option for an India-first product. Typst has **open** Indic bugs — #8062 *"Hyphenation skips words containing Virama and combining marks, breaking Indic script support"* and #6339 *"Poor paragraphs (suboptimal line-breaking) with Indic scripts"* [V].
 
-### B10b. Locale-specific document types and sections · **M** · status ❌ · **near-greenfield** · [#1292](https://github.com/sanskarpan/Latexy/issues/1292)
+### B10b. Locale-specific document types and sections · **M** · status ✅ · **measured** · [#1292](https://github.com/sanskarpan/Latexy/issues/1292)
 Structural localisation, not translation, is what differentiates in local markets:
 - **Biodata / marriage biodata** (India) — LiveCareer ships it [V]; a genuinely India-specific document type with no Western analogue
 - **`klauzula RODO`** (Poland) — the GDPR consent clause Polish employers expect, shipped as a **first-class section type** [V]
@@ -315,7 +356,19 @@ For an INR-priced product, biodata and PSU formats are the highest-relevance ite
 
 Read together: the largest player in the market has localised its *interface* for India and its *data model* for Indian hiring conventions, while leaving **AI generation English-only**. An India-first product whose AI works in Indic languages is competing where the incumbent has explicitly not gone.
 
-### B10c. Model the resume on the convergent ATS field set · **M** · status ➖ · **highest-leverage data decision** · [#1293](https://github.com/sanskarpan/Latexy/issues/1293)
+The first regional-format release is now implemented. A dedicated, searchable
+**Regional Formats** category contains an India professional biodata, an India
+government/PSU application résumé, and a Polish CV with an employer- and
+role-specific optional recruitment-consent paragraph. The two Indian sources do
+not solicit Aadhaar/PAN numbers, caste, or religion. The Polish paragraph is also
+available as an official reusable snippet; both copies prominently require the
+employer and position placeholders to be replaced and cite current Polish UODO
+workplace guidance, which says the old blanket-CV-consent practice is not
+routinely appropriate. Sensitive-data and future-recruitment consent are not
+silently bundled into it. The exact Modal extraction matrix compiles all 60
+templates after these additions with Unicode maps and readable text.
+
+### B10c. Model the resume on the convergent ATS field set · **M** · status ✅ · **implemented** · [#1293](https://github.com/sanskarpan/Latexy/issues/1293)
 Eight parser and ATS schemas were compared field-by-field (Textkernel, RChilli, Affinda, HireAbility; Greenhouse, SmartRecruiters, Lever, Ashby). **The intersection is only six groups wide:**
 
 ```
@@ -336,87 +389,501 @@ Four consequences that should drive design:
 
 The convergence is not accidental: HireAbility's schema uses straight **HR-Open Standards** naming, and Textkernel/RChilli are near-isomorphic to it. Adopting this shape internally makes export, parse-preview and the ATS simulator all speak the same language.
 
-### B11. Surface parsed output prominently · **S** · status ➖ · [#1294](https://github.com/sanskarpan/Latexy/issues/1294)
-The engine exists; the differentiation is presentational. Show "here is the text Workday will extract" beside the score. **Do not claim ATS emulation** — see Part D.
+The guided builder now returns a vendor-neutral `ats_profile` projection with
+exactly that core: split given/family name; one email and phone; split
+city/region/country; typed LinkedIn and personal-site links; canonical work and
+education arrays; and a flat, stable, case-insensitively deduplicated skill list.
+Dates retain their original value and expose `found_year`, `found_month`,
+`found_day`, and `is_current`, so a year-only input never acquires fabricated
+month/day precision. The projection is derived from the single persisted builder
+source rather than stored as a second mutable copy. Existing simulator rules
+already flag vertical dates and skills that appear only in the standalone skills
+section. Fifty-eight focused backend tests and all four guided-builder browser
+scenarios pass after the response-contract addition.
 
-### B11b. Prep for AI interview screening · **M** · status ➖ · **new funnel stage** · [#1295](https://github.com/sanskarpan/Latexy/issues/1295)
+### B11. Surface parsed output prominently · **S** · status ✅ · **implemented and measured** · [#1294](https://github.com/sanskarpan/Latexy/issues/1294)
+Studio exposes the plain text recovered from the user's compiled PDF in the
+Linter panel's **ATS Text** view, with copy support, section/garbling diagnostics,
+and an explicit warning that employer parsers may differ. The ATS simulator also
+places an extracted-plain-text accordion beside its score and findings. Neither
+surface claims Workday emulation. The editor consumes the worker's dedicated
+`job.pdf_extracted` event and now reconstructs the same event from the
+authoritative REST job result when WebSocket delivery is unavailable, so the
+view does not disappear on the production fallback path. All 16 linter browser
+scenarios pass, including a dead-WebSocket test that verifies the recovered text
+and page count end to end; 93 frontend unit files / 696 tests also pass.
+
+### B11b. Prep for AI interview screening · **M** · status ✅ · **implemented and measured** · [#1295](https://github.com/sanskarpan/Latexy/issues/1295)
 **LinkedIn now runs candidate-facing AI interviews**: hirers invite applicants to an **audio or video screening with an AI interviewer**, questions and "ideal answers" generated from the JD and edited by the hirer; candidates can take a **practice interview** first; participation is voluntary — *"If you decide not to participate, you will not be automatically disqualified"* [V]. In Hiring Pro, hirers invite up to 40 applicants and **candidates must request transcripts, summaries or recordings** — ratings are never pushed to them [V].
 
 Latexy has `/interview-prep` (3 routes) generating questions. The gap is preparing users for *this specific format*: JD-derived question generation is exactly what LinkedIn's own tooling does, so the same input produces comparable output. Note the controllership split — for real screenings the **hirer** is controller and LinkedIn is processor; practice-interview data stays with LinkedIn and is opt-out-able from AI training [V].
 
-### B12. Browser extension · **L** · status ❌ · [#1296](https://github.com/sanskarpan/Latexy/issues/1296)
+The existing generator now prepares candidates specifically for asynchronous
+spoken screening without claiming to reproduce a particular employer. Its 15
+JD-derived questions include the assessment goal, a 30–180 second spoken-answer
+target, a concise delivery tip, and a 2–4 point answer outline grounded in résumé
+evidence; behavioral questions retain STAR guidance. Studio clearly states that
+Latexy does not record, transcribe, or rate audio/video, predict a hiring result,
+or run a live employer screening, and links to
+[LinkedIn's current candidate guidance](https://www.linkedin.com/help/linkedin/answer/a10376002).
+The model boundary rejects missing, malformed, duplicated, miscategorized, or
+ungrounded-shape output instead of saving an empty successful session. Retriable
+failures emit non-terminal `job.retrying`; only exhausted attempts emit
+`job.failed`. Sixty-four focused backend tests and two browser scenarios pass,
+and one configured live-model probe returned all 15 validated questions with
+the exact 5/5/3/2 category split, answer outlines, and valid timings.
+
+### B12. Browser extension · **L** · status ✅ · **implemented and measured** · [#1296](https://github.com/sanskarpan/Latexy/issues/1296)
 The one cluster where every tracker-first competitor is present and Latexy is absent: one-click capture from a posting (company, title, full JD text, URL), autofill, save-to-tracker. Simplify covers 100+ portals [V]. Latexy's `/apply/greenhouse|lever` is *better* where it works but covers 2 platforms; an extension is how coverage scales.
 
-### B13. Reusable GitHub Action for CV rendering · **S** · status ❌ · **nobody has this** · [#1297](https://github.com/sanskarpan/Latexy/issues/1297)
+The new `@latexy/browser-extension` package is a loadable Manifest V3 companion.
+Opening its popup explicitly grants `activeTab`; it reads schema.org `JobPosting`
+first, falls back to visible page semantics, bounds the JD to the tracker's 20,000
+character contract, and strips fragments plus tracking/sensitive URL parameters.
+An opaque, 15-minute extension-local capture crosses into the authenticated
+Latexy tracker through a production/local-origin-only bridge. The user reviews
+the prefilled company, role, location, full JD, and URL before the existing API
+saves it; no Latexy credential enters the extension. Opt-in identity/contact
+autofill fills only supported empty fields, never file inputs, never overwrites,
+and never submits. There is deliberately no `<all_urls>` host grant or profile
+scraper. A dedicated CI job runs the package tests/checks and uploads an unpacked
+installation archive. Four extension tests, three frontend boundary tests, one
+authenticated browser save flow, and a real unpacked-Chromium load all pass on
+Node 22. The same browser run found and repaired missing form-label associations
+and an unscrollable small-viewport application modal.
+
+### B13. Reusable GitHub Action for CV rendering · **S** · status ✅ · **implemented and measured** · [#1297](https://github.com/sanskarpan/Latexy/issues/1297)
 **No project in the entire developer-facing survey publishes a consumer Action** to render a CV on push — RenderCV and JSON Resume both use Actions internally only [V]. Latexy has a public API (`/api/v1/compile`) and BYOK; an Action is a thin wrapper and a strong developer-audience acquisition channel.
+
+The repository now publishes a dependency-free Node 24 JavaScript Action from
+its root `action.yml`. It accepts a checked-in LaTeX source and compiler,
+submits through a scoped Latexy developer key, polls the authoritative job,
+validates the downloaded PDF header, and atomically writes the configured
+artifact without replacing an older file on a corrupt response. Source and
+output paths are confined to `GITHUB_WORKSPACE`; non-loopback HTTP, redirects,
+cross-origin server-provided URLs, invalid job IDs, oversized/empty sources,
+and unbounded waits are rejected before they can leak a credential or publish
+bad output. Four local integration/boundary tests pass against a real mock HTTP
+server, and a dedicated Node 24 CI job syntax-checks and tests the consumer
+Action without requiring a production secret.
 
 ## P2 — later
 
-### B14. JSON Resume import/export · **S** · status ❌ · [#1298](https://github.com/sanskarpan/Latexy/issues/1298)
-Schema is Draft 7, frozen at **v1.0.0 since 2014**, `resume-cli` **archived** June 2026, maintained *"with the help of AI agents"* [V]. **Support it as interchange; do not build on it.** Reactive Resume (40,282★) imports it while keeping a richer internal model — the right pattern. Note `@jsonresume/ats-validator` exists as a package.
+### B14. JSON Resume import/export · **S** · status ✅ · **implemented and measured** · [#1298](https://github.com/sanskarpan/Latexy/issues/1298)
+The earlier audit conflated two schema revisions. The pinned
+[v1.0.0 schema](https://raw.githubusercontent.com/jsonresume/resume-schema/v1.0.0/schema.json)
+declares JSON Schema Draft 4, while the
+[current monorepo package](https://github.com/jsonresume/jsonresume.org/tree/master/packages/schema)
+publishes the actively maintained schema and documents semantic versioning. The
+old standalone schema/CLI repositories were archived because they moved into
+that monorepo, not because the interchange format was abandoned. Latexy pins
+v1.0.0 for a stable interchange contract and deliberately does not replace its
+richer internal model with JSON Resume.
 
-### B15. Skill taxonomy via ESCO · **M** · status ❌ · [#1299](https://github.com/sanskarpan/Latexy/issues/1299)
-**ESCO v1.2.1**: 3,039 occupations, 13,939 skills, **28 languages**, free download **and public API**, managed by DG EMPL [V]. Turns "keyword gap" into "skill gap against a real taxonomy" — and its multilingual dimension pairs with B10.
+The guided builder's existing JSON upload now takes a direct, bounded mapping
+path instead of flattening the document through generic résumé text. Basics,
+location, LinkedIn/GitHub, work summaries and highlights, dates, technologies,
+education, projects, skills, certificates, awards, languages, interests, and
+Latexy section visibility/order are mapped explicitly. Standard sections the
+builder cannot edit (`volunteer`, `publications`, `references`, and additional
+social profiles) produce visible loss warnings rather than disappearing
+silently. Builder JSON export now serializes persisted structured content,
+omits invalid empty format fields, rejects non-schema dates with a 422, and is
+available directly from the builder's Export menu. Eight adapter tests and the
+broader 108-test backend slice pass; the exported fixture validates against the
+official v1.0.0 Draft 4 schema, and all five guided-builder browser scenarios
+pass without retries.
 
-### B16. Symbol palette · **S** · status ❌ · [#1300](https://github.com/sanskarpan/Latexy/issues/1300)
-Overleaf gates it behind premium [V]; TeXmaker ships 370 symbols free [V]; TeXstudio has a dockable one [V].
+### B15. Skill taxonomy via ESCO · **M** · status ✅ · **implemented and measured** · [#1299](https://github.com/sanskarpan/Latexy/issues/1299)
+Career analysis now resolves exact preferred and alternative labels against the
+versioned **ESCO v1.2.1** public API, persists canonical URIs and language with
+each analysis, and compares matched skills by URI rather than spelling. Search
+hits never silently normalize a term unless one of their labels is an exact
+normalized match; unmatched terms remain visible as entered, and provider
+outages fall back to case-insensitive free text. An authenticated discovery
+endpoint supports all 28 published ESCO languages, while the result UI exposes
+the taxonomy version, links canonical concepts, and explains the fallback.
+Forty-one focused backend tests, a live provider probe, a PostgreSQL
+upgrade/downgrade/upgrade round trip, strict frontend checks, and the 54 affected
+browser scenarios pass without retries.
 
-### B17. Reference manager sync · **M** · status ➖ · [#1301](https://github.com/sanskarpan/Latexy/issues/1301)
-Zotero (7 routes) and Mendeley (5) exist. Overleaf's model is worth copying precisely: **link account → import library or collection as a read-only `.bib` → manual Refresh**, one-directional [V]. Papers/ReadCube is a third option Overleaf supports. Missing: EndNote (Overleaf also punts to manual export).
+### B16. Symbol palette · **S** · status ✅ · **implemented and measured** · [#1300](https://github.com/sanskarpan/Latexy/issues/1300)
+Studio's searchable palette contains 186 uniquely insertable commands across
+Greek, operators, arrows, relations, sets, delimiters, accents, and miscellaneous
+symbols. Category state and each symbol's command/package requirement are exposed
+accessibly, and click insertion uses the live Monaco cursor. Three catalog tests
+and two browser scenarios now protect catalog integrity, search/filter behavior,
+package disclosure, accessibility state, and actual cursor insertion; all 20
+combined linter/editor browser scenarios pass without retries.
+
+### B17. Reference manager sync · **M** · status ✅ · **implemented and measured** · [#1301](https://github.com/sanskarpan/Latexy/issues/1301)
+Zotero libraries/collections and Mendeley libraries/groups now import through the
+documented one-way model: **link account → save a read-only `references.bib`
+snapshot → refresh manually**. The résumé records provider, scope, and refresh
+time; Studio distinguishes import from refresh, permits cite-key insertion and
+download, and no longer offers to paste an entire provider library into a `.tex`
+document. Every direct and orchestrated compile path materializes the fixed-name
+sidecar inside its isolated job directory. Pagination is bounded before response
+growth, and Mendeley bearer credentials are never forwarded to an untrusted
+`Link` origin. All 254 focused backend integration tests and 21 combined editor
+browser scenarios pass without retries; the latter now starts reliably from a
+cold Turbopack cache by warming the editor bundle during Playwright readiness.
+Papers/ReadCube and EndNote remain optional provider-expansion work rather than
+gaps in the Zotero/Mendeley acceptance scope.
 
 ### B18. AI features competitors have that Latexy lacks · [#1302](https://github.com/sanskarpan/Latexy/issues/1302)
 Each row is independently shippable and independently valuable; they are grouped only because they share the LLM plumbing.
 
 | id | feature | holder | status | size |
 |---|---|---|---|---|
-| **B18.1** [#1344](https://github.com/sanskarpan/Latexy/issues/1344) | Natural language → LaTeX | Overleaf TeXGPT [V] | ❌ | **M** |
-| **B18.2** [#1345](https://github.com/sanskarpan/Latexy/issues/1345) | Image/text → LaTeX **table** | Overleaf Table Generator [V] | ❌ | **M** |
-| **B18.3** [#1346](https://github.com/sanskarpan/Latexy/issues/1346) | Image/text → LaTeX **math** | Overleaf Equation Generator [V] | ❌ | **M** |
-| **B18.4** [#1347](https://github.com/sanskarpan/Latexy/issues/1347) | Citation checking vs a scholarly DB | Overleaf + Dimensions [V] | ❌ | **M** |
-| **B18.5** [#1348](https://github.com/sanskarpan/Latexy/issues/1348) | Named rewrite modes (paraphrase / concise / scientific / split / join) | Overleaf [V] | ➖ `/ai/rewrite` is generic | **S** |
-| **B18.6** [#1349](https://github.com/sanskarpan/Latexy/issues/1349) | Synonyms | Overleaf [V] | ❌ | **S** |
-| **B18.7** [#1350](https://github.com/sanskarpan/Latexy/issues/1350) | AI interview **simulation** (not just question generation) | JSON Resume registry [V] | ➖ `/interview-prep` generates only | **M** |
+| **B18.1** [#1344](https://github.com/sanskarpan/Latexy/issues/1344) | Natural language → LaTeX | Overleaf TeXGPT [V] | ✅ implemented and measured | **M** |
+| **B18.2** [#1345](https://github.com/sanskarpan/Latexy/issues/1345) | Image/text → LaTeX **table** | Overleaf Table Generator [V] | ✅ implemented and measured | **M** |
+| **B18.3** [#1346](https://github.com/sanskarpan/Latexy/issues/1346) | Image/text → LaTeX **math** | Overleaf Equation Generator [V] | ✅ implemented and measured | **M** |
+| **B18.4** [#1347](https://github.com/sanskarpan/Latexy/issues/1347) | Citation checking vs a scholarly DB | Overleaf + Dimensions [V] | ✅ implemented and measured | **M** |
+| **B18.5** [#1348](https://github.com/sanskarpan/Latexy/issues/1348) | Named rewrite modes (paraphrase / concise / scientific / split / join) | Overleaf [V] | ✅ implemented and measured | **S** |
+| **B18.6** [#1349](https://github.com/sanskarpan/Latexy/issues/1349) | Synonyms | Overleaf [V] | ✅ implemented and measured | **S** |
+| **B18.7** [#1350](https://github.com/sanskarpan/Latexy/issues/1350) | AI interview **simulation** (not just question generation) | JSON Resume registry [V] | ✅ implemented and measured | **M** |
 
 **B18.2/B18.3 are the highest-value pair** — users pasting a table out of a PDF is a real, frequent LaTeX pain point, and it is squarely in our wheelhouse.
+
+**B18.1 implementation evidence.** Studio now has a Generate LaTeX panel that
+accepts bounded prose intent, uses the current document only as style context,
+previews the returned fragment, and changes Monaco only after explicit
+insert-at-cursor approval. The authenticated API uses the shared BYOK/platform
+quota controls, ignores malformed cache entries, strips a single model-added
+code fence, and rejects complete documents, preamble/file-loading commands,
+unsafe primitives, unbalanced braces, and mismatched environments before a
+response reaches the editor. Eighty-six focused backend regressions, all 702
+frontend unit tests, strict frontend checks, and all 18 writing-assistant browser
+scenarios pass without retries ([#1344](https://github.com/sanskarpan/Latexy/issues/1344)).
+
+**B18.2 implementation evidence.** The same review panel accepts CSV/TSV or a
+PNG/JPEG/WebP table image. Pasted data takes a deterministic, provider-free path
+with RFC-style quoting, ragged-row normalization, numeric alignment, header
+styling, and complete LaTeX cell escaping. Image input is capped by streamed
+bytes and decoded pixels, limited to a static supported format, stripped of
+metadata through trusted re-encoding, and sent to the configured vision model
+only for a JSON cell matrix; trusted code renders the final package-free
+`table`/`tabular` fragment. Limits are 100 rows, 20 columns, and 500 characters
+per cell. Fourteen focused table tests include a real `pdflatex` PDF compile;
+the combined 77-test backend slice, all 702 frontend unit tests, strict frontend
+checks, and all 20 writing-assistant/generator browser scenarios pass without
+retries ([#1345](https://github.com/sanskarpan/Latexy/issues/1345)).
+
+**B18.3 implementation evidence.** Studio's reviewed generator now accepts a
+written equation description or a bounded PNG/JPEG/WebP image and offers inline,
+display, and numbered-equation output modes. The vision prompt is explicitly a
+transcription task, not a solver; images are decoded, pixel-capped, made static,
+and re-encoded without metadata before provider access. The model returns only a
+JSON math body, while trusted code strips model-added wrappers, applies the
+selected wrapper, and runs the same unsafe-command and structural validation as
+other generated LaTeX before preview. Ninety-three focused backend tests include
+real `pdflatex` compilation for all three modes; all 702 frontend unit tests,
+strict frontend checks, and all 22 writing-assistant/generator browser scenarios
+pass without retries ([#1346](https://github.com/sanskarpan/Latexy/issues/1346)).
+
+**B18.4 implementation evidence.** The References panel can audit pasted BibTeX
+or the saved read-only `references.bib` snapshot. A bounded, brace-aware parser
+extracts metadata from at most 20 works without evaluating TeX, ignores BibTeX
+directives, resolves DOI and arXiv identifiers against their canonical records,
+and searches Crossref for identifier-free titled works. Results preserve cite-key
+order and distinguish verified, metadata mismatch, missing record, provider
+failure, and timeout states; title, year, and author discrepancies are explained
+individually. Provider calls share the reference-service budget and cache, use
+fixed upstream URLs, and remain independently byte/time bounded. All 63 focused
+reference/parser/budget tests, all 702 frontend unit tests, strict frontend checks,
+and all 22 affected editor browser scenarios pass without retries
+([#1347](https://github.com/sanskarpan/Latexy/issues/1347)).
+
+**B18.5 implementation evidence.** The selection-scoped Writing Assistant now
+exposes Paraphrase, Concise, Scientific, Split sentences, and Join sentences as
+five distinct operations alongside its existing résumé-focused actions. Each
+mode has a separate factual-preservation prompt and cache identity; scientific
+mode explicitly forbids invented findings, certainty, citations, terminology,
+or numbers. Tone input is restricted to the two displayed values, Quantify no
+longer invites fabricated metrics, and both cached and fresh provider output now
+pass the shared unsafe-command and structural LaTeX validator before preview.
+Invalid provider output refunds a charged platform allowance. All 122 focused
+rewrite/BYOK/sandbox tests, strict frontend checks, and all 23 combined
+writing-assistant/generator browser scenarios pass without retries
+([#1348](https://github.com/sanskarpan/Latexy/issues/1348)).
+
+**B18.6 implementation evidence.** Synonyms ship as a discrete action within the
+selection-scoped Writing Assistant rather than as an ambiguous full-text rewrite.
+The endpoint accepts only a bounded alphabetic word or short phrase, sends nearby
+editor text as context, requires structured JSON, and returns a capped,
+case-insensitively deduplicated list that excludes the original selection and any
+command-like or malformed output. Requests use the existing BYOK/platform meter,
+quota refund, and content/context/count cache identity. Studio shows the choices
+without editing and replaces the exact Monaco selection only after one is chosen.
+All 138 focused synonym/rewrite/BYOK/sandbox tests, all 702 frontend unit tests,
+strict non-incremental frontend checks, and all 24 combined assistant/generator
+browser scenarios pass without retries
+([#1349](https://github.com/sanskarpan/Latexy/issues/1349)).
+
+**B18.7 implementation evidence.** Generated question sets now conduct a real
+text-only session in either Coach mode (feedback after each response) or Mock
+mode (feedback withheld until the session ends). Answers remain transient and
+are never added to the interview-prep record. The authenticated evaluator checks
+session ownership, question indexes, duplicate and aggregate input limits, and
+strictly validates ordered structured feedback, bounded scores, strengths,
+improvements, and suggested outlines. Its rubric is grounded only in the saved
+question contract and submitted answer, explicitly forbids hiring predictions
+and endorsement of unverifiable claims, uses existing BYOK/platform quotas, and
+refunds unusable provider output. Studio states the no-storage, no-microphone,
+no-camera boundary before starting. All 71 focused interview/worker/BYOK tests,
+all 702 frontend unit tests, strict non-incremental frontend checks, and all 24
+affected editor browser scenarios pass without retries
+([#1350](https://github.com/sanskarpan/Latexy/issues/1350)).
 
 ### B19. Editor capabilities from the LaTeX category · [#1303](https://github.com/sanskarpan/Latexy/issues/1303)
 Individually small, collectively the difference between "a textarea" and "an editor". Ordered by value per unit of work.
 
 | id | capability | holder | status | size |
 |---|---|---|---|---|
-| **B19.1** [#1351](https://github.com/sanskarpan/Latexy/issues/1351) | Autocomplete for commands / refs / citations | TeXstudio `.cwl`, texlab [V] | ❌ | **M** |
-| **B19.2** [#1352](https://github.com/sanskarpan/Latexy/issues/1352) | Compile-on-save / continuous background compile | Papeeria, LaTeX Workshop [V] | ➖ cover-letter page only | **S** |
-| **B19.3** [#1353](https://github.com/sanskarpan/Latexy/issues/1353) | Outline / structure navigator | LyX, tinymist [V] | ❌ | **S** |
-| **B19.4** [#1354](https://github.com/sanskarpan/Latexy/issues/1354) | Code folding | TeXstudio [V] | ❌ | **S** |
-| **B19.5** [#1355](https://github.com/sanskarpan/Latexy/issues/1355) | Word count | LaTeX Workshop [V] | ❌ | **S** |
-| **B19.6** [#1356](https://github.com/sanskarpan/Latexy/issues/1356) | Stop-on-first-error toggle | Overleaf [V] | ❌ | **S** |
-| **B19.7** [#1357](https://github.com/sanskarpan/Latexy/issues/1357) | Draft mode | Overleaf [S] | ❌ | **S** |
-| **B19.8** [#1358](https://github.com/sanskarpan/Latexy/issues/1358) | Custom dictionaries for spell check | Overleaf [C] | ❌ | **S** |
-| **B19.9** [#1359](https://github.com/sanskarpan/Latexy/issues/1359) | Multi-cursor editing | TeXstudio, VS Code [V] | ❌ | **S** |
-| **B19.10** [#1360](https://github.com/sanskarpan/Latexy/issues/1360) | **vim / emacs keybinding modes** | Overleaf, Typst.app [V] | ❌ — *directly relevant to the TUI audience* | **M** |
-| **B19.11** [#1361](https://github.com/sanskarpan/Latexy/issues/1361) | Hover previews of math / graphics / citations | LaTeX Workshop [V] | ❌ | **M** |
-| **B19.12** [#1362](https://github.com/sanskarpan/Latexy/issues/1362) | Thesaurus | TeXstudio, LyX [V] | ❌ | **S** |
-| **B19.13** [#1363](https://github.com/sanskarpan/Latexy/issues/1363) | Presentation mode | Typst.app, TeXstudio [V] | ❌ · P3 | **M** |
-| **B19.14** [#1364](https://github.com/sanskarpan/Latexy/issues/1364) | **Regex-aware find & replace** (within document) | TeXstudio, VS Code [V] | ❌ — *legacy 4.4, recovered by the Part F audit* | **S** |
-| **B19.15** [#1365](https://github.com/sanskarpan/Latexy/issues/1365) | **In-app package documentation lookup** (`texdoc`-style) | TeXstudio [V] | ❌ — *legacy 4.5, recovered by the Part F audit* | **S** |
+| **B19.1** [#1351](https://github.com/sanskarpan/Latexy/issues/1351) | Autocomplete for commands / refs / citations | TeXstudio `.cwl`, texlab [V] | ✅ implemented and measured | **M** |
+| **B19.2** [#1352](https://github.com/sanskarpan/Latexy/issues/1352) | Compile-on-save / continuous background compile | Papeeria, LaTeX Workshop [V] | ✅ implemented and measured | **S** |
+| **B19.3** [#1353](https://github.com/sanskarpan/Latexy/issues/1353) | Outline / structure navigator | LyX, tinymist [V] | ✅ implemented and measured | **S** |
+| **B19.4** [#1354](https://github.com/sanskarpan/Latexy/issues/1354) | Code folding | TeXstudio [V] | ✅ implemented and measured | **S** |
+| **B19.5** [#1355](https://github.com/sanskarpan/Latexy/issues/1355) | Word count | LaTeX Workshop [V] | ✅ implemented and measured | **S** |
+| **B19.6** [#1356](https://github.com/sanskarpan/Latexy/issues/1356) | Stop-on-first-error toggle | Overleaf [V] | ✅ implemented and measured | **S** |
+| **B19.7** [#1357](https://github.com/sanskarpan/Latexy/issues/1357) | Draft mode | Overleaf [S] | ✅ implemented and measured | **S** |
+| **B19.8** [#1358](https://github.com/sanskarpan/Latexy/issues/1358) | Custom dictionaries for spell check | Overleaf [C] | ✅ implemented and measured | **S** |
+| **B19.9** [#1359](https://github.com/sanskarpan/Latexy/issues/1359) | Multi-cursor editing | TeXstudio, VS Code [V] | ✅ implemented and measured | **S** |
+| **B19.10** [#1360](https://github.com/sanskarpan/Latexy/issues/1360) | **vim / emacs keybinding modes** | Overleaf, Typst.app [V] | ✅ implemented and measured | **M** |
+| **B19.11** [#1361](https://github.com/sanskarpan/Latexy/issues/1361) | Hover previews of math / graphics / citations | LaTeX Workshop [V] | ✅ implemented and measured | **M** |
+| **B19.12** [#1362](https://github.com/sanskarpan/Latexy/issues/1362) | Thesaurus | TeXstudio, LyX [V] | ✅ fulfilled by B18.6 | **S** |
+| **B19.13** [#1363](https://github.com/sanskarpan/Latexy/issues/1363) | Presentation mode | Typst.app, TeXstudio [V] | ✅ implemented and measured | **M** |
+| **B19.14** [#1364](https://github.com/sanskarpan/Latexy/issues/1364) | **Regex-aware find & replace** (within document) | TeXstudio, VS Code [V] | ✅ implemented and measured | **S** |
+| **B19.15** [#1365](https://github.com/sanskarpan/Latexy/issues/1365) | **In-app package documentation lookup** (`texdoc`-style) | TeXstudio [V] | ✅ implemented and measured | **S** |
 
 **Note:** Monaco already provides the substrate for B19.4, B19.5, B19.9 and **B19.14** — these are configuration and wiring, not implementation. B19.2's engine exists and is proven on one page; extending it is plumbing. **B19.15 pairs directly with the already-shipped `PackageManagerPanel.tsx`** — a user who can add a package currently cannot read what it does.
 
-### B20. Track changes with accept/reject · **L** · status ❌ · [#1304](https://github.com/sanskarpan/Latexy/issues/1304)
+**B19.1 implementation evidence.** Monaco now completes the existing command
+corpus plus common natbib, biblatex, hyperref, and cleveref commands; reference
+arguments use uncommented document labels; and citation arguments combine
+inline `\bibitem`/BibTeX entries with the resume's saved `references.bib`.
+Optional citation arguments and comma-separated multi-cites complete only the
+active key and exclude keys already used in the command. Saved-library imports,
+refreshes, clears, and failed-clear rollback update the editor provider without
+a reload. Pure parsing regressions cover comments, directives, command
+families, and multi-key behavior, while a real Monaco browser scenario verifies
+all three suggestion classes and an editor unmount/remount. The latter also
+guards the repaired provider lifetime: Monaco-global completion/folding/hover
+providers are no longer destroyed with the first component instance
+([#1351](https://github.com/sanskarpan/Latexy/issues/1351)). All six focused
+parser tests, all 708 frontend unit tests, strict non-incremental frontend
+checks, and all 25 affected editor browser scenarios pass without retries.
+
+**B19.2 implementation evidence.** The persisted two-second auto-compile control
+is wired across the main resume editor, optimization editor, cover-letter
+editor, and `/try`, with active-job guards and visible submission/worker-failure
+feedback. The Monaco change listener now registers only after the dynamically
+loaded editor actually mounts; the former mount-only effect could silently miss
+the instance and leave an enabled toggle inert. Non-empty documents of every
+length compile—the unrelated 100-character minimum no longer drops valid short
+documents—and every toggle exposes its pressed state to assistive technology.
+A real browser regression enables the control, edits a sub-100-character LaTeX
+document, waits through the debounce, and verifies the exact submitted source
+([#1352](https://github.com/sanskarpan/Latexy/issues/1352)).
+
+**B19.3 implementation evidence.** The source-linked outline covers part through
+subparagraph, starred commands, optional short titles, multiline and nested
+braces, and exact source lines. It ignores commented headings and literal code
+inside verbatim/listing/minted environments, unwraps common title formatting,
+and gives malformed commands no power to hide later valid sections. The
+collapsible hierarchy is a labelled navigation region with announced expansion
+state, is available at desktop and mobile widths, and moves the real Monaco
+cursor to the selected line. Five pure parser regressions and a browser scenario
+verify hierarchy, filtering, navigation, and responsive reachability
+([#1353](https://github.com/sanskarpan/Latexy/issues/1353)).
+
+**B19.4 implementation evidence.** Monaco folding is enabled with visible gutter
+controls and highlighting. Its provider now derives deterministic ranges from
+tested source parsers: correctly nested `begin`/`end` pairs, including literal
+verbatim/listing/minted blocks whose command-like contents are ignored, plus
+part-to-subparagraph bodies ending at the next peer or ancestor. Commented and
+mismatched delimiters cannot create false folds, duplicate ranges are removed,
+and the provider survives editor remounts. Four parser regressions and a real
+browser invocation of Monaco's fold/unfold actions pass
+([#1354](https://github.com/sanskarpan/Latexy/issues/1354)).
+
+**B19.5 implementation evidence.** The editor reports words from the plain text
+extracted from the last compiled PDF, explicitly not from LaTeX source tokens.
+The Unicode-aware counter handles letters, combining marks, numbers,
+apostrophes, and hyphenated compounds and reports zero honestly for an empty
+render. Four focused regressions cover these boundaries, and the existing real
+REST-fallback browser path now verifies that the same `pdftotext` payload shown
+in ATS Text produces the rendered-word count in Monaco's status bar
+([#1355](https://github.com/sanskarpan/Latexy/issues/1355)).
+
+**B19.6 implementation evidence.** Compile Settings now exposes an explicit,
+default-on “Stop on first error” control and explains that disabling it collects
+more TeX errors while an erroneous document still fails. A strict boolean is
+stored per resume, forwarded through both compile and optimize+compile dispatch,
+and conditionally controls `-halt-on-error` in local and Docker worker commands;
+nonstop interaction and sandbox flags remain mandatory. Legacy settings safely
+default on. The accessible, viewport-bounded scrollable dialog persists the
+choice in a real browser test, and 146 focused settings/job/worker/orchestrator
+tests verify validation, forwarding, default-on behavior, and both command paths
+([#1356](https://github.com/sanskarpan/Latexy/issues/1356)).
+
+**B19.7 implementation evidence.** A default-off per-resume Draft mode now asks
+`graphicx` to preserve image boxes while skipping image decoding/rasterization,
+without changing the stored source. Trusted code injects the package option
+after `documentclass`, before packages load, recognizes documentclass/package/
+`PassOptionsToPackage` configurations already in draft mode, and is idempotent.
+The strict boolean reaches direct and combined workers, local and Docker paths
+alike. The same browser settings flow verifies persistence, five deterministic
+injection regressions cover ordering and duplication, and a real `pdflatex`
+regression proves that draft output succeeds even when the referenced image is
+absent ([#1357](https://github.com/sanskarpan/Latexy/issues/1357)).
+
+**B19.8 implementation evidence.** Spell-check exceptions now form a bounded,
+validated account preference instead of an opaque browser-only list. Existing
+local words merge with the account list on sign-in, normalized and deduplicated;
+add/remove actions update editor markers immediately and synchronize across
+devices while signed-out or temporarily offline editors retain their local
+fallback. Settings exposes the complete dictionary with accessible add/remove
+controls and a 500-word limit. Four pure normalization/range regressions, 15
+backend schema and authenticated persistence tests, strict frontend checks, and
+a real browser scenario verify device merge plus account-synced removal and
+addition ([#1358](https://github.com/sanskarpan/Latexy/issues/1358)).
+
+**B19.9 implementation evidence.** The editor explicitly preserves Monaco's
+native Option/Alt-click cursor modifier and spread-paste behavior, while the
+shortcut guide exposes both add/remove-cursor and select-next-occurrence
+controls. A real Monaco browser regression selects the next matching token,
+observes two live selections, and verifies the configured cursor/paste contract
+without retries ([#1359](https://github.com/sanskarpan/Latexy/issues/1359)).
+
+**B19.10 implementation evidence.** Every LaTeX editor now offers persistent
+Standard, Vim, and Emacs modes in its status bar, with live mode/key feedback.
+Adapters load only when selected, and generation-guarded disposal prevents stale
+dynamic imports or editor remounts from retaining competing key handlers. The
+current Emacs package's obsolete AMD Monaco import is repaired by a checked-in
+pnpm patch to the ESM editor API. Two mode-contract unit tests, strict frontend
+checks, a real browser scenario exercising Vim insert/escape and Emacs `Ctrl+A`
+semantics, and a clean optimized Node 22 build pass
+([#1360](https://github.com/sanskarpan/Latexy/issues/1360)).
+
+**B19.11 implementation evidence.** A debounced source-aware hover layer now
+renders inline/display/common-environment math with pinned KaTeX in strict,
+untrusted mode; shows graphic filenames and options without pretending the
+current single-source model owns an uploaded asset; and resolves multi-cite
+keys against live saved BibTeX title/author/year metadata. Comments, literal
+environments, malformed environment pairs, missing citation records, nested
+braces, and bounded display are covered. Monaco's native provider remains the
+keyboard-accessible textual fallback, while the architecture record clarifies
+that future texlab supplies semantic ranges rather than client rendering. Six
+pure parser regressions, strict frontend checks, and a real Monaco pointer plus
+keyboard-hover scenario verify all three preview classes and actual KaTeX DOM
+([#1361](https://github.com/sanskarpan/Latexy/issues/1361)).
+
+**B19.12 implementation evidence.** The apparent thesaurus gap is the same
+selection-scoped capability already delivered and measured as B18.6, not a
+second feature. Its contextual Synonyms action returns validated alternatives
+and changes Monaco only after the user chooses one; maintaining a duplicate
+panel would split behavior and metering for no user benefit
+([#1362](https://github.com/sanskarpan/Latexy/issues/1362)).
+
+**B19.13 implementation evidence.** Documents explicitly typed as presentations
+use the shipped slide-aware compiled-PDF viewer rather than resume ATS/PDF
+behavior. It resets on each compiled artifact, bounds previous/next navigation,
+reports the current/total slide accessibly, opens the artifact separately, and
+now supports Left/Right, Page Up/Down, Home, and End. A real browser scenario
+drives the complete compile-result/download path for a three-slide document and
+verifies button and keyboard navigation ([#1363](https://github.com/sanskarpan/Latexy/issues/1363)).
+
+**B19.14 implementation evidence.** Monaco's native in-document find/replace is
+available with capture-group regex replacement and six LaTeX structural
+presets. The preset bridge now calls Monaco 0.55's public
+`editor.actions.findWithArgs` identifier (the stale identifier had forced an
+internal fallback), and the popover exposes labelled/expanded state. A real
+browser regression loads the section regex, observes two matches, replaces both
+with `$1`, and verifies the resulting source ([#1364](https://github.com/sanskarpan/Latexy/issues/1364)).
+
+**B19.15 implementation evidence.** The post-handoff package manager already
+contains searchable in-app documentation for its curated package catalog:
+purpose, exact preamble usage, examples, compatibility notes, conflicts, and
+related packages appear alongside add/remove state. Search and mutation controls
+now have accessible names. A real editor browser scenario finds `geometry`,
+opens its docs, verifies usage and example text, and confirms the installed
+package control ([#1365](https://github.com/sanskarpan/Latexy/issues/1365)).
+
+### B20. Track changes with accept/reject · **L** · status ✅ · [#1304](https://github.com/sanskarpan/Latexy/issues/1304)
 Overleaf gates it behind premium [V]. Three models exist: accept/reject per range (Overleaf), auto-accept (Authorea [S]), sticky-note markers (LyX [V]). Latexy has comments + collaborators + yjs, so the substrate is there. Note `latexdiff` + **`latexrevise`** already do accept/reject at the source level [V] — a cheaper path than building it in the editor.
 
-### B21. Rendered-document diffing · **M** · status ➖ · [#1305](https://github.com/sanskarpan/Latexy/issues/1305)
+**B20 implementation evidence.** Latexy now covers both change-review sources.
+AI optimization remains staged until explicit approval and is segmented by the
+server into stable deterministic hunks; the review dialog supports per-hunk
+accept/reject/edit, accept/reject all, and selective reconstruction in both the
+anonymous studio and authenticated optimizer. The authenticated apply path now
+refuses to overwrite source edited after optimization, and later compile jobs
+cannot erase the saved optimization snapshot. Live Y.js collaborator edits are
+listed and decorated separately with per-change and batch actions. Rejection
+uses Y.js relative positions so unrelated concurrent edits do not stale the
+target; if the exact insertion can no longer be proven, it fails closed and
+leaves the item pending instead of deleting a matching LaTeX fragment elsewhere.
+The same unique-span rule protects server-side stale diff payloads. Focused
+tests exercise real Y.Doc concurrency and duplicate text, while a browser test
+drives optimization completion through accessible review, Escape dismissal,
+editing, selective apply payload, and the resulting Monaco content
+([#1304](https://github.com/sanskarpan/Latexy/issues/1304),
+[#1247](https://github.com/sanskarpan/Latexy/issues/1247)).
+
+### B21. Rendered-document diffing · **M** · status ✅ · [#1305](https://github.com/sanskarpan/Latexy/issues/1305)
 `latexdiff` **v1.4.0 (2026-01-02)**, GPL-3.0, in TeX Live, with `latexdiff-vc` wrappers for git/svn/hg and a **WASM browser UI** [V]. `diff-pdf` (4.3k★) is **CI-friendly via exit codes** and emits a highlighted diff PDF [V]; `diffoscope` handles PDFs in a general recursive differ [V]. **No surveyed product exposes this to users.** Latexy has `/diff-with-parent` and `resume_diff_service.py` already — this is packaging, not invention.
 
-### B22. Self-hosting · **L** · status ❌ · [#1306](https://github.com/sanskarpan/Latexy/issues/1306)
+**B21 implementation evidence.** The before/after optimization comparison now
+offers three distinct views: Monaco source diff, synchronized side-by-side
+compiled PDFs, and a client-side Visual Diff. After the original is compiled,
+the visual mode loads both artifacts with the bundled same-origin PDF.js worker,
+rasterizes every page, preserves the newer page as a faint reference, and marks
+added ink green, removed ink red, and changed color/detail amber. It reports
+per-page changed-pixel counts and percentages and explicitly flags page-count
+changes. The algorithm is pure and thresholded to suppress antialiasing noise;
+unit tests cover added, removed, modified, unchanged, and invalid buffers. A real
+browser test generates two valid PDFs and drives optimize → compare → compile
+original → visual diff, verifying a rendered canvas and nonzero difference
+statistics ([#1305](https://github.com/sanskarpan/Latexy/issues/1305)).
+
+### B22. Self-hosting · **L** · status ✅ · [#1306](https://github.com/sanskarpan/Latexy/issues/1306)
 Reactive Resume ships `docker compose up -d` + Postgres + optional SeaweedFS, MIT [V]. Overleaf has free Community Edition vs paid Server Pro (SSO, sandboxed compiles, track changes) [V]. Typst.app sells an On-Premises tier with LDAP [V]. **Pairs naturally with BYOK** — the same privacy-motivated user.
 
-### B23. First-party MCP server · **S** · status ❌ · **two competitors shipped this; we are closest to it** · [#1307](https://github.com/sanskarpan/Latexy/issues/1307)
+**Implemented and deployment-verified.** `docker-compose.prod.yml` now contains
+the complete single-host runtime: frontend, API, Celery worker and scheduler,
+pgvector/PostgreSQL, Redis, private MinIO with idempotent bucket creation,
+nginx/TLS, Prometheus, Grafana, Tempo, Alertmanager, and exporters. Required
+credentials fail during Compose interpolation instead of falling back to weak
+defaults; runtime secrets live in ignored `.env.production`, with a committed
+example. `make self-host-up` validates configuration and TLS files, waits for
+stateful dependencies, applies Alembic migrations, then builds and starts the
+stack. The operator guide covers initial setup, verification, upgrades,
+backups, and managed-service overrides. Deployment contract tests verify all
+bind sources, pgvector/object storage, initialization ordering, secret hygiene,
+and the migration-first startup path; the rendered Compose model and templated
+nginx TLS configuration are also validated in their real container runtime.
+
+### B23. First-party MCP server · **S** · status ✅ · **two competitors shipped this; we are closest to it** · [#1307](https://github.com/sanskarpan/Latexy/issues/1307)
 **Rezi ships a Pro-gated MCP server** at `api.rezi.ai/mcp` — streamable HTTP, tools `list_resumes`/`read_resume`/`write_resume`, credentials held in memory and never persisted, with documented setup for **Claude Code, Claude Desktop, Codex, Cursor, Gemini CLI and Lovable**, open-sourced at `github.com/rezi-io/rezi-mcp`. **Reactive Resume ships one too** — hosted at `rxresu.me/mcp`, **34 tools**, OAuth, published to the MCP registry with prompts and `resume://` resources [V]. Nobody else in the surveyed field has any LLM-client-reachable interface.
 
 **This is the cheapest item on the list for us**, because the hard part is already built: `packages/tui` exists, and it already speaks to the API with a token store, resume resolution and job streaming (`src/tools/shared.ts`). An MCP server is a second transport over the same tool layer, not a new product. Effectively a public read/write resume API reachable from any LLM client — and it is the natural home for an audience that already lives in a terminal.
 
-### B24. Academic CV — the largest verified gap in the category, and the one we are built for · **M** · status ➖ · **strongest strategic fit in this document** · [#1308](https://github.com/sanskarpan/Latexy/issues/1308)
+**Implemented.** The existing `@sanskarpan/latexy` package now ships a second
+`latexy-mcp` executable using the official TypeScript MCP SDK and stdio
+transport. Eight schema-validated tools cover paginated listing, reading,
+creating, selective updating, reversible archiving, queued compilation, queued
+ATS scoring, and terminal job results. Active documents are also discoverable
+and readable as `resume:///…` `application/x-latex` resources. The transport
+reuses the TUI's authenticated API client and self-host URL overrides, marks
+read-only/idempotent behavior for clients, intentionally exposes no permanent
+delete tool, and allowlists response fields so owner IDs and share credentials
+do not reach the model. Documentation includes Codex and generic JSON stdio
+configuration. Contract tests exercise a real MCP client/server pair in memory,
+and the bundled executable completes a real spawned stdio handshake.
+
+### B24. Academic CV — the largest verified gap in the category, and the one we are built for · **M** · status ✅ · **strongest strategic fit in this document** · [#1308](https://github.com/sanskarpan/Latexy/issues/1308)
 
 > **Placement note:** this sits under *P2 — later* only because B-numbers were assigned in the order research arrived. On merit I would argue it belongs in **P1**, and it is the one item in this file where I think the ordering is wrong. Flagging rather than silently re-filing it, since backlog priority is the reader's call.
 **Across all nine mid-tier builders surveyed: zero ORCID integrations and zero publication importers** [V]. Enhancv is the only product that mentions ORCID *at all*, and only as prose advice with no structured field. Rezi files Publications under an "Academic" menu group; Standard Resume and Novoresume have Publications sections; **none of them has a DOI lookup, a BibTeX path, a citation-style choice, or an ORCID field.** Teal and Kickresume have no academic surface whatsoever — and on Kickresume "CV" means the personal website, not a curriculum vitae.
@@ -425,10 +892,30 @@ Multi-page handling, which an academic CV requires by definition, is where the c
 
 **Why this matters more for Latexy than for anyone else:** the academic CV is LaTeX's native use case and its incumbent audience. We already have multi-page compilation, real typography, and BibTeX in the toolchain by construction. The competitive moat is not that this is hard — it is that a WYSIWYG builder with a one-page auto-fit engine **cannot** ship it without abandoning its core design. Concretely: an ORCID field, DOI/BibTeX import into a Publications section, and a citation-style selector. Pairs with B10c (publications are outside the convergent ATS field set, so this is a *human-reader* feature, not an ATS one — and should be positioned as such).
 
-### B25. Anonymous / blind-review mode · **S** · status ❌ · **nobody has this** · [#1309](https://github.com/sanskarpan/Latexy/issues/1309)
+Implemented and verified: academic-CV detection and conversion, multi-page-aware
+editor behavior, canonical ORCID iD and profile-URL lookup, year/type filters,
+CV/APA/IEEE citation styles, DOI/arXiv smart BibTeX import, and direct insertion
+of generated publication sections into the controlled editor buffer. Changing
+any lookup criterion invalidates prior results and late responses cannot restore
+stale publications. Focused backend contracts, frontend unit/static checks, and
+a real Chromium flow cover lookup normalization, filters, refetch, and durable
+Monaco insertion—including the editor-bundle loading window.
+
+### B25. Anonymous / blind-review mode · **S** · status ✅ · **nobody has this** · [#1309](https://github.com/sanskarpan/Latexy/issues/1309)
 Redact PII at *render* time for a share link: name, email, phone, address, LinkedIn and GitHub URLs blanked, original document untouched, with a banner on the shared view. **No surveyed product offers it** — and the substrate is already here: `/resumes/{id}/share` issues tokens, `/r/[token]` renders them, and compilation is server-side so a redacted variant costs one extra compile.
 
 Two real audiences: peer review on Reddit/Discord (where people currently hand-blur screenshots) and university career centres reviewing student CVs. Carried over from the legacy catalog (2.13), which this file had dropped.
+
+Implemented and verified: owners can create, convert, regenerate, and revoke
+anonymous links without changing the token or the saved LaTeX. The derived
+compile redacts common name/address header conventions plus email, phone,
+LinkedIn, and GitHub identifiers using pdfLaTeX-safe ASCII replacements. Public
+responses never fall back to the original PDF, use an anonymous title and
+redacted accessible-text alternative, and retain a visible privacy banner after
+the PDF is ready. Worker PDFs cross split Modal containers through Redis and are
+promoted to version-specific object keys, preventing stale redaction artifacts
+after edits. Backend contracts, a real pdfLaTeX compile, frontend static/unit
+checks, and three Chromium user journeys cover the complete flow.
 
 ## P1–P3 — completeness sweep (closes Part C)
 
@@ -436,83 +923,206 @@ Two real audiences: peer review on Reddit/Discord (where people currently hand-b
 
 | id | item | summary |
 |---|---|---|
-| **B28** [#1310](https://github.com/sanskarpan/Latexy/issues/1310) | Real-time debounced ATS score + multi-dimensional score card | Legacy 2.3 (**P0**) and 2.7. Scoring exists but is request-scoped, not live.  **2 children below** |
-| ↳ **B28a** [#1366](https://github.com/sanskarpan/Latexy/issues/1366) | Real-time debounced ATS score in the editor | |
-| ↳ **B28b** [#1367](https://github.com/sanskarpan/Latexy/issues/1367) | Multi-dimensional score card with deep links | |
+| **B28** [#1310](https://github.com/sanskarpan/Latexy/issues/1310) | Real-time debounced ATS score + multi-dimensional score card | ✅ Shipped and browser-verified. **2 children below** |
+| ↳ **B28a** [#1366](https://github.com/sanskarpan/Latexy/issues/1366) | Real-time debounced ATS score in the editor | ✅ 10-second debounce; input changes immediately invalidate stale display and in-flight responses |
+| ↳ **B28b** [#1367](https://github.com/sanskarpan/Latexy/issues/1367) | Multi-dimensional score card with deep links | ✅ Five named categories with mapped findings and line-level editor navigation |
 | **B29** [#1311](https://github.com/sanskarpan/Latexy/issues/1311) | Email notification delivery | ✅ Shipped: completion, terminal failure, debounced share-view, and weekly-digest delivery through Resend/SMTP with Modal parity and per-trigger preferences. |
-| **B30** [#1312](https://github.com/sanskarpan/Latexy/issues/1312) | Real-time page-count / overflow warning | Legacy 3.2 (**P0**). `page_count` is already parsed server-side but never surfaced as a warning. |
-| **B31** [#1313](https://github.com/sanskarpan/Latexy/issues/1313) | AI writing assistant / chat over the document | Legacy 3.6 + C2 'AI chat over the document' + 'LLM tool-calling into editor state'. |
-| **B32** [#1314](https://github.com/sanskarpan/Latexy/issues/1314) | Two-way Git sync (currently import-only) | Legacy 1.12 + C7 'Git bridge'. `/github` has 11 routes but only imports. |
-| **B33** [#1315](https://github.com/sanskarpan/Latexy/issues/1315) | Compile timeout tiers by plan + compile caching | Legacy 1.6 + C8 'Compile caching / incremental' (**nobody verified has this**).  **2 children below** |
-| ↳ **B33a** [#1368](https://github.com/sanskarpan/Latexy/issues/1368) | Compile timeout tiers by plan | |
-| ↳ **B33b** [#1369](https://github.com/sanskarpan/Latexy/issues/1369) | Compile caching / incremental compile | |
-| **B34** [#1316](https://github.com/sanskarpan/Latexy/issues/1316) | Resume benchmarking — percentile vs other applicants | Legacy 3.22 + C3 'Benchmark vs other applicants' (LinkedIn Premium gates it). |
-| **B35** [#1317](https://github.com/sanskarpan/Latexy/issues/1317) | Smart import from competitor resume builders | Legacy 5.12. `/sources/import-url` and LinkedIn exist; no builder-specific importers. |
-| **B36** [#1318](https://github.com/sanskarpan/Latexy/issues/1318) | Mobile / PWA | Legacy 1.20 + C10. **Seven of nine** competitors have no first-party mobile app either. |
-| **B37** [#1319](https://github.com/sanskarpan/Latexy/issues/1319) | White-label / careers-centre edition + SSO/LDAP | Legacy 5.4 + C10 x2. Enhancv's education tier is the model; Rezi adds revenue share.  **2 children below** |
-| ↳ **B37a** [#1370](https://github.com/sanskarpan/Latexy/issues/1370) | White-label / careers-centre edition | |
-| ↳ **B37b** [#1371](https://github.com/sanskarpan/Latexy/issues/1371) | SSO / LDAP | |
-| **B38** [#1320](https://github.com/sanskarpan/Latexy/issues/1320) | Strict typed validation with location-pinpointed errors | C1. RenderCV/Pydantic pinpoints the exact field and line; we surface LaTeX errors only. |
-| **B39** [#1321](https://github.com/sanskarpan/Latexy/issues/1321) | Section visibility per variant | C1 — **nobody has this.** Our `/variants` fork content instead of toggling visibility. |
-| **B40** [#1322](https://github.com/sanskarpan/Latexy/issues/1322) | Auto-scale font / spacing to force one page | C1. `always-fit-resume` does it; Standard Resume's single spacing slider is the UX to copy. |
-| **B41** [#1323](https://github.com/sanskarpan/Latexy/issues/1323) | Pre-written phrase library indexed by title + seniority | C1. Kickresume claims 20k phrases / 3.2k jobs; LiveCareer 50k+; Enhancv indexes on 3 axes. |
-| **B42** [#1324](https://github.com/sanskarpan/Latexy/issues/1324) | Cover-letter signature (type / draw / upload) | C1. Zety ships it; German and Japanese conventions expect a signature. |
-| **B43** [#1325](https://github.com/sanskarpan/Latexy/issues/1325) | Dark-mode PDF viewer | C1/legacy 5.17. Texifier has it. `PDFPreview.tsx` already imports a Moon icon. |
-| **B44** [#1326](https://github.com/sanskarpan/Latexy/issues/1326) | Auto-optimize action from the score report | C3. Zety ships upload → score → **apply changes** → download as one loop. |
-| **B45** [#1327](https://github.com/sanskarpan/Latexy/issues/1327) | Locale-tuned ATS checker + published score threshold | C3 x2. LiveCareer runs a UK-tuned checker; Zety publishes '80 or higher'.  **2 children below** |
-| ↳ **B45a** [#1372](https://github.com/sanskarpan/Latexy/issues/1372) | Locale-tuned ATS checker | |
-| ↳ **B45b** [#1373](https://github.com/sanskarpan/Latexy/issues/1373) | Published score threshold with stated calibration | |
-| **B46** [#1328](https://github.com/sanskarpan/Latexy/issues/1328) | Tracker depth: job alerts, saved jobs, reminders, calendar sync, contacts CRM | C4 x5. Huntr and Teal are much deeper here; LinkedIn's own caps are documented.  **5 children below** |
-| ↳ **B46a** [#1374](https://github.com/sanskarpan/Latexy/issues/1374) | Job alerts | |
-| ↳ **B46b** [#1375](https://github.com/sanskarpan/Latexy/issues/1375) | Saved jobs | |
-| ↳ **B46c** [#1376](https://github.com/sanskarpan/Latexy/issues/1376) | Reminders / staleness prompts | |
-| ↳ **B46d** [#1377](https://github.com/sanskarpan/Latexy/issues/1377) | Calendar sync / interview scheduling | |
-| ↳ **B46e** [#1378](https://github.com/sanskarpan/Latexy/issues/1378) | Contacts CRM | |
-| **B47** [#1329](https://github.com/sanskarpan/Latexy/issues/1329) | Email parsing for application status | C4. Genuinely hard and privacy-heavy; scope it narrowly or not at all. |
-| **B48** [#1330](https://github.com/sanskarpan/Latexy/issues/1330) | Outreach message generation + recruiter lookup | C4 x2. Careerflow does both; Teal has stage-aware email templates.  **2 children below** |
-| ↳ **B48a** [#1379](https://github.com/sanskarpan/Latexy/issues/1379) | Outreach / referral message generation | |
-| ↳ **B48b** [#1380](https://github.com/sanskarpan/Latexy/issues/1380) | Recruiter / hiring-manager lookup | |
-| **B49** [#1331](https://github.com/sanskarpan/Latexy/issues/1331) | Application-outcome signals — the verified category gap | C4 x4. **Zero platforms give a rejected candidate a reason** — verified across four ATSs.  **4 children below** |
-| ↳ **B49a** [#1381](https://github.com/sanskarpan/Latexy/issues/1381) | Rejection / outcome feedback | |
-| ↳ **B49b** [#1382](https://github.com/sanskarpan/Latexy/issues/1382) | Ghosting / employer responsiveness signals | |
-| ↳ **B49c** [#1383](https://github.com/sanskarpan/Latexy/issues/1383) | Application-viewed / resume-downloaded signals | |
-| ↳ **B49d** [#1384](https://github.com/sanskarpan/Latexy/issues/1384) | Candidate-side signal visible to the hirer | |
-| **B50** [#1332](https://github.com/sanskarpan/Latexy/issues/1332) | Export surface: Google Drive, SVG/JPEG, ePub/ODF, email delivery | C5 x4. Each is small; none is load-bearing.  **4 children below** |
-| ↳ **B50a** [#1385](https://github.com/sanskarpan/Latexy/issues/1385) | Google Drive export | |
-| ↳ **B50b** [#1386](https://github.com/sanskarpan/Latexy/issues/1386) | SVG / JPEG export | |
-| ↳ **B50c** [#1387](https://github.com/sanskarpan/Latexy/issues/1387) | ePub / ODF / DocBook export | |
-| ↳ **B50d** [#1388](https://github.com/sanskarpan/Latexy/issues/1388) | Email delivery of the document | |
+| **B30** [#1312](https://github.com/sanskarpan/Latexy/issues/1312) | Real-time page-count / overflow warning | ✅ Shipped: estimated and compiled counts, contextual overflow banner, formatting-only auto-fit, optional AI trim, and neutral multi-page reporting for presentations/academic CVs. |
+| **B31** [#1313](https://github.com/sanskarpan/Latexy/issues/1313) | AI writing assistant / chat over the document | ✅ Shipped: owned-document chat with bounded history, document/selection context, and one safe review-gated editor proposal per turn. |
+| **B32** [#1314](https://github.com/sanskarpan/Latexy/issues/1314) | Two-way Git sync | ✅ Shipped: purpose-scoped GitHub OAuth, per-resume private-repository push/pull, immutable blob-revision tracking, conflict-safe pushes, confirmed persistent pulls, and disconnect revocation. |
+| **B33** [#1315](https://github.com/sanskarpan/Latexy/issues/1315) | Compile timeout tiers by plan + compile caching | ✅ Shipped and regression-tested. **2 children below** |
+| ↳ **B33a** [#1368](https://github.com/sanskarpan/Latexy/issues/1368) | Compile timeout tiers by plan | ✅ Server-derived 30s/120s/240s plan limits propagate through Celery and Modal; failure events carry the enforced duration and the UI renders it. |
+| ↳ **B33b** [#1369](https://github.com/sanskarpan/Latexy/issues/1369) | Compile caching / incremental compile | ✅ Exact successful builds are cached for 24h by tenant, prepared source, compiler, all compile settings/BibTeX, image, and cache epoch; hits copy artifacts into a fresh authorized job. Unsafe mutable work-directory reuse is intentionally excluded. |
+| **B34** [#1316](https://github.com/sanskarpan/Latexy/issues/1316) | Resume benchmarking — anonymous percentile | ✅ Shipped: exact tie-aware ranking against the latest valid score per distinct resume, 50-resume privacy/quality floor, cached aggregates, honest global-cohort labeling, actionable caveat, and stale-response-safe score refresh. |
+| **B35** [#1317](https://github.com/sanskarpan/Latexy/issues/1317) | Smart import from competitor resume builders | ✅ Shipped: deterministic native Reactive Resume v4/v5 and standard JSON Resume parsing, rich-section preservation, honest Rezi/Teal PDF/DOCX fallback guidance, bounded untrusted input, and browser-verified migration wizard. |
+| **B36** [#1318](https://github.com/sanskarpan/Latexy/issues/1318) | Mobile / PWA | ✅ Shipped: installable manifest and mobile install action, lightweight touch editor, responsive controls, privacy-safe app-shell worker, offline fallback, PNG/maskable icons, and production-worker browser verification. Native apps remain intentionally out of scope. |
+| **B37** [#1319](https://github.com/sanskarpan/Latexy/issues/1319) | White-label / careers-centre edition + SSO/LDAP | 🟨 Core tenancy and SSO are implemented. Tenant domains are DNS-verified before routing/CORS, branding reaches the visible header, invitations are email-bound/single-use, cohorts track explicit student submissions and opened/downloaded milestones, and admins can review/comment/download. OIDC uses discovery + PKCE; LDAP/AD connects through an OIDC broker so Latexy never handles directory passwords. Revenue sharing remains a commercial/provider onboarding decision under B37a. **2 children below** |
+| ↳ **B37a** [#1370](https://github.com/sanskarpan/Latexy/issues/1370) | White-label / careers-centre edition | 🟨 Core careers-centre workflow complete: cohorts, safe invitations, privacy-scoped student submissions, lifecycle dashboard, recruiter notes/downloads, verified custom domains, and visible tenant branding. Personal documents are never inferred to be institution-owned merely from membership. The issue's revenue-share line is not claimed complete: this Razorpay application needs a Route commercial account, linked-account onboarding/KYC, an agreed commission policy, and an unambiguous tenant attribution rule before money-moving code is safe to enable. |
+| ↳ **B37b** [#1371](https://github.com/sanskarpan/Latexy/issues/1371) | SSO / LDAP | ✅ Operator-configured generic OIDC with PKCE, server-only secrets, explicit trusted origins, safe callback preservation, and documented Keycloak/Authentik/Authelia LDAP bridge. |
+| **B38** [#1320](https://github.com/sanskarpan/Latexy/issues/1320) | Strict typed validation with location-pinpointed errors | ✅ Builder input rejects unknown fields and type coercion with structured field paths; JSON Resume syntax and semantic failures include exact source line/column and render persistently in the import UI. Malformed JSON is never reinterpreted as YAML. |
+| **B39** [#1321](https://github.com/sanskarpan/Latexy/issues/1321) | Section visibility per variant | ✅ Shipped: builder forks remain linked to one structured master and store only per-variant section, entry, and occurrence-safe bullet visibility. Master edits regenerate every linked child; stale selectors are pruned safely, while explicit advanced LaTeX editing detaches the child. |
+| **B40** [#1322](https://github.com/sanskarpan/Latexy/issues/1322) | Auto-scale font / spacing to force one page | ✅ Shipped: one-click bounded profile search plus a single manual-strength slider. Each candidate is compiled in an isolated sandbox, the first verified one-page result is applied reversibly, and the solver refuses to claim success below a legible 9pt-class floor. It spends one compile allowance and never removes résumé content. |
+| **B41** [#1323](https://github.com/sanskarpan/Latexy/issues/1323) | Pre-written phrase library indexed by title + seniority | ✅ Shipped: 8–12 role phrases indexed and cached by job title, seniority, industry, and skill category, with ATS/high-impact/leadership/technical-depth signals. Unsupported numeric claims are replaced by literal `[X]` placeholders in both the library and ordinary bullet generation. |
+| **B42** [#1324](https://github.com/sanskarpan/Latexy/issues/1324) | Cover-letter signature (type / draw / upload) | ✅ Shipped: typed, pointer-drawn, and PNG/JPEG/WebP upload methods are saved in the cover-letter source, removable, and included in the compiled PDF. Image payloads are bounded, normalized, validated before quota use, and materialized only in the isolated compile directory. |
+| **B43** [#1325](https://github.com/sanskarpan/Latexy/issues/1325) | Dark-mode PDF viewer | ✅ Verified in current source: the accessible toggle inverts only the rendered PDF layer, composes with print-preview grayscale, leaves overlays unaffected, and persists the preference across reloads. |
+| **B44** [#1326](https://github.com/sanskarpan/Latexy/issues/1326) | Auto-optimize action from the score report | ✅ Shipped: the score card sends its current recommendations/warnings into a fact-preserving optimization draft, then opens per-change accept/reject/edit review automatically. Applying is stale-edit-safe, recompiles the accepted result, and remains unsaved until the user explicitly saves a version. |
+| **B45** [#1327](https://github.com/sanskarpan/Latexy/issues/1327) | Locale-tuned ATS checker + published score threshold | ✅ Shipped and browser-verified. **2 children below** |
+| ↳ **B45a** [#1372](https://github.com/sanskarpan/Latexy/issues/1372) | Locale-tuned ATS checker | ✅ Explicit Global, India, US, and UK overlays. India permits photo/DOB/marital-status/expected-salary conventions; US/UK surface and score those details as discouraged. The selected locale and exact rule effects are returned with every result. |
+| ↳ **B45b** [#1373](https://github.com/sanskarpan/Latexy/issues/1373) | Published score threshold with stated calibration | ✅ The score card publishes **80 or higher** as a good document-check result, names the active calibration, and explicitly says this is neither ATS-passage nor hiring-outcome prediction. |
+| **B46** [#1328](https://github.com/sanskarpan/Latexy/issues/1328) | Tracker depth: job alerts, saved jobs, reminders, calendar sync, contacts CRM | ✅ Implemented as a personal, user-owned tracker: saved jobs, recurring source-search alerts, due reminders with stale recovery, stale-application prompts, interview records with ICS export, companies, and contacts. Notification delivery is claim/attempt isolated; it does not scrape jobs or report employer/ATS activity. **5 children below** |
+| ↳ **B46a** [#1374](https://github.com/sanskarpan/Latexy/issues/1374) | Job alerts | ✅ User-saved source URL/query/frequency reminder; Latexy does not claim that new jobs were found. |
+| ↳ **B46b** [#1375](https://github.com/sanskarpan/Latexy/issues/1375) | Saved jobs | ✅ User-owned saved-job capture and conversion to a tracked application. |
+| ↳ **B46c** [#1376](https://github.com/sanskarpan/Latexy/issues/1376) | Reminders / staleness prompts | ✅ Future-dated reminders, stale-application listing, and durable per-row notification claims/attempts. |
+| ↳ **B46d** [#1377](https://github.com/sanskarpan/Latexy/issues/1377) | Calendar sync / interview scheduling | ✅ User-owned interview records and downloadable RFC 5545-compatible `.ics`; no external calendar write is claimed. |
+| ↳ **B46e** [#1378](https://github.com/sanskarpan/Latexy/issues/1378) | Contacts CRM | ✅ User-entered company/contact records with owner checks; no recruiter discovery or scraping. |
+| **B47** [#1329](https://github.com/sanskarpan/Latexy/issues/1329) | Email parsing for application status | ✅ Narrow, authenticated, review-only `POST /tracker/email-status/parse`: the user supplies one bounded RFC 5322 message and receives conservative status/company/role suggestions with evidence and `requires_review=true`. It does not access a mailbox, write tracker rows, or send mail. |
+| **B48** [#1330](https://github.com/sanskarpan/Latexy/issues/1330) | Outreach message generation + recruiter lookup | 🟨 Split scope: B48a is implemented; B48b is intentionally refused. No recruiter lookup, mailbox access, scraping, sending, or persistence is claimed. **2 children below** |
+| ↳ **B48a** [#1379](https://github.com/sanskarpan/Latexy/issues/1379) | Outreach / referral message generation | ✅ One transient, editable/copyable AI draft from the user's owned application and optional user-supplied contact; the API returns `sent=false` and does not save or send it. |
+| ↳ **B48b** [#1380](https://github.com/sanskarpan/Latexy/issues/1380) | Recruiter / hiring-manager lookup | 🚫 Not implemented by design: contacts must be supplied by the user; Latexy performs no external recruiter/hiring-manager lookup or scraping. |
+| **B49** [#1331](https://github.com/sanskarpan/Latexy/issues/1331) | Application-outcome signals — the verified category gap | 🟨 Telemetry is limited to activity Latexy itself records and labels explicitly. Candidate-self activity (for example, opening/downloading an own résumé in a workspace) is not employer activity; no ATS/employer rejection, ghosting, application-viewed, or resume-downloaded signal is available. **4 children below** |
+| ↳ **B49a** [#1381](https://github.com/sanskarpan/Latexy/issues/1381) | Rejection / outcome feedback | ❌ No employer/ATS rejection reason or outcome feed. B47 only parses a message the candidate elects to paste and requires review. |
+| ↳ **B49b** [#1382](https://github.com/sanskarpan/Latexy/issues/1382) | Ghosting / employer responsiveness signals | ❌ No post-application employer responsiveness telemetry. The stale-application view is explicitly framed as time since the candidate's last update, not an employer-response signal. |
+| ↳ **B49c** [#1383](https://github.com/sanskarpan/Latexy/issues/1383) | Application-viewed / resume-downloaded signals | ❌ No employer-side view/download signal; existing workspace/download milestones are explicitly candidate-self semantics. |
+| ↳ **B49d** [#1384](https://github.com/sanskarpan/Latexy/issues/1384) | Candidate-side signal visible to the hirer | ❌ No candidate-side signal is exposed to a hirer. |
+| **B50** [#1332](https://github.com/sanskarpan/Latexy/issues/1332) | Export surface: Google Drive, SVG/JPEG, ePub/ODF, email delivery | ✅ Four child surfaces implemented with explicit provider/runtime gates. C5 x4; none is load-bearing. **4 children below** |
+| ↳ **B50a** [#1385](https://github.com/sanskarpan/Latexy/issues/1385) | Google Drive export | ✅ Authenticated `drive.file` OAuth, encrypted server-side credentials, owned-PDF export, deterministic create/update retries, and provider error mapping. Requires configured Google OAuth credentials and a live Drive grant. |
+| ↳ **B50b** [#1386](https://github.com/sanskarpan/Latexy/issues/1386) | SVG / JPEG export | ✅ Bounded Poppler rendering of page one from the latest owned compiled PDF; raw LaTeX cannot be mislabeled as an image. Requires `pdftocairo` in the runtime. |
+| ↳ **B50c** [#1387](https://github.com/sanskarpan/Latexy/issues/1387) | ePub / ODF / DocBook export | ✅ Standards-backed EPUB 3, ODT, and DocBook 5 outputs with dedicated MIME types and filenames; generic JSON-shaped XML remains separately labeled as XML. |
+| ↳ **B50d** [#1388](https://github.com/sanskarpan/Latexy/issues/1388) | Email delivery of the document | ✅ Verified-account PDF delivery with durable pending/processing/accepted/failed state, bounded retries, status/retry endpoints, and Celery recovery. `accepted` means provider acceptance, not inbox delivery; requires configured Resend/SMTP. |
 | **B51** [#1333](https://github.com/sanskarpan/Latexy/issues/1333) | Collaboration depth: @mentions, suggesting mode, chat, peer review | C6 x4. We have yjs + comments + collaborators; these are the layer above.  **4 children below** |
-| ↳ **B51a** [#1389](https://github.com/sanskarpan/Latexy/issues/1389) | @mentions in comments | |
-| ↳ **B51b** [#1390](https://github.com/sanskarpan/Latexy/issues/1390) | Suggesting mode | |
-| ↳ **B51c** [#1391](https://github.com/sanskarpan/Latexy/issues/1391) | Collaborator chat | |
-| ↳ **B51d** [#1392](https://github.com/sanskarpan/Latexy/issues/1392) | Peer / mentor review with in-document comments | |
-| **B52** [#1334](https://github.com/sanskarpan/Latexy/issues/1334) | Per-paragraph / per-element versioning | C7. Curvenote has the finest-grained versioning found anywhere. |
+| ↳ **B51a** [#1389](https://github.com/sanskarpan/Latexy/issues/1389) | @mentions in comments | ✅ Implemented for collaborator comments; mention resolution and notification preferences are covered by focused tests. |
+| ↳ **B51b** [#1390](https://github.com/sanskarpan/Latexy/issues/1390) | Suggesting mode | ✅ Implemented as staged collaborator suggestions; source changes only after the owner accepts. |
+| ↳ **B51c** [#1391](https://github.com/sanskarpan/Latexy/issues/1391) | Collaborator chat | ✅ Live collaborator chat is implemented over the collaboration transport. |
+| ↳ **B51d** [#1392](https://github.com/sanskarpan/Latexy/issues/1392) | Peer / mentor review with in-document comments | ✅ Review links and anchored review comments are implemented; automated review tests pass. |
+| **B52** [#1334](https://github.com/sanskarpan/Latexy/issues/1334) | Per-paragraph / per-element versioning | ✅ Per-element snapshots and restore are implemented, with a separate version history API and UI. |
 | **B53** [#1335](https://github.com/sanskarpan/Latexy/issues/1335) | Editor infrastructure: duplicate-label detection, LSP, scripting | C8 x3. LSP is the strategic one — texlab/tinymist would subsume much of B19.  **3 children below** |
-| ↳ **B53a** [#1393](https://github.com/sanskarpan/Latexy/issues/1393) | Duplicate-label detection | |
-| ↳ **B53b** [#1394](https://github.com/sanskarpan/Latexy/issues/1394) | Evaluate adopting an LSP (texlab / tinymist) | |
-| ↳ **B53c** [#1395](https://github.com/sanskarpan/Latexy/issues/1395) | Scripting engine for user macros | |
+| ↳ **B53a** [#1393](https://github.com/sanskarpan/Latexy/issues/1393) | Duplicate-label detection | ✅ Implemented in the LaTeX linter with focused parser and editor tests. |
+| ↳ **B53b** [#1394](https://github.com/sanskarpan/Latexy/issues/1394) | ✅ Evaluated: adopt texlab behind an isolated workspace service; tinymist is Typst-only. Reproducible stdio spike and rollout gates are in [`docs/architecture/LSP-EVALUATION.md`](architecture/LSP-EVALUATION.md). | |
+| ↳ **B53c** [#1395](https://github.com/sanskarpan/Latexy/issues/1395) | Scripting engine for user macros | ✅ Bounded deterministic document DSL (`prepend`, `append`, `replace`, edge deletes), owner/version-scoped execution API, browser editor integration, and TUI preview/apply. No eval/exec or ambient capabilities; see [`docs/architecture/MACRO-SCRIPTING.md`](architecture/MACRO-SCRIPTING.md). |
 | **B54** [#1336](https://github.com/sanskarpan/Latexy/issues/1336) | Script coverage beyond Devanagari: CJK, RTL, multilingual-in-one-document, europecv | C9 x4. The same engine work as B10; only fonts and packages differ.  **4 children below** |
-| ↳ **B54a** [#1396](https://github.com/sanskarpan/Latexy/issues/1396) | CJK support | |
-| ↳ **B54b** [#1397](https://github.com/sanskarpan/Latexy/issues/1397) | RTL / Arabic / Hebrew support | |
-| ↳ **B54c** [#1398](https://github.com/sanskarpan/Latexy/issues/1398) | Multilingual document in one file | |
-| ↳ **B54d** [#1399](https://github.com/sanskarpan/Latexy/issues/1399) | EU-language CV standard (europecv) | |
-| **B55** [#1337](https://github.com/sanskarpan/Latexy/issues/1337) | UI localisation | C9. Reactive Resume has 56 locales via Crowdin; every commercial builder is Latin-only. |
+| ↳ **B54a** [#1396](https://github.com/sanskarpan/Latexy/issues/1396) | CJK support | ✅ implemented and measured |
+| ↳ **B54b** [#1397](https://github.com/sanskarpan/Latexy/issues/1397) | RTL / Arabic / Hebrew support | ✅ implemented; exact Debian pinned-image LuaHBTeX compile/extraction measured |
+| ↳ **B54c** [#1398](https://github.com/sanskarpan/Latexy/issues/1398) | Multilingual document in one file | ✅ deterministic mixed-script LuaHBTeX setup; exact Debian pinned-image compile/extraction measured |
+| ↳ **B54d** [#1399](https://github.com/sanskarpan/Latexy/issues/1399) | EU-language CV standard (europecv) | ✅ real europecv/Europass template, bounded supported EU + Catalan locale selector, offline package parity, and exact 18-locale compile/extraction matrix |
+| **B55** [#1337](https://github.com/sanskarpan/Latexy/issues/1337) | UI localisation | 🟨 First tranche shipped: typed English/Hindi/Marathi/Telugu/Punjabi/Bengali UI catalogs, negotiated/persisted UI locale, reachable selector, and translated public/auth/onboarding/workspace entry surfaces. The rest of the product remains English until each surface is migrated and covered; document translation remains a separate setting. |
 | **B56** [#1338](https://github.com/sanskarpan/Latexy/issues/1338) | Accessibility commitments: statement, screen-reader support, contrast, fonts | C9 x2 + C10 x3. **No product among the nine has an accessibility statement.** Cheap to be first.  **5 children below** |
 | ↳ **B56a** [#1400](https://github.com/sanskarpan/Latexy/issues/1400) | Publish an accessibility statement | |
 | ↳ **B56b** [#1401](https://github.com/sanskarpan/Latexy/issues/1401) | Named screen-reader support (NVDA / VoiceOver / TalkBack) | |
 | ↳ **B56c** [#1402](https://github.com/sanskarpan/Latexy/issues/1402) | Dedicated accessibility support channel | |
 | ↳ **B56d** [#1403](https://github.com/sanskarpan/Latexy/issues/1403) | Screen-reader-friendly output | |
 | ↳ **B56e** [#1404](https://github.com/sanskarpan/Latexy/issues/1404) | Dyslexia-friendly fonts and high-contrast mode | |
-| **B57** [#1339](https://github.com/sanskarpan/Latexy/issues/1339) | Pricing SKUs: lifetime and weekly | C10 x2. Rezi $149 / Novoresume $139.99 lifetime; Resume.io ₹249 / Teal $13 weekly.  **2 children below** |
-| ↳ **B57a** [#1405](https://github.com/sanskarpan/Latexy/issues/1405) | Lifetime plan | |
-| ↳ **B57b** [#1406](https://github.com/sanskarpan/Latexy/issues/1406) | Weekly plan | |
-| **B58** [#1340](https://github.com/sanskarpan/Latexy/issues/1340) | Passkey / 2FA | C10. Reactive Resume has passkeys/WebAuthn + TOTP; nobody else does. |
-| **B59** [#1341](https://github.com/sanskarpan/Latexy/issues/1341) | Referral / affiliate programme | C10. Standard Resume runs $10 both ways, uncapped. |
+| **B57** [#1339](https://github.com/sanskarpan/Latexy/issues/1339) | Pricing SKUs: lifetime and weekly | 🟨 Production contract shipped; SKUs remain intentionally unavailable until operators configure approved Razorpay mappings and integer INR minor-unit amounts. No commercial price is invented in source. **2 children below** |
+| ↳ **B57a** [#1405](https://github.com/sanskarpan/Latexy/issues/1405) | Lifetime plan | 🟨 One-time Orders API checkout, signed payment webhook activation, exact amount/currency validation, idempotent payment recording, and refund revocation. |
+| ↳ **B57b** [#1406](https://github.com/sanskarpan/Latexy/issues/1406) | Weekly plan | 🟨 Pre-created Razorpay weekly subscription SKU, first-charge-gated activation, renewal period tracking, cancellation/refund revocation, and no ad-hoc provider plan. |
+| **B58** [#1340](https://github.com/sanskarpan/Latexy/issues/1340) | Passkey / 2FA | ✅ Shipped: Better Auth TOTP/backup-code enrollment and challenge flow plus WebAuthn passkey registration/sign-in/removal, with encrypted plugin storage, bounded lockout, recent-session checks, fixed post-challenge navigation, and explicit production origin/RP-ID configuration. Covered by `frontend/src/components/auth/SecuritySettings.tsx`, `/two-factor`, `frontend/src/lib/auth.ts`, migration `0047`, and the frontend/backend security-contract tests. |
+| **B59** [#1341](https://github.com/sanskarpan/Latexy/issues/1341) | Referral / affiliate programme | 🟨 User-referral foundation shipped: random first-party referral links, first-touch server attribution, self/duplicate rejection, paid-webhook qualification/reversal ledger, and privacy-safe settings status. Rewards remain unavailable until an operator explicitly configures the extension-days policy; cash affiliate commissions and invented prices are out of scope. |
 | **B60** [#1342](https://github.com/sanskarpan/Latexy/issues/1342) | Offline mode (PWA read + share) | C10. **Only one of nine** competitors supports offline editing (Resume.io). |
 | **B61** [#1343](https://github.com/sanskarpan/Latexy/issues/1343) | Free identity verification | C4. LinkedIn's is free and **DigiLocker is the India-only route** — directly relevant. |
 
 Each carries its own GitHub issue with the full evidence; the one-line summaries above are pointers, not the content. **Six further Part C absences were resolved as explicit refusals instead of items** — they are in Part D with reasons.
+
+**B55 implementation contract (first tranche).** The UI locale is a closed
+set: English (`en`), Hindi (`hi`), Marathi (`mr`), Telugu (`te`), Punjabi
+(`pa`), and Bengali (`bn`). Middleware negotiates the locale from the
+`latexy-ui-locale` cookie before `Accept-Language`, passes it to the server
+layout, and the client selector persists it for later visits. The typed central
+catalog covers the shared header, public/auth/onboarding entry points, and
+workspace landing/empty states, with English fallback, interpolation, and safe plural
+helpers. Values are rendered as text; the catalog never accepts HTML. This is
+not a claim that every authenticated panel is translated yet: unmigrated
+surfaces remain English and must be migrated with representative coverage before
+the tranche can be expanded. UI locale never changes the separate document
+translation target.
+
+**B54a implementation contract (CJK).** Japanese, Korean, Simplified Chinese,
+and Traditional Chinese translation variants use LuaLaTeX/LuaHBTeX with
+language-specific line-breaking packages and an offline, region-specific Noto
+Sans CJK family: `JP`, `KR`, `SC`, or `TC`. Japanese uses
+`luatexja-fontspec`; Simplified/Traditional Chinese use the LuaLaTeX adapter
+in `ctex` with its Chinese JFM; Korean uses `luatexko`'s Hangul/Hanja
+selectors. The backend accepts only the closed locale set
+`ja`, `ko`, `zh`/`zh-Hans` (Simplified), and `zh-TW`/`zh-Hant` (Traditional)
+plus their documented region aliases; arbitrary locale or font names are
+rejected. Existing Latin text keeps the document's Latin font while CJK text
+uses the selected Noto family, so mixed resumes are supported. No font or
+package is downloaded during a compile: the Modal and production Docker
+images install the explicit Debian `texlive-lang-chinese`,
+`texlive-lang-japanese`, and `texlive-lang-korean` collections plus
+`fonts-noto-cjk`. The four representative
+mixed Latin/script probes (zh-CN, zh-TW, ja, and ko) compile with LuaHBTeX and
+their Unicode text is recovered by `pdftotext` in the local TeX Live 2026
+verification environment using host-equivalent Apple fonts; the pinned Noto
+font probe remains an image-build gate on hosts that do not carry Debian's
+fonts.
+
+The contract deliberately does not claim that pdfLaTeX can typeset Unicode CJK,
+that user-supplied fonts are available, or that every PDF consumer exposes
+perfect ATS tokenisation for CJK word boundaries. LuaHBTeX emits a Unicode PDF
+text layer and is covered by the image compile probe when the pinned fonts are
+present; ATS scoring still depends on the extractor and target employer. The
+translation UI labels these limits, while existing user-authored documents may
+continue to choose any existing allowed compiler.
+
+**B54b implementation contract (RTL).** Arabic (`ar`) and Hebrew (`he`) are
+closed translation targets. Both use LuaHBTeX with `fontspec` and `polyglossia`,
+the pinned `Noto Naskh Arabic` / `Noto Sans Hebrew` families, and an explicit
+English secondary language. The generated preamble registers TeX Live's
+Latin Modern regular/bold/italic faces as LuaHBTeX fallbacks because the
+script-specific Noto families do not contain Latin glyphs. The translation
+contract requires preserved Latin product names, URLs, and technical terms to
+use `\\textenglish{...}`: font fallback prevents missing-glyph boxes, but it
+does not create a bidirectional paragraph boundary on its own. Arbitrary region tags (`ar-SA`, `he-IL`),
+font names, and package names are rejected. Existing non-language packages and
+all body/verbatim text are preserved; only preamble declarations that conflict
+with the pinned stack are replaced. Modal and production Docker manifests
+install `texlive-lang-arabic`, `fonts-noto-core`, LuaTeX, and the required
+polyglossia/fontspec packages. Structural tests, authenticated endpoint tests,
+and six-script host-equivalent LuaHBTeX compile probes pass locally. An exact
+Debian Bookworm pinned-package rerun additionally verifies Arabic and Hebrew
+compilation without missing glyphs and an extractable Latin text layer when
+the required explicit English spans are present.
+
+**B54c implementation contract (multilingual in one file).** A translated
+variant may contain English/Latin text together with one closed CJK profile
+(`ja`, `ko`, `zh`/`zh-Hans`, or `zh-TW`/`zh-Hant`), Arabic (`ar`), Hebrew
+(`he`), and/or one closed Devanagari profile (`hi` or `mr`) in the same `.tex`
+file. The backend rewrites only the preamble, removes known competing
+encoding/language declarations, and inserts one idempotent generated block.
+The block selects only the pinned worker packages and fonts (`luatexja`,
+`ctex`, `luatexko`, `polyglossia`, Babel + HarfBuzz, Noto Sans CJK, Noto
+Naskh Arabic, Noto Sans Hebrew, and Noto Sans Devanagari); callers cannot provide
+package names, font names, or arbitrary locale tags. Such variants persist
+`compiler=lualatex`/LuaHBTeX, and the Modal image plus both backend Docker
+images carry LuaTeX, English hyphenation patterns, the explicit Debian
+`texlive-lang-chinese`, `texlive-lang-japanese`, and `texlive-lang-korean`
+collections (plus Arabic), and the pinned font packages. `texlive-lang-cjk`
+is only their common dependency: with `--no-install-recommends` it does not
+provide `ctex.sty` or `luatexja-fontspec.sty`, so it is not treated as the
+runtime contract. `luatexko.sty` is supplied by `texlive-luatex`.
+
+The checked-in evidence is `backend/test/test_multilingual_latex.py`: closed
+allowlist rejection, Latin + Indic declarations, mixed CJK/Arabic/Hebrew
+preamble rewriting, body/verbatim preservation, deterministic idempotency, and
+a conditional real LuaHBTeX + `pdftotext` probe when the deployment fonts and
+extractor are installed. `backend/test/test_modal_deployment_parity.py` checks
+the Modal and self-hosted production package contract. The developer Mac used
+for this verification lacks the Debian Noto/Lohit fonts and `pdftotext`, so the
+real PDF probe is skipped there; the exact Debian Bookworm audit image now
+provides the measured PDF extraction pass for the mixed CJK/RTL/Devanagari
+probe.
+
+This is a typesetting contract, not a PDF accessibility/tagging contract. RTL
+or Devanagari text embedded in a Latin/CJK paragraph must use polyglossia's
+explicit language command/environment (for example `\\textarabic`,
+`\\texthebrew`, or `\\texthindi`) for script selection and direction;
+Unicode code-point detection cannot infer paragraph boundaries. CJK word
+boundaries, ATS tokenisation, and tagged PDF/PDF-UA output remain
+consumer-dependent and are not promised.
+
+**B54d implementation contract (europecv).** The Regional Formats gallery now
+seeds the actual `europecv` class template from
+`backend/app/data/templates/regional/europecv.tex`; it is not a renamed generic
+article template. Authenticated template use accepts only the closed set of
+europecv language definitions shipped by the class and verified under LuaLaTeX:
+Bulgarian, Catalan, Czech, Danish, English, Estonian, Finnish, French, German,
+Greek, Hungarian, Italian, Lithuanian, Polish, Portuguese, Slovak, Spanish,
+or Swedish (with documented `fr-FR`, `en-GB`, `en-IE`, and
+Portuguese/Greek aliases). Irish and Croatian are rejected because this
+europecv release has no corresponding definition file; Latvian and Slovenian
+are rejected because the Debian/CTAN definition files are malformed, while
+Dutch, Maltese, and Romanian are rejected because the legacy definition files
+are not LuaLaTeX-safe (malformed commands or a class option package load).
+This keeps the product from claiming a locale that cannot compile. The source
+class option is rewritten deterministically and Babel stays on the declared
+English base language (the Greek class definition additionally uses Babel's
+Greek locale), so the template does not depend on undeclared per-language
+`.ldf` packages. The resume is pinned to LuaLaTeX; arbitrary locale, package,
+or font values are never interpolated.
+Debian Bookworm provides `europecv.cls` through `texlive-latex-extra`; Modal
+and both self-hosted images additionally install `texlive-lang-european` and
+`texlive-lang-greek` for offline Babel definitions. Representative
+English/French/Polish/Greek LuaLaTeX compiles, locale rejection, and conditional
+`pdftotext` extraction are covered by `backend/test/test_europecv.py`.
 
 **Sequencing constraints worth honouring** (each is stated in the relevant issue):
 - **B53 before B19.1** — an LSP would deliver autocomplete, outline and hover previews together instead of three hand-built features.
@@ -520,20 +1130,20 @@ Each carries its own GitHub issue with the full evidence; the one-line summaries
 - **B33 inside B1** — compile caching is a latency lever, not a follow-up.
 - **B30 + B40 together** — warn about overflow, then offer the fix.
 - **B44 must not repeat #1247** — applying score fixes has to be reviewable and revertable.
-- **B29 blocks the email half of B50.**
+- **B29's provider configuration remains a prerequisite for B50d.**
 
 ## P3 — speculative
 
 *Deduplicated: culture-specific document formats now live in **B10b** (they are a P1/P2 India-market item, not speculative); ORCID login and publication import moved to **B24**.*
 
-- **PWA / mobile** — ❌. Only Texifier (iOS) among LaTeX tools [V]; Kickresume gates mobile apps behind premium [V]. **L**
+- **PWA / mobile** — ✅ installable responsive PWA with a dedicated mobile editor and verified offline shell. Native app remains intentionally out of scope. Only Texifier (iOS) among LaTeX tools [V]; Kickresume gates mobile apps behind premium [V].
 - **Client-side PDF generation** — Reactive Resume moved to `@react-pdf/renderer`, dropping server Chromium [V]. Not applicable to LaTeX without WASM. **XL**
 - **In-browser WASM compile** — `resumeforfree` (85★) does Typst-via-WASM with no server [V]. But **SwiftLaTeX's package mirror is NXDOMAIN** [V] and TeXlyre-busytex needs **122–432 MB** of WASM+data [C]. Viable only as an optional offline preview. **XL**
 - **Interactive/executable content** — Curvenote does Plotly/Bokeh/Jupyter inline [V]. Wrong product. **XL**
 - **Per-paragraph/equation/figure independent versioning** — Curvenote [V]; finest-grained versioning found anywhere. **L**
 - **Journal submission integration** and **DOI minting** — academic adjacency beyond B24's scope. **L**
 - **Auto font/line-spacing scaling to force one page** — `always-fit-resume` (192★) [C]. Genuinely useful, small. **M**
-- **Passkey / 2FA** — Reactive Resume has it [V]. **M**
+- **Passkey / 2FA** — shipped in **B58**; the speculative entry is retained here only as historical competitor context.
 - **Multi-language UI** via Crowdin — Reactive Resume [V]. **M**
 
 ---
@@ -550,23 +1160,23 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | Markdown-based authoring | resume.lol, resume-ai [C] | ❌ |
 | Declarative single-file source (YAML/JSON/TOML) | RenderCV, imprecv, brilliant-CV [V] | ❌ |
 | Published JSON Schema for the data | JSON Resume, RenderCV, imprecv [V] | ❌ |
-| Strict typed validation, location-pinpointed errors | RenderCV/Pydantic [V] | ❌ |
+| Strict typed validation, location-pinpointed errors | RenderCV/Pydantic [V] | ✅ strict builder model + source-aware JSON import diagnostics |
 | Drag-and-drop section reordering | Reactive Resume [V] | ➖ `/ai/reorder-sections` is AI-driven |
 | Arbitrary custom sections with typed entry kinds | RenderCV [V] | ➖ |
-| Section visibility per variant | **nobody** | ❌ |
+| Section visibility per variant | **nobody** | ✅ linked master + section, entry, and bullet visibility overrides |
 | Photo support (L/R/multiple/non-circular) | AltaCV, moderncv [V] | ➖ template-dependent |
 | Icon sets (FontAwesome 5/6/7, simpleicons) | AltaCV, Awesome-CV [V] | ➖ |
 | Named colour roles / colour themes | AltaCV (8 roles), moderncv (8) [V] | ✅ `DesignPanel.tsx` |
 | Two-column with automatic page breaking | AltaCV via `paracol` [V] | ➖ |
 | A4 / US-Letter switching | Reactive Resume, Enhancv [V] | ➖ |
-| Auto-scale font to force one page | always-fit-resume [C] | ❌ |
+| Auto-scale font to force one page | always-fit-resume [C] | ✅ compiled profile search + manual strength slider, bounded by readability |
 | Character / section-item limits | Enhancv (12 items free) [V] | ➖ quota-based |
 | Multi-page CV handling | Overleaf, europecv [V] | ✅ academic-cv |
 | **Locked grid (prevents layout breakage)** | LiveCareer — deliberate ATS-safety tradeoff [S] | ❌ |
 | Store multiple versions of one document | LiveCareer [V] | ✅ `/variants`, `/checkpoints` |
-| Pre-written phrase library by title + seniority | LiveCareer (50k US / 100k UK, contradictory) [C], Zety (40+/title) [S] | ❌ |
-| Three alternative phrasings per paragraph | LiveCareer [C] | ❌ — cf. B7 |
-| Signature on cover letter (type/draw/import) | Zety [S] | ❌ |
+| Pre-written phrase library by title + seniority | LiveCareer (50k US / 100k UK, contradictory) [C], Zety (40+/title) [S] | ✅ four-axis cached library with tagged, non-fabricated suggestions |
+| Three alternative phrasings per paragraph | LiveCareer [C] | ✅ three selection-based alternatives per bullet — see B7 |
+| Signature on cover letter (type/draw/import) | Zety [S] | ✅ typed, pointer-drawn, or normalized image upload |
 | **Biodata / marriage biodata** | LiveCareer India [V] | ❌ |
 | **Market-specific consent-clause section (RODO)** | LiveCareer Poland [V] | ❌ |
 | Matching cover-letter variant | typst modern-cv, brilliant-CV [V] | ✅ `/cover-letters` |
@@ -574,16 +1184,16 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | **Print-preview / colour-dependency check** | **nobody** | ✅ `lib/print-preview.ts` |
 | Resume freshness / staleness tracking | Teal (via tracker) [V] | ✅ `freshness_status` |
 | Project-level tags & organisation | Overleaf [V] | ✅ `/resumes/{id}/tags` |
-| **Anonymous / blind-review mode** (redact PII at render) | **nobody** | ❌ · **S** — see B25 |
+| **Anonymous / blind-review mode** (redact PII at render) | **nobody** | ✅ shipped — see B25 |
 | Dark mode (app) | Reactive Resume [V] | ? unverified |
-| Dark-mode PDF viewer | Texifier [V] | ❌ |
+| Dark-mode PDF viewer | Texifier [V] | ✅ persistent preview-only inversion |
 
 ## C2. AI
 | feature | example holder | Latexy |
 |---|---|---|
 | Bullet generation | Rezi, Teal [C] | ✅ `/ai/generate-bullets` |
 | Bullet rewrite | most [C] | ✅ `/ai/rewrite` |
-| **3 rewrite options per bullet** | **nobody** | ❌ |
+| **3 rewrite options per bullet** | **nobody** | ✅ exactly three distinct, reviewable alternatives — B7 |
 | Summary / profile generation | most [C] | ✅ `/ai/generate-summary` |
 | Publication list generation | — | ✅ `/ai/generate-publications` |
 | Proofread / grammar | Overleaf-Writefull [V] | ✅ `/ai/proofread` + LanguageTool |
@@ -608,12 +1218,12 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | Image/text → LaTeX math | Overleaf Equation Generator [V] | ❌ |
 | Image/text → LaTeX table | Overleaf Table Generator [V] | ❌ |
 | Citation checking vs scholarly DB | Overleaf + Dimensions [V] | ❌ |
-| AI chat over the document | Overleaf, TeXstudio [V] | ❌ |
+| AI chat over the document | Overleaf, TeXstudio [V] | ✅ Document Assistant with explicit before/after approval |
 | Multi-provider LLM choice | Reactive Resume, TeXstudio [V] | ✅ BYOK 4 providers |
 | Local/self-hosted model support | TeXstudio (llamafile) [V] | ➖ via BYOK base URL |
 | LLM tool-calling into editor state | TeXstudio [V] | ❌ |
 | Agent skill packaging (`npx skills add`) | RenderCV [V] | ❌ |
-| **MCP server (first-party)** | **Rezi** — Pro-gated `api.rezi.ai/mcp`, streamable HTTP, tools `list_resumes`/`read_resume`/`write_resume`, documented setup for **Claude Code, Claude Desktop, Codex, Cursor, Gemini CLI, Lovable**, open-sourced at `github.com/rezi-io/rezi-mcp`; **Reactive Resume** — hosted `rxresu.me/mcp`, **34 tools**, OAuth, published to the MCP registry with prompts and `resume://` resources [V] | ❌ — **but see B23** |
+| **MCP server (first-party)** | **Rezi** — Pro-gated `api.rezi.ai/mcp`, streamable HTTP, tools `list_resumes`/`read_resume`/`write_resume`, documented setup for **Claude Code, Claude Desktop, Codex, Cursor, Gemini CLI, Lovable**, open-sourced at `github.com/rezi-io/rezi-mcp`; **Reactive Resume** — hosted `rxresu.me/mcp`, **34 tools**, OAuth, published to the MCP registry with prompts and `resume://` resources [V] | ✅ `latexy-mcp`: 8 typed stdio tools + `resume:///…` resources |
 | MCP server (third-party wrapper) | workopia-mcp, resumake-mcp [V] | ❌ |
 | "Humanise" / AI-detection evasion | various [C] | ❌ — see Part D |
 
@@ -634,10 +1244,10 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | Dedicated ATS-validator library | `@jsonresume/ats-validator` [V] | ➖ |
 | Accessible icon alt-text via `accsupp` | AltaCV [V] | ❌ |
 | Parse-rate leaderboard | a widely-circulated Reddit claim [C, disputed] | ❌ — see Part D |
-| Published score threshold | Zety ("80 or higher"), LiveCareer ("80–100% good") [V] | ❌ |
-| **Auto-optimize action from the score report** | Zety (upload → score → apply changes → download) [V] | ❌ · **M** |
+| Published score threshold | Zety ("80 or higher"), LiveCareer ("80–100% good") [V] | ✅ 80+, with active calibration and non-predictive caveat |
+| **Auto-optimize action from the score report** | Zety (upload → score → apply changes → download) [V] | ✅ findings-guided draft → per-change review → compile → explicit save |
 | JD skills-matching | LiveCareer [C]; Zety does **not** advertise it [V] | ✅ `/optimize` |
-| Locale-tuned ATS checker | LiveCareer UK [V] | ❌ |
+| Locale-tuned ATS checker | LiveCareer UK [V] | ✅ Global, India, US, and UK overlays |
 | Free-tier ATS checker | Zety, LiveCareer (partial) [V] | ✅ |
 
 ## C4. Job search & application
@@ -645,8 +1255,8 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 |---|---|---|
 | Job tracker / kanban | Huntr, Teal, Simplify [V]; **LinkedIn: 5 stages, transitions asymmetric and irreversible past "applied", jobs auto-removed after 1 year** [V] | ✅ `/tracker` |
 | Stored resume slots | **LinkedIn: exactly 4** (Word/PDF, <2MB recommended), and application-resumes vs profile-media resumes are **non-interchangeable** [V] | ✅ unlimited |
-| Job alerts | **LinkedIn: hard cap 20**, daily or weekly only [V] | ❌ |
-| Saved jobs | **LinkedIn: 2,000, no bulk unsave** [V] | ❌ |
+| Job alerts | **LinkedIn: hard cap 20**, daily or weekly only [V] | ✅ User-saved source-search reminder; no new-job discovery claim |
+| Saved jobs | **LinkedIn: 2,000, no bulk unsave** [V] | ✅ `/tracker/saved-jobs` + conversion to an application |
 | AI interview screening (candidate side) | LinkedIn [V] | ➖ see B11b |
 | Free identity verification | **LinkedIn** — CLEAR (US/CA/MX), Persona NFC passport, **DigiLocker India-only**; restores a lowered Easy Apply cap [V] | ❌ |
 | One-click capture from posting | Huntr clipper, Jobscan [V] | ❌ needs extension |
@@ -654,19 +1264,19 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | **Direct API submission to ATS** | **nobody** | ✅ Greenhouse + Lever |
 | Application submission history | Huntr [V] | ✅ `/apply/submissions` |
 | Bulk apply | auto-appliers [C] | ❌ — see Part D |
-| Reminders / staleness prompts | Huntr [V] | ❌ |
-| Email parsing for status | some [C] | ❌ |
-| Calendar sync / interview scheduling | Huntr [V] | ❌ |
-| Contacts CRM | Huntr, Careerflow [V] | ❌ |
-| Referral / outreach message generation | Careerflow [C] | ❌ |
-| Recruiter / hiring-manager lookup | Careerflow [V] | ❌ |
+| Reminders / staleness prompts | Huntr [V] | ✅ `/tracker/applications/{id}/reminders` + `/tracker/stale-applications`; email delivery is per-row claim/attempt isolated |
+| Email parsing for status | some [C] | ✅ Narrow review-only RFC 5322 parse of one user-pasted message; no mailbox access or tracker mutation |
+| Calendar sync / interview scheduling | Huntr [V] | ✅ User-owned interview records + `.ics` export; no external calendar write |
+| Contacts CRM | Huntr, Careerflow [V] | ✅ User-entered company/contact records; no external lookup or scraping |
+| Referral / outreach message generation | Careerflow [C] | ✅ Transient editable/copy-only draft from owned application + optional user-supplied contact; no send/save |
+| Recruiter / hiring-manager lookup | Careerflow [V] | 🚫 Intentionally not implemented; user-supplied contacts only |
 | Job board / aggregation | Simplify, Huntr [V] | ❌ — see Part D |
 | JD scraping from URL | — | ✅ `/scrape-job-description` |
 | Funnel analytics | Huntr [V] | ✅ `/analytics` |
-| **Rejection / outcome feedback** | **Zero verified instances anywhere.** SmartRecruiters' candidate-facing `StatusDto` has exactly three fields — `applicationId`, `status`, `substatus` — and **no reason field**; reasons live in an employer-gated Configuration API. Greenhouse's `rejection_reason` taxonomy is internal analytics. Handshake shows "Declined" and explicitly **does not notify**. **No law requires it** — UK ACAS states outright that *"Employers do not have to explain their reasons for rejecting job applications"*; EU AI Act Art. 86 is on-request-only and explains *the role of the AI system*, not your rejection [V] | ❌ |
-| **Ghosting / responsiveness signals** | **LinkedIn, free — but PRE-APPLICATION ONLY** [V]: *"Actively reviewing candidates"*, *"Review time is typically 1 week"*, *"Responses managed off LinkedIn"* are shown on the **job post before you apply**. After applying you get only *application viewed* and *resume downloaded* — **no responsiveness data and no rejection status at all** | ❌ · **M** |
-| Application-viewed / resume-downloaded signals | LinkedIn, free (view includes screening answers) [V] | ❌ |
-| Candidate-side signal visible to the hirer | LinkedIn **Top Choice** — 3/month, poster sees the flag, Easy Apply only [V] | ❌ |
+| **Rejection / outcome feedback** | **Zero verified instances anywhere.** SmartRecruiters' candidate-facing `StatusDto` has exactly three fields — `applicationId`, `status`, `substatus` — and **no reason field**; reasons live in an employer-gated Configuration API. Greenhouse's `rejection_reason` taxonomy is internal analytics. Handshake shows "Declined" and explicitly **does not notify**. **No law requires it** — UK ACAS states outright that *"Employers do not have to explain their reasons for rejecting job applications"*; EU AI Act Art. 86 is on-request-only and explains *the role of the AI system*, not your rejection [V] | ❌ — B47 can only review a user-pasted message |
+| **Ghosting / responsiveness signals** | **LinkedIn, free — but PRE-APPLICATION ONLY** [V]: *"Actively reviewing candidates"*, *"Review time is typically 1 week"*, *"Responses managed off LinkedIn"* are shown on the **job post before you apply**. After applying you get only *application viewed* and *resume downloaded* — **no responsiveness data and no rejection status at all** | ❌ · **M** — no post-application employer telemetry |
+| Application-viewed / resume-downloaded signals | LinkedIn, free (view includes screening answers) [V] | ❌ — existing workspace milestones are candidate-self only |
+| Candidate-side signal visible to the hirer | LinkedIn **Top Choice** — 3/month, poster sees the flag, Easy Apply only [V] | ❌ — no hirer-facing candidate signal |
 | Edit or withdraw a submitted application | **LinkedIn cannot** — remedy is InMail, which is Premium-gated [V] | ✅ n/a (own submissions) |
 
 ## C5. Import / export / interop
@@ -686,19 +1296,19 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | JSON export | Reactive Resume [V] | ✅ |
 | HTML / MD / YAML / XML export | HackMyResume [V] | ✅ `/formats` (6 routes) |
 | Bulk export | — | ✅ `/resumes/export/bulk` |
-| ePub / ODF / DocBook | LyX [V] | ❌ |
+| ePub / ODF / DocBook | LyX [V] | ✅ `/export/{resume_id}/{fmt}` for `epub`, `odf`, and `docbook`; dedicated EPUB 3/ODT/DocBook 5 serializers and MIME types are covered by `backend/test/test_export.py` |
 | Share link (read-only) | Resume.io [V] | ✅ `/r/[token]` |
 | Public profile page | JSON Resume registry [V] | ✅ `/u/[username]` |
 | Custom domain | — | ✅ `/portfolio/verify-domain` |
 | Personal website generation | Kickresume (premium, 7 templates) [V] | ✅ `/generate-portfolio` |
 | QR code | — | ✅ `QrCodeInserter.tsx` |
 | Share-link view analytics | — | ✅ `resume_views` table |
-| Google Drive export | Rezi [V] | ❌ |
+| Google Drive export | Rezi [V] | ✅ `/google-drive/resumes/{resume_id}/export`; encrypted `drive.file` OAuth state, deterministic owned-PDF create/update, provider mapping, and focused route/service tests |
 | **Canva / Figma export (structured content hand-off)** | **nobody** | ✅ `GET /export/{id}/canva`, `/figma` |
 | **BibTeX smart import from DOI / arXiv** | Overleaf (Dimensions) [V] | ✅ `fetch_doi`, `fetch_arxiv` |
 | Reference-page generation | — | ✅ `/generate-references` |
-| **SVG / JPEG export** | LiveCareer Italy only [V] | ❌ · **S** |
-| Email delivery of the document | LiveCareer [C] | ❌ |
+| **SVG / JPEG export** | LiveCareer Italy only [V] | ✅ `/export/{resume_id}/{fmt}` for bounded first-page Poppler `svg`/`jpeg` rendering; `backend/test/test_export_images.py` verifies the explicit renderer and response media types |
+| Email delivery of the document | LiveCareer [C] | ✅ `/export/{resume_id}/email`, `/status`, and `/retry`; verified-account delivery has durable state, bounded retry/recovery, provider-acceptance semantics, and focused document-delivery tests |
 | Resume → public networking profile URL | LiveCareer (**free tier**), Zety via Bold.pro [V] | ✅ `/u/[username]` |
 | Syndication to job boards (Monster/CareerBuilder) | Bold.pro [V] | ❌ — see Part D |
 | Cross-document data sync (resume ↔ cover letter) | Zety, LiveCareer [V] | ➖ |
@@ -713,7 +1323,7 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | Comments + resolve | Overleaf [V] | ✅ `/comments/:id/resolve` |
 | Margin discussions | Papeeria [V] | ➖ |
 | @mentions | Overleaf [C] | ❌ |
-| Track changes accept/reject | Overleaf (premium) [V] | ❌ |
+| Track changes accept/reject | Overleaf (premium) [V] | ✅ live collaborator changes + staged AI review |
 | Suggesting mode | Curvenote [V] | ❌ |
 | Per-collaborator permissions | Overleaf, Papeeria [V] | ✅ `/collaborators` |
 | Collaborator chat | Overleaf [V] | ❌ |
@@ -729,15 +1339,15 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | Version history + restore | Overleaf [V] | ✅ `/checkpoints` |
 | Named checkpoints | — | ✅ |
 | Version diff | Overleaf compare [V] | ✅ `/diff-with-parent` |
-| Variants / forks | — | ✅ `/fork`, `/variants` |
+| Variants / forks | — | ✅ `/fork`, `/variants`; builder variants remain source-linked until explicitly detached |
 | Merge | — | ✅ `/merge` |
 | Document branches | LyX [V] | ➖ variants |
 | Per-paragraph/equation/figure versioning | Curvenote [V] | ❌ |
 | Git bridge / GitHub sync | Overleaf, Typst.app [V] | ➖ GitHub import only |
 | Source-level diff with markup | latexdiff v1.4.0 [V] | ➖ |
-| Accept/reject on a diff | latexrevise [V] | ❌ |
-| Rendered-PDF visual diff | diff-pdf (CI exit codes) [V] | ❌ |
-| **Resume-version diffing as a user feature** | **nobody** | ➖ engine exists |
+| Accept/reject on a diff | latexrevise [V] | ✅ deterministic selective hunk review |
+| Rendered-PDF visual diff | diff-pdf (CI exit codes) [V] | ✅ multi-page client-side pixel diff |
+| **Resume-version diffing as a user feature** | **nobody** | ✅ source, side-by-side PDF, and visual modes |
 
 ## C8. Compile & editor infrastructure
 | feature | example holder | Latexy |
@@ -761,20 +1371,20 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | Keyboard-shortcuts reference panel | TeXstudio, Overleaf [V] | ✅ `KeyboardShortcutsPanel.tsx` |
 | Compile queue priority by plan | Overleaf (paid faster) [V] | ✅ `get_task_priority()` |
 | Compile error history | — | ✅ `/resumes/{id}/error-history` |
-| **Regex-aware find & replace** | TeXstudio, VS Code [V] | ❌ · **S** — see B19.14 |
-| **In-app package documentation lookup** | TeXstudio (texdoc) [V] | ❌ · **S** — see B19.15 |
+| **Regex-aware find & replace** | TeXstudio, VS Code [V] | ✅ B19.14 |
+| **In-app package documentation lookup** | TeXstudio (texdoc) [V] | ✅ B19.15 |
 | Outline navigator | LyX, tinymist [V] | ❌ |
 | Code folding | TeXstudio [V] | ❌ |
 | Project-wide search | TeXmaker [V] | ✅ `/resumes/search` |
 | Word count | LaTeX Workshop [V] | ❌ |
 | Multi-cursor | TeXstudio, VS Code [V] | ❌ |
 | vim/emacs keybindings | Overleaf, Typst.app [V] | ❌ |
-| Thesaurus | TeXstudio, LyX [V] | ❌ |
-| Custom dictionaries | Overleaf [C] | ❌ |
+| Thesaurus | TeXstudio, LyX [V] | ✅ B18.6 / B19.12 |
+| Custom dictionaries | Overleaf [C] | ✅ B19.8 |
 | Scripting engine | TeXstudio JS macros [V] | ❌ |
 | LSP | texlab, tinymist [V] | ❌ |
 | Docker/remote compilation | LaTeX Workshop [V] | ✅ (is the architecture) |
-| Presentation mode | Typst.app, TeXstudio [V] | ❌ |
+| Presentation mode | Typst.app, TeXstudio [V] | ✅ B19.13 |
 
 ## C9. Accessibility & i18n
 | feature | example holder | Latexy |
@@ -785,13 +1395,13 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | Table header/data-cell roles | LaTeX, Typst [V] | ❌ |
 | Per-region language declaration | `\DocumentMetadata{lang=}` [V] | ❌ |
 | Accessible icon alt-text | AltaCV `accsupp` [V] | ❌ |
-| CJK support | ctex, xeCJK, luatexja; brilliant-CV [V] | ❌ |
-| RTL / Arabic / Hebrew | bidi; brilliant-CV [V] | ❌ |
-| **Devanagari / Indic** | **nobody** | ❌ |
-| Multilingual doc in one file | brilliant-CV per-profile [V] | ❌ |
-| EU-language CV standard | europecv (all EU + Catalan) [V] | ❌ |
+| CJK support | ctex, xeCJK, luatexja; brilliant-CV [V] | ✅ B54a |
+| RTL / Arabic / Hebrew | bidi; brilliant-CV [V] | ✅ B54b |
+| **Devanagari / Indic** | **nobody** | ✅ B10 |
+| Multilingual doc in one file | brilliant-CV per-profile [V] | ✅ B54c |
+| EU-language CV standard | europecv (closed supported set + Catalan) [V] | ✅ B54d |
 | UI localisation | Reactive Resume (Crowdin) [V] | ❌ |
-| Multilingual skill taxonomy | ESCO (28 langs, API) [V] | ❌ |
+| Multilingual skill taxonomy | ESCO (28 langs, API) [V] | ✅ v1.2.1 exact-label normalization, discovery API, persisted URI/language provenance |
 | Screen-reader friendly output | — | ❌ |
 | Dyslexia-friendly fonts / high contrast | — | ❌ |
 | Culture-specific formats (rirekisho, Lebenslauf) | **nobody** | ❌ |
@@ -802,8 +1412,8 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | Public API | **nobody** | ✅ v1, 5 routes |
 | API keys + rate limiting | — | ✅ |
 | CLI / TUI | **nobody** | ✅ 33 commands |
-| Reusable GitHub Action | **nobody** | ❌ |
-| Self-hosting | Reactive Resume (MIT), Overleaf CE [V] | ❌ |
+| Reusable GitHub Action | **nobody** | ✅ |
+| Self-hosting | Reactive Resume (MIT), Overleaf CE [V] | ✅ complete single-host Docker Compose stack + operator guide |
 | SSO / LDAP | Overleaf Server Pro, Typst On-Prem [V] | ❌ |
 | Sandboxed compiles | Overleaf Server Pro [V] | ➖ Modal isolation |
 | Admin panel | Overleaf Server Pro [V] | ✅ `/admin` |
@@ -815,14 +1425,14 @@ Everything observed anywhere, deduplicated, with an example holder and Latexy's 
 | Weekly plan | Resume.io ₹249, Teal $13 [V] | ❌ |
 | Annual discount | all [V] | ➖ partial |
 | BYOK tier | **nobody** | ✅ ₹199 |
-| Browser extension | Simplify, Huntr, Jobscan, Careerflow [V] | ❌ |
-| Mobile app / PWA | Kickresume (premium) [V] | ❌ |
+| Browser extension | Simplify, Huntr, Jobscan, Careerflow [V] | ✅ Manifest V3 companion; explicit capture/review |
+| Mobile app / PWA | Kickresume (premium) [V] | ✅ installable PWA + dedicated mobile editor |
 | Offline mode | desktop editors [V] | ❌ |
-| Passkey / 2FA | Reactive Resume [V] | ❌ |
+| Passkey / 2FA | Reactive Resume [V] | ✅ Better Auth TOTP + backup codes and WebAuthn passkeys; see B58 evidence and `frontend/src/__tests__/auth-security-hardening.test.ts` |
 | Email notifications | most [C] | ✅ completion, failure, share-view, and weekly-digest delivery |
 | Browser push notifications | — | ✅ `usePushNotifications` + permission flow |
 | White-label / careers-centre edition | — | ❌ |
-| Referral / affiliate programme | several [S] | ❌ |
+| Referral / affiliate programme | several [S] | 🟨 User referrals only; operator policy required; affiliate cash payouts are not claimed |
 | Template marketplace | Typst Universe, npm themes [V] | ➖ `/snippets` upvote |
 | Per-document micro-charges on top of a subscription | LiveCareer ($0.45/extra download) [V] | ❌ — see Part D |
 | Four-week billing cycle (13/yr) | Zety, LiveCareer [V] | ❌ — see Part D |
@@ -843,7 +1453,7 @@ Absences confirmed one product at a time across VisualCV, Standard Resume, Novor
 | absence | scope | Latexy read |
 |---|---|---|
 | **No accessibility statement** | **all nine** | Cheap to be first. Pairs with tagged-PDF work in B9c — accessible *output* plus an accessible *product* is a coherent story, and PDF/UA is a procurement requirement for public-sector and university buyers |
-| **No academic CV support** — zero ORCID, zero publication importers | **all nine** | **See B24.** Our single best-fitting gap |
+| ~~**No academic CV support** — zero ORCID, zero publication importers~~ | **all nine** | ✅ **Shipped in B24:** ORCID/DOI/arXiv import, citation styles, publication insertion, academic conversion, and multi-page handling |
 | **No documented public API** | eight of nine (only Reactive Resume) | Pairs with B23 |
 | **Non-Latin script** | only two of nine | See B10 |
 | **Offline editing** | only one of nine (Resume.io) | Not a priority; noted for completeness |
@@ -961,45 +1571,45 @@ Honest gaps. Each would change a recommendation above.
 |---|---|---|---|---|
 | 1.1 | Template Gallery (50+ Templates) | P0 | ✅ shipped | **56 source-owned templates**: 51 résumé/academic templates and 5 Beamer presentations; production synchronization is enforced by #1687 |
 | 1.2 | Document Version History + Diff | P0 | ✅ shipped | already covered |
-| 1.3 | Compile-on-Save / Auto-Compile | P0 | ⬜ backlog | B19.2 → **B19.2** [#1352](https://github.com/sanskarpan/Latexy/issues/1352) |
+| 1.3 | Compile-on-Save / Auto-Compile | P0 | ✅ shipped | B19.2 → **B19.2** [#1352](https://github.com/sanskarpan/Latexy/issues/1352) |
 | 1.4 | Multiple LaTeX Compilers (XeLaTeX, LuaLaTeX) | P1 | ✅ shipped | already covered |
 | 1.5 | Shareable Resume Links (Read-Only PDF URL) | P1 | ✅ shipped | already covered |
-| 1.6 | Compile Timeout per Plan | P1 | ⬜ backlog | C8 ➖ timeout tiers → **B33a** [#1368](https://github.com/sanskarpan/Latexy/issues/1368) |
-| 1.7 | Compilation History Diff Viewer | P1 | ⬜ backlog | B21 → **B21** [#1305](https://github.com/sanskarpan/Latexy/issues/1305) |
+| 1.6 | Compile Timeout per Plan | P1 | ✅ shipped | Server-derived and worker-enforced → **B33a** [#1368](https://github.com/sanskarpan/Latexy/issues/1368) |
+| 1.7 | Compilation History Diff Viewer | P1 | ✅ implemented | B21 → **B21** [#1305](https://github.com/sanskarpan/Latexy/issues/1305) |
 | 1.8 | Project-Wide Search | P1 | ✅ shipped | already covered |
 | 1.9 | BibTeX Smart Import (DOI / arXiv) | P1 | 🔴 was missing → now ✅ | A2b · `fetch_doi`/`fetch_arxiv` |
 | 1.10 | Spell Check & Grammar | P2 | ✅ shipped | already covered |
-| 1.11 | Symbol Palette | P2 | ⬜ backlog | B16 → **B16** [#1300](https://github.com/sanskarpan/Latexy/issues/1300) |
-| 1.12 | GitHub / Git Integration | P2 | ⬜ backlog | C7 ➖ GitHub import only → **B32** [#1314](https://github.com/sanskarpan/Latexy/issues/1314) |
+| 1.11 | Symbol Palette | P2 | ✅ implemented | B16 → **B16** [#1300](https://github.com/sanskarpan/Latexy/issues/1300) |
+| 1.12 | GitHub / Git Integration | P2 | ✅ shipped | Conflict-safe two-way source push/pull plus public-project import → **B32** [#1314](https://github.com/sanskarpan/Latexy/issues/1314) |
 | 1.13 | Compiler Settings per Resume | P2 | ✅ shipped | already covered |
 | 1.14 | Project-Level Tags & Organization | P2 | 🔴 was missing → now ✅ | A2b · `/tags` |
 | 1.15 | Real-Time Collaboration (Multi-Cursor CRDT) | P2 | ✅ shipped | already covered |
-| 1.16 | Track Changes (Accept/Reject) | P2 | ⬜ backlog | B20 → **B20** [#1304](https://github.com/sanskarpan/Latexy/issues/1304) |
+| 1.16 | Track Changes (Accept/Reject) | P2 | ✅ implemented | B20 → **B20** [#1304](https://github.com/sanskarpan/Latexy/issues/1304) |
 | 1.17 | Dropbox / Cloud Storage Sync | P3 | ✅ shipped | already covered |
 | 1.18 | Zotero / Mendeley Reference Import | P2 | ✅ shipped | already covered |
 | 1.19 | WYSIWYG / Rich Text Editor Mode | P3 | ✅ shipped | already covered |
-| 1.20 | Mobile App (PWA First, Then Native) | P3 | ⬜ backlog | P3 PWA → **B36** [#1318](https://github.com/sanskarpan/Latexy/issues/1318) |
+| 1.20 | Mobile App (PWA First, Then Native) | P3 | ✅ PWA shipped | Installable, responsive PWA with dedicated mobile editor; native packaging declined as unnecessary → **B36** [#1318](https://github.com/sanskarpan/Latexy/issues/1318) |
 | 2.1 | Cover Letter Generator | P0 | ✅ shipped | already covered |
 | 2.2 | Resume Variant / Fork System | P0 | ✅ shipped | already covered |
-| 2.3 | Real-Time ATS Score (Debounced) | P0 | ⬜ backlog | C3 ➖ debounced scoring → **B28a** [#1366](https://github.com/sanskarpan/Latexy/issues/1366) |
+| 2.3 | Real-Time ATS Score (Debounced) | P0 | ✅ shipped | **B28a** [#1366](https://github.com/sanskarpan/Latexy/issues/1366) |
 | 2.4 | Job Application Tracker | P1 | ✅ shipped | already covered |
 | 2.5 | LinkedIn Profile Import (Structured) | P1 | ✅ shipped | already covered |
 | 2.6 | Interview Question Generator | P1 | ✅ shipped | already covered |
-| 2.7 | Multi-Dimensional Score Card | P1 | ⬜ backlog | C3 (score exists; multi-dimensional card partial) → **B28b** [#1367](https://github.com/sanskarpan/Latexy/issues/1367) |
+| 2.7 | Multi-Dimensional Score Card | P1 | ✅ shipped | **B28b** [#1367](https://github.com/sanskarpan/Latexy/issues/1367) |
 | 2.8 | Email Notifications | P1 | ✅ shipped | Resend/SMTP delivery, per-trigger preferences, Modal parity, and deduplicated/debounced triggers → **B29** [#1311](https://github.com/sanskarpan/Latexy/issues/1311) |
 | 2.9 | Resume View Analytics (Link Tracking) | P2 | ✅ shipped | already covered |
 | 2.10 | Multilingual Resume Translation | P2 | ✅ shipped | already covered |
 | 2.11 | Salary Estimator from Resume | P2 | ✅ shipped | already covered |
 | 2.12 | Industry-Specific ATS Calibration | P2 | 🔴 was missing → now ✅ | A2b · `industry_ats_profiles.py` |
-| 2.13 | Anonymous Resume Mode (Blind Review) | P2 | 🔴 was missing → now backlog | **B25** (new) → **B25** [#1309](https://github.com/sanskarpan/Latexy/issues/1309) |
+| 2.13 | Anonymous Resume Mode (Blind Review) | P2 | ✅ shipped | **B25** [#1309](https://github.com/sanskarpan/Latexy/issues/1309) |
 | 2.14 | Resume Freshness Tracker | P2 | 🔴 was missing → now ✅ | A2b · `freshness_status` |
 | 2.15 | Bulk / Batch Resume Export (ZIP) | P2 | ✅ shipped | already covered |
 | 3.1 | AI LaTeX Error Explainer | P0 | ✅ shipped | already covered |
-| 3.2 | Real-Time Page Count Warning | P0 | 🟠 partial | ➖ `page_count` extracted in `latex_worker`, not surfaced as a warning → **B30** [#1312](https://github.com/sanskarpan/Latexy/issues/1312) |
+| 3.2 | Real-Time Page Count Warning | P0 | ✅ shipped | **B30** [#1312](https://github.com/sanskarpan/Latexy/issues/1312) |
 | 3.3 | Font & Color Visual Editor | P1 | 🔴 was missing → now ✅ | A2b · `DesignPanel.tsx` |
 | 3.4 | Developer Public API | P1 | ✅ shipped | already covered |
 | 3.5 | AI Bullet Point Generator | P1 | ✅ shipped | already covered |
-| 3.6 | AI Writing Assistant (In-Editor) | P1 | 🟠 partial | ➖ no AI chat over the document (C2) → **B31** [#1313](https://github.com/sanskarpan/Latexy/issues/1313) |
+| 3.6 | AI Writing Assistant (In-Editor) | P1 | ✅ shipped | Selected-text actions plus document-aware conversational proposals → **B31** [#1313](https://github.com/sanskarpan/Latexy/issues/1313) |
 | 3.7 | AI Professional Summary Generator | P1 | ✅ shipped | already covered |
 | 3.8 | AI Proofreader (Writing Quality) | P1 | ✅ shipped | already covered |
 | 3.9 | ATS Simulator + PDF Parse Pre-flight Check | P2 | ✅ shipped | already covered |
@@ -1015,7 +1625,7 @@ Honest gaps. Each would change a recommendation above.
 | 3.19 | Publication List Auto-Generator | P2 | ✅ shipped | already covered |
 | 3.20 | Resume Confidence Score | P2 | ✅ shipped | already covered |
 | 3.21 | Career Path Visualization + Skills Gap Analysis | P3 | ✅ shipped | already covered |
-| 3.22 | Resume Benchmarking (Anonymous Percentile) | P3 | ⬜ backlog | C3 ❌ benchmark vs applicants → **B34** [#1316](https://github.com/sanskarpan/Latexy/issues/1316) |
+| 3.22 | Resume Benchmarking (Anonymous Percentile) | P3 | ✅ shipped | Distinct-resume global cohort with exact percentile and methodology disclosure → **B34** [#1316](https://github.com/sanskarpan/Latexy/issues/1316) |
 | 4.1 | LaTeX Package Manager UI | P1 | 🔴 was missing → now ✅ | A2b · `PackageManagerPanel.tsx` |
 | 4.2 | LaTeX Linter (Real-Time Best Practices) | P1 | ✅ shipped | already covered |
 | 4.3 | Smart Code Snippet Auto-Insert | P1 | ✅ shipped | already covered |
@@ -1032,7 +1642,7 @@ Honest gaps. Each would change a recommendation above.
 | 5.1 | Advanced Subscription Tiers | P1 | ⬜ backlog | B3 + B6 → **B57b** [#1406](https://github.com/sanskarpan/Latexy/issues/1406) |
 | 5.2 | Team / Agency Workspace | P2 | ✅ shipped | already covered |
 | 5.3 | Custom Domain Resume Hosting | P2 | ✅ shipped | already covered |
-| 5.4 | White-Label for Agencies / Career Centers | P3 | ⬜ backlog | C10 ❌ white-label → **B37a** [#1370](https://github.com/sanskarpan/Latexy/issues/1370) |
+| 5.4 | White-Label for Agencies / Career Centers | P3 | 🟨 core complete; revenue sharing pending | C10 white-label → **B37a** [#1370](https://github.com/sanskarpan/Latexy/issues/1370) |
 | 5.5 | Resume-to-Portfolio Site | P2 | ✅ shipped | already covered |
 | 5.6 | Job Board URL Scraper | P1 | ✅ shipped | already covered |
 | 5.7 | Multi-Resume Merge | P2 | ✅ shipped | already covered |
@@ -1040,12 +1650,12 @@ Honest gaps. Each would change a recommendation above.
 | 5.9 | Watermark Control | P2 | 🚫 not recommended | Part D — watermarking free output — **no issue, by design** |
 | 5.10 | Compile Queue Priority | P1 | 🔴 was missing → now ✅ | A2b · `get_task_priority()` |
 | 5.11 | Presentation / Beamer Support | P3 | 🚫 not recommended | Part D — beamer breaks tagging (guard: D2) — **no issue, by design** |
-| 5.12 | Smart Import from Resume Builders | P2 | 🟠 partial | ➖ `/sources/import-url` + LinkedIn only; no competitor-specific importers → **B35** [#1317](https://github.com/sanskarpan/Latexy/issues/1317) |
+| 5.12 | Smart Import from Resume Builders | P2 | ✅ shipped | Reactive Resume v4/v5 + JSON Resume are parsed structurally; Rezi/Teal and other builders use the existing PDF/DOCX path → **B35** [#1317](https://github.com/sanskarpan/Latexy/issues/1317) |
 | 5.13 | One-Click Job Application Integration | P3 | ✅ shipped | already covered |
 | 5.14 | Recruiter / Agency View | P2 | ✅ shipped | already covered |
 | 5.15 | Resume Collaboration Comments | P2 | ✅ shipped | already covered |
 | 5.16 | Bulk Apply Package | P2 | 🚫 not recommended | Part D — bulk apply throttles user accounts — **no issue, by design** |
-| 5.17 | Dark Mode PDF Preview | P2 | 🚫 not recommended | C1 ❌ dark-mode viewer → **B43** [#1325](https://github.com/sanskarpan/Latexy/issues/1325) |
+| 5.17 | Dark Mode PDF Preview | P2 | ✅ shipped | C1 dark-mode viewer → **B43** [#1325](https://github.com/sanskarpan/Latexy/issues/1325) |
 | 5.18 | Compile Error History | P3 | 🔴 was missing → now ✅ | A2b · `/error-history` |
 | 5.19 | Print Preview Mode | P3 | 🔴 was missing → now ✅ | A2b · `lib/print-preview.ts` |
 | 5.20 | Export to Canva / Figma | P3 | 🔴 was missing → now ✅ | A2b · `/export/{id}/canva`+`/figma` |
