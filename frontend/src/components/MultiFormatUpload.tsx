@@ -88,8 +88,21 @@ export default function MultiFormatUpload({
 }: MultiFormatUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<string | null>(null)
+  const [localReadPending, setLocalReadPending] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const mountedRef = useRef(true)
+  const localReadGenerationRef = useRef(0)
   const { status, progress, convertedLatex, error, startConversion, reset } = useFormatConversion()
+
+  useEffect(() => {
+    // StrictMode runs setup, cleanup, and setup again in development. Restore
+    // ownership on the second setup so valid reads are not permanently ignored.
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      localReadGenerationRef.current += 1
+    }
+  }, [])
 
   const isConverting = status === 'uploading' || status === 'converting'
 
@@ -141,21 +154,32 @@ export default function MultiFormatUpload({
       return
     }
 
+    // Any accepted selection supersedes a pending local read. Invalid files
+    // return above and must not cancel an otherwise valid read.
+    const localReadGeneration = ++localReadGenerationRef.current
+    setLocalReadPending(false)
     setUploadedFile(file.name)
 
     // LaTeX files — read directly, no server call needed
     if (isTexFile(file.name)) {
+      setLocalReadPending(true)
       try {
         const content = await file.text()
+        if (!mountedRef.current || localReadGenerationRef.current !== localReadGeneration) return
+        setLocalReadPending(false)
         if (!content.trim()) {
           toast.error('LaTeX file is empty')
           setUploadedFile(null)
+          onFileUpload('')
           return
         }
         onFileUpload(content)
       } catch {
+        if (!mountedRef.current || localReadGenerationRef.current !== localReadGeneration) return
+        setLocalReadPending(false)
         toast.error('Error reading LaTeX file')
         setUploadedFile(null)
+        onFileUpload('')
       }
       return
     }
@@ -197,10 +221,33 @@ export default function MultiFormatUpload({
   }, [handleFile])
 
   const clearFile = useCallback(() => {
+    localReadGenerationRef.current += 1
+    setLocalReadPending(false)
     setUploadedFile(null)
     reset()
     onFileUpload('')
   }, [reset, onFileUpload])
+
+  if (localReadPending) {
+    return (
+      <div className="w-full rounded-[var(--radius-lg)] border border-line bg-surface px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent-strong" />
+            <p className="truncate text-sm font-medium text-fg">Reading {uploadedFile}</p>
+          </div>
+          <button
+            type="button"
+            aria-label="Clear uploaded file"
+            onClick={clearFile}
+            className="shrink-0 rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   // Uploaded + done state
   if (uploadedFile && (status === 'idle' || status === 'done')) {
@@ -220,6 +267,8 @@ export default function MultiFormatUpload({
             </div>
           </div>
           <button
+            type="button"
+            aria-label="Clear uploaded file"
             onClick={clearFile}
             className="shrink-0 rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
@@ -268,6 +317,8 @@ export default function MultiFormatUpload({
             </div>
           </div>
           <button
+            type="button"
+            aria-label="Clear uploaded file"
             onClick={clearFile}
             className="shrink-0 rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
