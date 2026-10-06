@@ -35,6 +35,4 @@ def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS idx_compilations_resume_status")
     op.execute("DROP INDEX IF EXISTS idx_resumes_user_updated")
     op.execute("DROP INDEX IF EXISTS idx_resume_views_viewed_at")
-    op.execute("DROP INDEX IF EXISTS idx_account_user_id")
-    op.execute("DROP INDEX IF EXISTS idx_session_user_id")
     op.execute("DROP INDEX IF EXISTS idx_session_token")
