@@ -56,8 +56,9 @@ the earlier instruction to defer commits and publication. Integration issue:
 ## Subsequent independent review
 
 - Fresh frontend suite after the security follow-ups: 155 files / 988 tests
-  pass. The previous sealed production bundle passes 25 owner-scoped browser
-  regressions with zero retries; a fresh security-follow-up bundle is building.
+  pass. The fresh sealed production bundle passes 25 owner-scoped browser
+  regressions with zero retries, plus 13 Chromium/Firefox desktop/mobile quality
+  checks (two desktop-only mobile-case skips). Linux five-engine CI is separate.
 - CI exposed clean-checkout gaps: the root placeholder-only production example
   was excluded by a global `.env.*` ignore rule, and the nginx log mount lacked
   a tracked directory placeholder. Narrow ignore exceptions preserve secrets
@@ -67,7 +68,7 @@ the earlier instruction to defer commits and publication. Integration issue:
   pins and recompiles against both direct-dependency input files.
 - The template extraction job needed `fonts-noto-core`, matching its actual
   Devanagari template and the production image. Local macOS does not supply
-  Poppler; the complete extraction result must come from Linux CI.
+  Poppler; the complete extraction contract now passes Linux CI on `493fbb7a`.
 - The browser-quality fixture mocked the wrong hard-coded backend host. API
   mocks now follow paths and resource types without swallowing page navigation.
   A successful background Better Auth refresh does not mark a retained session
@@ -92,17 +93,25 @@ that all 100 are exploitable. No bulk dismissal or security-gate waiver was used
   many backtick runs.
 - Bound the reusable render action's source read through one opened descriptor,
   including file growth and partial-read controls (six action tests pass).
-- Decode extension entities in one pass and recognize whitespace before script
-  and style closing brackets (five extension tests pass).
+- Decode extension entities in one pass and recognize whitespace / ignored
+  attributes before script and style closing brackets (six extension tests pass).
 - Remove raw cache-key diagnostics and neutralize control characters at
   application loggers even when workers use plain-text handlers. Existing
   structured JSON logging remains a separate defense.
-- Harden the four flagged regex sites with possessive matching / whitespace
-  boundaries and add adversarial input regressions with process deadlines.
+- Harden the four flagged regex sites and add adversarial input regressions
+  with process deadlines. Linux CI caught that possessive metric matching alone
+  still rescanned rejected comma-chain suffixes; complete candidate consumption
+  followed by anchored matching preserves valid-prefix behavior without those
+  repeated searches. The 100k-character controls complete locally in ~0.02s.
 - Critical SSRF findings need evidence-based review of existing fixed-origin,
   encoded-path, redirect-disabled provider requests and the default DNS-pinned
   public-URL transport. Do not dismiss merely because an initial validation
   function exists. Remaining scan results stay visible for follow-up.
+
+Independent review additionally identified the reusable action's lexical-only
+workspace boundary: source/output directory symlinks can escape that boundary.
+This is a separate follow-up to validate and resolve, not covered by the source
+descriptor race controls. No whole-action security-completion claim is made.
 
 The GitHub Production environment now has the verified Vercel project and org
 IDs and a Vercel credential supplied through the local environment without
