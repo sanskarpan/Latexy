@@ -154,8 +154,8 @@ def test_python_lock_inputs_are_hash_verified_and_cover_every_direct_dependency(
     assert ci.count("uv pip sync --require-hashes --verify-hashes requirements-dev.lock") == 4
     assert "uv pip compile --python-version 3.12 --generate-hashes" in ci
     assert "--custom-compile-command" in ci
-    assert 'diff -u requirements.lock "$lock_tmp/requirements.lock"' in ci
-    assert 'diff -u requirements-dev.lock "$lock_tmp/requirements-dev.lock"' in ci
+    assert "diff -u <(sed '/^[[:space:]]*#/d' requirements.lock)" in ci
+    assert "diff -u <(sed '/^[[:space:]]*#/d' requirements-dev.lock)" in ci
     assert "pip install -r requirements.txt" not in _read("backend/setup.sh")
     assert "requirements-dev.lock" in _read("docker-compose.test.yml")
 
