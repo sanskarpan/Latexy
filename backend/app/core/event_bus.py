@@ -21,13 +21,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 from typing import Any, Dict, List, Optional, Set
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 
-logger = logging.getLogger(__name__)
+from .logging import get_logger
+
+logger = get_logger(__name__)
 
 _STREAM_PREFIX = "latexy:stream:"
 _PUBSUB_PREFIX = "latexy:events:"
