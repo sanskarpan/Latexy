@@ -72,6 +72,7 @@ class LLMResponse:
     cost: float
     latency: float
     finish_reason: str
+    pricing_known: bool = True
     raw_response: Optional[Dict] = None
 
 
@@ -80,7 +81,7 @@ class BaseLLMProvider(ABC):
 
     # Per-model pricing in USD per 1K tokens as (input, output). Ordered
     # most-specific-prefix first for correct prefix matching. Overridden per
-    # provider; falls back to get_capabilities() defaults when a model is absent.
+    # provider. Unknown model prices are reported as unavailable, never guessed.
     MODEL_PRICING: Dict[str, tuple] = {}
 
     # Expected key prefix used for a cheap client-side format check before ever
@@ -144,22 +145,25 @@ class BaseLLMProvider(ABC):
         """Get list of available models"""
         pass
 
-    def get_model_pricing(self, model: str) -> tuple:
+    def get_model_pricing(self, model: str) -> Optional[tuple]:
         """Return (input_per_1k, output_per_1k) USD pricing for a model.
 
-        Uses the provider's per-model table (exact then prefix match) and falls
-        back to the provider's default capabilities pricing for unknown models.
+        Uses the provider's per-model table (exact then prefix match). Unknown
+        models return None so telemetry cannot silently record a wrong price.
         """
         if model:
             for prefix, price in self.MODEL_PRICING.items():
                 if model == prefix or model.startswith(prefix):
                     return price
-        caps = self.get_capabilities()
-        return (caps.cost_per_1k_input_tokens, caps.cost_per_1k_output_tokens)
+        return None
 
     def calculate_cost(self, usage: Dict[str, int], model: str) -> float:
         """Calculate cost based on usage and the specific model used"""
-        input_per_1k, output_per_1k = self.get_model_pricing(model)
+        pricing = self.get_model_pricing(model)
+        if pricing is None:
+            logger.warning("Pricing unavailable for %s model %s", self.provider_name, model)
+            return 0.0
+        input_per_1k, output_per_1k = pricing
         input_tokens = usage.get('prompt_tokens', 0)
         output_tokens = usage.get('completion_tokens', 0)
 
@@ -233,11 +237,12 @@ class OpenAIProvider(BaseLLMProvider):
                 cost=cost,
                 latency=latency,
                 finish_reason=response.choices[0].finish_reason,
+                pricing_known=self.get_model_pricing(request.model) is not None,
                 raw_response=response.model_dump() if hasattr(response, 'model_dump') else None
             )
 
         except Exception as e:
-            logger.error(f"OpenAI generation error: {e}")
+            logger.error("OpenAI generation error (%s)", type(e).__name__)
             raise
 
     async def validate_api_key(self) -> bool:
@@ -250,7 +255,7 @@ class OpenAIProvider(BaseLLMProvider):
             await self.client.models.list()
             return True
         except AuthenticationError as e:
-            logger.error(f"OpenAI API key validation failed (auth): {e}")
+            logger.error("OpenAI API key validation failed (auth, %s)", type(e).__name__)
             self._set_validation_error(
                 "rejected",
                 "OpenAI rejected this key as invalid or revoked. Generate a new key at "
@@ -258,7 +263,7 @@ class OpenAIProvider(BaseLLMProvider):
             )
             return False
         except PermissionDeniedError as e:
-            logger.error(f"OpenAI API key validation failed (permission): {e}")
+            logger.error("OpenAI API key validation failed (permission, %s)", type(e).__name__)
             self._set_validation_error(
                 "rejected",
                 "This key's format is valid but OpenAI denied access — check that the key's "
@@ -266,22 +271,22 @@ class OpenAIProvider(BaseLLMProvider):
             )
             return False
         except RateLimitError as e:
-            logger.error(f"OpenAI API key validation failed (rate limit): {e}")
+            logger.error("OpenAI API key validation failed (rate limit, %s)", type(e).__name__)
             self._set_validation_error(
                 "rejected",
                 "OpenAI rate-limited the validation request for this key. Wait a moment and try again.",
             )
             return False
         except (APITimeoutError, APIConnectionError) as e:
-            logger.error(f"OpenAI API key validation failed (network): {e}")
+            logger.error("OpenAI API key validation failed (network, %s)", type(e).__name__)
             self._set_validation_error(
                 "network",
                 "Could not reach OpenAI to validate this key — check your network connection and try again.",
             )
             return False
         except Exception as e:
-            logger.error(f"OpenAI API key validation failed: {e}")
-            self._set_validation_error("unknown", f"OpenAI validation failed unexpectedly: {e}")
+            logger.error("OpenAI API key validation failed (%s)", type(e).__name__)
+            self._set_validation_error("unknown", "OpenAI validation failed unexpectedly.")
             return False
 
     def get_capabilities(self) -> ProviderCapabilities:
@@ -325,6 +330,7 @@ class AnthropicProvider(BaseLLMProvider):
     def __init__(self, api_key: str, provider_config: Optional[Dict] = None):
         super().__init__(api_key, provider_config)
         self.base_url = "https://api.anthropic.com/v1/messages"
+        self.models_url = "https://api.anthropic.com/v1/models"
         self.headers = {
             "x-api-key": api_key,
             "anthropic-version": "2023-06-01",
@@ -388,28 +394,22 @@ class AnthropicProvider(BaseLLMProvider):
                 cost=cost,
                 latency=latency,
                 finish_reason=data.get("stop_reason", "stop"),
+                pricing_known=self.get_model_pricing(request.model) is not None,
                 raw_response=data
             )
 
         except Exception as e:
-            logger.error(f"Anthropic generation error: {e}")
+            logger.error("Anthropic generation error (%s)", type(e).__name__)
             raise
 
     async def validate_api_key(self) -> bool:
         if not self._check_key_format():
             return False
         try:
-            params = {
-                "model": "claude-3-haiku-20240307",
-                "messages": [{"role": "user", "content": "test"}],
-                "max_tokens": 1
-            }
-
             async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    self.base_url,
+                response = await client.get(
+                    self.models_url,
                     headers=self.headers,
-                    json=params,
                     timeout=30.0
                 )
 
@@ -434,25 +434,21 @@ class AnthropicProvider(BaseLLMProvider):
                     "Anthropic rate-limited the validation request for this key. Wait a moment and try again.",
                 )
             else:
-                try:
-                    detail = response.json().get("error", {}).get("message", response.text)
-                except Exception:
-                    detail = response.text
                 self._set_validation_error(
                     "rejected",
-                    f"Anthropic rejected this key: {detail}",
+                    "Anthropic rejected this key; check that it is valid and active.",
                 )
             return False
         except httpx.RequestError as e:
-            logger.error(f"Anthropic API key validation failed (network): {e}")
+            logger.error("Anthropic API key validation failed (network, %s)", type(e).__name__)
             self._set_validation_error(
                 "network",
                 "Could not reach Anthropic to validate this key — check your network connection and try again.",
             )
             return False
         except Exception as e:
-            logger.error(f"Anthropic API key validation failed: {e}")
-            self._set_validation_error("unknown", f"Anthropic validation failed unexpectedly: {e}")
+            logger.error("Anthropic API key validation failed (%s)", type(e).__name__)
+            self._set_validation_error("unknown", "Anthropic validation failed unexpectedly.")
             return False
 
     def get_capabilities(self) -> ProviderCapabilities:
@@ -469,9 +465,9 @@ class AnthropicProvider(BaseLLMProvider):
 
     def get_available_models(self) -> List[str]:
         return [
-            "claude-3-opus-20240229",
-            "claude-3-sonnet-20240229",
-            "claude-3-haiku-20240307"
+            "claude-opus-4-6",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5-20251001",
         ]
 
 
@@ -523,11 +519,12 @@ class OpenRouterProvider(BaseLLMProvider):
                 cost=cost,
                 latency=latency,
                 finish_reason=response.choices[0].finish_reason,
+                pricing_known=self.get_model_pricing(request.model) is not None,
                 raw_response=response.model_dump() if hasattr(response, 'model_dump') else None
             )
 
         except Exception as e:
-            logger.error(f"OpenRouter generation error: {e}")
+            logger.error("OpenRouter generation error (%s)", type(e).__name__)
             raise
 
     async def validate_api_key(self) -> bool:
@@ -539,7 +536,7 @@ class OpenRouterProvider(BaseLLMProvider):
             await self.client.models.list()
             return True
         except AuthenticationError as e:
-            logger.error(f"OpenRouter API key validation failed (auth): {e}")
+            logger.error("OpenRouter API key validation failed (auth, %s)", type(e).__name__)
             self._set_validation_error(
                 "rejected",
                 "OpenRouter rejected this key as invalid or revoked. Generate a new key at "
@@ -547,29 +544,29 @@ class OpenRouterProvider(BaseLLMProvider):
             )
             return False
         except PermissionDeniedError as e:
-            logger.error(f"OpenRouter API key validation failed (permission): {e}")
+            logger.error("OpenRouter API key validation failed (permission, %s)", type(e).__name__)
             self._set_validation_error(
                 "rejected",
                 "This key's format is valid but OpenRouter denied access to the requested resource.",
             )
             return False
         except RateLimitError as e:
-            logger.error(f"OpenRouter API key validation failed (rate limit): {e}")
+            logger.error("OpenRouter API key validation failed (rate limit, %s)", type(e).__name__)
             self._set_validation_error(
                 "rejected",
                 "OpenRouter rate-limited the validation request for this key. Wait a moment and try again.",
             )
             return False
         except (APITimeoutError, APIConnectionError) as e:
-            logger.error(f"OpenRouter API key validation failed (network): {e}")
+            logger.error("OpenRouter API key validation failed (network, %s)", type(e).__name__)
             self._set_validation_error(
                 "network",
                 "Could not reach OpenRouter to validate this key — check your network connection and try again.",
             )
             return False
         except Exception as e:
-            logger.error(f"OpenRouter API key validation failed: {e}")
-            self._set_validation_error("unknown", f"OpenRouter validation failed unexpectedly: {e}")
+            logger.error("OpenRouter API key validation failed (%s)", type(e).__name__)
+            self._set_validation_error("unknown", "OpenRouter validation failed unexpectedly.")
             return False
 
     def get_capabilities(self) -> ProviderCapabilities:
@@ -667,7 +664,7 @@ class MultiProviderLLMService:
             return response
 
         except Exception as e:
-            logger.error(f"Error with provider {provider_name}: {e}")
+            logger.error("Error with provider %s (%s)", provider_name, type(e).__name__)
 
             # Update error stats
             if provider_name in self.usage_stats:
@@ -686,7 +683,11 @@ class MultiProviderLLMService:
                             self.update_usage_stats(fallback_provider, response)
                             return response
                         except Exception as fallback_error:
-                            logger.error(f"Fallback provider {fallback_provider} also failed: {fallback_error}")
+                            logger.error(
+                                "Fallback provider %s also failed (%s)",
+                                fallback_provider,
+                                type(fallback_error).__name__,
+                            )
                             continue
 
             # If all providers failed, raise the original error
@@ -723,7 +724,7 @@ class MultiProviderLLMService:
             provider = self.get_provider(provider_name)
             return await provider.validate_api_key()
         except Exception as e:
-            logger.error(f"Provider validation failed for {provider_name}: {e}")
+            logger.error("Provider validation failed for %s (%s)", provider_name, type(e).__name__)
             return False
 
     def get_provider_capabilities(self, provider_name: str) -> ProviderCapabilities:
