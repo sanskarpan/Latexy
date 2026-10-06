@@ -6,22 +6,27 @@
         "node": "22.x"
     },
     "scripts": {
-        "dev": "next dev -p ${PORT:-5180}",
+        "prepare:monaco": "node scripts/prepare-monaco.mjs",
+        "predev": "pnpm prepare:monaco",
+        "dev": "next dev --turbopack -p ${PORT:-5180}",
+        "prebuild": "pnpm prepare:monaco",
         "build": "node scripts/validate-build.mjs preflight && next build && node scripts/validate-build.mjs artifacts",
         "start": "next start",
         "clean": "rm -rf .next && rm -f tsconfig.tsbuildinfo",
-        "lint": "next lint",
+        "lint": "eslint . --max-warnings=0",
         "type-check": "tsc --noEmit",
         "typecheck": "tsc --noEmit",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "test": "playwright test",
         "test:quality": "playwright test --config=playwright.quality.config.ts",
+        "playwright:server": "node scripts/playwright-server.mjs",
         "test:unit": "vitest run",
         "test:ui": "playwright test --ui",
         "test:headed": "playwright test --headed"
     },
     "dependencies": {
+        "@better-auth/passkey": "1.6.25",
         "@codemirror/basic-setup": "^0.20.0",
         "@codemirror/commands": "^6.10.4",
         "@codemirror/lang-markdown": "^6.5.1",
@@ -78,15 +83,18 @@
         "framer-motion": "^12.43.0",
         "geist": "^1.7.2",
         "idb": "^8.0.3",
+        "katex": "0.18.7",
         "lucide-react": "^1.27.0",
-        "next": "14.2.35",
+        "monaco-emacs": "0.3.0",
+        "monaco-vim": "0.4.4",
+        "next": "15.5.24",
         "pako": "^3.0.1",
         "pg": "^8.22.0",
         "qrcode": "^1.5.4",
         "razorpay": "^2.9.8",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
-        "react-pdf": "^7.6.0",
+        "react-pdf": "^10.5.0",
         "slate": "^0.126.0",
         "slate-history": "^0.113.1",
         "slate-react": "^0.126.0",
@@ -107,20 +115,16 @@
         "@types/react": "^18.2.45",
         "@types/react-dom": "^18.2.18",
         "@types/three": "^0.185.1",
+        "@typescript-eslint/parser": "^8.68.0",
         "autoprefixer": "^10.5.4",
         "eslint": "^8.56.0",
-        "eslint-config-next": "14.0.4",
+        "eslint-config-next": "15.5.24",
+        "fake-indexeddb": "^6.2.5",
         "monaco-editor": "0.55.1",
         "postcss": "^8.5.24",
         "prettier": "^3.9.6",
         "tailwindcss": "^3.3.6",
         "typescript": "^5.3.3",
-        "vitest": "^4.1.10"
-    },
-    "pnpm": {
-        "onlyBuiltDependencies": [
-            "canvas",
-            "unrs-resolver"
-        ]
+        "vitest": "^4.1.11"
     }
 }
