@@ -35,6 +35,7 @@ import {
   type EditorKeybindingAdapter,
   type EditorKeybindingMode,
 } from '@/lib/editor-keybindings'
+import { createAutoCompileScheduler, type AutoCompileScheduler } from '@/lib/auto-compile-scheduler'
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react').then((module) => module.default), {
   ssr: false,
@@ -70,6 +71,127 @@ function clearMonacoTestHook(editor?: MonacoEditorInstance | null) {
   if (editor && testWindow.__latexyMonacoEditor && testWindow.__latexyMonacoEditor !== editor) return
   delete testWindow.__latexyMonacoEditor
   delete testWindow.__latexyMonaco
+}
+
+/**
+ * Bind the editor-owned interactions that must be installed after Monaco's
+ * asynchronous mount. Keeping these listeners in one runtime binding makes
+ * readiness, prop refs, and disposal testable without requiring a browser DOM.
+ */
+export function installLatexEditorRuntimeBindings(options: {
+  editor: any
+  mountedModel: any
+  scheduler: Pick<AutoCompileScheduler, 'notifyContent'>
+  getReadOnly: () => boolean
+  getCollabReadOnly: () => boolean
+  onSyncToPdf?: (line: number) => void
+  onCursorChange?: (line: number) => void
+}) {
+  const disposables: Array<{ dispose?: () => void } | undefined> = []
+  const { editor, mountedModel, scheduler } = options
+  disposables.push(editor.onMouseDown((event: any) => {
+    const pointer = event.event ?? event.browserEvent
+    const line = event.target?.position?.lineNumber
+    if (Boolean(pointer?.ctrlKey || pointer?.metaKey) && Number.isInteger(line) && line > 0) {
+      options.onSyncToPdf?.(line)
+    }
+  }))
+  disposables.push(editor.onDidChangeModelContent((event: any) => {
+    if (
+      editor.getModel() !== mountedModel
+      || options.getReadOnly()
+      || options.getCollabReadOnly()
+      || event.isFlush
+    ) return
+    scheduler.notifyContent(editor.getValue())
+  }))
+  disposables.push(editor.onDidChangeCursorPosition((event: any) => {
+    options.onCursorChange?.(event.position.lineNumber)
+  }))
+  return () => {
+    for (const disposable of disposables) disposable?.dispose?.()
+  }
+}
+
+/**
+ * Tracks a local Monaco edit while its controlled parent value catches up.
+ * React may render the previous parent value again before the onChange update
+ * commits; applying that echo with model.setValue loses the user's caret/text.
+ */
+export function createEditorParentValueGuard(initialValue: string) {
+  let observedParentValue = initialValue
+  let localSequence = 0
+  const pendingLocalValues = new Map<string, number>()
+  const acknowledgeLocalValue = (value: string) => {
+    const acknowledgedSequence = pendingLocalValues.get(value)
+    if (acknowledgedSequence === undefined) return
+    for (const [pendingValue, sequence] of pendingLocalValues) {
+      if (sequence <= acknowledgedSequence) pendingLocalValues.delete(pendingValue)
+    }
+  }
+  return {
+    observeParentValue(nextValue: string) {
+      if (nextValue !== observedParentValue) {
+        if (pendingLocalValues.has(nextValue)) acknowledgeLocalValue(nextValue)
+        else pendingLocalValues.clear()
+        observedParentValue = nextValue
+      }
+    },
+    recordLocalValue(nextValue: string) {
+      // Exact content identity avoids hash collisions. Parent acknowledgements
+      // discard all superseded echoes, rather than retaining a typing history.
+      pendingLocalValues.set(nextValue, ++localSequence)
+    },
+    shouldApplyParentValue(modelValue: string, parentValue: string) {
+      // An effect from an older render must not apply after a newer parent
+      // render has already been observed.
+      if (parentValue !== observedParentValue) return false
+      if (modelValue === parentValue) {
+        acknowledgeLocalValue(parentValue)
+        return false
+      }
+      return !pendingLocalValues.has(modelValue)
+    },
+    clear() {
+      pendingLocalValues.clear()
+    },
+  }
+}
+
+/** Apply one PDF-to-source highlight and safely clean it up on model changes. */
+export function applyLatexEditorSyncHighlight(options: {
+  editor: any
+  monaco: any
+  model: any
+  line: number | null | undefined
+}) {
+  const { editor, monaco, model, line } = options
+  if (!Number.isInteger(line) || !line || line < 1 || !model || line > model.getLineCount()) return undefined
+  editor.revealLineInCenter(line)
+  editor.setPosition({ lineNumber: line, column: 1 })
+  const decorations = editor.deltaDecorations(
+    [],
+    [{
+      range: new monaco.Range(line, 1, line, 1),
+      options: {
+        isWholeLine: true,
+        className: 'synctex-highlight',
+        overviewRuler: {
+          color: '#f59e0b',
+          position: monaco.editor.OverviewRulerLane.Full,
+        },
+      },
+    }],
+  )
+  const clear = () => {
+    if (typeof model.isDisposed === 'function' && model.isDisposed()) return
+    model.deltaDecorations(decorations, [])
+  }
+  const timer = setTimeout(clear, 2_000)
+  return () => {
+    clearTimeout(timer)
+    clear()
+  }
 }
 
 function LatexRichHoverCard({ preview, left, top }: {
@@ -167,6 +289,8 @@ export interface LaTeXEditorRef {
   insertAtCursor: (text: string) => boolean
   /** Returns pixel position of the cursor relative to the editor container, or null if unavailable */
   getCaretPosition: () => { top: number; left: number } | null
+  /** Mark a manual compile as covering this exact buffer. */
+  markAutoCompileCompiled?: (content: string) => void
   acceptTrackedChange: (id: string) => void
   rejectTrackedChange: (id: string) => void
   acceptAllTrackedChanges: () => void
@@ -187,8 +311,18 @@ interface LaTeXEditorProps {
   onCursorChange?: (line: number) => void
   /** When set, scrolls editor to this line (from PDF SyncTeX click) */
   syncLine?: number | null
-  /** When provided (auto-compile enabled), fires 2s after last keystroke with current content */
+  /** Called for a Ctrl/Cmd-click on a source line to request PDF synchronization. */
+  onSyncToPdf?: (line: number) => void
+  /** Changes for repeated synchronization requests targeting the same line. */
+  syncRequestId?: string | number
+  /** When provided (auto-compile enabled), receives scheduler-approved content. */
   onAutoCompile?: (content: string) => void
+  /** Enables the editor-owned quiet-period auto-compile scheduler. */
+  autoCompileEnabled?: boolean
+  /** Keeps the scheduler queued while a compile request/job is active. */
+  autoCompileBusy?: boolean
+  /** Identity of the current editor document; changing it drops stale queued content. */
+  autoCompileDocumentKey?: string | null
   /** Hide the "Insert Sample Resume" empty-state button (e.g. on cover letter pages) */
   hideEmptyAction?: boolean
   /** Live ATS quick-score value (null = not scored yet) */
@@ -538,12 +672,21 @@ function defineLatexyThemes(monaco: MonacoNamespace) {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, onEditorReady, bibliographyBibTeX = '', readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, warnOnMultiplePages = true, renderedText, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, getPersonalDictionary, onAddWordToDictionary, collabEnabled, collabResumeId, collabUser, collabRole, onPresenceChange, onChatTransport, suggestionPresence, onSuggestionPresenceChange, suggestionDecisions, onSuggestionDecisionsChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
+    { value, onChange, onEditorReady, bibliographyBibTeX = '', readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onSyncToPdf, syncRequestId, onAutoCompile, autoCompileEnabled = onAutoCompile != null, autoCompileBusy = false, autoCompileDocumentKey = null, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, warnOnMultiplePages = true, renderedText, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, getPersonalDictionary, onAddWordToDictionary, collabEnabled, collabResumeId, collabUser, collabRole, onPresenceChange, onChatTransport, suggestionPresence, onSuggestionPresenceChange, suggestionDecisions, onSuggestionDecisionsChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
     ref
   ) {
     const editorRef = useRef<any>(null)
+    const parentValueGuardRef = useRef(createEditorParentValueGuard(value))
+    parentValueGuardRef.current.observeParentValue(value)
+    const syncingParentValueRef = useRef(false)
     const onEditorReadyRef = useRef(onEditorReady)
     onEditorReadyRef.current = onEditorReady
+    const onSyncToPdfRef = useRef(onSyncToPdf)
+    onSyncToPdfRef.current = onSyncToPdf
+    const onCursorChangeRef = useRef(onCursorChange)
+    onCursorChangeRef.current = onCursorChange
+    const readOnlyRef = useRef(readOnly)
+    readOnlyRef.current = readOnly
     const keybindingStatusRef = useRef<HTMLSpanElement>(null)
     const keybindingAdapterRef = useRef<EditorKeybindingAdapter | null>(null)
     const keybindingActivationRef = useRef(0)
@@ -561,6 +704,16 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     const proofreaderDecsRef = useRef<any>(null)
     const autoCompileRef = useRef(onAutoCompile)
     autoCompileRef.current = onAutoCompile
+    const autoCompileSchedulerRef = useRef<ReturnType<typeof createAutoCompileScheduler> | null>(null)
+    const [editorReadyVersion, setEditorReadyVersion] = useState(0)
+
+    useEffect(() => {
+      autoCompileSchedulerRef.current?.setBusy(autoCompileBusy)
+    }, [autoCompileBusy])
+
+    useEffect(() => {
+      autoCompileSchedulerRef.current?.setDocument(autoCompileDocumentKey)
+    }, [autoCompileDocumentKey])
     const onExplainErrorRef = useRef(onExplainError)
     onExplainErrorRef.current = onExplainError
     const onCursorLineChangeRef = useRef(onCursorLineChange)
@@ -602,6 +755,14 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     const collabReadOnlyRef = useRef(collabReadOnly)
     collabReadOnlyRef.current = collabReadOnly
 
+    useEffect(() => {
+      autoCompileSchedulerRef.current?.setEnabled(autoCompileEnabled && !readOnly && !collabReadOnly)
+    }, [autoCompileEnabled, collabReadOnly, readOnly])
+
+    useEffect(() => {
+      parentValueGuardRef.current.clear()
+    }, [autoCompileDocumentKey, collabEnabled, collabResumeId])
+
     // Y.js collab refs — cleaned up on unmount
     const ydocRef = useRef<any>(null)
     const suggestionYTextRef = useRef<any>(null)
@@ -618,6 +779,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
     // Cleanup Y.js session on unmount
     useEffect(() => {
+      const valueGuard = parentValueGuardRef.current
       return () => {
         keybindingActivationRef.current += 1
         keybindingAdapterRef.current?.dispose()
@@ -631,6 +793,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         providerRef.current = null
         ydocRef.current = null
         suggestionYTextRef.current = null
+        valueGuard.clear()
         onChatTransportRef.current?.(null)
       }
     }, [])
@@ -863,6 +1026,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         if (!pixel) return null
         return { top: pixel.top, left: pixel.left }
       },
+      markAutoCompileCompiled(content: string) {
+        autoCompileSchedulerRef.current?.markCompiled(content)
+      },
       acceptTrackedChange: (id: string) => { trackChangesRef.current?.acceptChange(id) },
       rejectTrackedChange: (id: string) => {
         if (trackChangesRef.current?.rejectChange(id) === false) {
@@ -921,32 +1087,17 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
     // Sync editor position from PDF click
     useEffect(() => {
-      if (!syncLine || !editorRef.current) return
-      editorRef.current.revealLineInCenter(syncLine)
-      editorRef.current.setPosition({ lineNumber: syncLine, column: 1 })
-
-      // Flash highlight decoration
+      const editor = editorRef.current
       const monaco = monacoRef.current
-      if (!monaco) return
-      const decs = editorRef.current.deltaDecorations(
-        [],
-        [{
-          range: new monaco.Range(syncLine, 1, syncLine, 1),
-          options: {
-            isWholeLine: true,
-            className: 'synctex-highlight',
-            overviewRuler: {
-              color: '#f59e0b',
-              position: monaco.editor.OverviewRulerLane.Full,
-            },
-          },
-        }]
-      )
-      // Remove highlight after 2s
-      setTimeout(() => {
-        editorRef.current?.deltaDecorations(decs, [])
-      }, 2000)
-    }, [syncLine])
+      const model = editor?.getModel?.()
+      if (!editor || !monaco || !model) return
+      return applyLatexEditorSyncHighlight({
+        editor,
+        monaco,
+        model,
+        line: syncLine,
+      })
+    }, [syncLine, syncRequestId, editorReadyVersion])
 
     // Apply proofreader decorations when issues change
     useEffect(() => {
@@ -1124,8 +1275,14 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       const editor = editorRef.current
       const model = editor?.getModel()
       if (!model) return
-      if (model.getValue() === value) return
-      model.setValue(value)
+      const modelValue = model.getValue()
+      if (!parentValueGuardRef.current.shouldApplyParentValue(modelValue, value)) return
+      syncingParentValueRef.current = true
+      try {
+        model.setValue(value)
+      } finally {
+        syncingParentValueRef.current = false
+      }
     }, [collabEnabled, value])
 
     // Cleanup on unmount
@@ -1135,6 +1292,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         clearMonacoTestHook(editorRef.current)
         for (const d of disposablesRef.current) d?.dispose?.()
         disposablesRef.current = []
+        autoCompileSchedulerRef.current?.dispose()
+        autoCompileSchedulerRef.current = null
         editorRef.current = null
         monacoRef.current = null
       }
@@ -1143,6 +1302,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     const handleEditorDidMount: OnMount = async (editor, monaco) => {
       editorRef.current = editor
       monacoRef.current = monaco
+      setEditorReadyVersion(version => version + 1)
       onEditorReadyRef.current?.(editor)
       exposeMonacoTestHook(editor, monaco)
       void applyKeybindingMode(editor, keybindingMode)
@@ -1154,6 +1314,16 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           dispose: () => completionBibliographyByModel.delete(mountedModel),
         })
       }
+
+      const autoCompileScheduler = createAutoCompileScheduler({
+        enabled: autoCompileEnabled && !readOnly && !collabReadOnly,
+        busy: autoCompileBusy,
+        onDispatch: (content) => autoCompileRef.current?.(content),
+      })
+      autoCompileSchedulerRef.current?.dispose()
+      autoCompileSchedulerRef.current = autoCompileScheduler
+      autoCompileScheduler.setDocument(autoCompileDocumentKey)
+      disposablesRef.current.push({ dispose: () => autoCompileScheduler.dispose() })
 
       let richHoverTimer: ReturnType<typeof setTimeout> | null = null
       const clearRichHover = () => {
@@ -1196,27 +1366,16 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         dispose: clearRichHover,
       })
 
-      // Register against the real Monaco instance. A mount-only React effect can
-      // run before the dynamically imported editor exists and silently skip this
-      // listener for the component's entire lifetime.
-      let autoCompileTimer: ReturnType<typeof setTimeout> | null = null
-      const autoCompileDisposable = editor.onDidChangeModelContent(() => {
-        if (!autoCompileRef.current) return
-        if (autoCompileTimer) clearTimeout(autoCompileTimer)
-        autoCompileTimer = setTimeout(() => {
-          const model = editor.getModel()
-          if (!model) return
-          const content = editor.getValue()
-          if (!content.trim()) return
-          autoCompileRef.current?.(content)
-        }, 2000)
+      const runtimeBindingsDispose = installLatexEditorRuntimeBindings({
+        editor,
+        mountedModel,
+        scheduler: autoCompileScheduler,
+        getReadOnly: () => readOnlyRef.current,
+        getCollabReadOnly: () => collabReadOnlyRef.current,
+        onSyncToPdf: line => onSyncToPdfRef.current?.(line),
+        onCursorChange: line => onCursorChangeRef.current?.(line),
       })
-      disposablesRef.current.push(autoCompileDisposable)
-      disposablesRef.current.push({
-        dispose: () => {
-          if (autoCompileTimer) clearTimeout(autoCompileTimer)
-        },
-      })
+      disposablesRef.current.push({ dispose: runtimeBindingsDispose })
 
       // Always (re)define themes before applying one — never behind the language guard.
       defineLatexyThemes(monaco)
@@ -1590,14 +1749,6 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           () => setSearchPanelOpen(true),
         )
         if (d) disposablesRef.current.push(d)
-      }
-
-      // ── Cursor change listener ─────────────────────────────────────
-      if (onCursorChange) {
-        const cursorDisposable = editor.onDidChangeCursorPosition((e: any) => {
-          onCursorChange(e.position.lineNumber)
-        })
-        disposablesRef.current.push(cursorDisposable)
       }
 
       // ── Cursor line-content change (debounced 200ms) ───────────────
@@ -1979,6 +2130,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
             const binding = new MonacoBinding(yText, model, new Set([editor]), provider.awareness)
             bindingRef.current = binding
+            parentValueGuardRef.current.clear()
 
             // Track changes (Feature 41)
             trackChangesRef.current?.cleanup()
@@ -2046,7 +2198,13 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               // Monaco with an empty model can emit onChange('') before the
               // async collaboration imports finish, erasing the parent buffer.
               {...(collabEnabled ? { defaultValue: value } : { value })}
-              onChange={(v) => onChange(v || '')}
+              onChange={(v) => {
+                const nextValue = v || ''
+                if (collabEnabled && !bindingRef.current && !syncingParentValueRef.current) {
+                  parentValueGuardRef.current.recordLocalValue(nextValue)
+                }
+                onChange(nextValue)
+              }}
               onMount={handleEditorDidMount}
               options={{
                 minimap: { enabled: false },
