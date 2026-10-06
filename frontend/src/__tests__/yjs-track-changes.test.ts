@@ -1,4 +1,5 @@
-import { describe, test, expect, vi } from 'vitest'
+import { describe, test, expect } from 'vitest'
+import * as Y from 'yjs'
 import { observeChanges } from '../lib/yjs-track-changes'
 import type { TrackedChange, TrackChangesHandle } from '../lib/yjs-track-changes'
 
@@ -471,27 +472,56 @@ describe('deletion attribution', () => {
   })
 })
 
-// ── rejectChange global fallback ───────────────────────────────────────────
+// ── Concurrent-edit safety ─────────────────────────────────────────────────
 
-describe('rejectChange global fallback', () => {
-  test('reverts insertion even when text has drifted from original offset', () => {
-    const yText = makeYText('abc')
+describe('concurrent-edit safety', () => {
+  test('relative positions reject the tracked insertion after an unrelated prefix edit', () => {
+    const doc = new Y.Doc()
+    const yText = doc.getText('content')
+    yText.insert(0, 'abc')
+    const provider = makeProvider()
+    let lastChanges: TrackedChange[] = []
+    const handle = observeChanges(yText, provider, (c) => { lastChanges = c }, Y)
+
+    doc.transact(() => yText.insert(0, 'xyz'), provider)
+    doc.transact(() => yText.insert(0, 'AAAA'), { local: true })
+
+    expect(handle.rejectChange(lastChanges[0].id)).toBe(true)
+    expect(yText.toString()).toBe('AAAAabc')
+    handle.cleanup()
+  })
+
+  test('relative positions restore a deletion after an unrelated prefix edit', () => {
+    const doc = new Y.Doc()
+    const yText = doc.getText('content')
+    yText.insert(0, 'hello world')
+    const provider = makeProvider()
+    let lastChanges: TrackedChange[] = []
+    const handle = observeChanges(yText, provider, (c) => { lastChanges = c }, Y)
+
+    doc.transact(() => yText.delete(5, 6), provider)
+    doc.transact(() => yText.insert(0, 'Say: '), { local: true })
+
+    expect(handle.rejectChange(lastChanges[0].id)).toBe(true)
+    expect(yText.toString()).toBe('Say: hello world')
+    handle.cleanup()
+  })
+
+  test('never deletes a different duplicate when the tracked insertion is gone', () => {
+    const yText = makeYText('prefix--tail')
     const provider = makeProvider()
     let lastChanges: TrackedChange[] = []
     const handle = observeChanges(yText, provider, (c) => { lastChanges = c })
 
-    // Remote inserts " world" at offset 0
-    yText.insert(0, 'xyz')
-    yText._fireRemote([{ insert: 'xyz' }], provider)
-
-    // Now simulate heavy local edits that shift the document
-    yText.insert(0, 'AAAA') // prefix shifts content to offset 4
+    yText.insert(8, 'duplicate')
+    yText._fireRemote([{ retain: 8 }, { insert: 'duplicate' }], provider)
+    yText.delete(8, 'duplicate'.length)
+    yText.insert(0, 'duplicate')
 
     const id = lastChanges[0].id
-    handle.rejectChange(id)
-
-    // "xyz" should be removed regardless of offset drift
-    expect(yText.toString()).not.toContain('xyz')
+    expect(handle.rejectChange(id)).toBe(false)
+    expect(yText.toString()).toBe('duplicateprefix--tail')
+    expect(handle.getChanges()).toHaveLength(1)
     handle.cleanup()
   })
 })
