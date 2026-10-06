@@ -21,7 +21,7 @@ import re
 import socket
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import httpx
@@ -31,6 +31,18 @@ from ..core.logging import get_logger
 from ..core.redis import cache_manager
 
 logger = get_logger(__name__)
+
+
+def _safe_url_for_log(value: str) -> str:
+    """Keep user-supplied URL logs free of secrets and control characters."""
+    try:
+        parsed = urlparse(value)
+        safe = urlunparse((parsed.scheme, parsed.netloc.split("@")[-1], parsed.path, "", "", ""))
+        # User-controlled URLs must not be able to forge extra log records.
+        # Keep the diagnostic useful while bounding its size.
+        return "".join(ch if ch.isprintable() else "?" for ch in safe)[:512]
+    except ValueError:
+        return "<invalid-url>"
 
 
 # ── SSRF protection ────────────────────────────────────────────────────────────
@@ -70,6 +82,18 @@ def _host_is_public(host: str) -> bool:
     return bool(addrs) and all(_ip_is_public(a) for a in addrs)
 
 
+def _resolve_public_addresses(host: str) -> tuple[str, ...]:
+    """Resolve once, reject mixed/private answers, and return normalized IPs."""
+    if not host:
+        return ()
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (socket.gaierror, UnicodeError, OSError):
+        return ()
+    addresses = tuple(sorted({str(ipaddress.ip_address(info[4][0])) for info in infos}))
+    return addresses if addresses and all(_ip_is_public(ip) for ip in addresses) else ()
+
+
 def _assert_public_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
@@ -79,23 +103,72 @@ def _assert_public_url(url: str) -> None:
 
 
 class _SSRFGuardTransport(httpx.AsyncHTTPTransport):
-    """httpx transport that validates the target host of every request (incl. redirects)."""
+    """Validate and DNS-pin every request target, including redirect hops.
+
+    Validation followed by an ordinary hostname request has a DNS-rebinding
+    race: an attacker can return a public address for validation and a private
+    one for the transport's second lookup. Rewriting the connection URL to the
+    already-validated IP removes that second lookup. The original Host header
+    and TLS SNI name are preserved for virtual hosting and certificate checks.
+    """
+
+    def __init__(self, **transport_options: Any) -> None:
+        super().__init__(**transport_options)
+        self._transport_options = transport_options
+        self._host_transports: dict[str, httpx.AsyncHTTPTransport] = {}
+        self._transport_lock = asyncio.Lock()
+
+    async def _transport_for(self, host: str) -> httpx.AsyncHTTPTransport:
+        async with self._transport_lock:
+            transport = self._host_transports.get(host)
+            if transport is None:
+                transport = httpx.AsyncHTTPTransport(**self._transport_options)
+                self._host_transports[host] = transport
+            return transport
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         if request.url.scheme not in ("http", "https"):
             raise httpx.UnsupportedProtocol(
                 f"Blocked non-http(s) scheme: {request.url.scheme!r}", request=request
             )
-        if not _host_is_public(request.url.host):
+        original_host = request.url.host
+        addresses = await asyncio.to_thread(_resolve_public_addresses, original_host)
+        if not addresses:
             raise httpx.ConnectError(
-                f"Blocked request to non-public host: {request.url.host!r}", request=request
+                f"Blocked request to non-public host: {original_host!r}", request=request
             )
-        return await super().handle_async_request(request)
+        extensions = dict(request.extensions)
+        extensions["sni_hostname"] = original_host
+        pinned_request = httpx.Request(
+            request.method,
+            request.url.copy_with(host=addresses[0]),
+            headers=request.headers,
+            stream=request.stream,
+            extensions=extensions,
+        )
+        # Keep pools separated by the original host. Two unrelated TLS hosts can
+        # legitimately share an IP; pooling solely by the pinned IP could reuse a
+        # connection authenticated for the wrong hostname.
+        transport = await self._transport_for(original_host)
+        response = await transport.handle_async_request(pinned_request)
+        # Redirect resolution and caller-visible diagnostics must retain the
+        # public hostname, not expose or resolve relative to the pinned IP.
+        response.request = request
+        return response
+
+    async def aclose(self) -> None:
+        async with self._transport_lock:
+            transports = list(self._host_transports.values())
+            self._host_transports.clear()
+        for transport in transports:
+            await transport.aclose()
+        await super().aclose()
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
 _TIMEOUT = 15.0
 _MAX_DESC_LEN = 10_000  # chars — truncated at sentence boundary
+_MAX_HTML_BYTES = 2 * 1024 * 1024
 
 # Chrome 120 browser headers (consistent set — mismatched headers are a bot signal)
 _BROWSER_HEADERS: dict[str, str] = {
@@ -487,7 +560,7 @@ async def _try_greenhouse_api(url: str, client: httpx.AsyncClient) -> Optional[J
             location=location, posted_at=job.get("updated_at"), source="api",
         )
     except Exception as exc:
-        logger.debug("Greenhouse API error for %s: %s", url, exc)
+        logger.debug("Greenhouse API error for %s (%s)", _safe_url_for_log(url), type(exc).__name__)
         return None
 
 
@@ -552,7 +625,7 @@ async def _try_lever_api(url: str, client: httpx.AsyncClient) -> Optional[JobScr
                 source="api",
             )
         except Exception as exc:
-            logger.debug("Lever API error (%s) for %s: %s", host, url, exc)
+            logger.debug("Lever API error (%s) for %s (%s)", host, _safe_url_for_log(url), type(exc).__name__)
             continue
 
     return None
@@ -603,7 +676,7 @@ async def _try_ashby_api(url: str, client: httpx.AsyncClient) -> Optional[JobScr
             job_type=_normalize_job_type(workplace), salary=salary, source="api",
         )
     except Exception as exc:
-        logger.debug("Ashby API error for %s: %s", url, exc)
+        logger.debug("Ashby API error for %s (%s)", _safe_url_for_log(url), type(exc).__name__)
         return None
 
 
@@ -649,7 +722,7 @@ async def _try_smartrecruiters_api(url: str, client: httpx.AsyncClient) -> Optio
             location=location, job_type=_normalize_job_type(emp_type), source="api",
         )
     except Exception as exc:
-        logger.debug("SmartRecruiters API error for %s: %s", url, exc)
+        logger.debug("SmartRecruiters API error for %s (%s)", _safe_url_for_log(url), type(exc).__name__)
         return None
 
 
@@ -701,7 +774,7 @@ async def _try_workday_cxs_api(url: str, client: httpx.AsyncClient) -> Optional[
             location=location, job_type=_normalize_job_type(workplace), source="api",
         )
     except Exception as exc:
-        logger.debug("Workday CXS API error for %s: %s", url, exc)
+        logger.debug("Workday CXS API error for %s (%s)", _safe_url_for_log(url), type(exc).__name__)
         return None
 
 
@@ -852,24 +925,44 @@ def _extract_generic_html(soup: BeautifulSoup, url: str) -> JobScraperResult:
 async def _fetch_html(url: str, client: httpx.AsyncClient, retries: int = 2) -> Optional[str]:
     for attempt in range(retries + 1):
         try:
-            resp = await client.get(url, headers=_BROWSER_HEADERS)
-            if resp.status_code == 200:
-                return resp.text
-            if resp.status_code == 429 and attempt < retries:
-                await asyncio.sleep(2 ** attempt)
-                continue
-            if resp.status_code in (403, 404, 410, 451):
+            async with client.stream("GET", url, headers=_BROWSER_HEADERS) as resp:
+                if resp.status_code == 200:
+                    declared_size = resp.headers.get("content-length")
+                    if declared_size:
+                        try:
+                            if int(declared_size) > _MAX_HTML_BYTES:
+                                logger.info("Refusing oversized job page %s", _safe_url_for_log(url))
+                                return None
+                        except ValueError:
+                            pass
+
+                    body = bytearray()
+                    async for chunk in resp.aiter_bytes():
+                        if len(body) + len(chunk) > _MAX_HTML_BYTES:
+                            logger.info("Job page exceeded response limit while reading %s", _safe_url_for_log(url))
+                            return None
+                        body.extend(chunk)
+
+                    encoding = resp.charset_encoding or "utf-8"
+                    try:
+                        return body.decode(encoding, errors="replace")
+                    except LookupError:
+                        return body.decode("utf-8", errors="replace")
+                if resp.status_code == 429 and attempt < retries:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                if resp.status_code in (403, 404, 410, 451):
+                    return None
+                if attempt < retries:
+                    await asyncio.sleep(1.0)
+                    continue
                 return None
-            if attempt < retries:
-                await asyncio.sleep(1.0)
-                continue
-            return None
         except httpx.TimeoutException:
             if attempt < retries:
                 await asyncio.sleep(1.5 ** attempt)
                 continue
         except httpx.RequestError as exc:
-            logger.debug("HTTP error fetching %s: %s", url, exc)
+            logger.debug("HTTP error fetching %s (%s)", _safe_url_for_log(url), type(exc).__name__)
             return None
     return None
 
@@ -882,9 +975,9 @@ class JobScraperService:
         url = _normalize_url(url)
         # SSRF guard: reject internal/private/link-local targets before any fetch.
         try:
-            _assert_public_url(url)
+            await asyncio.to_thread(_assert_public_url, url)
         except SSRFError as exc:
-            logger.warning("Blocked SSRF scrape attempt: %s", exc)
+            logger.warning("Blocked SSRF scrape attempt", extra={"error_type": type(exc).__name__})
             return JobScraperResult(url=url, error="Invalid or disallowed URL")
         cache_key = f"job_scrape:{hashlib.md5(url.encode()).hexdigest()}"
 
@@ -927,7 +1020,7 @@ class JobScraperService:
             if api_fn:
                 r = await api_fn(url, client)
                 if r and r.is_useful():
-                    logger.info("Scraped %s via API (%s)", url, platform)
+                    logger.info("Scraped %s via API (%s)", _safe_url_for_log(url), platform)
                     return r
 
             # ── Stage 2: Fetch HTML ───────────────────────────────────────────
@@ -942,7 +1035,7 @@ class JobScraperService:
             if ld:
                 r = _parse_ld_job(ld, url)
                 if r.is_useful():
-                    logger.info("Scraped %s via JSON-LD", url)
+                    logger.info("Scraped %s via JSON-LD", _safe_url_for_log(url))
                     return r
 
             # ── Stage 4: Platform-specific HTML ──────────────────────────────
@@ -958,7 +1051,7 @@ class JobScraperService:
 
             # ── Stage 5: Quality-scored generic extraction ────────────────────
             r = _extract_generic_html(soup, url)
-            logger.info("Scraped %s via generic extractor (platform=%s)", url, platform)
+            logger.info("Scraped %s via generic extractor (platform=%s)", _safe_url_for_log(url), platform)
             return r
 
 
