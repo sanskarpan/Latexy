@@ -68,7 +68,10 @@ services:
     container_name: latexy-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      # Keep the host binding project-specific. macOS/Homebrew commonly has a
+      # local Redis on 6379; Docker Desktop can still publish the same port but
+      # host processes then reach the native daemon instead of this container.
+      - "${REDIS_PORT:-6380}:6379"
     command: >
       redis-server
       --appendonly yes
@@ -129,7 +132,7 @@ services:
     command: >
       sh -c "alembic upgrade head &&
              python -m compileall /app/app -q &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8030 --log-level info --reload --reload-dir /app/app"
+             uvicorn app.main:app --host 0.0.0.0 --port 8030 --log-level info --ws-max-size 524288 --reload --reload-dir /app/app"
     ports:
       - "${BACKEND_PORT:-8030}:8030"
     environment:
