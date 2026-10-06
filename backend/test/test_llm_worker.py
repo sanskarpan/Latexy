@@ -294,6 +294,36 @@ class TestLLMWorkerJsonParse:
         assert result["success"] is False
         assert "optimized_latex" not in result
 
+    def test_token_limited_responses_are_retried_then_rejected(
+        self, mock_openai, mock_publish, mock_job_result, mock_cancelled, mock_llm_svc
+    ):
+        content = _delim(VALID_LATEX, [])
+
+        def truncated_stream():
+            chunks = list(_make_openai_stream([content]))
+            chunks[0].choices[0].finish_reason = "length"
+            return iter(chunks)
+
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.side_effect = [
+            truncated_stream(),
+            truncated_stream(),
+        ]
+        with patch("app.workers.llm_worker.settings") as ms:
+            _mock_settings(ms)
+            result = lw.optimize_resume_task(
+                VALID_LATEX, JOB_DESC, job_id=str(uuid.uuid4())
+            )
+
+        assert result["success"] is False
+        assert mock_client.chat.completions.create.call_count == 2
+        assert any(
+            call.args[1] == "job.progress"
+            and "truncated" in call.args[2].get("message", "")
+            for call in mock_publish.call_args_list
+        )
+
 
 # ── Cancellation ──────────────────────────────────────────────────────────────
 
