@@ -139,30 +139,37 @@ export default function SnippetMarketplace({ onInsert }: SnippetMarketplaceProps
   const [query, setQuery] = useState('')
   const [snippets, setSnippets] = useState<SnippetResponse[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [offset, setOffset] = useState(0)
   const [hasMore, setHasMore] = useState(true)
   const [previewSnippet, setPreviewSnippet] = useState<SnippetResponse | null>(null)
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestIdRef = useRef(0)
 
   const load = useCallback(
-    async (reset = false) => {
+    async (reset = false, requestedQuery = query) => {
+      const requestId = ++requestIdRef.current
       setLoading(true)
+      setLoadError(null)
       const off = reset ? 0 : offset
       try {
         const data = await apiClient.listSnippets({
           category: category === 'all' ? undefined : category,
-          q: query.trim() || undefined,
+          q: requestedQuery.trim() || undefined,
           sort,
           offset: off,
           limit: 20,
         })
+        if (requestId !== requestIdRef.current) return
         setSnippets((prev) => (reset ? data : [...prev, ...data]))
         setOffset(off + data.length)
         setHasMore(data.length === 20)
-      } catch {
-        toast.error('Failed to load snippets')
+      } catch (error) {
+        if (requestId === requestIdRef.current) {
+          setLoadError(error instanceof Error ? error.message : 'Failed to load snippets')
+        }
       } finally {
-        setLoading(false)
+        if (requestId === requestIdRef.current) setLoading(false)
       }
     },
     [category, sort, query, offset],
@@ -171,17 +178,24 @@ export default function SnippetMarketplace({ onInsert }: SnippetMarketplaceProps
   // Reload on filter change
   useEffect(() => {
     setOffset(0)
-    load(true)
+    void load(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, sort])
 
+  useEffect(() => () => {
+    if (searchTimeout.current) clearTimeout(searchTimeout.current)
+    requestIdRef.current += 1
+  }, [])
+
   // Debounced search
   const handleSearch = (q: string) => {
+    requestIdRef.current += 1
     setQuery(q)
+    setLoadError(null)
     if (searchTimeout.current) clearTimeout(searchTimeout.current)
     searchTimeout.current = setTimeout(() => {
       setOffset(0)
-      load(true)
+      void load(true, q)
     }, 300)
   }
 
@@ -275,12 +289,23 @@ export default function SnippetMarketplace({ onInsert }: SnippetMarketplaceProps
           <div className="flex justify-center py-8">
             <Loader2 size={16} className="animate-spin text-fg-3" />
           </div>
+        ) : loadError && snippets.length === 0 ? (
+          <div role="alert" className="flex flex-col items-center gap-2 py-8 text-center text-[11px] text-err">
+            <span>{loadError}</span>
+            <button type="button" onClick={() => void load(true, query)} className="rounded border border-line px-2 py-1 text-[10px] text-fg-2 hover:bg-surface-2">Retry</button>
+          </div>
         ) : snippets.length === 0 ? (
           <div className="py-8 text-center text-[11px] text-fg-3">
             No snippets found. Try a different search.
           </div>
         ) : (
           <>
+            {loadError && (
+              <div role="alert" className="flex items-center justify-between gap-2 rounded border border-err/30 bg-err/5 px-2 py-1.5 text-[10px] text-err">
+                <span>Could not refresh snippets.</span>
+                <button type="button" onClick={() => void load(true, query)} className="underline">Retry</button>
+              </div>
+            )}
             {snippets.map((snippet) => (
               <SnippetCard
                 key={snippet.id}
@@ -292,7 +317,7 @@ export default function SnippetMarketplace({ onInsert }: SnippetMarketplaceProps
             ))}
             {hasMore && (
               <button
-                onClick={() => load()}
+                onClick={() => void load()}
                 disabled={loading}
                 className="w-full py-2 text-[10px] text-fg-3 transition hover:text-fg-2 disabled:opacity-40"
               >
