@@ -298,3 +298,52 @@ certification.
   `/tmp/latexy-backend-publication-full-root-2026-10-06.log`.
 - Protected publication and exact-SHA backend deployment remain pending.
   Local acceptance is not proof that the new backend is deployed.
+
+## Merged backend security checkpoint and retained-schedule investigation
+
+- PR [#1761](https://github.com/sanskarpan/Latexy/pull/1761) merged through
+  normal protected rebase at 10:26:36 UTC. Local and remote main are
+  `56412bf6d3193da931960174d7e961ed7cf149d9`, with the validated source tree
+  preserved. All required PR checks passed; no protection exception was needed.
+- Canonical main CI
+  [37449811043](https://github.com/sanskarpan/Latexy/actions/runs/37449811043)
+  and exact-SHA Vercel verification
+  [37450529395](https://github.com/sanskarpan/Latexy/actions/runs/37450529395)
+  passed. The live deployment identity independently reports this main SHA.
+  GitHub's PyJWT dependency alerts are resolved; the separately mitigated
+  `braces` registry finding remains visible.
+- Modal rollout
+  [37450529413](https://github.com/sanskarpan/Latexy/actions/runs/37450529413)
+  built the images and applied migrations, but deployment reported **six**
+  scheduled functions despite **five** source declarations. The release remains
+  `v49` at `8ff2124aa21338d8a97ae60dbec1962af4921609`. Issue #1760 was
+  reopened; static parity success was not treated as deployment acceptance.
+- Exact v49 source had four schedules, including `scheduled_health_check`.
+  The new source changed that existing tag to an unscheduled runner. Pinned
+  Modal 1.5.4 sends an absent schedule field while reusing an existing function
+  ID. Retention of the old health schedule is the leading inference for the
+  extra slot, not confirmed server behavior: function-level server metadata
+  was unavailable through the inspected endpoint.
+- The narrow repair uses a new unscheduled tag,
+  `run_scheduled_health_check`, updates the five-minute fan-out and removes the
+  old registration. All seven tasks and five trigger cadences are preserved.
+  The SDK rebuilds the published tag map from current registrations, supporting
+  retirement of the unreferenced old tag without changing rolling strategy.
+  Independent offline SDK registration inspection confirms version 1.5.4,
+  five schedules, new health tag present and old health tag absent. This does
+  not certify the server's final deployed layout.
+- Independent root affected parity/manifest suites: **109 passed**, all three
+  strict warning flags; scoped Ruff passes. Log:
+  `/tmp/latexy-retained-schedule-root-review-2026-10-06.log`.
+  Protected publication and another exact-SHA live rollout remain required.
+- Source review against the exact old backend does not establish complete
+  feature compatibility: that revision lacks the newer APIs and macro archive
+  fields. Macro-size constraints can reject old oversized writes, and quarantined
+  actions appear empty to old code, although their JSON is archived without
+  loss. Schema downgrade is not a safe workaround for this application rollout.
+- Separate frontend issue
+  [#1762](https://github.com/sanskarpan/Latexy/issues/1762) is browser-reproduced:
+  an old template-create completion closes a reopened preview and navigates to
+  the old result. Its caller/modal lifetime fix is not in this backend snapshot.
+  The local frontend unit suite passes 990 tests; fresh browser and owner-change
+  acceptance remains separate. No whole-product completion claim is made.
