@@ -47,6 +47,12 @@ class TestNormalizeOrcid:
         from app.services.reference_service import reference_service
         assert reference_service.normalize_orcid("https://example.com/profile") is None
 
+    def test_provider_hostname_lookalike_returns_none(self):
+        from app.services.reference_service import reference_service
+        assert reference_service.normalize_orcid(
+            "https://orcid.org.evil.example/0000-0001-2345-6789"
+        ) is None
+
 
 # ── Unit tests for _parse_orcid_response ─────────────────────────────────
 
