@@ -181,6 +181,7 @@ export default function OptimizationSuitePage() {
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const { state: stream } = useJobStream(activeJobId)
+  const isProcessing = stream.status === 'queued' || stream.status === 'processing'
   const { requestPermission, notify } = usePushNotifications()
 
   useEffect(() => {
@@ -493,11 +494,12 @@ export default function OptimizationSuitePage() {
   }
 
   const handleAutoCompile = useCallback(async (content: string) => {
-    if (isSubmitting) return
+    if (isProcessing || isSubmitting) return
     setIsSubmitting(true)
     try {
       const response = await apiClient.compileLatex({ latex_content: content, resume_id: resumeId, compiler })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
+      editorRef.current?.markAutoCompileCompiled?.(content)
       setActiveJobId(response.job_id)
       setActiveJobKind('compile')
     } catch {
@@ -505,7 +507,12 @@ export default function OptimizationSuitePage() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [isSubmitting, resumeId, compiler])
+  }, [compiler, isProcessing, isSubmitting, resumeId])
+
+  const handleEditorCompile = useCallback(() => {
+    const content = editorRef.current?.getValue() || editorContent
+    if (content.trim()) void handleAutoCompile(content)
+  }, [editorContent, handleAutoCompile])
 
   // Apply the user's per-change review result (F2-P0): load the reconstructed
   // LaTeX into the editor, make it the new "after" snapshot, and recompile.
@@ -528,6 +535,7 @@ export default function OptimizationSuitePage() {
     try {
       const response = await apiClient.compileLatex({ latex_content: latex, resume_id: resumeId, compiler })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed to recompile')
+      editorRef.current?.markAutoCompileCompiled?.(latex)
       setActiveJobId(response.job_id)
       setActiveJobKind('compile')
     } catch (err) {
@@ -656,8 +664,6 @@ export default function OptimizationSuitePage() {
       setIsScraping(false)
     }
   }, [jobUrl, isScraping])
-
-  const isProcessing = stream.status === 'queued' || stream.status === 'processing'
 
   if (isLoading) {
     return (
@@ -942,7 +948,7 @@ export default function OptimizationSuitePage() {
                   <p className="shrink-0 text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">LaTeX Source</p>
                   <button
                     onClick={toggleAutoCompile}
-                    title="Auto-compile on change (2s debounce)"
+                    title="Auto-compile on change (5s quiet period; 10s minimum interval)"
                     aria-label="Auto-compile on change"
                     aria-pressed={autoCompile}
                     className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium transition ${
@@ -988,7 +994,11 @@ export default function OptimizationSuitePage() {
                   onChange={setEditorContent}
                   readOnly={isProcessing}
                   logLines={stream.logLines}
-                  onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
+                  onCompile={handleEditorCompile}
+                  onAutoCompile={handleAutoCompile}
+                  autoCompileEnabled={autoCompile}
+                  autoCompileBusy={isProcessing || isSubmitting}
+                  autoCompileDocumentKey={personaIdentityKey}
                   atsScore={quickATSScore}
                   atsScoreLoading={quickATSLoading}
                   onExplainError={handleExplainError}
