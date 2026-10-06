@@ -779,3 +779,49 @@ compiler repair.
   being tested on 5495/7495 with one worker and zero retries; acceptance and
   focused protected publication follow separately. No fresh browser or deployed
   acceptance is claimed at this checkpoint. Hydration #1772 remains open.
+
+### Fresh browser acceptance and additional verified gaps
+
+- Root independently read the fresh production logs and reviewed pre/post
+  application and fixture hashes. Earlier regressions passed **20/20** in
+  `/tmp/latexy-publication-5495-combined-final.log`. Its selection filter
+  accidentally excluded the added suites; this is retained as a 20-case run,
+  not described as a 46-case combined execution. A separately built isolated
+  snapshot with unchanged application hashes then passed all **26/26** added
+  cases in `/tmp/latexy-publication-5495-new26.log`: ten variant races, one
+  existing occurrence-safe visibility control, seven dictionary controls and
+  eight security controls. Both runs used one worker and zero retries.
+- The 24 new dictionary/security/variant cases retain enabled page-error
+  assertions; the two older ordinary dictionary/visibility controls do not
+  have that gate. The older dictionary fixture's unmocked referral handler
+  logged an unused local backend-port refusal. This is recorded, not dismissed
+  as a successful real-backend check. All new fixtures fail closed. The final
+  security fixture additionally checks same-owner private draft preservation
+  and visible B identity before releasing the deferred A MFA response.
+- Root repeated the strengthened two-case security old-build proof: the
+  same-owner private draft control passed and the stale synthetic URI/code
+  safety assertion failed. Artifact
+  `/tmp/latexy-security-final-bodybarrier-red.log`. No real secret was used.
+- Complete Node 22 unit validation also passed **158 files / 1,004 tests**
+  (`/tmp/latexy-1783-1785-root-node22-unit-final.log`), and full frontend lint
+  passed. A new, separately owned notification diagnostic introduced one
+  nullable-header TypeScript error; it is being corrected before a fresh type
+  gate. It is not a pre-existing application error or part of these repairs.
+- #1786 is now a verified Settings notification-save UI race. With B bearer
+  identity, B notification body and B false switch applied, A's delayed PUT
+  success or error changes B's switch to true. Ordinary success/error controls
+  pass. Root matched the unchanged Settings source to the sealed baseline and
+  reviewed `/tmp/latexy-settings-preferences-owner-race-5485-final.log` plus
+  its page-error-gated and ABA follow-ups. No real preference writes occurred.
+- #1787 is an offline-confirmed public trial metadata policy gap. The real
+  model, route and service accepted 5 KiB, excessive nesting and synthetic
+  credential-like keys unchanged into a fake analytics row; existing analytics
+  rejects those oversized/deep shapes and redacts sensitive keys. Root reviewed
+  four passing evidence controls and `/tmp/latexy-public-trial-input-bounds.log`.
+  This demonstrates validation/privacy inconsistency and potential storage
+  amplification, not a measured production attack. A shared bounded policy is
+  authorized for repair; no actual DB, Redis, provider or network was accessed.
+- Protected publication and exact-main live acceptance of #1783–#1785 remain
+  pending. Latest independently read production identity is still d54e0f63;
+  backend health/readiness are healthy. Operator Redis capacity monitoring is
+  still unconfigured and is not certified by ordinary connectivity health.
