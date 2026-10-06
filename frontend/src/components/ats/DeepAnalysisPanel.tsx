@@ -262,7 +262,7 @@ export default function DeepAnalysisPanel({
                 </div>
                 <p className="text-[12px] leading-relaxed text-fg-3">
                   Get detailed feedback on each section of your resume from GPT-4o mini.
-                  Includes scores, specific improvements, and ATS compatibility analysis.
+                  Includes heuristic scores, specific improvements, and document-compatibility checks.
                 </p>
               </div>
 
