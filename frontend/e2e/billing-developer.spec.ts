@@ -97,7 +97,7 @@ test.describe('Billing page', () => {
     await expect(page.getByRole('heading', { name: 'Basic' })).toBeVisible()
     await page.getByRole('button', { name: 'Annual' }).click()
     await expect(page.getByRole('heading', { name: 'Basic Annual' })).toBeVisible()
-    await expect(page.getByText('₹239/month effective')).toBeVisible()
+    await expect(page.getByText('₹239.25/month effective')).toBeVisible()
   })
 
   test('coupon input validates and signed-in team user can manage seats', async ({ page }) => {
@@ -172,6 +172,208 @@ test.describe('Billing page', () => {
     await page.getByPlaceholder('teammate@company.com').fill('newhire@example.com')
     await page.getByRole('button', { name: 'Invite teammate' }).click()
     await expect(page.getByText('designer@example.com')).toBeVisible()
+  })
+
+  test('team invitation previews with GET and accepts only after explicit confirmation', async ({ page }) => {
+    let joinPreviewCount = 0
+    let joinPostCount = 0
+    let subscriptionCalls = 0
+    const subscription = (planId: string) => ({
+      userId: 'user-member',
+      planId,
+      planName: planId === 'free' ? 'Free Trial' : 'Team Seat',
+      status: 'active',
+      features: {
+        compilations: planId === 'free' ? 3 : 'unlimited',
+        optimizations: planId === 'free' ? 0 : 'unlimited',
+        historyRetention: planId === 'free' ? 0 : 365,
+        prioritySupport: planId !== 'free',
+        apiAccess: planId !== 'free',
+      },
+      subscriptionId: planId === 'free' ? null : 'team-seat-subscription',
+      currentPeriodEnd: '2099-01-01T00:00:00Z',
+    })
+
+    await page.route('**/api/auth/get-session', (route) =>
+      route.fulfill({
+        json: {
+          user: { id: 'user-member', email: 'member@example.com', name: 'Member' },
+          session: { id: 'sess-member', userId: 'user-member', token: 'member-token' },
+        },
+      }),
+    )
+    await page.route('**/subscription/plans', (route) => route.fulfill({ json: plansPayload }))
+    await page.route('**/subscription/current', (route) => {
+      subscriptionCalls += 1
+      return route.fulfill({ json: subscription(subscriptionCalls > 1 ? 'team_member' : 'free') })
+    })
+    await page.route('**/team/join/preview-token', (route) => {
+      if (route.request().method() === 'GET') {
+        joinPreviewCount += 1
+        return route.fulfill({ json: { success: true, message: 'Team invitation is ready to accept' } })
+      }
+      joinPostCount += 1
+      return route.fulfill({ json: { success: true, message: 'Team seat activated' } })
+    })
+
+    await page.goto('/billing?team_invite=preview-token')
+    const acceptButton = page.getByRole('button', { name: 'Accept team invitation' })
+    await expect(acceptButton).toBeVisible()
+    expect(joinPreviewCount).toBeGreaterThan(0)
+    expect(joinPostCount).toBe(0)
+
+    await acceptButton.click()
+    await expect(page.getByText('Team seat activated successfully.')).toBeVisible()
+    await expect.poll(() => subscriptionCalls).toBeGreaterThan(1)
+    expect(joinPostCount).toBe(1)
+  })
+
+  test('team invitation retries a transient acceptance failure', async ({ page }) => {
+    let joinPostCount = 0
+    await page.route('**/api/auth/get-session', (route) =>
+      route.fulfill({
+        json: {
+          user: { id: 'user-member', email: 'member@example.com', name: 'Member' },
+          session: { id: 'sess-member', userId: 'user-member', token: 'member-token' },
+        },
+      }),
+    )
+    await page.route('**/subscription/plans', (route) => route.fulfill({ json: plansPayload }))
+    await page.route('**/subscription/current', (route) =>
+      route.fulfill({
+        json: {
+          userId: 'user-member',
+          planId: 'free',
+          planName: 'Free Trial',
+          status: 'active',
+          features: plansPayload.plans.free.features,
+          subscriptionId: null,
+          currentPeriodEnd: null,
+        },
+      }),
+    )
+    await page.route('**/team/join/preview-token', (route) => {
+      if (route.request().method() === 'GET') {
+        return route.fulfill({ json: { success: true, message: 'Team invitation is ready to accept' } })
+      }
+      joinPostCount += 1
+      if (joinPostCount === 1) {
+        return route.fulfill({
+          status: 503,
+          json: { detail: 'Invitation service is temporarily unavailable' },
+        })
+      }
+      return route.fulfill({
+        json: { success: true, message: 'Team seat activated' },
+      })
+    })
+
+    await page.goto('/billing?team_invite=preview-token')
+    const acceptButton = page.getByRole('button', { name: 'Accept team invitation' })
+    await expect(acceptButton).toBeVisible()
+    await acceptButton.click()
+    await expect(
+      page.locator('#main-content').getByText(/HTTP 503: Invitation service is temporarily unavailable/),
+    ).toBeVisible()
+    await expect(acceptButton).toBeVisible()
+    await expect(acceptButton).toBeEnabled()
+    await acceptButton.click()
+    await expect(page.getByText('Team seat activated successfully.')).toBeVisible()
+    expect(joinPostCount).toBe(2)
+  })
+
+  test('team invitation conflict removes stale acceptance guidance', async ({ page }) => {
+    await page.route('**/api/auth/get-session', (route) =>
+      route.fulfill({
+        json: {
+          user: { id: 'user-member', email: 'member@example.com', name: 'Member' },
+          session: { id: 'sess-member', userId: 'user-member', token: 'member-token' },
+        },
+      }),
+    )
+    await page.route('**/subscription/plans', (route) => route.fulfill({ json: plansPayload }))
+    await page.route('**/subscription/current', (route) =>
+      route.fulfill({
+        json: {
+          userId: 'user-member',
+          planId: 'free',
+          planName: 'Free Trial',
+          status: 'active',
+          features: plansPayload.plans.free.features,
+          subscriptionId: null,
+          currentPeriodEnd: null,
+        },
+      }),
+    )
+    await page.route('**/team/join/conflict-token', (route) => {
+      if (route.request().method() === 'GET') {
+        return route.fulfill({ json: { success: true, message: 'Team invitation is ready to accept' } })
+      }
+      return route.fulfill({
+        status: 409,
+        json: { detail: 'Invitation has already been accepted' },
+      })
+    })
+
+    await page.goto('/billing?team_invite=conflict-token')
+    const acceptButton = page.getByRole('button', { name: 'Accept team invitation' })
+    await expect(acceptButton).toBeVisible()
+    await acceptButton.click()
+    await expect(
+      page.locator('#main-content').getByText(/HTTP 409: Invitation has already been accepted/),
+    ).toBeVisible()
+    await expect(acceptButton).toBeHidden()
+    await expect(page.getByText('Review the invitation and accept it to activate your team seat.')).toBeHidden()
+  })
+
+  test('stale invitation acceptance cannot update a switched token', async ({ page }) => {
+    let session = {
+      user: { id: 'user-member-a', email: 'member-a@example.com', name: 'Member A' },
+      session: { id: 'sess-member-a', userId: 'user-member-a', token: 'member-a-token' },
+    }
+    const releaseOldAcceptance = { resolve: () => {} }
+    const oldAcceptanceReleased = new Promise<void>((resolve) => { releaseOldAcceptance.resolve = resolve })
+
+    await page.route('**/api/auth/get-session', (route) => route.fulfill({ json: session }))
+    await page.route('**/subscription/plans', (route) => route.fulfill({ json: plansPayload }))
+    await page.route('**/subscription/current', (route) =>
+      route.fulfill({
+        json: {
+          userId: session.user.id,
+          planId: 'free',
+          planName: 'Free Trial',
+          status: 'active',
+          features: plansPayload.plans.free.features,
+          subscriptionId: null,
+          currentPeriodEnd: null,
+        },
+      }),
+    )
+    await page.route('**/team/join/*', async (route) => {
+      const url = route.request().url()
+      const token = url.slice(url.lastIndexOf('/') + 1)
+      if (route.request().method() === 'GET') {
+        return route.fulfill({ json: { success: true, message: `Invitation ${token} is ready` } })
+      }
+      if (token === 'old-token') {
+        await oldAcceptanceReleased
+        return route.fulfill({ json: { success: true, message: 'Old account seat activated' } })
+      }
+      return route.fulfill({ json: { success: true, message: 'New account seat activated' } })
+    })
+
+    await page.goto('/billing?team_invite=old-token')
+    const oldAcceptButton = page.getByRole('button', { name: 'Accept team invitation' })
+    await expect(oldAcceptButton).toBeVisible()
+    await oldAcceptButton.click()
+
+    await page.evaluate(() => window.history.pushState({}, '', '/billing?team_invite=new-token'))
+    const newAcceptButton = page.getByRole('button', { name: 'Accept team invitation' })
+    await expect(newAcceptButton).toBeVisible()
+    releaseOldAcceptance.resolve()
+
+    await expect(page.getByText('Team seat activated successfully.')).toBeHidden()
+    await expect(newAcceptButton).toBeVisible()
   })
 })
 
