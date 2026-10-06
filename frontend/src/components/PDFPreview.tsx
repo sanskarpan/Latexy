@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { AlertTriangle, FileText, Download, Share2, ZoomIn, ZoomOut, MousePointer, Moon, Printer, Sun, Flame } from 'lucide-react'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
-import { parseSynctex, synctexReverse, synctexForward, type SynctexData } from '@/lib/synctex-parser'
+import { createSynctexRequestGuard, parseSynctex, synctexHasMappableSource, synctexReverse, synctexForward, type SynctexData } from '@/lib/synctex-parser'
 import { computePageHeatmap, heatmapColor } from '@/lib/heatmap-generator'
 import { apiClient } from '@/lib/api-client'
 
@@ -33,8 +33,16 @@ interface PDFPreviewProps {
   jobId?: string | null
   /** Called when user Ctrl+clicks a position in the PDF → give back source line */
   onSyncToSource?: (line: number) => void
+  /** Optional selected PDF coordinate for a divider/side-panel action. */
+  onPdfSelectionChange?: (selection: PdfSyncSelection | null) => void
+  /** Reports whether a nonempty, current-job SyncTeX map is usable. */
+  onSyncReadyChange?: (ready: boolean) => void
   /** When set, scroll PDF to show this source line */
   syncFromLine?: number | null
+  /** Changes when the same source line should be requested again. */
+  syncFromRequestId?: string | number | null
+  /** Main source filename from the compile settings, when known. */
+  sourceFileName?: string
   /** LaTeX source for color-dependency analysis in print preview mode (Feature 89B) */
   latexContent?: string
   /** Called when user clicks a warning line number to jump to editor line (Feature 89B) */
@@ -51,6 +59,13 @@ interface PDFPreviewProps {
 interface PageDimensions {
   naturalWidth: number
   naturalHeight: number
+}
+
+export interface PdfSyncSelection {
+  page: number
+  x: number
+  y: number
+  line: number
 }
 
 // ── Heatmap canvas overlay ────────────────────────────────────────────────────
@@ -109,7 +124,11 @@ export default function PDFPreview({
   onDownload,
   jobId,
   onSyncToSource,
+  onPdfSelectionChange,
+  onSyncReadyChange,
   syncFromLine,
+  syncFromRequestId,
+  sourceFileName,
   latexContent,
   onJumpToLine,
   onShare,
@@ -157,12 +176,61 @@ export default function PDFPreview({
   }
 
   const synctexDataRef = useRef<SynctexData | null>(null)
+  const synctexTextRef = useRef<string | null>(null)
+  const synctexRequestGuardRef = useRef(createSynctexRequestGuard())
   const pageDimsRef = useRef<Record<number, PageDimensions>>({})
+  const [pageDimsVersion, setPageDimsVersion] = useState(0)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
-  const containerRef = useRef<HTMLDivElement>(null)
-  const prevJobIdRef = useRef<string | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [containerNode, setContainerNode] = useState<HTMLDivElement | null>(null)
+  const setContainerElement = useCallback((node: HTMLDivElement | null) => {
+    if (containerRef.current === node) return
+    containerRef.current = node
+    setContainerNode(node)
+  }, [])
   const syncHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const flashTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+  const flashAnimationFramesRef = useRef<Set<number>>(new Set())
+  const flashOverlaysRef = useRef<Set<HTMLDivElement>>(new Set())
+  const selectionCallbackRef = useRef(onPdfSelectionChange)
+  selectionCallbackRef.current = onPdfSelectionChange
+
+  // react-pdf may finish loading a previous PDF after the props have already
+  // advanced to a new compile.  Keep a render-time identity so those callbacks
+  // cannot republish dimensions, errors, or overlays into the new document.
+  const pdfIdentityKey = `${jobId ?? ''}\u0000${pdfUrl ?? ''}\u0000${sourceFileName ?? ''}`
+  const pdfIdentityRef = useRef<{ key: string; generation: number; jobId: string | null; pdfUrl: string | null; sourceFileName?: string } | null>(null)
+  if (pdfIdentityRef.current?.key !== pdfIdentityKey) {
+    pdfIdentityRef.current = {
+      key: pdfIdentityKey,
+      generation: (pdfIdentityRef.current?.generation ?? 0) + 1,
+      jobId: jobId ?? null,
+      pdfUrl: pdfUrl ?? null,
+      sourceFileName,
+    }
+    pageDimsRef.current = {}
+    pageRefs.current = {}
+    synctexDataRef.current = null
+    synctexTextRef.current = null
+  }
+  const renderGeneration = pdfIdentityRef.current!.generation
+
+  const isCurrentPdfIdentity = useCallback((generation: number) => {
+    const identity = pdfIdentityRef.current
+    return identity?.generation === generation &&
+      identity.jobId === (jobId ?? null) &&
+      identity.pdfUrl === (pdfUrl ?? null) &&
+      identity.sourceFileName === sourceFileName
+  }, [jobId, pdfUrl, sourceFileName])
+
+  const clearFlashOverlays = useCallback(() => {
+    flashAnimationFramesRef.current.forEach((frame) => cancelAnimationFrame(frame))
+    flashAnimationFramesRef.current.clear()
+    flashTimersRef.current.forEach((timer) => clearTimeout(timer))
+    flashTimersRef.current.clear()
+    flashOverlaysRef.current.forEach((overlay) => overlay.remove())
+    flashOverlaysRef.current.clear()
+  }, [])
 
   const handleZoomIn = () => setZoom((p) => Math.min(+(p + 0.15).toFixed(2), 3))
   const handleZoomOut = () => setZoom((p) => Math.max(+(p - 0.15).toFixed(2), 0.4))
@@ -172,7 +240,7 @@ export default function PDFPreview({
 
   // Measure container width so pages never overflow the panel
   useEffect(() => {
-    const el = containerRef.current
+    const el = containerNode
     if (!el) return
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? 0
@@ -182,12 +250,12 @@ export default function PDFPreview({
     // Initial measurement
     setContainerWidth(el.getBoundingClientRect().width)
     return () => ro.disconnect()
-  }, [])
+  }, [containerNode])
 
   // Ctrl/Cmd + scroll (or trackpad pinch, which browsers report as a ctrl-flagged
   // wheel event) zooms the preview instead of scrolling the page.
   useEffect(() => {
-    const el = containerRef.current
+    const el = containerNode
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return
@@ -199,7 +267,7 @@ export default function PDFPreview({
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [])
+  }, [containerNode])
 
   // Keyboard zoom shortcuts: Cmd/Ctrl +/- to step, Cmd/Ctrl+0 to reset to 100%/fit.
   // Skipped while typing in an input/textarea/contenteditable (e.g. the LaTeX editor).
@@ -248,45 +316,83 @@ export default function PDFPreview({
     )
     Object.values(pageRefs.current).forEach((el) => { if (el) observer.observe(el) })
     return () => observer.disconnect()
-  }, [numPages])
+  }, [containerNode, numPages])
 
   // Base width = container minus horizontal padding (24px each side)
   const baseWidth = containerWidth > 0 ? Math.max(200, containerWidth - 48) : 520
   const pageWidth = Math.floor(baseWidth * zoom)
 
-  const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
+  const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }, expectedGeneration: number) => {
+    if (!isCurrentPdfIdentity(expectedGeneration)) return
     setNumPages(numPages)
     setRenderError(false)
-  }, [])
+  }, [isCurrentPdfIdentity])
+
+  const parseCurrentSynctex = useCallback((text: string, expectedGeneration = renderGeneration) => {
+    if (!isCurrentPdfIdentity(expectedGeneration)) return
+    const pageHeights = Object.fromEntries(
+      Object.entries(pageDimsRef.current).map(([page, dimensions]) => [Number(page), dimensions.naturalHeight]),
+    )
+    const parsed = parseSynctex(text, pageHeights)
+    synctexTextRef.current = text
+    synctexDataRef.current = parsed
+    const hasMeasuredPages = Object.keys(parsed.pageBlocks).length > 0 &&
+      Object.keys(parsed.pageBlocks).every((page) => Boolean(pageDimsRef.current[Number(page)]))
+    setSynctexReady(synctexHasMappableSource(parsed, sourceFileName) && hasMeasuredPages)
+  }, [isCurrentPdfIdentity, renderGeneration, sourceFileName])
+
+  useEffect(() => {
+    onSyncReadyChange?.(synctexReady)
+  }, [onSyncReadyChange, synctexReady])
+
+  // A new compile or source selection invalidates the parent's remembered PDF
+  // selection immediately, including before a replacement PDF has measured.
+  useEffect(() => {
+    selectionCallbackRef.current?.(null)
+    if (syncHintTimerRef.current !== null) {
+      clearTimeout(syncHintTimerRef.current)
+      syncHintTimerRef.current = null
+    }
+    setSyncHint(false)
+    clearFlashOverlays()
+  }, [clearFlashOverlays, jobId, pdfUrl, sourceFileName])
 
   // Fetch and parse synctex when jobId changes.
-  // prevJobIdRef is component-instance-scoped (via useRef), so it resets to null on
-  // every fresh mount — meaning a remounted component with the same jobId will still
-  // trigger a fresh fetch. This is intentional: stale synctex data is cleared on unmount.
   useEffect(() => {
-    if (!jobId || jobId === prevJobIdRef.current) return
-    prevJobIdRef.current = jobId
+    const guard = synctexRequestGuardRef.current
+    pageDimsRef.current = {}
+    pageRefs.current = {}
+    setPageDimsVersion(0)
     setSynctexReady(false)
+    setRenderError(false)
     synctexDataRef.current = null
+    synctexTextRef.current = null
+    if (!jobId) {
+      guard.reset()
+      return
+    }
 
+    const token = guard.begin(jobId)
     const controller = new AbortController()
     apiClient.downloadSynctex(jobId, controller.signal)
       .then((text) => {
-        if (!text) return
-        synctexDataRef.current = parseSynctex(text)
-        setSynctexReady(true)
+        if (!guard.isCurrent(token) || !text) return
+        parseCurrentSynctex(text)
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return
         // SyncTeX not available — silent failure
       })
-    return () => controller.abort()
-  }, [jobId])
+    return () => {
+      controller.abort()
+      guard.invalidate(token)
+    }
+  }, [jobId, pdfUrl, sourceFileName, parseCurrentSynctex])
 
   // Forward sync: source line → scroll PDF to the matching page
   useEffect(() => {
-    if (!syncFromLine || !synctexDataRef.current) return
-    const block = synctexForward(synctexDataRef.current, syncFromLine)
+    if (!syncFromLine || !synctexReady || !synctexDataRef.current) return
+    const block = synctexForward(synctexDataRef.current, syncFromLine, sourceFileName)
     if (!block) return
 
     const pageEl = pageRefs.current[block.page]
@@ -297,20 +403,24 @@ export default function PDFPreview({
     // Flash overlay on the block
     const dims = pageDimsRef.current[block.page]
     if (!dims) return
-    const scale = pageWidth / dims.naturalWidth
+    const pageRect = pageEl.getBoundingClientRect()
+    const scaleX = pageRect.width / dims.naturalWidth
+    const scaleY = pageRect.height / dims.naturalHeight
+    if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0) return
     flashOverlay(pageEl, {
-      left: block.x * scale,
-      top: (dims.naturalHeight - block.y - block.height) * scale,
-      width: Math.max(block.width * scale, 40),
-      height: Math.max(block.height * scale, 8),
+      left: block.x * scaleX,
+      top: (dims.naturalHeight - block.y - block.height) * scaleY,
+      width: Math.max(block.width * scaleX, 40),
+      height: Math.max(block.height * scaleY, 8),
     })
-  }, [syncFromLine, pageWidth])
+  }, [pageDimsVersion, sourceFileName, syncFromLine, syncFromRequestId, synctexReady])
 
   function flashOverlay(
     pageEl: HTMLElement,
     rect: { left: number; top: number; width: number; height: number }
   ) {
     const div = document.createElement('div')
+    div.dataset.synctexHighlight = 'true'
     div.style.cssText = `
       position:absolute;
       left:${rect.left}px;
@@ -326,67 +436,83 @@ export default function PDFPreview({
     `
     pageEl.style.position = 'relative'
     pageEl.appendChild(div)
-    requestAnimationFrame(() => {
+    flashOverlaysRef.current.add(div)
+    const frame = requestAnimationFrame(() => {
+      flashAnimationFramesRef.current.delete(frame)
+      if (!pageEl.contains(div)) return
       const t1 = setTimeout(() => { div.style.opacity = '0' }, 400)
       const t2 = setTimeout(() => {
         if (pageEl.contains(div)) pageEl.removeChild(div)
+        flashOverlaysRef.current.delete(div)
         flashTimersRef.current.delete(t1)
         flashTimersRef.current.delete(t2)
       }, 2000)
       flashTimersRef.current.add(t1)
       flashTimersRef.current.add(t2)
     })
+    flashAnimationFramesRef.current.add(frame)
   }
 
-  // Handle PDF click for reverse sync (Ctrl+click → find source line)
-  const handlePageClick = useCallback(
-    (
-      e: React.MouseEvent<HTMLDivElement>,
-      pageNumber: number
-    ) => {
-      if (!synctexDataRef.current || !onSyncToSource) return
-      if (!e.ctrlKey && !e.metaKey) return
+  const resolvePdfLocation = useCallback((e: React.MouseEvent<HTMLDivElement>, pageNumber: number) => {
+    const dims = pageDimsRef.current[pageNumber]
+    if (!dims || !synctexDataRef.current) return null
+    const rect = e.currentTarget.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0 || e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return null
+    const scaleX = rect.width / dims.naturalWidth
+    const scaleY = rect.height / dims.naturalHeight
+    if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0) return null
+    const pdfX = (e.clientX - rect.left) / scaleX
+    const pdfY = dims.naturalHeight - (e.clientY - rect.top) / scaleY
+    const result = synctexReverse(synctexDataRef.current, pageNumber, pdfX, pdfY, sourceFileName)
+    return { pdfX, pdfY, result }
+  }, [sourceFileName])
 
-      const dims = pageDimsRef.current[pageNumber]
-      if (!dims) return
+  // A regular click only records the selected PDF location. It never scrolls
+  // or navigates; Ctrl/Cmd-click retains the explicit source-jump action.
+  const handlePageClick = useCallback((e: React.MouseEvent<HTMLDivElement>, pageNumber: number) => {
+    const location = resolvePdfLocation(e, pageNumber)
+    if (!location || !location.result) {
+      onPdfSelectionChange?.(null)
+      return
+    }
+    onPdfSelectionChange?.({ page: pageNumber, x: location.pdfX, y: location.pdfY, line: location.result.line })
+    if ((!e.ctrlKey && !e.metaKey) || !location.result || !onSyncToSource) return
+    onSyncToSource(location.result.line)
+    setSyncHint(true)
+    if (syncHintTimerRef.current !== null) clearTimeout(syncHintTimerRef.current)
+    syncHintTimerRef.current = setTimeout(() => setSyncHint(false), 2000)
+  }, [onPdfSelectionChange, onSyncToSource, resolvePdfLocation])
 
-      const rect = e.currentTarget.getBoundingClientRect()
-      const canvasX = e.clientX - rect.left
-      const canvasY = e.clientY - rect.top
-
-      const scale = pageWidth / dims.naturalWidth
-      // Convert canvas coords → PDF coords (origin: bottom-left)
-      const pdfX = canvasX / scale
-      const pdfY = dims.naturalHeight - canvasY / scale
-
-      const result = synctexReverse(synctexDataRef.current, pageNumber, pdfX, pdfY)
-      if (result) {
-        onSyncToSource(result.line)
-        setSyncHint(true)
-        if (syncHintTimerRef.current !== null) clearTimeout(syncHintTimerRef.current)
-        syncHintTimerRef.current = setTimeout(() => setSyncHint(false), 2000)
-      }
-    },
-    [onSyncToSource, pageWidth]
-  )
+  // Double-click mirrors the conventional PDF viewer source-jump action even
+  // without a modifier; it still requires a real parsed mapping.
+  const handlePageDoubleClick = useCallback((e: React.MouseEvent<HTMLDivElement>, pageNumber: number) => {
+    const location = resolvePdfLocation(e, pageNumber)
+    if (!location?.result || !onSyncToSource) return
+    onSyncToSource(location.result.line)
+    setSyncHint(true)
+    if (syncHintTimerRef.current !== null) clearTimeout(syncHintTimerRef.current)
+    syncHintTimerRef.current = setTimeout(() => setSyncHint(false), 2000)
+  }, [onSyncToSource, resolvePdfLocation])
 
   // Clear all pending timers on unmount
   useEffect(() => () => {
     if (syncHintTimerRef.current !== null) clearTimeout(syncHintTimerRef.current)
-    flashTimersRef.current.forEach((t) => clearTimeout(t))
-    flashTimersRef.current.clear()
-  }, [])
+    clearFlashOverlays()
+  }, [clearFlashOverlays])
 
-  const storePagDims = useCallback((pageNumber: number, page: any) => {
+  const storePagDims = useCallback((pageNumber: number, page: any, expectedGeneration: number) => {
+    if (!isCurrentPdfIdentity(expectedGeneration)) return
     if (!page) return
     const vp = page.getViewport({ scale: 1 })
     pageDimsRef.current[pageNumber] = {
       naturalWidth: vp.width,
       naturalHeight: vp.height,
     }
-  }, [])
+    setPageDimsVersion((version) => version + 1)
+    if (synctexTextRef.current) parseCurrentSynctex(synctexTextRef.current, expectedGeneration)
+  }, [isCurrentPdfIdentity, parseCurrentSynctex])
 
-  if (isLoading) {
+  if (isLoading && !pdfUrl) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 bg-surface-2 px-6">
         {/* a page materializing */}
@@ -565,7 +691,7 @@ export default function PDFPreview({
 
       {/* Pages */}
       <div
-        ref={containerRef}
+        ref={setContainerElement}
         className="flex-1 overflow-auto"
         style={{
           background: darkPdf ? 'var(--bg)' : 'var(--surface-2)',
@@ -595,9 +721,12 @@ export default function PDFPreview({
           </div>
         ) : (
           <Document
+            key={`${pdfUrl}:${jobId ?? 'no-job'}:${sourceFileName ?? 'main'}:${renderGeneration}`}
             file={pdfUrl}
-            onLoadSuccess={onDocumentLoadSuccess}
-            onLoadError={() => setRenderError(true)}
+            onLoadSuccess={(result) => onDocumentLoadSuccess(result, renderGeneration)}
+            onLoadError={() => {
+              if (isCurrentPdfIdentity(renderGeneration)) setRenderError(true)
+            }}
             loading={
               <div className="flex h-32 items-center justify-center">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-line border-t-accent" />
@@ -608,11 +737,28 @@ export default function PDFPreview({
             {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
               <div
                 key={pageNum}
-                ref={(el) => { pageRefs.current[pageNum] = el }}
+                ref={(el) => {
+                  if (isCurrentPdfIdentity(renderGeneration)) pageRefs.current[pageNum] = el
+                }}
                 data-page-number={pageNum}
                 className="shadow-[var(--shadow-2)] select-text"
                 style={{ lineHeight: 0, position: 'relative' }}
-                onClick={(e) => handlePageClick(e, pageNum)}
+                // On macOS Control-click produces a context-menu event rather
+                // than click. Handle modifier navigation on pointer-down so
+                // both Control and Command work across operating systems.
+                onMouseDown={(e) => {
+                  if (e.button === 0 && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault()
+                    handlePageClick(e, pageNum)
+                  }
+                }}
+                onClick={(e) => {
+                  if (!e.ctrlKey && !e.metaKey) handlePageClick(e, pageNum)
+                }}
+                onContextMenu={(e) => {
+                  if (e.ctrlKey) e.preventDefault()
+                }}
+                onDoubleClick={(e) => handlePageDoubleClick(e, pageNum)}
               >
                 {/* Dark + print preview filters wrap Page only so HeatmapCanvas colours are unaffected */}
                 <div style={{
@@ -624,7 +770,7 @@ export default function PDFPreview({
                     width={pageWidth}
                     renderTextLayer
                     renderAnnotationLayer
-                    onRenderSuccess={(page) => storePagDims(pageNum, page)}
+                    onRenderSuccess={(page) => storePagDims(pageNum, page, renderGeneration)}
                   />
                 </div>
                 {showHeatmap && (
