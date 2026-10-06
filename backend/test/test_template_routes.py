@@ -15,8 +15,10 @@ import uuid
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 
+from app.api.template_routes import _reject_non_taggable_resume_template
 from app.core.config import settings
 from app.database.models import ResumeTemplate
 
@@ -273,6 +275,18 @@ async def _create_auth_headers(db_session) -> dict:
 
 def _admin_headers() -> dict:
     return {"X-Admin-Secret": "test-template-admin-secret"}
+
+
+def test_document_class_guard_handles_adversarial_whitespace() -> None:
+    padded = " " * 64
+    source = f"\\documentclass[{padded}]{padded}{{{padded}beamer{padded}}}\n"
+
+    with pytest.raises(HTTPException) as raised:
+        _reject_non_taggable_resume_template("finance", source)
+    assert raised.value.status_code == 422
+
+    malformed = "\\documentclass[" + (" " * 100_000) + "\n"
+    _reject_non_taggable_resume_template("finance", malformed)
 
 
 @pytest.mark.asyncio
