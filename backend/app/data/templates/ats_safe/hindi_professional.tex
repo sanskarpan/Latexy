@@ -1,0 +1,59 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[top=0.65in,bottom=0.65in,left=0.75in,right=0.75in]{geometry}
+\usepackage{fontspec}
+\usepackage[english,hindi,provide=*]{babel}
+\babelprovide[onchar=ids fonts]{english}
+\babelfont[hindi]{rm}[Renderer=HarfBuzz,Script=Devanagari,BoldFont={Noto Sans Devanagari Bold},ItalicFont={Noto Sans Devanagari},ItalicFeatures={FakeSlant=0.15},BoldItalicFont={Noto Sans Devanagari Bold},BoldItalicFeatures={FakeSlant=0.15}]{Noto Sans Devanagari}
+\babelfont[english]{rm}{Latin Modern Roman}
+\renewcommand{\bfdefault}{b}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{titlesec}
+
+\setlist{nosep,leftmargin=*}
+\setlist[itemize]{label=\foreignlanguage{english}{\textbullet}}
+\pagestyle{empty}
+\hypersetup{colorlinks=true,urlcolor=black}
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\rule{\textwidth}{0.4pt}]
+\titlespacing{\section}{0pt}{7pt}{3pt}
+
+\begin{document}
+
+\begin{center}
+  {\LARGE\textbf{आरव शर्मा}}\\[3pt]
+  वरिष्ठ सॉफ्टवेयर अभियंता\\[2pt]
+  बेंगलुरु, भारत \quad|\quad
+  \href{mailto:aarav.sharma@example.com}{aarav.sharma@example.com} \quad|\quad
+  +91 98765 43210
+\end{center}
+
+\section{व्यावसायिक सारांश}
+आठ वर्षों के अनुभव वाले सॉफ्टवेयर अभियंता, जिन्होंने विश्वसनीय वितरित प्रणालियाँ बनाई हैं और अलग-अलग टीमों के साथ बड़े तकनीकी कार्यक्रम सफलतापूर्वक पूरे किए हैं।
+
+\section{कार्य अनुभव}
+\noindent\textbf{वरिष्ठ सॉफ्टवेयर अभियंता} \hfill \textit{जुलाई 2021 -- वर्तमान}\\
+\textit{उदाहरण टेक्नोलॉजी, बेंगलुरु}
+\begin{itemize}
+  \item भुगतान मंच की नई सेवा तैयार की, जिससे प्रतिदिन दस लाख अनुरोध सुरक्षित रूप से संसाधित हुए और औसत विलंब तीस प्रतिशत घटा।
+  \item छह अभियंताओं की टीम का मार्गदर्शन किया और स्वचालित परीक्षण बढ़ाकर उत्पादन त्रुटियों में चालीस प्रतिशत कमी की।
+  \item उत्पाद और सुरक्षा टीमों के साथ मिलकर चरणबद्ध माइग्रेशन पूरा किया तथा सभी ग्राहकों के लिए सेवा लगातार उपलब्ध रखी।
+\end{itemize}
+
+\noindent\textbf{सॉफ्टवेयर अभियंता} \hfill \textit{जून 2018 -- जून 2021}\\
+\textit{नमूना सिस्टम्स, पुणे}
+\begin{itemize}
+  \item निगरानी उपकरण विकसित किए जिनसे समस्याओं की पहचान तेज हुई और सहायता दल का साप्ताहिक समय बचा।
+  \item डेटा प्रसंस्करण कार्यप्रवाह सुधारा और मासिक आधारभूत ढाँचा लागत पंद्रह प्रतिशत कम की।
+\end{itemize}
+
+\section{शिक्षा}
+\textbf{कंप्यूटर विज्ञान में प्रौद्योगिकी स्नातक} \hfill \textit{2018}\\
+भारतीय प्रौद्योगिकी संस्थान, दिल्ली
+
+\section{तकनीकी कौशल}
+पाइथन, टाइपस्क्रिप्ट, पोस्टग्रेएसक्यूएल, रेडिस, डॉकर, कुबेरनेटिस, एडब्ल्यूएस
+
+\section{भाषाएँ}
+हिन्दी — मातृभाषा \quad|\quad अंग्रेज़ी — व्यावसायिक दक्षता
+
+\end{document}
