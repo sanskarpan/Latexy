@@ -800,9 +800,11 @@ def authed_client():
     from app.middleware.auth_middleware import get_current_user_required
 
     app.dependency_overrides[get_current_user_required] = lambda: "test-owner-id"
-    client = TestClient(app, raise_server_exceptions=False)
-    yield client
-    app.dependency_overrides.pop(get_current_user_required, None)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        try:
+            yield client
+        finally:
+            app.dependency_overrides.pop(get_current_user_required, None)
 
 
 class TestCollaboratorEndpoints:
@@ -1005,13 +1007,28 @@ class TestCollaboratorDocumentAccess:
         updated = await client.put(
             f"/resumes/{resume_id}",
             headers=auth_headers2,
-            json={"latex_content": "editor content"},
+            json={"latex_content": "editor content", "expected_latex_content": "owner content"},
         )
         owner_view = await client.get(f"/resumes/{resume_id}", headers=auth_headers)
 
         assert updated.status_code == 200
         assert updated.json()["access_role"] == "editor"
         assert owner_view.json()["latex_content"] == "editor content"
+
+    async def test_editor_cannot_publish_owner_resume_to_public_portfolio(
+        self, client, db_session, auth_headers, auth_headers2
+    ) -> None:
+        resume_id, _ = await self._share_resume(
+            client, db_session, auth_headers, auth_headers2, "editor"
+        )
+
+        response = await client.put(
+            f"/resumes/{resume_id}",
+            headers=auth_headers2,
+            json={"portfolio_visible": True},
+        )
+
+        assert response.status_code == 403
 
     @pytest.mark.parametrize("role", ["commenter", "viewer"])
     async def test_read_only_collaborator_cannot_persist_document(
@@ -1104,10 +1121,35 @@ class TestCollabWebSocket:
             AsyncMock(return_value=None),
         ):
             with pytest.raises(WebSocketDisconnect) as exc:
-                with self._client().websocket_connect("/ws/collab/r1?ticket=spent") as ws:
-                    ws.receive_bytes()
+                client = self._client()
+                try:
+                    with client.websocket_connect(
+                        "/ws/collab/00000000-0000-0000-0000-000000000001?ticket=spent"
+                    ) as ws:
+                        ws.receive_bytes()
+                finally:
+                    client.close()
 
         assert exc.value.code == 4001
+
+    def test_malformed_resume_id_is_rejected_before_auth_or_database(self) -> None:
+        """Malformed UUID paths close cleanly without spending a ticket."""
+        from starlette.websockets import WebSocketDisconnect
+
+        consume_ticket = AsyncMock(return_value="ticket-user")
+        with patch("app.api.ws_routes._consume_ws_ticket", consume_ticket):
+            with pytest.raises(WebSocketDisconnect) as exc:
+                client = self._client()
+                try:
+                    with client.websocket_connect(
+                        "/ws/collab/not-a-uuid?ticket=fresh"
+                    ) as ws:
+                        ws.receive_bytes()
+                finally:
+                    client.close()
+
+        assert exc.value.code == 4004
+        consume_ticket.assert_not_awaited()
 
     def test_valid_ticket_reaches_document_authorization(self) -> None:
         """A valid ticket supplies identity, then normal resume ACLs apply."""
@@ -1126,8 +1168,14 @@ class TestCollabWebSocket:
             ),
         ):
             with pytest.raises(WebSocketDisconnect) as exc:
-                with self._client().websocket_connect("/ws/collab/r1?ticket=fresh") as ws:
-                    ws.receive_bytes()
+                client = self._client()
+                try:
+                    with client.websocket_connect(
+                        "/ws/collab/00000000-0000-0000-0000-000000000001?ticket=fresh"
+                    ) as ws:
+                        ws.receive_bytes()
+                finally:
+                    client.close()
 
         # Got past auth (4001) and was rejected by the resume lookup instead.
         assert exc.value.code == 4004
@@ -1135,11 +1183,13 @@ class TestCollabWebSocket:
     def test_viewer_document_update_is_refused(self) -> None:
         """H1: a collaborator invited as viewer cannot mutate the shared doc."""
         resume = MagicMock()
-        resume.id = "r-viewer"
+        resume.id = "00000000-0000-0000-0000-000000000002"
         resume.user_id = "alice"
         collab = MagicMock()
         collab.role = "viewer"
-        db = self._db_returning(resume, collab)
+        # Resume lookup, collaborator role lookup, authenticated User.name
+        # lookup (chat display identity).
+        db = self._db_returning(resume, collab, None)
 
         mock_redis = AsyncMock()
         mock_redis.lrange.return_value = []
@@ -1162,11 +1212,15 @@ class TestCollabWebSocket:
                 AsyncMock(return_value=None),
             ),
         ):
-            with self._client().websocket_connect(
-                "/ws/collab/r-viewer?ticket=viewer-ticket"
-            ) as ws:
-                ws.send_bytes(_make_sync_update(b"\x01\x02\x03"))
-                notice = ws.receive_bytes()
+            client = self._client()
+            try:
+                with client.websocket_connect(
+                    "/ws/collab/00000000-0000-0000-0000-000000000002?ticket=viewer-ticket"
+                ) as ws:
+                    ws.send_bytes(_make_sync_update(b"\x01\x02\x03"))
+                    notice = ws.receive_bytes()
+            finally:
+                client.close()
 
         assert notice[0] == MSG_PERMISSION_DENIED
         payload, _ = _decode_varbuffer(notice, 1)
@@ -1177,11 +1231,13 @@ class TestCollabWebSocket:
     def test_editor_document_update_is_accepted(self) -> None:
         """The same frame from an editor is persisted and fanned out."""
         resume = MagicMock()
-        resume.id = "r-editor"
+        resume.id = "00000000-0000-0000-0000-000000000003"
         resume.user_id = "alice"
         collab = MagicMock()
         collab.role = "editor"
-        db = self._db_returning(resume, collab)
+        # Resume lookup, collaborator role lookup, authenticated User.name
+        # lookup (chat display identity).
+        db = self._db_returning(resume, collab, None)
 
         mock_redis = AsyncMock()
         mock_redis.lrange.return_value = []
@@ -1204,13 +1260,17 @@ class TestCollabWebSocket:
                 AsyncMock(return_value=None),
             ),
         ):
-            with self._client().websocket_connect(
-                "/ws/collab/r-editor?ticket=editor-ticket"
-            ) as ws:
-                ws.send_bytes(_make_sync_update(b"\x01\x02\x03"))
-                ws.send_bytes(_make_sync_step1())
-                # SYNC_STEP1 is answered once the update above has been handled.
-                reply = ws.receive_bytes()
+            client = self._client()
+            try:
+                with client.websocket_connect(
+                    "/ws/collab/00000000-0000-0000-0000-000000000003?ticket=editor-ticket"
+                ) as ws:
+                    ws.send_bytes(_make_sync_update(b"\x01\x02\x03"))
+                    ws.send_bytes(_make_sync_step1())
+                    # SYNC_STEP1 is answered once the update above has been handled.
+                    reply = ws.receive_bytes()
+            finally:
+                client.close()
 
         assert reply[0] == MSG_SYNC
         mock_redis.rpush.assert_called_once()
