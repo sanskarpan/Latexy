@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'node:events'
 
 vi.mock('ws', () => {
+  // Vitest 4 deliberately preserves constructor semantics: a mock used with
+  // `new` must wrap a real function/class implementation. The former arrow
+  // factory worked in Vitest 2 but is not constructable and left asynchronous
+  // socket-open failures outside the assertions after the security upgrade.
   const MockWSClass = class extends EventEmitter {
     readyState = 1
     send = vi.fn()
@@ -11,8 +15,10 @@ vi.mock('ws', () => {
     static CONNECTING = 0
     static CLOSED = 3
   }
-  const mockFactory = vi.fn(() => new MockWSClass())
-  // ws exposes WebSocket on its default export (same as the factory)
+  const mockFactory = vi.fn(function MockWebSocketFactory() {
+    return new MockWSClass()
+  })
+  // ws exposes WebSocket on its default export (same as the constructor).
   Object.assign(mockFactory, { WebSocket: MockWSClass, OPEN: 1, CONNECTING: 0, CLOSED: 3 })
   return {
     default: mockFactory,
