@@ -7,9 +7,45 @@ const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const test = require('node:test')
 
-const { renderCv, sameOriginUrl, validatedApiUrl, workspacePath } = require('../index.js')
+const { readLatexSource, renderCv, sameOriginUrl, validatedApiUrl, workspacePath } = require('../index.js')
 
 const JOB_ID = 'b5e2f326-618b-4c43-9451-0272fb610da2'
+
+test('source metadata and bounded content use one descriptor, even if it grows', async () => {
+  let closes = 0
+  let reads = 0
+  const handle = {
+    stat: async () => ({ isFile: () => true, size: 1 }),
+    read: async (buffer, offset, length, position) => {
+      assert.equal(position, offset)
+      reads += 1
+      buffer.fill('x', offset, offset + length)
+      return { bytesRead: length }
+    },
+    close: async () => { closes += 1 },
+  }
+  await assert.rejects(readLatexSource('/replaced-path', async () => handle), /500,000-byte limit/)
+  assert.equal(reads, 1)
+  assert.equal(closes, 1)
+})
+
+test('source reads tolerate partial reads and close rejected descriptors', async () => {
+  const data = Buffer.from('source')
+  let closes = 0
+  const handle = {
+    stat: async () => ({ isFile: () => true, size: data.length }),
+    read: async (buffer, offset, _length, position) => {
+      const bytesRead = data.copy(buffer, offset, position, position + 2)
+      return { bytesRead }
+    },
+    close: async () => { closes += 1 },
+  }
+  assert.equal(await readLatexSource('/source', async () => handle), 'source')
+  await assert.rejects(readLatexSource('/directory', async () => ({
+    ...handle, stat: async () => ({ isFile: () => false }),
+  })), /regular file/)
+  assert.equal(closes, 2)
+})
 
 test('validates API transport and workspace boundaries', () => {
   assert.equal(validatedApiUrl('https://api.example.test/base/').href, 'https://api.example.test/base')
