@@ -19,4 +19,3 @@ export default function LocaleSwitcher({ compact = false }: { compact?: boolean 
     </label>
   )
 }
-
