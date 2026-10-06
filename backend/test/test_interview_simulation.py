@@ -255,4 +255,3 @@ class TestInterviewSimulation:
                 },
             )
         assert response.status_code == 503
-
