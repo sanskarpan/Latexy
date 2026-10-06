@@ -4,6 +4,7 @@ import type { Message } from '../stores/messages.js'
 import { ToolUseCard } from './ToolUseCard.js'
 import { LogStreamCard } from './LogStreamCard.js'
 import { CompileResultCard } from './CompileResultCard.js'
+import { brandMark, theme } from '../lib/theme.js'
 
 interface Props {
   message: Message
@@ -24,7 +25,7 @@ function UserRow({ message }: Props): React.ReactElement {
 function AssistantRow({ message }: Props): React.ReactElement {
   return (
     <Box paddingX={2} marginY={1} gap={1}>
-      <Text bold color="cyan">⬡  </Text>
+      <Text bold color={theme.brand}>{brandMark}  </Text>
       <Text wrap="wrap">
         {message.content}
         {message.streaming === true && <Text color="cyan">▌</Text>}

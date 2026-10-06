@@ -83,7 +83,7 @@ export default function TenantAdminPage() {
   // Branding form state
   const [name, setName] = useState('')
   const [logoUrl, setLogoUrl] = useState('')
-  const [primaryColor, setPrimaryColor] = useState('#6d28d9')
+  const [primaryColor, setPrimaryColor] = useState('#19375d')
   const [customDomain, setCustomDomain] = useState('')
 
   // Create-tenant form
@@ -130,7 +130,7 @@ export default function TenantAdminPage() {
     setSelected(tenant)
     setName(tenant.name)
     setLogoUrl(tenant.logo_url ?? '')
-    setPrimaryColor(tenant.primary_color ?? '#6d28d9')
+    setPrimaryColor(tenant.primary_color ?? '#19375d')
     setCustomDomain(tenant.custom_domain ?? '')
     setDnsInfo(null)
     setMembers([])

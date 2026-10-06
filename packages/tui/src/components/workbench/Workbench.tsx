@@ -7,7 +7,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Box, Text, useInput } from 'ink'
 import { useStore } from '@nanostores/react'
-import { theme } from '../../lib/theme.js'
+import { brandMark, theme } from '../../lib/theme.js'
 import { COLLECTIONS, fetchCollectionCounts, fetchDockJobs, fetchResumes } from '../../lib/workbench-data.js'
 import {
   $workbench,
@@ -84,7 +84,7 @@ export function Workbench(): React.ReactElement {
   const items = s.collectionKey === 'resumes' ? filteredResumes(s) : []
   const collection = COLLECTIONS[s.cursor[0]]?.label ?? 'workspace'
   const selected = items[s.cursor[1]]
-  const crumb = ['⬡ latexy', collection, selected ? truncate(selected.title, 24) : '']
+  const crumb = [`${brandMark} latexy`, collection, selected ? truncate(selected.title, 24) : '']
     .filter(Boolean)
     .join('  ▸  ')
 

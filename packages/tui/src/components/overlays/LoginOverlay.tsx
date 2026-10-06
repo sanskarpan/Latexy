@@ -9,6 +9,7 @@ import { addMessage } from '../../stores/messages.js'
 import { wsClient } from '../../lib/ws-client.js'
 import { $ui } from '../../stores/ui.js'
 import { useOverlaySize } from '../../lib/overlay-size.js'
+import { brandMark, theme } from '../../lib/theme.js'
 
 type Step = 'email' | 'password' | 'loading' | 'error'
 
@@ -96,13 +97,13 @@ export function LoginOverlay(): React.ReactElement {
   return (
     <Box
       borderStyle="round"
-      borderColor="cyan"
+      borderColor={theme.border}
       padding={boxWidth < 44 ? 1 : 2}
       width={boxWidth}
       flexDirection="column"
     >
       <Box gap={1} marginBottom={1}>
-        <Text bold color="cyan">⬡</Text>
+        <Text bold color={theme.brand}>{brandMark}</Text>
         <Text bold>Sign in to Latexy</Text>
       </Box>
       <Text dimColor>Enter your credentials to continue</Text>

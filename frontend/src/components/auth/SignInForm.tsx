@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { supportsPasskeys } from '@/lib/passkey-security'
 import { useI18n } from '@/components/I18nProvider'
+import { BrandLogo } from '@/components/brand/BrandLogo'
 
 const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === 'true'
 const GITHUB_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GITHUB_ENABLED === 'true'
@@ -232,7 +233,7 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
   return (
     <div className="mx-auto w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)] sm:p-8">
       <div className="mb-8 text-center">
-        <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Latexy</p>
+        <p className="text-fg-3"><BrandLogo small /></p>
         <h1 className="mt-3 font-display text-3xl font-semibold tracking-[-0.02em] text-fg">
           {t('auth.welcomeBack')}
         </h1>

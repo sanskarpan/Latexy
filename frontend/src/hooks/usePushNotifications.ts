@@ -27,7 +27,7 @@ export function usePushNotifications(enabled?: boolean) {
 
     const n = new Notification(title, {
       body,
-      icon: '/favicon.ico',
+      icon: '/icons/icon-192.png',
       tag: 'latexy-job',
     })
     if (onClick) {

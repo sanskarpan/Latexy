@@ -3,7 +3,7 @@ description: Compile a checked-in LaTeX CV through the Latexy developer API and 
 author: Latexy
 branding:
   icon: file-text
-  color: purple
+  color: blue
 inputs:
   api-key:
     description: Latexy developer API key with compile and export scopes. Store it as a GitHub Actions secret.

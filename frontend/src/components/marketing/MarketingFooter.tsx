@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { BrandLogo } from '@/components/brand/BrandLogo'
 
 export default function MarketingFooter() {
   const pathname = usePathname()
@@ -21,7 +22,7 @@ export default function MarketingFooter() {
       <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="font-display text-lg font-semibold text-fg">Latexy</p>
+            <p className="text-fg"><BrandLogo small /></p>
             <p className="mt-0.5 font-body text-sm text-fg-2">Résumés, typeset — precision for modern applicants.</p>
           </div>
           <nav className="flex flex-wrap items-center gap-5 font-ui text-sm text-fg-2">

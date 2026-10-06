@@ -4,6 +4,7 @@ import { useStore } from '@nanostores/react'
 import { $messages } from '../stores/messages.js'
 import { MessageRow } from './MessageRow.js'
 import type { Message } from '../stores/messages.js'
+import { brandMark, theme } from '../lib/theme.js'
 
 declare const __LATEXY_VERSION__: string
 const VERSION: string = __LATEXY_VERSION__
@@ -13,14 +14,14 @@ function WelcomeBanner(): React.ReactElement {
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor="cyan"
+      borderColor={theme.border}
       padding={2}
       alignSelf="center"
       marginY={1}
     >
       <Box gap={1} marginBottom={1}>
-        <Text bold color="cyan">⬡</Text>
-        <Text bold color="cyan">Latexy</Text>
+        <Text bold color={theme.brand}>{brandMark}</Text>
+        <Text bold color={theme.brand}>Latexy</Text>
         <Text dimColor>v{VERSION}</Text>
       </Box>
       <Text>LaTeX resume compilation in your terminal</Text>
