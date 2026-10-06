@@ -13,6 +13,29 @@ export interface CitationPreview {
   year?: string
 }
 
+/**
+ * Wrap untrusted text in a Markdown inline code span without interpreting
+ * backslashes or colliding with backtick runs in the value.
+ */
+export function markdownCodeSpan(value: string): string {
+  // CommonMark cannot keep a blank paragraph inside an inline span. Normalize
+  // line endings before wrapping so they cannot expose Markdown outside it.
+  value = value.replace(/\r\n?|\n/g, ' ')
+  let longestBacktickRun = 0
+  let run = 0
+  for (const char of value) {
+    run = char === '`' ? run + 1 : 0
+    longestBacktickRun = Math.max(longestBacktickRun, run)
+  }
+  const delimiterLength = Math.max(longestBacktickRun + 1, value.startsWith('`') || value.endsWith('`') ? 2 : 1)
+  const delimiter = '`'.repeat(delimiterLength)
+  const needsBoundaryPadding = !/^\s+$/.test(value) && (
+    value.startsWith(' ') || value.endsWith(' ') || value.startsWith('`') || value.endsWith('`')
+  )
+  const body = needsBoundaryPadding ? ` ${value} ` : value
+  return `${delimiter}${body}${delimiter}`
+}
+
 function blank(value: string): string {
   return value.replace(/[^\n]/g, ' ')
 }
