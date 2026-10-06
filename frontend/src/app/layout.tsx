@@ -14,12 +14,19 @@ import AestheticController from '@/components/theme/AestheticController'
 import { Toaster } from 'sonner'
 import { FeatureFlagsProvider } from '@/contexts/FeatureFlagsContext'
 import { EntitlementsProvider } from '@/contexts/EntitlementsContext'
+import { headers } from 'next/headers'
+import { I18nProvider } from '@/components/I18nProvider'
+import { normalizeUiLocale } from '@/lib/i18n'
+import ReferralCapture from '@/components/ReferralCapture'
 
 export const metadata: Metadata = {
   title: 'Latexy | Precision Resume Intelligence',
-  description: 'Compile, optimize, and score LaTeX resumes with enterprise-grade speed and ATS precision.',
+  description: 'Compile, improve, and evaluate LaTeX resumes with fast typesetting and transparent document checks.',
   keywords: 'LaTeX, ATS, resume optimization, AI, job applications',
   manifest: '/manifest.json',
+  icons: {
+    apple: '/icons/icon-192.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -43,19 +50,24 @@ var r=document.documentElement;
 var m=document.cookie.match(/(?:^|; )latexy-theme=(light|dark)/);
 var mode=m?m[1]:(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
 r.setAttribute('data-mode',mode);
+var c=document.cookie.match(/(?:^|; )latexy-contrast=(normal|high)/);
+var contrast=c?c[1]:(window.matchMedia&&window.matchMedia('(prefers-contrast: more)').matches?'high':'normal');
+r.setAttribute('data-contrast',contrast);
 var p=location.pathname;
 var TS=['/','/platform','/pricing','/templates','/resources','/faq','/updates','/developer','/login','/signup','/forgot-password','/reset-password','/verify-email'];
 var aes=(TS.indexOf(p)>=0||p.indexOf('/u/')===0||p.indexOf('/r/')===0)?'typeset':'compiler';
 r.setAttribute('data-aesthetic',aes);
 }catch(e){}})();`
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const requestHeaders = await headers()
+  const initialLocale = normalizeUiLocale(requestHeaders.get('x-latexy-ui-locale'))
   return (
-    <html lang="en" data-aesthetic="typeset" className={fontVariables} suppressHydrationWarning>
+    <html lang={initialLocale} data-aesthetic="typeset" className={fontVariables} suppressHydrationWarning>
       <body className="font-sans antialiased">
         <a
           href="#main-content"
@@ -64,6 +76,7 @@ export default function RootLayout({
           Skip to content
         </a>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+        <I18nProvider initialLocale={initialLocale}>
         <ThemeProvider>
         <AestheticController />
         <FeatureFlagsProvider>
@@ -71,6 +84,7 @@ export default function RootLayout({
         <NotificationProvider>
           <WebSocketProvider>
             <AuthSync />
+            <ReferralCapture />
             <TenantThemeSync />
             <WebVitalsReporter />
             <div className="min-h-screen flex flex-col">
@@ -97,6 +111,7 @@ export default function RootLayout({
         </EntitlementsProvider>
         </FeatureFlagsProvider>
         </ThemeProvider>
+        </I18nProvider>
       </body>
     </html>
   )
