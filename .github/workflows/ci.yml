@@ -2,14 +2,15 @@ name: CI
 
 on:
   push:
-    # chore/**, test/** and ci/** are here because a branch matching none of these
-    # gets NO CI at all: the pull_request trigger below only fires for PRs into
-    # main or develop, so a stacked PR targeting another branch is unchecked in
-    # both directions. That is how the Ink 7 upgrade branch ended up with no
-    # backend, frontend or TUI job running against it.
-    branches: [main, develop, "feature/**", "fix/**", "chore/**", "test/**", "ci/**"]
+    # Run the canonical checks for every branch. Pull-request target filters are
+    # intentionally omitted below as well: stacked and release PRs must receive
+    # the same backend/frontend/TUI coverage as main-bound PRs.
   pull_request:
-    branches: [main, develop]
+
+# Every job is read-only. Keep the implicit GITHUB_TOKEN least-privileged so a
+# compromised build/test dependency cannot write repository contents or metadata.
+permissions:
+  contents: read
 
 jobs:
   # ── Security and privacy guards ─────────────────────────────────────────────
@@ -21,7 +22,7 @@ jobs:
     name: Privacy Guard (no session recording)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Assert no session-recording SDKs in shipped frontend code
         run: bash scripts/ci/no-session-recording.sh
       - name: Assert documentation contains no plaintext account credentials
@@ -37,13 +38,26 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
           activate-environment: true
-      - name: Install linting deps
-        run: uv pip install ruff
+      - name: Verify generated Python locks are fresh
+        run: |
+          set -euo pipefail
+          lock_tmp="$(mktemp -d)"
+          trap 'rm -rf "$lock_tmp"' EXIT
+          uv pip compile --python-version 3.12 --generate-hashes \
+            --custom-compile-command 'uv pip compile --python-version 3.12 --generate-hashes requirements.txt -o requirements.lock' \
+            requirements.txt -o "$lock_tmp/requirements.lock"
+          uv pip compile --python-version 3.12 --generate-hashes \
+            --custom-compile-command 'uv pip compile --python-version 3.12 --generate-hashes requirements-dev.txt -o requirements-dev.lock' \
+            requirements-dev.txt -o "$lock_tmp/requirements-dev.lock"
+          diff -u requirements.lock "$lock_tmp/requirements.lock"
+          diff -u requirements-dev.lock "$lock_tmp/requirements-dev.lock"
+      - name: Install the hash-verified development lock
+        run: uv pip sync --require-hashes --verify-hashes requirements-dev.lock
       - name: Run ruff
         run: uv run ruff check app/ test/
 
@@ -64,22 +78,38 @@ jobs:
       # test_importing_the_app_never_raises_when_optional_providers_are_unset
       # re-imports app.main in a subprocess with every optional provider blank, so
       # only the hard-required secrets are supplied here.
-      JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY || 'ci-jwt-secret-key-00000000000000000000000000000000' }}
-      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'ci-better-auth-secret-00000000000000000000000000000000' }}
-      API_KEY_ENCRYPTION_KEY: ${{ secrets.CI_API_KEY_ENCRYPTION_KEY || 'MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=' }}
+      JWT_SECRET_KEY: ci-jwt-secret-key-00000000000000000000000000000000
+      BETTER_AUTH_SECRET: ci-better-auth-secret-00000000000000000000000000000000
+      API_KEY_ENCRYPTION_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
       DEBUG: "true"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
           activate-environment: true
           enable-cache: true
-          cache-dependency-glob: "backend/requirements-dev.txt"
-      - name: Install dependencies
-        run: uv pip install -r requirements-dev.txt
+          cache-dependency-glob: "backend/requirements-dev.lock"
+      - name: Install hash-verified development dependencies
+        run: uv pip sync --require-hashes --verify-hashes requirements-dev.lock
       - name: Run deployment-parity guards
         run: uv run pytest test/test_modal_deployment_parity.py -v --tb=short
+
+  template-pdf-contract:
+    name: Template PDF Extraction Contract
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install the production-default compiler and extraction tools
+        run: >-
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          texlive-latex-extra texlive-fonts-recommended cm-super
+          texlive-science texlive-luatex fonts-lohit-deva poppler-utils
+      - name: Verify every seeded template's extracted PDF contract
+        run: bash scripts/verify-template-extraction.sh
 
   backend-test:
     name: Backend Tests
@@ -116,28 +146,30 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/latexy_test
       REDIS_URL: redis://localhost:6379/0
+      TEST_REDIS_URL: redis://localhost:6379/15
+      TEST_REDIS_CACHE_URL: redis://localhost:6379/14
       CELERY_BROKER_URL: redis://localhost:6379/0
       CELERY_RESULT_BACKEND: redis://localhost:6379/0
       SKIP_ENV_VALIDATION: "true"
-      # Non-secret CI-only fallbacks — real secrets override via repo secrets
-      JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY || 'ci-jwt-secret-key-00000000000000000000000000000000' }}
-      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'ci-better-auth-secret-00000000000000000000000000000000' }}
+      # Deterministic CI-only values. Ordinary PR jobs must not receive repository secrets.
+      JWT_SECRET_KEY: ci-jwt-secret-key-00000000000000000000000000000000
+      BETTER_AUTH_SECRET: ci-better-auth-secret-00000000000000000000000000000000
       # API_KEY_ENCRYPTION_KEY must be a valid Fernet key (32 url-safe base64 bytes)
-      API_KEY_ENCRYPTION_KEY: ${{ secrets.CI_API_KEY_ENCRYPTION_KEY || 'MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=' }}
+      API_KEY_ENCRYPTION_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
       OPENAI_API_KEY: ""
       DEBUG: "true"
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
           activate-environment: true
           enable-cache: true
-          cache-dependency-glob: "backend/requirements-dev.txt"
+          cache-dependency-glob: "backend/requirements-dev.lock"
 
-      - name: Install dependencies
-        run: uv pip install -r requirements-dev.txt
+      - name: Install hash-verified development dependencies
+        run: uv pip sync --require-hashes --verify-hashes requirements-dev.lock
 
       - name: Run database migrations
         run: uv run alembic upgrade head
@@ -157,19 +189,28 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
         with:
-          version: 10
-      - uses: actions/setup-node@v7
+          version: 10.10.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Audit complete JavaScript dependency graph
+        # Include development tooling: test/build dependencies execute trusted
+        # repository code in CI and a critical Vitest advisory was previously
+        # invisible to the production-only audit.
+        run: |
+          node --test ../scripts/ci/dependency-audit.test.mjs
+          node ../scripts/ci/audit-dependencies.mjs
       - name: Run ESLint
         run: pnpm lint
+      - name: Run frontend unit regressions
+        run: pnpm test:unit
 
   frontend-build:
     name: Frontend Build
@@ -181,16 +222,18 @@ jobs:
       NEXT_PUBLIC_APP_URL: "http://localhost:5180"
       NEXT_PUBLIC_API_URL: "http://localhost:8030"
       NEXT_PUBLIC_WS_URL: "ws://localhost:8030"
-      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'ci-better-auth-secret-00000000000000000000000000000000' }}
-      BETTER_AUTH_URL: "http://localhost:5180"
-      DATABASE_URL: ${{ secrets.CI_DATABASE_URL || 'postgresql://postgres@localhost:5432/latexy_test' }}
+      BETTER_AUTH_SECRET: ci-better-auth-secret-00000000000000000000000000000000
+      # next build runs in production mode; keep WebAuthn's HTTPS invariant.
+      # This is build-only metadata, not a live auth listener or external call.
+      BETTER_AUTH_URL: "https://localhost:5180"
+      DATABASE_URL: postgresql://postgres@localhost:5432/latexy_test
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
         with:
-          version: 10
-      - uses: actions/setup-node@v7
+          version: 10.10.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
           cache: pnpm
@@ -199,6 +242,53 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm build
+
+  browser-extension:
+    name: Browser Extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
+        with:
+          version: 10.10.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test extraction and explicit autofill
+        run: pnpm --filter @latexy/browser-extension test
+      - name: Validate the Manifest V3 package
+        run: pnpm --filter @latexy/browser-extension check
+      - name: Build unpacked-install archive
+        working-directory: packages/browser-extension
+        run: >-
+          zip -r ../../latexy-browser-extension.zip
+          manifest.json extraction.js autofill.js bridge.js popup.html popup.js
+          options.html options.js extension.css README.md
+      - name: Upload extension archive
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: latexy-browser-extension
+          path: latexy-browser-extension.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  render-cv-action:
+    name: Reusable Render CV Action
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          # action.yml runs on GitHub's current JavaScript-action runtime.
+          node-version: "24"
+      - name: Validate the dependency-free action entrypoint
+        run: node --check actions/render-cv/index.js
+      - name: Test API, credential, path, and atomic-output boundaries
+        run: node --test actions/render-cv/test/*.test.cjs
 
   cross-browser-quality:
     name: Cross-Browser Quality
@@ -210,16 +300,16 @@ jobs:
       NEXT_PUBLIC_APP_URL: "http://localhost:5182"
       NEXT_PUBLIC_API_URL: "http://localhost:8030"
       NEXT_PUBLIC_WS_URL: "ws://localhost:5182"
-      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'ci-better-auth-secret-00000000000000000000000000000000' }}
+      BETTER_AUTH_SECRET: ci-better-auth-secret-00000000000000000000000000000000
       BETTER_AUTH_URL: "http://localhost:5182"
-      DATABASE_URL: ${{ secrets.CI_DATABASE_URL || 'postgresql://postgres@localhost:5432/latexy_test' }}
+      DATABASE_URL: postgresql://postgres@localhost:5432/latexy_test
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
         with:
-          version: 10
-      - uses: actions/setup-node@v7
+          version: 10.10.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
           cache: pnpm
@@ -232,7 +322,7 @@ jobs:
         run: pnpm test:quality
       - name: Upload browser quality evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-quality-report
           path: |
@@ -258,11 +348,11 @@ jobs:
       # show up as a job failure.
       XDG_CONFIG_HOME: /tmp/latexy-ci-xdg
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
         with:
-          version: 10
-      - uses: actions/setup-node@v7
+          version: 10.10.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           # packages/tui declares engines.node >=22; frontend jobs also pin 22.
           node-version: "22"
@@ -319,32 +409,32 @@ jobs:
       REDIS_CACHE_URL: redis://localhost:6379/1
       CELERY_BROKER_URL: redis://localhost:6379/0
       CELERY_RESULT_BACKEND: redis://localhost:6379/0
-      JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY || 'ci-jwt-secret-key-00000000000000000000000000000000' }}
-      BETTER_AUTH_SECRET: ${{ secrets.CI_BETTER_AUTH_SECRET || 'ci-better-auth-secret-00000000000000000000000000000000' }}
-      API_KEY_ENCRYPTION_KEY: ${{ secrets.CI_API_KEY_ENCRYPTION_KEY || 'MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=' }}
+      JWT_SECRET_KEY: ci-jwt-secret-key-00000000000000000000000000000000
+      BETTER_AUTH_SECRET: ci-better-auth-secret-00000000000000000000000000000000
+      API_KEY_ENCRYPTION_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
       BILLING_MODE: disabled
       ENVIRONMENT: staging
       NEXT_TELEMETRY_DISABLED: "1"
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
           activate-environment: true
           enable-cache: true
-          cache-dependency-glob: "backend/requirements-dev.txt"
+          cache-dependency-glob: "backend/requirements-dev.lock"
 
-      - name: Install backend dependencies
+      - name: Install hash-verified backend dependencies
         working-directory: backend
-        run: uv pip install -r requirements-dev.txt
+        run: uv pip sync --require-hashes --verify-hashes requirements-dev.lock
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
         with:
-          version: 10
+          version: 10.10.0
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "22"
           cache: pnpm
@@ -366,7 +456,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Validate observability stack
         run: bash scripts/ci/observability-smoke.sh
