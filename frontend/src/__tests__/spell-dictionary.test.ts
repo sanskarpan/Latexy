@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   normalizedDictionary,
   normalizeDictionaryWord,
+  personalDictionaryStorageKey,
   wordAtIssue,
 } from '@/hooks/useSpellCheck'
 
@@ -23,6 +24,17 @@ describe('personal spell dictionary', () => {
     const dictionary = normalizedDictionary(values)
     expect(dictionary.size).toBe(500)
     expect(dictionary.has('openai')).toBe(true)
+  })
+
+  it('keeps account caches separate and makes the legacy key anonymous-only', () => {
+    expect(personalDictionaryStorageKey({ ownerId: 'user-a', authToken: 'token-a', confirmed: true }))
+      .toBe('latexy_spell_dictionary:account:user-a')
+    expect(personalDictionaryStorageKey({ ownerId: 'user-b', authToken: 'token-b', confirmed: true }))
+      .toBe('latexy_spell_dictionary:account:user-b')
+    expect(personalDictionaryStorageKey({ ownerId: null, authToken: null, confirmed: true }))
+      .toBe('latexy_spell_dictionary:anonymous')
+    expect(personalDictionaryStorageKey({ ownerId: 'user-a', authToken: 'token-a', confirmed: false }))
+      .toBe('unconfirmed')
   })
 
   it('resolves a LanguageTool range against the current line', () => {
