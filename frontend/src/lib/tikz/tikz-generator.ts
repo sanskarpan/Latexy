@@ -42,17 +42,22 @@ export interface FlowEdge {
 
 /** Escape special LaTeX characters in user-provided strings. */
 function esc(s: string): string {
-  return s
-    .replace(/\\/g, '\\textbackslash{}')
-    .replace(/&/g, '\\&')
-    .replace(/%/g, '\\%')
-    .replace(/\$/g, '\\$')
-    .replace(/#/g, '\\#')
-    .replace(/_/g, '\\_')
-    .replace(/\{/g, '\\{')
-    .replace(/\}/g, '\\}')
-    .replace(/~/g, '\\textasciitilde{}')
-    .replace(/\^/g, '\\textasciicircum{}')
+  const replacements: Record<string, string> = {
+    '\\': '\\textbackslash{}',
+    '&': '\\&',
+    '%': '\\%',
+    '$': '\\$',
+    '#': '\\#',
+    '_': '\\_',
+    '{': '\\{',
+    '}': '\\}',
+    '~': '\\textasciitilde{}',
+    '^': '\\textasciicircum{}',
+  }
+  // A single pass is important: chained replacements re-escaped braces that
+  // were introduced by the backslash replacement, corrupting the generated
+  // LaTeX and leaving sanitization semantics dependent on replacement order.
+  return s.replace(/[\\&%$#_{}~^]/g, character => replacements[character])
 }
 
 // ── 84B · Timeline Generator ──────────────────────────────────────────────────
@@ -169,15 +174,26 @@ export function generateFlowchart(nodes: FlowNode[], edges: FlowEdge[]): string 
     ']',
   ]
 
-  const nodeLines = nodes.map((n) => {
-    const style = SHAPE_STYLE[n.shape] ?? SHAPE_STYLE.rect
-    return `  \\node[${style}] (${n.id}) at (${n.x.toFixed(2)}, ${n.y.toFixed(2)}) {${esc(n.label)}};`
+  // TikZ node identifiers are syntax, not text, so LaTeX escaping is not the
+  // right protection. Replace external IDs with deterministic internal names
+  // and use the same mapping for edges.
+  const safeIds = new Map<string, string>()
+  nodes.forEach((node, index) => {
+    if (!safeIds.has(node.id)) safeIds.set(node.id, `latexy-node-${index}`)
   })
 
-  const edgeLines = edges.map((e) => {
+  const nodeLines = nodes.map((n, index) => {
+    const style = SHAPE_STYLE[n.shape] ?? SHAPE_STYLE.rect
+    return `  \\node[${style}] (latexy-node-${index}) at (${n.x.toFixed(2)}, ${n.y.toFixed(2)}) {${esc(n.label)}};`
+  })
+
+  const edgeLines = edges.flatMap((e) => {
+    const from = safeIds.get(e.from)
+    const to = safeIds.get(e.to)
+    if (!from || !to) return []
     const arrow = e.bidirectional ? '<->' : '->'
     const labelPart = e.label ? ` node[midway, above, font=\\tiny] {${esc(e.label)}}` : ''
-    return `  \\draw[${arrow}] (${e.from}) --${labelPart} (${e.to});`
+    return [`  \\draw[${arrow}] (${from}) --${labelPart} (${to});`]
   })
 
   return [...header, ...nodeLines, ...edgeLines, '\\end{tikzpicture}'].join('\n')
