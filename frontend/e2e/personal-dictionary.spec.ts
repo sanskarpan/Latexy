@@ -28,7 +28,7 @@ async function mockSettings(page: Page) {
 
 test('personal dictionary merges devices and supports account-synced add/remove', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('latexy_spell_dictionary', JSON.stringify(['LocalTerm']))
+    localStorage.setItem('latexy_spell_dictionary:account:user-1', JSON.stringify(['LocalTerm']))
   })
   await mockSettings(page)
 
