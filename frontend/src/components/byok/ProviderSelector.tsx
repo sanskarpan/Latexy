@@ -199,7 +199,9 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({
                   <div className="rounded-[var(--radius-md)] border border-accent bg-accent-soft p-3 text-xs">
                     <p className="font-semibold text-accent-strong">Using Default API Key</p>
                     <p className="mt-0.5 text-accent-strong">
-                      Add your own {provider.display_name} key above to skip usage limits.
+                      {provider.name === 'openai'
+                        ? 'Add your own OpenAI key above to use it throughout Latexy.'
+                        : `Add your own ${provider.display_name} key for the provider-specific BYOK generation API. The main editor currently uses OpenAI.`}
                     </p>
                   </div>
                 )}
