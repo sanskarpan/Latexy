@@ -789,6 +789,10 @@ export default function ResumeEditPage() {
   const autoFitIdentityRef = useRef<{ ownerId: string | null; resumeId: string; generation: number } | null>(null)
   const autoFitBaselineRef = useRef<string | null>(null)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  // The job whose successfully downloaded blob is currently rendered. This is
+  // intentionally separate from activePdfJobId, which is the in-flight fetch
+  // de-duplication marker.
+  const [renderedPdfJobId, setRenderedPdfJobId] = useState<string | null>(null)
   const [isOfflinePdf, setIsOfflinePdf] = useState(false)
   const [offlinePdfError, setOfflinePdfError] = useState<string | null>(null)
   const [documentType, setDocumentType] = useState<string>('resume')
@@ -1089,6 +1093,7 @@ export default function ResumeEditPage() {
       pdfUrlRef.current = null
       offlinePdfBlobRef.current = null
       setPdfUrl(null)
+      setRenderedPdfJobId(null)
       setIsOfflinePdf(false)
       setOfflinePdfLoaded(false)
     }
@@ -1306,12 +1311,13 @@ export default function ResumeEditPage() {
     else setSuggestionError(null)
   }, [handleAcceptSuggestion, handleCreateSuggestion, handleRejectSuggestion])
 
-  const setPreviewBlob = useCallback((blob: Blob, fromOffline = false) => {
+  const setPreviewBlob = useCallback((blob: Blob, fromOffline = false, renderedJobId: string | null = null) => {
     const nextUrl = URL.createObjectURL(blob)
     if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
     pdfUrlRef.current = nextUrl
     offlinePdfBlobRef.current = blob
     setPdfUrl(nextUrl)
+    setRenderedPdfJobId(fromOffline ? null : renderedJobId)
     setIsOfflinePdf(fromOffline)
     setOfflinePdfError(null)
   }, [])
@@ -1840,7 +1846,7 @@ export default function ResumeEditPage() {
       const generationAtStart = offlinePdfIdentityRef.current.generation
       apiClient.downloadPdf(pdfJobId).then((blob) => {
         if (!ownerAtStart || !isCurrentOfflinePdfIdentity(ownerAtStart, resumeId, generationAtStart) || activePdfJobId.current !== pdfJobId) return
-        setPreviewBlob(blob)
+        setPreviewBlob(blob, false, pdfJobId)
         // This is a successful response for the authenticated compile job tied
         // to this owned resume; failed/anonymous or stale responses never enter
         // the local cache.
@@ -2531,7 +2537,7 @@ export default function ResumeEditPage() {
     setSyncFromLine(null)
     setSyncFromRequestId((value) => value + 1)
     setSourceSyncRequestId((value) => value + 1)
-  }, [resumeId, sessionUserId, compileStream.pdfJobId, aiStream.pdfJobId])
+  }, [resumeId, sessionUserId, renderedPdfJobId])
 
   const handleCursorChange = useCallback((line: number) => {
     setCursorLine(line)
@@ -3988,7 +3994,7 @@ export default function ResumeEditPage() {
                 isOfflinePreview={isOfflinePdf}
                 offlineError={offlinePdfError}
                 onRetryOffline={retryOfflinePdf}
-                jobId={activePdfJobId.current}
+                jobId={renderedPdfJobId}
                 onSyncToSource={handleSyncToSource}
                 onPdfSelectionChange={setPdfSelection}
                 onSyncReadyChange={setPdfSyncReady}
