@@ -3,11 +3,10 @@ import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
 import { useOverlaySize } from '../../lib/overlay-size.js'
 import { useCtrlKeyGuard } from '../../lib/ctrl-key-guard.js'
-import { getApiClient } from '../../lib/api-client.js'
 import { closeOverlay } from '../../stores/overlay.js'
 import { writeConfig } from '../../lib/config.js'
 import { addMessage } from '../../stores/messages.js'
-import { RESUME_PAGE } from '../../tools/shared.js'
+import { listAllResumes } from '../../tools/shared.js'
 
 interface Resume {
   id: string
@@ -18,11 +17,6 @@ interface Resume {
   // not — `undefined === true` is simply always false.
   document_type?: string
   pinned?: boolean
-}
-
-interface ResumeListResponse {
-  resumes: Resume[]
-  total: number
 }
 
 interface ResumePickerProps {
@@ -41,20 +35,20 @@ export function ResumePicker({ archived, documentType }: ResumePickerProps): Rea
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   useEffect(() => {
-    const client = getApiClient()
-    const params = new URLSearchParams({ limit: String(RESUME_PAGE) })
-    if (archived === true) params.set('archived', 'true')
-    if (documentType != null) params.set('document_type', documentType)
-    client.get<ResumeListResponse>(`/resumes/?${params.toString()}`)
+    let alive = true
+    listAllResumes({ archived, documentType })
       .then(res => {
+        if (!alive) return
         setResumes(res.resumes)
         setTotal(res.total ?? res.resumes.length)
         setLoading(false)
       })
       .catch(err => {
+        if (!alive) return
         setErrorMsg(String(err))
         setLoading(false)
       })
+    return () => { alive = false }
   }, [archived, documentType])
 
   // Ctrl+L clears the transcript underneath; without this its letter lands in
@@ -101,9 +95,7 @@ export function ResumePicker({ archived, documentType }: ResumePickerProps): Rea
     <Box flexDirection="column" borderStyle="round" borderColor="blue" padding={1} width={boxWidth}>
       <Text bold color="cyan">
         {archived === true ? 'Archived Resumes' : 'Select Resume'}
-        {/* Showing a page of a longer list without saying so reads as "this is
-            everything you have". */}
-        {total > resumes.length ? ` — showing ${resumes.length} of ${total}` : ''}
+        {total > 0 ? ` — ${total}` : ''}
       </Text>
       <Box marginTop={1} gap={1}>
         <Text dimColor>Filter:</Text>
