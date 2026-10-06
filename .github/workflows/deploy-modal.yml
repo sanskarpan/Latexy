@@ -54,10 +54,24 @@ jobs:
             echo "Refusing to deploy $deploy_sha: it is not reachable from main" >&2
             exit 1
           fi
-          ci_runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${deploy_sha}&branch=main&status=completed&per_page=100")"
-          if ! jq -e --arg sha "$deploy_sha" \
-            'any(.workflow_runs[]?; .head_sha == $sha and .head_branch == "main" and .conclusion == "success")' \
-            <<<"$ci_runs" >/dev/null; then
+          ci_validated=false
+          for attempt in $(seq 1 6); do
+            ci_runs=""
+            if ci_runs="$(timeout --kill-after=5s 20s gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${deploy_sha}&branch=main&status=completed&per_page=100" 2>/dev/null)" \
+              && jq -e --arg sha "$deploy_sha" \
+                'type == "object" and (.workflow_runs | type) == "array" and
+                 any(.workflow_runs[]; type == "object" and .head_sha == $sha and
+                   .head_branch == "main" and .conclusion == "success")' \
+                <<<"$ci_runs" >/dev/null 2>/dev/null; then
+              ci_validated=true
+              break
+            fi
+            if [[ "$attempt" -lt 6 ]]; then
+              echo "Canonical CI lookup unavailable or result not yet visible (attempt ${attempt}/6); retrying in 5s" >&2
+              sleep 5
+            fi
+          done
+          if [[ "$ci_validated" != true ]]; then
             echo "Refusing to deploy $deploy_sha: no successful canonical CI run exists" >&2
             exit 1
           fi
