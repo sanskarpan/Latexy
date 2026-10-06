@@ -9,6 +9,7 @@ traceback is logged server-side with the request_id for correlation.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -75,14 +76,18 @@ def error_body(code: str, message: str, request_id: str | None, details: Any = N
 
 
 def _json_safe(value: Any) -> Any:
-    """Make validation details safe to serialize even for malformed Unicode.
+    """Make validation details safe for malformed Unicode and nonfinite numbers.
 
     JSON decoding can produce lone UTF-16 surrogate code points. They are
     correctly rejected by Pydantic, but including the raw input in a JSON error
     would make Starlette's response encoder raise another exception and turn a
     client validation error into a 500. Replace only invalid code points in the
     diagnostic payload; the request itself remains rejected.
+    Nonfinite numeric inputs are likewise rejected without letting their
+    diagnostic representation turn the intended validation response into a 500.
     """
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
     if isinstance(value, str):
         return value.encode("utf-8", errors="replace").decode("utf-8")
     if isinstance(value, list):
