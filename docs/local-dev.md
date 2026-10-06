@@ -53,7 +53,7 @@ frontend (Next.js) run as **local processes** with logs streamed to your termina
 | Process | How | Port |
 |---------|-----|------|
 | PostgreSQL | Docker (`latexy-postgres`) | 5434 (host) → 5432 (container) |
-| Redis | Docker (`latexy-redis`) | 6379 |
+| Redis | Docker (`latexy-redis`) | 6380 (host) → 6379 (container) |
 | MinIO | Docker (`latexy-minio`) | 9000 (API), 9091 (console) |
 | FastAPI (uvicorn) | Local, `--reload` | 8030 (slot 1) or 8031+ |
 | Celery worker | Local, 2 concurrency | — |
@@ -91,9 +91,91 @@ call is a no-op if `latexy-postgres` is already running.
 ### Prerequisites
 
 - Docker + Docker Compose
-- Python 3.12/3.13 with `pip install -r backend/requirements.txt` (inside `.venv`)
-- Node.js 22.x with `pnpm install` in `frontend/`
+- Python 3.12 with `pip install --require-hashes -r backend/requirements-dev.lock` (inside `.venv`)
+- Node.js 22.x with `pnpm install --frozen-lockfile` at the repository root
 - `.venv` or `venv` inside `backend/` (scripts auto-detect whichever exists)
+
+Python dependencies are split between the human-edited inputs
+`requirements.txt` (production) and `requirements-dev.txt` (development). The
+generated `requirements.lock` and `requirements-dev.lock` files pin every
+transitive dependency with hashes for Python 3.12. Install with the lock files;
+do not install the input files directly. Regenerate both locks after changing
+an input with:
+
+```bash
+cd backend
+uv pip compile --python-version 3.12 --generate-hashes requirements.txt -o requirements.lock
+uv pip compile --python-version 3.12 --generate-hashes requirements-dev.txt -o requirements-dev.lock
+```
+
+### Real local worker smoke checks
+
+For synthetic QA without outbound email, AI charges, or payment activity, start
+the local app with these explicit overrides (using the required Node 22 runtime):
+
+```bash
+OPENAI_API_KEY='' RESEND_API_KEY='' BILLING_MODE=disabled MINIO_BUCKET=latexy \
+  ./scripts/dev.sh app
+```
+
+After `/health` is ready, exercise the actual API, Celery, sandboxed TeX, Redis,
+and PDF download paths from a second terminal at the repository root:
+
+```bash
+backend/.venv/bin/python scripts/ci/local-job-smoke.py --engine pdflatex
+backend/.venv/bin/python scripts/ci/local-job-smoke.py --engine xelatex
+backend/.venv/bin/python scripts/ci/local-job-smoke.py --engine lualatex
+backend/.venv/bin/python scripts/ci/local-job-smoke.py --fixture hindi
+backend/.venv/bin/python scripts/ci/local-owned-job-smoke.py --confirm-isolated-local-run
+backend/.venv/bin/python scripts/ci/local-owned-job-smoke.py --confirm-isolated-local-run --include-jd
+```
+
+Run these sequentially; concurrent production builds and TeX jobs can exhaust
+the existing free-plan compile budget. `--timeout` bounds the smoke's polling
+window, not the server's plan limit. A timeout or failure is not a passing check.
+The Hindi fixture requires LuaLaTeX and uses the repository's actual template.
+
+The owned smoke creates a synthetic local account/resume and two jobs. It checks
+exact PostgreSQL ownership/history, the MinIO object and downloaded PDF hash,
+unauthenticated access denial, and cancelled compilation history. It also deletes
+only its freshly completed fixture job's four Redis transport keys (`meta`,
+`state`, `result`, `pdf`) on local port 6380, DB 0, then requires read-only
+database/storage recovery of the exact PDF without recreating those keys.
+It does not flush Redis or remove database/storage artifacts. Passwords and
+session cookies stay in memory. It uses only the standard local `latexy` database
+on port 5434 and the `latexy` bucket on local MinIO; it never inherits a remote
+database/storage URL. Synthetic records and artifacts retain the application's
+normal lifecycle rather than deleting account data behind the user's back.
+For other app slots, pass both loopback `--base-url` and `--frontend-url` with the
+same hostname so the real auth cookie reaches the backend.
+
+The optional `--include-jd` additionally submits a synthetic job-description
+analysis through the actual worker. It checks exact preservation of a long
+requirement in the durable result, expires only that fixture's four transport
+keys, and verifies authenticated recovery, anonymous denial, no PDF artifact,
+and no transport-key recreation. It does not call an AI provider or remove the
+synthetic database records. Use the disabled-provider startup above.
+
+Backend pytest uses `latexy_test` and separate Redis DBs 14/15. Serialize backend
+test processes, and do not overlap the full browser suite's real auth/database
+checks with pytest fixture resets. Small isolated browser tests that mock all
+backend traffic can run independently. Restart long-lived Celery workers after
+runtime changes; uvicorn reload alone does not update them.
+
+### Local transactional-email preview
+
+When `RESEND_API_KEY` is not configured, the frontend does not print
+verification or password-reset links to stdout. In development, the latest
+link is held only in process memory for ten minutes and can be consumed once
+from a same-origin request:
+
+```bash
+curl -H 'Origin: http://localhost:5180' \
+  http://localhost:5180/api/dev/email-preview
+```
+
+The endpoint is disabled in production, rejects cross-origin requests, returns
+`404` after the preview is consumed or expires, and never persists the link.
 
 ---
 
@@ -133,7 +215,7 @@ docker compose -p latexy-w2 logs -f   # follow all logs for slot 2
                     Shared (one instance — any dir can start it)
                     ┌──────────────────────┐
                     │  postgres  (5434)    │
-                    │  redis     (6379)    │
+                    │  redis     (6380)    │
                     │  minio     (9000)    │
                     └──────────┬───────────┘
                                │
@@ -202,8 +284,8 @@ Volumes are also slot-specific (`backend_temp_2`, `celery_beat_data_2`).
 
 | File | Purpose | Base image | Notes |
 |------|---------|------------|-------|
-| `backend/Dockerfile` | **Dev** | `python:3.13-slim` | Includes texlive, tesseract. Source mounted as volume for hot-reload. |
-| `backend/Dockerfile.prod` | **Production** | `python:3.11-slim` (multi-stage) | Builder stage for pip deps, production stage with texlive. Runs 4 uvicorn workers on port 8000. |
+| `backend/Dockerfile` | **Dev** | `python:3.12-slim` | Includes texlive, tesseract. Source mounted as volume for hot-reload. |
+| `backend/Dockerfile.prod` | **Production** | `python:3.12-slim` (multi-stage) | Builder stage installs the hash-verified production lock; the runtime stage includes texlive and runs 4 uvicorn workers on port 8030. |
 | `frontend/Dockerfile.dev` | **Dev** | `node:22-alpine` | pnpm, source mounted as volume. Accepts `PORT` env var. |
 | `frontend/Dockerfile.prod` | **Production** | `node:22-alpine` (multi-stage) | Standalone Next.js build with `dumb-init`. Runs on port 5180. |
 
@@ -212,13 +294,20 @@ Volumes are also slot-specific (`backend_temp_2`, `celery_beat_data_2`).
 `docker-compose.prod.yml` uses the `.prod` Dockerfiles and adds:
 
 - **nginx** reverse proxy (ports 80/443)
+- **PostgreSQL + pgvector, Redis, and private MinIO** persistence
 - **Replicas**: 2x frontend, 3x backend, 2x celery worker
 - **Resource limits** per container
-- **Prometheus + Grafana** for monitoring
+- **Prometheus, Grafana, Tempo, and Alertmanager** for monitoring
 
 ```bash
-make run-prod    # start production stack
+cp .env.production.example .env.production
+# install nginx/ssl/latexy.crt and nginx/ssl/latexy.key
+make self-host-up
 ```
+
+The helper validates the Compose model, starts stateful dependencies, creates
+the MinIO bucket, runs Alembic migrations, and starts the application. See
+[`self-hosting.md`](self-hosting.md) for the complete operator guide.
 
 ---
 
@@ -265,6 +354,17 @@ cd backend
 .venv/bin/alembic merge head1 head2 -m "merge_branches"
 .venv/bin/alembic upgrade head
 ```
+
+### Older offline compilation queues
+
+Compile-queue IndexedDB version 2 stores the authenticated owner on new entries.
+Reconnect reads and acknowledges only that owner's entries. Existing version-1
+entries without an owner are preserved but quarantined: they are not assigned
+to whichever account signs in next and are never automatically submitted.
+Do not reset browser storage to diagnose this migration without first preserving
+any unsent work. Explicit sign-out clears the device queue as a privacy action.
+Offline draft acknowledgements compare the exact captured revision so a delayed
+save response cannot delete newer local edits.
 
 ### Containers keep restarting
 
