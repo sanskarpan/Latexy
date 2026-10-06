@@ -268,7 +268,7 @@ def fetch_repo_readme(
         resp.raise_for_status()
         data = resp.json()
     except httpx.HTTPError as exc:
-        logger.warning(f"README fetch failed for {owner}/{name}: {exc}")
+        logger.warning("README fetch failed", extra={"error_type": type(exc).__name__})
         return None
     finally:
         if owns_client:
@@ -280,7 +280,7 @@ def fetch_repo_readme(
     try:
         text = base64.b64decode(content).decode("utf-8", errors="replace")
     except (ValueError, TypeError) as exc:
-        logger.warning(f"README decode failed for {owner}/{name}: {exc}")
+        logger.warning("README decode failed", extra={"error_type": type(exc).__name__})
         return None
 
     return text if len(text.strip()) >= _MIN_README_CHARS else None
@@ -301,7 +301,7 @@ def fetch_repo_languages(
         resp.raise_for_status()
         data = resp.json()
     except httpx.HTTPError as exc:
-        logger.warning(f"Languages fetch failed for {owner}/{name}: {exc}")
+        logger.warning("Languages fetch failed", extra={"error_type": type(exc).__name__})
         return {}
     finally:
         if owns_client:
@@ -408,7 +408,7 @@ def summarize_project(
         )
         raw = response.choices[0].message.content or ""
     except Exception as exc:
-        logger.warning(f"summarize_project LLM call failed for {repo.get('name')}: {exc}")
+        logger.warning("summarize_project LLM call failed", extra={"error_type": type(exc).__name__})
         return {
             "summary": repo.get("description") or "",
             "suggested_bullets": [],
