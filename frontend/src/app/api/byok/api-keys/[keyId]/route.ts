@@ -4,10 +4,10 @@ import { BACKEND_URL, authHeaders, forwardError } from '../../_forward';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { keyId: string } }
+  { params }: { params: Promise<{ keyId: string }> }
 ) {
   try {
-    const { keyId } = params;
+    const { keyId } = await params;
     
     const response = await fetch(`${BACKEND_URL}/byok/api-keys/${keyId}`, {
       method: 'DELETE',
