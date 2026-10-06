@@ -76,6 +76,11 @@ export default function SemanticOptimizationPanel({ resumeId, identity, document
     } catch { if (currentIdentity.current === identity) setError('This suggestion is out of date or could not be saved. Your current resume is preserved.') }
     finally { if (currentIdentity.current === identity) setBusy(false) }
   }
+  const requirements = run?.result?.requirements?.requirements ?? []
+  const missingEvidenceMessages = run?.result?.missing_evidence?.map((item) => {
+    const excerpt = requirements.find((requirement) => requirement.requirement_id === item)?.excerpt.trim()
+    return excerpt || (item.startsWith('jd.') ? 'Add supporting experience for this job requirement.' : item)
+  }) ?? []
   const pending = run?.result?.patches.filter((patch) => !run.decisions.patches?.[patch.patch_id]) ?? []
   return <div className="h-full space-y-5 overflow-auto p-4">
     <div><h2 className="text-base font-semibold">Improve your resume</h2>
@@ -99,13 +104,22 @@ export default function SemanticOptimizationPanel({ resumeId, identity, document
       <p className="mt-1 text-fg-3">{run.budget.requests ?? 0} requests · {run.budget.usage_unknown ? 'Usage confirmation pending' : 'Usage recorded'}</p>
       {run.status === 'partial' && <p className="mt-2">The review stopped early. Validated suggestions below are still available.</p>}
     </div>}
+    {run?.pdf_quality && <section aria-label="Candidate PDF checks" className="rounded-lg border border-line p-3 text-xs">
+      <h3 className="font-semibold">Final PDF checks</h3>
+      <p className="mt-2 text-fg-3">{run.pdf_quality.status === 'checked'
+        ? 'Checks completed for this candidate PDF.'
+        : 'PDF checks were unavailable. Review the candidate PDF before applying suggestions.'}</p>
+      {run.pdf_quality.warnings.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-4 text-warn">
+        {run.pdf_quality.warnings.slice(0, 20).map((warning, index) => <li key={index}>{warning}</li>)}
+      </ul>}
+    </section>}
     {!run?.result && provisionalPatches.length > 0 && <div className="space-y-3">
       <p role="status" className="text-xs text-fg-3">Early suggestions · final checks are still running. Decisions become available after the review completes.</p>
       {provisionalPatches.map((patch) => <article key={patch.patch_id} className="rounded-lg border border-line p-3 text-xs">
         <p className="text-fg-3">{patch.original_text}</p><p className="mt-2">{patch.text}</p><p className="mt-2 text-fg-3">{patch.reason}</p>
       </article>)}
     </div>}
-    {run?.result?.missing_evidence?.length ? <div className="text-xs text-warn"><p>Add evidence for these suggestions:</p><ul className="mt-2 list-disc pl-4">{run.result.missing_evidence.map((item, index) => <li key={index}>{item}</li>)}</ul></div> : null}
+    {missingEvidenceMessages.length ? <div className="text-xs text-warn"><p>Add evidence for these suggestions:</p><ul className="mt-2 list-disc pl-4">{missingEvidenceMessages.map((item, index) => <li key={index}>{item}</li>)}</ul></div> : null}
     {run?.result?.warnings?.map((warning, index) => <p key={index} className="text-xs text-warn">{warning}</p>)}
     {pending.length > 0 && <button disabled={!eligible || !run?.acceptance_ready} onClick={() => void decide(pending.map((patch) => patch.patch_id), [])}
       className="rounded-lg border border-accent px-3 py-2 text-xs font-semibold disabled:opacity-50">Accept all {pending.length} suggestions</button>}

@@ -132,14 +132,26 @@ describe('Playwright Next cache isolation', () => {
       expect(inherited.REDIS_URL).toBeUndefined()
       expect(inherited.HTTPS_PROXY).toBeUndefined()
       expect(inherited.HTTP_PROXY).toBeUndefined()
-      expect(inherited.PATH).toBe('/test/bin')
-      expect(inherited.Path).toBe('C:\\Windows\\System32')
-      expect(inherited.SystemRoot).toBe('C:\\Windows')
-      expect(inherited.SYSTEMROOT).toBe('C:\\Windows')
-      expect(inherited.ComSpec).toBe('C:\\Windows\\System32\\cmd.exe')
-      expect(inherited.COMSPEC).toBe('C:\\Windows\\System32\\cmd.exe')
+      if (process.platform === 'win32') {
+        // process.env keys alias case-insensitively on Windows. The second
+        // spelling overwrites the first, and the sanitizer preserves it.
+        const essential = (name: string) => Object.entries(inherited)
+          .find(([key]) => key.toUpperCase() === name)?.[1]
+        expect(essential('PATH')).toBe('C:\\Windows\\System32')
+        expect(essential('SYSTEMROOT')).toBe('C:\\Windows')
+        expect(essential('COMSPEC')).toBe('C:\\Windows\\System32\\cmd.exe')
+      } else {
+        expect(inherited.PATH).toBe('/test/bin')
+        expect(inherited.Path).toBe('C:\\Windows\\System32')
+        expect(inherited.SystemRoot).toBe('C:\\Windows')
+        expect(inherited.SYSTEMROOT).toBe('C:\\Windows')
+        expect(inherited.ComSpec).toBe('C:\\Windows\\System32\\cmd.exe')
+        expect(inherited.COMSPEC).toBe('C:\\Windows\\System32\\cmd.exe')
+      }
       expect(inherited.USERPROFILE).toBe('C:\\Users\\playwright')
-      expect(inherited.npm_Config_User_Agent).toBe('npm/10 node/v22')
+      expect(process.platform === 'win32'
+        ? Object.entries(inherited).find(([key]) => key.toUpperCase() === 'NPM_CONFIG_USER_AGENT')?.[1]
+        : inherited.npm_Config_User_Agent).toBe('npm/10 node/v22')
       expect(environment.DATABASE_URL).toBe('postgresql://test.example/isolated')
       expect(environment.BETTER_AUTH_SECRET).toBe('playwright-secret-override')
     } finally {
@@ -262,6 +274,7 @@ describe('Playwright Next cache isolation', () => {
   it('runs cleanup when its direct launcher disappears', async () => {
     const root = await mkdtemp(join(tmpdir(), 'latexy-playwright-parent-'))
     const marker = join(root, 'parent-gone')
+    const ready = join(root, 'monitor-ready')
     const launcherModule = pathToFileURL(
       join(process.cwd(), 'scripts', 'playwright-server.mjs'),
     ).href
@@ -269,12 +282,13 @@ describe('Playwright Next cache isolation', () => {
       "import { writeFileSync } from 'node:fs'",
       `import { watchParent } from ${JSON.stringify(launcherModule)}`,
       `watchParent(() => { writeFileSync(${JSON.stringify(marker)}, 'gone'); process.exit(0) })`,
+      `writeFileSync(${JSON.stringify(ready)}, 'ready')`,
       'setInterval(() => {}, 1000)',
     ].join(';')
     const parentCode = [
       "const { spawn } = require('node:child_process')",
-      `spawn(process.execPath, ['--input-type=module', '-e', ${JSON.stringify(monitoredCode)}], { stdio: 'ignore' })`,
-      'setTimeout(() => process.exit(0), 500)',
+      `spawn(process.execPath, ['--input-type=module', '-e', ${JSON.stringify(monitoredCode)}], { stdio: 'ignore', detached: process.platform === 'win32', windowsHide: true })`,
+      `setInterval(() => { if (require('node:fs').existsSync(${JSON.stringify(ready)})) process.exit(0) }, 25)`,
     ].join(';')
     const parent = spawn(process.execPath, ['-e', parentCode], {
       detached: process.platform !== 'win32',
@@ -282,6 +296,11 @@ describe('Playwright Next cache isolation', () => {
     })
 
     try {
+      // Exit only after the descendant has actually installed its monitor.
+      // Cold module imports need not finish within an arbitrary 500 ms.
+      await expect
+        .poll(async () => readFile(ready, 'utf8').catch(() => ''), { timeout: 5_000 })
+        .toBe('ready')
       await expect
         .poll(async () => readFile(marker, 'utf8').catch(() => ''), { timeout: 5_000 })
         .toBe('gone')

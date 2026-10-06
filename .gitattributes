@@ -2,3 +2,4 @@
 # that required patch syntax without treating it as source trailing whitespace.
 patches/*.patch whitespace=-blank-at-eol
 backend/scripts/*.sh text eol=lf
+frontend/scripts/*.mjs text eol=lf

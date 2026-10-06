@@ -131,7 +131,8 @@ test('managed review keeps provisional candidates separate and applies authorita
     run_id: 'semantic-run', document_id: resumeId, base_revision: 1, source_sha256: digest(baseSource), effort: 'deep',
     status: finalReview ? 'completed' : 'running', job_status: finalReview ? 'completed' : 'processing', acceptance_ready: finalReview,
     document: doc(baseSource, 1), budget: { requests: 1, usage_unknown: false }, decisions: { patches: decisions },
-    result: finalReview ? { candidate_source_sha256: digest(candidateSource), patches, warnings: [], missing_evidence: [] } : null,
+    result: finalReview ? { candidate_source_sha256: digest(candidateSource), patches, warnings: [], missing_evidence: ['jd.' + digest('design systems and mentoring'), 'jd.' + digest('unmapped'), 'Add a measurable outcome.'], requirements: { requirements: [{ requirement_id: 'jd.' + digest('design systems and mentoring'), excerpt: 'design systems and mentoring' }] } } : null,
+    pdf_quality: finalReview ? { status: 'unavailable', pdf_sha256: artifact('semantic-run').pdf_sha256, source_sha256: digest(candidateSource), page_count: 1, warnings: ['Font embedding could not be checked.'] } : undefined,
   } }))
   await page.route(`**/resumes/${resumeId}/engine/runs/semantic-run/decisions`, async route => {
     const body = route.request().postDataJSON(); decisionBodies.push(body)
@@ -191,6 +192,13 @@ test('managed review keeps provisional candidates separate and applies authorita
   await expect(page.locator('.react-pdf__Page__canvas')).toBeVisible({ timeout: 60000 })
   await page.getByRole('button', { name: 'AI', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Accept', exact: true })).toHaveCount(2)
+  await expect(page.getByText('design systems and mentoring', { exact: true })).toBeVisible()
+  await expect(page.getByText('Add supporting experience for this job requirement.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Add a measurable outcome.', { exact: true })).toBeVisible()
+  await expect(page.getByText('jd.' + digest('design systems and mentoring'), { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Candidate PDF checks' })).toContainText('PDF checks were unavailable.')
+  await expect(page.getByRole('region', { name: 'Candidate PDF checks' })).toContainText('Font embedding could not be checked.')
+  await expect(page.getByRole('button', { name: 'Accept', exact: true }).first()).toBeEnabled()
   await page.getByRole('button', { name: 'Preview', exact: true }).click()
   await expect(page.locator('.react-pdf__Page__canvas')).toBeVisible({ timeout: 60000 })
   await expect(page.getByText('AI candidate preview · review and accept suggestions before exporting.', { exact: true })).toBeVisible()

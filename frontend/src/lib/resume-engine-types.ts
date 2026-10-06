@@ -30,7 +30,8 @@ export interface SemanticOptimizationRun {
   run_id: string; document_id: string; base_revision: number; source_sha256: string
   status: 'running' | 'completed' | 'partial' | 'failed' | 'cancelled'; effort: OptimizationEffort
   job_status?: string; acceptance_ready?: boolean
+  pdf_quality?: { status: 'checked' | 'unavailable'; pdf_sha256: string; source_sha256: string; page_count: number | null; warnings: string[] }
   document: ResumeEngineDocument; decisions: OptimizationDecisions
-  result: { patches: SemanticPatch[]; warnings: string[]; missing_evidence: string[]; candidate_source_sha256: string } | null
+  result: { patches: SemanticPatch[]; warnings: string[]; missing_evidence: string[]; candidate_source_sha256: string; requirements?: { requirements: Array<{ requirement_id: string; excerpt: string }> } } | null
   budget: { cost_used?: number; usage_unknown?: boolean; requests?: number; policy?: Record<string, unknown> }
 }

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 const WORKSPACE_SOURCE = readFileSync(
   new URL('../app/workspace/page.tsx', import.meta.url),
   'utf8',
-)
+).replace(/\r\n/g, '\n')
 
 describe('workspace recent-activity isolation', () => {
   it('loads activity separately from primary résumé data', () => {

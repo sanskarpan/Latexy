@@ -59,7 +59,7 @@ describe('SyncTeX parser', () => {
 
   test('uses the measured height independently for different pages', () => {
     const content = nativeSynctex.replace(
-      '{1\n',
+      /\{1\r?\n/,
       '{2\n',
     )
     const data = parseSynctex(`${nativeSynctex}\n${content}`, { 1: 792, 2: 612 })
