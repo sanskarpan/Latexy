@@ -1,6 +1,7 @@
 """Tests for GitHub project import (Feature 1 — external sources to resume)."""
 
 import uuid
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.database.models import JobFinalization
 from app.services import github_projects_service as gh
 from app.services.api_key_service import api_key_service
 from app.services.encryption_service import encryption_service
@@ -238,8 +240,12 @@ def test_result_envelope_round_trip():
 
 def test_worker_result_envelope_is_owner_bound():
     redis = MagicMock()
+    redis.exists.return_value = 0
     with patch(
         "app.workers.github_import_worker.get_worker_redis",
+        return_value=redis,
+    ), patch(
+        "app.workers.event_publisher.get_worker_redis",
         return_value=redis,
     ):
         _store_result(
@@ -248,13 +254,18 @@ def test_worker_result_envelope_is_owner_bound():
             {"status": "completed", "projects": [{"title": "safe"}]},
         )
 
-    key, ttl, raw = redis.setex.call_args.args
+    # Legacy imports without a lifecycle still use the atomic first-writer
+    # Lua path; a plain ``SET`` would allow a late failure to overwrite the
+    # completed envelope.  The canonical success flag is required by the
+    # shared finalization arbiter.
+    script, _numkeys, key, raw, _ttl = redis.eval.call_args.args
     assert key == gh.import_result_key("job-1")
-    assert ttl == gh.IMPORT_RESULT_TTL
+    assert "EXISTS" in script and "SET" in script
     assert gh.decode_result(raw) == {
         "user_id": "user-1",
         "status": "completed",
         "projects": [{"title": "safe"}],
+        "success": True,
     }
 
 
@@ -425,6 +436,10 @@ class TestImportEndpoints:
             "status": "pending",
             "projects": [],
         }
+        assert await redis.hget(
+            f"latexy:job:{body['job_id']}:lifecycle", "status"
+        ) == "queued"
+        assert await redis.exists(f"latexy:job:{body['job_id']}:dispatch-started")
 
     async def test_budget_rejection_refunds_reserved_quota(
         self, client, auth_headers, db_session
@@ -455,9 +470,8 @@ class TestImportEndpoints:
         user_id = await _user_id_for_headers(db_session, auth_headers)
         job_id = str(uuid.uuid4())
         redis = await get_redis_client()
-        await redis.setex(
+        await redis.set(
             gh.import_result_key(job_id),
-            gh.IMPORT_RESULT_TTL,
             gh.encode_result(
                 {
                     "user_id": user_id,
@@ -465,6 +479,7 @@ class TestImportEndpoints:
                     "projects": [],
                 }
             ),
+            ex=gh.IMPORT_RESULT_TTL,
         )
 
         resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers)
@@ -494,9 +509,8 @@ class TestImportEndpoints:
             }
         ]
         redis = await get_redis_client()
-        await redis.setex(
+        await redis.set(
             gh.import_result_key(job_id),
-            gh.IMPORT_RESULT_TTL,
             gh.encode_result(
                 {
                     "user_id": user_id,
@@ -504,6 +518,7 @@ class TestImportEndpoints:
                     "projects": projects,
                 }
             ),
+            ex=gh.IMPORT_RESULT_TTL,
         )
 
         resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers)
@@ -512,15 +527,156 @@ class TestImportEndpoints:
         assert body["status"] == "completed"
         assert body["projects"] == projects
 
+    async def test_get_recovers_owned_terminal_evidence_after_redis_expiry(
+        self, client, auth_headers, db_session
+    ):
+        user_id = await _user_id_for_headers(db_session, auth_headers)
+        job_id = str(uuid.uuid4())
+        projects = [{"source": "github", "title": "durable-project"}]
+        db_session.add(
+            JobFinalization(
+                job_id=job_id,
+                user_id=user_id,
+                job_type="github_import",
+                owner_token="github-import-task-recovery",
+                owner_epoch=1,
+                state="completed",
+                terminal_result="completed",
+                result_payload={"success": True, "projects": projects},
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            )
+        )
+        await db_session.commit()
+
+        resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "status": "completed",
+            "projects": projects,
+            "error": None,
+        }
+
+    async def test_get_reconciles_pending_marker_after_durable_commit(
+        self, client, auth_headers, db_session
+    ):
+        from app.core.redis import get_redis_client
+
+        user_id = await _user_id_for_headers(db_session, auth_headers)
+        job_id = str(uuid.uuid4())
+        projects = [{"source": "github", "title": "after-publication-crash"}]
+        db_session.add(
+            JobFinalization(
+                job_id=job_id,
+                user_id=user_id,
+                job_type="github_import",
+                owner_token="github-import-task-pending-marker",
+                owner_epoch=1,
+                state="completed",
+                terminal_result="completed",
+                result_payload={"success": True, "projects": projects},
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            )
+        )
+        await db_session.commit()
+        redis = await get_redis_client()
+        await redis.set(
+            gh.import_result_key(job_id),
+            gh.encode_result({"user_id": user_id, "status": "pending", "projects": []}),
+            ex=gh.IMPORT_RESULT_TTL,
+        )
+
+        resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "status": "completed",
+            "projects": projects,
+            "error": None,
+        }
+
+    async def test_get_recovery_requires_github_import_type_and_owner(
+        self, client, auth_headers, auth_headers2, db_session
+    ):
+        owner_id = await _user_id_for_headers(db_session, auth_headers)
+        job_id = str(uuid.uuid4())
+        db_session.add(
+            JobFinalization(
+                job_id=job_id,
+                user_id=owner_id,
+                job_type="latex_compilation",
+                owner_token="github-import-misclassified",
+                owner_epoch=1,
+                state="completed",
+                terminal_result="completed",
+                result_payload={"success": True, "projects": [{"title": "private"}]},
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            )
+        )
+        await db_session.commit()
+
+        owner_resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers)
+        assert owner_resp.status_code == 404
+        other_resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers2)
+        assert other_resp.status_code == 404
+
+    async def test_get_recovery_hides_expired_and_failed_diagnostics(
+        self, client, auth_headers, db_session
+    ):
+        user_id = await _user_id_for_headers(db_session, auth_headers)
+        expired_id = str(uuid.uuid4())
+        failed_id = str(uuid.uuid4())
+        db_session.add_all(
+            [
+                JobFinalization(
+                    job_id=expired_id,
+                    user_id=user_id,
+                    owner_token="github-import-expired",
+                    owner_epoch=1,
+                    state="completed",
+                    terminal_result="completed",
+                    result_payload={"success": True, "projects": [{"title": "expired"}]},
+                    expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+                ),
+                JobFinalization(
+                    job_id=failed_id,
+                    user_id=user_id,
+                    job_type="github_import",
+                    # Pre-dispatch failures have no admitted owner; the
+                    # durable job type, not an owner-token guess, authorizes
+                    # this read recovery.
+                    owner_token=None,
+                    owner_epoch=1,
+                    state="failed",
+                    terminal_result="failed",
+                    failure_code="provider_failure",
+                    result_payload={
+                        "success": False,
+                        "error": "secret provider diagnostics",
+                    },
+                    expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        expired_resp = await client.get(f"/github/import-projects/{expired_id}", headers=auth_headers)
+        assert expired_resp.status_code == 404
+        failed_resp = await client.get(f"/github/import-projects/{failed_id}", headers=auth_headers)
+        assert failed_resp.status_code == 200
+        assert failed_resp.json() == {
+            "status": "failed",
+            "projects": [],
+            "error": "Job failed",
+        }
+        assert "secret" not in failed_resp.text
+
     async def test_get_returns_owned_failure(self, client, auth_headers, db_session):
         from app.core.redis import get_redis_client
 
         user_id = await _user_id_for_headers(db_session, auth_headers)
         job_id = str(uuid.uuid4())
         redis = await get_redis_client()
-        await redis.setex(
+        await redis.set(
             gh.import_result_key(job_id),
-            gh.IMPORT_RESULT_TTL,
             gh.encode_result(
                 {
                     "user_id": user_id,
@@ -529,6 +685,7 @@ class TestImportEndpoints:
                     "error": "GitHub unavailable",
                 }
             ),
+            ex=gh.IMPORT_RESULT_TTL,
         )
 
         resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers)
@@ -545,9 +702,8 @@ class TestImportEndpoints:
         owner_id = await _user_id_for_headers(db_session, auth_headers)
         job_id = str(uuid.uuid4())
         redis = await get_redis_client()
-        await redis.setex(
+        await redis.set(
             gh.import_result_key(job_id),
-            gh.IMPORT_RESULT_TTL,
             gh.encode_result(
                 {
                     "user_id": owner_id,
@@ -555,6 +711,7 @@ class TestImportEndpoints:
                     "projects": [{"title": "private-to-owner"}],
                 }
             ),
+            ex=gh.IMPORT_RESULT_TTL,
         )
 
         resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers2)
@@ -566,21 +723,53 @@ class TestImportEndpoints:
 
         job_id = str(uuid.uuid4())
         redis = await get_redis_client()
-        await redis.setex(
+        await redis.set(
             gh.import_result_key(job_id),
-            gh.IMPORT_RESULT_TTL,
             gh.encode_result(
                 {
                     "status": "completed",
                     "projects": [{"title": "legacy"}],
                 }
             ),
+            ex=gh.IMPORT_RESULT_TTL,
         )
 
         resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers)
         assert resp.status_code == 404
 
-    async def test_submit_failure_removes_pending_marker(self, client, auth_headers, db_session, monkeypatch):
+    async def test_get_surfaces_lifecycle_failure_for_stale_pending_marker(
+        self, client, auth_headers, db_session
+    ):
+        from app.core.redis import get_redis_client
+
+        user_id = await _user_id_for_headers(db_session, auth_headers)
+        job_id = str(uuid.uuid4())
+        redis = await get_redis_client()
+        await redis.set(
+            gh.import_result_key(job_id),
+            gh.encode_result(
+                {"user_id": user_id, "status": "pending", "projects": []}
+            ),
+            ex=gh.IMPORT_RESULT_TTL,
+        )
+        await redis.set(
+            f"latexy:job:{job_id}:result",
+            '{"success": false, "error": "Job timed out"}',
+            ex=86400,
+        )
+
+        resp = await client.get(f"/github/import-projects/{job_id}", headers=auth_headers)
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "status": "failed",
+            "projects": [],
+            "error": "Job timed out",
+        }
+
+    async def test_broker_response_loss_preserves_pending_marker(
+        self, client, auth_headers, db_session, monkeypatch
+    ):
         from app.core.redis import get_redis_client
 
         await _connect_github(db_session, auth_headers)
@@ -594,10 +783,14 @@ class TestImportEndpoints:
         monkeypatch.setattr("app.api.github_routes.submit_github_import", _fail_submit)
 
         resp = await client.post("/github/import-projects", headers=auth_headers)
-        assert resp.status_code == 503
+        assert resp.status_code == 200
         assert captured_job_id is not None
         redis = await get_redis_client()
-        assert await redis.get(gh.import_result_key(captured_job_id)) is None
+        marker = gh.decode_result(await redis.get(gh.import_result_key(captured_job_id)))
+        assert marker["status"] == "pending"
+        assert await redis.hget(
+            f"latexy:job:{captured_job_id}:lifecycle", "status"
+        ) == "dispatching"
 
     async def test_endpoints_require_auth(self, client):
         assert (await client.post("/github/import-projects")).status_code in (401, 403)
