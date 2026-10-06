@@ -4,8 +4,8 @@
  * Observes a Y.js YText for remote edits and maintains a list of TrackedChange
  * objects. Supports accept / reject per-change and in batch.
  *
- * No direct yjs import — receives yText and provider as `any` to avoid
- * bundling yjs into the module (it's loaded dynamically in the editor).
+ * No direct yjs import — receives yText, provider, and the dynamically loaded
+ * Y.js positioning helpers to keep collaboration code out of the base bundle.
  */
 
 export interface TrackedChange {
@@ -31,10 +31,25 @@ export interface TrackedChange {
 export interface TrackChangesHandle {
   getChanges: () => TrackedChange[]
   acceptChange: (id: string) => void
-  rejectChange: (id: string) => void
+  /** False means the tracked range can no longer be proven safe to mutate. */
+  rejectChange: (id: string) => boolean
   acceptAll: () => void
-  rejectAll: () => void
+  /** False means at least one conflicting change was left pending. */
+  rejectAll: () => boolean
   cleanup: () => void
+}
+
+interface RelativePositionApi {
+  createRelativePositionFromTypeIndex: (type: any, index: number, assoc?: number) => any
+  createAbsolutePositionFromRelativePosition: (position: any, doc: any) => {
+    type: any
+    index: number
+  } | null
+}
+
+interface ChangeAnchors {
+  start: any
+  end?: any
 }
 
 function computeRange(text: string, offset: number, length: number) {
@@ -63,9 +78,39 @@ export function observeChanges(
   yText: any,
   provider: any,
   onUpdate: (changes: TrackedChange[]) => void,
+  relativePositions?: RelativePositionApi,
 ): TrackChangesHandle {
   const changes = new Map<string, TrackedChange>()
+  const anchors = new Map<string, ChangeAnchors>()
   let prevText: string = yText.toString()
+
+  const resolveAnchor = (anchor: any): number | null => {
+    if (!relativePositions || !yText.doc || !anchor) return null
+    const absolute = relativePositions.createAbsolutePositionFromRelativePosition(anchor, yText.doc)
+    if (!absolute || absolute.type !== yText) return null
+    return absolute.index
+  }
+
+  const pendingChanges = (): TrackedChange[] => {
+    const current = yText.toString()
+    return Array.from(changes.values())
+      .filter((change) => !change.resolved)
+      .map((change) => {
+        const anchor = anchors.get(change.id)
+        const start = anchor ? resolveAnchor(anchor.start) : null
+        const end = anchor?.end ? resolveAnchor(anchor.end) : null
+        if (start != null) {
+          change.offset = start
+          change.length = change.type === 'insertion' && end != null
+            ? Math.max(0, end - start)
+            : change.length
+          change.range = computeRange(current, start, change.type === 'insertion' ? change.length : 0)
+        }
+        return change
+      })
+  }
+
+  const emitUpdate = () => onUpdate(pendingChanges())
 
   const observer = (event: any, transaction: any) => {
     // Capture snapshot at the very start of each callback so it always reflects
@@ -118,6 +163,14 @@ export function observeChanges(
             timestamp: Date.now(),
             resolved: false,
           })
+          if (relativePositions && yText.doc) {
+            anchors.set(id, {
+              // Associate the boundaries with the inserted CRDT items. Unlike
+              // numeric offsets, these positions survive unrelated edits.
+              start: relativePositions.createRelativePositionFromTypeIndex(yText, offset, 0),
+              end: relativePositions.createRelativePositionFromTypeIndex(yText, offset + length, -1),
+            })
+          }
           offset += length
         } else if (op.delete != null) {
           const length = op.delete
@@ -141,57 +194,63 @@ export function observeChanges(
             timestamp: Date.now(),
             resolved: false,
           })
+          if (relativePositions && yText.doc) {
+            anchors.set(id, {
+              start: relativePositions.createRelativePositionFromTypeIndex(yText, offset, 0),
+            })
+          }
           // offset does NOT advance for deletions (text was removed)
         }
       }
     }
 
     prevText = yText.toString()
-    onUpdate(Array.from(changes.values()).filter((c) => !c.resolved))
+    emitUpdate()
   }
 
   yText.observe(observer)
 
   return {
-    getChanges: () => Array.from(changes.values()).filter((c) => !c.resolved),
+    getChanges: pendingChanges,
 
     acceptChange(id: string) {
       const c = changes.get(id)
       if (!c) return
       c.resolved = true
       changes.set(id, c)
-      onUpdate(Array.from(changes.values()).filter((x) => !x.resolved))
+      anchors.delete(id)
+      emitUpdate()
     },
 
     rejectChange(id: string) {
       const c = changes.get(id)
-      if (!c || c.resolved) return
-      c.resolved = true
+      if (!c || c.resolved) return false
 
       const current = yText.toString()
       if (c.type === 'insertion') {
-        // 1. Try narrow window near the tracked offset first.
-        const from = Math.max(0, c.offset)
-        const narrow = current.slice(from, from + c.length + c.text.length + 20)
-        const narrowFound = narrow.indexOf(c.text)
-        if (narrowFound !== -1) {
-          yText.delete(from + narrowFound, c.text.length)
-        } else {
-          // 2. Full-document fallback (handles heavy concurrent edits).
-          const globalIdx = current.indexOf(c.text)
-          if (globalIdx !== -1) {
-            yText.delete(globalIdx, c.text.length)
-          }
-          // If still not found the text was already removed; silently succeed.
-        }
+        const anchor = anchors.get(id)
+        const anchoredStart = anchor ? resolveAnchor(anchor.start) : null
+        const anchoredEnd = anchor?.end ? resolveAnchor(anchor.end) : null
+        const start = anchoredStart ?? c.offset
+        const end = anchoredEnd ?? start + c.text.length
+
+        // Never search the document by value: duplicate LaTeX fragments are
+        // common and deleting the first match can corrupt an unrelated range.
+        if (start < 0 || end < start || current.slice(start, end) !== c.text) return false
+        yText.delete(start, end - start)
       } else {
-        // Re-insert the deleted text
-        const insertAt = Math.min(c.offset, current.length)
+        const anchor = anchors.get(id)
+        const anchoredStart = anchor ? resolveAnchor(anchor.start) : null
+        const insertAt = Math.min(anchoredStart ?? c.offset, current.length)
+        if (insertAt < 0) return false
         yText.insert(insertAt, c.text)
       }
 
+      c.resolved = true
       changes.set(id, c)
-      onUpdate(Array.from(changes.values()).filter((x) => !x.resolved))
+      anchors.delete(id)
+      emitUpdate()
+      return true
     },
 
     acceptAll() {
@@ -199,53 +258,23 @@ export function observeChanges(
         if (!c.resolved) {
           c.resolved = true
           changes.set(id, c)
+          anchors.delete(id)
         }
       }
       onUpdate([])
     },
 
     rejectAll() {
-      const unresolved = Array.from(changes.values()).filter((c) => !c.resolved)
-      // Sort insertions descending by offset (delete from end to start)
-      const insertions = unresolved
-        .filter((c) => c.type === 'insertion')
+      let allRejected = true
+      // Descending current offsets keep the non-Y.js test fallback safe; real
+      // collaboration uses relative positions and is order independent.
+      const ids = pendingChanges()
         .sort((a, b) => b.offset - a.offset)
-      // Sort deletions ascending by offset (re-insert from start to end)
-      const deletions = unresolved
-        .filter((c) => c.type === 'deletion')
-        .sort((a, b) => a.offset - b.offset)
-
-      const apply = () => {
-        for (const c of insertions) {
-          const current = yText.toString()
-          const from = Math.max(0, c.offset)
-          const narrow = current.slice(from, from + c.text.length + 20)
-          const narrowIdx = narrow.indexOf(c.text)
-          if (narrowIdx !== -1) {
-            yText.delete(from + narrowIdx, c.text.length)
-          } else {
-            const globalIdx = current.indexOf(c.text)
-            if (globalIdx !== -1) yText.delete(globalIdx, c.text.length)
-          }
-        }
-        for (const c of deletions) {
-          const current = yText.toString()
-          const insertAt = Math.min(c.offset, current.length)
-          yText.insert(insertAt, c.text)
-        }
+        .map((change) => change.id)
+      for (const id of ids) {
+        if (!this.rejectChange(id)) allRejected = false
       }
-
-      if (yText.doc?.transact) {
-        yText.doc.transact(apply)
-      } else {
-        apply()
-      }
-
-      for (const [id, c] of changes) {
-        c.resolved = true
-        changes.set(id, c)
-      }
-      onUpdate([])
+      return allRejected
     },
 
     cleanup() {
