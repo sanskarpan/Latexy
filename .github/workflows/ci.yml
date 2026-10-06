@@ -22,7 +22,7 @@ jobs:
   # Classification is deliberately fail-closed. A missing event range, an
   # unknown path, or a classifier/runtime error makes every scoped job run.
   # This job never decides whether the privacy guard runs: that guard remains
-  # unconditional below.
+  # unconditional for every non-cancelled workflow below.
   classify-changes:
     name: Classify Changed Components
     runs-on: ubuntu-latest
@@ -98,7 +98,7 @@ jobs:
   privacy-guard:
     name: Privacy Guard (no session recording)
     needs: classify-changes
-    if: ${{ always() }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Fail closed if component classification failed
@@ -118,7 +118,7 @@ jobs:
   backend-lint:
     name: Backend Lint (ruff)
     needs: classify-changes
-    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.backend == 'true') }}
+    if: ${{ !cancelled() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.backend == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -165,7 +165,7 @@ jobs:
   deployment-parity:
     name: Modal Deployment Parity
     needs: classify-changes
-    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.backend == 'true') }}
+    if: ${{ !cancelled() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.backend == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -196,7 +196,7 @@ jobs:
   template-pdf-contract:
     name: Template PDF Extraction Contract
     needs: classify-changes
-    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.templates == 'true') }}
+    if: ${{ !cancelled() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.templates == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -214,7 +214,7 @@ jobs:
   backend-test:
     name: Backend Tests
     needs: classify-changes
-    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.backend == 'true') }}
+    if: ${{ !cancelled() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.backend == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -287,7 +287,7 @@ jobs:
   frontend-lint:
     name: Frontend Lint (ESLint)
     needs: classify-changes
-    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.frontend == 'true') }}
+    if: ${{ !cancelled() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.frontend == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -330,7 +330,7 @@ jobs:
   frontend-build:
     name: Frontend Build
     needs: classify-changes
-    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.frontend == 'true' || needs.classify-changes.outputs.full_stack == 'true') }}
+    if: ${{ !cancelled() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.frontend == 'true' || needs.classify-changes.outputs.full_stack == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -363,7 +363,7 @@ jobs:
   browser-extension:
     name: Browser Extension
     needs: classify-changes
-    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.extension == 'true') }}
+    if: ${{ !cancelled() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.extension == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -398,7 +398,7 @@ jobs:
   render-cv-action:
     name: Reusable Render CV Action
     needs: classify-changes
-    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.render_cv == 'true') }}
+    if: ${{ !cancelled() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.render_cv == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -414,7 +414,7 @@ jobs:
   cross-browser-quality:
     name: Cross-Browser Quality
     needs: classify-changes
-    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.frontend == 'true' || needs.classify-changes.outputs.full_stack == 'true') }}
+    if: ${{ !cancelled() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.frontend == 'true' || needs.classify-changes.outputs.full_stack == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -457,7 +457,7 @@ jobs:
   tui-test:
     name: TUI Tests
     needs: classify-changes
-    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.tui == 'true') }}
+    if: ${{ !cancelled() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.tui == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -503,7 +503,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [classify-changes, backend-test, frontend-build]
     if: >-
-      ${{ always() &&
+      ${{ !cancelled() &&
       (needs.classify-changes.result != 'success' ||
       needs.classify-changes.outputs.full_stack == 'true') &&
       (needs.backend-test.result == 'success' ||
@@ -588,7 +588,7 @@ jobs:
   observability-smoke:
     name: Observability Smoke
     needs: classify-changes
-    if: ${{ always() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.observability == 'true') }}
+    if: ${{ !cancelled() && (needs.classify-changes.result != 'success' || needs.classify-changes.outputs.observability == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
