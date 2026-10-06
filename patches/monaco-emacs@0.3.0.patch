@@ -1,0 +1,52 @@
+diff --git a/lib/emacs/actions.js b/lib/emacs/actions.js
+index dfadab5553083ccf10c4c278f4904b88764f65e8..255b3d1ce7fe79e03b3255b998310e3a54d7d7b7 100644
+--- a/lib/emacs/actions.js
++++ b/lib/emacs/actions.js
+@@ -16,7 +16,7 @@ var __extends = (this && this.__extends) || (function () {
+ })();
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.DeleteLines = exports.SearchReplace = exports.Search = exports.InvertSelection = exports.GotoLine = exports.RotateCursorOnScreen = exports.InsertTabs = exports.RevealToBottomAction = exports.RevealToCenterAction = exports.RevealToTopAction = exports.RevealEditorAction = exports.YankRotate = exports.YankSelectionToRing = exports.Yank = exports.RedoAction = exports.UndoAction = exports.KeyBoardQuit = exports.MoveCursorTop = exports.MoveCursorBottom = exports.MoveCursorWordLeft = exports.MoveCursorWordRight = exports.MoveCursorToLineStart = exports.MoveCursorToLineEnd = exports.MoveCursorRight = exports.MoveCursorLeft = exports.MoveCursorDown = exports.MoveCursorUp = exports.SetMark = exports.InsertLineAfter = exports.InsertLineBelow = exports.KillLines = exports.KillSelection = exports.BaseAction = exports.SOURCE = void 0;
+-var monaco = require("monaco-editor");
++var monaco = require("monaco-editor/esm/vs/editor/editor.api");
+ exports.SOURCE = 'extension.emacs';
+ function moveCursor(editor, hasSelection, direction, unit, repeat) {
+     if (repeat === void 0) { repeat = 1; }
+diff --git a/lib/emacs/basicInput.js b/lib/emacs/basicInput.js
+index 1d4f103150f9759f73e9564910a832565041bfa3..4fb3efe0d1669a8d103edd75f765b8d4e3835cfa 100644
+--- a/lib/emacs/basicInput.js
++++ b/lib/emacs/basicInput.js
+@@ -1,7 +1,7 @@
+ "use strict";
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.BasicInputWidget = void 0;
+-var monaco = require("monaco-editor");
++var monaco = require("monaco-editor/esm/vs/editor/editor.api");
+ var BASE_CLASS = 'ext-emacs-basic-input';
+ function generateCss() {
+     return "\n  .".concat(BASE_CLASS, " {\n    color: #d4d4d4;\n    transition: top 200ms linear;\n    visibility: hidden;\n    width: 200px;\n    display: flex;\n    align-items: center;\n    padding: 5px;\n  }\n\n  .").concat(BASE_CLASS, ".").concat(BASE_CLASS, "-visible {\n    visibility: visible;\n  }\n\n  .").concat(BASE_CLASS, " input {\n    color: rgb(97, 97, 97);\n    background-color: transparent;\n    display: inline-block;\n    box-sizing: border-box;\n    height: 100%;\n    line-height: inherit;\n    border: none;\n    font-family: inherit;\n    font-size: inherit;\n    resize: none;\n    padding-top: 2px;\n    padding-bottom: 2px;\n    margin-left: 5px;\n    max-width: 50px;\n  }\n\n  .").concat(BASE_CLASS, " input:focus {\n    outline: none;\n  }\n\n  .vs .").concat(BASE_CLASS, " {\n    color: rgb(97, 97, 97);\n    background-color: #efeff2;\n    box-shadow: 0 2px 8px #a8a8a8;\n  }\n\n  .vs-dark .").concat(BASE_CLASS, " {\n    background-color: #2d2d30;\n    box-shadow: 0 2px 8px #000000;\n  }\n\n  .vs-dark .").concat(BASE_CLASS, " input {\n    color: rgb(204, 204, 204);\n  }\n\n  .hc-black .").concat(BASE_CLASS, " {\n    border: 2px solid #6fc3df;\n    background-color: #0c141f;\n    color: #ffffff;\n  }\n\n  .hc-black .").concat(BASE_CLASS, " input {\n    color: #ffffff;\n  }\n");
+diff --git a/lib/emacs/index.js b/lib/emacs/index.js
+index cdf63a220bcbcf3ff591d3a19d00e3f8a7e56cf1..2293ea8971dde21149b3e69e11843382de343460 100644
+--- a/lib/emacs/index.js
++++ b/lib/emacs/index.js
+@@ -1,7 +1,7 @@
+ "use strict";
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.getConfiguration = exports.EmacsExtension = void 0;
+-var monaco = require("monaco-editor");
++var monaco = require("monaco-editor/esm/vs/editor/editor.api");
+ var throttle = require("lodash.throttle");
+ var kebabCase = require("lodash.kebabcase");
+ var commands_1 = require("./commands");
+diff --git a/lib/emacs/util.js b/lib/emacs/util.js
+index ff82cd0e35912df0f9ef67e4dc2fee3e786439c9..01d3e2b70663e8809b6113b450bb26fab6146178 100644
+--- a/lib/emacs/util.js
++++ b/lib/emacs/util.js
+@@ -1,7 +1,7 @@
+ "use strict";
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.Emitter = exports.Event = exports.monacoToEmacsKey = exports.modifierKeys = void 0;
+-var monaco = require("monaco-editor");
++var monaco = require("monaco-editor/esm/vs/editor/editor.api");
+ exports.modifierKeys = {
+     Alt: 'M',
+     Control: 'C',
