@@ -390,3 +390,104 @@ describe('lintLatex — missing-label edge cases', () => {
     expect(lintLatex(content).some((i) => i.ruleId === 'missing-label')).toBe(false)
   })
 })
+
+// ─── duplicate-label ────────────────────────────────────────────────────────
+
+describe('lintLatex — duplicate-label', () => {
+  test('flags the second literal label definition with precise location', () => {
+    const content = '\\section{Intro}\\label{sec:intro}\ntext\n  \\label { sec:intro }'
+    const issue = lintLatex(content).find((i) => i.ruleId === 'duplicate-label')
+    expect(issue).toMatchObject({
+      line: 3,
+      column: 3,
+      endColumn: 23,
+      severity: 'warning',
+      fixable: false,
+    })
+    expect(issue?.message).toContain('Duplicate \\label{sec:intro} definition')
+  })
+
+  test('does not flag repeated references or commented labels', () => {
+    const content = [
+      '\\label{sec:intro}',
+      '\\ref{sec:intro} and \\pageref{sec:intro}',
+      '% \\label{sec:intro}',
+      'text % \\label{sec:intro}',
+    ].join('\n')
+    expect(lintLatex(content).some((i) => i.ruleId === 'duplicate-label')).toBe(false)
+  })
+
+  test('does not treat a TeX line-break followed by text as a label command', () => {
+    const content = ['\\label{sec:intro}', '\\\\label{sec:intro}'].join('\n')
+    expect(lintLatex(content).some((i) => i.ruleId === 'duplicate-label')).toBe(false)
+  })
+
+  test('ignores labels inside literal environments and inline verbatim text', () => {
+    const content = [
+      '\\label{sec:intro}',
+      '\\begin{verbatim}',
+      '\\label{sec:intro}',
+      '\\end{verbatim}',
+      '\\begin{minted}{latex}',
+      '\\label{sec:intro}',
+      '\\end{minted}',
+      '\\verb|\\label{sec:intro}|',
+    ].join('\n')
+    expect(lintLatex(content).some((i) => i.ruleId === 'duplicate-label')).toBe(false)
+  })
+
+  test('ignores labels in inline listings and non-executing control-sequence text', () => {
+    const content = [
+      '\\label{sec:intro}',
+      '\\lstinline[language=tex]|\\label{sec:intro}|',
+      '\\mintinline[bgcolor=gray]{tex}|\\label{sec:intro}|',
+      '\\string\\label{sec:intro}',
+      '\\meaning\\label',
+      '\\show\\label',
+      '\\detokenize{\\label{sec:intro}}',
+    ].join('\n')
+    expect(lintLatex(content).some((i) => i.ruleId === 'duplicate-label')).toBe(false)
+  })
+
+  test('respects escaped-percent parity while scanning comments', () => {
+    const content = [
+      '\\label{sec:intro}',
+      '\\% \\label{sec:intro}', // escaped percent: the label is active
+      '\\\\% \\label{sec:intro}', // even slash run: percent starts a comment
+    ].join('\n')
+    const issues = lintLatex(content).filter((i) => i.ruleId === 'duplicate-label')
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({ line: 2, column: 4 })
+  })
+
+  test('requires a real command boundary and stays responsive on long slash runs', () => {
+    const content = [
+      '\\label{sec:intro}',
+      '\\labelled{sec:intro}',
+      `${'\\'.repeat(2)}label{sec:intro}`,
+      `${'\\'.repeat(3)}label{sec:intro}`,
+      '\\\\'.repeat(50_000),
+    ].join('\n')
+    const issues = lintLatex(content).filter((i) => i.ruleId === 'duplicate-label')
+    expect(issues).toHaveLength(1)
+    expect(issues[0].line).toBe(4)
+  })
+
+  test('rejects control characters in keys and bounds reported diagnostics', () => {
+    const controlCharacter = [
+      '\\label{sec:intro}',
+      `\\label{sec:intro${String.fromCharCode(7)}}`,
+    ].join('\n')
+    expect(lintLatex(controlCharacter).some((i) => i.ruleId === 'duplicate-label')).toBe(false)
+
+    const repeated = Array.from({ length: 10_050 }, () => '\\label{same}').join('\n')
+    expect(lintLatex(repeated).filter((i) => i.ruleId === 'duplicate-label')).toHaveLength(10_000)
+  })
+
+  test('reports every repeated definition without regex backtracking risk', () => {
+    const content = Array.from({ length: 3 }, () => '\\label{same}').join('\n')
+    const issues = lintLatex(content).filter((i) => i.ruleId === 'duplicate-label')
+    expect(issues).toHaveLength(2)
+    expect(issues.map((issue) => issue.line)).toEqual([2, 3])
+  })
+})
