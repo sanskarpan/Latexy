@@ -14,7 +14,7 @@ import { applyTenantTheme, clearTenantTheme } from '@/lib/tenant-theme'
 
 export default function TenantThemeSync() {
   useEffect(() => {
-    apiClient.getCurrentTenantContext()
+    apiClient.resolveTenantHost(window.location.hostname)
       .then(({ tenant }) => {
         if (tenant) {
           applyTenantTheme(tenant)
