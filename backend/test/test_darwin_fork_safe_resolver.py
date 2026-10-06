@@ -80,11 +80,13 @@ class TestWorkerRedisLifecycle:
             patch(
                 "app.workers.event_publisher.initialize_worker_redis"
             ) as initialize_worker_redis,
+            patch("app.core.redis.redis_manager.init_sync_redis") as init_sync_redis,
             patch("app.core.redis.redis_manager.init_redis") as init_async_redis,
         ):
             ca.init_worker_process()
 
         initialize_worker_redis.assert_called_once()
+        init_sync_redis.assert_called_once_with()
         init_async_redis.assert_not_called()
 
     def test_process_shutdown_closes_worker_owned_sync_clients(self):
