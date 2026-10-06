@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useSession } from '@/lib/auth-client'
 import { apiClient } from '@/lib/api-client'
 
@@ -46,6 +46,24 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false)
   const { data: session } = useSession()
   const userId = session?.user?.id
+  // Advance the owner epoch during render so a completion cannot win in the
+  // small gap between a new session render and its passive-effect cleanup.
+  const ownerEpochRef = useRef<{ userId: string | undefined; epoch: number }>({ userId, epoch: 0 })
+  if (ownerEpochRef.current.userId !== userId) {
+    ownerEpochRef.current = { userId, epoch: ownerEpochRef.current.epoch + 1 }
+  }
+  const ownerEpoch = ownerEpochRef.current.epoch
+  const mountedRef = useRef(false)
+  const preferenceRequestRef = useRef(0)
+  const preferenceChoiceRef = useRef(0)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      preferenceRequestRef.current += 1
+    }
+  }, [])
 
   // The bootstrap has already set these attributes, so adopting them does not
   // change the colors users see. It only brings the React state behind the
@@ -76,11 +94,22 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // picks it up instead of staying on this device's local/OS default.
   useEffect(() => {
     if (!userId) return
+    const requestOwner = userId
+    const requestOwnerEpoch = ownerEpochRef.current.epoch
+    const requestGeneration = ++preferenceRequestRef.current
+    const requestChoice = preferenceChoiceRef.current
+    const isCurrentPreference = () => (
+      mountedRef.current &&
+      ownerEpochRef.current.userId === requestOwner &&
+      ownerEpochRef.current.epoch === requestOwnerEpoch &&
+      preferenceRequestRef.current === requestGeneration &&
+      preferenceChoiceRef.current === requestChoice
+    )
     // Fast path: this device's cached account preference (avoids a flash while
     // the network request is in flight).
     try {
       const cached = window.localStorage.getItem(acctKey(userId))
-      if (cached === 'light' || cached === 'dark') {
+      if (isCurrentPreference() && (cached === 'light' || cached === 'dark')) {
         applyMode(cached)
       }
     } catch {
@@ -91,16 +120,28 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     apiClient.getMe()
       .then((me) => {
         const t = me.preferences?.theme
-        if (t === 'light' || t === 'dark') {
-          try { window.localStorage.setItem(acctKey(userId), t) } catch { /* ignore */ }
+        if (isCurrentPreference() && (t === 'light' || t === 'dark')) {
+          try { window.localStorage.setItem(acctKey(requestOwner), t) } catch { /* ignore */ }
+          if (!isCurrentPreference()) return
           applyMode(t)
         }
       })
       .catch(() => { /* anonymous/offline — device-local value stands */ })
-  }, [applyMode, userId])
+    return () => {
+      if (preferenceRequestRef.current === requestGeneration) {
+        preferenceRequestRef.current += 1
+      }
+    }
+  }, [applyMode, ownerEpoch, userId])
 
   const setMode = useCallback(
     (m: Mode) => {
+      if (
+        !mountedRef.current ||
+        ownerEpochRef.current.userId !== userId ||
+        ownerEpochRef.current.epoch !== ownerEpoch
+      ) return
+      preferenceChoiceRef.current += 1
       applyMode(m)
       if (userId) {
         try {
@@ -112,7 +153,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         apiClient.updateMePreferences({ theme: m }).catch(() => { /* best-effort */ })
       }
     },
-    [applyMode, userId],
+    [applyMode, ownerEpoch, userId],
   )
 
   const toggle = useCallback(() => {
