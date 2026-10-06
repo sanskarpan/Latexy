@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { X, FileText, Code, Copy, Check, Download, Loader2 } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import type { TemplateDetailResponse } from '@/lib/api-client'
@@ -52,6 +52,23 @@ export default function TemplatePreviewModal({
 
   const modalRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLElement | null>(null)
+  const previewLifetimeRef = useRef(0)
+  const mountedRef = useRef(false)
+  const templateIdRef = useRef(templateId)
+  templateIdRef.current = templateId
+
+  const closePreview = useCallback(() => {
+    previewLifetimeRef.current += 1
+    onClose()
+  }, [onClose])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      previewLifetimeRef.current += 1
+    }
+  }, [])
 
   const copySource = async () => {
     if (!template?.latex_content) return
@@ -72,21 +89,34 @@ export default function TemplatePreviewModal({
 
   const handleUse = async () => {
     if (!template || using) return
+    const requestLifetime = previewLifetimeRef.current
+    const requestTemplateId = template.id
     setUsing(true)
     try {
       const result = await onUse(template.id)
-      if (shouldCloseTemplatePreview(result)) onClose()
+      if (
+        mountedRef.current &&
+        previewLifetimeRef.current === requestLifetime &&
+        templateIdRef.current === requestTemplateId &&
+        shouldCloseTemplatePreview(result)
+      ) {
+        closePreview()
+      }
     } catch {
       // The caller owns the user-facing error. Keep the preview open so the
       // user can retry instead of losing their context.
     } finally {
-      setUsing(false)
+      if (mountedRef.current && previewLifetimeRef.current === requestLifetime && templateIdRef.current === requestTemplateId) {
+        setUsing(false)
+      }
     }
   }
 
   // Open lifecycle: capture the trigger, lock body scroll, move focus into the
   // dialog, and restore focus to the trigger on close.
   useEffect(() => {
+    previewLifetimeRef.current += 1
+    setUsing(false)
     if (!templateId) return
     triggerRef.current = document.activeElement as HTMLElement | null
     const previousOverflow = document.body.style.overflow
@@ -104,7 +134,7 @@ export default function TemplatePreviewModal({
     if (!templateId) return
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose()
+        closePreview()
         return
       }
       if (e.key === 'Tab' && modalRef.current) {
@@ -132,7 +162,7 @@ export default function TemplatePreviewModal({
     }
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
-  }, [templateId, onClose])
+  }, [templateId, closePreview])
 
   // Fetch template detail when id changes
   useEffect(() => {
@@ -180,7 +210,7 @@ export default function TemplatePreviewModal({
     /* Backdrop */
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={closePreview}
     >
       {/* Modal */}
       <div
@@ -209,7 +239,7 @@ export default function TemplatePreviewModal({
             </div>
           )}
           <button
-            onClick={onClose}
+            onClick={closePreview}
             aria-label="Close preview"
             className="shrink-0 rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
           >
@@ -357,7 +387,7 @@ export default function TemplatePreviewModal({
             {/* Actions */}
             <div className="flex items-center justify-end gap-3">
               <button
-                onClick={onClose}
+                onClick={closePreview}
                 disabled={using}
                 className="rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs font-medium text-fg transition hover:bg-surface-2 disabled:opacity-50"
               >
