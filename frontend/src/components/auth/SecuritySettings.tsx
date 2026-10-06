@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle, Copy, KeyRound, Loader2, ShieldCheck, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { authClient, useSession } from '@/lib/auth-client'
@@ -28,9 +28,18 @@ function downloadBackupCodes(codes: string[]) {
   downloadBlob(new Blob([`Latexy backup codes\n\n${codes.join('\n')}\n`], { type: 'text/plain' }), 'latexy-backup-codes.txt')
 }
 
-export default function SecuritySettings() {
-  const { data: session } = useSession()
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(Boolean(session?.user?.twoFactorEnabled))
+type SecuritySettingsFormProps = {
+  twoFactorEnabled: boolean
+  isCurrentOwner: () => boolean
+}
+
+function SecuritySettingsForm({ twoFactorEnabled: initialTwoFactorEnabled, isCurrentOwner }: SecuritySettingsFormProps) {
+  const mountedRef = useRef(false)
+  const listRequestRef = useRef(0)
+  const actionRequestRef = useRef(0)
+  const copyRequestRef = useRef(0)
+  const timersRef = useRef<Set<number>>(new Set())
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(initialTwoFactorEnabled)
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [totpUri, setTotpUri] = useState<string | null>(null)
@@ -45,43 +54,78 @@ export default function SecuritySettings() {
   const [copied, setCopied] = useState<'uri' | 'codes' | null>(null)
 
   useEffect(() => {
-    setTwoFactorEnabled(Boolean(session?.user?.twoFactorEnabled))
-  }, [session?.user?.twoFactorEnabled])
+    mountedRef.current = true
+    const timers = timersRef.current
+    return () => {
+      mountedRef.current = false
+      listRequestRef.current += 1
+      actionRequestRef.current += 1
+      copyRequestRef.current += 1
+      timers.forEach((timer) => window.clearTimeout(timer))
+      timers.clear()
+    }
+  }, [])
+
+  const isMounted = useCallback(() => mountedRef.current && isCurrentOwner(), [isCurrentOwner])
+
+  useEffect(() => {
+    if (isMounted()) setTwoFactorEnabled(initialTwoFactorEnabled)
+  }, [initialTwoFactorEnabled, isMounted])
 
   const hasWebAuthn = useMemo(supportsPasskeys, [])
 
-  const loadPasskeys = async () => {
+  const loadPasskeys = useCallback(async () => {
+    if (!isMounted()) return
+    const requestId = ++listRequestRef.current
+    if (!isMounted()) return
     setPasskeysLoading(true)
     try {
+      if (!isMounted()) return
       const result = await authClient.passkey.listUserPasskeys()
       if (result.error) throw result.error
+      if (!isMounted() || requestId !== listRequestRef.current) return
       setPasskeys(result.data || [])
     } catch (e) {
+      if (!isMounted() || requestId !== listRequestRef.current) return
       setError(errorMessage(e as SecurityError, 'Could not load passkeys.'))
     } finally {
-      setPasskeysLoading(false)
+      if (isMounted() && requestId === listRequestRef.current) setPasskeysLoading(false)
     }
-  }
+  }, [isMounted])
 
-  useEffect(() => { void loadPasskeys() }, [])
+  useEffect(() => { void loadPasskeys() }, [loadPasskeys])
 
   const copy = async (value: string, kind: 'uri' | 'codes') => {
+    if (!isMounted()) return
+    const requestId = ++copyRequestRef.current
     try {
+      if (!isMounted()) return
       await navigator.clipboard.writeText(value)
+      if (!isMounted() || requestId !== copyRequestRef.current) return
       setCopied(kind)
-      window.setTimeout(() => setCopied((current) => current === kind ? null : current), 1500)
+      const timer = window.setTimeout(() => {
+        timersRef.current.delete(timer)
+        if (isMounted() && requestId === copyRequestRef.current) {
+          setCopied((current) => current === kind ? null : current)
+        }
+      }, 1500)
+      timersRef.current.add(timer)
     } catch {
-      setError('Copy failed. Use the download action or copy the text manually.')
+      if (isMounted() && requestId === copyRequestRef.current) setError('Copy failed. Use the download action or copy the text manually.')
     }
   }
 
   const enableTwoFactor = async () => {
+    if (!isMounted()) return
+    const requestId = ++actionRequestRef.current
     setLoading(true); setError('')
     try {
       // Password is optional for OAuth/passkey-only accounts. Better Auth
       // still enforces it server-side when the account has a credential.
+      if (!isMounted()) return
       const result = await authClient.twoFactor.enable({ ...(password ? { password } : {}), issuer: 'Latexy' })
       if (result.error || !result.data) throw result.error || new Error('Two-factor setup failed')
+      if (!isMounted() || requestId !== actionRequestRef.current) return
       setTotpUri(result.data.totpURI)
       try {
         const qrDataUrl = await QRCode.toDataURL(result.data.totpURI, {
@@ -89,66 +133,97 @@ export default function SecuritySettings() {
           margin: 1,
           width: 220,
         })
+        if (!isMounted() || requestId !== actionRequestRef.current) return
         setTotpQrDataUrl(qrDataUrl)
       } catch {
         // Keep manual URI setup available if a browser cannot render a PNG.
+        if (!isMounted() || requestId !== actionRequestRef.current) return
         setTotpQrDataUrl(null)
       }
+      if (!isMounted() || requestId !== actionRequestRef.current) return
       setBackupCodes(result.data.backupCodes)
       setAcknowledged(false)
       setPassword('')
     } catch (e) {
-      setError(errorMessage(e as SecurityError, 'Could not start two-factor setup.'))
-    } finally { setLoading(false) }
+      if (isMounted() && requestId === actionRequestRef.current) setError(errorMessage(e as SecurityError, 'Could not start two-factor setup.'))
+    } finally {
+      if (isMounted() && requestId === actionRequestRef.current) setLoading(false)
+    }
   }
 
   const verifyTwoFactor = async () => {
     if (!totpUri || !code.trim()) { setError('Enter the six-digit code from your authenticator.'); return }
+    if (!isMounted()) return
+    const requestId = ++actionRequestRef.current
     setLoading(true); setError('')
     try {
+      if (!isMounted()) return
       const result = await authClient.twoFactor.verifyTotp({ code: code.trim() })
       if (result.error) throw result.error
+      if (!isMounted() || requestId !== actionRequestRef.current) return
       setTwoFactorEnabled(true); setTotpUri(null); setTotpQrDataUrl(null); setCode(''); setPassword('')
     } catch (e) {
-      setError(errorMessage(e as SecurityError, 'That verification code was not accepted.'))
-    } finally { setLoading(false) }
+      if (isMounted() && requestId === actionRequestRef.current) setError(errorMessage(e as SecurityError, 'That verification code was not accepted.'))
+    } finally {
+      if (isMounted() && requestId === actionRequestRef.current) setLoading(false)
+    }
   }
 
   const disableTwoFactor = async () => {
+    if (!isMounted()) return
     if (!window.confirm('Disable two-factor authentication for this account?')) return
+    if (!isMounted()) return
+    const requestId = ++actionRequestRef.current
     setLoading(true); setError('')
     try {
+      if (!isMounted()) return
       const result = await authClient.twoFactor.disable({ ...(password ? { password } : {}) })
       if (result.error) throw result.error
+      if (!isMounted() || requestId !== actionRequestRef.current) return
       setTwoFactorEnabled(false); setTotpQrDataUrl(null); setBackupCodes(null); setPassword('')
     } catch (e) {
-      setError(errorMessage(e as SecurityError, 'Could not disable two-factor authentication.'))
-    } finally { setLoading(false) }
+      if (isMounted() && requestId === actionRequestRef.current) setError(errorMessage(e as SecurityError, 'Could not disable two-factor authentication.'))
+    } finally {
+      if (isMounted() && requestId === actionRequestRef.current) setLoading(false)
+    }
   }
 
   const addPasskey = async () => {
     if (!hasWebAuthn) { setError('This browser does not support passkeys. Use a current browser or a security key.'); return }
+    if (!isMounted()) return
+    const requestId = ++actionRequestRef.current
     setLoading(true); setError('')
     try {
+      if (!isMounted()) return
       const result = await authClient.passkey.addPasskey({ name: passkeyName.trim() || undefined })
       if (result.error) throw result.error
+      if (!isMounted() || requestId !== actionRequestRef.current) return
       setPasskeyName('')
       await loadPasskeys()
     } catch (e) {
-      setError(errorMessage(e as SecurityError, 'Could not add that passkey.'))
-    } finally { setLoading(false) }
+      if (isMounted() && requestId === actionRequestRef.current) setError(errorMessage(e as SecurityError, 'Could not add that passkey.'))
+    } finally {
+      if (isMounted() && requestId === actionRequestRef.current) setLoading(false)
+    }
   }
 
   const removePasskey = async (id: string) => {
+    if (!isMounted()) return
     if (!window.confirm('Remove this passkey? You will not be able to use it to sign in again.')) return
+    if (!isMounted()) return
+    const requestId = ++actionRequestRef.current
     setLoading(true); setError('')
     try {
+      if (!isMounted()) return
       const result = await authClient.passkey.deletePasskey({ id })
       if (result.error) throw result.error
+      if (!isMounted() || requestId !== actionRequestRef.current) return
       setPasskeys((current) => current.filter((passkey) => passkey.id !== id))
     } catch (e) {
-      setError(errorMessage(e as SecurityError, 'Could not remove that passkey.'))
-    } finally { setLoading(false) }
+      if (isMounted() && requestId === actionRequestRef.current) setError(errorMessage(e as SecurityError, 'Could not remove that passkey.'))
+    } finally {
+      if (isMounted() && requestId === actionRequestRef.current) setLoading(false)
+    }
   }
 
   return (
@@ -176,5 +251,37 @@ export default function SecuritySettings() {
       </div>
       <p className="flex items-center gap-1.5 text-[10px] text-fg-3"><CheckCircle size={11} className="text-ok" /> Security credentials are handled by Better Auth and WebAuthn; secrets are never included in URLs or logs.</p>
     </section>
+  )
+}
+
+export default function SecuritySettings() {
+  const { data: session, isPending, error } = useSession()
+  const lastKnownSessionRef = useRef<typeof session>(null)
+  const ownerEpochRef = useRef(0)
+  const renderedOwnerRef = useRef<string | null>(null)
+
+  // Keep the current account's private security draft mounted during a
+  // transient refresh/error, but remount it synchronously when Better Auth
+  // confirms a different owner (including A → B → A).
+  if (session?.user?.id) {
+    lastKnownSessionRef.current = session
+  } else if (!isPending && !error) {
+    lastKnownSessionRef.current = null
+  }
+  const effectiveSession = session ?? ((isPending || error) ? lastKnownSessionRef.current : null)
+  const ownerId = effectiveSession?.user?.id ?? null
+  if (renderedOwnerRef.current !== ownerId) {
+    renderedOwnerRef.current = ownerId
+    ownerEpochRef.current += 1
+  }
+  const ownerEpoch = ownerEpochRef.current
+  const isCurrentOwner = useCallback(() => ownerEpochRef.current === ownerEpoch, [ownerEpoch])
+
+  return (
+    <SecuritySettingsForm
+      key={ownerId ?? 'anonymous'}
+      twoFactorEnabled={Boolean(effectiveSession?.user?.twoFactorEnabled)}
+      isCurrentOwner={isCurrentOwner}
+    />
   )
 }
