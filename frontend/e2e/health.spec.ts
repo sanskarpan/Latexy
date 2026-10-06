@@ -18,3 +18,14 @@ test('frontend loads without JS errors', async ({ page }) => {
   await page.goto('/')
   expect(errors.filter(e => !e.includes('webpack'))).toHaveLength(0)
 })
+
+test('frontend responses carry the security baseline', async ({ request }) => {
+  const res = await request.get('/')
+
+  expect(res.headers()['x-content-type-options']).toBe('nosniff')
+  expect(res.headers()['x-frame-options']).toBe('DENY')
+  expect(res.headers()['referrer-policy']).toBe('strict-origin-when-cross-origin')
+  expect(res.headers()['permissions-policy']).toContain('camera=()')
+  expect(res.headers()['content-security-policy']).toContain("frame-ancestors 'none'")
+  expect(res.headers()['x-powered-by']).toBeUndefined()
+})
