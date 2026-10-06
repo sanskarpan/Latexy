@@ -10,7 +10,9 @@ Tests cover:
 
 import json
 import uuid
+import zipfile
 from io import BytesIO
+from xml.etree import ElementTree as ET
 
 import pytest
 from httpx import AsyncClient
@@ -52,7 +54,7 @@ MACRO_LATEX = r"""
 \end{document}
 """
 
-SUPPORTED_FORMATS = ["tex", "md", "txt", "html", "json", "yaml", "xml", "docx"]
+SUPPORTED_FORMATS = ["tex", "md", "txt", "html", "json", "yaml", "xml", "docx", "epub", "odf", "docbook"]
 
 
 # ── Export service unit tests ─────────────────────────────────────────────────
@@ -209,6 +211,40 @@ class TestDocumentExportService:
         assert "Research Engineer" in text
         assert "Built evaluation systems for multimodal models" in text
         assert "Impact:" in text
+
+    def test_to_epub_has_uncompressed_mimetype_and_manifest(self):
+        from app.services.document_export_service import document_export_service
+
+        result = document_export_service.to_epub(MACRO_LATEX)
+        with zipfile.ZipFile(BytesIO(result)) as archive:
+            assert archive.namelist()[0] == "mimetype"
+            assert archive.getinfo("mimetype").compress_type == zipfile.ZIP_STORED
+            assert archive.read("mimetype") == b"application/epub+zip"
+            ET.fromstring(archive.read("META-INF/container.xml"))
+            assert b"application/xhtml+xml" in archive.read("OEBPS/content.opf")
+            assert b"dcterms:modified" in archive.read("OEBPS/content.opf")
+            assert b"OpenAI" in archive.read("OEBPS/content.xhtml")
+
+    def test_to_odf_has_uncompressed_mimetype_and_manifest(self):
+        from app.services.document_export_service import document_export_service
+
+        result = document_export_service.to_odf(MACRO_LATEX)
+        with zipfile.ZipFile(BytesIO(result)) as archive:
+            assert archive.namelist()[0] == "mimetype"
+            assert archive.getinfo("mimetype").compress_type == zipfile.ZIP_STORED
+            assert archive.read("mimetype") == b"application/vnd.oasis.opendocument.text"
+            ET.fromstring(archive.read("META-INF/manifest.xml"))
+            assert b"OpenAI" in archive.read("content.xml")
+
+    def test_to_docbook_is_docbook_5_not_generic_xml(self):
+        from app.services.document_export_service import document_export_service
+
+        result = document_export_service.to_docbook(MACRO_LATEX)
+        root = ET.fromstring(result)
+        assert root.tag == "{http://docbook.org/ns/docbook}article"
+        assert root.attrib["version"] == "5.2"
+        assert "{http://docbook.org/ns/docbook}section" in {child.tag for child in root}
+        assert "<resume>" not in result
 
 
 # ── GET /export/formats ────────────────────────────────────────────────────────
@@ -424,7 +460,8 @@ class TestExportContent:
         expected_filenames = {
             "tex": "resume.tex", "md": "resume.md", "txt": "resume.txt",
             "html": "resume.html", "json": "resume.json", "yaml": "resume.yaml",
-            "xml": "resume.xml", "docx": "resume.docx",
+            "xml": "resume.xml", "docx": "resume.docx", "epub": "resume.epub",
+            "odf": "resume.odt", "docbook": "resume.docbook",
         }
         for fmt in SUPPORTED_FORMATS:
             resp = await client.post(
