@@ -106,21 +106,21 @@ const faqData: FAQItem[] = [
   {
     id: 'how-ai-works',
     question: 'How does AI optimization work?',
-    answer: 'Our AI analyzes your resume content and the job description you provide, then suggests improvements for better ATS compatibility. It optimizes keywords, formatting, and content structure while maintaining your professional voice and achievements.',
+    answer: 'Our AI analyzes your resume content and the job description you provide, then drafts improvements to keyword coverage, formatting, and content structure while preserving your professional voice and achievements. You review the proposed changes before they are applied.',
     category: 'optimization',
     tags: ['ai', 'optimization', 'ats', 'keywords']
   },
   {
     id: 'ats-scoring',
     question: 'What is ATS scoring and how is it calculated?',
-    answer: 'ATS scoring (0-100) measures how well your resume will perform with Applicant Tracking Systems. We analyze formatting, keyword density, section organization, and readability. Higher scores indicate better ATS compatibility and higher chances of passing initial screening.',
+    answer: 'Latexy’s heuristic document score (0–100) summarizes formatting, job-description keyword coverage, section organization, and readability. It does not reproduce an employer’s Applicant Tracking System or predict a screening decision; use the detailed checks as editing guidance.',
     category: 'optimization',
     tags: ['ats', 'scoring', 'compatibility']
   },
   {
     id: 'byok-benefits',
     question: 'What are the benefits of BYOK (Bring Your Own Key)?',
-    answer: 'BYOK allows you to use your own API keys from providers like OpenAI, Anthropic, or Google. This gives you access to the latest models, potentially lower costs for heavy usage, and full control over your AI optimization expenses.',
+    answer: 'An OpenAI BYOK key can be used throughout Latexy. Anthropic and OpenRouter keys are available through the provider-specific BYOK generation API; the main editor currently uses OpenAI. Gemini is not currently supported.',
     category: 'optimization',
     tags: ['byok', 'api-keys', 'cost-savings']
   },
