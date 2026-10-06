@@ -25,7 +25,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("idx_optimizations_resume_id", "optimizations")
-    op.drop_index("idx_compilations_resume_id", "compilations")
-    op.drop_index("idx_account_user_id", "account")
-    op.drop_index("idx_session_user_id", "session")
+    op.execute("DROP INDEX IF EXISTS idx_optimizations_resume_id")
+    op.execute("DROP INDEX IF EXISTS idx_compilations_resume_id")
+    op.execute("DROP INDEX IF EXISTS idx_account_user_id")
+    op.execute("DROP INDEX IF EXISTS idx_session_user_id")
