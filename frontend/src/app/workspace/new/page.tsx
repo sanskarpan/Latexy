@@ -76,10 +76,65 @@ type TemplateUseRequest = {
   ownerGeneration: number
   preview?: { templateId: string; generation: number }
 }
+type CreateRequest = {
+  token: number
+  ownerId: string
+  ownerGeneration: number
+}
+type NewResumeOwnerIdentity = { ownerId: string | null; generation: number }
+type NewResumeOwnerIdentityRef = { current: NewResumeOwnerIdentity }
+type NewResumeSession = NonNullable<ReturnType<typeof useRequireAuth>['session']>
 
 export default function NewResumePage() {
-  const router = useRouter()
   const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+  const ownerIdentityRef = useRef<NewResumeOwnerIdentity>({ ownerId: null, generation: 0 })
+
+  if (session && ownerIdentityRef.current.ownerId !== session.user.id) {
+    ownerIdentityRef.current = {
+      ownerId: session.user.id,
+      generation: ownerIdentityRef.current.generation + 1,
+    }
+  } else if (!session && !sessionLoading && !sessionError && ownerIdentityRef.current.ownerId !== null) {
+    ownerIdentityRef.current = {
+      ownerId: null,
+      generation: ownerIdentityRef.current.generation + 1,
+    }
+  }
+
+  // Keep an already-authenticated form mounted during a retained-session
+  // refresh, but give every confirmed owner a fresh form boundary. This keeps
+  // private draft state from ever rendering under a different account.
+  if (sessionLoading && !session) {
+    return (
+      <div className="flex h-[70vh] items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    )
+  }
+
+  if (sessionError && !session) return <SessionLoadError area="New resume" />
+  if (!session) return null
+
+  return (
+    <NewResumePageForm
+      key={session.user.id}
+      session={session}
+      sessionLoading={sessionLoading}
+      ownerIdentityRef={ownerIdentityRef}
+    />
+  )
+}
+
+function NewResumePageForm({
+  session,
+  sessionLoading,
+  ownerIdentityRef,
+}: {
+  session: NewResumeSession
+  sessionLoading: boolean
+  ownerIdentityRef: NewResumeOwnerIdentityRef
+}) {
+  const router = useRouter()
 
   // ---- form state ----
   const [title, setTitle] = useState('')
@@ -102,25 +157,27 @@ export default function NewResumePage() {
   // Which specific template card is currently being created from — drives a
   // per-card spinner so a slow network doesn't look like a frozen page.
   const [creatingTemplateId, setCreatingTemplateId] = useState<string | null>(null)
-  const newResumeOwnerId = session?.user?.id ?? null
-  const newResumeIdentityRef = useRef<{ ownerId: string | null; generation: number }>({ ownerId: null, generation: 0 })
-  if (newResumeIdentityRef.current.ownerId !== newResumeOwnerId) {
-    newResumeIdentityRef.current = {
-      ownerId: newResumeOwnerId,
-      generation: newResumeIdentityRef.current.generation + 1,
-    }
-  }
-  const currentNewResumeIdentityGeneration = newResumeIdentityRef.current.generation
+  const currentNewResumeIdentityGeneration = ownerIdentityRef.current.generation
   const previewIdentityRef = useRef<TemplatePreviewIdentity>({ templateId: null, generation: 0 })
   const templateUseTokenRef = useRef(0)
   const activeTemplateUseRef = useRef<TemplateUseRequest | null>(null)
+  const createTokenRef = useRef(0)
+  const activeCreateRef = useRef<CreateRequest | null>(null)
+  const mountedRef = useRef(true)
 
   const isCurrentTemplateUseOwner = useCallback((request: TemplateUseRequest) => {
     const active = activeTemplateUseRef.current
-    return active?.token === request.token &&
-      newResumeIdentityRef.current.ownerId === request.ownerId &&
-      newResumeIdentityRef.current.generation === request.ownerGeneration
-  }, [])
+    return mountedRef.current && active?.token === request.token &&
+      ownerIdentityRef.current.ownerId === request.ownerId &&
+      ownerIdentityRef.current.generation === request.ownerGeneration
+  }, [ownerIdentityRef])
+
+  const isCurrentCreateRequest = useCallback((request: CreateRequest) => {
+    const active = activeCreateRef.current
+    return mountedRef.current && active?.token === request.token &&
+      ownerIdentityRef.current.ownerId === request.ownerId &&
+      ownerIdentityRef.current.generation === request.ownerGeneration
+  }, [ownerIdentityRef])
 
   useEffect(() => {
     const active = activeTemplateUseRef.current
@@ -130,9 +187,15 @@ export default function NewResumePage() {
     setCreatingTemplateId(null)
   }, [currentNewResumeIdentityGeneration, isCurrentTemplateUseOwner])
 
-  useEffect(() => () => {
-    activeTemplateUseRef.current = null
-    templateUseTokenRef.current += 1
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      activeTemplateUseRef.current = null
+      activeCreateRef.current = null
+      templateUseTokenRef.current += 1
+      createTokenRef.current += 1
+    }
   }, [])
 
   useEffect(() => {
@@ -191,8 +254,9 @@ export default function NewResumePage() {
 
   // ---- handlers ----
   const handleUseTemplate = useCallback(async (id: string, preview?: { templateId: string; generation: number }) => {
-    if (isCreating) {
-      if (creatingTemplateId !== id) toast('Another template is already being created')
+    if (!mountedRef.current || sessionLoading || activeCreateRef.current || ownerIdentityRef.current.ownerId !== session.user.id) return false
+    if (isCreating || activeTemplateUseRef.current) {
+      if (creatingTemplateId !== id || activeTemplateUseRef.current) toast('Another template is already being created')
       return false
     }
     const trimmedTitle = title.trim()
@@ -203,8 +267,8 @@ export default function NewResumePage() {
     setCreatingTemplateId(id)
     const request: TemplateUseRequest = {
       token: ++templateUseTokenRef.current,
-      ownerId: newResumeIdentityRef.current.ownerId,
-      ownerGeneration: newResumeIdentityRef.current.generation,
+      ownerId: ownerIdentityRef.current.ownerId,
+      ownerGeneration: ownerIdentityRef.current.generation,
       preview,
     }
     activeTemplateUseRef.current = request
@@ -232,7 +296,7 @@ export default function NewResumePage() {
         setCreatingTemplateId(null)
       }
     }
-  }, [title, templates, router, isCreating, creatingTemplateId, isCurrentTemplateUseOwner])
+  }, [title, templates, router, isCreating, creatingTemplateId, sessionLoading, session.user.id, ownerIdentityRef, isCurrentTemplateUseOwner])
 
   const handleSelectTemplate = useCallback((id: string) => {
     void handleUseTemplate(id)
@@ -261,6 +325,9 @@ export default function NewResumePage() {
   }, [handleUseTemplate])
 
   const handleCreate = async () => {
+    const ownerId = ownerIdentityRef.current.ownerId
+    if (!mountedRef.current || sessionLoading || isCreating || activeCreateRef.current || activeTemplateUseRef.current || ownerId !== session.user.id) return
+
     const trimmedTitle = title.trim()
     if (!trimmedTitle) {
       toast.error('Please enter a resume title')
@@ -272,6 +339,12 @@ export default function NewResumePage() {
       return
     }
 
+    const request: CreateRequest = {
+      token: ++createTokenRef.current,
+      ownerId,
+      ownerGeneration: ownerIdentityRef.current.generation,
+    }
+    activeCreateRef.current = request
     setIsCreating(true)
     try {
       if (mode === 'import' || mode === 'linkedin' || mode === 'builder') {
@@ -280,6 +353,7 @@ export default function NewResumePage() {
           latex_content: importedContent,
           is_template: false,
         })
+        if (!isCurrentCreateRequest(request)) return
         toast.success('Resume created from import')
         router.push(`/workspace/${created.id}/edit`)
       } else {
@@ -289,12 +363,17 @@ export default function NewResumePage() {
           latex_content: BLANK_CONTENT,
           is_template: false,
         })
+        if (!isCurrentCreateRequest(request)) return
         toast.success('Blank resume created')
         router.push(`/workspace/${created.id}/edit`)
       }
     } catch {
-      toast.error('Failed to create resume')
-      setIsCreating(false)
+      if (isCurrentCreateRequest(request)) toast.error('Failed to create resume')
+    } finally {
+      if (isCurrentCreateRequest(request)) {
+        activeCreateRef.current = null
+        setIsCreating(false)
+      }
     }
   }
 
@@ -314,10 +393,6 @@ export default function NewResumePage() {
       </div>
     )
   }
-
-  if (sessionError && !session) return <SessionLoadError area="New resume" />
-
-  if (!session) return null
 
   return (
     <>
