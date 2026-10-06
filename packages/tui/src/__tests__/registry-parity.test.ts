@@ -37,4 +37,9 @@ describe('slash command registry <-> dispatch parity', () => {
       .map(c => `${c.name}(flag=${c.implemented}, routed=${routed.has(c.name)})`)
     expect(lying, 'registry flags disagree with dispatch').toEqual([])
   })
+
+  it('documents the image formats served by the export API', () => {
+    const exportCommand = SLASH_COMMANDS.find(command => command.name === 'export')
+    expect(exportCommand?.usage).toContain('svg|jpeg')
+  })
 })
