@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 
-from app.core.logging import JsonFormatter
+from app.core.logging import JsonFormatter, get_logger
 
 
 def test_attacker_controlled_line_breaks_cannot_forge_log_records() -> None:
@@ -48,3 +49,27 @@ def test_message_text_redacts_embedded_credentials() -> None:
     assert "abc.def.ghi" not in rendered
     assert "gQAAAA-private-value" not in rendered
     assert rendered.count("[redacted]") >= 3
+
+
+def test_application_logger_protects_plain_worker_handlers() -> None:
+    logger = get_logger("app.test.plain_worker")
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(handler)
+    previous_level = logger.level
+    previous_propagation = logger.propagate
+    logger.setLevel(logging.WARNING)
+    logger.propagate = False
+    try:
+        logger.warning("Rejected %s", "id\nFORGED\r\x1b[31m\u2028token=private-token")
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
+        logger.setLevel(previous_level)
+        logger.propagate = previous_propagation
+    rendered = stream.getvalue()
+    assert len(rendered.splitlines()) == 1
+    assert "private-token" not in rendered
+    assert "\\u000aFORGED\\u000d\\u001b" in rendered
+    assert "\\u2028token=[redacted]" in rendered
