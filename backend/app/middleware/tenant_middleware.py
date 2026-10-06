@@ -21,10 +21,11 @@ import time
 from fastapi import Request
 from sqlalchemy import select
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 from starlette.types import ASGIApp
 
 from ..core.redis import cache_manager
-from ..database.connection import SessionLocal as AsyncSessionLocal
+from ..database.connection import get_async_db_session
 from ..database.models import Tenant
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,6 @@ CACHE_TTL = 300  # 5 minutes (Redis)
 # short-circuit to "no tenant" without touching Redis/DB.
 _FIRST_PARTY_EXACT = frozenset({
     "latexy.xyz", "www.latexy.xyz",
-    "latexy.com", "www.latexy.com", "app.latexy.com",
     "localhost", "127.0.0.1", "",
 })
 _FIRST_PARTY_SUFFIX = (".vercel.app", ".modal.run")
@@ -55,6 +55,7 @@ def _is_first_party(host: str) -> bool:
 # tenant change still propagates within a minute.
 _INPROC_TTL = 60.0
 _INPROC_CACHE: dict[str, tuple[object, float]] = {}
+_CACHE_MISS = object()
 
 
 class TenantMiddleware(BaseHTTPMiddleware):
@@ -91,7 +92,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
                 # are never tenants — skip the Redis/DB lookup entirely.
                 request.state.tenant = await self._resolve_by_domain(host)
         except Exception as exc:
-            logger.debug("Tenant resolution error: %s", exc)
+            logger.debug("Tenant resolution error", extra={"error_type": type(exc).__name__})
 
         return await call_next(request)
 
@@ -100,10 +101,10 @@ class TenantMiddleware(BaseHTTPMiddleware):
     async def _resolve_by_slug(self, slug: str) -> dict | None:
         cache_key = f"tenant:slug:{slug}"
         cached = await _cache_get(cache_key)
-        if cached is not None:
-            return cached
+        if cached is not _CACHE_MISS:
+            return cached if isinstance(cached, dict) else None
 
-        async with AsyncSessionLocal() as db:
+        async with get_async_db_session() as db:
             result = await db.execute(
                 select(Tenant).where(Tenant.slug == slug, Tenant.active.is_(True))
             )
@@ -114,28 +115,116 @@ class TenantMiddleware(BaseHTTPMiddleware):
         return data
 
     async def _resolve_by_domain(self, domain: str) -> dict | None:
-        cache_key = f"tenant:domain:{domain}"
-        cached = await _cache_get(cache_key)
-        if cached is not None:
-            return cached
+        return await resolve_verified_tenant_domain(domain)
 
-        async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                select(Tenant).where(
-                    Tenant.custom_domain == domain, Tenant.active.is_(True)
-                )
+
+async def resolve_verified_tenant_domain(domain: str) -> dict | None:
+    """Resolve an active DNS-verified custom domain with negative caching."""
+    cache_key = f"tenant:domain:{domain}"
+    cached = await _cache_get(cache_key)
+    if cached is not _CACHE_MISS:
+        return cached if isinstance(cached, dict) else None
+
+    async with get_async_db_session() as db:
+        result = await db.execute(
+            select(Tenant).where(
+                Tenant.custom_domain == domain,
+                Tenant.domain_verified_at.is_not(None),
+                Tenant.active.is_(True),
             )
-            tenant = result.scalar_one_or_none()
+        )
+        tenant = result.scalar_one_or_none()
 
-        data = _serialize(tenant)
-        await _cache_set(cache_key, data)
-        return data
+    data = _serialize(tenant)
+    await _cache_set(cache_key, data)
+    return data
+
+
+async def resolve_tenant_origin_hostname(hostname: str) -> dict | None:
+    """Resolve either an official tenant subdomain or a verified custom host."""
+    if hostname.endswith(LATEXY_DOMAIN_SUFFIX):
+        slug = hostname[: -len(LATEXY_DOMAIN_SUFFIX)]
+        if slug and "." not in slug:
+            cache_key = f"tenant:slug:{slug}"
+            cached = await _cache_get(cache_key)
+            if cached is not _CACHE_MISS:
+                return cached if isinstance(cached, dict) else None
+            async with get_async_db_session() as db:
+                result = await db.execute(
+                    select(Tenant).where(
+                        Tenant.slug == slug, Tenant.active.is_(True)
+                    )
+                )
+                tenant = result.scalar_one_or_none()
+            data = _serialize(tenant)
+            await _cache_set(cache_key, data)
+            return data
+    return await resolve_verified_tenant_domain(hostname)
+
+
+class VerifiedTenantCORSMiddleware(BaseHTTPMiddleware):
+    """Allow browser API calls only from active, verified tenant origins."""
+
+    _ALLOWED_METHODS = "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"
+    _ALLOWED_HEADERS = frozenset(
+        {
+            "authorization",
+            "content-type",
+            "traceparent",
+            "tracestate",
+            "x-device-fingerprint",
+            "x-request-id",
+            "x-tenant-slug",
+        }
+    )
+
+    async def dispatch(self, request: Request, call_next):
+        origin = request.headers.get("origin")
+        if not origin:
+            return await call_next(request)
+        try:
+            from urllib.parse import urlsplit
+
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme != "https"
+                or not parsed.hostname
+                or parsed.path
+                or parsed.port is not None
+            ):
+                return await call_next(request)
+            tenant = await resolve_tenant_origin_hostname(parsed.hostname.lower())
+        except Exception:
+            tenant = None
+        if tenant is None:
+            return await call_next(request)
+
+        if request.method == "OPTIONS" and request.headers.get("access-control-request-method"):
+            requested = {
+                item.strip().lower()
+                for item in request.headers.get("access-control-request-headers", "").split(",")
+                if item.strip()
+            }
+            if not requested.issubset(self._ALLOWED_HEADERS):
+                return Response("Disallowed CORS headers", status_code=400)
+            response = Response(status_code=200)
+        else:
+            response = await call_next(request)
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = self._ALLOWED_METHODS
+        response.headers["Access-Control-Allow-Headers"] = ", ".join(
+            sorted(self._ALLOWED_HEADERS)
+        )
+        response.headers["Access-Control-Max-Age"] = "600"
+        response.headers.add_vary_header("Origin")
+        return response
 
 
 # ── Cache helpers ─────────────────────────────────────────────────────────────
 
-async def _cache_get(key: str) -> dict | None:
-    """Return cached dict, or None if miss (including negative 'no tenant' cache).
+async def _cache_get(key: str) -> dict | None | object:
+    """Return a cached value or the distinct ``_CACHE_MISS`` sentinel.
 
     Checks the process-local cache first (no network) before Redis.
     """
@@ -148,7 +237,7 @@ async def _cache_get(key: str) -> dict | None:
     try:
         raw = await cache_manager.get(key)
         if raw is None:
-            return None
+            return _CACHE_MISS
         # Negative cache: store empty string to mean "no tenant found"
         if raw == "":
             _INPROC_CACHE[key] = (None, time.monotonic() + _INPROC_TTL)
@@ -157,7 +246,7 @@ async def _cache_get(key: str) -> dict | None:
         _INPROC_CACHE[key] = (data, time.monotonic() + _INPROC_TTL)
         return data
     except Exception:
-        return None
+        return _CACHE_MISS
 
 
 async def _cache_set(key: str, data: dict | None) -> None:
@@ -167,6 +256,22 @@ async def _cache_set(key: str, data: dict | None) -> None:
         await cache_manager.set(key, value, ttl=CACHE_TTL)
     except Exception:
         pass
+
+
+async def invalidate_tenant_cache(
+    *, slug: str, current_domain: str | None = None, previous_domain: str | None = None
+) -> None:
+    """Invalidate lookup keys affected by a tenant mutation."""
+    keys = {f"tenant:slug:{slug}"}
+    for domain in (current_domain, previous_domain):
+        if domain:
+            keys.add(f"tenant:domain:{domain}")
+    for key in keys:
+        _INPROC_CACHE.pop(key, None)
+        try:
+            await cache_manager.delete(key)
+        except Exception:
+            pass
 
 
 def _serialize(tenant: Tenant | None) -> dict | None:

@@ -112,24 +112,75 @@ async def test_metrics_exposes_new_series(client: AsyncClient):
 # anything watching health.
 
 
+async def test_health_engine_subprocess_probe_runs_off_event_loop(client: AsyncClient, monkeypatch):
+    import threading
+
+    from app.api import routes
+    from app.services import storage_service
+
+    event_loop_thread = threading.get_ident()
+    probe_threads = []
+
+    def engine_probe():
+        probe_threads.append(threading.get_ident())
+        return True
+
+    monkeypatch.setenv("DEPLOY_TARGET", "local")
+    monkeypatch.setattr(routes.latex_compiler, "is_available", engine_probe)
+    monkeypatch.setattr(storage_service, "probe", lambda: (True, "ok"))
+    response = await client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["latex_available"] is True
+    assert probe_threads and all(thread != event_loop_thread for thread in probe_threads)
+
+
 async def test_health_reports_storage_ok_when_reachable(client: AsyncClient):
     from app.services import storage_service
+    from app.services.redis_capacity_service import RedisCapacitySnapshot
 
     class _FakeRedis:
         async def ping(self):
             return True
 
+    class _FakeDbSession:
+        async def execute(self, *_args, **_kwargs):
+            return None
+
+    class _FakeDbContext:
+        async def __aenter__(self):
+            return _FakeDbSession()
+
+        async def __aexit__(self, *_args):
+            return None
+
     from app.api import routes
 
     with patch.object(storage_service, "probe", lambda: (True, "ok")), \
          patch.object(routes._redis_manager, "redis_client", _FakeRedis()), \
-         patch.object(routes._redis_manager, "redis_cache_client", _FakeRedis()):
+         patch.object(routes._redis_manager, "redis_cache_client", _FakeRedis()), \
+         patch.object(routes, "get_async_db_session", return_value=_FakeDbContext()), \
+         patch.object(routes.latex_compiler, "is_available", return_value=True), \
+         patch.object(
+             routes.redis_capacity_service,
+             "snapshot",
+             AsyncMock(
+                 return_value=RedisCapacitySnapshot(
+                     provider="redis",
+                     status="not_applicable",
+                     configured=False,
+                 )
+             ),
+         ):
         resp = await client.get("/health")
 
     assert resp.status_code == 200
     body = resp.json()
     assert body["storage"] == "ok"
+    assert body["database"] == "ok"
+    assert body["redis"] == "ok"
     assert body["redis_cache"] == "ok"
+    assert body["latex_available"] is True
+    assert body["redis_capacity"]["status"] == "not_applicable"
     assert body["status"] == "healthy"
 
 

@@ -45,7 +45,7 @@ services:
     user: root
     command: >
       sh -c "
-        pip install --no-cache-dir -r requirements-dev.txt --quiet &&
+        pip install --no-cache-dir --require-hashes -r requirements-dev.lock --quiet &&
         alembic upgrade head &&
         pytest test/ -v --tb=short --asyncio-mode=auto
       "

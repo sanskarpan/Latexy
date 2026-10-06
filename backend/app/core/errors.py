@@ -74,10 +74,30 @@ def error_body(code: str, message: str, request_id: str | None, details: Any = N
     return body
 
 
+def _json_safe(value: Any) -> Any:
+    """Make validation details safe to serialize even for malformed Unicode.
+
+    JSON decoding can produce lone UTF-16 surrogate code points. They are
+    correctly rejected by Pydantic, but including the raw input in a JSON error
+    would make Starlette's response encoder raise another exception and turn a
+    client validation error into a 500. Replace only invalid code points in the
+    diagnostic payload; the request itself remains rejected.
+    """
+    if isinstance(value, str):
+        return value.encode("utf-8", errors="replace").decode("utf-8")
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {_json_safe(key): _json_safe(item) for key, item in value.items()}
+    return value
+
+
 async def _validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     # jsonable_encoder mirrors FastAPI's default handler: pydantic error dicts can
     # carry non-serializable objects (e.g. a ValueError in `ctx`).
-    details = jsonable_encoder(exc.errors())
+    details = _json_safe(jsonable_encoder(exc.errors()))
     return JSONResponse(
         status_code=422,
         content=error_body(

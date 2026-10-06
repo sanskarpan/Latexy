@@ -25,6 +25,10 @@ export function useFormatConversion(): UseFormatConversionReturn {
   const [error, setError] = useState<string | null>(null)
   const mountedRef = useRef(true)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // A user can pick another file while the previous upload is still pending.
+  // Every asynchronous leg (upload, job-result fetch, and timeout) must only
+  // be allowed to commit for the currently selected conversion.
+  const conversionGenerationRef = useRef(0)
 
   const { state } = useJobStream(jobId)
 
@@ -32,6 +36,7 @@ export function useFormatConversion(): UseFormatConversionReturn {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+      conversionGenerationRef.current += 1
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
     }
   }, [])
@@ -39,6 +44,8 @@ export function useFormatConversion(): UseFormatConversionReturn {
   // Watch job stream for completion
   useEffect(() => {
     if (!jobId) return
+    const generation = conversionGenerationRef.current
+    const isCurrent = () => mountedRef.current && generation === conversionGenerationRef.current
     if (state.status === 'completed') {
       // Clear timeout — job finished in time
       if (timeoutRef.current) {
@@ -53,9 +60,10 @@ export function useFormatConversion(): UseFormatConversionReturn {
             `${apiClient.baseUrl}/jobs/${jobId}/result`,
             { headers: token ? { Authorization: `Bearer ${token}` } : {} }
           )
-          if (!mountedRef.current) return
+          if (!isCurrent()) return
           if (result.ok) {
             const data = await result.json()
+            if (!isCurrent()) return
             const latex = data?.result?.latex_content
             if (latex) {
               setConvertedLatex(latex)
@@ -73,7 +81,7 @@ export function useFormatConversion(): UseFormatConversionReturn {
             setStatus('error')
           }
         } catch (err) {
-          if (!mountedRef.current) return
+          if (!isCurrent()) return
           setError(String(err))
           setStatus('error')
         }
@@ -84,13 +92,15 @@ export function useFormatConversion(): UseFormatConversionReturn {
         clearTimeout(timeoutRef.current)
         timeoutRef.current = null
       }
-      if (!mountedRef.current) return
+      if (!isCurrent()) return
       setError(state.error || 'Conversion failed')
       setStatus('error')
     }
   }, [state.status, state.error, jobId])
 
   async function startConversion(file: File, sourceHint?: string, sourcePlatform?: string): Promise<string | null> {
+    const generation = ++conversionGenerationRef.current
+
     // Cancel any previous timeout
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
@@ -105,7 +115,7 @@ export function useFormatConversion(): UseFormatConversionReturn {
     try {
       const response = await apiClient.uploadForConversion(file, sourceHint, sourcePlatform)
 
-      if (!mountedRef.current) return null
+      if (!mountedRef.current || generation !== conversionGenerationRef.current) return null
 
       if (!response.success) {
         throw new Error('Upload failed')
@@ -125,7 +135,7 @@ export function useFormatConversion(): UseFormatConversionReturn {
 
         // Start timeout — auto-fail if job hangs
         timeoutRef.current = setTimeout(() => {
-          if (!mountedRef.current) return
+          if (!mountedRef.current || generation !== conversionGenerationRef.current) return
           setError('Conversion timed out. The server may be busy — please try again.')
           setStatus('error')
           setJobId(null)
@@ -136,7 +146,7 @@ export function useFormatConversion(): UseFormatConversionReturn {
 
       throw new Error('Invalid upload response')
     } catch (err: unknown) {
-      if (!mountedRef.current) return null
+      if (!mountedRef.current || generation !== conversionGenerationRef.current) return null
       let message = err instanceof Error ? err.message : String(err)
       // Improve HTTP error messages
       if (message.includes('413')) message = 'File is too large to upload'
@@ -151,6 +161,7 @@ export function useFormatConversion(): UseFormatConversionReturn {
   }
 
   function reset() {
+    conversionGenerationRef.current += 1
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
       timeoutRef.current = null

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  ArrowLeft, Building2, Users, FileText, Plus, Trash2, Loader2,
+  ArrowLeft, Building2, Users, FileText, Plus, Trash2, Loader2, Download,
   UserMinus, ChevronDown, Check, X, ExternalLink
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -15,15 +15,17 @@ import {
   type WorkspaceResumeItem,
   type ResumeResponse,
 } from '@/lib/api-client'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import SessionLoadError from '@/components/SessionLoadError'
+import { downloadBlob } from '@/lib/download'
 
 type RoleOption = 'editor' | 'viewer'
 
 export default function WorkspaceDetailPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const router = useRouter()
-  const { data: session, isPending: sessionLoading } = useSession()
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
 
   const [ws, setWs] = useState<WorkspaceDetailResponse | null>(null)
   const [resumes, setResumes] = useState<WorkspaceResumeItem[]>([])
@@ -35,15 +37,22 @@ export default function WorkspaceDetailPage() {
   const [showAddResume, setShowAddResume] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
 
   const userId = session?.user?.id ?? ''
 
   useEffect(() => {
-    if (!session?.user) return
+    if (!session?.user) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setLoadError(null)
     Promise.all([
       apiClient.getWorkspace(workspaceId),
       apiClient.listWorkspaceResumes(workspaceId),
-      apiClient.listResumes(),
+      apiClient.listAllResumes(),
     ])
       .then(([detail, wrs, userResumes]) => {
         setWs(detail)
@@ -51,9 +60,12 @@ export default function WorkspaceDetailPage() {
         setResumes(wrs)
         setMyResumes(userResumes)
       })
-      .catch(() => toast.error('Failed to load workspace'))
+      .catch((error) => {
+        setLoadError(error instanceof Error ? error.message : 'Failed to load workspace')
+        toast.error('Failed to load workspace')
+      })
       .finally(() => setLoading(false))
-  }, [session, workspaceId])
+  }, [session, workspaceId, reloadNonce])
 
   const isOwner = ws?.owner_id === userId
 
@@ -159,8 +171,40 @@ export default function WorkspaceDetailPage() {
     }
   }
 
+  async function handleDownloadResume(resumeId: string, title: string) {
+    try {
+      const blob = await apiClient.downloadWorkspaceResume(workspaceId, resumeId)
+      downloadBlob(blob, `${title.replace(/[^a-z0-9_-]+/gi, '_') || 'resume'}.pdf`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Resume download failed')
+    }
+  }
+
   if (sessionLoading || loading) return <LoadingSpinner />
-  if (!ws) return null
+  if (sessionError && !session) return <SessionLoadError area="Team workspace" />
+  if (!session?.user) return null
+  if (!ws) {
+    return (
+      <div className="min-h-screen bg-bg p-6 text-fg">
+        <div role="alert" className="mx-auto mt-20 max-w-lg rounded-[var(--radius-lg)] border border-err/20 bg-err/[0.07] p-8 text-center">
+          <h1 className="text-lg font-semibold text-err">Team workspace could not be loaded</h1>
+          <p className="mt-2 text-sm text-fg-2">{loadError ?? 'The workspace is unavailable.'}</p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link href="/workspaces" className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-semibold text-fg-2 hover:text-fg">
+              All Workspaces
+            </Link>
+            <button
+              type="button"
+              onClick={() => setReloadNonce((value) => value + 1)}
+              className="rounded-[var(--radius-md)] border border-err/30 px-4 py-2 text-xs font-semibold text-err transition hover:bg-err/10"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const sharedResumeIds = new Set(resumes.map((r) => r.id))
   const unsharedResumes = myResumes.filter((r) => !sharedResumeIds.has(r.id))
@@ -303,18 +347,16 @@ export default function WorkspaceDetailPage() {
             <h2 className="text-sm font-semibold text-fg-2 flex items-center gap-2">
               <FileText className="h-4 w-4 text-accent-strong" /> Shared Resumes
             </h2>
-            {isOwner && (
-              <button
-                onClick={() => setShowAddResume((v) => !v)}
-                className="flex items-center gap-1 text-xs text-accent-strong hover:brightness-110 transition-colors"
-              >
-                <Plus className="h-3.5 w-3.5" /> Add
-              </button>
-            )}
+            <button
+              onClick={() => setShowAddResume((v) => !v)}
+              className="flex items-center gap-1 text-xs text-accent-strong hover:brightness-110 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" /> Submit mine
+            </button>
           </div>
 
           {/* Resume picker */}
-          {showAddResume && isOwner && (
+          {showAddResume && (
             <div className="mb-4 bg-surface-2 rounded-[var(--radius-md)] p-3 max-h-40 overflow-y-auto space-y-1">
               {unsharedResumes.length === 0 ? (
                 <p className="text-xs text-fg-3">All your resumes are already shared here.</p>
@@ -340,14 +382,23 @@ export default function WorkspaceDetailPage() {
                 <li key={r.id} className="flex items-center justify-between py-1.5">
                   <span className="text-sm text-fg-2 truncate flex-1 mr-2">{r.title}</span>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Link
-                      href={`/workspace/${r.id}/edit`}
+                    {r.owner_id === userId && (
+                      <Link
+                        href={`/workspace/${r.id}/edit`}
+                        className="text-fg-3 hover:text-accent-strong transition-colors"
+                        title="Open in editor"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
+                    )}
+                    <button
+                      onClick={() => handleDownloadResume(r.id, r.title)}
                       className="text-fg-3 hover:text-accent-strong transition-colors"
-                      title="Open in editor"
+                      title="Download PDF"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Link>
-                    {isOwner && (
+                      <Download className="h-3.5 w-3.5" />
+                    </button>
+                    {(isOwner || r.owner_id === userId) && (
                       <button
                         onClick={() => handleRemoveResume(r.id, r.title)}
                         className="text-fg-3 hover:text-err transition-colors"

@@ -41,7 +41,7 @@ Infrastructure notes:
   - cache mock: patch app.api.ai_routes.cache_manager.get (AsyncMock)
   - No real ORCID network calls in any test
   - db_session: real Neon PostgreSQL, rolls back after each test
-  - Redis: real localhost:6379/15, but cache_manager not initialized in tests
+  - Redis: real localhost:6380/15, but cache_manager not initialized in tests
     (lifespan doesn't run) — cache tests use mock, not real Redis writes
 """
 
@@ -457,6 +457,15 @@ class TestPublicationsEndpoint:
 
         assert resp.status_code == 422
         assert "not found" in resp.json()["detail"].lower()
+        assert VALID_ORCID not in resp.json()["detail"]
+
+    async def test_orcid_validation_error_does_not_relay_upstream_diagnostics(
+        self, client: AsyncClient
+    ) -> None:
+        with _patch_orcid_error(ValueError("https://provider.example/?token=secret-patient-data")):
+            resp = await client.post("/ai/generate-publications", json={"identifier": VALID_ORCID})
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "ORCID request was invalid. Please check the identifier."
 
     # 58I-05 ─────────────────────────────────────────────────────────────────
     async def test_orcid_network_error_returns_502(

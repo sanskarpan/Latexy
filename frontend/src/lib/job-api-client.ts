@@ -88,7 +88,7 @@ export interface ATSRecommendationsResponse {
 // ------------------------------------------------------------------ //
 
 export interface JobSubmissionRequest {
-  job_type: 'latex_compilation' | 'llm_optimization' | 'combined' | 'ats_scoring'
+  job_type: 'latex_compilation' | 'auto_fit' | 'llm_optimization' | 'combined' | 'ats_scoring'
   latex_content?: string
   job_description?: string
   optimization_level?: 'conservative' | 'balanced' | 'aggressive'
@@ -96,6 +96,7 @@ export interface JobSubmissionRequest {
   device_fingerprint?: string
   industry?: string
   metadata?: Record<string, unknown>
+  auto_fit_intensity?: number
 }
 
 export interface JobSubmissionResponse {
@@ -125,8 +126,11 @@ export interface JobListResponse {
 
 export interface SystemHealthResponse {
   status: string
-  queue_depths: Record<string, number>
-  worker_count: number
+  redis?: Record<string, boolean>
+  timestamp?: number
+  error?: string
+  queue_depths?: Record<string, number>
+  worker_count?: number
   websocket_connections?: number
   active_jobs_count?: number
 }
@@ -236,7 +240,7 @@ class JobApiClient {
 
   async getSystemHealth(): Promise<SystemHealthResponse> {
     const res = await apiClient.getSystemHealth()
-    return { status: 'ok', ...res }
+    return res
   }
 }
 

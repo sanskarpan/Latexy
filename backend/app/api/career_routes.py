@@ -6,6 +6,7 @@ Endpoints (prefix: /career):
   GET  /career/analyses/{resume_id}     — list past analyses for a resume
   GET  /career/analysis/{analysis_id}  — retrieve single analysis with path data
   GET  /career/roles?q=<search>         — role autocomplete
+  GET  /career/skills?q=<search>        — ESCO skill discovery
   POST /admin/career-graph/seed         — seed career graph (admin only)
 """
 
@@ -13,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +28,8 @@ from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
 from ..services.career_path_service import career_path_service
 from ..services.entitlement_service import entitlement_service
+from ..services.esco_service import ESCO_LANGUAGES, ESCO_VERSION, esco_service
+from ..utils.uuid_guard import ensure_uuid
 
 logger = get_logger(__name__)
 
@@ -36,13 +39,14 @@ admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
 
+
 class AnalyzeRequest(BaseModel):
     resume_id: str
     target_role_title: str
 
 
 class CareerRoleSchema(BaseModel):
-    model_config = {'from_attributes': True}
+    model_config = {"from_attributes": True}
 
     id: str
     title: str
@@ -54,7 +58,7 @@ class CareerRoleSchema(BaseModel):
 
 
 class CareerAnalysisSchema(BaseModel):
-    model_config = {'from_attributes': True}
+    model_config = {"from_attributes": True}
 
     id: str
     resume_id: str
@@ -62,6 +66,9 @@ class CareerAnalysisSchema(BaseModel):
     target_role_freetext: Optional[str] = None
     current_skills: list[str]
     gap_skills: list[str]
+    skill_taxonomy: Optional[str] = None
+    skill_taxonomy_language: Optional[str] = None
+    skill_taxonomy_mappings: Optional[list[dict[str, Any]]] = None
     path_role_ids: Optional[list[str]] = None
     timeline_months: Optional[int] = None
     llm_analysis: Optional[str] = None
@@ -79,6 +86,7 @@ class SeedResponse(BaseModel):
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 
+
 def _analysis_to_schema(
     analysis: CareerAnalysis,
     path_roles: Optional[list[CareerRole]] = None,
@@ -91,29 +99,42 @@ def _analysis_to_schema(
         "target_role_freetext": analysis.target_role_freetext,
         "current_skills": analysis.current_skills or [],
         "gap_skills": analysis.gap_skills or [],
+        "skill_taxonomy": getattr(analysis, "skill_taxonomy", None),
+        "skill_taxonomy_language": getattr(analysis, "skill_taxonomy_language", None),
+        "skill_taxonomy_mappings": getattr(analysis, "skill_taxonomy_mappings", None),
         "path_role_ids": analysis.path_role_ids,
         "timeline_months": analysis.timeline_months,
         "llm_analysis": analysis.llm_analysis,
         "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
         "path_roles": [
             {
-                "id": r.id, "title": r.title, "level": r.level,
-                "industry": r.industry, "required_skills": r.required_skills or [],
-                "typical_yoe_min": r.typical_yoe_min, "typical_yoe_max": r.typical_yoe_max,
+                "id": r.id,
+                "title": r.title,
+                "level": r.level,
+                "industry": r.industry,
+                "required_skills": r.required_skills or [],
+                "typical_yoe_min": r.typical_yoe_min,
+                "typical_yoe_max": r.typical_yoe_max,
             }
             for r in (path_roles or [])
-        ] or None,
+        ]
+        or None,
         "target_role": {
-            "id": target_role.id, "title": target_role.title, "level": target_role.level,
+            "id": target_role.id,
+            "title": target_role.title,
+            "level": target_role.level,
             "industry": target_role.industry,
             "required_skills": target_role.required_skills or [],
             "typical_yoe_min": target_role.typical_yoe_min,
             "typical_yoe_max": target_role.typical_yoe_max,
-        } if target_role else None,
+        }
+        if target_role
+        else None,
     }
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
 
 @router.post("/analyze", dependencies=[Depends(require_feature("career_paths"))])
 async def analyze_career_path(
@@ -132,7 +153,9 @@ async def analyze_career_path(
       5. LLM gap analysis
       6. Persist + return CareerAnalysis
     """
-    # Verify resume ownership
+    # Verify resume ownership. UUID columns reject malformed strings at the
+    # driver layer, so validate before constructing a query.
+    ensure_uuid(body.resume_id, "Resume not found")
     result = await db.execute(
         select(Resume).where(
             Resume.id == body.resume_id,
@@ -174,7 +197,7 @@ async def analyze_career_path(
             api_key=user_api_key,
         )
     except Exception as exc:
-        logger.error(f"Career analysis failed: {exc}", exc_info=True)
+        logger.error("Career analysis failed", extra={"error_type": type(exc).__name__})
         if quota_ticket is not None:
             await entitlement_service.refund_quota(quota_ticket)
         raise HTTPException(
@@ -185,16 +208,11 @@ async def analyze_career_path(
     # Resolve path roles for response — single bulk query instead of N+1
     path_roles: list[CareerRole] = []
     if analysis.path_role_ids:
-        roles_result = await db.execute(
-            select(CareerRole).where(CareerRole.id.in_(analysis.path_role_ids))
-        )
+        roles_result = await db.execute(select(CareerRole).where(CareerRole.id.in_(analysis.path_role_ids)))
         role_map = {r.id: r for r in roles_result.scalars().all()}
         path_roles = [role_map[rid] for rid in analysis.path_role_ids if rid in role_map]
 
-    target_role = (
-        await db.get(CareerRole, analysis.target_role_id)
-        if analysis.target_role_id else None
-    )
+    target_role = await db.get(CareerRole, analysis.target_role_id) if analysis.target_role_id else None
 
     return _analysis_to_schema(analysis, path_roles=path_roles, target_role=target_role)
 
@@ -206,10 +224,9 @@ async def list_career_analyses(
     user_id: str = Depends(get_current_user),
 ) -> list[dict]:
     """List past career analyses for a resume in reverse chronological order."""
+    ensure_uuid(resume_id, "Resume not found")
     # Verify ownership
-    result = await db.execute(
-        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
-    )
+    result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Resume not found")
 
@@ -230,6 +247,7 @@ async def get_career_analysis(
     user_id: str = Depends(get_current_user),
 ) -> dict:
     """Retrieve a single analysis with full path role data."""
+    ensure_uuid(analysis_id, "Analysis not found")
     analysis = await db.get(CareerAnalysis, analysis_id)
     if not analysis or analysis.user_id != user_id:
         raise HTTPException(status_code=404, detail="Analysis not found")
@@ -237,16 +255,11 @@ async def get_career_analysis(
     # Bulk fetch — avoids N+1 (one SELECT per role ID)
     path_roles: list[CareerRole] = []
     if analysis.path_role_ids:
-        roles_result = await db.execute(
-            select(CareerRole).where(CareerRole.id.in_(analysis.path_role_ids))
-        )
+        roles_result = await db.execute(select(CareerRole).where(CareerRole.id.in_(analysis.path_role_ids)))
         role_map = {r.id: r for r in roles_result.scalars().all()}
         path_roles = [role_map[rid] for rid in analysis.path_role_ids if rid in role_map]
 
-    target_role = (
-        await db.get(CareerRole, analysis.target_role_id)
-        if analysis.target_role_id else None
-    )
+    target_role = await db.get(CareerRole, analysis.target_role_id) if analysis.target_role_id else None
 
     return _analysis_to_schema(analysis, path_roles=path_roles, target_role=target_role)
 
@@ -275,7 +288,35 @@ async def search_career_roles(
     ]
 
 
+@router.get("/skills")
+async def search_esco_skills(
+    q: str = Query(min_length=2, max_length=100),
+    language: str = Query(default="en", min_length=2, max_length=2),
+    limit: int = Query(default=8, ge=1, le=20),
+    _user_id: str = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Search current ESCO skills for authenticated taxonomy discovery."""
+    normalized_language = language.casefold()
+    if normalized_language not in ESCO_LANGUAGES:
+        raise HTTPException(status_code=422, detail="Unsupported ESCO language")
+    try:
+        results, available = await esco_service.search(q, language=normalized_language, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid career-path request.") from exc
+    if not available:
+        raise HTTPException(
+            status_code=503,
+            detail="ESCO skill taxonomy is temporarily unavailable",
+        )
+    return {
+        "taxonomy": f"ESCO {ESCO_VERSION}",
+        "language": normalized_language,
+        "results": results,
+    }
+
+
 # ── Admin: Seed endpoint ──────────────────────────────────────────────────────
+
 
 @admin_router.post("/career-graph/seed", response_model=SeedResponse)
 async def seed_career_graph(

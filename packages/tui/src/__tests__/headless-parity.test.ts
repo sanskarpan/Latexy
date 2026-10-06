@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'node:events'
 
 let sessionToken: string | null = 'tok'
+let defaultResumeId: string | null = null
 const getMock = vi.fn()
 const postMock = vi.fn()
 const fakeWsClient = new EventEmitter() as EventEmitter & Record<string, unknown>
@@ -20,7 +21,7 @@ vi.mock('../lib/config.js', () => ({
     userId: null,
     backendUrl: 'http://localhost:8030',
     appUrl: 'http://localhost:5180',
-    defaultResumeId: null,
+    defaultResumeId,
     activeModel: null,
     activeProvider: null,
   })),
@@ -55,6 +56,7 @@ describe('headless command parity', () => {
   beforeEach(() => {
     stdout = ''
     sessionToken = 'tok'
+    defaultResumeId = null
     getMock.mockReset()
     postMock.mockReset()
     vi.mocked(fakeWsClient['connect'] as ReturnType<typeof vi.fn>).mockClear()
@@ -70,6 +72,37 @@ describe('headless command parity', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     fakeWsClient.removeAllListeners()
+  })
+
+  it('rejects unknown, misspelled, and irrelevant options before backend access', async () => {
+    const { runHeadless } = await import('../headless.js')
+
+    expect(await runHeadless('compile', ['compile', '--unknown'])).toBe(3)
+    expect(stdout).toContain('Unknown option: --unknown')
+    expect(getMock).not.toHaveBeenCalled()
+    expect(postMock).not.toHaveBeenCalled()
+
+    stdout = ''
+    getMock.mockReset()
+    postMock.mockReset()
+    expect(await runHeadless('optimize', ['optimize', 'resume-1', '--complier', 'xelatex', '--jd', 'JD'])).toBe(3)
+    expect(stdout).toContain('Unknown option: --complier')
+    expect(getMock).not.toHaveBeenCalled()
+    expect(postMock).not.toHaveBeenCalled()
+
+    stdout = ''
+    getMock.mockReset()
+    postMock.mockReset()
+    expect(await runHeadless('ats', ['ats', 'score', 'resume-1', '--output', 'result.pdf'])).toBe(3)
+    expect(stdout).toContain('Option --output is not valid for this command')
+    expect(getMock).not.toHaveBeenCalled()
+    expect(postMock).not.toHaveBeenCalled()
+
+    stdout = ''
+    expect(await runHeadless('status', ['status', 'job-1', '--wait=false'])).toBe(3)
+    expect(stdout).toContain('Option --wait does not accept a value')
+    expect(getMock).not.toHaveBeenCalled()
+    expect(postMock).not.toHaveBeenCalled()
   })
 
   it('optimizes a resume and returns the authoritative job result', async () => {
@@ -107,6 +140,34 @@ describe('headless command parity', () => {
     })
   })
 
+  it('uses the saved default resume when optimize omits the resume id', async () => {
+    defaultResumeId = 'resume-default'
+    getMock.mockImplementation(async (path: string) => {
+      if (path === '/resumes/resume-default') return { latex_content: '\\documentclass{article}' }
+      if (path === '/jobs/job-default/result') {
+        return {
+          success: true,
+          job_id: 'job-default',
+          result: { optimized_latex: '\\documentclass{article} optimized', changes_made: [] },
+        }
+      }
+      throw new Error(`Unexpected GET ${path}`)
+    })
+    postMock.mockResolvedValue({ job_id: 'job-default' })
+    completeJob('job-default')
+
+    const { runHeadless } = await import('../headless.js')
+    const code = await runHeadless('optimize', [
+      'optimize', '--jd', 'Senior TypeScript engineer',
+    ])
+
+    expect(code).toBe(0)
+    expect(getMock).toHaveBeenCalledWith('/resumes/resume-default')
+    expect(postMock).toHaveBeenCalledWith('/jobs/submit', expect.objectContaining({
+      metadata: { resume_id: 'resume-default' },
+    }))
+  })
+
   it('runs ATS scoring with a scraped JD and returns detailed scoring output', async () => {
     getMock.mockImplementation(async (path: string) => {
       if (path === '/resumes/resume-2') return { latex_content: '\\documentclass{article}' }
@@ -138,6 +199,28 @@ describe('headless command parity', () => {
       industry: 'software_engineering',
     }))
     expect(JSON.parse(stdout)).toMatchObject({ success: true, job_id: 'job-ats', ats_score: 87.5 })
+  })
+
+  it('uses the saved default resume when ATS omits the resume id', async () => {
+    defaultResumeId = 'resume-default'
+    getMock.mockImplementation(async (path: string) => {
+      if (path === '/resumes/resume-default') return { latex_content: '\\documentclass{article}' }
+      if (path === '/jobs/job-default-ats/result') {
+        return { success: true, job_id: 'job-default-ats', result: { ats_score: 81 } }
+      }
+      throw new Error(`Unexpected GET ${path}`)
+    })
+    postMock.mockResolvedValue({ job_id: 'job-default-ats' })
+    completeJob('job-default-ats')
+
+    const { runHeadless } = await import('../headless.js')
+    const code = await runHeadless('ats', ['ats', 'score'])
+
+    expect(code).toBe(0)
+    expect(getMock).toHaveBeenCalledWith('/resumes/resume-default')
+    expect(postMock).toHaveBeenCalledWith('/jobs/submit', expect.objectContaining({
+      metadata: { resume_id: 'resume-default' },
+    }))
   })
 
   it('returns status immediately without opening a WebSocket', async () => {

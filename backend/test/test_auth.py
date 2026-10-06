@@ -117,10 +117,12 @@ class TestSessionValidation:
         )
         await db_session.commit()
 
-        resp = await client.get(
-            "/jobs/", cookies={"better-auth.session_token": token}
-        )
-        assert resp.status_code == 200
+        client.cookies.set("better-auth.session_token", token)
+        try:
+            resp = await client.get("/jobs/")
+            assert resp.status_code == 200
+        finally:
+            client.cookies.delete("better-auth.session_token")
 
 
 @pytest.mark.asyncio

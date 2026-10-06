@@ -28,12 +28,20 @@ data:
   # build time (NEXT_PUBLIC_*), so they must match the build args used for the
   # frontend image — the pod env below only documents them.
   api-url: "/api"
-  ws-url: "wss://latexy.com"
-  frontend-url: "https://latexy.com"
+  ws-url: "wss://latexy.xyz"
+  frontend-url: "https://latexy.xyz"
   environment: "production"
   # From-address for transactional mail (lib/email.ts); the domain must be
   # verified with the provider behind latexy-secrets/resend-api-key.
   email-from: "Latexy <no-reply@latexy.com>"
+  # Backend delivery remains opt-in; replace the redirect URI with the URI
+  # registered in the Google OAuth client before enabling Drive export.
+  email-enabled: "false"
+  email-provider: "resend"
+  email-from-address: "no-reply@latexy.com"
+  email-from-name: "Latexy"
+  email-smtp-port: "587"
+  google-drive-redirect-uri: ""
   # The bundled nginx is the only ingress and it overwrites X-Real-IP with
   # $remote_addr, so the backend and the frontend's auth rate limiter can trust
   # it for per-client rate-limit buckets.
@@ -42,5 +50,12 @@ data:
   # subscription through an offer, so a percentage coupon missing from this map
   # is refused at checkout. Empty means "no percentage coupon is redeemable".
   razorpay-coupon-offers: "{}"
+  # B59 user referrals. Keep disabled until the extension-days policy is
+  # explicitly approved; values are read by the backend deployment below.
+  referral-program-enabled: "false"
+  referral-reward-days: "0"
+  referral-qualifying-plan-families: '["basic","pro","byok","student","team","weekly","lifetime"]'
+  referral-max-attributions-per-referrer: "1000"
+  referral-attribution-window-hours: "24"
   # JSON array — pydantic-settings parses List[str] settings as JSON.
-  cors-origins: '["https://latexy.com","https://www.latexy.com"]'
+  cors-origins: '["https://latexy.xyz","https://www.latexy.xyz"]'

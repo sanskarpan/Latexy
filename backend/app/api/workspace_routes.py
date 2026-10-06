@@ -2,24 +2,40 @@
 
 import re
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from ..core.logging import get_logger
+from ..core.redis import get_redis_client
 from ..database.connection import get_db
-from ..database.models import RecruiterNote, Resume, User, Workspace, WorkspaceMember, WorkspaceResume
+from ..database.models import (
+    Compilation,
+    RecruiterNote,
+    Resume,
+    User,
+    Workspace,
+    WorkspaceMember,
+    WorkspaceResume,
+)
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
+from ..utils.bounded_io import MAX_COMPILED_PDF_BYTES, BoundedReadError, decode_base64_bounded
+from ..utils.file_utils import get_job_files
+from ..utils.uuid_guard import ensure_uuid
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
 VALID_ROLES = frozenset({"editor", "viewer"})
+_MAX_WORKSPACE_PDF_BYTES = 20 * 1024 * 1024
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -79,8 +95,19 @@ class RoleUpdateRequest(BaseModel):
 class ResumeInWorkspace(BaseModel):
     id: str
     title: str
+    owner_id: str
     shared_by: Optional[str] = None
     shared_at: str
+    # These legacy timestamps are only written when the resume owner accesses
+    # their own submission. Keep the names for API compatibility, but make the
+    # actor/source explicit so consumers cannot present them as reviewer or
+    # employer activity.
+    opened_at: Optional[str] = None
+    opened_actor: Optional[Literal["candidate"]] = None
+    opened_source: Optional[Literal["candidate_self"]] = None
+    downloaded_at: Optional[str] = None
+    downloaded_actor: Optional[Literal["candidate"]] = None
+    downloaded_source: Optional[Literal["candidate_self"]] = None
 
 
 class RecruiterNoteCreate(BaseModel):
@@ -107,6 +134,7 @@ class RecruiterNoteResponse(BaseModel):
 
 
 async def _get_workspace_or_404(workspace_id: str, db: AsyncSession) -> Workspace:
+    ensure_uuid(workspace_id, "Workspace not found")
     result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
     ws = result.scalar_one_or_none()
     if not ws:
@@ -132,6 +160,19 @@ async def _require_member(
 async def _require_owner(workspace: Workspace, user_id: str) -> None:
     if workspace.owner_id != user_id:
         raise HTTPException(status_code=403, detail="Only the workspace owner can perform this action")
+
+
+async def _require_editor(
+    workspace: Workspace, user_id: str, db: AsyncSession
+) -> WorkspaceMember:
+    """Require a role that may contribute workspace content."""
+    member = await _require_member(workspace, user_id, db)
+    if member.role not in {"owner", "editor"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Workspace viewers cannot create or edit recruiter notes",
+        )
+    return member
 
 
 def _ws_to_response(
@@ -349,8 +390,15 @@ async def invite_member(
         joined_at=datetime.now(timezone.utc),
     )
     db.add(member)
-    await db.commit()
-    logger.info("Workspace %s: invited %s with role %s", workspace_id, body.email, body.role)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        # The membership pre-check is advisory; a concurrent invite may win the
+        # primary-key race between SELECT and INSERT. Keep that conflict a
+        # stable client error instead of leaking a 500.
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="User is already a member of this workspace") from exc
+    logger.info("Workspace %s: invited user %s with role %s", workspace_id, target.id, body.role)
 
     return MemberResponse(
         user_id=target.id,
@@ -370,6 +418,7 @@ async def remove_member(
     db: AsyncSession = Depends(get_db),
 ):
     """Remove a member (owner only; cannot remove the owner)."""
+    ensure_uuid(target_user_id, "Member not found")
     ws = await _get_workspace_or_404(workspace_id, db)
     await _require_owner(ws, user_id)
 
@@ -399,6 +448,7 @@ async def update_member_role(
     db: AsyncSession = Depends(get_db),
 ):
     """Change a member's role (owner only)."""
+    ensure_uuid(target_user_id, "Member not found")
     if body.role not in VALID_ROLES:
         raise HTTPException(status_code=422, detail="role must be 'editor' or 'viewer'")
 
@@ -445,9 +495,10 @@ async def add_resume_to_workspace(
     user_id: str = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
-    """Share a resume into a workspace (owner only; must own the resume)."""
+    """Explicitly submit one of the caller's resumes to a workspace."""
+    ensure_uuid(resume_id, "Resume not found or not owned by you")
     ws = await _get_workspace_or_404(workspace_id, db)
-    await _require_owner(ws, user_id)
+    await _require_member(ws, user_id, db)
 
     resume_result = await db.execute(
         select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
@@ -467,14 +518,27 @@ async def add_resume_to_workspace(
 
     wr = WorkspaceResume(workspace_id=workspace_id, resume_id=resume_id, shared_by=user_id)
     db.add(wr)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        # Two tabs can submit the same resume concurrently; the composite
+        # primary key is authoritative when both pass the pre-check.
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Resume is already in this workspace") from exc
     await db.refresh(wr)
 
     return ResumeInWorkspace(
         id=resume.id,
         title=resume.title,
+        owner_id=resume.user_id,
         shared_by=wr.shared_by,
         shared_at=wr.shared_at.isoformat(),
+        opened_at=None,
+        opened_actor=None,
+        opened_source=None,
+        downloaded_at=None,
+        downloaded_actor=None,
+        downloaded_source=None,
     )
 
 
@@ -485,19 +549,25 @@ async def remove_resume_from_workspace(
     user_id: str = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
-    """Remove a resume from a workspace (owner only)."""
+    """Remove a submitted resume (workspace owner or resume owner)."""
+    ensure_uuid(resume_id, "Resume not found in workspace")
     ws = await _get_workspace_or_404(workspace_id, db)
-    await _require_owner(ws, user_id)
+    await _require_member(ws, user_id, db)
 
     result = await db.execute(
-        select(WorkspaceResume).where(
+        select(WorkspaceResume, Resume)
+        .join(Resume, Resume.id == WorkspaceResume.resume_id)
+        .where(
             WorkspaceResume.workspace_id == workspace_id,
             WorkspaceResume.resume_id == resume_id,
         )
     )
-    wr = result.scalar_one_or_none()
-    if not wr:
+    row = result.one_or_none()
+    if not row:
         raise HTTPException(status_code=404, detail="Resume not found in workspace")
+    wr, resume = row
+    if user_id not in {ws.owner_id, resume.user_id}:
+        raise HTTPException(status_code=403, detail="Only the workspace or resume owner can remove it")
 
     await db.delete(wr)
     await db.commit()
@@ -511,22 +581,146 @@ async def list_workspace_resumes(
 ):
     """List all resumes in this workspace (any member can view)."""
     ws = await _get_workspace_or_404(workspace_id, db)
-    await _require_member(ws, user_id, db)
+    member = await _require_member(ws, user_id, db)
 
-    result = await db.execute(
+    query = (
         select(WorkspaceResume, Resume)
         .join(Resume, WorkspaceResume.resume_id == Resume.id)
         .where(WorkspaceResume.workspace_id == workspace_id)
     )
+    # Career-centre students opt in by submitting a resume, but should not see
+    # other students' submissions. Tenant cohort admins retain the full roster.
+    if ws.tenant_id and member.role == "viewer":
+        query = query.where(Resume.user_id == user_id)
+    result = await db.execute(query)
+    rows = result.fetchall()
+    changed = False
+    for workspace_resume, resume in rows:
+        # ``opened_at`` is a legacy field. It records candidate self-activity
+        # only; a member/reviewer reading this list must never create it.
+        if resume.user_id == user_id and workspace_resume.opened_at is None:
+            workspace_resume.opened_at = datetime.now(timezone.utc)
+            changed = True
+    if changed:
+        await db.commit()
     return [
         ResumeInWorkspace(
             id=r.id,
             title=r.title,
+            owner_id=r.user_id,
             shared_by=wr.shared_by,
             shared_at=wr.shared_at.isoformat(),
+            opened_at=wr.opened_at.isoformat() if wr.opened_at else None,
+            opened_actor="candidate" if wr.opened_at else None,
+            opened_source="candidate_self" if wr.opened_at else None,
+            downloaded_at=wr.downloaded_at.isoformat() if wr.downloaded_at else None,
+            downloaded_actor="candidate" if wr.downloaded_at else None,
+            downloaded_source="candidate_self" if wr.downloaded_at else None,
         )
-        for wr, r in result.fetchall()
+        for wr, r in rows
     ]
+
+
+@router.get("/{workspace_id}/resumes/{resume_id}/download")
+async def download_workspace_resume(
+    workspace_id: str,
+    resume_id: str,
+    user_id: str = Depends(get_current_user_required),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download the latest submitted PDF after explicit workspace authorization."""
+    ensure_uuid(resume_id, "Resume not found in workspace")
+    ws = await _get_workspace_or_404(workspace_id, db)
+    member = await _require_member(ws, user_id, db)
+    row_result = await db.execute(
+        select(WorkspaceResume, Resume)
+        .join(Resume, Resume.id == WorkspaceResume.resume_id)
+        .where(
+            WorkspaceResume.workspace_id == workspace_id,
+            WorkspaceResume.resume_id == resume_id,
+        )
+    )
+    row = row_result.one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Resume not found in workspace")
+    workspace_resume, resume = row
+    # Tenant-backed cohort viewers can submit and retrieve their own resume,
+    # but must not use a guessed resume_id to download another student's
+    # submission. Keep this boundary aligned with list_workspace_resumes,
+    # which hides classmates' submissions from the same role.
+    if ws.tenant_id and member.role == "viewer" and resume.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Resume not found in workspace")
+    compilation_result = await db.execute(
+        select(Compilation)
+        .where(
+            Compilation.resume_id == resume_id,
+            Compilation.status == "completed",
+        )
+        .order_by(Compilation.created_at.desc())
+        .limit(1)
+    )
+    compilation = compilation_result.scalar_one_or_none()
+    if not compilation:
+        raise HTTPException(status_code=404, detail="No compiled PDF is available")
+
+    async def record_student_download() -> None:
+        # Keep this milestone explicitly candidate-only. A workspace member's
+        # PDF download is not ATS/employer telemetry and is not persisted here.
+        if resume.user_id == user_id and workspace_resume.downloaded_at is None:
+            workspace_resume.downloaded_at = datetime.now(timezone.utc)
+            await db.commit()
+
+    stored_pdf: bytes | None = None
+    if compilation.pdf_path:
+        try:
+            from ..services.storage_service import download_bytes
+
+            stored_pdf = await run_in_threadpool(
+                download_bytes, compilation.pdf_path, _MAX_WORKSPACE_PDF_BYTES
+            )
+        except Exception as exc:
+            logger.warning(
+                "Workspace PDF storage lookup failed",
+                extra={"error_type": type(exc).__name__},
+            )
+    if stored_pdf:
+        await record_student_download()
+        return Response(
+            stored_pdf,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{resume_id}.pdf"'},
+        )
+    encoded = None
+    try:
+        redis = await get_redis_client()
+        encoded = await redis.get(f"latexy:job:{compilation.job_id}:pdf")
+    except Exception as exc:
+        logger.warning(
+            "Workspace PDF cache lookup failed",
+            extra={"error_type": type(exc).__name__},
+        )
+    if encoded:
+        try:
+            decoded = decode_base64_bounded(encoded, MAX_COMPILED_PDF_BYTES)
+        except BoundedReadError:
+            decoded = None
+        if decoded:
+            await record_student_download()
+            return Response(
+                decoded,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="{resume_id}.pdf"'},
+            )
+    try:
+        _, local_pdf, _ = get_job_files(str(compilation.job_id))
+    except HTTPException:
+        local_pdf = None
+    if local_pdf is not None and local_pdf.is_file():
+        if local_pdf.stat().st_size > MAX_COMPILED_PDF_BYTES:
+            raise HTTPException(status_code=413, detail="Compiled PDF is too large")
+        await record_student_download()
+        return FileResponse(local_pdf, media_type="application/pdf", filename=f"{resume_id}.pdf")
+    raise HTTPException(status_code=404, detail="PDF is no longer available; ask the student to recompile")
 
 
 # ── Recruiter Notes (Feature 73) ─────────────────────────────────────────────
@@ -547,6 +741,7 @@ def _note_to_response(note: RecruiterNote, author: Optional[User] = None) -> Rec
 
 
 async def _require_resume_in_workspace(workspace_id: str, resume_id: str, db: AsyncSession) -> None:
+    ensure_uuid(resume_id, "Resume not found in workspace")
     result = await db.execute(
         select(WorkspaceResume).where(
             WorkspaceResume.workspace_id == workspace_id,
@@ -569,9 +764,9 @@ async def create_recruiter_note(
     user_id: str = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a recruiter note on a workspace resume (owner only)."""
+    """Create a recruiter note on a workspace resume (owner or editor)."""
     ws = await _get_workspace_or_404(workspace_id, db)
-    await _require_owner(ws, user_id)
+    await _require_editor(ws, user_id, db)
     await _require_resume_in_workspace(workspace_id, resume_id, db)
 
     note = RecruiterNote(
@@ -599,9 +794,9 @@ async def list_recruiter_notes(
     user_id: str = Depends(get_current_user_required),
     db: AsyncSession = Depends(get_db),
 ):
-    """List recruiter notes for a resume in this workspace (any member)."""
+    """List internal recruiter notes (workspace owner/editor only)."""
     ws = await _get_workspace_or_404(workspace_id, db)
-    await _require_member(ws, user_id, db)
+    await _require_editor(ws, user_id, db)
     await _require_resume_in_workspace(workspace_id, resume_id, db)
 
     result = await db.execute(
@@ -629,8 +824,10 @@ async def update_recruiter_note(
     db: AsyncSession = Depends(get_db),
 ):
     """Edit a recruiter note (author only)."""
+    ensure_uuid(resume_id, "Resume not found in workspace")
+    ensure_uuid(note_id, "Note not found")
     ws = await _get_workspace_or_404(workspace_id, db)
-    await _require_member(ws, user_id, db)
+    await _require_editor(ws, user_id, db)
 
     note_result = await db.execute(
         select(RecruiterNote).where(
@@ -666,8 +863,10 @@ async def delete_recruiter_note(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a recruiter note (author or workspace owner)."""
+    ensure_uuid(resume_id, "Resume not found in workspace")
+    ensure_uuid(note_id, "Note not found")
     ws = await _get_workspace_or_404(workspace_id, db)
-    await _require_member(ws, user_id, db)
+    await _require_editor(ws, user_id, db)
 
     note_result = await db.execute(
         select(RecruiterNote).where(

@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.models import ResumeTemplate
 from app.services import storage_service
+from app.utils.bounded_io import MAX_COMPILED_PDF_BYTES, read_file_bounded
 
 
 def _raise_if_failed(failed: int) -> None:
@@ -86,17 +87,24 @@ async def main():
                     for _pass in range(2):
                         result = subprocess.run(
                             ["pdflatex", "-interaction=nonstopmode", "-output-directory", tmpdir, str(tex_path)],
-                            capture_output=True,
+                            # Diagnostics are read from the bounded .log below;
+                            # never retain arbitrary compiler pipes in memory.
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
                             timeout=60,
                         )
                         if result.returncode != 0 and _pass == 1:
                             print(f"FAIL (pdflatex exit {result.returncode})")
-                            output = (result.stdout or b"").decode(errors="replace")
-                            stderr = (result.stderr or b"").decode(errors="replace")
-                            diagnostic = "\n".join(
-                                line for line in f"{output}\n{stderr}".splitlines()
-                                if line.startswith("!") or line.startswith("l.")
-                            )[-1000:]
+                            log_path = Path(tmpdir) / "template.log"
+                            diagnostic = ""
+                            if log_path.is_file():
+                                bounded_log = read_file_bounded(log_path, 256 * 1024).decode(
+                                    errors="replace"
+                                )
+                                diagnostic = "\n".join(
+                                    line for line in bounded_log.splitlines()
+                                    if line.startswith("!") or line.startswith("l.")
+                                )[-1000:]
                             if diagnostic:
                                 print(f"    diagnostics:\n{diagnostic}")
                             ok = False
@@ -112,7 +120,11 @@ async def main():
                         continue
 
                     # Upload PDF
-                    storage_service.upload_bytes(pdf_key, pdf_path.read_bytes(), "application/pdf")
+                    storage_service.upload_bytes(
+                        pdf_key,
+                        read_file_bounded(pdf_path, MAX_COMPILED_PDF_BYTES),
+                        "application/pdf",
+                    )
 
                     # Convert first page to PNG
                     try:

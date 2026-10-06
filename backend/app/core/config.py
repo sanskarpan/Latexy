@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
     TEMP_DIR: Path = Path("/tmp/latex_compile")
     ALLOWED_LATEX_COMPILERS: List[str] = ["pdflatex", "xelatex", "lualatex"]
+    # Persisted on newly-created resumes. Keep DEFAULT_LATEX_COMPILER as the
+    # compatibility fallback for legacy rows that predate compiler metadata.
+    DEFAULT_NEW_RESUME_COMPILER: str = "lualatex"
     DEFAULT_LATEX_COMPILER: str = "pdflatex"
 
     # Compile timeout per subscription plan (seconds)
@@ -80,9 +83,6 @@ class Settings(BaseSettings):
             # Production
             "https://latexy.xyz",
             "https://www.latexy.xyz",
-            "https://latexy.com",
-            "https://www.latexy.com",
-            "https://app.latexy.com",
             "https://latexy.vercel.app",
             "https://latexy-frontend-tau.vercel.app",
         ]
@@ -140,6 +140,12 @@ class Settings(BaseSettings):
     # Social Authentication (for Better-Auth)
     GOOGLE_CLIENT_ID: str = Field(default="", description="Google OAuth client ID")
     GOOGLE_CLIENT_SECRET: str = Field(default="", description="Google OAuth client secret")
+    GOOGLE_DRIVE_CLIENT_ID: str = Field(default="", description="Google Drive OAuth client ID")
+    GOOGLE_DRIVE_CLIENT_SECRET: str = Field(default="", description="Google Drive OAuth client secret")
+    GOOGLE_DRIVE_REDIRECT_URI: str = Field(
+        default="http://localhost:8030/google-drive/callback",
+        description="Google Drive OAuth callback URI",
+    )
     GITHUB_CLIENT_ID: str = Field(default="", description="GitHub OAuth client ID")
     GITHUB_CLIENT_SECRET: str = Field(default="", description="GitHub OAuth client secret")
     GITHUB_OAUTH_REDIRECT_URI: str = Field(
@@ -236,6 +242,14 @@ class Settings(BaseSettings):
     RAZORPAY_PLAN_BYOK_ANNUAL: str = Field(default="", description="Razorpay plan ID for BYOK annual")
     RAZORPAY_PLAN_STUDENT: str = Field(default="", description="Razorpay plan ID for Student monthly")
     RAZORPAY_PLAN_TEAM: str = Field(default="", description="Razorpay plan ID for Team monthly")
+    # B57 pricing SKUs. Amounts are integer INR paise; zero deliberately means
+    # "not configured" and keeps the SKU out of the public pricing response.
+    # Weekly is a pre-created Razorpay subscription plan. Lifetime uses the
+    # Orders API and therefore has no provider plan ID.
+    RAZORPAY_PLAN_WEEKLY: str = Field(default="", description="Razorpay plan ID for Weekly recurring")
+    RAZORPAY_WEEKLY_AMOUNT: int = Field(default=0, ge=0, description="Weekly price in INR paise")
+    RAZORPAY_LIFETIME_AMOUNT: int = Field(default=0, ge=0, description="Lifetime price in INR paise")
+    RAZORPAY_BILLING_CURRENCY: str = Field(default="INR", description="Three-letter currency for B57 SKUs")
     RAZORPAY_COUPON_OFFERS: str = Field(
         default="",
         description=(
@@ -253,6 +267,33 @@ class Settings(BaseSettings):
     STUDENT_EMAIL_ALLOWED_SUFFIXES: List[str] = Field(
         default=[".edu", ".edu.in", ".ac.in"],
         description="Allowed student email suffixes for discounted student plans",
+    )
+    # B59 user-referral policy. No monetary reward is inferred in code: an
+    # operator must explicitly enable the programme and choose extension days.
+    # Affiliate payouts, commissions, and cash credits are deliberately out of
+    # scope until a separately reviewed provider/accounting integration exists.
+    REFERRAL_PROGRAM_ENABLED: bool = Field(default=False, description="Enable user-to-user referrals")
+    REFERRAL_REWARD_DAYS: int = Field(
+        default=0,
+        ge=0,
+        le=3650,
+        description="Configured paid-plan extension days per qualifying referred customer (0 = unavailable)",
+    )
+    REFERRAL_QUALIFYING_PLAN_FAMILIES: List[str] = Field(
+        default=["basic", "pro", "byok", "student", "team", "weekly", "lifetime"],
+        description="Paid plan families whose server-verified payment qualifies a referral",
+    )
+    REFERRAL_MAX_ATTRIBUTIONS_PER_REFERRER: int = Field(
+        default=1000,
+        ge=1,
+        le=100000,
+        description="Abuse bound on lifetime referred accounts per user",
+    )
+    REFERRAL_ATTRIBUTION_WINDOW_HOURS: int = Field(
+        default=24,
+        ge=1,
+        le=168,
+        description="Maximum account age allowed when claiming a first-touch referral",
     )
     DEV_API_DAILY_LIMIT_FREE: int = 10
     DEV_API_DAILY_LIMIT_BASIC: int = 100
@@ -462,6 +503,43 @@ class Settings(BaseSettings):
                 "apiAccess": True,
                 "teamSeats": 5
             }
+        },
+        # B57 SKUs intentionally have no commercial default. Their price and
+        # provider mapping are operator-configured below; get_subscription_plans
+        # omits them until fully configured.
+        "weekly": {
+            "name": "Weekly",
+            "price": 0,
+            "currency": "INR",
+            "interval": "week",
+            "billing_period": "weekly",
+            "plan_family": "pro",
+            "purchase_type": "subscription",
+            "configuration_required": True,
+            "features": {
+                "compilations": "unlimited",
+                "optimizations": "unlimited",
+                "historyRetention": 365,
+                "prioritySupport": True,
+                "apiAccess": True,
+            },
+        },
+        "lifetime": {
+            "name": "Lifetime",
+            "price": 0,
+            "currency": "INR",
+            "interval": "lifetime",
+            "billing_period": "lifetime",
+            "plan_family": "pro",
+            "purchase_type": "one_time",
+            "configuration_required": True,
+            "features": {
+                "compilations": "unlimited",
+                "optimizations": "unlimited",
+                "historyRetention": 365,
+                "prioritySupport": True,
+                "apiAccess": True,
+            },
         }
     })
 
@@ -681,6 +759,8 @@ PLAN_FAMILY_ALIASES = {
     "team": "team",
     "team_monthly": "team",
     "team_member": "team",
+    "weekly": "pro",
+    "lifetime": "pro",
 }
 
 
@@ -695,7 +775,14 @@ def get_plan_config(plan_id: str | None) -> Dict[str, Any]:
     normalized = (plan_id or "free").strip().lower()
     direct = settings.SUBSCRIPTION_PLANS.get(normalized)
     if direct:
-        return deepcopy(direct)
+        result = deepcopy(direct)
+        if normalized == "weekly":
+            result["price"] = settings.RAZORPAY_WEEKLY_AMOUNT
+            result["currency"] = settings.RAZORPAY_BILLING_CURRENCY.upper()
+        elif normalized == "lifetime":
+            result["price"] = settings.RAZORPAY_LIFETIME_AMOUNT
+            result["currency"] = settings.RAZORPAY_BILLING_CURRENCY.upper()
+        return result
 
     family = resolve_plan_family(normalized)
     return deepcopy(settings.SUBSCRIPTION_PLANS.get(family, settings.SUBSCRIPTION_PLANS["free"]))
@@ -713,9 +800,26 @@ def get_razorpay_plan_id(plan_id: str | None) -> str:
         "byok_annual": "RAZORPAY_PLAN_BYOK_ANNUAL",
         "student": "RAZORPAY_PLAN_STUDENT",
         "team": "RAZORPAY_PLAN_TEAM",
+        "weekly": "RAZORPAY_PLAN_WEEKLY",
     }
     env_key = env_map.get(normalized)
     return getattr(settings, env_key, "") if env_key else ""
+
+
+def is_b57_sku_configured(plan_id: str | None) -> bool:
+    """Whether a B57 SKU has a complete operator-approved checkout config.
+
+    A zero amount is intentionally treated as unavailable. This prevents a
+    missing environment variable from becoming a free lifetime entitlement.
+    """
+    normalized = (plan_id or "").strip().lower()
+    if (settings.RAZORPAY_BILLING_CURRENCY or "").strip().upper() != "INR":
+        return False
+    if normalized == "weekly":
+        return bool(get_razorpay_plan_id("weekly") and settings.RAZORPAY_WEEKLY_AMOUNT > 0)
+    if normalized == "lifetime":
+        return settings.RAZORPAY_LIFETIME_AMOUNT > 0
+    return False
 
 
 def get_razorpay_offer_id(coupon_code: str | None) -> str:

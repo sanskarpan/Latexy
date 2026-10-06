@@ -265,7 +265,7 @@ class ErrorExplainerService:
             }
 
         except Exception as e:
-            logger.error(f"LLM error explanation failed: {e}")
+            logger.error("LLM error explanation failed", extra={"error_type": type(e).__name__})
             raise
 
     async def explain(

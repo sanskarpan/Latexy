@@ -7,9 +7,10 @@ import { X } from 'lucide-react'
 import { apiClient, type CoverLetterListItem } from '@/lib/api-client'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import SessionLoadError from '@/components/SessionLoadError'
 
 export default function CoverLettersPage() {
-  const { session, isPending: sessionLoading } = useRequireAuth()
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const [coverLetters, setCoverLetters] = useState<CoverLetterListItem[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -20,6 +21,8 @@ export default function CoverLettersPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
 
   // Debounce the search query so we don't fire a request on every keystroke.
   useEffect(() => {
@@ -35,14 +38,18 @@ export default function CoverLettersPage() {
     let cancelled = false
     const fetchData = async () => {
       setIsFetching(true)
+      setLoadError(null)
       try {
         const data = await apiClient.listCoverLetters(page, 20, debouncedSearch)
         if (cancelled) return
         setCoverLetters(data.cover_letters)
         setTotal(data.total)
         setTotalPages(data.pages)
-      } catch {
-        if (!cancelled) toast.error('Failed to load cover letters')
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : 'Failed to load cover letters')
+          toast.error('Failed to load cover letters')
+        }
       } finally {
         if (!cancelled) {
           setIsFetching(false)
@@ -54,7 +61,7 @@ export default function CoverLettersPage() {
     return () => {
       cancelled = true
     }
-  }, [session, page, debouncedSearch])
+  }, [session, page, debouncedSearch, reloadNonce])
 
   const handleDelete = async (id: string) => {
     setConfirmDeleteId(null)
@@ -83,6 +90,10 @@ export default function CoverLettersPage() {
         <LoadingSpinner />
       </div>
     )
+  }
+
+  if (sessionError && !session) {
+    return <SessionLoadError area="Cover letter library" />
   }
 
   if (!session) {
@@ -172,13 +183,42 @@ export default function CoverLettersPage() {
         </div>
       </section>
 
+      {loadError && (
+        <section
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-err/20 bg-err/[0.07] px-4 py-3"
+        >
+          <div>
+            <p className="text-sm font-semibold text-err">Cover letters could not be loaded</p>
+            <p className="mt-0.5 text-xs text-fg-2">
+              {coverLetters.length > 0
+                ? 'Showing the last results loaded in this session. Retry to refresh them.'
+                : loadError}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setReloadNonce((value) => value + 1)}
+            disabled={isFetching}
+            className="rounded-[var(--radius-md)] border border-err/30 px-3 py-1.5 text-xs font-semibold text-err transition hover:bg-err/10 disabled:opacity-50"
+          >
+            {isFetching ? 'Retrying…' : 'Retry'}
+          </button>
+        </section>
+      )}
+
       {isLoading ? (
         <div className="flex h-72 items-center justify-center rounded-[var(--radius-lg)] border border-line bg-surface">
           <LoadingSpinner />
         </div>
       ) : (
       <div className={isFetching ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
-      {coverLetters.length === 0 ? (
+      {loadError && coverLetters.length === 0 ? (
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface px-6 py-16 text-center">
+          <h2 className="text-lg font-semibold text-fg">Cover letter library unavailable</h2>
+          <p className="mt-2 text-sm text-fg-2">Retry the request above instead of starting duplicate work.</p>
+        </div>
+      ) : coverLetters.length === 0 ? (
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface px-6 py-16 text-center">
           <h2 className="text-lg font-semibold text-fg">No cover letters yet</h2>
           <p className="mt-2 text-sm text-fg-2">

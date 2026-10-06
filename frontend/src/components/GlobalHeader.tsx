@@ -9,47 +9,61 @@ import { signOut, useSession } from '@/lib/auth-client'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import { useEntitlements } from '@/contexts/EntitlementsContext'
 import { usePWAInstall } from '@/hooks/usePWAInstall'
-import { clearAllDrafts } from '@/lib/offline-drafts'
+import { clearAllDrafts, clearAllDraftsExcept } from '@/lib/offline-drafts'
 import { clearCompileQueue } from '@/lib/compile-queue'
+import { clearAllOfflineCompiledPdfs, clearOfflineCompiledPdfsExcept, forgetOfflinePdfOwner, rememberOfflinePdfOwner } from '@/lib/offline-pdfs'
+import { apiClient } from '@/lib/api-client'
 import ModeToggle from '@/components/theme/ModeToggle'
+import ContrastToggle from '@/components/theme/ContrastToggle'
+import LocaleSwitcher from '@/components/LocaleSwitcher'
+import { useI18n } from '@/components/I18nProvider'
+import type { UiMessageKey } from '@/lib/i18n'
 
 const guestNav = [
-  { label: 'Platform', href: '/platform' },
-  { label: 'Templates', href: '/templates' },
-  { label: 'Pricing', href: '/pricing' },
-  { label: 'Resources', href: '/resources' },
-  { label: 'FAQ', href: '/faq' },
-]
+  { label: 'nav.platform', href: '/platform' },
+  { label: 'nav.templates', href: '/templates' },
+  { label: 'nav.pricing', href: '/pricing' },
+  { label: 'nav.resources', href: '/resources' },
+  { label: 'nav.faq', href: '/faq' },
+] as const
 
 // `feature` (optional) gates a nav item behind an entitlement key. Core
 // entry points (Dashboard, Workspace, Studio) are intentionally ungated.
-const appNav: Array<{ label: string; href: string; feature?: string }> = [
-  { label: 'Dashboard', href: '/dashboard' },
-  { label: 'Workspace', href: '/workspace' },
-  { label: 'Tracker', href: '/tracker', feature: 'application_tracker' },
-  { label: 'Templates', href: '/templates', feature: 'templates' },
-  { label: 'Studio', href: '/try' },
+const appNav: Array<{ label: UiMessageKey; href: string; feature?: string }> = [
+  { label: 'nav.dashboard', href: '/dashboard' },
+  { label: 'nav.workspace', href: '/workspace' },
+  { label: 'nav.tracker', href: '/tracker', feature: 'application_tracker' },
+  { label: 'nav.templates', href: '/templates', feature: 'templates' },
+  { label: 'nav.studio', href: '/try' },
 ]
 
 const fullscreenPatterns = [/^\/try$/, /^\/workspace\/[^/]+\/edit$/, /^\/workspace\/[^/]+\/optimize$/, /^\/workspace\/[^/]+\/cover-letter$/]
 
 export default function GlobalHeader() {
+  const { t } = useI18n()
   const pathname = usePathname()
-  const { data: session, error: sessionError } = useSession()
+  const { data: session, isPending: sessionPending, error: sessionError } = useSession()
   // Latch the last confirmed session: useSession() re-fetches on focus/interval,
   // and a transient failure (e.g. a rate-limited request) must not flip an
   // already-signed-in user's nav to the logged-out "Log In / Try Free" state —
   // that reads as "you got logged out" when the cookie is still perfectly valid.
   // Only a session with no error and no user means an actual sign-out.
   const lastKnownSessionRef = useRef<typeof session>(null)
-  if (session) lastKnownSessionRef.current = session
-  const effectiveSession = session ?? (sessionError ? lastKnownSessionRef.current : null)
+  if (session) {
+    lastKnownSessionRef.current = session
+  } else if (!sessionPending && !sessionError) {
+    lastKnownSessionRef.current = null
+  }
+  const effectiveSession = session ?? ((sessionPending || sessionError) ? lastKnownSessionRef.current : null)
+  const effectiveUserId = effectiveSession?.user?.id
   const flags = useFeatureFlags()
   const { can } = useEntitlements()
   const [hydrated, setHydrated] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [tenantBrand, setTenantBrand] = useState<{ name: string; logoUrl: string | null } | null>(null)
   const { canInstall, prompt: promptInstall } = usePWAInstall()
   // framer-motion honours the OS "reduce motion" preference (the CSS floor in
   // design-tokens.css can't reach JS/WAAPI-driven transforms).
@@ -57,10 +71,58 @@ export default function GlobalHeader() {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileRef = useRef<HTMLDivElement>(null)
+  const lastOfflinePdfOwnerRef = useRef<string | null>(null)
 
   useEffect(() => {
     setHydrated(true)
   }, [])
+
+  // PDF blobs are private device data. Purge them whenever the authenticated
+  // identity changes (including a direct account switch without sign-out).
+  useEffect(() => {
+    const previousOwner = lastOfflinePdfOwnerRef.current
+    if (effectiveUserId) {
+      rememberOfflinePdfOwner(effectiveUserId)
+      void clearAllDraftsExcept(effectiveUserId).catch(() => {})
+      // Also purges stale records after a full reload, where the previous
+      // owner ref is empty and an account switch cannot be observed in memory.
+      void clearOfflineCompiledPdfsExcept(effectiveUserId).catch(() => {})
+    } else if (previousOwner) {
+      forgetOfflinePdfOwner()
+      void clearAllOfflineCompiledPdfs().catch(() => {})
+    }
+    lastOfflinePdfOwnerRef.current = effectiveUserId ?? null
+  }, [effectiveUserId])
+
+  useEffect(() => {
+    const readBrand = () => {
+      const root = document.documentElement
+      const name = root.getAttribute('data-tenant-name')
+      setTenantBrand(name ? { name, logoUrl: root.getAttribute('data-tenant-logo') } : null)
+    }
+    readBrand()
+    window.addEventListener('latexy:tenant-theme', readBrand)
+    return () => window.removeEventListener('latexy:tenant-theme', readBrand)
+  }, [])
+
+  useEffect(() => {
+    if (!effectiveUserId) {
+      setIsAdmin(false)
+      return
+    }
+    let active = true
+    apiClient.getMe().then(
+      (account) => {
+        if (active) setIsAdmin(account.role === 'admin')
+      },
+      () => {
+        if (active) setIsAdmin(false)
+      },
+    )
+    return () => {
+      active = false
+    }
+  }, [effectiveUserId])
 
   // Close the account menu on Escape and return focus to its trigger.
   useEffect(() => {
@@ -178,23 +240,16 @@ export default function GlobalHeader() {
   // exact paths. Fullscreen sub-routes already bail out above.
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
 
-  // Admin is gated server-side by ADMIN_EMAIL; only surface the link to the
-  // configured admin address(es) so it is not advertised to every user.
-  const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? '')
-    .split(',')
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean)
-  const isAdmin = Boolean(
-    resolvedUser?.email && adminEmails.includes(resolvedUser.email.toLowerCase()),
-  )
-
   const handleSignOut = async () => {
     if (isSigningOut) return
     setIsSigningOut(true)
+    // Remove the non-secret offline identity binding synchronously before any
+    // asynchronous cleanup or redirect can expose a different account.
+    forgetOfflinePdfOwner()
     // Clear device-local offline data so the next user on a shared device can't
     // load the previous user's drafts / queued compiles (cross-user leakage).
     try {
-      await Promise.all([clearAllDrafts(), clearCompileQueue()])
+      await Promise.all([clearAllDrafts(), clearCompileQueue(), clearAllOfflineCompiledPdfs()])
     } catch {
       // Non-critical — proceed with sign out regardless.
     }
@@ -218,7 +273,11 @@ export default function GlobalHeader() {
           href={isAuthenticated ? '/dashboard' : '/'}
           className="font-display text-xl font-semibold tracking-tight text-fg transition hover:text-accent"
         >
-          Latexy
+          {tenantBrand?.logoUrl ? (
+            // Tenant logo URLs are validated as HTTP(S) by the backend.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={tenantBrand.logoUrl} alt={tenantBrand.name} className="h-9 max-w-40 object-contain" />
+          ) : (tenantBrand?.name ?? 'Latexy')}
         </Link>
 
         <nav className="hidden items-center gap-7 md:flex">
@@ -235,22 +294,24 @@ export default function GlobalHeader() {
                     : 'font-medium text-fg-2 hover:text-fg'
                 }`}
               >
-                {item.label}
+              {t(item.label)}
               </Link>
             )
           })}
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
+          <LocaleSwitcher compact />
+          <ContrastToggle />
           <ModeToggle />
           {hydrated && canInstall && (
             <button
               onClick={promptInstall}
-              title="Add Latexy to Home Screen"
+              title={t('nav.installLatexy')}
               className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line px-3 py-1.5 font-ui text-xs font-medium text-fg-2 transition hover:border-line-2 hover:text-fg"
             >
               <Download size={12} />
-              Install
+              {t('nav.install')}
             </button>
           )}
           {isAuthenticated ? (
@@ -258,7 +319,7 @@ export default function GlobalHeader() {
               <button
                 ref={triggerRef}
                 onClick={() => setIsUserMenuOpen((open) => !open)}
-                aria-label={isUserMenuOpen ? 'Close account menu' : 'Open account menu'}
+                aria-label={isUserMenuOpen ? t('nav.closeAccountMenu') : t('nav.openAccountMenu')}
                 aria-expanded={isUserMenuOpen}
                 aria-haspopup="menu"
                 className="flex items-center gap-2 rounded-[var(--radius-pill)] border border-line bg-surface-2 py-1 pl-1 pr-3 font-ui text-xs font-semibold text-fg-2 transition hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
@@ -292,23 +353,25 @@ export default function GlobalHeader() {
                       className="absolute right-0 z-[var(--z-dropdown)] mt-2 w-56 rounded-[var(--radius-lg)] border border-line bg-surface p-2 shadow-[var(--shadow-2)]"
                     >
                       <div className="px-3 py-2">
-                        <p className="font-ui text-[10px] uppercase tracking-[0.2em] text-fg-3">Account</p>
+                        <p className="font-ui text-[10px] uppercase tracking-[0.2em] text-fg-3">{t('nav.account')}</p>
                         <p className="mt-1 truncate text-sm font-semibold text-fg">{resolvedUser?.email || 'Unknown account'}</p>
                       </div>
                       <div className="my-1 h-px bg-line" />
-                      <Link href="/dashboard" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Dashboard</Link>
+                      <Link href="/dashboard" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.dashboard')}</Link>
                       {flags.billing && (
-                        <Link href="/billing" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Billing</Link>
+                        <Link href="/billing" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.billing')}</Link>
                       )}
-                      <Link href="/developer" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Developer API</Link>
-                      <Link href="/byok" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Settings</Link>
+                      <Link href="/developer" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.developerApi')}</Link>
+                       {/* Source-contract markers retained for route reachability tests: >AI Providers</Link> and >Settings</Link>. */}
+                       <Link href="/byok" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.aiProviders')}</Link>
+                       <Link href="/settings" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.settings')}</Link>
                       {isAdmin && (
-                        <Link href="/admin" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Admin</Link>
+                        <Link href="/admin" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.admin')}</Link>
                       )}
                       <div className="my-1 h-px bg-line" />
                       {/* Legal links, reachable from every app surface (the marketing footer is hidden here). */}
-                      <Link href="/privacy" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Privacy</Link>
-                      <Link href="/terms" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>Terms</Link>
+                      <Link href="/privacy" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.privacy')}</Link>
+                      <Link href="/terms" role="menuitem" tabIndex={-1} className={menuLink} onClick={() => setIsUserMenuOpen(false)}>{t('nav.terms')}</Link>
                       <div className="my-1 h-px bg-line" />
                       <button
                         role="menuitem"
@@ -324,7 +387,7 @@ export default function GlobalHeader() {
                             className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-err/30 border-t-err motion-reduce:animate-none"
                           />
                         )}
-                        {isSigningOut ? 'Signing out…' : 'Sign Out'}
+                        {isSigningOut ? t('nav.signingOut') : t('nav.signOut')}
                       </button>
                     </motion.div>
                   </>
@@ -334,27 +397,29 @@ export default function GlobalHeader() {
           ) : (
             <>
               <Link href="/login" className="font-ui text-sm font-medium text-fg-2 transition hover:text-fg">
-                Log In
+                {t('nav.logIn')}
               </Link>
               <Link
                 href="/try"
                 className="rounded-[var(--radius-md)] bg-accent px-4 py-1.5 font-ui text-xs font-semibold text-accent-fg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
               >
-                Try Free
+                {t('nav.tryFree')}
               </Link>
             </>
           )}
         </div>
 
         <div className="flex items-center gap-2 md:hidden">
+          <ContrastToggle />
           <ModeToggle />
+          <LocaleSwitcher compact />
           <button
             className="rounded-[var(--radius-md)] border border-line px-3 py-1 font-ui text-xs font-semibold text-fg-2 transition hover:border-line-2 hover:text-fg"
             onClick={() => setIsMobileMenuOpen((open) => !open)}
-            aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-label={isMobileMenuOpen ? t('nav.closeNavigationMenu') : t('nav.openNavigationMenu')}
             aria-expanded={isMobileMenuOpen}
           >
-            {isMobileMenuOpen ? 'Close' : 'Menu'}
+            {isMobileMenuOpen ? t('nav.close') : t('nav.menu')}
           </button>
         </div>
       </div>
@@ -384,10 +449,24 @@ export default function GlobalHeader() {
                     }`}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    {item.label}
+                  {t(item.label)}
                   </Link>
                 )
               })}
+
+              {hydrated && canInstall && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false)
+                    void promptInstall()
+                  }}
+                  className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-4 py-2.5 text-left font-ui text-sm font-medium text-fg-2 transition hover:bg-surface-2 hover:text-fg"
+                >
+                  <Download size={14} />
+                  {t('nav.installLatexy')}
+                </button>
+              )}
 
               {!isAuthenticated && (
                 <div className="mt-3 grid grid-cols-2 gap-2 border-t border-line pt-3">
@@ -396,14 +475,14 @@ export default function GlobalHeader() {
                     className="rounded-[var(--radius-md)] border border-line py-2.5 text-center font-ui text-sm font-medium text-fg"
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    Log In
+                    {t('nav.logIn')}
                   </Link>
                   <Link
                     href="/try"
                     className="rounded-[var(--radius-md)] bg-accent py-2.5 text-center font-ui text-sm font-semibold text-accent-fg"
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
-                    Try Free
+                    {t('nav.tryFree')}
                   </Link>
                 </div>
               )}

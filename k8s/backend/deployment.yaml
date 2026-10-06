@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: backend
-        image: ghcr.io/sanskarpan/latexy-backend:latest
+        image: __LATEXY_BACKEND_IMAGE__
         ports:
         - containerPort: 8030
         env:
@@ -101,6 +101,66 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: api-key-encryption-key
+        - name: GOOGLE_DRIVE_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: google-drive-client-id
+        - name: GOOGLE_DRIVE_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: google-drive-client-secret
+        - name: GOOGLE_DRIVE_REDIRECT_URI
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: google-drive-redirect-uri
+        - name: EMAIL_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: email-enabled
+        - name: EMAIL_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: email-provider
+        - name: RESEND_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: resend-api-key
+        - name: EMAIL_FROM
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: email-from-address
+        - name: EMAIL_FROM_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: email-from-name
+        - name: SMTP_HOST
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: smtp-host
+        - name: SMTP_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: email-smtp-port
+        - name: SMTP_USER
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: smtp-user
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: smtp-password
         - name: BETTER_AUTH_SECRET
           valueFrom:
             secretKeyRef:
@@ -121,6 +181,26 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: razorpay-key-secret
+        - name: RAZORPAY_PLAN_WEEKLY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: razorpay-plan-weekly
+        - name: RAZORPAY_WEEKLY_AMOUNT
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: razorpay-weekly-amount
+        - name: RAZORPAY_LIFETIME_AMOUNT
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: razorpay-lifetime-amount
+        - name: RAZORPAY_BILLING_CURRENCY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: razorpay-billing-currency
         - name: RAZORPAY_WEBHOOK_SECRET
           valueFrom:
             secretKeyRef:
@@ -135,6 +215,31 @@ spec:
             configMapKeyRef:
               name: latexy-config
               key: razorpay-coupon-offers
+        - name: REFERRAL_PROGRAM_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: referral-program-enabled
+        - name: REFERRAL_REWARD_DAYS
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: referral-reward-days
+        - name: REFERRAL_QUALIFYING_PLAN_FAMILIES
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: referral-qualifying-plan-families
+        - name: REFERRAL_MAX_ATTRIBUTIONS_PER_REFERRER
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: referral-max-attributions-per-referrer
+        - name: REFERRAL_ATTRIBUTION_WINDOW_HOURS
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: referral-attribution-window-hours
         - name: BETTER_AUTH_URL
           valueFrom:
             configMapKeyRef:

@@ -44,8 +44,8 @@ class XMLParser(AbstractParser):
         except ET.ParseError as e:
             raise ValueError(f"Invalid XML syntax: {e}")
         except Exception as e:
-            logger.error(f"Error parsing XML: {e}")
-            raise ValueError(f"Failed to parse XML: {str(e)}")
+            logger.error("Error parsing XML", extra={"error_type": type(e).__name__})
+            raise ValueError("Failed to parse XML input") from e
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
         if not file_content:

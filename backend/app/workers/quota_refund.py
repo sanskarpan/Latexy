@@ -6,7 +6,11 @@ import re
 from typing import Any, Dict, Optional
 
 from ..core.logging import get_logger
-from .event_publisher import get_worker_redis
+from ..core.redis import get_sync_redis_cache_client
+
+# Kept as a patchable module seam for worker tests; this intentionally resolves
+# to the cache Redis database, where quota counters are consumed.
+get_worker_redis = get_sync_redis_cache_client
 
 logger = get_logger(__name__)
 
@@ -24,6 +28,24 @@ elseif current > refund then
 end
 return 1
 """
+
+
+def clear_quota_refund_receipt(job_id: str) -> None:
+    """Best-effort removal of a receipt after a job reaches success."""
+    try:
+        redis = get_worker_redis()
+        # Keep a durable terminal outcome for at least as long as the quota
+        # receipt. Job state/result keys expire much sooner; without this marker
+        # a successful job whose receipt deletion raced a Redis outage could be
+        # mistaken for a pre-dispatch crash and refunded later.
+        redis.set(f"latexy:quota-terminal:{job_id}", "success", ex=_REFUND_TTL)
+        redis.delete(f"latexy:quota-refund-pending:{job_id}")
+    except Exception as exc:
+        logger.warning(
+            "Quota refund receipt cleanup failed for job %s",
+            job_id,
+            extra={"error_type": type(exc).__name__},
+        )
 
 
 def refund_quota_once(
@@ -56,7 +78,8 @@ def refund_quota_once(
     counter_key = f"latexy:quota:{dimension}:{user_id}:{period}"
     marker_key = f"latexy:quota-refund:{dimension}:{job_id}"
     try:
-        refunded = get_worker_redis().eval(
+        redis = get_worker_redis()
+        refunded = redis.eval(
             _REFUND_QUOTA,
             2,
             counter_key,
@@ -64,9 +87,18 @@ def refund_quota_once(
             cost,
             _REFUND_TTL,
         )
+        # The atomic marker means a zero result is also a confirmed prior
+        # refund.  In either case the durable pending receipt is no longer
+        # needed; delete it only after the Lua operation has completed.
+        redis.delete(f"latexy:quota-refund-pending:{job_id}")
         if refunded:
             logger.info("Refunded %s quota for failed job %s", dimension, job_id)
         return bool(refunded)
     except Exception as exc:
-        logger.warning("%s quota refund failed for job %s: %s", dimension, job_id, exc)
+        logger.warning(
+            "%s quota refund failed for job %s",
+            dimension,
+            job_id,
+            extra={"error_type": type(exc).__name__},
+        )
         return False

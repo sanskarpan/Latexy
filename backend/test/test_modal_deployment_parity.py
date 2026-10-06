@@ -7,7 +7,7 @@ dev and wrong on Modal, on a deployment path with no test coverage at all. Befor
 this file, ``grep -rn 'DEPLOY_TARGET|modal' backend/test`` returned nothing.
 
 These tests are deliberately STATIC — they parse ``modal_app.py`` with ``ast``
-rather than importing it, because ``modal`` is not in requirements.txt (it is a
+rather than importing it, because ``modal`` is not in requirements-dev.lock (it is a
 deploy-time CLI tool) and importing the module would try to build images. That
 keeps them runnable on every PR in normal CI, which is the whole point: a check
 that only runs at deploy time would not have caught either outage.
@@ -70,20 +70,29 @@ def _modal_apt_packages() -> dict[str, set[str]]:
         for t in node.targets:
             if isinstance(t, ast.Name):
                 constants[t.id] = {
-                    e.value for e in node.value.elts
-                    if isinstance(e, ast.Constant) and isinstance(e.value, str)
+                    e.value for e in node.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)
                 }
 
-    images: dict[str, set[str]] = {}
-    for node in ast.walk(tree):
+    image_nodes: dict[str, ast.expr] = {}
+    for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
         target = node.targets[0]
         if not isinstance(target, ast.Name) or not target.id.endswith("_image"):
             continue
+        image_nodes[target.id] = node.value
+
+    def resolve_image(name: str, resolving: set[str] | None = None) -> set[str]:
+        """Resolve apt packages inherited from a named base image expression."""
+        resolving = set(resolving or ())
+        if name in resolving:
+            raise AssertionError(f"cyclic Modal image definition involving {name}")
+        resolving.add(name)
+
+        value = image_nodes[name]
         pkgs: set[str] = set()
         # Walk the builder chain looking for .apt_install(...)
-        for call in ast.walk(node.value):
+        for call in ast.walk(value):
             if not isinstance(call, ast.Call):
                 continue
             fn = call.func
@@ -94,8 +103,17 @@ def _modal_apt_packages() -> dict[str, set[str]]:
                     pkgs.add(arg.value)
                 elif isinstance(arg, ast.Starred) and isinstance(arg.value, ast.Name):
                     pkgs |= constants.get(arg.value.id, set())
-        images[target.id] = pkgs
-    return images
+
+        # An image can be derived from another named image, for example
+        # ``latex_image = texlive_image.pip_install(...)``. Resolve that base so
+        # a refactor which shares a real toolchain cannot look like a missing
+        # package, while each final image still gets checked independently.
+        inherited = {node.id for node in ast.walk(value) if isinstance(node, ast.Name) and node.id in image_nodes}
+        for parent in inherited:
+            pkgs |= resolve_image(parent, resolving)
+        return pkgs
+
+    return {name: resolve_image(name) for name in image_nodes}
 
 
 def _dispatch_sites() -> list[tuple[str, str, bool]]:
@@ -112,7 +130,8 @@ def _dispatch_sites() -> list[tuple[str, str, bool]]:
             if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             dispatches = [
-                c for c in ast.walk(fn)
+                c
+                for c in ast.walk(fn)
                 if isinstance(c, ast.Call)
                 and isinstance(c.func, ast.Attribute)
                 and c.func.attr in {"apply_async", "delay"}
@@ -120,7 +139,7 @@ def _dispatch_sites() -> list[tuple[str, str, bool]]:
             if not dispatches:
                 continue
             src = ast.get_source_segment(path.read_text(encoding="utf-8"), fn) or ""
-            has_modal = 'DEPLOY_TARGET' in src and '"modal"' in src and "spawn(" in src
+            has_modal = "DEPLOY_TARGET" in src and '"modal"' in src and "spawn(" in src
             sites.append((path.name, fn.name, has_modal))
     return sites
 
@@ -138,10 +157,7 @@ def test_modal_delivery_synchronizes_templates_and_assets_after_deploy():
     assert "sync_templates" in _modal_function_names()
 
     tree = _parse(MODAL_APP)
-    sync_fn = next(
-        node for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "sync_templates"
-    )
+    sync_fn = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "sync_templates")
     source = ast.get_source_segment(MODAL_APP.read_text(encoding="utf-8"), sync_fn) or ""
     assert "app.scripts.seed_templates" in source
 
@@ -167,7 +183,7 @@ def test_every_dispatcher_has_a_modal_branch():
     assert not new, (
         "New Celery dispatcher(s) with no Modal branch — these will silently never "
         f"run in production: {sorted(new)}. Add an "
-        '`if os.environ.get(\"DEPLOY_TARGET\") == \"modal\": spawn(...)` branch and a '
+        '`if os.environ.get("DEPLOY_TARGET") == "modal": spawn(...)` branch and a '
         "matching @app.function in backend/modal_app.py."
     )
 
@@ -266,13 +282,31 @@ def _dockerfile_apt_packages() -> set[str]:
 # Packages backend/Dockerfile installs that the Modal images legitimately omit.
 DOCKERFILE_ONLY_PACKAGES = {
     # Dockerfile-only build/runtime plumbing, not used by application code.
-    "build-essential", "libpq-dev", "gcc", "g++", "curl", "ca-certificates",
-    "gnupg", "git", "wget", "python3-dev", "pkg-config",
+    "build-essential",
+    "libpq-dev",
+    "gcc",
+    "g++",
+    "curl",
+    "ca-certificates",
+    "gnupg",
+    "git",
+    "wget",
+    "python3-dev",
+    "pkg-config",
     # LaTeX lives in latex_image, which is asserted separately below.
-    "texlive-latex-base", "texlive-latex-recommended", "texlive-latex-extra",
-    "texlive-fonts-recommended", "texlive-fonts-extra", "texlive-science",
-    "texlive-xetex", "texlive-luatex", "texlive-pictures", "texlive-lang-european",
-    "latexmk", "lmodern", "fonts-liberation",
+    "texlive-latex-base",
+    "texlive-latex-recommended",
+    "texlive-latex-extra",
+    "texlive-fonts-recommended",
+    "texlive-fonts-extra",
+    "texlive-science",
+    "texlive-xetex",
+    "texlive-luatex",
+    "texlive-pictures",
+    "texlive-lang-european",
+    "latexmk",
+    "lmodern",
+    "fonts-liberation",
 }
 
 
@@ -315,9 +349,93 @@ def test_latex_image_has_every_engine_the_app_allows():
                 "apt package provides it — add it to engine_pkg and to latex_image."
             )
         assert pkg in latex, (
-            f"{engine!r} is offered to users via ALLOWED_LATEX_COMPILERS but latex_image "
-            f"does not install {pkg!r}."
+            f"{engine!r} is offered to users via ALLOWED_LATEX_COMPILERS but latex_image does not install {pkg!r}."
         )
+
+
+def test_latex_image_contains_the_offline_cjk_contract():
+    """B54a/B54c must not rely on a developer font or runtime download."""
+    latex = _modal_apt_packages().get("latex_image", set())
+    assert {
+        "texlive-lang-chinese",
+        "texlive-lang-japanese",
+        "texlive-lang-korean",
+        "texlive-lang-arabic",
+        "texlive-lang-english",
+        "fonts-noto-cjk",
+        "fonts-noto-core",
+    } <= latex
+
+
+def test_latex_image_contains_the_offline_europecv_locale_contract():
+    """europecv's class is in texlive-latex-extra; Babel locale data stays offline."""
+    latex = _modal_apt_packages().get("latex_image", set())
+    assert {"texlive-latex-extra", "texlive-lang-european", "texlive-lang-greek"} <= latex
+
+
+def test_multilingual_adapter_packages_are_explicit_not_transitive_assumptions():
+    """Pin the Debian ownership of every generated adapter in all images."""
+    latex = _modal_apt_packages().get("latex_image", set())
+    ownership = {
+        "ctex.sty": "texlive-lang-chinese",
+        "luatexja-fontspec.sty": "texlive-lang-japanese",
+        # luatexko is part of texlive-luatex on Debian Bookworm; the Korean
+        # collection is still explicit for its language resources/fonts.
+        "luatexko.sty": "texlive-luatex",
+    }
+    for adapter, package in ownership.items():
+        assert package in latex, f"{adapter} must be supplied explicitly by {package}"
+    for path in (BACKEND / "Dockerfile", BACKEND / "Dockerfile.prod"):
+        text = path.read_text(encoding="utf-8")
+        for package in set(ownership.values()) | {"texlive-lang-korean"}:
+            assert package in text, f"{path.name} is missing explicit multilingual package {package}"
+
+
+def test_modal_latex_image_prewarms_the_same_closed_mixed_font_contract():
+    """Modal and local images must warm the same LuaTeX script/font surface."""
+    modal = MODAL_APP.read_text(encoding="utf-8")
+    local = (BACKEND / "Dockerfile.tex-engine").read_text(encoding="utf-8")
+    required = (
+        "TEXMFVAR",
+        "TEXMFCACHE",
+        "fc-cache --force --system-only",
+        "luaotfload-tool --update --force",
+        "luatexja-fontspec",
+        "Noto Sans CJK JP",
+        "polyglossia",
+        "Noto Naskh Arabic",
+        "Noto Sans Hebrew",
+        "Noto Sans Devanagari Bold",
+        "ItalicFeatures={FakeSlant=0.15}",
+        "BoldItalicFeatures={FakeSlant=0.15}",
+        r"\textenglish{email@example.com •}",
+        "sleep 125",
+        "-no-shell-escape -recorder -interaction=batchmode -halt-on-error",
+    )
+    for fragment in required:
+        assert fragment in modal, f"Modal cache probe is missing {fragment!r}"
+        assert fragment in local, f"Local cache probe is missing {fragment!r}"
+    assert ".run_commands(_INSTALL_ATKINSON, _WARM_TEX_CACHE)" in modal
+    assert modal.index("fc-cache --force --system-only") < modal.index("lualatex -no-shell-escape")
+    assert local.index("fc-cache --force --system-only") < local.index("lualatex -no-shell-escape")
+
+
+def test_production_dockerfile_contains_the_same_mixed_language_runtime():
+    """Self-hosted production must carry the English hyphenation patterns too."""
+    production = (BACKEND / "Dockerfile.prod").read_text(encoding="utf-8")
+    for package in (
+        "texlive-luatex",
+        "texlive-lang-chinese",
+        "texlive-lang-japanese",
+        "texlive-lang-korean",
+        "texlive-lang-arabic",
+        "texlive-lang-european",
+        "texlive-lang-greek",
+        "texlive-lang-english",
+        "fonts-noto-cjk",
+        "fonts-noto-core",
+    ):
+        assert package in production, f"Dockerfile.prod is missing multilingual package {package}"
 
 
 def test_no_new_dockerfile_runtime_package_is_missing_from_modal():
@@ -362,9 +480,7 @@ def test_local_engine_gate_across_real_topologies(monkeypatch, topology, env, cg
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(latex_service.settings, "DEPLOY_TARGET", env.get("DEPLOY_TARGET", "local"))
-    monkeypatch.setattr(
-        latex_service.settings, "ENVIRONMENT", env.get("ENVIRONMENT", "development"), raising=False
-    )
+    monkeypatch.setattr(latex_service.settings, "ENVIRONMENT", env.get("ENVIRONMENT", "development"), raising=False)
     monkeypatch.setattr(Path, "read_text", lambda self, **kw: cgroup, raising=False)
 
     assert latex_service.local_engine_allowed() is expected, (
@@ -473,8 +589,7 @@ def test_beat_schedule_entries_are_accounted_for_on_modal():
         # Read the decorator AST rather than its source: get_source_segment on a
         # FunctionDef excludes the decorator lines.
         has_schedule = any(
-            isinstance(dec, ast.Call)
-            and any(kw.arg == "schedule" for kw in dec.keywords)
+            isinstance(dec, ast.Call) and any(kw.arg == "schedule" for kw in dec.keywords)
             for dec in node.decorator_list
         )
         if not has_schedule:
@@ -500,9 +615,7 @@ def test_beat_schedule_entries_are_accounted_for_on_modal():
     )
 
     stale = set(SCHEDULE_WAIVERS) - set(scheduled)
-    assert not stale, (
-        f"SCHEDULE_WAIVERS names beat entries that no longer exist: {sorted(stale)}."
-    )
+    assert not stale, f"SCHEDULE_WAIVERS names beat entries that no longer exist: {sorted(stale)}."
 
 
 def test_scheduled_functions_initialize_worker_redis():
@@ -523,16 +636,13 @@ def test_scheduled_functions_initialize_worker_redis():
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         has_schedule = any(
-            isinstance(dec, ast.Call)
-            and any(kw.arg == "schedule" for kw in dec.keywords)
+            isinstance(dec, ast.Call) and any(kw.arg == "schedule" for kw in dec.keywords)
             for dec in node.decorator_list
         )
         if not has_schedule:
             continue
         calls_init = any(
-            isinstance(sub, ast.Call)
-            and isinstance(sub.func, ast.Name)
-            and sub.func.id == "_init_worker_redis"
+            isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name) and sub.func.id == "_init_worker_redis"
             for sub in ast.walk(node)
         )
         if not calls_init:
@@ -579,27 +689,43 @@ def test_env_example_documents_settings_whose_default_breaks_in_production():
             re.M,
         )
     )
-    risky = {
-        name for name, field in Settings.model_fields.items()
-        if _localhost_or_empty_default(field)
-    }
+    risky = {name for name, field in Settings.model_fields.items() if _localhost_or_empty_default(field)}
 
     # Locked-in list of currently-undocumented risky settings. Shrink it, never grow it.
     KNOWN_UNDOCUMENTED = {
-        "ADMIN_EMAIL", "ADMIN_EMAILS", "ADMIN_SECRET_KEY", "FRONTEND_URL",
-        "RAZORPAY_PLAN_BASIC_ANNUAL", "RAZORPAY_PLAN_BASIC_MONTHLY",
-        "RAZORPAY_PLAN_BYOK_ANNUAL", "RAZORPAY_PLAN_BYOK_MONTHLY",
-        "RAZORPAY_PLAN_PRO_ANNUAL", "RAZORPAY_PLAN_PRO_MONTHLY",
-        "RAZORPAY_PLAN_STUDENT", "RAZORPAY_PLAN_TEAM", "RAZORPAY_COUPON_OFFERS",
-        "UPSTASH_REDIS_REST_TOKEN", "UPSTASH_REDIS_REST_URL",
-        "DROPBOX_APP_KEY", "DROPBOX_APP_SECRET", "DROPBOX_REDIRECT_URI",
-        "MENDELEY_CLIENT_ID", "MENDELEY_CLIENT_SECRET", "MENDELEY_REDIRECT_URI",
-        "ZOTERO_CLIENT_KEY", "ZOTERO_CLIENT_SECRET", "ZOTERO_REDIRECT_URI",
-        "GITHUB_OAUTH_REDIRECT_URI", "GEOIP_PROVIDER_URL",
-        "LANGUAGETOOL_URL", "LANGUAGETOOL_LOCAL_URL",
-        "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS",
+        "ADMIN_EMAIL",
+        "ADMIN_EMAILS",
+        "ADMIN_SECRET_KEY",
+        "FRONTEND_URL",
+        "RAZORPAY_PLAN_BASIC_ANNUAL",
+        "RAZORPAY_PLAN_BASIC_MONTHLY",
+        "RAZORPAY_PLAN_BYOK_ANNUAL",
+        "RAZORPAY_PLAN_BYOK_MONTHLY",
+        "RAZORPAY_PLAN_PRO_ANNUAL",
+        "RAZORPAY_PLAN_PRO_MONTHLY",
+        "RAZORPAY_PLAN_STUDENT",
+        "RAZORPAY_PLAN_TEAM",
+        "RAZORPAY_COUPON_OFFERS",
+        "UPSTASH_REDIS_REST_TOKEN",
+        "UPSTASH_REDIS_REST_URL",
+        "DROPBOX_APP_KEY",
+        "DROPBOX_APP_SECRET",
+        "DROPBOX_REDIRECT_URI",
+        "MENDELEY_CLIENT_ID",
+        "MENDELEY_CLIENT_SECRET",
+        "MENDELEY_REDIRECT_URI",
+        "ZOTERO_CLIENT_KEY",
+        "ZOTERO_CLIENT_SECRET",
+        "ZOTERO_REDIRECT_URI",
+        "GITHUB_OAUTH_REDIRECT_URI",
+        "GEOIP_PROVIDER_URL",
+        "LANGUAGETOOL_URL",
+        "LANGUAGETOOL_LOCAL_URL",
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+        "OTEL_EXPORTER_OTLP_HEADERS",
         "OTEL_RESOURCE_ATTRIBUTES",
-        "REDIS_CACHE_URL", "STUDENT_EMAIL_ALLOWED_SUFFIXES",
+        "REDIS_CACHE_URL",
+        "STUDENT_EMAIL_ALLOWED_SUFFIXES",
     }
     new_gaps = sorted(risky - documented - KNOWN_UNDOCUMENTED)
     assert not new_gaps, (

@@ -146,6 +146,12 @@ async function mockAtsQuickScore(
   )
 }
 
+async function waitForQuickScoreEditor(page: import('@playwright/test').Page) {
+  // Monaco is loaded asynchronously. Advancing the fake clock before its status
+  // bar mounts also advances past a debounce timer that has not been registered.
+  await expect(page.getByText('ATS —').last()).toBeVisible({ timeout: 15_000 })
+}
+
 // ------------------------------------------------------------------ //
 //  /try page — ATS badge in LaTeXEditor                              //
 // ------------------------------------------------------------------ //
@@ -162,14 +168,14 @@ test.describe('/try page — ATS Quick Score badge', () => {
   test('page loads without runtime errors', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
-    await page.goto('/try')
-    await page.waitForLoadState('networkidle')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('heading', { name: 'Résumé Studio' })).toBeVisible()
     expect(errors).toEqual([])
   })
 
   test('ATS badge renders in editor status bar', async ({ page }) => {
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
     // Before debounce fires score is null — badge shows "ATS —"
     await expect(page.getByText('ATS —').last()).toBeVisible()
@@ -177,7 +183,7 @@ test.describe('/try page — ATS Quick Score badge', () => {
 
   test('ATS badge initially shows dash (no score yet)', async ({ page }) => {
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
     // Before debounce fires, score is null → shows "ATS —"
     await expect(page.getByText('ATS —').last()).toBeVisible()
@@ -186,10 +192,11 @@ test.describe('/try page — ATS Quick Score badge', () => {
   test('ATS badge shows score after debounce fires', async ({ page }) => {
     // Install fake clock BEFORE navigation so timers are controlled
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
 
     // Set up waitForResponse BEFORE triggering the debounce to avoid race condition
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -201,8 +208,9 @@ test.describe('/try page — ATS Quick Score badge', () => {
 
   test('ATS badge has correct color for high score (≥80 = emerald)', async ({ page }) => {
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -215,8 +223,9 @@ test.describe('/try page — ATS Quick Score badge', () => {
   test('ATS badge has correct color for medium score (60-79 = amber)', async ({ page }) => {
     await mockAtsQuickScore(page, MOCK_SCORE_MED)
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -229,8 +238,9 @@ test.describe('/try page — ATS Quick Score badge', () => {
   test('ATS badge has correct color for low score (<60 = rose)', async ({ page }) => {
     await mockAtsQuickScore(page, MOCK_SCORE_LOW)
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -253,8 +263,9 @@ test.describe('/try page — ATS Quick Score badge', () => {
     })
 
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -277,7 +288,7 @@ test.describe('/try page — ATS Quick Score badge', () => {
     })
 
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
 
     // Find and fill the job description textarea
@@ -285,7 +296,7 @@ test.describe('/try page — ATS Quick Score badge', () => {
     if (await jdTextarea.count() > 0) {
       await jdTextarea.fill('Looking for a Python developer with Django experience')
     }
-
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -297,8 +308,9 @@ test.describe('/try page — ATS Quick Score badge', () => {
   test('ATS badge click opens the ATS tool panel', async ({ page }) => {
     await mockAtsQuickScore(page, MOCK_SCORE_HIGH)
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -323,7 +335,7 @@ test.describe('/try page — ATS Quick Score badge', () => {
     })
 
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
     await page.clock.fastForward(11_000)
 
@@ -351,7 +363,7 @@ test.describe('/try page — ATS badge edge cases', () => {
     )
 
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
     await page.clock.fastForward(11_000)
 
@@ -392,13 +404,77 @@ test.describe('/try page — ATS badge edge cases', () => {
     )
 
     await page.clock.install()
-    await page.goto(`/workspace/${SHORT_RESUME_ID}/edit`)
+    await page.goto(`/workspace/${SHORT_RESUME_ID}/edit`, { waitUntil: "domcontentloaded" })
     await page.waitForLoadState('domcontentloaded')
     await page.clock.fastForward(11_000)
-    await page.waitForTimeout(300) // allow any pending microtasks
+    await page.evaluate(() => Promise.resolve())
 
     // Should NOT have called the API because content < 200 chars
     expect(atsCalls.length).toBe(0)
+  })
+
+  test('shortening the document clears the previously displayed score', async ({ page }) => {
+    await mockAuth(page)
+    await mockCommonBackendRoutes(page)
+    await mockAtsQuickScore(page, MOCK_SCORE_HIGH)
+    await page.route('**/ws/**', route => route.abort())
+    await page.clock.install()
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
+    await waitForQuickScoreEditor(page)
+    const scoreResponse = page.waitForResponse(response => response.url().includes('/ats/quick-score'))
+    await page.clock.fastForward(11_000)
+    await scoreResponse
+    await expect(page.getByTitle('Live ATS score (updates 10s after last change)')).toContainText('ATS 85')
+
+    await page.evaluate((value) => {
+      const editor = (
+        window as typeof window & {
+          __latexyMonacoEditor?: { setValue(nextValue: string): void }
+        }
+      ).__latexyMonacoEditor
+      if (!editor) throw new Error('Monaco test editor is unavailable')
+      editor.setValue(value)
+    }, SHORT_LATEX)
+
+    await expect(page.getByText('ATS —').last()).toBeVisible()
+  })
+
+  test('an in-flight response cannot overwrite a changed document', async ({ page }) => {
+    await mockAuth(page)
+    await mockCommonBackendRoutes(page)
+    let releaseResponse!: () => void
+    const responseGate = new Promise<void>(resolve => { releaseResponse = resolve })
+    await page.route((url) => url.pathname === '/ats/quick-score', async route => {
+      await responseGate
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(MOCK_SCORE_HIGH),
+      })
+    })
+    await page.route('**/ws/**', route => route.abort())
+    await page.clock.install()
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
+    await waitForQuickScoreEditor(page)
+    const request = page.waitForRequest(request => request.url().includes('/ats/quick-score'))
+    await page.clock.fastForward(11_000)
+    await request
+
+    await page.evaluate((value) => {
+      const editor = (
+        window as typeof window & {
+          __latexyMonacoEditor?: { setValue(nextValue: string): void }
+        }
+      ).__latexyMonacoEditor
+      if (!editor) throw new Error('Monaco test editor is unavailable')
+      editor.setValue(value)
+    }, SHORT_LATEX)
+    const response = page.waitForResponse(item => item.url().includes('/ats/quick-score'))
+    releaseResponse()
+    await response
+
+    await expect(page.getByText('ATS —').last()).toBeVisible()
+    await expect(page.getByTitle('Live ATS score (updates 10s after last change)')).toHaveCount(0)
   })
 })
 
@@ -429,29 +505,30 @@ test.describe('/workspace/[resumeId]/edit — ATS Quick Score badge', () => {
   test('page loads without runtime errors', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
-    await page.goto(`/workspace/${RESUME_ID}/edit`)
-    await page.waitForLoadState('networkidle')
+    await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: "domcontentloaded" })
+    await expect(page.getByText('LaTeX editor ready')).toBeVisible()
     expect(errors).toEqual([])
   })
 
   test('ATS badge renders in editor status bar', async ({ page }) => {
     await page.clock.install()
-    await page.goto(`/workspace/${RESUME_ID}/edit`)
+    await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: "domcontentloaded" })
     await page.waitForLoadState('domcontentloaded')
     await expect(page.locator('text=/ATS/').first()).toBeVisible()
   })
 
   test('ATS badge initially shows dash placeholder', async ({ page }) => {
     await page.clock.install()
-    await page.goto(`/workspace/${RESUME_ID}/edit`)
+    await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: "domcontentloaded" })
     await page.waitForLoadState('domcontentloaded')
     await expect(page.getByText('ATS —').last()).toBeVisible()
   })
 
   test('ATS badge shows score after debounce fires', async ({ page }) => {
     await page.clock.install()
-    await page.goto(`/workspace/${RESUME_ID}/edit`)
+    await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: "domcontentloaded" })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -460,8 +537,9 @@ test.describe('/workspace/[resumeId]/edit — ATS Quick Score badge', () => {
 
   test('ATS badge shows correct high-score color (emerald)', async ({ page }) => {
     await page.clock.install()
-    await page.goto(`/workspace/${RESUME_ID}/edit`)
+    await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: "domcontentloaded" })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -471,8 +549,9 @@ test.describe('/workspace/[resumeId]/edit — ATS Quick Score badge', () => {
 
   test('ATS badge click opens deep analysis panel on edit page', async ({ page }) => {
     await page.clock.install()
-    await page.goto(`/workspace/${RESUME_ID}/edit`)
+    await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: "domcontentloaded" })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -494,8 +573,9 @@ test.describe('/workspace/[resumeId]/edit — ATS Quick Score badge', () => {
     })
 
     await page.clock.install()
-    await page.goto(`/workspace/${RESUME_ID}/edit`)
+    await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: "domcontentloaded" })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -527,29 +607,30 @@ test.describe('/workspace/[resumeId]/optimize — ATS Quick Score badge', () => 
   test('page loads without runtime errors', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
-    await page.goto(`/workspace/${RESUME_ID}/optimize`)
-    await page.waitForLoadState('networkidle')
+    await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: "domcontentloaded" })
+    await expect(page.getByText('Optimize Resume')).toBeVisible()
     expect(errors).toEqual([])
   })
 
   test('ATS badge renders in LaTeX editor', async ({ page }) => {
     await page.clock.install()
-    await page.goto(`/workspace/${RESUME_ID}/optimize`)
+    await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: "domcontentloaded" })
     await page.waitForLoadState('domcontentloaded')
     await expect(page.getByText('ATS —').last()).toBeVisible({ timeout: 3_000 })
   })
 
   test('ATS badge initially shows dash', async ({ page }) => {
     await page.clock.install()
-    await page.goto(`/workspace/${RESUME_ID}/optimize`)
+    await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: "domcontentloaded" })
     await page.waitForLoadState('domcontentloaded')
     await expect(page.getByText('ATS —').last()).toBeVisible({ timeout: 3_000 })
   })
 
   test('ATS badge shows score after debounce fires', async ({ page }) => {
     await page.clock.install()
-    await page.goto(`/workspace/${RESUME_ID}/optimize`)
+    await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: "domcontentloaded" })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -565,13 +646,13 @@ test.describe('/workspace/[resumeId]/optimize — ATS Quick Score badge', () => 
     })
 
     await page.clock.install()
-    await page.goto(`/workspace/${RESUME_ID}/optimize`)
+    await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: "domcontentloaded" })
     await page.waitForLoadState('domcontentloaded')
 
     // Fill the job description field on optimize page
     const jdArea = page.locator('textarea').first()
     await jdArea.fill('Looking for a Python backend engineer with Django and AWS experience')
-
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -582,8 +663,7 @@ test.describe('/workspace/[resumeId]/optimize — ATS Quick Score badge', () => 
   })
 
   test('optimize page has cover letter navigation link', async ({ page }) => {
-    await page.goto(`/workspace/${RESUME_ID}/optimize`)
-    await page.waitForLoadState('networkidle')
+    await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: "domcontentloaded" })
     const clLink = page.getByText('Cover Letter')
     await expect(clLink).toBeVisible()
     await expect(clLink).toHaveAttribute('href', `/workspace/${RESUME_ID}/cover-letter`)
@@ -595,15 +675,15 @@ test.describe('/workspace/[resumeId]/optimize — ATS Quick Score badge', () => 
 // ------------------------------------------------------------------ //
 
 test.describe('POST /ats/quick-score — response schema', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function navigateAndTrigger(page: import('@playwright/test').Page, mockBody: any = MOCK_SCORE_HIGH) {
+  async function navigateAndTrigger(page: import('@playwright/test').Page, mockBody: object = MOCK_SCORE_HIGH) {
     await mockAuth(page)
     await mockCommonBackendRoutes(page)
     await mockAtsQuickScore(page, mockBody)
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
     // IMPORTANT: set up waitForResponse BEFORE fastForward to avoid race condition
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     return responsePromise
@@ -618,8 +698,9 @@ test.describe('POST /ats/quick-score — response schema', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_SCORE_HIGH) })
     })
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     const response = await responsePromise
@@ -690,12 +771,11 @@ test.describe('ATS quick-score — no auth required', () => {
     )
 
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
     await page.clock.fastForward(11_000)
 
-    // Wait up to 3s for the call (it fires after clock advance)
-    await page.waitForTimeout(500)
+    await expect.poll(() => atsCallMade).toBe(true)
 
     // No critical JS errors even without auth
     const criticalErrors = errors.filter(
@@ -718,8 +798,9 @@ test.describe('ATSScoreBadge component behaviors', () => {
   test('badge title attribute is set for accessibility', async ({ page }) => {
     await mockAtsQuickScore(page)
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -730,8 +811,9 @@ test.describe('ATSScoreBadge component behaviors', () => {
   test('badge button is focusable (accessible)', async ({ page }) => {
     await mockAtsQuickScore(page)
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -747,8 +829,9 @@ test.describe('ATSScoreBadge component behaviors', () => {
     )
 
     await page.clock.install()
-    await page.goto(`/workspace/${RESUME_ID}/optimize`)
+    await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: "domcontentloaded" })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -777,8 +860,9 @@ test.describe('ATS quick-score — performance', () => {
     })
 
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
+    await waitForQuickScoreEditor(page)
     const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(11_000)
     await responsePromise
@@ -797,8 +881,12 @@ test.describe('ATS quick-score — performance', () => {
     })
 
     await page.clock.install()
-    await page.goto('/try')
+    await page.goto('/try', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
+    // Monaco mounts asynchronously. Synchronize with its initial status bar
+    // before advancing the fake clock, otherwise the 9.5s advance can happen
+    // before the debounce timer is registered and before the badge is mounted.
+    await waitForQuickScoreEditor(page)
 
     // Advance time partway (5s) — no call yet
     await page.clock.fastForward(5_000)
@@ -809,8 +897,9 @@ test.describe('ATS quick-score — performance', () => {
     expect(atsCalls.length).toBe(0)
 
     // Now advance past debounce
+    const responsePromise = page.waitForResponse((resp) => resp.url().includes('/ats/quick-score'))
     await page.clock.fastForward(1_000)
-    await page.waitForTimeout(200) // allow microtask to flush
+    await responsePromise
 
     // Should have at most 1 call (debounce coalesced the changes)
     expect(atsCalls.length).toBeLessThanOrEqual(1)

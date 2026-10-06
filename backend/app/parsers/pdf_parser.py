@@ -2,6 +2,7 @@
 PDF Parser - Extract text from PDF resumes using pdfplumber.
 Falls back to OCR for scanned/image-based PDFs.
 """
+import asyncio
 import io
 import logging
 from typing import Optional
@@ -18,6 +19,9 @@ class PDFParser(AbstractParser):
     """Parser for PDF resume files."""
 
     async def parse(self, file_content: bytes, filename: str = "") -> ParsedResume:
+        return await asyncio.to_thread(self._parse_sync, file_content, filename)
+
+    def _parse_sync(self, file_content: bytes, filename: str = "") -> ParsedResume:
         if not file_content:
             raise ValueError("PDF file is empty")
 
@@ -82,8 +86,8 @@ class PDFParser(AbstractParser):
             )
 
         except Exception as e:
-            logger.error(f"Error parsing PDF: {e}")
-            raise ValueError(f"Failed to parse PDF: {str(e)}")
+            logger.error("Error parsing PDF", extra={"error_type": type(e).__name__})
+            raise ValueError("Failed to parse PDF input") from e
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
         if not file_content:

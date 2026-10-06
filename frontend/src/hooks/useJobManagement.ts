@@ -75,34 +75,63 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
   const { addNotification } = useNotifications()
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const mountedRef = useRef(true)
+  const jobsRequestRef = useRef(0)
+  const healthRequestRef = useRef(0)
+
+  // Establish the lifecycle guard before the auto-refresh effect below can
+  // issue its first request. This ordering also matters during React Strict
+  // Mode's effect cleanup/replay cycle.
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      jobsRequestRef.current += 1
+      healthRequestRef.current += 1
+      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
 
   const refreshJobs = useCallback(async () => {
+    if (!mountedRef.current) return
+    const requestId = ++jobsRequestRef.current
     try {
       setIsLoadingJobs(true)
       setJobsError(null)
 
       const response = await jobApiClient.listJobs(undefined, maxJobs, 0)
+      if (!mountedRef.current || requestId !== jobsRequestRef.current) return
       setJobs(response)
     } catch (error) {
+      if (!mountedRef.current || requestId !== jobsRequestRef.current) return
       const errorMessage = error instanceof Error ? error.message : 'Failed to load jobs'
       setJobsError(errorMessage)
     } finally {
-      setIsLoadingJobs(false)
+      if (mountedRef.current && requestId === jobsRequestRef.current) {
+        setIsLoadingJobs(false)
+      }
     }
   }, [maxJobs])
 
   const refreshHealth = useCallback(async () => {
+    if (!mountedRef.current) return
+    const requestId = ++healthRequestRef.current
     try {
       setIsLoadingHealth(true)
       setHealthError(null)
 
       const response = await jobApiClient.getSystemHealth()
+      if (!mountedRef.current || requestId !== healthRequestRef.current) return
       setSystemHealth(response)
     } catch (error) {
+      if (!mountedRef.current || requestId !== healthRequestRef.current) return
       const errorMessage = error instanceof Error ? error.message : 'Failed to load system health'
       setHealthError(errorMessage)
     } finally {
-      setIsLoadingHealth(false)
+      if (mountedRef.current && requestId === healthRequestRef.current) {
+        setIsLoadingHealth(false)
+      }
     }
   }, [])
 
@@ -285,18 +314,6 @@ export function useJobManagement(options: UseJobManagementOptions = {}): UseJobM
       }
     }
   }, [autoRefresh, refreshInterval, refreshJobs, refreshHealth])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current)
-      }
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
-    }
-  }, [])
 
   return {
     // Job submission

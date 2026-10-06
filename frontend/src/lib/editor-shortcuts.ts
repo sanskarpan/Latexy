@@ -26,6 +26,7 @@ export const SHORTCUTS: Shortcut[] = [
   { keys: [mod, 'C'],           description: 'Copy line / selection',          category: 'edit' },
   { keys: [mod, 'V'],           description: 'Paste',                          category: 'edit' },
   { keys: [mod, 'D'],           description: 'Select next occurrence',         category: 'edit' },
+  { keys: [alt, 'Click'],       description: 'Add or remove cursor',           category: 'edit' },
   { keys: [mod, '/'],           description: 'Toggle line comment',            category: 'edit' },
   { keys: [alt, '↑'],           description: 'Move line up',                   category: 'edit' },
   { keys: [alt, '↓'],           description: 'Move line down',                 category: 'edit' },

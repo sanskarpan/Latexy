@@ -116,3 +116,30 @@ class TestBulkExportEndpoint:
             assert "/" not in name or name.count("/") == 0
             assert ":" not in name
             assert "!" not in name
+
+    async def test_archived_resumes_are_excluded(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        active = await client.post(
+            "/resumes/",
+            headers=auth_headers,
+            json={"title": "Visible Active Export", "latex_content": "active"},
+        )
+        archived = await client.post(
+            "/resumes/",
+            headers=auth_headers,
+            json={"title": "Hidden Archived Export", "latex_content": "archived"},
+        )
+        assert active.status_code == archived.status_code == 201
+        archived_response = await client.patch(
+            f"/resumes/{archived.json()['id']}/archive", headers=auth_headers
+        )
+        assert archived_response.status_code == 200
+
+        response = await client.get(
+            "/resumes/export/bulk?format=tex", headers=auth_headers
+        )
+        archive = zipfile.ZipFile(io.BytesIO(response.content))
+
+        assert "Visible_Active_Export.tex" in archive.namelist()
+        assert "Hidden_Archived_Export.tex" not in archive.namelist()

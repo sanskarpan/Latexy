@@ -49,9 +49,9 @@ JOB_DESCRIPTION = (
 
 # ── POST /ats/score ───────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestATSScore:
-
     async def test_score_async_returns_job_id(self, client: AsyncClient):
         """Async branch returns a job_id and success=True."""
         with patch(
@@ -168,9 +168,7 @@ class TestATSScore:
             )
         assert resp.status_code == 200
 
-    async def test_score_authenticated_user_accepted(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_score_authenticated_user_accepted(self, client: AsyncClient, auth_headers: dict):
         """Auth headers are accepted and don't break the endpoint."""
         with patch(
             "app.workers.ats_worker.submit_ats_scoring",
@@ -223,9 +221,9 @@ class TestATSScore:
 
 # ── POST /ats/analyze-job-description ────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestATSAnalyzeJobDescription:
-
     async def test_analyze_async_returns_job_id(self, client: AsyncClient):
         """Async branch returns job_id."""
         with patch(
@@ -317,9 +315,9 @@ class TestATSAnalyzeJobDescription:
 
 # ── POST /ats/recommendations ─────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestATSRecommendations:
-
     async def test_recommendations_basic(self, client: AsyncClient):
         """Valid request returns success with priority_improvements."""
         resp = await client.post(
@@ -352,10 +350,7 @@ class TestATSRecommendations:
         )
         assert resp.status_code == 200
         data = resp.json()
-        high_priority = [
-            item for item in data["priority_improvements"]
-            if item["priority"] == "high"
-        ]
+        high_priority = [item for item in data["priority_improvements"] if item["priority"] == "high"]
         assert len(high_priority) > 0
 
     async def test_recommendations_returns_quick_wins(self, client: AsyncClient):
@@ -423,10 +418,7 @@ class TestATSRecommendations:
         )
         assert resp.status_code == 200
         data = resp.json()
-        high_priority = [
-            item for item in data["priority_improvements"]
-            if item["priority"] == "high"
-        ]
+        high_priority = [item for item in data["priority_improvements"] if item["priority"] == "high"]
         assert len(high_priority) == 0
 
     async def test_recommendations_score_improvement_is_reasonable(self, client: AsyncClient):
@@ -443,9 +435,9 @@ class TestATSRecommendations:
 
 # ── GET /ats/industry-keywords/{industry} ────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestATSIndustryKeywords:
-
     async def test_technology_keywords_returned(self, client: AsyncClient):
         """technology industry should return a non-empty keyword list."""
         resp = await client.get("/ats/industry-keywords/technology")
@@ -494,9 +486,9 @@ class TestATSIndustryKeywords:
 
 # ── GET /ats/supported-industries ────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestATSSupportedIndustries:
-
     async def test_returns_list_of_industries(self, client: AsyncClient):
         """Endpoint returns a non-empty list of industry strings."""
         resp = await client.get("/ats/supported-industries")
@@ -540,12 +532,10 @@ class TestATSSupportedIndustries:
 
 # ── Security & validation: server-derived plan, payload caps ─────────────────
 
+
 @pytest.mark.asyncio
 class TestATSScorePlanAndLimits:
-
-    async def test_client_user_plan_is_ignored_for_queue_priority(
-        self, client: AsyncClient
-    ):
+    async def test_client_user_plan_is_ignored_for_queue_priority(self, client: AsyncClient):
         """Anonymous caller sending user_plan='pro' must be forced to 'free'
         server-side (no queue-priority privilege escalation)."""
         with patch("app.api.ats_routes.submit_ats_scoring") as mock_submit:
@@ -618,3 +608,35 @@ class TestATSScorePlanAndLimits:
         )
         assert resp.status_code == 200
         assert resp.json()["industry_key"] == "finance_banking"
+
+    async def test_locale_profile_changes_score_and_explains_threshold(self, client: AsyncClient):
+        india = await client.post(
+            "/ats/score",
+            json={
+                "latex_content": VALID_LATEX + "\nDate of Birth: 1 January 1990",
+                "locale": "india",
+                "async_processing": False,
+            },
+        )
+        us = await client.post(
+            "/ats/score",
+            json={
+                "latex_content": VALID_LATEX + "\nDate of Birth: 1 January 1990",
+                "locale": "united_states",
+                "async_processing": False,
+            },
+        )
+        assert india.status_code == us.status_code == 200
+        assert india.json()["ats_score"] > us.json()["ats_score"]
+        assert us.json()["score_threshold"] == 80
+        assert "US hiring conventions" in us.json()["calibration_statement"]
+
+        profiles = await client.get("/ats/locale-profiles")
+        assert profiles.status_code == 200
+        assert profiles.json()["threshold"] == 80
+        assert {item["key"] for item in profiles.json()["profiles"]} == {
+            "global",
+            "india",
+            "united_states",
+            "united_kingdom",
+        }

@@ -99,7 +99,7 @@ export default function AtsSimulatorPanel({ getLatexContent }: AtsSimulatorPanel
     <div className="space-y-5">
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-fg-2 mb-3">
-          Select ATS System
+          Select check profile
         </h3>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {profiles.map(p => (
@@ -131,7 +131,7 @@ export default function AtsSimulatorPanel({ getLatexContent }: AtsSimulatorPanel
         className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2.5 text-sm font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Monitor size={14} />}
-        {isLoading ? 'Simulating…' : 'Simulate'}
+        {isLoading ? 'Checking…' : 'Run checks'}
       </button>
 
       {error && (
@@ -148,7 +148,7 @@ export default function AtsSimulatorPanel({ getLatexContent }: AtsSimulatorPanel
             <div className="min-w-0 flex-1">
               <p className="text-base font-semibold text-fg">{result.ats_label}</p>
               <p className="text-sm text-fg-2">
-                Compatibility score: <span className="font-semibold text-fg">{result.score}/100</span>
+                Heuristic check score: <span className="font-semibold text-fg">{result.score}/100</span>
               </p>
               {result.issues.length === 0 && (
                 <p className="mt-1 flex items-center gap-1.5 text-xs text-ok">
@@ -222,7 +222,7 @@ export default function AtsSimulatorPanel({ getLatexContent }: AtsSimulatorPanel
               onClick={() => setTextOpen(v => !v)}
               className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-fg-2 hover:text-fg transition"
             >
-              <span>ATS Plain-Text View</span>
+              <span>Extracted Plain-Text View</span>
               {textOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
             {textOpen && (

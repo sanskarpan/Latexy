@@ -3,6 +3,7 @@ Format Detection Service for Multi-Format Resume Upload
 Detects and validates various resume file formats.
 """
 
+import json
 import logging
 from enum import Enum
 from typing import Dict, Optional
@@ -146,6 +147,13 @@ class FormatDetectionService:
         for format_type, config in self.FORMAT_CONFIG.items():
             if config["magic_bytes"]:
                 if content.startswith(config["magic_bytes"]):
+                    if format_type == ResumeFormat.JSON:
+                        try:
+                            parsed = json.loads(content.decode("utf-8"))
+                            if not isinstance(parsed, (dict, list)):
+                                continue
+                        except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
+                            continue
                     # DOCX magic bytes (PK) are shared with all ZIP-based formats.
                     # Validate the ZIP contains DOCX-specific entries before accepting.
                     if format_type == ResumeFormat.DOCX:
@@ -200,18 +208,33 @@ class FormatDetectionService:
             # Check for JSON
             text_stripped = text_content.strip()
             if text_stripped.startswith('{') and '"' in text_stripped:
-                return ResumeFormat.JSON
+                try:
+                    parsed_json = json.loads(text_stripped)
+                    if isinstance(parsed_json, (dict, list)):
+                        return ResumeFormat.JSON
+                except (json.JSONDecodeError, TypeError):
+                    # Do not reinterpret a JSON-shaped document as permissive
+                    # YAML. Honor a declared extension here; otherwise let the
+                    # caller consult MIME/filename fallbacks.
+                    declared = self.detect_format_from_filename(filename)
+                    return declared
 
             # Check for YAML
             if ':' in text_content and ('\n' in text_content[:100]):
-                # Simple heuristic: YAML typically has key: value format
-                lines = text_content.split('\n')[:5]
-                yaml_like = sum(1 for line in lines if ':' in line and not line.strip().startswith('#'))
-                if yaml_like >= 2:
-                    return ResumeFormat.YAML
+                # Colons are common in ordinary résumés (Email:, Phone:, etc.).
+                # Only classify content as YAML when the bounded sample safely
+                # parses into a structured document.
+                import yaml
+
+                try:
+                    parsed_yaml = yaml.safe_load(text_content)
+                    if isinstance(parsed_yaml, (dict, list)) and parsed_yaml:
+                        return ResumeFormat.YAML
+                except yaml.YAMLError:
+                    pass
 
         except Exception as e:
-            logger.warning(f"Error in content-based detection: {e}")
+            logger.warning("Error in content-based detection", extra={"error_type": type(e).__name__})
 
         # Fallback to filename detection only after content signatures fail.
         if filename:
@@ -310,4 +333,3 @@ class FormatDetectionService:
 
 # Global instance
 format_detection_service = FormatDetectionService()
-

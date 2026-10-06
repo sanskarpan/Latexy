@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -24,8 +25,9 @@ logger = get_logger(__name__)
 #   https://jobs.lever.co/acme/abc-def-123
 #   https://jobs.lever.co/acme/abc-def-123/apply
 
-_LEVER_URL_RE = re.compile(
-    r"jobs\.lever\.co/(?P<company>[^/]+)/(?P<posting_id>[a-f0-9-]{36})",
+_COMPANY_RE = re.compile(r"[A-Za-z0-9_-]{1,100}")
+_POSTING_ID_RE = re.compile(
+    r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}",
     re.IGNORECASE,
 )
 
@@ -66,13 +68,31 @@ class LeverService:
         Extract (company_slug, posting_id) from a Lever job URL.
         Raises ValueError if the URL is not recognizable.
         """
-        m = _LEVER_URL_RE.search(job_url)
-        if not m:
+        parsed = urlsplit(job_url)
+        parts = [part for part in parsed.path.split("/") if part]
+        if (
+            parsed.scheme not in {"http", "https"}
+            or (parsed.hostname or "").lower() != "jobs.lever.co"
+            or len(parts) not in {2, 3}
+            or (len(parts) == 3 and parts[2].lower() != "apply")
+            or not _COMPANY_RE.fullmatch(parts[0])
+            or not _POSTING_ID_RE.fullmatch(parts[1])
+        ):
             raise ValueError(
                 f"Cannot parse Lever job URL — expected "
                 f"jobs.lever.co/<company>/<uuid>. Got: {job_url!r}"
             )
-        return m.group("company"), m.group("posting_id")
+        return parts[0], parts[1]
+
+    @staticmethod
+    def _api_url(company: str, posting_id: str, *, apply: bool = False) -> str:
+        if not _COMPANY_RE.fullmatch(company) or not _POSTING_ID_RE.fullmatch(posting_id):
+            raise ValueError("Invalid Lever company or posting identifier")
+        suffix = "/apply" if apply else ""
+        return (
+            f"{_LEVER_API_BASE}/{quote(company, safe='')}/"
+            f"{quote(posting_id, safe='')}{suffix}"
+        )
 
     # ── Job details ──────────────────────────────────────────────────────────
 
@@ -81,7 +101,7 @@ class LeverService:
         Fetch posting details from the Lever public API.
         Raises ValueError on 404; httpx.HTTPStatusError on other HTTP errors.
         """
-        url = f"{_LEVER_API_BASE}/{company}/{posting_id}"
+        url = self._api_url(company, posting_id)
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(url)
 
@@ -122,7 +142,7 @@ class LeverService:
         Returns the parsed JSON response dict.
         Raises ValueError on validation errors; httpx.HTTPStatusError on HTTP errors.
         """
-        url = f"{_LEVER_API_BASE}/{company}/{posting_id}/apply"
+        url = self._api_url(company, posting_id, apply=True)
 
         files: dict = {
             "name": (None, applicant.name),
@@ -143,8 +163,7 @@ class LeverService:
             resp = await client.post(url, files=files)
 
         if resp.status_code in (400, 422):
-            body = _safe_json(resp)
-            raise ValueError(f"Lever rejected application: {body}")
+            raise ValueError("Lever rejected application")
 
         resp.raise_for_status()
         return _safe_json(resp) or {"status": "submitted"}

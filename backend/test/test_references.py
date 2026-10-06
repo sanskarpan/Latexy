@@ -11,10 +11,13 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
+
+from app.api.reference_routes import _cancel_and_wait
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +68,25 @@ def _mock_httpx_response(status_code: int, text: str):
     return resp
 
 
+@pytest.mark.asyncio
+async def test_timed_out_fetch_tasks_are_awaited_through_cleanup() -> None:
+    cleanup_complete = asyncio.Event()
+
+    async def _fetch() -> None:
+        try:
+            await asyncio.sleep(3600)
+        finally:
+            await asyncio.sleep(0)
+            cleanup_complete.set()
+
+    task = asyncio.create_task(_fetch())
+    await asyncio.sleep(0)
+    await _cancel_and_wait({task})
+
+    assert task.done()
+    assert cleanup_complete.is_set()
+
+
 # ── Service unit tests ─────────────────────────────────────────────────────────
 
 
@@ -92,6 +114,14 @@ class TestReferenceServiceDetect:
 
     def test_detect_unknown(self):
         assert self._svc().detect_type("not-an-id") is None
+
+    @pytest.mark.parametrize("identifier", [
+        "https://doi.org.evil.example/10.1145/1327452.1327492",
+        "https://evil.example/https://doi.org/10.1145/1327452.1327492",
+        "prefix https://arxiv.org/abs/1706.03762",
+    ])
+    def test_detect_rejects_provider_hostname_lookalikes(self, identifier):
+        assert self._svc().detect_type(identifier) is None
 
     def test_normalize_strips_doi_url(self):
         norm, typ = self._svc().normalize_identifier("https://doi.org/10.1145/1327452.1327492")
@@ -137,6 +167,15 @@ class TestArxivXmlParser:
         svc = self._svc()
         with pytest.raises(ValueError, match="not found"):
             svc._parse_arxiv_xml(_ARXIV_ERROR_XML, "9999.99999")
+
+    def test_external_entities_are_rejected_without_expansion(self):
+        hostile = """<?xml version="1.0"?>
+<!DOCTYPE feed [<!ENTITY payload SYSTEM "file:///etc/passwd">]>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry><title>&payload;</title></entry>
+</feed>"""
+        with pytest.raises(ValueError, match="Invalid arXiv XML response"):
+            self._svc()._parse_arxiv_xml(hostile, "1706.03762")
 
 
 # ── Endpoint tests ─────────────────────────────────────────────────────────────

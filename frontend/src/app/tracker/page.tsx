@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
-import { Plus, MoreHorizontal, ExternalLink, Trash2, Pencil, X, StickyNote, Search } from 'lucide-react'
+import { Plus, MoreHorizontal, ExternalLink, Trash2, Pencil, X, StickyNote, Search, Bell, Users, CalendarClock, BriefcaseBusiness, Sparkles, Copy, MailCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   DndContext,
@@ -25,10 +25,31 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { apiClient, type JobApplication, type TrackerStats } from '@/lib/api-client'
+import {
+  apiClient,
+  type ApplicationInterview,
+  type ApplicationReminder,
+  type EmailStatusParseResponse,
+  type JobAlert,
+  type JobApplication,
+  type OutreachDraftResponse,
+  type OutreachChannel,
+  type OutreachPurpose,
+  type SavedJob,
+  type TrackerCompany,
+  type TrackerContact,
+  type TrackerStats,
+} from '@/lib/api-client'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
 import AddApplicationModal from '@/components/AddApplicationModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import SessionLoadError from '@/components/SessionLoadError'
+import { downloadBlob } from '@/lib/download'
+import {
+  requestExtensionCapture,
+  validExtensionCaptureId,
+  type ExtensionJobCapture,
+} from '@/lib/extension-capture'
 
 // ------------------------------------------------------------------ //
 //  Column config                                                       //
@@ -70,6 +91,10 @@ function timeAgo(iso: string) {
   return months === 1 ? '1 month ago' : `${months} months ago`
 }
 
+function createEmptyBoard(): Record<string, JobApplication[]> {
+  return Object.fromEntries(COLUMNS.map((column) => [column.id, []]))
+}
+
 // ------------------------------------------------------------------ //
 //  Logo / avatar helper                                                //
 // ------------------------------------------------------------------ //
@@ -102,10 +127,12 @@ interface ApplicationCardProps {
   onDelete: (id: string) => void
   onEdit: (app: JobApplication) => void
   onStatusChange: (id: string, status: string) => void
+  onWorkflow: (app: JobApplication) => void
+  onOutreach: (app: JobApplication) => void
   isDragging?: boolean
 }
 
-function ApplicationCard({ app, onDelete, onEdit, onStatusChange, isDragging = false }: ApplicationCardProps) {
+function ApplicationCard({ app, onDelete, onEdit, onStatusChange, onWorkflow, onOutreach, isDragging = false }: ApplicationCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging: sortableDragging } =
     useSortable({ id: app.id })
   const [menuOpen, setMenuOpen] = useState(false)
@@ -141,7 +168,7 @@ function ApplicationCard({ app, onDelete, onEdit, onStatusChange, isDragging = f
     if (menuTriggerRef.current) {
       const rect = menuTriggerRef.current.getBoundingClientRect()
       const margin = 8
-      const menuHeight = 88 // approx height of 2-item menu
+      const menuHeight = 128 // approx height of the action menu
       const right = Math.max(margin, window.innerWidth - rect.right)
       const spaceBelow = window.innerHeight - rect.bottom - margin
       // Flip upward when there isn't enough room below the trigger.
@@ -244,6 +271,7 @@ function ApplicationCard({ app, onDelete, onEdit, onStatusChange, isDragging = f
         <button
           ref={menuTriggerRef}
           type="button"
+          aria-label={`Actions for ${app.company_name}`}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={(e) => { e.stopPropagation(); menuOpen ? closeMenu(false) : openMenu() }}
@@ -286,6 +314,22 @@ function ApplicationCard({ app, onDelete, onEdit, onStatusChange, isDragging = f
               <button
                 type="button"
                 role="menuitem"
+                onClick={() => { closeMenu(true); onWorkflow(app) }}
+                className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-3 py-1.5 text-xs text-fg-2 transition hover:bg-surface-2"
+              >
+                <CalendarClock size={12} /> Follow-ups
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { closeMenu(true); onOutreach(app) }}
+                className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-3 py-1.5 text-xs text-fg-2 transition hover:bg-surface-2"
+              >
+                <Sparkles size={12} /> Draft outreach
+              </button>
+              <button
+                type="button"
+                role="menuitem"
                 onClick={() => { closeMenu(true); onDelete(app.id) }}
                 className="flex w-full items-center gap-2 rounded-[var(--radius-md)] px-3 py-1.5 text-xs text-err transition hover:bg-err/10"
               >
@@ -313,9 +357,11 @@ interface ColumnProps {
   onDelete: (id: string) => void
   onEdit: (app: JobApplication) => void
   onStatusChange: (id: string, status: string) => void
+  onWorkflow: (app: JobApplication) => void
+  onOutreach: (app: JobApplication) => void
 }
 
-function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete, onEdit, onStatusChange }: ColumnProps) {
+function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete, onEdit, onStatusChange, onWorkflow, onOutreach }: ColumnProps) {
   // The column container itself (not just its cards) must be a registered
   // droppable target — otherwise an empty column has no children for dnd-kit
   // to hit-test against and drops onto it silently fail.
@@ -336,7 +382,7 @@ function KanbanColumn({ columnId, label, colorClass, badgeClass, apps, onDelete,
       >
         <SortableContext items={apps.map((a) => a.id)} strategy={verticalListSortingStrategy}>
           {apps.map((app) => (
-            <ApplicationCard key={app.id} app={app} onDelete={onDelete} onEdit={onEdit} onStatusChange={onStatusChange} />
+            <ApplicationCard key={app.id} app={app} onDelete={onDelete} onEdit={onEdit} onStatusChange={onStatusChange} onWorkflow={onWorkflow} onOutreach={onOutreach} />
           ))}
         </SortableContext>
         {apps.length === 0 && (
@@ -437,18 +483,311 @@ function StatsBar({ stats }: { stats: TrackerStats | null }) {
 //  Main page                                                           //
 // ------------------------------------------------------------------ //
 
-export default function TrackerPage() {
-  const { session, isPending: sessionLoading } = useRequireAuth()
+function PanelShell({ title, description, icon, children }: { title: string; description: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return <section className="space-y-4" aria-labelledby={`${title.toLowerCase().replace(/\\s+/g, '-')}-heading`}>
+    <div className="flex items-center gap-2">
+      <span className="grid h-8 w-8 place-items-center rounded-[var(--radius-md)] bg-accent-soft text-accent-strong">{icon}</span>
+      <div><h2 id={`${title.toLowerCase().replace(/\\s+/g, '-')}-heading`} className="text-base font-semibold text-fg">{title}</h2><p className="text-xs text-fg-3">{description}</p></div>
+    </div>
+    {children}
+  </section>
+}
 
-  const [boardData, setBoardData] = useState<Record<string, JobApplication[]>>(() =>
-    Object.fromEntries(COLUMNS.map((c) => [c.id, []]))
+function SavedJobsPanel({ onTracked }: { onTracked: () => void }) {
+  const [jobs, setJobs] = useState<SavedJob[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [form, setForm] = useState({ company_name: '', role_title: '', job_url: '', job_description_text: '', notes: '' })
+  const [editing, setEditing] = useState<SavedJob | null>(null)
+  const [selected, setSelected] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(async () => { setLoading(true); setError(null); try { setJobs(await apiClient.listSavedJobs()) } catch (e) { setError(e instanceof Error ? e.message : 'Could not load saved jobs') } finally { setLoading(false) } }, [])
+  useEffect(() => { void load() }, [load])
+  const save = async (event: React.FormEvent) => { event.preventDefault(); setBusy(true); try { const payload = { ...form, job_url: form.job_url || (editing ? null : undefined), job_description_text: form.job_description_text || (editing ? null : undefined), notes: form.notes || (editing ? null : undefined) }; if (editing) { const updated = await apiClient.updateSavedJob(editing.id, payload); setJobs((items) => items.map((item) => item.id === editing.id ? updated : item)); setEditing(null); toast.success('Saved job updated') } else { const job = await apiClient.createSavedJob(payload); setJobs((items) => [job, ...items]); toast.success('Job saved') }; setForm({ company_name: '', role_title: '', job_url: '', job_description_text: '', notes: '' }) } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not save job') } finally { setBusy(false) } }
+  const startEdit = (job: SavedJob) => { setEditing(job); setForm({ company_name: job.company_name, role_title: job.role_title, job_url: job.job_url || '', job_description_text: job.job_description_text || '', notes: job.notes || '' }) }
+  const remove = async (id: string) => { if (!window.confirm('Remove this saved job?')) return; try { await apiClient.deleteSavedJob(id); setJobs((items) => items.filter((item) => item.id !== id)); setSelected((ids) => ids.filter((item) => item !== id)) } catch { toast.error('Could not delete saved job') } }
+  const bulkRemove = async () => { if (!selected.length || !window.confirm(`Remove ${selected.length} saved jobs?`)) return; setBusy(true); try { await apiClient.bulkDeleteSavedJobs(selected); setJobs((items) => items.filter((item) => !selected.includes(item.id))); setSelected([]); toast.success('Saved jobs removed') } catch { toast.error('Could not remove selected jobs') } finally { setBusy(false) } }
+  const track = async (job: SavedJob) => { try { await apiClient.trackSavedJob(job.id); setJobs((items) => items.filter((item) => item.id !== job.id)); onTracked(); toast.success('Moved to applications') } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not track job') } }
+  return <PanelShell title="Saved jobs" description="Keep promising roles handy until you are ready to apply." icon={<BriefcaseBusiness size={16} />}>
+    {error && <div role="alert" className="flex items-center justify-between gap-3 rounded border border-err/30 bg-err/10 px-3 py-2 text-xs text-err"><span>{error}</span><button type="button" onClick={() => void load()} className="font-semibold underline">Retry</button></div>}
+    <form onSubmit={save} className="grid gap-2 rounded-[var(--radius-lg)] border border-line bg-surface p-4 sm:grid-cols-2" aria-label={editing ? 'Edit saved job' : 'Save a job'}>
+      <input required value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} placeholder="Company" aria-label="Company" className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg" />
+      <input required value={form.role_title} onChange={(e) => setForm({ ...form, role_title: e.target.value })} placeholder="Role title" aria-label="Role title" className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg" />
+      <input type="url" value={form.job_url} onChange={(e) => setForm({ ...form, job_url: e.target.value })} placeholder="Job URL (optional)" aria-label="Job URL" className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg" />
+      <textarea value={form.job_description_text} onChange={(e) => setForm({ ...form, job_description_text: e.target.value })} placeholder="Job description (optional)" aria-label="Job description" className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg" />
+      <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes (optional)" aria-label="Notes" className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg" />
+      <div className="flex gap-2 sm:col-span-2"><button disabled={busy} className="rounded-[var(--radius-md)] bg-accent px-3 py-2 text-xs font-semibold text-accent-fg disabled:opacity-50">{busy ? 'Saving…' : editing ? 'Update job' : 'Save job'}</button>{editing && <button type="button" onClick={() => { setEditing(null); setForm({ company_name: '', role_title: '', job_url: '', job_description_text: '', notes: '' }) }} className="rounded border border-line px-3 py-2 text-xs text-fg-2">Cancel</button>}</div>
+    </form>
+    {loading ? <LoadingSpinner /> : jobs.length === 0 ? <div className="rounded-[var(--radius-lg)] border border-dashed border-line px-5 py-10 text-center text-sm text-fg-3">No saved jobs yet.</div> : <><div className="mb-2 flex items-center justify-between"><label className="flex items-center gap-2 text-xs text-fg-2"><input type="checkbox" checked={selected.length === jobs.length} onChange={(e) => setSelected(e.target.checked ? jobs.map((job) => job.id) : [])} aria-label="Select all saved jobs" /> Select all</label>{selected.length > 0 && <button type="button" disabled={busy} onClick={() => void bulkRemove()} className="rounded border border-err/30 px-3 py-1.5 text-xs font-semibold text-err">Remove selected ({selected.length})</button>}</div><div className="grid gap-2" role="list">{jobs.map((job) => <article key={job.id} role="listitem" className="flex flex-wrap items-center gap-3 rounded-[var(--radius-lg)] border border-line bg-surface p-4"><input type="checkbox" checked={selected.includes(job.id)} onChange={(e) => setSelected((ids) => e.target.checked ? [...ids, job.id] : ids.filter((id) => id !== job.id))} aria-label={`Select ${job.role_title}`} /><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold text-fg">{job.role_title}</h3><p className="text-xs text-fg-2">{job.company_name}</p>{job.job_description_text && <p className="mt-1 line-clamp-2 text-xs text-fg-3">{job.job_description_text}</p>}{job.notes && <p className="mt-1 text-xs text-fg-3">{job.notes}</p>}</div>{job.job_url && <a href={job.job_url} target="_blank" rel="noopener noreferrer" className="text-xs text-accent-strong">Open posting</a>}<button onClick={() => startEdit(job)} className="rounded border border-line px-2 py-1.5 text-xs text-fg-2">Edit</button><button onClick={() => void track(job)} className="rounded-[var(--radius-md)] bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent-strong">Track application</button><button onClick={() => void remove(job.id)} aria-label={`Delete ${job.role_title}`} className="rounded-[var(--radius-md)] p-1.5 text-err hover:bg-err/10"><Trash2 size={14} /></button></article>)}</div></>}
+  </PanelShell>
+}
+
+function AlertsPanel() {
+  const [alerts, setAlerts] = useState<JobAlert[]>([])
+  const [form, setForm] = useState({ query: '', company_name: '', location: '', source_url: '', frequency: 'daily' as 'daily' | 'weekly' })
+  const [editing, setEditing] = useState<JobAlert | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const load = useCallback(async () => { setLoading(true); setError(null); try { setAlerts(await apiClient.listAlerts()) } catch (e) { setError(e instanceof Error ? e.message : 'Could not load alerts') } finally { setLoading(false) } }, [])
+  useEffect(() => { void load() }, [load])
+  const save = async (event: React.FormEvent) => { event.preventDefault(); try { if (editing) { const updated = await apiClient.updateAlert(editing.id, { ...form, company_name: form.company_name || null, location: form.location || null, source_url: form.source_url || null }); setAlerts((items) => items.map((item) => item.id === editing.id ? updated : item)); setEditing(null); toast.success('Alert updated') } else { const alert = await apiClient.createAlert({ ...form, company_name: form.company_name || undefined, location: form.location || undefined, source_url: form.source_url }); setAlerts((items) => [alert, ...items]); toast.success('Alert created') }; setForm({ query: '', company_name: '', location: '', source_url: '', frequency: 'daily' }) } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not save alert') } }
+  const startEdit = (alert: JobAlert) => { setEditing(alert); setForm({ query: alert.query, company_name: alert.company_name || '', location: alert.location || '', source_url: alert.source_url, frequency: alert.frequency }) }
+  const toggle = async (alert: JobAlert) => { try { const updated = await apiClient.updateAlert(alert.id, { active: !alert.active }); setAlerts((items) => items.map((item) => item.id === alert.id ? updated : item)) } catch { toast.error('Could not update alert') } }
+  const remove = async (id: string) => { if (!window.confirm('Delete this alert?')) return; try { await apiClient.deleteAlert(id); setAlerts((items) => items.filter((item) => item.id !== id)) } catch { toast.error('Could not delete alert') } }
+  return <PanelShell title="Alerts" description="Get notified when it is time to review a saved search." icon={<Bell size={16} />}>
+    <p className="rounded border border-line bg-surface-2 px-3 py-2 text-xs text-fg-2">Latexy does not scrape or discover jobs. Alerts are reminders to review the searches and source URLs you provide.</p>
+    {error && <div role="alert" className="flex items-center justify-between gap-3 rounded border border-err/30 bg-err/10 px-3 py-2 text-xs text-err"><span>{error}</span><button type="button" onClick={() => void load()} className="font-semibold underline">Retry</button></div>}
+    <form onSubmit={save} className="grid gap-2 rounded-[var(--radius-lg)] border border-line bg-surface p-4 sm:grid-cols-2" aria-label={editing ? 'Edit job alert' : 'Create job alert'}>
+      <input required value={form.query} onChange={(e) => setForm({ ...form, query: e.target.value })} placeholder="Search query" aria-label="Search query" className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg" />
+      <input required type="url" value={form.source_url} onChange={(e) => setForm({ ...form, source_url: e.target.value })} placeholder="Source URL" aria-label="Source URL" className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg" />
+      <input value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} placeholder="Company (optional)" aria-label="Alert company" className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg" />
+      <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Location (optional)" aria-label="Alert location" className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg" />
+      <select value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value as 'daily' | 'weekly' })} aria-label="Alert frequency" className="rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-xs text-fg"><option value="daily">Daily</option><option value="weekly">Weekly</option></select><div className="flex gap-2"><button className="rounded-[var(--radius-md)] bg-accent px-3 py-2 text-xs font-semibold text-accent-fg">{editing ? 'Update alert' : 'Create alert'}</button>{editing && <button type="button" onClick={() => { setEditing(null); setForm({ query: '', company_name: '', location: '', source_url: '', frequency: 'daily' }) }} className="rounded border border-line px-3 py-2 text-xs text-fg-2">Cancel</button>}</div>
+    </form>
+    {loading ? <LoadingSpinner /> : alerts.length === 0 ? <div className="rounded-[var(--radius-lg)] border border-dashed border-line px-5 py-10 text-center text-sm text-fg-3">No alerts yet.</div> : <div className="grid gap-2" role="list">{alerts.map((alert) => <article key={alert.id} role="listitem" className="flex flex-wrap items-center gap-3 rounded-[var(--radius-lg)] border border-line bg-surface p-4"><div className="min-w-0 flex-1"><h3 className="text-sm font-semibold text-fg">{alert.query}</h3><p className="text-xs text-fg-2">{[alert.company_name, alert.location].filter(Boolean).join(' · ') || 'All locations'} · {alert.frequency}</p><p className="text-[11px] text-fg-3">{alert.source_url}</p></div><button onClick={() => startEdit(alert)} className="rounded border border-line px-2 py-1.5 text-xs text-fg-2">Edit</button><button role="switch" aria-checked={alert.active} aria-label={`Alert ${alert.query}`} onClick={() => void toggle(alert)} className={`rounded-full px-3 py-1 text-xs ${alert.active ? 'bg-ok/10 text-ok' : 'bg-surface-2 text-fg-3'}`}>{alert.active ? 'Active' : 'Paused'}</button><button onClick={() => void remove(alert.id)} aria-label={`Delete alert ${alert.query}`} className="rounded-[var(--radius-md)] p-1.5 text-err hover:bg-err/10"><Trash2 size={14} /></button></article>)}</div>}
+  </PanelShell>
+}
+
+function ContactsPanel() {
+  const [contacts, setContacts] = useState<TrackerContact[]>([])
+  const [companies, setCompanies] = useState<TrackerCompany[]>([])
+  const [form, setForm] = useState({ name: '', role_title: '', email: '', phone: '', linkedin_url: '', notes: '', company_id: '' })
+  const [companyForm, setCompanyForm] = useState({ name: '', website: '', notes: '' })
+  const [editingContact, setEditingContact] = useState<TrackerContact | null>(null)
+  const [editingCompany, setEditingCompany] = useState<TrackerCompany | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const load = useCallback(async () => { setLoading(true); setError(null); try { const [nextContacts, nextCompanies] = await Promise.all([apiClient.listTrackerContacts(), apiClient.listTrackerCompanies()]); setContacts(nextContacts); setCompanies(nextCompanies) } catch (e) { setError(e instanceof Error ? e.message : 'Could not load contacts') } finally { setLoading(false) } }, [])
+  useEffect(() => { void load() }, [load])
+  const saveContact = async (event: React.FormEvent) => { event.preventDefault(); try { const payload = { ...form, role_title: form.role_title || (editingContact ? null : undefined), email: form.email || (editingContact ? null : undefined), phone: form.phone || (editingContact ? null : undefined), linkedin_url: form.linkedin_url || (editingContact ? null : undefined), notes: form.notes || (editingContact ? null : undefined), company_id: form.company_id || (editingContact ? null : undefined) }; if (editingContact) { const updated = await apiClient.updateTrackerContact(editingContact.id, payload); setContacts((items) => items.map((item) => item.id === editingContact.id ? updated : item)); setEditingContact(null); toast.success('Contact updated') } else { const contact = await apiClient.createTrackerContact(payload); setContacts((items) => [...items, contact].sort((a, b) => a.name.localeCompare(b.name))); toast.success('Contact added') }; setForm({ name: '', role_title: '', email: '', phone: '', linkedin_url: '', notes: '', company_id: '' }) } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not save contact') } }
+  const saveCompany = async (event: React.FormEvent) => { event.preventDefault(); try { const payload = { ...companyForm, website: companyForm.website || (editingCompany ? null : undefined), notes: companyForm.notes || (editingCompany ? null : undefined) }; if (editingCompany) { const updated = await apiClient.updateTrackerCompany(editingCompany.id, payload); setCompanies((items) => items.map((item) => item.id === editingCompany.id ? updated : item)); setEditingCompany(null); toast.success('Company updated') } else { const company = await apiClient.createTrackerCompany(payload); setCompanies((items) => [...items, company].sort((a, b) => a.name.localeCompare(b.name))); toast.success('Company added') }; setCompanyForm({ name: '', website: '', notes: '' }) } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not save company') } }
+  const editContact = (contact: TrackerContact) => { setEditingContact(contact); setForm({ name: contact.name, role_title: contact.role_title || '', email: contact.email || '', phone: contact.phone || '', linkedin_url: contact.linkedin_url || '', notes: contact.notes || '', company_id: contact.company_id || '' }) }
+  const editCompany = (company: TrackerCompany) => { setEditingCompany(company); setCompanyForm({ name: company.name, website: company.website || '', notes: company.notes || '' }) }
+  const remove = async (id: string) => { if (!window.confirm('Delete this contact?')) return; try { await apiClient.deleteTrackerContact(id); setContacts((items) => items.filter((item) => item.id !== id)) } catch { toast.error('Could not delete contact') } }
+  const removeCompany = async (id: string) => { if (!window.confirm('Delete this company? Contacts assigned to it will be detached.')) return; try { await apiClient.deleteTrackerCompany(id); setCompanies((items) => items.filter((item) => item.id !== id)); setContacts((items) => items.map((item) => item.company_id === id ? { ...item, company_id: null } : item)) } catch { toast.error('Could not delete company') } }
+  return <PanelShell title="Contacts" description="Keep recruiters and interview contacts close to your applications." icon={<Users size={16} />}>
+    {error && <div role="alert" className="flex items-center justify-between gap-3 rounded border border-err/30 bg-err/10 px-3 py-2 text-xs text-err"><span>{error}</span><button type="button" onClick={() => void load()} className="font-semibold underline">Retry</button></div>}
+    <div className="grid gap-4 lg:grid-cols-2"><form onSubmit={saveCompany} className="grid gap-2 rounded-[var(--radius-lg)] border border-line bg-surface p-4" aria-label={editingCompany ? 'Edit company' : 'Create company'}><h3 className="text-sm font-semibold text-fg">Companies</h3><input required value={companyForm.name} onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })} placeholder="Company name" aria-label="Company name" className="rounded border border-line bg-surface-2 px-3 py-2 text-xs text-fg" /><input type="url" value={companyForm.website} onChange={(e) => setCompanyForm({ ...companyForm, website: e.target.value })} placeholder="Website (optional)" aria-label="Company website" className="rounded border border-line bg-surface-2 px-3 py-2 text-xs text-fg" /><textarea value={companyForm.notes} onChange={(e) => setCompanyForm({ ...companyForm, notes: e.target.value })} placeholder="Notes" aria-label="Company notes" className="rounded border border-line bg-surface-2 px-3 py-2 text-xs text-fg" /><div className="flex gap-2"><button className="rounded bg-accent px-3 py-2 text-xs font-semibold text-accent-fg">{editingCompany ? 'Update company' : 'Add company'}</button>{editingCompany && <button type="button" onClick={() => { setEditingCompany(null); setCompanyForm({ name: '', website: '', notes: '' }) }} className="rounded border border-line px-3 py-2 text-xs">Cancel</button>}</div>{companies.map((company) => <div key={company.id} className="flex items-center gap-2 text-xs"><span className="flex-1">{company.name}</span><button type="button" onClick={() => editCompany(company)} className="text-accent-strong">Edit</button><button type="button" onClick={() => void removeCompany(company.id)} className="text-err">Delete</button></div>)}</form><form onSubmit={saveContact} className="grid gap-2 rounded-[var(--radius-lg)] border border-line bg-surface p-4" aria-label={editingContact ? 'Edit contact' : 'Add tracker contact'}><h3 className="text-sm font-semibold text-fg">{editingContact ? 'Edit contact' : 'Add contact'}</h3><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" aria-label="Contact name" className="rounded border border-line bg-surface-2 px-3 py-2 text-xs text-fg" /><input value={form.role_title} onChange={(e) => setForm({ ...form, role_title: e.target.value })} placeholder="Role" aria-label="Contact role" className="rounded border border-line bg-surface-2 px-3 py-2 text-xs text-fg" /><input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" aria-label="Contact email" className="rounded border border-line bg-surface-2 px-3 py-2 text-xs text-fg" /><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Phone" aria-label="Contact phone" className="rounded border border-line bg-surface-2 px-3 py-2 text-xs text-fg" /><input type="url" value={form.linkedin_url} onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })} placeholder="LinkedIn URL" aria-label="LinkedIn URL" className="rounded border border-line bg-surface-2 px-3 py-2 text-xs text-fg" /><textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" aria-label="Contact notes" className="rounded border border-line bg-surface-2 px-3 py-2 text-xs text-fg" /><select value={form.company_id} onChange={(e) => setForm({ ...form, company_id: e.target.value })} aria-label="Contact company" className="rounded border border-line bg-surface-2 px-3 py-2 text-xs text-fg"><option value="">No company (detached)</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select><div className="flex gap-2"><button className="rounded bg-accent px-3 py-2 text-xs font-semibold text-accent-fg">{editingContact ? 'Update contact' : 'Add contact'}</button>{editingContact && <button type="button" onClick={() => { setEditingContact(null); setForm({ name: '', role_title: '', email: '', phone: '', linkedin_url: '', notes: '', company_id: '' }) }} className="rounded border border-line px-3 py-2 text-xs">Cancel</button>}</div></form></div>
+    {loading ? <LoadingSpinner /> : contacts.length === 0 ? <div className="rounded-[var(--radius-lg)] border border-dashed border-line px-5 py-10 text-center text-sm text-fg-3">No contacts yet.</div> : <div className="grid gap-2 sm:grid-cols-2" role="list">{contacts.map((contact) => <article key={contact.id} role="listitem" className="flex items-start gap-3 rounded-[var(--radius-lg)] border border-line bg-surface p-4"><div className="min-w-0 flex-1"><h3 className="text-sm font-semibold text-fg">{contact.name}</h3><p className="text-xs text-fg-2">{contact.role_title || 'Contact'}{contact.email ? ` · ${contact.email}` : ''}</p>{contact.linkedin_url && <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-xs text-accent-strong">LinkedIn</a>}{contact.phone && <p className="text-xs text-fg-3">{contact.phone}</p>}{contact.notes && <p className="text-xs text-fg-3">{contact.notes}</p>}</div><button onClick={() => editContact(contact)} className="rounded border border-line px-2 py-1 text-xs">Edit</button><button onClick={() => void remove(contact.id)} aria-label={`Delete contact ${contact.name}`} className="rounded-[var(--radius-md)] p-1.5 text-err hover:bg-err/10"><Trash2 size={14} /></button></article>)}</div>}
+  </PanelShell>
+}
+
+function datetimeLocal(iso: string) {
+  const date = new Date(iso)
+  const offset = date.getTimezoneOffset() * 60000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16)
+}
+
+function ApplicationWorkflowPanel({ app, onClose }: { app: JobApplication; onClose: () => void }) {
+  const [reminders, setReminders] = useState<ApplicationReminder[]>([])
+  const [interviews, setInterviews] = useState<ApplicationInterview[]>([])
+  const [remindAt, setRemindAt] = useState('')
+  const [reminderNote, setReminderNote] = useState('')
+  const [editingReminder, setEditingReminder] = useState<ApplicationReminder | null>(null)
+  const [editingInterview, setEditingInterview] = useState<ApplicationInterview | null>(null)
+  const [interview, setInterview] = useState({ round_name: '', interview_format: 'video' as ApplicationInterview['interview_format'], starts_at: '', duration_minutes: '60', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', location: '', interviewers: '', notes: '' })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const load = useCallback(async () => { setLoading(true); setError(null); try { const [nextReminders, nextInterviews] = await Promise.all([apiClient.listApplicationReminders(app.id), apiClient.listApplicationInterviews(app.id)]); setReminders(nextReminders); setInterviews(nextInterviews) } catch (e) { setError(e instanceof Error ? e.message : 'Could not load follow-ups') } finally { setLoading(false) } }, [app.id])
+  useEffect(() => { void load() }, [load])
+  const saveReminder = async (event: React.FormEvent) => { event.preventDefault(); try { const payload = { remind_at: new Date(remindAt).toISOString(), note: reminderNote || null }; const item = editingReminder ? await apiClient.updateApplicationReminder(app.id, editingReminder.id, payload) : await apiClient.createApplicationReminder(app.id, payload); setReminders((items) => editingReminder ? items.map((entry) => entry.id === item.id ? item : entry) : [...items, item]); setEditingReminder(null); setRemindAt(''); setReminderNote(''); toast.success(editingReminder ? 'Reminder rescheduled' : 'Reminder added') } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not save reminder') } }
+  const editReminder = (item: ApplicationReminder) => { setEditingReminder(item); setRemindAt(datetimeLocal(item.remind_at)); setReminderNote(item.note || '') }
+  const removeReminder = async (item: ApplicationReminder) => { if (!window.confirm('Delete this reminder?')) return; try { await apiClient.deleteApplicationReminder(app.id, item.id); setReminders((items) => items.filter((entry) => entry.id !== item.id)) } catch { toast.error('Could not delete reminder') } }
+  const saveInterview = async (event: React.FormEvent) => { event.preventDefault(); try { const payload = { round_name: interview.round_name, interview_format: interview.interview_format, starts_at: new Date(interview.starts_at).toISOString(), duration_minutes: Number(interview.duration_minutes), timezone: interview.timezone, location: interview.location || (editingInterview ? null : undefined), interviewers: interview.interviewers.split(',').map((value) => value.trim()).filter(Boolean), notes: interview.notes || (editingInterview ? null : undefined) }; const item = editingInterview ? await apiClient.updateApplicationInterview(app.id, editingInterview.id, payload) : await apiClient.createApplicationInterview(app.id, payload); setInterviews((items) => editingInterview ? items.map((entry) => entry.id === item.id ? item : entry) : [...items, item]); setEditingInterview(null); setInterview({ ...interview, round_name: '', starts_at: '', location: '', interviewers: '', notes: '' }); toast.success(editingInterview ? 'Interview updated' : 'Interview scheduled') } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not save interview') } }
+  const editInterview = (item: ApplicationInterview) => { setEditingInterview(item); setInterview({ round_name: item.round_name, interview_format: item.interview_format, starts_at: datetimeLocal(item.starts_at), duration_minutes: String(item.duration_minutes), timezone: item.timezone, location: item.location || '', interviewers: item.interviewers.join(', '), notes: item.notes || '' }) }
+  const removeInterview = async (item: ApplicationInterview) => { if (!window.confirm('Delete this interview?')) return; try { await apiClient.deleteApplicationInterview(app.id, item.id); setInterviews((items) => items.filter((entry) => entry.id !== item.id)) } catch { toast.error('Could not delete interview') } }
+  const download = async (item: ApplicationInterview) => { try { const blob = await apiClient.downloadApplicationInterviewIcs(app.id, item.id); downloadBlob(blob, `interview-${item.id}.ics`) } catch { toast.error('Could not download calendar invite') } }
+  return <div className="fixed inset-0 z-50 overflow-y-auto bg-[var(--overlay)] p-4" role="dialog" aria-modal="true" aria-labelledby="follow-ups-title" onClick={onClose}><div className="mx-auto my-8 w-full max-w-2xl rounded-[var(--radius-lg)] border border-line bg-bg p-5 shadow-[var(--shadow-2)]" onClick={(event) => event.stopPropagation()}><div className="flex items-start justify-between"><div><h2 id="follow-ups-title" className="text-lg font-semibold text-fg">Follow-ups · {app.company_name}</h2><p className="text-xs text-fg-2">{app.role_title}</p></div><button onClick={onClose} aria-label="Close follow-ups" className="rounded p-1 text-fg-3 hover:text-fg"><X size={16} /></button></div>{loading ? <div className="py-8"><LoadingSpinner /></div> : error ? <div role="alert" className="mt-5 rounded border border-err/30 bg-err/10 p-4 text-sm text-err"><p>{error}</p><button type="button" onClick={() => void load()} className="mt-3 rounded border border-err/30 px-3 py-1.5 text-xs font-semibold">Retry</button></div> : <div className="mt-5 grid gap-5 lg:grid-cols-2"><div className="space-y-3"><h3 className="text-sm font-semibold text-fg">Reminders</h3><form onSubmit={saveReminder} className="space-y-2 rounded border border-line bg-surface p-3"><label className="block text-xs text-fg-2">{editingReminder ? 'Reschedule to' : 'Remind me'}<input required type="datetime-local" value={remindAt} onChange={(e) => setRemindAt(e.target.value)} className="mt-1 w-full rounded border border-line bg-surface-2 px-2 py-1.5 text-xs text-fg" /></label><input value={reminderNote} onChange={(e) => setReminderNote(e.target.value)} placeholder="Note (optional)" aria-label="Reminder note" className="w-full rounded border border-line bg-surface-2 px-2 py-1.5 text-xs text-fg" /><div className="flex gap-2"><button className="rounded bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg">{editingReminder ? 'Reschedule reminder' : 'Add reminder'}</button>{editingReminder && <button type="button" onClick={() => { setEditingReminder(null); setRemindAt(''); setReminderNote('') }} className="rounded border border-line px-3 py-1.5 text-xs">Cancel</button>}</div></form>{reminders.map((item) => <div key={item.id} className="flex items-center gap-2 rounded border border-line p-2 text-xs"><span className="flex-1">{new Date(item.remind_at).toLocaleString()}{item.note ? ` · ${item.note}` : ''}</span><button onClick={() => editReminder(item)} className="text-accent-strong">Edit</button><button onClick={() => void removeReminder(item)} aria-label="Delete reminder" className="text-err"><Trash2 size={13} /></button></div>)}</div><div className="space-y-3"><h3 className="text-sm font-semibold text-fg">Interviews</h3><form onSubmit={saveInterview} className="space-y-2 rounded border border-line bg-surface p-3"><input required value={interview.round_name} onChange={(e) => setInterview({ ...interview, round_name: e.target.value })} placeholder="Round name" aria-label="Interview round" className="w-full rounded border border-line bg-surface-2 px-2 py-1.5 text-xs text-fg" /><div className="grid grid-cols-2 gap-2"><select value={interview.interview_format} onChange={(e) => setInterview({ ...interview, interview_format: e.target.value as ApplicationInterview['interview_format'] })} aria-label="Interview format" className="rounded border border-line bg-surface-2 px-2 py-1.5 text-xs text-fg"><option value="video">Video</option><option value="phone">Phone</option><option value="onsite">On-site</option><option value="take_home">Take-home</option><option value="other">Other</option></select><input required type="number" min="5" value={interview.duration_minutes} onChange={(e) => setInterview({ ...interview, duration_minutes: e.target.value })} aria-label="Interview duration minutes" className="rounded border border-line bg-surface-2 px-2 py-1.5 text-xs text-fg" /></div><input required type="datetime-local" value={interview.starts_at} onChange={(e) => setInterview({ ...interview, starts_at: e.target.value })} aria-label="Interview start time" className="w-full rounded border border-line bg-surface-2 px-2 py-1.5 text-xs text-fg" /><input value={interview.location} onChange={(e) => setInterview({ ...interview, location: e.target.value })} placeholder="Location or meeting link" aria-label="Interview location" className="w-full rounded border border-line bg-surface-2 px-2 py-1.5 text-xs text-fg" /><input value={interview.interviewers} onChange={(e) => setInterview({ ...interview, interviewers: e.target.value })} placeholder="Interviewers (comma separated)" aria-label="Interviewers" className="w-full rounded border border-line bg-surface-2 px-2 py-1.5 text-xs text-fg" /><textarea value={interview.notes} onChange={(e) => setInterview({ ...interview, notes: e.target.value })} placeholder="Notes" aria-label="Interview notes" className="w-full rounded border border-line bg-surface-2 px-2 py-1.5 text-xs text-fg" /><div className="flex gap-2"><button className="rounded bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg">{editingInterview ? 'Update interview' : 'Schedule interview'}</button>{editingInterview && <button type="button" onClick={() => { setEditingInterview(null); setInterview({ ...interview, round_name: '', starts_at: '', location: '', interviewers: '', notes: '' }) }} className="rounded border border-line px-3 py-1.5 text-xs">Cancel</button>}</div></form>{interviews.map((item) => <div key={item.id} className="rounded border border-line p-2 text-xs"><div className="flex items-center gap-2"><strong className="flex-1">{item.round_name}</strong><button onClick={() => editInterview(item)} className="text-accent-strong">Edit</button><button onClick={() => void download(item)} className="text-accent-strong">Add to calendar</button><button onClick={() => void removeInterview(item)} aria-label="Delete interview" className="text-err"><Trash2 size={13} /></button></div><p className="mt-1 text-fg-2">{new Date(item.starts_at).toLocaleString()} · {item.duration_minutes} min</p></div>)}</div></div>}</div></div>
+}
+
+function OutreachDraftPanel({ app, onClose }: { app: JobApplication; onClose: () => void }) {
+  const [contacts, setContacts] = useState<TrackerContact[]>([])
+  const [contactId, setContactId] = useState('')
+  const [channel, setChannel] = useState<OutreachChannel>('email')
+  const [purpose, setPurpose] = useState<OutreachPurpose>('referral_request')
+  const [context, setContext] = useState('')
+  const [draft, setDraft] = useState<OutreachDraftResponse | null>(null)
+  const [errorSource, setErrorSource] = useState<'contacts' | 'generation' | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const loadContacts = useCallback(async () => { setLoading(true); setError(null); setErrorSource(null); try { setContacts(await apiClient.listTrackerContacts()) } catch (e) { setErrorSource('contacts'); setError(e instanceof Error ? e.message : 'Could not load contacts') } finally { setLoading(false) } }, [])
+  useEffect(() => { void loadContacts() }, [loadContacts])
+  const generateDraft = async () => { setGenerating(true); setError(null); setErrorSource(null); try { setDraft(await apiClient.createOutreachDraft({ application_id: app.id, contact_id: contactId || null, channel, purpose, additional_context: context || null })) } catch (e) { setErrorSource('generation'); setError(e instanceof Error ? e.message : 'Could not generate outreach draft') } finally { setGenerating(false) } }
+  const generate = async (event: React.FormEvent) => { event.preventDefault(); await generateDraft() }
+  const copy = async (value: string, label: string) => { try { await navigator.clipboard.writeText(value); toast.success(`${label} copied`) } catch { toast.error(`Could not copy ${label.toLowerCase()}`) } }
+  return <div className="fixed inset-0 z-50 overflow-y-auto bg-[var(--overlay)] p-4" role="dialog" aria-modal="true" aria-labelledby="outreach-title" onClick={onClose}><div className="mx-auto my-8 w-full max-w-2xl rounded-[var(--radius-lg)] border border-line bg-bg p-5 shadow-[var(--shadow-2)]" onClick={(event) => event.stopPropagation()}><div className="flex items-start justify-between"><div><h2 id="outreach-title" className="text-lg font-semibold text-fg">Draft outreach · {app.company_name}</h2><p className="text-xs text-fg-2">{app.role_title} · stage-aware draft</p></div><button onClick={onClose} aria-label="Close outreach draft" className="rounded p-1 text-fg-3 hover:text-fg"><X size={16} /></button></div><p className="mt-3 rounded border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-fg-2"><strong className="text-fg">Editable draft — not sent.</strong> Latexy only creates copy for you to review. Nothing is sent or saved by this workflow.</p>{error && <div role="alert" className="mt-4 flex items-center justify-between gap-3 rounded border border-err/30 bg-err/10 px-3 py-2 text-xs text-err"><span>{error}</span><button type="button" onClick={() => errorSource === 'generation' ? void generateDraft() : void loadContacts()} className="font-semibold underline">Retry</button></div>}{loading ? <div className="py-8"><LoadingSpinner /></div> : <form onSubmit={generate} className="mt-4 space-y-3"><div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-fg-2">Contact (optional)<select value={contactId} onChange={(event) => setContactId(event.target.value)} className="mt-1 w-full rounded border border-line bg-surface-2 px-2 py-2 text-xs text-fg"><option value="">No contact</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}{contact.role_title ? ` · ${contact.role_title}` : ''}</option>)}</select></label><label className="text-xs text-fg-2">Channel<select value={channel} onChange={(event) => setChannel(event.target.value as OutreachChannel)} className="mt-1 w-full rounded border border-line bg-surface-2 px-2 py-2 text-xs text-fg"><option value="email">Email</option><option value="linkedin">LinkedIn</option></select></label></div><label className="block text-xs text-fg-2">Purpose<select value={purpose} onChange={(event) => setPurpose(event.target.value as OutreachPurpose)} className="mt-1 w-full rounded border border-line bg-surface-2 px-2 py-2 text-xs text-fg"><option value="referral_request">Referral request</option><option value="follow_up">Follow-up</option><option value="thank_you">Thank you</option><option value="networking">Networking</option></select></label><label className="block text-xs text-fg-2">Additional context<textarea value={context} onChange={(event) => setContext(event.target.value)} maxLength={2000} rows={3} placeholder="Optional context for the draft" className="mt-1 w-full rounded border border-line bg-surface-2 px-2 py-2 text-xs text-fg" /></label><button disabled={generating} className="rounded bg-accent px-3 py-2 text-xs font-semibold text-accent-fg disabled:opacity-50">{generating ? 'Generating…' : draft ? 'Regenerate draft' : 'Generate draft'}</button></form>}{draft && !loading && <div className="mt-5 space-y-3 border-t border-line pt-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold text-fg">Your editable draft</h3><span className="text-[11px] text-fg-3">{draft.stage} · {draft.channel}</span></div><div><label className="text-xs font-semibold text-fg-2" htmlFor="outreach-subject">Subject</label><div className="mt-1 flex gap-2"><input id="outreach-subject" value={draft.subject} onChange={(event) => setDraft({ ...draft, subject: event.target.value })} className="min-w-0 flex-1 rounded border border-line bg-surface-2 px-2 py-2 text-xs text-fg" /><button type="button" onClick={() => void copy(draft.subject, 'Subject')} aria-label="Copy subject" className="rounded border border-line px-2 text-fg-2"><Copy size={13} /></button></div></div><div><label className="text-xs font-semibold text-fg-2" htmlFor="outreach-body">Body</label><div className="mt-1 flex gap-2"><textarea id="outreach-body" value={draft.body} onChange={(event) => setDraft({ ...draft, body: event.target.value })} rows={9} className="min-w-0 flex-1 rounded border border-line bg-surface-2 px-2 py-2 text-xs text-fg" /><button type="button" onClick={() => void copy(draft.body, 'Body')} aria-label="Copy body" className="self-start rounded border border-line px-2 py-2 text-fg-2"><Copy size={13} /></button></div></div>{draft.placeholders.length > 0 && <div className="rounded border border-warn/30 bg-warn/5 p-3 text-xs text-fg-2"><p className="font-semibold text-fg">Review checklist</p><ul className="mt-1 list-disc space-y-1 pl-5">{draft.placeholders.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul></div>}<p className="text-[11px] text-fg-3">Review and edit the subject and body before using them elsewhere. This draft is not sent.</p></div>}</div></div>
+}
+
+const MAX_FORWARDED_EMAIL_BYTES = 1_000_000
+
+function EmailStatusReviewPanel({ onClose }: { onClose: () => void }) {
+  const [rawEmail, setRawEmail] = useState('')
+  const [result, setResult] = useState<EmailStatusParseResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [parsing, setParsing] = useState(false)
+  const parseRequestRef = useRef(0)
+
+  const closePanel = () => {
+    parseRequestRef.current += 1
+    setRawEmail('')
+    setResult(null)
+    setError(null)
+    onClose()
+  }
+
+  const parseEmail = useCallback(async () => {
+    const encodedBytes = new TextEncoder().encode(rawEmail).byteLength
+    if (encodedBytes > MAX_FORWARDED_EMAIL_BYTES) {
+      setResult(null)
+      setError('This forwarded email is larger than 1 MB. Paste one smaller RFC5322 message to review it.')
+      return
+    }
+    if (!rawEmail.trim()) {
+      setResult(null)
+      setError('Paste one raw forwarded email before reviewing it.')
+      return
+    }
+
+    const requestId = ++parseRequestRef.current
+    setParsing(true)
+    setError(null)
+    try {
+      const parsed = await apiClient.parseTrackerEmailStatus({ raw_email: rawEmail })
+      if (parseRequestRef.current === requestId) setResult(parsed)
+    } catch (e) {
+      if (parseRequestRef.current === requestId) {
+        setResult(null)
+        setError(e instanceof Error ? e.message : 'Could not parse forwarded email')
+      }
+    } finally {
+      if (parseRequestRef.current === requestId) setParsing(false)
+    }
+  }, [rawEmail])
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-[var(--overlay)] p-4" role="dialog" aria-modal="true" aria-labelledby="email-status-review-title">
+      <div className="mx-auto my-8 w-full max-w-2xl rounded-[var(--radius-lg)] border border-line bg-bg p-5 shadow-[var(--shadow-2)]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="email-status-review-title" className="text-lg font-semibold text-fg">Review forwarded email</h2>
+            <p className="text-xs text-fg-2">Review-only status suggestions from one raw RFC5322 message.</p>
+          </div>
+          <button type="button" onClick={closePanel} aria-label="Close email status review" className="rounded p-1 text-fg-3 hover:text-fg"><X size={16} /></button>
+        </div>
+
+        <div className="mt-4 rounded border-2 border-warn/40 bg-warn/10 p-3 text-xs text-fg-2">
+          <p className="font-semibold text-fg">Review required — no automatic updates.</p>
+          <p className="mt-1">Latexy only analyzes the message you paste here. It does not access your mailbox, send or forward mail, change an application, or retain the pasted message. No forwarding address or mailbox OAuth setup is provided by this review.</p>
+        </div>
+
+        {error && (
+          <div role="alert" className="mt-4 flex items-center justify-between gap-3 rounded border border-err/30 bg-err/10 px-3 py-2 text-xs text-err">
+            <span>{error}</span>
+            <button type="button" onClick={() => void parseEmail()} disabled={parsing} className="font-semibold underline disabled:opacity-50">Retry</button>
+          </div>
+        )}
+
+        <form onSubmit={(event) => { event.preventDefault(); void parseEmail() }} className="mt-4 space-y-3">
+          <label htmlFor="raw-forwarded-email" className="block text-xs font-semibold text-fg-2">Raw forwarded email</label>
+          <textarea id="raw-forwarded-email" value={rawEmail} onChange={(event) => { parseRequestRef.current += 1; setParsing(false); setResult(null); setError(null); setRawEmail(event.target.value) }} rows={10} maxLength={1_000_000} placeholder="Paste the complete RFC5322 message, including headers" className="w-full rounded border border-line bg-surface-2 px-3 py-2 font-mono text-xs text-fg placeholder:font-sans" />
+          <p className="text-[11px] text-fg-3">Maximum size: 1 MB. One message at a time; review the suggestions before taking any action.</p>
+          <button type="submit" disabled={parsing} className="rounded bg-accent px-3 py-2 text-xs font-semibold text-accent-fg disabled:opacity-50">{parsing ? 'Reviewing…' : 'Review email'}</button>
+        </form>
+
+        {result && (
+          <section aria-labelledby="email-status-results-title" className="mt-5 border-t border-line pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 id="email-status-results-title" className="text-sm font-semibold text-fg">Suggested details</h3>
+              <span className="rounded-full bg-warn/10 px-2 py-1 text-[10px] font-semibold text-warn">Review required</span>
+            </div>
+            <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+              <div className="rounded border border-line bg-surface p-2"><dt className="text-fg-3">Suggested status</dt><dd className="mt-1 font-semibold text-fg">{result.status ?? 'Not detected'}</dd></div>
+              <div className="rounded border border-line bg-surface p-2"><dt className="text-fg-3">Overall confidence</dt><dd className="mt-1 font-semibold text-fg">{Math.round(result.confidence * 100)}%</dd></div>
+              <div className="rounded border border-line bg-surface p-2"><dt className="text-fg-3">Suggested company</dt><dd className="mt-1 font-semibold text-fg">{result.company ?? 'Not detected'} <span className="font-normal text-fg-3">({Math.round(result.company_confidence * 100)}%)</span></dd></div>
+              <div className="rounded border border-line bg-surface p-2"><dt className="text-fg-3">Suggested role</dt><dd className="mt-1 font-semibold text-fg">{result.role ?? 'Not detected'} <span className="font-normal text-fg-3">({Math.round(result.role_confidence * 100)}%)</span></dd></div>
+            </dl>
+            <div className="mt-4 rounded border border-line bg-surface p-3">
+              <h4 className="text-xs font-semibold text-fg">Canonical evidence</h4>
+              {result.evidence.length > 0 ? <ul className="mt-2 space-y-2 text-xs text-fg-2">{result.evidence.map((item, index) => <li key={`${item.signal}-${index}`}><span className="font-semibold text-fg">{item.signal}</span><span className="ml-1">· {item.source}</span></li>)}</ul> : <p className="mt-2 text-xs text-fg-3">No canonical evidence was detected.</p>}
+            </div>
+            <p className="mt-3 text-[11px] font-semibold text-warn">Nothing has been applied to your tracker. This result is a suggestion for your review only.</p>
+          </section>
+        )}
+      </div>
+    </div>
   )
-  const [stats, setStats] = useState<TrackerStats | null>(null)
+}
+
+export default function TrackerPage() {
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+
+  const [boardData, setBoardData] = useState<Record<string, JobApplication[]>>(createEmptyBoard)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [extensionCapture, setExtensionCapture] = useState<ExtensionJobCapture | null>(null)
+  const extensionCaptureRequestedRef = useRef(false)
   const [editingApp, setEditingApp] = useState<JobApplication | null>(null)
+  const [workflowApp, setWorkflowApp] = useState<JobApplication | null>(null)
+  const [outreachApp, setOutreachApp] = useState<JobApplication | null>(null)
+  const [emailStatusReviewOpen, setEmailStatusReviewOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'board' | 'saved' | 'alerts' | 'contacts'>('board')
+  const [staleApps, setStaleApps] = useState<Array<JobApplication & { days_since_update: number }>>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [dragSourceCol, setDragSourceCol] = useState<string | null>(null)
+  const dragSnapshotRef = useRef<Record<string, JobApplication[]> | null>(null)
+  const boardOwnerRef = useRef<string | null>(null)
+  const statusMutationRef = useRef<Record<string, number>>({})
+  const boardGenerationRef = useRef(0)
+  const boardRequestVersionRef = useRef(0)
+  const staleRequestVersionRef = useRef(0)
+  const trackerMountedRef = useRef(false)
+  const boardIdentityOwnerRef = useRef<string | null>(session?.user?.id ?? null)
+  const acceptedBoardIdentityRef = useRef<{ ownerId: string | null; generation: number } | null>(null)
+  const acceptedStaleIdentityRef = useRef<{ ownerId: string | null; generation: number } | null>(null)
+
+  const trackerOwnerId = session?.user?.id ?? null
+  const ownerTransition = boardIdentityOwnerRef.current !== trackerOwnerId
+  if (ownerTransition) {
+    boardIdentityOwnerRef.current = trackerOwnerId
+    boardGenerationRef.current += 1
+    boardRequestVersionRef.current += 1
+    staleRequestVersionRef.current += 1
+  }
+
+  // Keep owner identity current during render as well as after effects. This
+  // closes the small window where a delayed mutation could otherwise observe
+  // the previous account before the session effect runs.
+  boardOwnerRef.current = session?.user?.id ?? null
+
+  const boardIdentityAccepted = acceptedBoardIdentityRef.current
+  const staleIdentityAccepted = acceptedStaleIdentityRef.current
+  const boardReadyForCurrentOwner = boardIdentityAccepted?.ownerId === trackerOwnerId
+    && boardIdentityAccepted.generation === boardGenerationRef.current
+  const staleReadyForCurrentOwner = staleIdentityAccepted?.ownerId === trackerOwnerId
+    && staleIdentityAccepted.generation === boardGenerationRef.current
+  const visibleBoardData = boardReadyForCurrentOwner ? boardData : createEmptyBoard()
+  const visibleStaleApps = staleReadyForCurrentOwner ? staleApps : []
+
+  useEffect(() => {
+    trackerMountedRef.current = true
+    return () => {
+      trackerMountedRef.current = false
+      boardRequestVersionRef.current += 1
+      staleRequestVersionRef.current += 1
+    }
+  }, [])
+
+  useEffect(() => {
+    setBoardData(createEmptyBoard())
+    setStaleApps([])
+    setLoadError(null)
+    setIsLoading(Boolean(trackerOwnerId))
+    setActiveId(null)
+    setDragSourceCol(null)
+    dragSnapshotRef.current = null
+  }, [trackerOwnerId])
 
   // Client-side filter / sort controls
   const [searchQuery, setSearchQuery] = useState('')
@@ -468,6 +807,30 @@ export default function TrackerPage() {
     try { localStorage.setItem('latexy_tracker_order', JSON.stringify(next)) } catch { /* ignore */ }
   }, [])
 
+  useEffect(() => {
+    if (!session || extensionCaptureRequestedRef.current) return
+    const currentUrl = new URL(window.location.href)
+    const captureId = currentUrl.searchParams.get('capture_id')
+    if (!captureId) return
+    extensionCaptureRequestedRef.current = true
+    currentUrl.searchParams.delete('capture_id')
+    window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`)
+
+    if (!validExtensionCaptureId(captureId)) {
+      toast.error('The browser-extension capture link is invalid.')
+      return
+    }
+    void requestExtensionCapture(captureId)
+      .then((capture) => {
+        setExtensionCapture(capture)
+        setShowAddModal(true)
+        toast.success('Job posting imported — review it before saving')
+      })
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : 'Could not import extension capture')
+      })
+  }, [session])
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -475,18 +838,29 @@ export default function TrackerPage() {
 
 
   const loadBoard = useCallback(async () => {
-    if (!session) return
+    const ownerId = session?.user?.id ?? null
+    if (!ownerId || boardOwnerRef.current !== ownerId) return
+    const generation = boardGenerationRef.current
+    const requestVersion = ++boardRequestVersionRef.current
+    const isCurrent = () => trackerMountedRef.current
+      && boardOwnerRef.current === ownerId
+      && boardIdentityOwnerRef.current === ownerId
+      && boardGenerationRef.current === generation
+      && boardRequestVersionRef.current === requestVersion
+    setIsLoading(true)
+    setLoadError(null)
     try {
-      const [listResp, statsResp] = await Promise.all([
-        apiClient.listApplications(),
-        apiClient.getTrackerStats(),
-      ])
-      setBoardData(listResp.by_status as Record<string, JobApplication[]>)
-      setStats(statsResp)
-    } catch {
+      const listResp = await apiClient.listApplications()
+      if (!isCurrent()) return
+      const nextBoard = listResp.by_status as Record<string, JobApplication[]>
+      acceptedBoardIdentityRef.current = { ownerId, generation }
+      setBoardData(nextBoard)
+    } catch (error) {
+      if (!isCurrent()) return
+      setLoadError(error instanceof Error ? error.message : 'Failed to load tracker')
       toast.error('Failed to load tracker')
     } finally {
-      setIsLoading(false)
+      if (isCurrent()) setIsLoading(false)
     }
   }, [session])
 
@@ -494,32 +868,68 @@ export default function TrackerPage() {
     loadBoard()
   }, [loadBoard])
 
+  const loadStaleApplications = useCallback(async () => {
+    const ownerId = session?.user?.id ?? null
+    if (!ownerId || boardOwnerRef.current !== ownerId) return
+    const generation = boardGenerationRef.current
+    const requestVersion = ++staleRequestVersionRef.current
+    const isCurrent = () => trackerMountedRef.current
+      && boardOwnerRef.current === ownerId
+      && boardIdentityOwnerRef.current === ownerId
+      && boardGenerationRef.current === generation
+      && staleRequestVersionRef.current === requestVersion
+    try {
+      const stale = await apiClient.listStaleApplications(14)
+      if (isCurrent()) {
+        acceptedStaleIdentityRef.current = { ownerId, generation }
+        setStaleApps(stale)
+      }
+    } catch {
+      if (isCurrent()) setStaleApps([])
+    }
+  }, [session])
+
+  useEffect(() => {
+    void loadStaleApplications()
+  }, [boardData, loadStaleApplications])
+
   // Find which column an app lives in
   const findColumn = useCallback(
     (appId: string): string | null => {
-      for (const [colId, apps] of Object.entries(boardData)) {
+      for (const [colId, apps] of Object.entries(visibleBoardData)) {
         if (apps.some((a) => a.id === appId)) return colId
       }
       return null
     },
-    [boardData]
+    [visibleBoardData]
   )
 
   // Find app by id across all columns
   const findApp = useCallback(
     (appId: string): JobApplication | undefined => {
-      for (const apps of Object.values(boardData)) {
+      for (const apps of Object.values(visibleBoardData)) {
         const a = apps.find((x) => x.id === appId)
         if (a) return a
       }
     },
-    [boardData]
+    [visibleBoardData]
   )
 
   const handleDragStart = (event: DragStartEvent) => {
     const id = event.active.id as string
+    dragSnapshotRef.current = boardData
     setActiveId(id)
     setDragSourceCol(findColumn(id))
+  }
+
+  const restoreCancelledDrag = () => {
+    const snapshot = dragSnapshotRef.current
+    dragSnapshotRef.current = null
+    setActiveId(null)
+    setDragSourceCol(null)
+    if (snapshot) {
+      setBoardData(snapshot)
+    }
   }
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -538,11 +948,12 @@ export default function TrackerPage() {
     setBoardData((prev) => {
       const app = prev[activeCol].find((a) => a.id === activeId)
       if (!app) return prev
-      return {
+      const next = {
         ...prev,
         [activeCol]: prev[activeCol].filter((a) => a.id !== activeId),
         [overCol]: [...prev[overCol], { ...app, status: overCol }],
       }
+      return next
     })
   }
 
@@ -551,15 +962,24 @@ export default function TrackerPage() {
     const sourceCol = dragSourceCol
     setActiveId(null)
     setDragSourceCol(null)
-    if (!over) return
+    if (!over) {
+      restoreCancelledDrag()
+      return
+    }
 
     const activeId = active.id as string
     const overId = over.id as string
 
     const finalCol = COLUMNS.find((c) => c.id === overId)?.id ?? findColumn(overId)
-    if (!finalCol) return
+    if (!finalCol) {
+      restoreCancelledDrag()
+      return
+    }
 
-    if (!sourceCol) return
+    if (!sourceCol) {
+      restoreCancelledDrag()
+      return
+    }
 
     // Within-column drop → reorder and remember it. The board has no backend
     // position field, so the order is persisted in the browser and the Sort
@@ -567,7 +987,10 @@ export default function TrackerPage() {
     if (sourceCol === finalCol) {
       const displayed = filteredBoard[finalCol] ?? []
       const oldIndex = displayed.findIndex((a) => a.id === activeId)
-      if (oldIndex === -1) return
+      if (oldIndex === -1) {
+        dragSnapshotRef.current = null
+        return
+      }
       let newIndex = displayed.findIndex((a) => a.id === overId)
       if (newIndex === -1) newIndex = displayed.length - 1 // dropped on the column body → end
       if (oldIndex !== newIndex) {
@@ -575,15 +998,17 @@ export default function TrackerPage() {
         persistManualOrder({ ...manualOrder, [finalCol]: reordered.map((a) => a.id) })
       }
       if (sortBy !== 'manual') setSortBy('manual')
+      dragSnapshotRef.current = null
       return
     }
 
     try {
       await apiClient.updateApplicationStatus(activeId, finalCol)
-      setStats(await apiClient.getTrackerStats())
+      dragSnapshotRef.current = null
     } catch {
       toast.error('Failed to move card — reverting')
-      loadBoard()
+      restoreCancelledDrag()
+      void loadBoard()
     }
   }
 
@@ -593,19 +1018,47 @@ export default function TrackerPage() {
     if (!sourceCol || sourceCol === newStatus) return
     const app = boardData[sourceCol]?.find((a) => a.id === id)
     if (!app) return
-    setBoardData((prev) => ({
-      ...prev,
-      [sourceCol]: prev[sourceCol].filter((a) => a.id !== id),
-      [newStatus]: [{ ...app, status: newStatus }, ...(prev[newStatus] ?? [])],
-    }))
+    const sourceIndex = boardData[sourceCol].findIndex((item) => item.id === id)
+    const mutationOwnerId = boardOwnerRef.current
+    const mutationToken = (statusMutationRef.current[id] ?? 0) + 1
+    statusMutationRef.current[id] = mutationToken
+    setBoardData((prev) => {
+      const next = {
+        ...prev,
+        [sourceCol]: prev[sourceCol].filter((a) => a.id !== id),
+        [newStatus]: [{ ...app, status: newStatus }, ...(prev[newStatus] ?? [])],
+      }
+      return next
+    })
     try {
       await apiClient.updateApplicationStatus(id, newStatus)
-      setStats(await apiClient.getTrackerStats())
     } catch {
+      // A newer mutation for this card, or an authenticated owner switch,
+      // makes this failure stale. Do not undo newer local/server intent.
+      if (
+        statusMutationRef.current[id] !== mutationToken ||
+        boardOwnerRef.current !== mutationOwnerId
+      ) return
       toast.error('Failed to move card — reverting')
-      loadBoard()
+      setBoardData((current) => {
+        if (
+          statusMutationRef.current[id] !== mutationToken ||
+          boardOwnerRef.current !== mutationOwnerId
+        ) return current
+        const currentApp = Object.values(current).flat().find((item) => item.id === id)
+        // A newer delete or status update owns the current state. Never
+        // resurrect a card that is gone or no longer reflects this attempt.
+        if (!currentApp || currentApp.status !== newStatus) return current
+        const next = Object.fromEntries(
+          Object.entries(current).map(([column, apps]) => [column, apps.filter((item) => item.id !== id)]),
+        ) as Record<string, JobApplication[]>
+        const restored = { ...(currentApp ?? app), status: sourceCol }
+        const target = [...(next[sourceCol] ?? [])]
+        target.splice(Math.min(sourceIndex, target.length), 0, restored)
+        return { ...next, [sourceCol]: target }
+      })
     }
-  }, [boardData, findColumn, loadBoard])
+  }, [boardData, findColumn])
 
   const handleDelete = useCallback((id: string) => {
     const col = findColumn(id)
@@ -613,6 +1066,7 @@ export default function TrackerPage() {
     const index = boardData[col].findIndex((a) => a.id === id)
     const app = boardData[col][index]
     if (!app) return
+    const deleteOwnerId = session?.user?.id ?? null
 
     // Optimistic remove — the real API call is deferred so an "Undo" can cancel it.
     // Stats are recomputed locally in lockstep with the board so the stats strip
@@ -620,17 +1074,34 @@ export default function TrackerPage() {
     // network delete + refetch below (or requiring a manual reload to catch up).
     const boardAfterDelete = { ...boardData, [col]: boardData[col].filter((a) => a.id !== id) }
     setBoardData(boardAfterDelete)
-    setStats(computeStatsFromBoard(boardAfterDelete))
 
     let undone = false
     const timer = setTimeout(async () => {
       if (undone) return
+      // A session switch can leave this timer alive after the board has moved
+      // to another owner. Never issue the old owner's destructive request.
+      if (boardOwnerRef.current !== deleteOwnerId) return
       try {
         await apiClient.deleteApplication(id)
-        setStats(await apiClient.getTrackerStats())
       } catch {
+        if (boardOwnerRef.current !== deleteOwnerId) return
         toast.error('Failed to delete — restoring')
-        loadBoard()
+        // Restore only the application whose delete failed. Replacing the
+        // whole captured board here could erase newer local mutations (for
+        // example, a status change made while the deferred delete was in
+        // flight). If a refresh or another mutation already restored it,
+        // avoid inserting a duplicate card.
+        setBoardData((current) => {
+          // Never restore a card into a different authenticated user's board
+          // if the session changed while the deferred request was pending.
+          if (boardOwnerRef.current !== deleteOwnerId) return current
+          const alreadyPresent = Object.values(current).some((apps) => apps.some((item) => item.id === id))
+          if (alreadyPresent) return current
+          const currentColumn = current[col] ?? []
+          const restored = [...currentColumn]
+          restored.splice(Math.min(index, restored.length), 0, app)
+          return { ...current, [col]: restored }
+        })
       }
     }, 5000)
 
@@ -641,25 +1112,30 @@ export default function TrackerPage() {
         onClick: () => {
           undone = true
           clearTimeout(timer)
+          if (boardOwnerRef.current !== deleteOwnerId) return
           // Reinsert at the original position within its column.
           setBoardData((prev) => {
+            if (boardOwnerRef.current !== deleteOwnerId) return prev
+            const alreadyPresent = Object.values(prev).some((apps) => apps.some((item) => item.id === id))
+            if (alreadyPresent) return prev
             const next = [...(prev[col] ?? [])]
             next.splice(Math.min(index, next.length), 0, app)
             const restored = { ...prev, [col]: next }
-            setStats(computeStatsFromBoard(restored))
             return restored
           })
         },
       },
     })
-  }, [boardData, findColumn, loadBoard])
+  }, [boardData, findColumn, session])
 
   const handleAppCreated = useCallback((app: JobApplication) => {
-    setBoardData((prev) => ({
-      ...prev,
-      [app.status]: [app, ...(prev[app.status] ?? [])],
-    }))
-    apiClient.getTrackerStats().then(setStats).catch(() => {})
+    setBoardData((prev) => {
+      const next = {
+        ...prev,
+        [app.status]: [app, ...(prev[app.status] ?? [])],
+      }
+      return next
+    })
   }, [])
 
   const activeApp = activeId ? findApp(activeId) : null
@@ -669,16 +1145,17 @@ export default function TrackerPage() {
   // Client-side view over boardData: search + filters + sort. Cross-column drag and
   // status changes still mutate boardData directly, so this only affects presentation.
   const totalApps = useMemo(
-    () => Object.values(boardData).reduce((sum, apps) => sum + apps.length, 0),
-    [boardData],
+    () => Object.values(visibleBoardData).reduce((sum, apps) => sum + apps.length, 0),
+    [visibleBoardData],
   )
+  const stats = useMemo(() => computeStatsFromBoard(visibleBoardData), [visibleBoardData])
 
   const filteredBoard = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
     const weekAgo = Date.now() - 7 * 86400000
     const out: Record<string, JobApplication[]> = {}
     for (const col of COLUMNS) {
-      let apps = (boardData[col.id] ?? []).filter((a) => {
+      let apps = (visibleBoardData[col.id] ?? []).filter((a) => {
         if (q && !`${a.company_name} ${a.role_title}`.toLowerCase().includes(q)) return false
         if (onlyThisWeek && new Date(a.applied_at).getTime() < weekAgo) return false
         if (atsMin > 0 && (a.ats_score_at_submission == null || a.ats_score_at_submission < atsMin)) return false
@@ -698,7 +1175,7 @@ export default function TrackerPage() {
       out[col.id] = apps
     }
     return out
-  }, [boardData, searchQuery, onlyThisWeek, atsMin, sortBy, manualOrder])
+  }, [visibleBoardData, searchQuery, onlyThisWeek, atsMin, sortBy, manualOrder])
 
   if (sessionLoading || (isLoading && session)) {
     return (
@@ -707,6 +1184,8 @@ export default function TrackerPage() {
       </div>
     )
   }
+
+  if (sessionError && !session) return <SessionLoadError area="Application tracker" />
 
   if (!session) return null
 
@@ -727,6 +1206,14 @@ export default function TrackerPage() {
           </Link>
           <button
             type="button"
+            onClick={() => setEmailStatusReviewOpen(true)}
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 px-4 py-2 text-xs text-fg hover:bg-surface-2"
+          >
+            <MailCheck size={13} />
+            Review forwarded email
+          </button>
+          <button
+            type="button"
             onClick={() => setShowAddModal(true)}
             className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-xs font-semibold text-accent-fg hover:brightness-110 flex items-center gap-1.5"
           >
@@ -739,7 +1226,55 @@ export default function TrackerPage() {
       {/* Stats */}
       <StatsBar stats={stats} />
 
-      {totalApps === 0 ? (
+      <nav aria-label="Tracker sections" className="flex flex-wrap gap-1 rounded-[var(--radius-lg)] border border-line bg-bg p-1">
+        {([
+          ['board', 'Board'],
+          ['saved', 'Saved jobs'],
+          ['alerts', 'Alerts'],
+          ['contacts', 'Contacts'],
+        ] as const).map(([value, label]) => (
+          <button key={value} type="button" aria-current={activeTab === value ? 'page' : undefined} onClick={() => setActiveTab(value)} className={`rounded-[var(--radius-md)] px-3 py-2 text-xs font-semibold transition ${activeTab === value ? 'bg-accent text-accent-fg' : 'text-fg-2 hover:bg-surface-2'}`}>{label}</button>
+        ))}
+      </nav>
+
+      {activeTab === 'board' && visibleStaleApps.length > 0 && (
+        <section aria-labelledby="stale-follow-ups-heading" className="rounded-[var(--radius-lg)] border border-warn/30 bg-warn/5 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 id="stale-follow-ups-heading" className="text-sm font-semibold text-fg">Needs a follow-up</h2><p className="text-xs text-fg-2">You have not recorded an update for these applications in 14+ days. This is not an employer-response signal.</p></div><span className="rounded-full bg-warn/10 px-2 py-1 text-[10px] font-semibold text-warn">{visibleStaleApps.length}</span></div>
+          <div className="mt-2 flex flex-wrap gap-2">{visibleStaleApps.slice(0, 5).map((stale) => <button key={stale.id} type="button" onClick={() => setWorkflowApp(stale)} className="rounded-[var(--radius-md)] border border-warn/30 bg-surface px-2.5 py-1.5 text-left text-xs text-fg hover:bg-surface-2"><span className="font-semibold">{stale.company_name}</span><span className="ml-1 text-fg-3">{stale.days_since_update}d since your last update · Add reminder</span></button>)}</div>
+        </section>
+      )}
+
+      {activeTab === 'board' ? <>
+      {loadError && (
+        <section
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-err/20 bg-err/[0.07] px-4 py-3"
+        >
+          <div>
+            <p className="text-sm font-semibold text-err">Tracker data could not be loaded</p>
+            <p className="mt-0.5 text-xs text-fg-2">
+              {totalApps > 0
+                ? 'Showing the last data loaded in this session. Retry to refresh it.'
+                : loadError}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { void loadBoard() }}
+            disabled={isLoading}
+            className="rounded-[var(--radius-md)] border border-err/30 px-3 py-1.5 text-xs font-semibold text-err transition hover:bg-err/10 disabled:opacity-50"
+          >
+            {isLoading ? 'Retrying…' : 'Retry'}
+          </button>
+        </section>
+      )}
+
+      {loadError && totalApps === 0 ? (
+        <div className="rounded-[var(--radius-lg)] border border-line bg-bg px-6 py-16 text-center">
+          <h2 className="text-lg font-semibold text-fg">Tracker unavailable</h2>
+          <p className="mt-2 text-sm text-fg-2">Retry the request above instead of creating duplicate data.</p>
+        </div>
+      ) : totalApps === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-[var(--radius-lg)] border border-dashed border-line bg-bg px-6 py-16 text-center">
           <div className="grid h-12 w-12 place-items-center rounded-[var(--radius-pill)] bg-accent-soft text-accent-strong">
             <Plus size={20} />
@@ -829,6 +1364,7 @@ export default function TrackerPage() {
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
+          onDragCancel={restoreCancelledDrag}
         >
           <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
             {COLUMNS.map((col) => (
@@ -842,6 +1378,8 @@ export default function TrackerPage() {
                 onDelete={handleDelete}
                 onEdit={setEditingApp}
                 onStatusChange={handleStatusChange}
+                onWorkflow={setWorkflowApp}
+                onOutreach={setOutreachApp}
               />
             ))}
           </div>
@@ -862,13 +1400,20 @@ export default function TrackerPage() {
         </DndContext>
       </div>
       </>
-      )}
+      )} </> : activeTab === 'saved' ? <SavedJobsPanel onTracked={() => { void loadBoard() }} /> : activeTab === 'alerts' ? <AlertsPanel /> : <ContactsPanel />}
 
       {/* Add modal */}
       {showAddModal && (
         <AddApplicationModal
-          onClose={() => setShowAddModal(false)}
-          onCreated={handleAppCreated}
+          onClose={() => {
+            setShowAddModal(false)
+            setExtensionCapture(null)
+          }}
+          onCreated={(app) => {
+            handleAppCreated(app)
+            setExtensionCapture(null)
+          }}
+          prefillCapture={extensionCapture}
         />
       )}
 
@@ -889,10 +1434,12 @@ export default function TrackerPage() {
               newBoard[updated.status] = [updated, ...(newBoard[updated.status] ?? [])]
               return newBoard
             })
-            apiClient.getTrackerStats().then(setStats).catch(() => {})
           }}
         />
       )}
+      {workflowApp && <ApplicationWorkflowPanel app={workflowApp} onClose={() => setWorkflowApp(null)} />}
+      {outreachApp && <OutreachDraftPanel app={outreachApp} onClose={() => setOutreachApp(null)} />}
+      {emailStatusReviewOpen && <EmailStatusReviewPanel onClose={() => setEmailStatusReviewOpen(false)} />}
     </div>
   )
 }

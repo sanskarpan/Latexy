@@ -1,0 +1,38 @@
+name: Render a CV with Latexy
+description: Compile a checked-in LaTeX CV through the Latexy developer API and write the resulting PDF.
+author: Latexy
+branding:
+  icon: file-text
+  color: purple
+inputs:
+  api-key:
+    description: Latexy developer API key with compile and export scopes. Store it as a GitHub Actions secret.
+    required: true
+  source:
+    description: LaTeX source path relative to the repository workspace.
+    required: false
+    default: resume.tex
+  output:
+    description: Destination PDF path relative to the repository workspace.
+    required: false
+    default: resume.pdf
+  compiler:
+    description: LaTeX engine (pdflatex, xelatex, or lualatex).
+    required: false
+    default: pdflatex
+  api-url:
+    description: Latexy backend origin. Override only for self-hosted or local instances.
+    required: false
+    default: https://sanskarpandey2004--latexy-backend-fastapi-app.modal.run
+  timeout-seconds:
+    description: Maximum end-to-end wait, from 10 to 900 seconds.
+    required: false
+    default: '180'
+outputs:
+  job-id:
+    description: Latexy compilation job identifier.
+  pdf-path:
+    description: Absolute path of the written PDF on the runner.
+runs:
+  using: node24
+  main: actions/render-cv/index.js

@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { X, RotateCcw, Maximize2, Minimize2 } from 'lucide-react'
-import { DiffEditor } from '@monaco-editor/react'
+import { useMonaco } from '@monaco-editor/react'
+import '@/lib/monaco-loader'
 import type { editor } from 'monaco-editor'
 import { toast } from 'sonner'
 import type { CheckpointEntry } from '@/lib/api-client'
@@ -26,6 +27,55 @@ interface DiffStats {
   added: number
   removed: number
   changed: number
+}
+
+interface SafeDiffEditorProps {
+  original: string
+  modified: string
+  onMount: (instance: editor.IStandaloneDiffEditor) => void
+}
+
+/**
+ * @monaco-editor/react's DiffEditor keeps a `preventCreation` ref after its
+ * development Strict Mode cleanup. React then replays the mount effect, but
+ * the wrapper reuses the disposed editor service instead of creating a new
+ * instance. Hosting the diff editor directly makes setup/cleanup symmetric:
+ * every effect pass owns fresh models and a fresh editor instance.
+ */
+function SafeDiffEditor({ original, modified, onMount }: SafeDiffEditorProps) {
+  const monaco = useMonaco()
+  const containerRef = useRef<HTMLDivElement>(null)
+  const onMountRef = useRef(onMount)
+  onMountRef.current = onMount
+
+  useEffect(() => {
+    if (!monaco || !containerRef.current) return
+
+    const originalModel = monaco.editor.createModel(original, 'latex')
+    const modifiedModel = monaco.editor.createModel(modified, 'latex')
+    const instance = monaco.editor.createDiffEditor(containerRef.current, {
+      automaticLayout: true,
+      readOnly: true,
+      minimap: { enabled: false },
+      fontSize: 12,
+      lineNumbers: 'on',
+      renderSideBySide: true,
+      scrollBeyondLastLine: false,
+      wordWrap: 'on',
+    })
+    instance.setModel({ original: originalModel, modified: modifiedModel })
+    monaco.editor.setTheme('vs-dark')
+    onMountRef.current(instance)
+
+    return () => {
+      instance.setModel(null)
+      instance.dispose()
+      originalModel.dispose()
+      modifiedModel.dispose()
+    }
+  }, [modified, monaco, original])
+
+  return <div ref={containerRef} className="h-full w-full" />
 }
 
 function makeLabel(cp: CheckpointEntry): string {
@@ -131,7 +181,7 @@ export default function DiffViewerModal({
   }, [checkpointA, checkpointB, resumeId, currentLatex, isParentDiffMode, parentLatex, parentTitle, variantLatex, variantTitle])
 
   // Close on Escape (but not when confirm dialog is open)
-  useEffect(() => {
+  useLayoutEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (confirmRestore !== null) {
@@ -260,24 +310,13 @@ export default function DiffViewerModal({
               <p className="text-xs text-err">Failed to load version content. Please close and try again.</p>
             </div>
           ) : (
-            <DiffEditor
+            <SafeDiffEditor
               original={leftLatex ?? ''}
               modified={rightLatex ?? ''}
-              language="latex"
-              theme="vs-dark"
               onMount={(ed) => {
                 diffEditorRef.current = ed
                 // Compute stats on first diff render and on every subsequent update
                 ed.onDidUpdateDiff(() => computeDiffStats(ed))
-              }}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                fontSize: 12,
-                lineNumbers: 'on',
-                renderSideBySide: true,
-                scrollBeyondLastLine: false,
-                wordWrap: 'on',
               }}
             />
           )}

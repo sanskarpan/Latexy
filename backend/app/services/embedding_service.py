@@ -82,7 +82,7 @@ class EmbeddingService:
             if cached:
                 return cached
         except Exception as exc:  # noqa: BLE001 — caching must never break embedding
-            logger.debug(f"Embedding cache get failed: {exc}")
+            logger.debug("Embedding cache get failed", extra={"error_type": type(exc).__name__})
 
         client = self._get_client()
         response = await client.embeddings.create(
@@ -94,7 +94,7 @@ class EmbeddingService:
         try:
             await cache_manager.set(cache_key, embedding, ttl=_EMBEDDING_CACHE_TTL)
         except Exception as exc:  # noqa: BLE001 — caching must never break embedding
-            logger.debug(f"Embedding cache set failed: {exc}")
+            logger.debug("Embedding cache set failed", extra={"error_type": type(exc).__name__})
 
         return embedding
 
@@ -128,7 +128,7 @@ class EmbeddingService:
             return embedding
         except Exception as e:
             await db.rollback()
-            logger.error(f"Failed to embed resume {resume_id}: {e}")
+            logger.error("Failed to embed resume %s", resume_id, extra={"error_type": type(e).__name__})
             return None
 
     async def embed_job_description(self, jd_text: str) -> List[float]:

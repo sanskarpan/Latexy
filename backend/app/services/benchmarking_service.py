@@ -1,9 +1,9 @@
 """
 Resume benchmarking service — anonymous percentile computation (Feature 81).
 
-Queries the `optimizations` table for ATS scores and computes percentile stats
-against all recorded optimization runs. Results are Redis-cached per industry
-key for 1 hour to avoid repeated expensive queries.
+Queries the latest valid ATS score for each distinct resume and computes exact,
+tie-aware percentile stats against that global cohort. Results are Redis-cached
+per normalized score for 1 hour to avoid repeated expensive queries.
 
 Privacy: only aggregate statistics are computed; no individual resume data is
 ever returned.
@@ -37,6 +37,8 @@ class BenchmarkResult:
     industry: str
     sufficient_data: bool
     message: Optional[str] = None
+    cohort_label: str = "Latexy resume cohort"
+    methodology: str = "Latest scored optimization per distinct resume"
 
 
 class BenchmarkingService:
@@ -51,19 +53,16 @@ class BenchmarkingService:
         """
         Return the percentile rank of `ats_score` within the GLOBAL cohort.
 
-        NOTE: the percentile is computed over the entire optimizations table and
-        is NOT filtered by industry — industry data is not stored per-optimization
-        in the current schema. The `industry` argument is echoed back on the
-        result purely for request/response correlation; it does not change the
-        cohort. A single 'all' cache key is used so identical global stats are not
-        duplicated across N industry keys. When per-industry data becomes
-        available in a future migration, add a WHERE clause and key per industry.
+        Industry is accepted for backwards-compatible request correlation, but
+        it does not select the cohort: optimization rows do not currently store
+        a trustworthy industry dimension. Responses label this honestly as the
+        global Latexy cohort.
 
         Returns BenchmarkResult with sufficient_data=False when the cohort is
         too small (< MIN_SAMPLE_SIZE) to produce meaningful percentile stats.
         """
-        # Global cohort — single cache key (percentile is not industry-specific).
-        cache_key = "benchmark:cohort:v1:all"
+        normalized_score = round(float(ats_score), 1)
+        cache_key = f"benchmark:cohort:v2:all:score:{normalized_score:.1f}"
 
         # ── Try Redis cache first ──────────────────────────────────────────
         try:
@@ -78,19 +77,29 @@ class BenchmarkingService:
             result = await db.execute(
                 text(
                     """
+                    WITH latest_resume_scores AS (
+                        SELECT DISTINCT ON (resume_id)
+                            resume_id,
+                            ats_score
+                        FROM optimizations
+                        WHERE ats_score BETWEEN 0 AND 100
+                        ORDER BY resume_id, created_at DESC, id DESC
+                    )
                     SELECT
-                        COUNT(*)                                                     AS sample_size,
-                        percentile_cont(0.25) WITHIN GROUP (ORDER BY ats_score)     AS p25,
-                        percentile_cont(0.5)  WITHIN GROUP (ORDER BY ats_score)     AS p50,
-                        percentile_cont(0.75) WITHIN GROUP (ORDER BY ats_score)     AS p75
-                    FROM optimizations
-                    WHERE ats_score IS NOT NULL
+                        COUNT(*) AS sample_size,
+                        percentile_cont(0.25) WITHIN GROUP (ORDER BY ats_score) AS p25,
+                        percentile_cont(0.5) WITHIN GROUP (ORDER BY ats_score) AS p50,
+                        percentile_cont(0.75) WITHIN GROUP (ORDER BY ats_score) AS p75,
+                        COUNT(*) FILTER (WHERE ats_score < :score) AS lower_count,
+                        COUNT(*) FILTER (WHERE ats_score = :score) AS equal_count
+                    FROM latest_resume_scores
                     """
-                )
+                ),
+                {"score": normalized_score},
             )
             row = result.fetchone()
         except Exception as exc:
-            logger.warning("Benchmark DB query failed: %s", exc)
+            logger.warning("Benchmark DB query failed", extra={"error_type": type(exc).__name__})
             return BenchmarkResult(
                 percentile=None,
                 sample_size=0,
@@ -119,9 +128,14 @@ class BenchmarkingService:
             "p25": float(row.p25) if row.p25 is not None else None,
             "p50": float(row.p50) if row.p50 is not None else None,
             "p75": float(row.p75) if row.p75 is not None else None,
+            "percentile": self._percentile_from_counts(
+                int(row.lower_count),
+                int(row.equal_count),
+                int(row.sample_size),
+            ),
         }
 
-        # Cache cohort stats (score-independent — cache once, reuse for all scores)
+        # Cache exact cohort stats for this normalized score.
         try:
             await cache_manager.set(cache_key, stats, ttl=CACHE_TTL_SECONDS)
         except Exception:
@@ -154,12 +168,7 @@ class BenchmarkingService:
                 message="Not enough data yet for benchmarking (global cohort)",
             )
 
-        percentile = self._interpolate_percentile(
-            score=ats_score,
-            p25=float(p25),
-            p50=float(p50),
-            p75=float(p75 or p50),
-        )
+        percentile = float(stats.get("percentile", 0.0))
 
         return BenchmarkResult(
             percentile=percentile,
@@ -172,34 +181,11 @@ class BenchmarkingService:
         )
 
     @staticmethod
-    def _interpolate_percentile(
-        score: float, p25: float, p50: float, p75: float
-    ) -> float:
-        """
-        Estimate the percentile rank of `score` via piecewise linear interpolation
-        on the quartile distribution: (0→p25), (p25→50%), (p50→75%), (p75→100%).
-        """
-        if score <= 0.0:
+    def _percentile_from_counts(lower_count: int, equal_count: int, sample_size: int) -> float:
+        """Midrank percentile; ties share the middle of their occupied ranks."""
+        if sample_size <= 0:
             return 0.0
-        if score >= 100.0:
-            return 100.0
-
-        if p25 <= 0.0:
-            p25 = 1.0  # avoid division by zero
-
-        if score <= p25:
-            result = 25.0 * (score / p25)
-        elif score <= p50:
-            span = p50 - p25
-            result = 25.0 + (25.0 * ((score - p25) / span) if span > 0 else 0.0)
-        elif score <= p75:
-            span = p75 - p50
-            result = 50.0 + (25.0 * ((score - p50) / span) if span > 0 else 0.0)
-        else:
-            # Above p75 — extrapolate towards 100
-            remaining = 100.0 - p75
-            result = 75.0 + (25.0 * min(1.0, (score - p75) / remaining) if remaining > 0 else 25.0)
-
+        result = 100.0 * (lower_count + (equal_count / 2.0)) / sample_size
         return round(max(0.0, min(100.0, result)), 1)
 
 

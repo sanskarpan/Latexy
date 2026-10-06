@@ -1,239 +1,169 @@
 # Privacy Policy
 
-**Last Updated: September 30, 2025**
+**Last reviewed: September 8, 2026**
 
-## 1. Introduction
+This policy explains what Latexy collects, why it is used, where it may be sent,
+and the choices available to you. It describes the service as it operates today;
+it does not claim a privacy or security certification.
 
-Latexy ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our AI-powered resume optimization service.
+## 1. Information we process
 
-## 2. Information We Collect
+### Account and billing data
 
-### 2.1 Personal Information
-- **Account Information**: Name, email address, profile picture
-- **Authentication Data**: Login credentials, social media profile information (if using social login)
-- **Billing Information**: Payment details processed securely through Razorpay
-- **Communication Data**: Support tickets, feedback, and correspondence
+When you create an account, we process your name, email address, profile image,
+authentication records, verification status, and account preferences. If you use
+social sign-in, the selected identity provider sends us the account information
+you authorize. Password authentication is handled by Better Auth; Latexy does
+not store a recoverable copy of your password.
 
-### 2.2 Resume and Content Data
-- **Resume Content**: LaTeX code, text content, and formatting
-- **Job Descriptions**: Text provided for optimization purposes
-- **Optimization History**: AI-generated suggestions and changes
-- **Usage Patterns**: Feature usage, compilation frequency, optimization preferences
+Razorpay processes payment-card and mandate details. Latexy stores provider
+identifiers, subscription state, plan, invoices/payment records, and related
+billing metadata, but does not receive your full card number.
 
-### 2.3 Technical Information
-- **Device Information**: Browser type, operating system, device identifiers
-- **Usage Analytics**: Page views, session duration, feature interactions
-- **Performance Data**: Compilation times, error logs, system performance metrics
-- **Security Logs**: Login attempts, security events, access patterns
+### Documents and feature data
 
-### 2.4 Anonymous Trial Data
-- **Device Fingerprinting**: Browser-based identification for trial limits
-- **IP Address**: For abuse prevention and geographic analytics
-- **Session Data**: Temporary identifiers for trial usage tracking
+We process the information you submit or create, including LaTeX source, résumés,
+job descriptions, cover letters, application-tracker entries, comments, version
+history, optimization requests and results, bibliographic data, and generated
+PDFs or exports.
 
-## 3. How We Use Your Information
+Résumé and job-description text is sensitive personal content. Do not include
+information you do not want processed for the feature you select.
 
-### 3.1 Service Provision
-- Process and compile LaTeX resumes to PDF format
-- Provide AI-powered resume optimization using LLM providers
-- Calculate ATS compatibility scores and recommendations
-- Manage user accounts and subscription billing
-- Provide customer support and technical assistance
+### Integrations and AI providers
 
-### 3.2 Service Improvement
-- Analyze usage patterns to improve features and performance
-- Conduct A/B testing for user experience optimization
-- Monitor system performance and reliability
-- Develop new features based on user feedback
+When you deliberately use an AI feature, the prompt and document content needed
+for that request is sent to the selected provider. Depending on your
+configuration, that may be OpenAI, Anthropic, Google Gemini, or a compatible
+endpoint configured by the service operator. With bring-your-own-key (BYOK),
+Latexy decrypts and uses your stored key to make the request on your behalf;
+the provider's own terms and privacy policy also apply.
 
-### 3.3 Communication
-- Send service-related notifications and updates
-- Provide customer support and respond to inquiries
-- Share important policy changes and security alerts
-- Send marketing communications (with consent)
+If you connect Google or GitHub for sign-in, or enable GitHub, Dropbox, Zotero,
+or Mendeley integrations, we process the authorization tokens, account
+identifiers, and content needed for the actions you request. Disconnecting an
+integration removes its stored Latexy credentials; it may not delete copies
+already created at the provider.
 
-### 3.4 Legal and Security
-- Comply with legal obligations and regulatory requirements
-- Protect against fraud, abuse, and security threats
-- Enforce our Terms of Service and policies
-- Respond to legal requests and court orders
+Optional tools may send only the necessary query or text to services such as
+LanguageTool, Crossref, and ORCID. URL-import features request the URL you
+provide, which necessarily reveals a request from Latexy infrastructure to that
+site.
 
-## 4. Information Sharing and Disclosure
+### Technical, security, and usage data
 
-### 4.1 Third-Party Service Providers
-- **LLM Providers**: OpenAI, Anthropic, Google (for AI optimization)
-- **Payment Processing**: Razorpay (for subscription billing)
-- **Cloud Infrastructure**: AWS/GCP/Azure (for hosting and storage)
-- **Analytics**: Google Analytics, Mixpanel (for usage analytics)
-- **Monitoring**: Sentry, DataDog (for error tracking and performance)
+We process IP addresses, user-agent/browser information, request identifiers,
+authentication and security events, feature usage, job/compilation status,
+errors, and performance measurements. Anonymous trial controls use bounded
+device and network signals to enforce limits and prevent abuse.
 
-### 4.2 BYOK (Bring Your Own Key) Data
-- User-provided API keys are encrypted and stored securely
-- API keys are only used to access LLM services on your behalf
-- We do not share or access the content of your API communications
-- Users retain full control over their API key usage and costs
+The web application sends first-party Web Vitals and a small allow-listed set of
+business events to the Latexy backend. Those events are recorded in service
+metrics and structured logs. Latexy does not currently embed Google Analytics,
+Mixpanel, Sentry, DataDog, advertising pixels, session replay, or keystroke
+recording.
 
-### 4.3 Legal Requirements
-- We may disclose information when required by law
-- Compliance with court orders, subpoenas, and regulatory requests
-- Protection of our rights, property, and safety
-- Investigation of fraud, security incidents, or policy violations
+## 2. How we use information
 
-### 4.4 Business Transfers
-- Information may be transferred in case of merger, acquisition, or sale
-- Users will be notified of any ownership changes
-- Privacy protections will continue under new ownership
+We use information to:
 
-## 5. Data Security and Protection
+- provide authentication, document editing, compilation, sharing, AI,
+  collaboration, integrations, billing, and support;
+- enforce plan and trial limits, prevent fraud and abuse, and secure the service;
+- diagnose errors, measure reliability and performance, and improve features;
+- send transactional messages and notifications you enable;
+- meet legal obligations and respond to valid legal requests.
 
-### 5.1 Security Measures
-- **Encryption**: All data encrypted in transit (TLS 1.3) and at rest (AES-256)
-- **Access Controls**: Role-based access with multi-factor authentication
-- **Network Security**: Firewalls, VPNs, and intrusion detection systems
-- **Regular Audits**: Security assessments and vulnerability testing
+Latexy does not currently sell personal information or use it for
+cross-context behavioral advertising.
 
-### 5.2 API Key Security (BYOK)
-- API keys encrypted using industry-standard encryption (AES-256)
-- Separate encryption keys for each user's API keys
-- No plain-text storage of sensitive API credentials
-- Secure key management and rotation procedures
+## 3. Public sharing
 
-### 5.3 Data Backup and Recovery
-- Regular automated backups with encryption
-- Geographic redundancy for disaster recovery
-- Backup retention policies and secure deletion
-- Tested recovery procedures and business continuity plans
+Public share links and enabled portfolio pages can expose the résumé title and
+content you choose to publish. Anonymous sharing attempts to redact detected
+personal identifiers and does not release the original PDF while redaction is
+pending, but automated redaction may not identify every sensitive detail. Review
+content before sharing and revoke links or disable portfolio visibility when they
+are no longer needed.
 
-## 6. Data Retention and Deletion
+## 4. Service providers and disclosures
 
-### 6.1 Retention Periods
-- **Account Data**: Retained while account is active plus 30 days after deletion
-- **Resume Content**: Stored for subscription period plus 90 days for recovery
-- **Usage Analytics**: Aggregated data retained for 2 years
-- **Security Logs**: Retained for 1 year for security monitoring
+Latexy uses service providers to operate the product. Current infrastructure
+includes Vercel (web hosting), Modal (API and worker compute), Neon
+(PostgreSQL), Upstash (Redis), and Cloudflare R2 (object storage). Razorpay
+handles payments, and Resend or a configured SMTP provider may deliver email.
+The AI and optional integration providers described above receive data only when
+their corresponding feature is used.
 
-### 6.2 Data Deletion
-- Users can delete their accounts and associated data at any time
-- Automatic deletion of trial data after 24 hours of inactivity
-- Secure deletion procedures that make data unrecoverable
-- Compliance with "right to be forgotten" requests
+These providers process data under their own contracts and may operate in
+different countries. We may also disclose information when required by law, to
+protect users or the service, or as part of a merger, acquisition, financing, or
+sale, subject to applicable safeguards and notice requirements.
 
-## 7. Your Privacy Rights
+## 5. Cookies and local browser storage
 
-### 7.1 Access and Control
-- **Access**: Request copies of your personal data
-- **Correction**: Update or correct inaccurate information
-- **Deletion**: Request deletion of your personal data
-- **Portability**: Export your data in a machine-readable format
+Latexy uses authentication and security cookies needed to sign you in and
+protect requests. It also stores preferences such as light/dark and
+high-contrast mode. Browser storage is used for items such as onboarding state,
+offline drafts, pending offline work, and short-lived trace identifiers.
 
-### 7.2 Communication Preferences
-- **Marketing Opt-out**: Unsubscribe from promotional communications
-- **Notification Settings**: Control service-related notifications
-- **Cookie Preferences**: Manage cookie and tracking preferences
+Latexy does not currently set advertising or third-party analytics cookies.
+Blocking essential storage can prevent authentication, offline recovery, or
+preferences from working.
 
-### 7.3 GDPR Rights (EU Users)
-- Right to access personal data
-- Right to rectification of inaccurate data
-- Right to erasure ("right to be forgotten")
-- Right to restrict processing
-- Right to data portability
-- Right to object to processing
-- Rights related to automated decision-making
+## 6. Retention and deletion
 
-### 7.4 CCPA Rights (California Users)
-- Right to know what personal information is collected
-- Right to delete personal information
-- Right to opt-out of the sale of personal information
-- Right to non-discrimination for exercising privacy rights
+Account records and saved documents are generally kept while your account is
+active or until you delete the relevant item or request account deletion.
+Short-lived job state and event replay data normally expires after about 24
+hours. Temporary compilation files are cleaned automatically; generated
+artifacts associated with saved work may remain until the owning record is
+deleted and cleanup completes.
 
-## 8. Cookies and Tracking Technologies
+Security, billing, audit, and backup records may be retained longer when needed
+for fraud prevention, financial recordkeeping, dispute resolution, recovery, or
+legal obligations. Deletion from active systems may not immediately remove data
+from limited-access backups or another provider you connected.
 
-### 8.1 Types of Cookies
-- **Essential Cookies**: Required for service functionality
-- **Analytics Cookies**: Used to understand usage patterns
-- **Preference Cookies**: Remember user settings and preferences
-- **Marketing Cookies**: Used for targeted advertising (with consent)
+There is not currently a self-service account-deletion control. To request
+account deletion or ask about a specific retention period, email
+privacy@latexy.com from the address associated with your account.
 
-### 8.2 Cookie Management
-- Users can control cookie preferences through browser settings
-- Essential cookies cannot be disabled without affecting functionality
-- Third-party cookies are subject to their respective privacy policies
+## 7. Security
 
-## 9. International Data Transfers
+Latexy uses HTTPS in production, access controls, secret management, encrypted
+storage for BYOK and supported integration credentials, bounded request and
+upload controls, and automated dependency/security checks. No system is
+completely secure, and these measures are not a guarantee against every
+incident. Report a suspected security or privacy issue to privacy@latexy.com.
 
-### 9.1 Cross-Border Processing
-- Data may be processed in countries outside your residence
-- We ensure adequate protection through appropriate safeguards
-- Compliance with applicable data transfer regulations
-- Standard contractual clauses for international transfers
+## 8. Your choices and rights
 
-### 9.2 Data Localization
-- Primary data storage in secure data centers
-- Compliance with local data residency requirements
-- Transparent disclosure of data processing locations
+You can edit or delete individual résumés and other supported records, revoke
+public share links, disable portfolio visibility, disconnect integrations,
+remove BYOK credentials, and control available notification preferences.
 
-## 10. Children's Privacy
+Depending on where you live, applicable law may give you rights to access,
+correct, delete, restrict, object to, or receive a portable copy of personal
+information. To make a request, email privacy@latexy.com with the subject
+“Privacy Rights Request”. We may need to verify your identity before acting.
+You may also complain to the privacy or data-protection authority in your
+jurisdiction.
 
-### 10.1 Age Restrictions
-- Our service is not intended for children under 16
-- We do not knowingly collect information from children under 16
-- Parents can request deletion of their child's information
-- Additional protections for users under 18
+## 9. Children
 
-## 11. Privacy Policy Updates
+Latexy is not directed to children under 13 and does not knowingly collect their
+personal information. If you believe a child has provided personal information,
+contact privacy@latexy.com so the account and data can be reviewed.
 
-### 11.1 Change Notifications
-- Users will be notified of material changes via email
-- Continued use constitutes acceptance of updated policy
-- Previous versions available upon request
-- Effective date clearly indicated for all changes
+## 10. Changes and contact
 
-### 11.2 Review Schedule
-- Regular review and updates to maintain compliance
-- Updates based on regulatory changes and business needs
-- User feedback incorporated into policy improvements
+We may update this policy as the product, providers, or legal requirements
+change. Material changes will be communicated through an appropriate in-product
+or email notice, and the review date above will be updated.
 
-## 12. Contact Information
+Questions and privacy requests:
 
-### 12.1 Privacy Inquiries
-**Data Protection Officer**
 - Email: privacy@latexy.com
-- Response Time: 5-7 business days
-- Mailing Address: [Company Address]
-
-### 12.2 Rights Requests
-To exercise your privacy rights, contact us at:
-- Email: privacy@latexy.com
-- Subject Line: "Privacy Rights Request"
-- Include: Full name, email address, and specific request details
-
-### 12.3 Complaints and Concerns
-- **Internal**: privacy@latexy.com
-- **EU Users**: Local Data Protection Authority
-- **California Users**: California Attorney General's Office
-
-## 13. Compliance and Certifications
-
-### 13.1 Regulatory Compliance
-- **GDPR**: General Data Protection Regulation (EU)
-- **CCPA**: California Consumer Privacy Act (US)
-- **SOC 2**: Security and availability controls
-- **ISO 27001**: Information security management
-
-### 13.2 Industry Standards
-- Payment Card Industry Data Security Standard (PCI DSS)
-- Cloud Security Alliance (CSA) guidelines
-- NIST Cybersecurity Framework
-- Regular third-party security assessments
-
----
-
-**Effective Date:** September 30, 2025
-**Version:** 1.0
-
-For questions about this Privacy Policy, please contact us at privacy@latexy.com.
-
-**Latexy Team**
-Website: https://latexy.com
-Email: privacy@latexy.com
+- Website: https://latexy.xyz
 

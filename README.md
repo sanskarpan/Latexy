@@ -10,7 +10,7 @@ AI-powered LaTeX resume builder. Paste your `.tex` source, describe the role, an
 - **PDF text pre-flight** — inspect Latexy's extracted text and detect ligature garbling or multi-column reading-order issues
 - **LaTeX linter** — client-side checks for extraction risks, common errors, and `glyphtounicode`, with one-click fixes
 - **LLM optimization** — GPT-4o / GPT-4o-mini rewrites your resume content for the target JD
-- **Semantic matching** — pgvector cosine similarity ranks your resumes against any job description
+- **Semantic matching** — OpenAI embeddings and application-side cosine similarity rank your resumes against any job description
 - **Deep analysis** — section-by-section LLM breakdown with strength/improvement per section
 - **Real-time streaming** — WebSocket events stream LaTeX logs and LLM tokens live to the editor
 - **Multi-format import** — upload PDF, Word, Markdown, or LaTeX files and convert to editable `.tex`
@@ -76,14 +76,14 @@ Celery Workers (queues)
   └─ email     — notification tasks
 
 Storage
-  ├─ PostgreSQL 16 (pgvector) — users, resumes, templates, sessions, subscriptions
+  ├─ PostgreSQL 15            — users, resumes, templates, sessions, subscriptions
   ├─ Redis 7                  — job state, Pub/Sub events, Streams replay, Celery broker
   └─ MinIO                    — template PDFs, thumbnails (S3-compatible)
 ```
 
 **Auth:** [Better Auth](https://better-auth.com) on the Next.js layer; FastAPI validates sessions via a direct `SELECT` on the `session` table.
 
-**Embeddings:** `text-embedding-3-small` stored as `ARRAY(Float)` in PostgreSQL with a pgvector HNSW index. Computed on save, used for `/ats/semantic-match`.
+**Embeddings:** `text-embedding-3-small` vectors are stored as `ARRAY(Float)` in PostgreSQL. `/ats/semantic-match` computes cosine similarity in the application; pgvector is not required by the supported deployment.
 
 ---
 
@@ -102,6 +102,29 @@ Storage
 | `/try` | Resume Studio — try without signing up |
 | `/billing` | Subscription management |
 | `/byok` | BYOK API key management |
+| `/developer` | Developer API keys, usage, and documentation |
+| `/settings` | Account integrations and preferences |
+| `/pricing` | Public plan comparison |
+| `/tracker` | Job-application kanban board and analytics |
+| `/workspaces` | Team workspace list and creation |
+| `/workspaces/[workspaceId]` | Team workspace members and résumés |
+| `/workspaces/[workspaceId]/recruiter` | Recruiter workspace dashboard |
+| `/workspace/history` | Compilation and optimization run history |
+| `/workspace/cover-letters` | Saved cover-letter library |
+| `/workspace/merge` | Résumé comparison and merge workflow |
+| `/workspace/builder/new` | Guided form-based résumé creation |
+| `/workspace/builder/[resumeId]` | Guided résumé builder editor |
+| `/workspace/[id]/career` | Career-path analysis |
+| `/workspace/[id]/cover-letter` | Cover-letter generation |
+| `/workspace/[id]/batch-tailor` | Batch tailoring for multiple jobs |
+| `/u/[username]` | Public portfolio |
+| `/r/[token]` | Public shared résumé |
+| `/admin` | Feature flags and administration |
+| `/admin/tenant` | Tenant administration |
+| `/faq`, `/resources`, `/updates` | Help, learning resources, and product updates |
+| `/platform` | Platform overview |
+| `/privacy`, `/terms` | Legal pages |
+| `/forgot-password`, `/reset-password`, `/verify-email` | Account recovery and verification |
 
 ---
 
@@ -189,6 +212,8 @@ Copy `.env.example` and fill in values. Key variables:
 | `ENVIRONMENT` | Yes | `development`, `staging`, or `production` |
 | `DATABASE_URL` | Yes | `postgresql+asyncpg://user:pass@host:5432/latexy` |
 | `BETTER_AUTH_SECRET` | Yes | 48+ char random secret |
+| `OIDC_PROVIDER_ID`, `OIDC_DISCOVERY_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | — | Optional institutional OIDC SSO; configure all four together |
+| `BETTER_AUTH_TRUSTED_ORIGINS` | — | Explicit comma-separated DNS-verified tenant auth origins; no wildcards |
 | `JWT_SECRET_KEY` | Yes | 32+ char random secret |
 | `REDIS_URL` | Yes | `redis://localhost:6379/0` |
 | `OPENAI_API_KEY` | — | Enables LLM optimize + ATS deep analysis |
@@ -201,6 +226,10 @@ Copy `.env.example` and fill in values. Key variables:
 | `RAZORPAY_KEY_ID` | — | Payments (India) |
 | `RAZORPAY_KEY_SECRET` | — | Payments (India) |
 | `RAZORPAY_WEBHOOK_SECRET` | — | Webhook signature validation |
+| `RAZORPAY_PLAN_WEEKLY` | — | Reviewed Razorpay weekly subscription plan ID (B57) |
+| `RAZORPAY_WEEKLY_AMOUNT` | `0` | Weekly INR amount in paise; `0` keeps the SKU unavailable |
+| `RAZORPAY_LIFETIME_AMOUNT` | `0` | Lifetime one-time INR amount in paise; `0` keeps the SKU unavailable |
+| `RAZORPAY_BILLING_CURRENCY` | `INR` | Currency for B57 amounts; client amounts are never accepted |
 
 Generate strong secrets:
 ```bash
@@ -213,6 +242,9 @@ Production startup is fail-fast:
 - `ENVIRONMENT=staging|production` requires `API_KEY_ENCRYPTION_KEY`.
 - `BILLING_MODE=required` requires all Razorpay credentials.
 - Partial Razorpay config is rejected at startup so billing cannot silently degrade.
+- Weekly and lifetime pricing are intentionally absent from `/subscription/plans`
+  until their operator-configured amount (minor INR units) and provider mapping
+  are present. Do not put commercial prices in source code.
 
 ---
 
@@ -306,9 +338,15 @@ them. See [`docs/HANDOFF.md`](docs/HANDOFF.md) for the current release and verif
 ### Docker Compose (single server)
 
 ```bash
-cp .env.example .env   # fill in production secrets
-make run-prod          # nginx + prod images + Prometheus + Grafana
+cp .env.production.example .env.production   # replace every placeholder
+# install nginx/ssl/latexy.crt and nginx/ssl/latexy.key
+make self-host-up                             # validate, migrate, build, start
 ```
+
+The single-server stack includes pgvector/PostgreSQL, Redis, private MinIO
+object storage, workers, nginx, Prometheus, Grafana, Tempo, and Alertmanager.
+See [`docs/self-hosting.md`](docs/self-hosting.md) for TLS, secrets, verification,
+upgrade, backup, and managed-service guidance.
 
 ### Kubernetes
 
@@ -323,6 +361,13 @@ make k8s-status        # kubectl get pods/services/pvc -n latexy
 
 GitHub Actions runs privacy/security guards plus backend, frontend, TUI, and deployment-parity
 checks. See `.github/workflows/ci.yml`.
+
+### MCP clients
+
+The published CLI package also installs a first-party `latexy-mcp` stdio server
+for Codex, Claude Desktop, Cursor, and other MCP clients. It provides typed
+resume read/write, compile, ATS, job-status tools, and LaTeX resources while
+reusing the TUI's authentication. See [`docs/mcp.md`](docs/mcp.md).
 
 ---
 

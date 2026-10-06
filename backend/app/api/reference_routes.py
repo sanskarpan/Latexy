@@ -5,9 +5,11 @@ Reference routes — fetch BibTeX from DOI (Crossref) and arXiv identifiers.
 import asyncio
 import re
 import time
-from typing import List, Optional
+import unicodedata
+from difflib import SequenceMatcher
+from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..core.logging import get_logger
@@ -29,6 +31,14 @@ _OUTBOUND_FETCH_SEMAPHORE = asyncio.Semaphore(20)
 _REFERENCE_CLIENT_UNITS_PER_MINUTE = 60
 _REFERENCE_GLOBAL_UNITS_PER_MINUTE = 600
 _REFERENCE_BUDGET_WINDOW = 60
+
+
+async def _cancel_and_wait(tasks: set[asyncio.Task]) -> None:
+    """Cancel timed-out upstream calls and await their client cleanup."""
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _enforce_reference_budget(request: Request, cost: int) -> None:
@@ -88,6 +98,30 @@ class DetectReferencesResponse(BaseModel):
     count: int
 
 
+class VerifyCitationsRequest(BaseModel):
+    bibtex: str = Field(..., min_length=1, max_length=200_000)
+
+
+class CitationVerification(BaseModel):
+    cite_key: str
+    status: Literal["verified", "mismatch", "not_found", "error"]
+    source: Literal["crossref", "arxiv"]
+    identifier: Optional[str] = None
+    matched_title: Optional[str] = None
+    matched_authors: Optional[str] = None
+    matched_year: Optional[int] = None
+    title_similarity: Optional[float] = None
+    issues: list[str] = Field(default_factory=list)
+
+
+class VerifyCitationsResponse(BaseModel):
+    results: list[CitationVerification]
+    total: int
+    verified: int
+    mismatched: int
+    processing_time: float
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -130,10 +164,10 @@ async def _fetch_one(identifier: str) -> BibTeXEntry:
             identifier=identifier,
             cite_key=f"ref_{normalized[:16].replace('/', '_')}",
             source_type=id_type,
-            error=str(exc),
+            error=_safe_reference_error(exc),
         )
     except Exception as exc:
-        logger.error(f"Unexpected error fetching reference '{identifier}': {exc}")
+        logger.error("Unexpected error fetching reference (%s)", type(exc).__name__)
         return BibTeXEntry(
             identifier=identifier,
             cite_key=f"ref_{normalized[:16].replace('/', '_')}",
@@ -141,6 +175,119 @@ async def _fetch_one(identifier: str) -> BibTeXEntry:
             error=f"Unexpected error: {type(exc).__name__}",
         )
 
+
+def _plain_metadata(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    value = re.sub(r"\\[A-Za-z]+\*?", " ", value)
+    value = value.replace("{", "").replace("}", "")
+    value = unicodedata.normalize("NFKD", value).casefold()
+    return " ".join(re.findall(r"[a-z0-9]+", value))
+
+
+def _safe_reference_error(exc: ValueError) -> str:
+    """Keep provider/network exception details out of reference responses."""
+    message = str(exc).casefold()
+    if "not found" in message or "no scholarly match" in message:
+        return "Reference not found."
+    return "Reference provider request failed. Please try again."
+
+
+def _author_surnames(value: Optional[str]) -> set[str]:
+    surnames: set[str] = set()
+    for author in re.split(r"(?<!\s)\s++and\s++", value or "", flags=re.I):
+        plain = _plain_metadata(author)
+        if not plain:
+            continue
+        if "," in author:
+            surname = _plain_metadata(author.split(",", 1)[0])
+        else:
+            surname = plain.split()[-1]
+        if surname:
+            surnames.add(surname)
+    return surnames
+
+
+def _compare_citation(
+    entry: dict, matched: dict, source: Literal["crossref", "arxiv"]
+) -> CitationVerification:
+    issues: list[str] = []
+    supplied_title = _plain_metadata(entry.get("title"))
+    matched_title = _plain_metadata(matched.get("title"))
+    similarity = None
+    if supplied_title and matched_title:
+        similarity = round(SequenceMatcher(None, supplied_title, matched_title).ratio(), 3)
+        if similarity < 0.82:
+            issues.append("Title does not closely match the scholarly record")
+
+    supplied_year = entry.get("year")
+    try:
+        if supplied_year and not re.fullmatch(r"\d{4}", str(supplied_year).strip()):
+            raise ValueError
+        supplied_year_int = int(supplied_year) if supplied_year else None
+    except (TypeError, ValueError):
+        supplied_year_int = None
+        issues.append("Year is not a valid four-digit number")
+    matched_year = matched.get("year")
+    if supplied_year_int and matched_year and supplied_year_int != matched_year:
+        issues.append(f"Year differs: BibTeX has {supplied_year_int}, record has {matched_year}")
+
+    supplied_authors = _author_surnames(entry.get("authors"))
+    matched_authors = _author_surnames(matched.get("authors"))
+    if supplied_authors and matched_authors and not supplied_authors.intersection(matched_authors):
+        issues.append("Authors do not overlap with the scholarly record")
+
+    return CitationVerification(
+        cite_key=entry["cite_key"],
+        status="mismatch" if issues else "verified",
+        source=source,
+        identifier=matched.get("identifier"),
+        matched_title=matched.get("title"),
+        matched_authors=matched.get("authors"),
+        matched_year=matched_year,
+        title_similarity=similarity,
+        issues=issues,
+    )
+
+
+async def _verify_one_citation(entry: dict) -> CitationVerification:
+    source: Literal["crossref", "arxiv"] = "crossref"
+    identifier = (entry.get("doi") or "").strip()
+    try:
+        normalized, identifier_type = reference_service.normalize_identifier(identifier)
+        if identifier_type == "doi":
+            result = await reference_service.fetch_doi(normalized)
+            matched = {**result, "identifier": normalized}
+        else:
+            eprint = (entry.get("eprint") or "").strip()
+            normalized_eprint, eprint_type = reference_service.normalize_identifier(eprint)
+            if eprint_type == "arxiv":
+                source = "arxiv"
+                result = await reference_service.fetch_arxiv(normalized_eprint)
+                matched = {**result, "identifier": normalized_eprint}
+            elif entry.get("title"):
+                matched = await reference_service.search_crossref(
+                    entry["title"], entry.get("authors")
+                )
+            else:
+                return CitationVerification(
+                    cite_key=entry["cite_key"],
+                    status="not_found",
+                    source=source,
+                    issues=["A DOI, arXiv ID, or title is required to find this work"],
+                )
+        return _compare_citation(entry, matched, source)
+    except ValueError as exc:
+        message = _safe_reference_error(exc)
+        provider_message = str(exc).casefold()
+        not_found = "not found" in provider_message or "no scholarly match" in provider_message
+        return CitationVerification(
+            cite_key=entry["cite_key"],
+            status="not_found" if not_found else "error",
+            source=source,
+            identifier=identifier or None,
+        issues=[message],
+        )
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -178,8 +325,7 @@ async def fetch_references(
     done, pending = await asyncio.wait(tasks, timeout=30.0)
 
     # Cancel tasks that did not finish in time
-    for t in pending:
-        t.cancel()
+    await _cancel_and_wait(pending)
 
     # Collect results in original order
     task_index = {t: i for i, t in enumerate(tasks)}
@@ -211,6 +357,64 @@ async def fetch_references(
         entries=entries,
         total=len(entries),
         successful=successful,
+        processing_time=round(time.monotonic() - start, 3),
+    )
+
+
+@router.post(
+    "/verify",
+    response_model=VerifyCitationsResponse,
+    dependencies=[Depends(require_feature_optional("references"))],
+)
+async def verify_citations(
+    request: VerifyCitationsRequest,
+    http_request: Request,
+):
+    """Check BibTeX works and metadata against Crossref or arXiv."""
+    start = time.monotonic()
+    try:
+        entries = reference_service.parse_bibtex_entries(request.bibtex, limit=20)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="BibTeX input could not be parsed.") from exc
+
+    await _enforce_reference_budget(http_request, len(entries))
+    tasks = [asyncio.create_task(_verify_one_citation(entry)) for entry in entries]
+    done, pending = await asyncio.wait(tasks, timeout=30.0)
+    await _cancel_and_wait(pending)
+    task_index = {task: index for index, task in enumerate(tasks)}
+    results: list[Optional[CitationVerification]] = [None] * len(tasks)
+    for task in done:
+        index = task_index[task]
+        exception = task.exception()
+        if exception is None:
+            results[index] = task.result()
+        else:
+            logger.error(
+                "Unexpected citation verification failure for %s: %s",
+                entries[index]["cite_key"],
+                exception,
+            )
+            results[index] = CitationVerification(
+                cite_key=entries[index]["cite_key"],
+                status="error",
+                source="crossref",
+                issues=["Citation verification failed unexpectedly"],
+            )
+    for task in pending:
+        index = task_index[task]
+        results[index] = CitationVerification(
+            cite_key=entries[index]["cite_key"],
+            status="error",
+            source="crossref",
+            issues=["Citation verification timed out"],
+        )
+
+    complete_results = [result for result in results if result is not None]
+    return VerifyCitationsResponse(
+        results=complete_results,
+        total=len(complete_results),
+        verified=sum(result.status == "verified" for result in complete_results),
+        mismatched=sum(result.status == "mismatch" for result in complete_results),
         processing_time=round(time.monotonic() - start, 3),
     )
 
@@ -300,9 +504,9 @@ async def fetch_orcid_publications(
         works = await reference_service.fetch_orcid_works(normalized, request.max_results)
     except ValueError as exc:
         from fastapi import HTTPException
-        msg = str(exc)
-        status = 404 if "not found" in msg.lower() else 503
-        raise HTTPException(status_code=status, detail=msg)
+        status = 404 if "not found" in str(exc).casefold() else 503
+        detail = "ORCID profile not found" if status == 404 else "ORCID service temporarily unavailable"
+        raise HTTPException(status_code=status, detail=detail) from exc
 
     if not works:
         return FetchReferencesResponse(entries=[], total=0, successful=0, processing_time=0.0)
@@ -316,8 +520,7 @@ async def fetch_orcid_publications(
         await _enforce_reference_budget(http_request, len(doi_indices))
         doi_tasks = [asyncio.create_task(_fetch_one(works[i]["doi"])) for i in doi_indices]
         done, pending = await asyncio.wait(doi_tasks, timeout=25.0)
-        for t in pending:
-            t.cancel()
+        await _cancel_and_wait(pending)
 
         task_map = {t: doi_indices[j] for j, t in enumerate(doi_tasks)}
         for t in done:

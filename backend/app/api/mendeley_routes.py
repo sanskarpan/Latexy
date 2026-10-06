@@ -2,12 +2,13 @@
 
 import secrets
 import urllib.parse
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,8 @@ from ..database.models import Resume, User
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
 from ..services.encryption_service import encryption_service
+from ..utils.bounded_io import BoundedReadError, read_httpx_response_bounded
+from ..utils.uuid_guard import ensure_uuid
 
 logger = get_logger(__name__)
 
@@ -30,7 +33,13 @@ _MENDELEY_DOCS_URL = "https://api.mendeley.com/documents"
 
 # Import safety caps — protect the JSON column / response size from huge libraries.
 _MAX_IMPORT_BYTES = 5_000_000  # 5 MB of concatenated BibTeX
-_MAX_IMPORT_PAGES = 200        # hard guard on the pagination loop
+_MAX_IMPORT_PAGES = 200  # hard guard on the pagination loop
+
+
+async def _read_import_page(response: httpx.Response, remaining_bytes: int) -> str:
+    """Read one provider page without exceeding the aggregate import budget."""
+    raw = await read_httpx_response_bounded(response, remaining_bytes)
+    return raw.decode("utf-8", errors="replace").strip()
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -50,7 +59,14 @@ class MendeleyOAuthCompleteRequest(BaseModel):
 
 class MendeleyImportRequest(BaseModel):
     resume_id: str
-    group_id: Optional[str] = None
+    group_id: Optional[str] = Field(None, max_length=100)
+
+    @field_validator("group_id")
+    @classmethod
+    def validate_group_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.replace("-", "").replace("_", "").isalnum():
+            raise ValueError("Invalid Mendeley group ID")
+        return value
 
 
 class MendeleyImportResponse(BaseModel):
@@ -58,6 +74,26 @@ class MendeleyImportResponse(BaseModel):
     entries_count: int
     bibtex: str
     message: str
+    source: dict
+
+
+def _trusted_mendeley_next_url(value: str) -> str:
+    """Accept pagination only on Mendeley's fixed HTTPS documents origin."""
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        port = parsed.port
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Mendeley returned an invalid pagination URL") from exc
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "api.mendeley.com"
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in (None, 443)
+        or not parsed.path.startswith("/documents")
+    ):
+        raise HTTPException(status_code=502, detail="Mendeley returned an invalid pagination URL")
+    return value
 
 
 # ── OAuth flow ───────────────────────────────────────────────────────────────
@@ -81,23 +117,21 @@ async def mendeley_connect(
     state = secrets.token_urlsafe(32)
     await cache_manager.set(f"mendeley:state:{state}", {"user_id": user_id}, ttl=600)
 
-    params = urllib.parse.urlencode({
-        "client_id": settings.MENDELEY_CLIENT_ID,
-        "redirect_uri": settings.MENDELEY_REDIRECT_URI,
-        "response_type": "code",
-        "scope": "all",
-        "state": state,
-    })
-    return MendeleyOAuthStartResponse(
-        authorization_url=f"{_MENDELEY_AUTH_URL}?{params}"
+    params = urllib.parse.urlencode(
+        {
+            "client_id": settings.MENDELEY_CLIENT_ID,
+            "redirect_uri": settings.MENDELEY_REDIRECT_URI,
+            "response_type": "code",
+            "scope": "all",
+            "state": state,
+        }
     )
+    return MendeleyOAuthStartResponse(authorization_url=f"{_MENDELEY_AUTH_URL}?{params}")
 
 
 def _mendeley_error_redirect(reason: str) -> RedirectResponse:
     """Send the browser back to the settings page with a friendly error flag."""
-    return RedirectResponse(
-        f"{settings.FRONTEND_URL}/settings?mendeley=error&reason={urllib.parse.quote(reason)}"
-    )
+    return RedirectResponse(f"{settings.FRONTEND_URL}/settings?mendeley=error&reason={urllib.parse.quote(reason)}")
 
 
 @router.get("/callback")
@@ -164,10 +198,10 @@ async def mendeley_complete(
             )
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            logger.error(f"Mendeley token exchange error: {exc.response.text}")
+            logger.error("Mendeley token exchange error (HTTP %s)", exc.response.status_code)
             raise HTTPException(status_code=502, detail="Mendeley token exchange failed") from exc
         except httpx.RequestError as exc:
-            logger.error(f"Mendeley connection error: {exc}")
+            logger.error("Mendeley connection error (%s)", type(exc).__name__)
             raise HTTPException(status_code=502, detail="Mendeley is unavailable, please try again") from exc
 
     token_data = resp.json()
@@ -295,7 +329,7 @@ async def _refresh_mendeley_token(user: User, db: AsyncSession) -> str:
                 detail="Mendeley token expired and refresh failed. Please reconnect in Settings.",
             )
         except httpx.RequestError as exc:
-            logger.error(f"Mendeley connection error during token refresh: {exc}")
+            logger.error("Mendeley connection error during token refresh (%s)", type(exc).__name__)
             raise HTTPException(status_code=502, detail="Mendeley is unavailable, please try again")
 
     data = resp.json()
@@ -318,6 +352,7 @@ async def mendeley_import(
     user_id: str = Depends(get_current_user_required),
 ):
     """Import BibTeX from Mendeley and store in resume metadata."""
+    ensure_uuid(body.resume_id, "Resume not found")
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -326,9 +361,7 @@ async def mendeley_import(
     token = _get_mendeley_token(user)
 
     # Verify resume ownership
-    resume_result = await db.execute(
-        select(Resume).where(Resume.id == body.resume_id, Resume.user_id == user_id)
-    )
+    resume_result = await db.execute(select(Resume).where(Resume.id == body.resume_id, Resume.user_id == user_id))
     resume = resume_result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
@@ -348,44 +381,52 @@ async def mendeley_import(
         url: Optional[str] = _MENDELEY_DOCS_URL
         while url:
             try:
-                resp = await client.get(
+                async with client.stream(
+                    "GET",
                     url,
                     params=params if url == _MENDELEY_DOCS_URL else None,
                     headers={
                         "Authorization": f"Bearer {token}",
                         "Accept": "application/x-bibtex",
                     },
-                )
-                if resp.status_code == 401 and not refreshed:
-                    # Token expired — refresh once and retry the same page.
-                    token = await _refresh_mendeley_token(user, db)
-                    refreshed = True
-                    continue
-                if resp.status_code in (401, 403):
-                    raise HTTPException(
-                        status_code=401,
-                        detail="Mendeley token invalid. Please reconnect in Settings.",
-                    )
-                resp.raise_for_status()
+                ) as resp:
+                    if resp.status_code == 401 and not refreshed:
+                        # Token expired — refresh once and retry the same page.
+                        token = await _refresh_mendeley_token(user, db)
+                        refreshed = True
+                        continue
+                    if resp.status_code in (401, 403):
+                        raise HTTPException(
+                            status_code=401,
+                            detail="Mendeley token invalid. Please reconnect in Settings.",
+                        )
+                    resp.raise_for_status()
+
+                    try:
+                        page_bibtex = await _read_import_page(resp, _MAX_IMPORT_BYTES - total_bytes)
+                    except BoundedReadError:
+                        truncated = True
+                        break
+                    link_header = resp.headers.get("Link", "")
             except HTTPException:
                 raise
             except httpx.HTTPStatusError as exc:
-                logger.error(f"Mendeley API error: {exc.response.status_code}")
+                logger.error("Mendeley API error (HTTP %s)", exc.response.status_code)
                 raise HTTPException(
                     status_code=502,
                     detail=f"Mendeley API returned error {exc.response.status_code}",
                 )
             except httpx.RequestError as exc:
-                logger.error(f"Mendeley connection error: {exc}")
+                logger.error("Mendeley connection error (%s)", type(exc).__name__)
                 raise HTTPException(status_code=502, detail="Mendeley is unavailable")
 
-            page_bibtex = resp.text.strip()
             if page_bibtex:
-                bibtex_entries.append(page_bibtex)
-                total_bytes += len(page_bibtex.encode("utf-8"))
-                if total_bytes >= _MAX_IMPORT_BYTES:
+                page_bytes = len(page_bibtex.encode("utf-8"))
+                if total_bytes + page_bytes > _MAX_IMPORT_BYTES:
                     truncated = True
                     break
+                bibtex_entries.append(page_bibtex)
+                total_bytes += page_bytes
 
             pages_fetched += 1
             if pages_fetched >= _MAX_IMPORT_PAGES:
@@ -393,12 +434,11 @@ async def mendeley_import(
                 break
 
             # Mendeley pagination via Link header
-            link_header = resp.headers.get("Link", "")
             url = None
             for part in link_header.split(","):
                 part = part.strip()
                 if 'rel="next"' in part:
-                    url = part.split(";")[0].strip().strip("<>")
+                    url = _trusted_mendeley_next_url(part.split(";")[0].strip().strip("<>"))
                     break
 
     bibtex = "\n\n".join(bibtex_entries)
@@ -406,6 +446,15 @@ async def mendeley_import(
 
     rm = dict(resume.resume_settings or {})
     rm["bibtex"] = bibtex
+    source = {
+        "provider": "mendeley",
+        "scope": "group" if body.group_id else "library",
+        "scope_id": body.group_id,
+        "filename": "references.bib",
+        "read_only": True,
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+    }
+    rm["bibtex_source"] = source
     resume.resume_settings = rm
     await db.commit()
 
@@ -418,4 +467,5 @@ async def mendeley_import(
         entries_count=entry_count,
         bibtex=bibtex,
         message=message,
+        source=source,
     )

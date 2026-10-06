@@ -2692,7 +2692,8 @@ existing Razorpay infrastructure.
   GET    /team/seats         — list team seats (owner only)
   POST   /team/invite        — invite member by email
   DELETE /team/seats/{id}    — remove member
-  GET    /team/join/{token}  — accept team invitation (validates token in email link)
+  GET    /team/join/{token}  — preview team invitation (read-only validation)
+  POST   /team/join/{token}  — accept team invitation after explicit confirmation
   ```
   - `POST /team/invite`: user must be on team plan; max 5 members
   - Sends invitation email with join link via email_worker

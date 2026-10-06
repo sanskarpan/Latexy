@@ -31,9 +31,11 @@ import {
   type CareerAnalysisResponse,
   type CareerRoleResponse,
 } from '@/lib/api-client'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import CareerPathChart from '@/components/CareerPathChart'
 import SkillsGapPanel from '@/components/SkillsGapPanel'
+import LoadingSpinner from '@/components/LoadingSpinner'
+import SessionLoadError from '@/components/SessionLoadError'
 
 // ── Progress steps ─────────────────────────────────────────────────────────────
 
@@ -49,7 +51,7 @@ const STEPS = [
 export default function CareerPathPage() {
   const params = useParams()
   const resumeId = params.resumeId as string
-  const { data: session } = useSession()
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
 
   // Search
   const [query, setQuery] = useState('')
@@ -63,17 +65,26 @@ export default function CareerPathPage() {
   const [analysis, setAnalysis] = useState<CareerAnalysisResponse | null>(null)
   const [pastAnalyses, setPastAnalyses] = useState<CareerAnalysisResponse[]>([])
   const [pastLoading, setPastLoading] = useState(true)
+  const [pastError, setPastError] = useState<string | null>(null)
+  const [pastReloadNonce, setPastReloadNonce] = useState(0)
   const [expandedPastId, setExpandedPastId] = useState<string | null>(null)
   const [expandedPastData, setExpandedPastData] = useState<CareerAnalysisResponse | null>(null)
 
   // Load past analyses
   useEffect(() => {
-    if (!session?.session?.token) return
+    if (!session?.session?.token) {
+      setPastLoading(false)
+      return
+    }
+    setPastLoading(true)
+    setPastError(null)
     apiClient.listCareerAnalyses(resumeId)
       .then(setPastAnalyses)
-      .catch(() => {})
+      .catch((error) => {
+        setPastError(error instanceof Error ? error.message : 'Failed to load past analyses')
+      })
       .finally(() => setPastLoading(false))
-  }, [resumeId, session])
+  }, [resumeId, session, pastReloadNonce])
 
   // Autocomplete
   const fetchSuggestions = useCallback(async (q: string) => {
@@ -152,6 +163,18 @@ export default function CareerPathPage() {
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
+
+  if (sessionLoading) {
+    return (
+      <div className="flex h-[70vh] items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    )
+  }
+
+  if (sessionError && !session) return <SessionLoadError area="Career path" />
+
+  if (!session) return null
 
   return (
     <div className="bg-bg text-sm text-fg-2">
@@ -283,6 +306,18 @@ export default function CareerPathPage() {
           {pastLoading ? (
             <div className="flex justify-center py-8">
               <Loader2 size={16} className="animate-spin text-fg-3" />
+            </div>
+          ) : pastError ? (
+            <div role="alert" className="rounded-[var(--radius-lg)] border border-err/20 bg-err/[0.07] p-5 text-center">
+              <p className="text-[12px] font-semibold text-err">Past analyses could not be loaded</p>
+              <p className="mt-1 text-[11px] text-fg-3">{pastError}</p>
+              <button
+                type="button"
+                onClick={() => setPastReloadNonce((value) => value + 1)}
+                className="mt-3 rounded-[var(--radius-md)] border border-err/30 px-3 py-1.5 text-[11px] font-semibold text-err transition hover:bg-err/10"
+              >
+                Retry
+              </button>
             </div>
           ) : pastAnalyses.length === 0 ? (
             <div className="rounded-[var(--radius-lg)] border border-line bg-surface py-8 text-center text-[12px] text-fg-3">

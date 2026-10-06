@@ -6,6 +6,7 @@ All Redis I/O is mocked at the module level (publish_event, publish_job_result,
 is_cancelled).  The ATS scoring service is mocked via AsyncMock since
 score_resume() is async.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -40,6 +41,7 @@ FINANCE_JD = "Seeking a financial analyst specializing in banking and investment
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def eager_celery():
     celery_app.conf.task_always_eager = True
@@ -72,6 +74,10 @@ def mock_scoring():
     fake.warnings = ["Missing summary section"]
     fake.detailed_analysis = {"word_count": 200, "sections_found": 3}
     fake.industry_label = None  # Feature 46: must be str | None, not a MagicMock
+    fake.locale_key = "global"
+    fake.locale_label = "Global / role-only"
+    fake.score_threshold = 80
+    fake.calibration_statement = "Document-quality checks"
 
     with patch(
         "app.workers.ats_worker.ats_scoring_service.score_resume",
@@ -83,8 +89,8 @@ def mock_scoring():
 
 # ── score_resume_ats_task — happy path ────────────────────────────────────────
 
-class TestScoreResumeAtsTaskSuccess:
 
+class TestScoreResumeAtsTaskSuccess:
     def test_returns_success_true(self, mock_publish, mock_result_store, mock_scoring):
         job_id = str(uuid.uuid4())
         res = score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": job_id}).result
@@ -122,24 +128,18 @@ class TestScoreResumeAtsTaskSuccess:
     def test_user_id_preserved_in_result(self, mock_publish, mock_result_store, mock_scoring):
         job_id = str(uuid.uuid4())
         user_id = str(uuid.uuid4())
-        res = score_resume_ats_task.apply(
-            args=[GOOD_LATEX], kwargs={"job_id": job_id, "user_id": user_id}
-        ).result
+        res = score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": job_id, "user_id": user_id}).result
         assert res["user_id"] == user_id
 
     def test_industry_preserved_in_result(self, mock_publish, mock_result_store, mock_scoring):
         job_id = str(uuid.uuid4())
-        res = score_resume_ats_task.apply(
-            args=[GOOD_LATEX], kwargs={"job_id": job_id, "industry": "technology"}
-        ).result
+        res = score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": job_id, "industry": "technology"}).result
         assert res["industry"] == "technology"
 
     def test_device_fingerprint_preserved_in_result(self, mock_publish, mock_result_store, mock_scoring):
         job_id = str(uuid.uuid4())
         fp = "device_abc123"
-        res = score_resume_ats_task.apply(
-            args=[GOOD_LATEX], kwargs={"job_id": job_id, "device_fingerprint": fp}
-        ).result
+        res = score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": job_id, "device_fingerprint": fp}).result
         assert res["device_fingerprint"] == fp
 
     def test_job_id_auto_generated_when_none(self, mock_publish, mock_result_store, mock_scoring):
@@ -164,10 +164,7 @@ class TestScoreResumeAtsTaskSuccess:
         """industry_label must appear inside ats_details of the job.completed event."""
         job_id = str(uuid.uuid4())
         score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": job_id})
-        completed_calls = [
-            call for call in mock_publish.call_args_list
-            if call.args[1] == "job.completed"
-        ]
+        completed_calls = [call for call in mock_publish.call_args_list if call.args[1] == "job.completed"]
         assert completed_calls, "job.completed event not published"
         ats_details = completed_calls[0].args[2]["ats_details"]
         assert "industry_label" in ats_details
@@ -187,8 +184,8 @@ class TestScoreResumeAtsTaskSuccess:
 
 # ── score_resume_ats_task — event sequence ────────────────────────────────────
 
-class TestScoreResumeAtsTaskEvents:
 
+class TestScoreResumeAtsTaskEvents:
     def _event_types(self, mock_publish):
         return [c.args[1] for c in mock_publish.call_args_list]
 
@@ -227,6 +224,12 @@ class TestScoreResumeAtsTaskEvents:
         completed = next(c for c in mock_publish.call_args_list if c.args[1] == "job.completed")
         assert completed.args[2]["ats_score"] == 72.5
 
+    def test_completed_event_does_not_advertise_pdf(self, mock_publish, mock_result_store, mock_scoring):
+        job_id = str(uuid.uuid4())
+        score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": job_id})
+        completed = next(c for c in mock_publish.call_args_list if c.args[1] == "job.completed")
+        assert completed.args[2]["pdf_job_id"] is None
+
     def test_started_event_has_stage(self, mock_publish, mock_result_store, mock_scoring):
         score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": str(uuid.uuid4())})
         started = next(c for c in mock_publish.call_args_list if c.args[1] == "job.started")
@@ -241,16 +244,14 @@ class TestScoreResumeAtsTaskEvents:
 
 # ── score_resume_ats_task — validation failures ───────────────────────────────
 
-class TestScoreResumeAtsTaskValidation:
 
+class TestScoreResumeAtsTaskValidation:
     def test_empty_latex_returns_failure(self, mock_publish, mock_result_store):
         res = score_resume_ats_task.apply(args=[""], kwargs={"job_id": str(uuid.uuid4())}).result
         assert res["success"] is False
 
     def test_whitespace_only_latex_returns_failure(self, mock_publish, mock_result_store):
-        res = score_resume_ats_task.apply(
-            args=["  \n\t  "], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = score_resume_ats_task.apply(args=["  \n\t  "], kwargs={"job_id": str(uuid.uuid4())}).result
         assert res["success"] is False
 
     def test_empty_latex_publishes_job_failed(self, mock_publish, mock_result_store):
@@ -274,9 +275,11 @@ class TestScoreResumeAtsTaskValidation:
         failed = next(c for c in mock_publish.call_args_list if c.args[1] == "job.failed")
         assert "error_code" in failed.args[2]
 
-    def test_empty_latex_no_result_stored(self, mock_publish, mock_result_store):
+    def test_empty_latex_failure_result_is_stored(self, mock_publish, mock_result_store):
         score_resume_ats_task.apply(args=[""], kwargs={"job_id": str(uuid.uuid4())})
-        mock_result_store.assert_not_called()
+        # Persist the failure before the terminal event so REST polling cannot
+        # observe a failed stream with a permanent 404 result.
+        mock_result_store.assert_called_once()
 
     def test_scoring_exception_publishes_job_failed(self, mock_publish, mock_result_store):
         celery_app.conf.task_eager_propagates = False
@@ -286,15 +289,13 @@ class TestScoreResumeAtsTaskValidation:
                 new_callable=AsyncMock,
                 side_effect=ValueError("Scoring engine failed"),
             ):
-                res = score_resume_ats_task.apply(
-                    args=[GOOD_LATEX], kwargs={"job_id": str(uuid.uuid4())}
-                ).result
+                res = score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": str(uuid.uuid4())}).result
         finally:
             celery_app.conf.task_eager_propagates = True
         types = [c.args[1] for c in mock_publish.call_args_list]
         assert "job.failed" in types
 
-    def test_scoring_exception_result_not_stored(self, mock_publish, mock_result_store):
+    def test_scoring_exception_failure_result_is_stored(self, mock_publish, mock_result_store):
         celery_app.conf.task_eager_propagates = False
         try:
             with patch(
@@ -302,79 +303,57 @@ class TestScoreResumeAtsTaskValidation:
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("Unexpected error"),
             ):
-                score_resume_ats_task.apply(
-                    args=[GOOD_LATEX], kwargs={"job_id": str(uuid.uuid4())}
-                )
+                score_resume_ats_task.apply(args=[GOOD_LATEX], kwargs={"job_id": str(uuid.uuid4())})
         finally:
             celery_app.conf.task_eager_propagates = True
-        mock_result_store.assert_not_called()
+        mock_result_store.assert_called_once()
 
 
 # ── analyze_job_description_ats_task ──────────────────────────────────────────
 
-class TestAnalyzeJobDescriptionAtsTask:
 
+class TestAnalyzeJobDescriptionAtsTask:
     def test_returns_success_true(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}).result
         assert res["success"] is True
 
     def test_result_contains_job_id(self, mock_publish, mock_result_store):
         job_id = str(uuid.uuid4())
-        res = analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": job_id}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": job_id}).result
         assert res["job_id"] == job_id
 
     def test_keywords_is_list(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}).result
         assert isinstance(res["keywords"], list)
 
     def test_requirements_is_list(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}).result
         assert isinstance(res["requirements"], list)
 
     def test_requirements_not_empty_for_rich_jd(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}).result
         assert len(res["requirements"]) > 0
 
     def test_preferred_qualifications_is_list(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}).result
         assert isinstance(res["preferred_qualifications"], list)
 
     def test_detected_industry_technology(self, mock_publish, mock_result_store):
         tech_jd = "Looking for a software development engineer with programming skills in Python."
-        res = analyze_job_description_ats_task.apply(
-            args=[tech_jd], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[tech_jd], kwargs={"job_id": str(uuid.uuid4())}).result
         assert res["detected_industry"] == "technology"
 
     def test_detected_industry_finance(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[FINANCE_JD], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[FINANCE_JD], kwargs={"job_id": str(uuid.uuid4())}).result
         assert res["detected_industry"] == "finance"
 
     def test_detected_industry_general_for_unknown(self, mock_publish, mock_result_store):
         jd = "Seeking a candidate who has background in philosophy and metaphysics."
-        res = analyze_job_description_ats_task.apply(
-            args=[jd], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[jd], kwargs={"job_id": str(uuid.uuid4())}).result
         assert res["detected_industry"] == "general"
 
     def test_analysis_metrics_present(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}).result
         assert "analysis_metrics" in res
         metrics = res["analysis_metrics"]
         assert "word_count" in metrics
@@ -382,34 +361,30 @@ class TestAnalyzeJobDescriptionAtsTask:
         assert "keyword_count" in metrics
 
     def test_word_count_is_positive(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}).result
         assert res["analysis_metrics"]["word_count"] > 0
 
     def test_keywords_capped_at_15(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}).result
         assert len(res["keywords"]) <= 15
 
     def test_requirements_capped_at_10(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}).result
         assert len(res["requirements"]) <= 10
 
     def test_preferred_capped_at_10(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}).result
         assert len(res["preferred_qualifications"]) <= 10
 
     def test_analysis_time_non_negative(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}).result
         assert res["analysis_time"] >= 0.0
+
+    def test_completed_event_does_not_advertise_pdf(self, mock_publish, mock_result_store):
+        job_id = str(uuid.uuid4())
+        analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": job_id})
+        completed = next(c for c in mock_publish.call_args_list if c.args[1] == "job.completed")
+        assert completed.args[2]["pdf_job_id"] is None
 
     def test_job_id_auto_generated_when_none(self, mock_publish, mock_result_store):
         res = analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={}).result
@@ -417,49 +392,55 @@ class TestAnalyzeJobDescriptionAtsTask:
         uuid.UUID(res["job_id"])
 
     def test_empty_jd_returns_failure(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=[""], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=[""], kwargs={"job_id": str(uuid.uuid4())}).result
         assert res["success"] is False
 
     def test_whitespace_only_jd_returns_failure(self, mock_publish, mock_result_store):
-        res = analyze_job_description_ats_task.apply(
-            args=["  \n  "], kwargs={"job_id": str(uuid.uuid4())}
-        ).result
+        res = analyze_job_description_ats_task.apply(args=["  \n  "], kwargs={"job_id": str(uuid.uuid4())}).result
         assert res["success"] is False
 
     def test_empty_jd_publishes_job_failed(self, mock_publish, mock_result_store):
-        analyze_job_description_ats_task.apply(
-            args=[""], kwargs={"job_id": str(uuid.uuid4())}
-        )
+        analyze_job_description_ats_task.apply(args=[""], kwargs={"job_id": str(uuid.uuid4())})
         types = [c.args[1] for c in mock_publish.call_args_list]
         assert "job.failed" in types
         assert "job.completed" not in types
 
-    def test_empty_jd_no_result_stored(self, mock_publish, mock_result_store):
-        analyze_job_description_ats_task.apply(
-            args=[""], kwargs={"job_id": str(uuid.uuid4())}
-        )
+    def test_empty_jd_failure_result_is_stored(self, mock_publish, mock_result_store):
+        analyze_job_description_ats_task.apply(args=[""], kwargs={"job_id": str(uuid.uuid4())})
+        mock_result_store.assert_called_once()
+
+    def test_success_publication_rejection_suppresses_completed(self, mock_publish, mock_result_store):
+        mock_result_store.return_value = False
+        result = analyze_job_description_ats_task.apply(
+            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
+        ).result
+        assert result["success"] is False
+        assert "job.completed" not in [call.args[1] for call in mock_publish.call_args_list]
+
+    def test_exception_publishes_retrying_before_retry(self, mock_publish, mock_result_store):
+        with patch(
+            "app.workers.ats_worker.ats_scoring_service._extract_keywords_from_job_description",
+            side_effect=RuntimeError("controlled failure"),
+        ):
+            with pytest.raises(RuntimeError, match="controlled failure"):
+                analyze_job_description_ats_task.run(TECH_JD, job_id=str(uuid.uuid4()))
+        types = [call.args[1] for call in mock_publish.call_args_list]
+        assert "job.retrying" in types
+        assert "job.failed" not in types
         mock_result_store.assert_not_called()
 
     def test_job_started_published(self, mock_publish, mock_result_store):
-        analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        )
+        analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())})
         types = [c.args[1] for c in mock_publish.call_args_list]
         assert "job.started" in types
 
     def test_job_completed_published(self, mock_publish, mock_result_store):
-        analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        )
+        analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())})
         types = [c.args[1] for c in mock_publish.call_args_list]
         assert "job.completed" in types
 
     def test_publish_result_called_on_success(self, mock_publish, mock_result_store):
-        analyze_job_description_ats_task.apply(
-            args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())}
-        )
+        analyze_job_description_ats_task.apply(args=[TECH_JD], kwargs={"job_id": str(uuid.uuid4())})
         mock_result_store.assert_called_once()
 
     def test_user_id_preserved_in_result(self, mock_publish, mock_result_store):

@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: celery-worker
-        image: ghcr.io/sanskarpan/latexy-backend:latest
+        image: __LATEXY_BACKEND_IMAGE__
         command: ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info", "--concurrency=2", "--queues=latex,llm,email,cleanup,ats,combined"]
         env:
         # `celery -A app.core.celery_app` imports app.core.config, which requires
@@ -94,6 +94,51 @@ spec:
             secretKeyRef:
               name: latexy-secrets
               key: redis-cache-url
+        - name: EMAIL_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: email-enabled
+        - name: EMAIL_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: email-provider
+        - name: RESEND_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: resend-api-key
+        - name: EMAIL_FROM
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: email-from-address
+        - name: EMAIL_FROM_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: email-from-name
+        - name: SMTP_HOST
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: smtp-host
+        - name: SMTP_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: latexy-config
+              key: email-smtp-port
+        - name: SMTP_USER
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: smtp-user
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: latexy-secrets
+              key: smtp-password
         resources:
           requests:
             memory: "512Mi"
@@ -145,7 +190,7 @@ spec:
     spec:
       containers:
       - name: celery-beat
-        image: ghcr.io/sanskarpan/latexy-backend:latest
+        image: __LATEXY_BACKEND_IMAGE__
         command: ["celery", "-A", "app.core.celery_app", "beat", "--loglevel=info"]
         env:
         # Same import-time requirements as the worker.
@@ -238,7 +283,7 @@ spec:
     spec:
       containers:
       - name: flower
-        image: ghcr.io/sanskarpan/latexy-backend:latest
+        image: __LATEXY_BACKEND_IMAGE__
         command: ["celery", "-A", "app.core.celery_app", "flower", "--port=5555"]
         ports:
         - containerPort: 5555

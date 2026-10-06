@@ -4,7 +4,7 @@ Phase 7 Integration tests — full HTTP API ↔ Redis consistency.
 These tests exercise the REST endpoints end-to-end (using httpx ASGI transport)
 and then inspect Redis directly to verify that the correct keys/values were
 written.  They require a running Redis instance on the URL configured in
-conftest.py (default: redis://localhost:6379/15, DB 15 for tests).
+conftest.py (default: redis://localhost:6380/15, DB 15 for tests).
 
 Celery task dispatch is mocked at the submit function level so no Celery
 worker is required.
@@ -61,10 +61,10 @@ async def _submit_latex_job(client: AsyncClient) -> dict | None:
 
 async def _seed_anonymous_job_meta(job_id: str) -> None:
     r = await get_redis_client()
-    await r.setex(
+    await r.set(
         f"latexy:job:{job_id}:meta",
-        3600,
         json.dumps({"job_id": job_id, "user_id": None}),
+        ex=3600,
     )
 
 
@@ -512,8 +512,8 @@ class TestJobResultWhenAvailable:
             "optimization_time": 12.0,
             "tokens_used": 320,
         })
-        await r.setex(f"latexy:job:{job_id}:result", 3600, result_payload)
-        await r.setex(f"latexy:job:{job_id}:meta", 3600, json.dumps({"job_id": job_id, "user_id": None}))
+        await r.set(f"latexy:job:{job_id}:result", result_payload, ex=3600)
+        await r.set(f"latexy:job:{job_id}:meta", json.dumps({"job_id": job_id, "user_id": None}), ex=3600)
 
         resp = await client.get(f"/jobs/{job_id}/result")
         assert resp.status_code == 200
@@ -522,8 +522,8 @@ class TestJobResultWhenAvailable:
         job_id = str(uuid.uuid4())
         r = await get_redis_client()
         result_payload = json.dumps({"success": True, "job_id": job_id})
-        await r.setex(f"latexy:job:{job_id}:result", 3600, result_payload)
-        await r.setex(f"latexy:job:{job_id}:meta", 3600, json.dumps({"job_id": job_id, "user_id": None}))
+        await r.set(f"latexy:job:{job_id}:result", result_payload, ex=3600)
+        await r.set(f"latexy:job:{job_id}:meta", json.dumps({"job_id": job_id, "user_id": None}), ex=3600)
 
         resp = await client.get(f"/jobs/{job_id}/result")
         assert resp.json()["success"] is True
@@ -532,8 +532,8 @@ class TestJobResultWhenAvailable:
         job_id = str(uuid.uuid4())
         r = await get_redis_client()
         result_payload = json.dumps({"success": True, "job_id": job_id})
-        await r.setex(f"latexy:job:{job_id}:result", 3600, result_payload)
-        await r.setex(f"latexy:job:{job_id}:meta", 3600, json.dumps({"job_id": job_id, "user_id": None}))
+        await r.set(f"latexy:job:{job_id}:result", result_payload, ex=3600)
+        await r.set(f"latexy:job:{job_id}:meta", json.dumps({"job_id": job_id, "user_id": None}), ex=3600)
 
         resp = await client.get(f"/jobs/{job_id}/result")
         assert resp.json()["job_id"] == job_id
@@ -547,8 +547,8 @@ class TestJobResultWhenAvailable:
             "job_id": job_id,
             "error": "pdflatex exited with code 1",
         })
-        await r.setex(f"latexy:job:{job_id}:result", 3600, result_payload)
-        await r.setex(f"latexy:job:{job_id}:meta", 3600, json.dumps({"job_id": job_id, "user_id": None}))
+        await r.set(f"latexy:job:{job_id}:result", result_payload, ex=3600)
+        await r.set(f"latexy:job:{job_id}:meta", json.dumps({"job_id": job_id, "user_id": None}), ex=3600)
 
         resp = await client.get(f"/jobs/{job_id}/result")
         assert resp.status_code == 200

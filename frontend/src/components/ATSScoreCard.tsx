@@ -14,6 +14,7 @@ import {
   BarChart3,
   Building2,
   Users,
+  WandSparkles,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -46,6 +47,14 @@ interface ATSScoreCardProps {
   industryKey?: string | null
   /** Called with a profile key when the user overrides the detected industry */
   onIndustryOverride?: (profileKey: string) => void
+  localeKey?: string | null
+  localeLabel?: string | null
+  scoreThreshold?: number
+  calibrationStatement?: string | null
+  onLocaleOverride?: (localeKey: string) => void
+  /** Create a reviewable optimization draft from the current report findings. */
+  onOptimize?: () => void
+  isOptimizing?: boolean
 }
 
 const getScoreColor = (score: number) => {
@@ -96,11 +105,23 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
   industryLabel,
   industryKey,
   onIndustryOverride,
+  localeKey,
+  localeLabel,
+  scoreThreshold = 80,
+  calibrationStatement,
+  onLocaleOverride,
+  onOptimize,
+  isOptimizing = false,
 }) => {
   const [industryProfiles, setIndustryProfiles] = useState(FALLBACK_PROFILES)
   const [benchmark, setBenchmark] = useState<BenchmarkResult | null>(null)
   const [benchmarkLoading, setBenchmarkLoading] = useState(false)
-  const [benchmarkFetched, setBenchmarkFetched] = useState(false)
+  const [localeProfiles, setLocaleProfiles] = useState([
+    { key: 'global', label: 'Global / role-only', calibration: '' },
+    { key: 'india', label: 'India', calibration: '' },
+    { key: 'united_states', label: 'United States', calibration: '' },
+    { key: 'united_kingdom', label: 'United Kingdom', calibration: '' },
+  ])
 
   useEffect(() => {
     if (!onIndustryOverride) return
@@ -109,16 +130,30 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
       .catch(() => { /* keep fallback */ })
   }, [onIndustryOverride])
 
-  // Lazy-load benchmark once we have a score (not on every compile)
   useEffect(() => {
-    if (score === undefined || benchmarkFetched || benchmarkLoading) return
+    if (!onLocaleOverride) return
+    apiClient.getATSLocaleProfiles()
+      .then((response) => { if (response.profiles?.length) setLocaleProfiles(response.profiles) })
+      .catch(() => { /* keep transparent built-in choices */ })
+  }, [onLocaleOverride])
+
+  // Refresh when the score changes and ignore a late response for an older
+  // score/industry pair.
+  useEffect(() => {
+    if (score === undefined) {
+      setBenchmark(null)
+      setBenchmarkLoading(false)
+      return
+    }
+    let cancelled = false
+    setBenchmark(null)
     setBenchmarkLoading(true)
-    setBenchmarkFetched(true)
     apiClient.getBenchmark(score, industryKey || undefined)
-      .then((res) => setBenchmark(res))
+      .then((res) => { if (!cancelled) setBenchmark(res) })
       .catch(() => { /* benchmark unavailable — don't show */ })
-      .finally(() => setBenchmarkLoading(false))
-  }, [score, industryKey, benchmarkFetched, benchmarkLoading])
+      .finally(() => { if (!cancelled) setBenchmarkLoading(false) })
+    return () => { cancelled = true }
+  }, [score, industryKey])
 
   if (isLoading) {
     return (
@@ -209,6 +244,18 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                 <option value="" disabled>Change industry...</option>
                 {industryProfiles.map((p) => (
                   <option key={p.key} value={p.key}>{p.label}</option>
+                ))}
+              </select>
+            )}
+            {onLocaleOverride && (
+              <select
+                aria-label="ATS locale"
+                className="text-xs border border-line rounded-[var(--radius-md)] px-1.5 py-0.5 text-fg-2 bg-surface cursor-pointer"
+                value={localeKey ?? 'global'}
+                onChange={(event) => onLocaleOverride(event.target.value)}
+              >
+                {localeProfiles.map((profile) => (
+                  <option key={profile.key} value={profile.key}>{profile.label}</option>
                 ))}
               </select>
             )}
@@ -362,6 +409,17 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
 
         {/* Action Buttons */}
         <div className="flex gap-2 pt-4 border-t border-line">
+          {onOptimize && (
+            <Button
+              size="sm"
+              onClick={onOptimize}
+              disabled={isOptimizing}
+              className="flex items-center gap-2"
+            >
+              <WandSparkles className="h-4 w-4" />
+              {isOptimizing ? 'Preparing review…' : 'Apply recommended changes'}
+            </Button>
+          )}
           {onViewRecommendations && recommendations.length > 0 && (
             <Button
               variant="outline"
@@ -386,6 +444,11 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
             </Button>
           )}
         </div>
+        {onOptimize && (
+          <p className="-mt-4 text-[11px] text-fg-3">
+            Creates a draft for per-change review. Nothing is saved until you approve and save it.
+          </p>
+        )}
 
         {/* Benchmark Row */}
         {(benchmarkLoading || benchmark) && (
@@ -403,11 +466,9 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                   <p className="text-sm text-fg-2">
                     Your resume scores in the{' '}
                     <span className="font-semibold text-accent-strong">
-                      top {Math.round(100 - benchmark.percentile)}%
+                      top {Math.max(1, Math.ceil(100 - benchmark.percentile))}%
                     </span>{' '}
-                    of{' '}
-                    <span className="font-medium">{benchmark.industry}</span>{' '}
-                    resumes on Latexy
+                    of <span className="font-medium">{benchmark.cohort_label || 'the Latexy resume cohort'}</span>
                     {benchmark.sample_size > 0 && (
                       <span className="text-fg-3"> ({benchmark.sample_size.toLocaleString()} resumes)</span>
                     )}
@@ -454,6 +515,10 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                     )}
                     <span>100</span>
                   </div>
+                  <p className="text-[10px] leading-relaxed text-fg-3">
+                    Directional comparison only—not hiring odds. {benchmark.methodology || 'Latest score per distinct resume'}.
+                    Use the category findings and recommendations to decide what to improve.
+                  </p>
                 </div>
               ) : (
                 <p className="text-xs text-fg-3">
@@ -474,6 +539,12 @@ export const ATSScoreCard: React.FC<ATSScoreCardProps> = ({
                 {score >= 80 && "Strong result on Latexy's document checks. Review the details below; this score does not predict an employer's screening decision."}
                 {score >= 60 && score < 80 && "Several checks pass, with specific improvements available below. This score is guidance, not an ATS outcome prediction."}
                 {score < 60 && "Several document checks need attention. Work through the recommendations; no score can predict an employer's ATS decision."}
+              </p>
+              <p className="mt-2">
+                <strong>{scoreThreshold} or higher</strong> is Latexy&apos;s good-score threshold for document checks—not a prediction of ATS passage or hiring outcome.
+              </p>
+              <p className="mt-1">
+                Calibrated against: {calibrationStatement || `${localeLabel || 'Global / role-only'} conventions, the selected industry profile, and job-description overlap when provided.`}
               </p>
             </div>
           </div>

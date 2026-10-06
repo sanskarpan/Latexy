@@ -18,11 +18,23 @@ Tests cover:
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select, text
+
+from app.database.models import (
+    Resume,
+    ResumeCollaborator,
+    ResumeComment,
+    ResumeCommentMention,
+    User,
+)
 
 # ── EmailService unit tests ───────────────────────────────────────────────────
 
@@ -65,7 +77,7 @@ class TestEmailServiceToggle:
         assert result is True
         mock_client.post.assert_called_once()
         call_kwargs = mock_client.post.call_args
-        assert "api.resend.com" in call_kwargs[0][0]
+        assert call_kwargs[0][0] == "https://api.resend.com/emails"
 
     @pytest.mark.asyncio
     async def test_resend_missing_key_returns_false(self):
@@ -82,14 +94,14 @@ class TestEmailServiceToggle:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_resend_api_error_returns_false(self):
+    async def test_resend_api_error_returns_false(self, caplog):
         """Resend API returning 422 → returns False."""
         from app.services.email_service import EmailService
 
         svc = EmailService()
         mock_resp = MagicMock()
         mock_resp.status_code = 422
-        mock_resp.text = "Unprocessable"
+        mock_resp.text = "private applicant data and provider diagnostics"
 
         with patch("app.services.email_service.settings") as mock_settings, \
              patch("httpx.AsyncClient") as mock_client_cls:
@@ -107,6 +119,8 @@ class TestEmailServiceToggle:
             result = await svc.send_email("user@example.com", "Subject", "<p>body</p>")
 
         assert result is False
+        assert "private applicant data" not in caplog.text
+        assert "user@example.com" not in caplog.text
 
     @pytest.mark.asyncio
     async def test_unknown_provider_returns_false(self):
@@ -120,6 +134,88 @@ class TestEmailServiceToggle:
             result = await svc.send_email("user@example.com", "Subject", "<p>body</p>")
 
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_smtp_send_runs_off_the_event_loop(self):
+        from app.services.email_service import EmailService
+
+        svc = EmailService()
+        with (
+            patch("app.services.email_service.settings") as mock_settings,
+            patch.object(svc, "_send_via_smtp", return_value=True) as smtp_send,
+            patch(
+                "app.services.email_service.asyncio.to_thread",
+                new=AsyncMock(side_effect=lambda func, *args: func(*args)),
+            ) as to_thread,
+        ):
+            mock_settings.EMAIL_ENABLED = True
+            mock_settings.EMAIL_PROVIDER = "smtp"
+            result = await svc.send_email("user@example.com", "Subject", "<p>body</p>")
+
+        assert result is True
+        to_thread.assert_awaited_once()
+        smtp_send.assert_called_once_with(
+            "user@example.com", "Subject", "<p>body</p>", None
+        )
+
+    def test_smtp_connection_has_a_timeout(self):
+        from app.services.email_service import EmailService
+
+        svc = EmailService()
+        server = MagicMock()
+        with (
+            patch("app.services.email_service.settings") as mock_settings,
+            patch("app.services.email_service.smtplib.SMTP") as smtp_cls,
+        ):
+            mock_settings.SMTP_HOST = "smtp.example.com"
+            mock_settings.SMTP_PORT = 587
+            mock_settings.SMTP_USER = ""
+            mock_settings.EMAIL_FROM = "noreply@example.com"
+            mock_settings.EMAIL_FROM_NAME = "Latexy"
+            smtp_cls.return_value.__enter__.return_value = server
+            assert svc._send_via_smtp("user@example.com", "Subject", "<p>body</p>", None)
+
+        smtp_cls.assert_called_once_with("smtp.example.com", 587, timeout=15)
+
+    def test_resend_smtp_idempotency_header_is_forwarded(self):
+        from app.services.email_service import EmailService
+
+        svc = EmailService()
+        server = MagicMock()
+        with (
+            patch("app.services.email_service.settings") as mock_settings,
+            patch("app.services.email_service.smtplib.SMTP") as smtp_cls,
+        ):
+            mock_settings.SMTP_HOST = "smtp.example.com"
+            mock_settings.SMTP_PORT = 587
+            mock_settings.SMTP_USER = ""
+            mock_settings.EMAIL_FROM = "noreply@example.com"
+            mock_settings.EMAIL_FROM_NAME = "Latexy"
+            smtp_cls.return_value.__enter__.return_value = server
+            assert svc._send_via_smtp(
+                "user@example.com", "Subject", "<p>body</p>", None, "mention-key"
+            )
+
+        message = server.sendmail.call_args.args[2]
+        assert "Resend-Idempotency-Key: mention-key" in message
+
+    def test_smtp_recipient_refusal_is_not_reported_as_accepted(self):
+        from app.services.email_service import EmailService
+
+        svc = EmailService()
+        server = MagicMock()
+        server.sendmail.return_value = {"user@example.com": (550, b"mailbox unavailable")}
+        with (
+            patch("app.services.email_service.settings") as mock_settings,
+            patch("app.services.email_service.smtplib.SMTP") as smtp_cls,
+        ):
+            mock_settings.SMTP_HOST = "smtp.example.com"
+            mock_settings.SMTP_PORT = 587
+            mock_settings.SMTP_USER = ""
+            mock_settings.EMAIL_FROM = "noreply@example.com"
+            mock_settings.EMAIL_FROM_NAME = "Latexy"
+            smtp_cls.return_value.__enter__.return_value = server
+            assert svc._send_via_smtp("user@example.com", "Subject", "<p>body</p>", None) is False
 
 
 # ── Template rendering tests ──────────────────────────────────────────────────
@@ -206,6 +302,283 @@ class TestEmailTemplates:
             html, text = render_weekly_digest_email("Dave", 0, 0, None)
 
         assert "Dave" in html
+
+    def test_comment_mention_template_omits_content_and_uses_scope_link(self):
+        from app.services.email_service import render_comment_mention_email
+
+        with patch("app.services.email_service.settings") as ms:
+            ms.FRONTEND_URL = "http://localhost:5180"
+            html, text = render_comment_mention_email(
+                "http://localhost:5180/workspaces/ws/recruiter?resume_id=r",
+            )
+
+        assert "<script>" not in html
+        assert "&lt;script&gt;" not in html
+        assert "alert" not in html
+        assert "alert" not in text
+        assert "/workspaces/ws/recruiter?resume_id=r" in html
+        assert "mentioned you" in text
+
+
+async def _session_user_id(db, headers: dict) -> str:
+    result = await db.execute(
+        text('SELECT "userId" FROM session WHERE token = :token'),
+        {"token": headers["Authorization"].removeprefix("Bearer ")},
+    )
+    return str(result.scalar_one())
+
+
+async def _make_personal_mention(db, owner_id: str, recipient_id: str, *, created_at=None):
+    resume = Resume(
+        id=str(uuid4()),
+        user_id=owner_id,
+        title="Worker test resume",
+        latex_content=r"\documentclass{article}",
+    )
+    comment = ResumeComment(
+        id=str(uuid4()),
+        resume_id=resume.id,
+        author_id=owner_id,
+        content="private comment body that must not enter email",
+    )
+    collaborator = ResumeCollaborator(
+        resume_id=resume.id,
+        user_id=recipient_id,
+        role="commenter",
+        invited_by=owner_id,
+    )
+    mention = ResumeCommentMention(
+        id=str(uuid4()),
+        comment_id=comment.id,
+        resume_id=resume.id,
+        mentioned_user_id=recipient_id,
+        created_at=created_at,
+    )
+    db.add_all([resume, comment, collaborator, mention])
+    await db.commit()
+    return mention
+
+
+class TestCommentMentionWorkerDatabase:
+    @pytest.mark.asyncio
+    async def test_final_live_preference_check_suppresses_change_after_initial_read(self):
+        """A preference revocation between reads must prevent provider I/O."""
+        from app.services.email_service import email_service
+        from app.workers import email_worker
+
+        owner_id, recipient_id = str(uuid4()), str(uuid4())
+        resume = Resume(
+            id=str(uuid4()), user_id=owner_id, title="Resume", latex_content="content"
+        )
+        comment = ResumeComment(
+            id=str(uuid4()), resume_id=resume.id, author_id=owner_id, content="secret"
+        )
+        mention = ResumeCommentMention(
+            id=str(uuid4()),
+            comment_id=comment.id,
+            resume_id=resume.id,
+            mentioned_user_id=recipient_id,
+            created_at=datetime.now(timezone.utc),
+        )
+        recipient = User(
+            id=recipient_id,
+            email="recipient@example.com",
+            email_verified=True,
+            email_notifications={"comment_mentions": True},
+        )
+
+        class FakeSession:
+            def __init__(self):
+                self.calls = 0
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+            async def execute(self, _statement):
+                self.calls += 1
+                if self.calls in {1, 5}:
+                    return SimpleNamespace(rowcount=1)
+                if self.calls == 2:
+                    return SimpleNamespace(first=lambda: (mention, comment, resume, recipient))
+                if self.calls == 3:
+                    return SimpleNamespace(scalar_one_or_none=lambda: resume.id)
+                # Simulate a committed preference change after the initial
+                # ORM read but before the final claim/access check.
+                return SimpleNamespace(
+                    first=lambda: (
+                        mention.id,
+                        recipient.email,
+                        True,
+                        {"comment_mentions": False},
+                    )
+                )
+
+            async def commit(self):
+                return None
+
+            async def rollback(self):
+                return None
+
+        fake_session = FakeSession()
+        engine = SimpleNamespace(dispose=AsyncMock())
+        sender = AsyncMock(return_value=True)
+        with (
+            patch("app.core.config.settings.EMAIL_ENABLED", True),
+            patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=engine),
+            patch(
+                "sqlalchemy.ext.asyncio.async_sessionmaker",
+                return_value=lambda: fake_session,
+            ),
+            patch.object(email_service, "send_email", new=sender),
+        ):
+            await email_worker._async_send_comment_mention(mention.id)
+
+        sender.assert_not_awaited()
+        assert fake_session.calls == 5
+
+    @pytest.mark.asyncio
+    async def test_claim_send_and_finalize_uses_generic_body(self, db_session, auth_headers, auth_headers2):
+        owner_id = await _session_user_id(db_session, auth_headers)
+        recipient_id = await _session_user_id(db_session, auth_headers2)
+        recipient = await db_session.scalar(select(User).where(User.id == recipient_id))
+        recipient.email_notifications = {"comment_mentions": True}
+        mention = await _make_personal_mention(db_session, owner_id, recipient_id)
+
+        from app.services.email_service import email_service
+        from app.workers import email_worker
+
+        sender = AsyncMock(return_value=True)
+        with patch("app.core.config.settings.EMAIL_ENABLED", True), patch.object(
+            email_service, "send_email", new=sender
+        ):
+            await email_worker._async_send_comment_mention(mention.id)
+
+        sender.assert_awaited_once()
+        kwargs = sender.await_args.kwargs
+        assert kwargs["to"] == recipient.email
+        assert "private comment body" not in kwargs["html_body"]
+        assert "private comment body" not in kwargs["text_body"]
+        assert kwargs["idempotency_key"] == f"latexy-comment-mention:{mention.id}"
+        await db_session.refresh(mention)
+        assert mention.delivery_sent_at is not None
+        assert mention.delivery_claim_token is None
+        assert mention.delivery_attempts == 1
+
+    @pytest.mark.asyncio
+    async def test_old_backlog_is_terminally_expired_without_provider_call(
+        self, db_session, auth_headers, auth_headers2
+    ):
+        owner_id = await _session_user_id(db_session, auth_headers)
+        recipient_id = await _session_user_id(db_session, auth_headers2)
+        recipient = await db_session.scalar(select(User).where(User.id == recipient_id))
+        recipient.email_notifications = {"comment_mentions": True}
+        mention = await _make_personal_mention(
+            db_session,
+            owner_id,
+            recipient_id,
+            created_at=datetime.now(timezone.utc) - timedelta(days=8),
+        )
+
+        from app.services.email_service import email_service
+        from app.workers import email_worker
+
+        sender = AsyncMock(return_value=True)
+        with patch("app.core.config.settings.EMAIL_ENABLED", True), patch.object(
+            email_service, "send_email", new=sender
+        ):
+            await email_worker._async_send_comment_mention(mention.id)
+
+        sender.assert_not_awaited()
+        await db_session.refresh(mention)
+        assert mention.delivery_sent_at is not None
+        assert mention.delivery_last_error == "expired"
+
+    @pytest.mark.asyncio
+    async def test_provider_failure_remains_retryable(self, db_session, auth_headers, auth_headers2):
+        owner_id = await _session_user_id(db_session, auth_headers)
+        recipient_id = await _session_user_id(db_session, auth_headers2)
+        recipient = await db_session.scalar(select(User).where(User.id == recipient_id))
+        recipient.email_notifications = {"comment_mentions": True}
+        mention = await _make_personal_mention(db_session, owner_id, recipient_id)
+
+        from app.services.email_service import email_service
+        from app.workers import email_worker
+
+        sender = AsyncMock(return_value=False)
+        with patch("app.core.config.settings.EMAIL_ENABLED", True), patch.object(
+            email_service, "send_email", new=sender
+        ):
+            with pytest.raises(RuntimeError, match="provider did not accept"):
+                await email_worker._async_send_comment_mention(mention.id)
+
+        sender.assert_awaited_once()
+        await db_session.refresh(mention)
+        assert mention.delivery_sent_at is None
+        assert mention.delivery_claim_token is None
+        assert mention.delivery_last_error == "send_failed"
+
+    @pytest.mark.asyncio
+    async def test_unverified_recipient_is_terminally_suppressed(
+        self, db_session, auth_headers, auth_headers2
+    ):
+        owner_id = await _session_user_id(db_session, auth_headers)
+        recipient_id = await _session_user_id(db_session, auth_headers2)
+        recipient = await db_session.scalar(select(User).where(User.id == recipient_id))
+        recipient.email_verified = False
+        recipient.email_notifications = {"comment_mentions": True}
+        mention = await _make_personal_mention(db_session, owner_id, recipient_id)
+
+        from app.services.email_service import email_service
+        from app.workers import email_worker
+
+        sender = AsyncMock(return_value=True)
+        with patch("app.core.config.settings.EMAIL_ENABLED", True), patch.object(
+            email_service, "send_email", new=sender
+        ):
+            await email_worker._async_send_comment_mention(mention.id)
+
+        sender.assert_not_awaited()
+        await db_session.refresh(mention)
+        assert mention.delivery_sent_at is not None
+        assert mention.delivery_last_error == "recipient_unverified"
+
+    @pytest.mark.asyncio
+    async def test_removed_collaborator_is_suppressed_without_provider_call(
+        self, db_session, auth_headers, auth_headers2
+    ):
+        owner_id = await _session_user_id(db_session, auth_headers)
+        recipient_id = await _session_user_id(db_session, auth_headers2)
+        recipient = await db_session.scalar(select(User).where(User.id == recipient_id))
+        recipient.email_notifications = {"comment_mentions": True}
+        mention = await _make_personal_mention(db_session, owner_id, recipient_id)
+        await db_session.execute(
+            text("DELETE FROM resume_collaborators WHERE resume_id = :resume_id"),
+            {"resume_id": mention.resume_id},
+        )
+        await db_session.commit()
+
+        from app.services.email_service import email_service
+        from app.workers import email_worker
+
+        sender = AsyncMock(return_value=True)
+        with patch("app.core.config.settings.EMAIL_ENABLED", True), patch.object(
+            email_service, "send_email", new=sender
+        ):
+            await email_worker._async_send_comment_mention(mention.id)
+
+        sender.assert_not_awaited()
+        await db_session.refresh(mention)
+        assert mention.delivery_sent_at is not None
+        assert mention.delivery_last_error == "access_revoked"
+
+    def test_comment_mention_task_has_retry_and_delivery_entrypoint(self):
+        from app.workers.email_worker import send_comment_mention_email
+
+        assert hasattr(send_comment_mention_email, "apply_async")
+        assert Exception in send_comment_mention_email.autoretry_for
 
 
 # ── API endpoint tests ────────────────────────────────────────────────────────

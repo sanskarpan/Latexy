@@ -67,7 +67,7 @@ async def _check_rate_limit(request: Request) -> None:
             await client.expire(key, _RATE_WINDOW)
     except Exception as exc:
         # Fail open on a cache outage rather than 500ing every scrape request.
-        logger.warning(f"Scrape rate-limit check skipped (cache error): {exc}")
+        logger.warning("Scrape rate-limit check skipped (cache error, %s)", type(exc).__name__)
         return
 
     if count > _RATE_LIMIT:

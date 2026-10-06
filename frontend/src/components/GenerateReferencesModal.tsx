@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react'
 import { BookUser, Download, Loader2, Plus, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type ReferenceContact } from '@/lib/api-client'
+import { downloadBlob } from '@/lib/download'
 
 interface GenerateReferencesModalProps {
   isOpen: boolean
@@ -72,15 +73,8 @@ export default function GenerateReferencesModal({
 
       // Download as .tex file
       const blob = new Blob([result.latex_content], { type: 'text/plain' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
       const safeName = resumeTitle.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_')
-      a.href = url
-      a.download = `${safeName}_references.tex`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      downloadBlob(blob, `${safeName}_references.tex`)
 
       toast.success('References page downloaded')
       onClose()

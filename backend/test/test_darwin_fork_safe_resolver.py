@@ -9,7 +9,7 @@ prefork child segfaulted the first time a task resolved an external hostname
 from __future__ import annotations
 
 import socket
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import app.core.celery_app as ca
 
@@ -71,3 +71,49 @@ class TestDarwinForkSafeResolver:
                 assert socket.getaddrinfo is first
             finally:
                 _uninstall()
+
+
+class TestWorkerRedisLifecycle:
+    def test_process_init_does_not_retain_closed_loop_async_clients(self):
+        with (
+            patch.object(ca, "_install_darwin_fork_safe_resolver"),
+            patch(
+                "app.workers.event_publisher.initialize_worker_redis"
+            ) as initialize_worker_redis,
+            patch("app.core.redis.redis_manager.init_sync_redis") as init_sync_redis,
+            patch("app.core.redis.redis_manager.init_redis") as init_async_redis,
+        ):
+            ca.init_worker_process()
+
+        initialize_worker_redis.assert_called_once()
+        init_sync_redis.assert_called_once_with()
+        init_async_redis.assert_not_called()
+
+    def test_process_shutdown_closes_worker_owned_sync_clients(self):
+        sampler = MagicMock()
+        ca._broker_redis_client = sampler
+        with (
+            patch("app.workers.event_publisher.close_worker_redis") as close_publisher,
+            patch("app.core.redis.redis_manager.close_sync_redis") as close_sync,
+        ):
+            ca.close_worker_process()
+
+        close_publisher.assert_called_once_with()
+        sampler.close.assert_called_once_with()
+        assert ca._broker_redis_client is None
+        close_sync.assert_called_once_with()
+
+    def test_process_shutdown_attempts_every_cleanup_after_one_failure(self):
+        sampler = MagicMock()
+        ca._broker_redis_client = sampler
+        with (
+            patch(
+                "app.workers.event_publisher.close_worker_redis",
+                side_effect=ConnectionError("publisher close failed"),
+            ),
+            patch("app.core.redis.redis_manager.close_sync_redis") as close_sync,
+        ):
+            ca.close_worker_process()
+
+        sampler.close.assert_called_once_with()
+        close_sync.assert_called_once_with()

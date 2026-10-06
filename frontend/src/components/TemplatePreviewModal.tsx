@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api-client'
 import type { TemplateDetailResponse } from '@/lib/api-client'
 import { shouldCloseTemplatePreview } from '@/lib/template-use'
 import type { TemplateUseResult } from '@/lib/template-use'
+import { downloadBlob } from '@/lib/download'
 
 // ------------------------------------------------------------------ //
 //  Category label map                                                 //
@@ -66,14 +67,7 @@ export default function TemplatePreviewModal({
   const downloadTex = () => {
     if (!template?.latex_content) return
     const blob = new Blob([template.latex_content], { type: 'application/x-tex' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${template.name || 'template'}.tex`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    downloadBlob(blob, `${template.name || 'template'}.tex`)
   }
 
   const handleUse = async () => {
@@ -264,7 +258,7 @@ export default function TemplatePreviewModal({
                   <p className="mb-1.5 text-[10px] uppercase tracking-[0.12em] text-fg-3">Format</p>
                   <div className="flex items-center gap-1.5 text-xs text-fg-2">
                     <FileText size={12} />
-                    LaTeX (pdflatex)
+                    LaTeX (LuaLaTeX)
                   </div>
                 </div>
               </div>

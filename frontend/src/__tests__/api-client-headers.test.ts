@@ -18,6 +18,7 @@ function mockFetch(responseBody: object = {}) {
 
 afterEach(() => {
   apiClient.setAuthToken(null)
+  apiClient.setTenantSlug(null)
   vi.unstubAllGlobals()
 })
 
@@ -61,5 +62,19 @@ describe('ApiClient header behavior', () => {
     })
     expect(String(init.body)).not.toContain('reusable-session')
     expect(result).toEqual({ ticket: 'single-use', expires_in: 60 })
+  })
+
+  test('propagates only a validated resolved tenant slug', async () => {
+    mockFetch({ tenant: { slug: 'example-university' } })
+    await apiClient.resolveTenantHost('cv.example.edu')
+    await apiClient.getCurrentTenantContext()
+
+    const [, init] = vi.mocked(fetch).mock.calls[1] as [string, RequestInit]
+    expect((init.headers as Record<string, string>)['X-Tenant-Slug']).toBe('example-university')
+
+    apiClient.setTenantSlug('../spoofed')
+    await apiClient.getCurrentTenantContext()
+    const [, invalidInit] = vi.mocked(fetch).mock.calls[2] as [string, RequestInit]
+    expect((invalidInit.headers as Record<string, string>)['X-Tenant-Slug']).toBeUndefined()
   })
 })

@@ -1,4 +1,6 @@
 """Tests for Feature 47: Anonymous Resume Mode."""
+from unittest.mock import patch
+
 import pytest
 
 from app.services.latex_pii_redactor import redact
@@ -10,21 +12,21 @@ def test_redact_email():
     latex = r"\textbf{john.doe@example.com}"
     result = redact(latex)
     assert "john.doe@example.com" not in result
-    assert "████@████" in result
+    assert "redacted@example.invalid" in result
 
 
 def test_redact_linkedin():
     latex = r"linkedin.com/in/johndoe"
     result = redact(latex)
     assert "johndoe" not in result
-    assert "linkedin.com/in/████" in result
+    assert "linkedin.com/in/redacted" in result
 
 
 def test_redact_github():
     latex = r"github.com/johndoe"
     result = redact(latex)
     assert "johndoe" not in result
-    assert "github.com/████" in result
+    assert "github.com/redacted" in result
 
 
 def test_redact_phone():
@@ -42,10 +44,54 @@ john@example.com
     result = redact(latex)
     # LaTeX commands still intact
     assert r"\documentclass{article}" in result
-    assert r"\textbf{John Doe}" in result
+    assert r"\textbf{Anonymous Candidate}" in result
     assert r"\end{document}" in result
     # Email redacted
     assert "john@example.com" not in result
+
+
+def test_redact_name_address_and_all_phone_forms_in_header_only():
+    latex = r"""\documentclass{article}
+\begin{document}
+\begin{center}
+  {\LARGE \textbf{Jane Doe}}\\
+  123 Main Street\\
+  Toronto, Ontario M5V 2T6 \quad 415-555-0192
+\end{center}
+\section{Experience}
+\textit{Example Corp, San Francisco, CA}
+\end{document}"""
+    result = redact(latex)
+    assert "Jane Doe" not in result
+    assert "123 Main Street" not in result
+    assert "Toronto, Ontario" not in result
+    assert "415-555-0192" not in result
+    assert "Anonymous Candidate" in result
+    assert "Location withheld" in result
+    # Body locations are useful non-identity context and must be preserved.
+    assert "Example Corp, San Francisco, CA" in result
+
+
+def test_redact_structured_name_and_address_commands():
+    result = redact(
+        r"\name{Ada Lovelace}\address{12 St James Square}"
+        r"\begin{document}Profile\end{document}"
+    )
+    assert "Ada Lovelace" not in result
+    assert "12 St James Square" not in result
+    assert r"\name{Anonymous Candidate}" in result
+    assert r"\address{Location withheld}" in result
+
+
+def test_redaction_output_is_ascii_and_watermark_is_idempotent():
+    once = redact(
+        r"\documentclass{article}\begin{document}"
+        r"jane@example.com +91 98765 43210\end{document}"
+    )
+    twice = redact(once)
+    once.encode("ascii")
+    assert "█" not in once
+    assert twice.count(r"\SetWatermarkText{ANONYMIZED}") == 1
 
 
 def test_redact_injects_watermark():
@@ -101,6 +147,50 @@ class TestAnonymousShareEndpoint:
         data = resp.json()
         assert data["anonymous"] is True
         assert "share_token" in data
+
+        stored = await client.get(f"/resumes/{resume_id}", headers=auth_headers)
+        assert stored.json()["share_anonymous"] is True
+
+    async def test_owner_can_regenerate_failed_or_expired_redacted_pdf(
+        self, client, auth_headers: dict
+    ):
+        create_resp = await client.post(
+            "/resumes/",
+            headers=auth_headers,
+            json={
+                "title": "Retry Anonymous Resume",
+                "latex_content": r"\documentclass{article}\begin{document}Hi\end{document}",
+            },
+        )
+        resume_id = create_resp.json()["id"]
+
+        with patch(
+            "app.workers.latex_worker.submit_latex_compilation"
+        ) as submit_compile:
+            first = await client.post(
+                f"/resumes/{resume_id}/share",
+                headers=auth_headers,
+                json={"anonymous": True},
+            )
+            first_stored = await client.get(
+                f"/resumes/{resume_id}", headers=auth_headers
+            )
+            first_job = first_stored.json()["metadata"]["share_anonymous_job_id"]
+
+            second = await client.post(
+                f"/resumes/{resume_id}/share",
+                headers=auth_headers,
+                json={"anonymous": True, "regenerate_anonymous": True},
+            )
+            second_stored = await client.get(
+                f"/resumes/{resume_id}", headers=auth_headers
+            )
+
+        second_job = second_stored.json()["metadata"]["share_anonymous_job_id"]
+        assert first.status_code == second.status_code == 200
+        assert first.json()["share_token"] == second.json()["share_token"]
+        assert first_job != second_job
+        assert submit_compile.call_count == 2
 
     async def test_share_link_non_anonymous_default(
         self, client, auth_headers: dict
@@ -181,7 +271,8 @@ class TestAnonymousShareEndpoint:
             f"/resumes/{resume_id}",
             headers=auth_headers,
             json={
-                "latex_content": r"\documentclass{article}\begin{document}new@example.com\end{document}"
+                "latex_content": r"\documentclass{article}\begin{document}new@example.com\end{document}",
+                "expected_latex_content": r"\documentclass{article}\begin{document}old@example.com\end{document}",
             },
         )
         assert upd.status_code == 200

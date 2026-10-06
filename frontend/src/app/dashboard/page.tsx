@@ -15,6 +15,7 @@ import { useRequireAuth } from '@/hooks/useRequireAuth'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import { ActivityAreaChart, FeatureUsageBars, StatusDonutChart } from '@/components/analytics/MetricCharts'
 import { JobQueue } from '@/components/JobQueue'
+import SessionLoadError from '@/components/SessionLoadError'
 
 const ranges = [
   { label: '7D', days: 7 },
@@ -23,7 +24,7 @@ const ranges = [
 ]
 
 export default function DashboardPage() {
-  const { session, isPending: sessionLoading } = useRequireAuth()
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const [selectedRange, setSelectedRange] = useState(30)
   const [analytics, setAnalytics] = useState<UserAnalyticsResponse | null>(null)
   const [timeseries, setTimeseries] = useState<UserAnalyticsTimeseriesResponse | null>(null)
@@ -189,6 +190,10 @@ export default function DashboardPage() {
         <LoadingSpinner />
       </div>
     )
+  }
+
+  if (sessionError && !session) {
+    return <SessionLoadError area="Dashboard" />
   }
 
   if (!session) {

@@ -38,6 +38,7 @@ from ..services.api_key_service import api_key_service
 from ..services.entitlement_service import QuotaTicket, entitlement_service
 from ..services.external_budget_service import enforce_external_budget
 from ..services.job_scraper_service import SSRFError
+from ..utils.file_utils import read_upload_capped
 
 logger = get_logger(__name__)
 
@@ -98,15 +99,6 @@ async def import_from_url(
         select(User.subscription_plan).where(User.id == user_id)
     )
     user_plan = plan_result.scalar_one_or_none() or "free"
-    quota_ticket: QuotaTicket = await entitlement_service.enforce_quota(
-        "ai_assists", user_id=user_id, plan=user_plan
-    )
-    try:
-        await _enforce_import_budget("url", user_id)
-    except Exception:
-        await entitlement_service.refund_quota(quota_ticket)
-        raise
-
     # Resolve the LLM key the same way optimize / GitHub import do: the user's
     # own OpenAI key (BYOK) when present, else the platform key (api_key=None →
     # extract_projects uses settings.OPENAI_API_KEY via the lazy openai client).
@@ -116,28 +108,63 @@ async def import_from_url(
     except Exception:
         api_key = None
 
+    # BYOK calls use the caller's provider and must not consume the platform
+    # allowance. Resolve the key before reserving quota; charging first made a
+    # BYOK URL import spend a unit even though no platform inference occurred.
+    quota_ticket: Optional[QuotaTicket] = None
+    if not api_key:
+        quota_ticket = await entitlement_service.enforce_quota(
+            "ai_assists", user_id=user_id, plan=user_plan
+        )
+    try:
+        await _enforce_import_budget("url", user_id)
+    except Exception:
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
+        raise
+
     # 1) Static, SSRF-guarded fetch → cleaned page text.
     try:
         page_text = await url_import.fetch_url_text(body.url)
     except SSRFError as exc:
-        await entitlement_service.refund_quota(quota_ticket)
-        logger.warning(f"Blocked URL import (SSRF/invalid) for user {user_id}: {exc}")
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
+        logger.warning(
+            "Blocked URL import (SSRF/invalid) for user %s (%s)",
+            user_id,
+            type(exc).__name__,
+        )
         raise HTTPException(status_code=400, detail="Invalid or disallowed URL")
     except ValueError as exc:
-        await entitlement_service.refund_quota(quota_ticket)
-        logger.info(f"URL import fetch failed for {body.url!r}: {exc}")
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
+        logger.info(
+            "URL import fetch failed for %s (%s)",
+            url_import._safe_url_for_log(body.url),
+            type(exc).__name__,
+        )
         raise HTTPException(status_code=502, detail="Could not fetch the page. Check the URL and try again.")
     except Exception as exc:  # noqa: BLE001 — last-resort guard around the fetch
-        await entitlement_service.refund_quota(quota_ticket)
-        logger.error(f"Unexpected error fetching {body.url!r}: {exc}")
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
+        logger.error(
+            "Unexpected error fetching %s (%s)",
+            url_import._safe_url_for_log(body.url),
+            type(exc).__name__,
+        )
         raise HTTPException(status_code=500, detail="Unexpected error while fetching the page.")
 
     # 2) One LLM call → ProjectEvidence records (degrades to metadata on error).
     try:
         projects = url_import.extract_projects(page_text, body.url, api_key)
     except Exception as exc:  # noqa: BLE001 — extract_projects already degrades, belt-and-braces
-        await entitlement_service.refund_quota(quota_ticket)
-        logger.error(f"Unexpected error extracting projects from {body.url!r}: {exc}")
+        if quota_ticket is not None:
+            await entitlement_service.refund_quota(quota_ticket)
+        logger.error(
+            "Unexpected error extracting projects from %s (%s)",
+            url_import._safe_url_for_log(body.url),
+            type(exc).__name__,
+        )
         raise HTTPException(status_code=500, detail="Unexpected error while extracting projects.")
 
     return ImportUrlResponse(projects=projects)
@@ -200,15 +227,9 @@ async def import_linkedin(
     filename = file.filename or "upload"
     content_type = file.content_type or ""
 
-    content = await file.read()
+    content = await read_upload_capped(file, _MAX_UPLOAD_BYTES)
     if not content:
         raise HTTPException(status_code=422, detail="Uploaded file is empty.")
-    if len(content) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Maximum size: {_MAX_UPLOAD_BYTES} bytes.",
-        )
-
     try:
         if _looks_like_zip(filename, content_type, content):
             projects = linkedin_import_service.parse_linkedin_export(content)
@@ -216,9 +237,9 @@ async def import_linkedin(
             projects = await linkedin_import_service.parse_resume_file(content, filename)
     except ValueError as exc:
         # Malformed ZIP / unsupported or unparseable resume → client error.
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail="Could not parse the uploaded file.") from exc
     except Exception as exc:  # unexpected → 500, but never leak internals
-        logger.error("sources/import-linkedin failed for %s: %s", filename, exc)
+        logger.error("sources/import-linkedin failed (%s)", type(exc).__name__)
         raise HTTPException(
             status_code=500,
             detail="Failed to import from the uploaded file. Please try again.",

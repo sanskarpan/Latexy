@@ -9,6 +9,14 @@ export interface WSServerError {
   job_id?: string
 }
 
+export interface WSSocketError {
+  message: string
+  /** HTTP status from the short-lived ticket request, when that request failed. */
+  status?: number
+  /** Low-level network code, when the ws client exposes one. */
+  code?: string
+}
+
 const MAX_BUFFER = 2000
 const MIN_BACKOFF = 100
 const MAX_BACKOFF = 30_000
@@ -64,9 +72,12 @@ export class LatexyWSClient extends EventEmitter {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ purpose: 'jobs' }),
+      signal: AbortSignal.timeout(30_000),
     })
     if (!response.ok) {
-      throw new Error(`WebSocket ticket request failed (${response.status})`)
+      const error = new Error(`WebSocket ticket request failed (${response.status})`)
+      Object.assign(error, { status: response.status })
+      throw error
     }
     const payload = await response.json() as { ticket?: unknown }
     if (typeof payload.ticket !== 'string' || !payload.ticket) {
@@ -108,9 +119,18 @@ export class LatexyWSClient extends EventEmitter {
       socketUrl = await this.socketUrl()
     } catch (err) {
       if (this.destroyed || generation !== this.connectionGeneration) return
-      this.emit('socket_error', {
+      const socketError: WSSocketError = {
         message: err instanceof Error ? err.message : String(err),
-      })
+      }
+      if (err != null && typeof err === 'object') {
+        const status = (err as { status?: unknown }).status
+        const code = (err as { code?: unknown }).code
+        const causeCode = (err as { cause?: { code?: unknown } }).cause?.code
+        if (typeof status === 'number') socketError.status = status
+        if (typeof code === 'string') socketError.code = code
+        else if (typeof causeCode === 'string') socketError.code = causeCode
+      }
+      this.emit('socket_error', socketError)
       this.scheduleReconnect()
       return
     }
@@ -165,7 +185,10 @@ export class LatexyWSClient extends EventEmitter {
     this.ws.on('error', (err) => {
       // NOT 'error': EventEmitter throws when that channel has no listener, and a
       // backend being down would otherwise crash the whole TUI.
-      this.emit('socket_error', { message: err.message })
+      const socketError: WSSocketError = { message: err.message }
+      const code = (err as { code?: unknown }).code
+      if (typeof code === 'string') socketError.code = code
+      this.emit('socket_error', socketError)
     })
   }
 

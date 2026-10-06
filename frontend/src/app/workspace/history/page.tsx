@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { apiClient, type JobStateResponse } from '@/lib/api-client'
 import { useSession } from '@/lib/auth-client'
@@ -11,29 +11,40 @@ type StatusFilter = 'all' | 'queued' | 'processing' | 'completed' | 'failed' | '
 const statusFilters: StatusFilter[] = ['all', 'queued', 'processing', 'completed', 'failed', 'cancelled']
 
 export default function WorkspaceHistoryPage() {
-  const { data: session, isPending: sessionLoading } = useSession()
+  const { data: session, isPending: sessionLoading, error: sessionError } = useSession()
+  const lastKnownSessionRef = useRef<typeof session>(null)
+  if (session) {
+    lastKnownSessionRef.current = session
+  } else if (!sessionLoading && !sessionError) {
+    lastKnownSessionRef.current = null
+  }
+  const effectiveSession = session ?? ((sessionLoading || sessionError) ? lastKnownSessionRef.current : null)
   const [jobs, setJobs] = useState<JobStateResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [status, setStatus] = useState<StatusFilter>('all')
 
-  useEffect(() => {
-    if (!session) return
-
-    const load = async () => {
-      setIsLoading(true)
-      try {
-        const response = await apiClient.listJobs()
-        const sorted = [...(response.jobs || [])].sort((a, b) => b.last_updated - a.last_updated)
-        setJobs(sorted)
-      } catch (error) {
+  const load = useCallback(async () => {
+    if (!effectiveSession) return
+    setIsLoading(true)
+    setLoadError(null)
+    try {
+      const response = await apiClient.listJobs()
+      const sorted = [...(response.jobs || [])].sort((a, b) => b.last_updated - a.last_updated)
+      setJobs(sorted)
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
         console.error('Failed to load history', error)
-      } finally {
-        setIsLoading(false)
       }
+      setLoadError(error instanceof Error ? error.message : 'Failed to load run history')
+    } finally {
+      setIsLoading(false)
     }
+  }, [effectiveSession])
 
-    load()
-  }, [session])
+  useEffect(() => {
+    void load()
+  }, [load])
 
   const filteredJobs = useMemo(() => {
     if (status === 'all') return jobs
@@ -48,7 +59,19 @@ export default function WorkspaceHistoryPage() {
     )
   }
 
-  if (!session) {
+  if (sessionError && !effectiveSession) {
+    return (
+      <div className="content-shell">
+        <section role="alert" className="rounded-[var(--radius-lg)] border border-err/20 bg-err/10 mx-auto max-w-2xl p-8 text-center">
+          <h1 className="text-2xl font-semibold text-fg">Run history could not verify your session</h1>
+          <p className="mt-2 text-fg-2">Check your connection and retry.</p>
+          <button type="button" onClick={() => window.location.reload()} className="mt-6 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg">Retry</button>
+        </section>
+      </div>
+    )
+  }
+
+  if (!effectiveSession) {
     return (
       <div className="content-shell">
         <section className="rounded-[var(--radius-lg)] border border-line bg-surface mx-auto max-w-2xl p-8 text-center">
@@ -102,6 +125,18 @@ export default function WorkspaceHistoryPage() {
         {isLoading ? (
           <div className="flex h-64 items-center justify-center">
             <LoadingSpinner />
+          </div>
+        ) : loadError && jobs.length === 0 ? (
+          <div role="alert" className="px-6 py-16 text-center">
+            <p className="text-base font-semibold text-err">Run history could not be loaded</p>
+            <p className="mt-2 text-sm text-fg-2">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => { void load() }}
+              className="mt-5 rounded-[var(--radius-md)] border border-err/30 px-4 py-2 text-xs font-semibold text-err transition hover:bg-err/10"
+            >
+              Retry
+            </button>
           </div>
         ) : filteredJobs.length === 0 ? (
           <div className="px-6 py-16 text-center">

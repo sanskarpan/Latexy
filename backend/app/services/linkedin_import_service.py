@@ -216,7 +216,7 @@ def _read_member_text(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> Optional[st
         with zf.open(info, "r") as fh:
             raw = fh.read(_MAX_MEMBER_BYTES + 1)
     except (zipfile.BadZipFile, OSError, RuntimeError) as exc:
-        logger.warning("linkedin_import: failed reading %s: %s", info.filename, exc)
+        logger.warning("linkedin_import: failed reading input", extra={"error_type": type(exc).__name__})
         return None
     if len(raw) > _MAX_MEMBER_BYTES:
         logger.warning("linkedin_import: member %s exceeded read cap", info.filename)
@@ -282,7 +282,7 @@ def parse_linkedin_export(zip_bytes: bytes) -> List[Dict[str, Any]]:
             try:
                 rows = _parse_csv_rows(text)
             except (csv.Error, ValueError) as exc:
-                logger.warning("linkedin_import: CSV parse error in %s: %s", base, exc)
+                logger.warning("linkedin_import: CSV parse error", extra={"error_type": type(exc).__name__})
                 continue
 
             mapper = (
@@ -296,7 +296,7 @@ def parse_linkedin_export(zip_bytes: bytes) -> List[Dict[str, Any]]:
                 try:
                     record = mapper(row)
                 except Exception as exc:  # one bad row never fails the whole import
-                    logger.warning("linkedin_import: bad row skipped: %s", exc)
+                    logger.warning("linkedin_import: bad row skipped", extra={"error_type": type(exc).__name__})
                     continue
                 if record:
                     evidence.append(record)
@@ -391,7 +391,7 @@ async def parse_resume_file(file_bytes: bytes, filename: str) -> List[Dict[str, 
     try:
         parsed = await parser.parse(file_bytes, filename)
     except Exception as exc:  # normalize parser failures to a 4xx-friendly error
-        logger.warning("linkedin_import: resume parse failed for %s: %s", filename, exc)
+        logger.warning("linkedin_import: resume parse failed", extra={"error_type": type(exc).__name__})
         raise ValueError(f"Could not parse resume file: {exc}") from exc
 
     return _parsed_resume_to_evidence(parsed)

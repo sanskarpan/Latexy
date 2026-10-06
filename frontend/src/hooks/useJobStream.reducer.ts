@@ -18,6 +18,7 @@ export interface LogLine {
 export interface TimeoutError {
   plan: string
   upgradeMessage: string
+  seconds: number
 }
 
 export interface JobStreamState {
@@ -76,14 +77,53 @@ export const initialState: JobStreamState = {
 //  Reducer                                                            //
 // ------------------------------------------------------------------ //
 
-export type ReducerAction = AnyEvent | { type: '__reset__' }
+export type ReducerAction =
+  | AnyEvent
+  | { type: '__reset__' }
+  | {
+      type: '__snapshot__'
+      status: 'queued' | 'processing'
+      stage: string
+      percent: number
+      message?: string
+    }
 
 const TERMINAL_STATES = new Set<JobStreamState['status']>(['completed', 'failed', 'cancelled'])
 const TERMINAL_EVENT_TYPES = new Set<AnyEvent['type']>(['job.completed', 'job.failed', 'job.cancelled'])
 
 export function jobStreamReducer(state: JobStreamState, action: ReducerAction): JobStreamState {
   if (action.type === '__reset__') return { ...initialState }
+  if (action.type === '__snapshot__') {
+    if (TERMINAL_STATES.has(state.status)) return state
+    return {
+      ...state,
+      status: action.status,
+      stage: action.stage,
+      percent: action.percent,
+      message: action.message ?? state.message,
+    }
+  }
   const event = action as AnyEvent
+
+  // REST fallback can deliver the authoritative completion payload after a
+  // live WebSocket terminal event. Keep completion idempotent, but allow that
+  // same-job event to fill fields the first event did not carry (most notably
+  // pdf_job_id). Cancellation and other terminal transitions remain blocked
+  // below so a late disconnect cannot undo a completed job.
+  if (state.status === 'completed' && event.type === 'job.completed') {
+    return {
+      ...state,
+      pdfJobId: event.pdf_job_id ?? state.pdfJobId,
+      atsScore: event.ats_score ?? state.atsScore,
+      atsDetails: event.ats_details ?? state.atsDetails,
+      industryLabel: (event.ats_details as ATSDetails | null)?.industry_label ?? state.industryLabel,
+      changesMade: event.changes_made?.length ? event.changes_made : state.changesMade,
+      compilationTime: event.compilation_time ?? state.compilationTime,
+      optimizationTime: event.optimization_time ?? state.optimizationTime,
+      tokensUsed: event.tokens_used ?? state.tokensUsed,
+      pageCount: event.page_count ?? state.pageCount,
+    }
+  }
 
   // CANCEL-02: once a terminal state is reached, ignore any subsequent
   // terminal-state transitions (e.g. a late job.cancelled after job.completed).
@@ -192,6 +232,9 @@ export function jobStreamReducer(state: JobStreamState, action: ReducerAction): 
           ? {
               plan: event.user_plan ?? 'free',
               upgradeMessage: event.upgrade_message ?? 'Upgrade to Pro for a 4-minute compile timeout',
+              seconds: event.timeout_seconds ?? (
+                event.user_plan === 'basic' ? 120 : event.user_plan === 'free' || !event.user_plan ? 30 : 240
+              ),
             }
           : null,
       }

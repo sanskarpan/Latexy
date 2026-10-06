@@ -280,10 +280,13 @@ def _hunk_span(
     ):
         return start, end, original_text, new_text, hid
 
-    # Offsets missing/stale — try to locate the original span by content.
+    # Offsets missing/stale — only use content fallback when it identifies one
+    # unambiguous span. Resume/LaTeX source frequently repeats commands and
+    # bullets; choosing the first duplicate would apply a change to the wrong
+    # location.
     if original_text:
         idx = original_latex.find(original_text)
-        if idx != -1:
+        if idx != -1 and original_latex.find(original_text, idx + 1) == -1:
             return idx, idx + len(original_text), original_text, new_text, hid
         return None
 

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { RotateCcw, AlertTriangle } from 'lucide-react'
 import {
   LATEX_FONTS,
+  isHostedFontAvailable,
   extractFontFromPreamble,
   extractAccentColorFromPreamble,
   extractFontSizeFromPreamble,
@@ -80,8 +81,9 @@ export default function DesignPanel({
   }
 
   function handleFontChange(fontName: string) {
-    setSelectedFont(fontName)
     const font = LATEX_FONTS.find((f) => f.name === fontName)
+    if (!font || !isHostedFontAvailable(font)) return
+    setSelectedFont(fontName)
     const newLatex = setFontInPreamble(
       latexRef.current,
       font?.package ?? null,
@@ -163,6 +165,7 @@ export default function DesignPanel({
                   font={font}
                   active={selectedFont === font.name}
                   onClick={() => handleFontChange(font.name)}
+                  available={isHostedFontAvailable(font)}
                 />
               ))}
             </div>
@@ -178,6 +181,7 @@ export default function DesignPanel({
                   font={font}
                   active={selectedFont === font.name}
                   onClick={() => handleFontChange(font.name)}
+                  available={isHostedFontAvailable(font)}
                 />
               ))}
             </div>
@@ -193,10 +197,19 @@ export default function DesignPanel({
                   font={font}
                   active={selectedFont === font.name}
                   onClick={() => handleFontChange(font.name)}
+                  available={isHostedFontAvailable(font)}
                 />
               ))}
             </div>
           </div>
+          {!isHostedFontAvailable(
+            LATEX_FONTS.find((font) => font.name === selectedFont) ?? LATEX_FONTS[0]
+          ) && (
+            <div role="status" className="rounded-[var(--radius-md)] border border-warn/30 bg-warn/10 px-2.5 py-2 text-[10px] leading-4 text-warn">
+              This document uses a legacy font that is unavailable in the hosted compiler. Choose
+              an enabled font to replace it before compiling.
+            </div>
+          )}
         </div>
 
         {/* ── Accent Color ───────────────────────────────────────────── */}
@@ -340,18 +353,24 @@ function FontRow({
   font,
   active,
   onClick,
+  available,
 }: {
   font: (typeof LATEX_FONTS)[number]
   active: boolean
   onClick: () => void
+  available: boolean
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={!available}
+      title={available ? undefined : 'Unavailable in the hosted compiler'}
       className={`flex w-full items-center gap-2 rounded-[var(--radius-md)] px-2 py-1.5 text-left transition ${
         active
           ? 'bg-accent-soft text-accent-strong'
-          : 'text-fg-3 hover:bg-surface-2 hover:text-fg'
+          : available
+            ? 'text-fg-3 hover:bg-surface-2 hover:text-fg'
+            : 'cursor-not-allowed text-fg-disabled line-through'
       }`}
     >
       <span
@@ -363,6 +382,7 @@ function FontRow({
       {active && (
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
       )}
+      {!available && <span className="shrink-0 text-[9px] no-underline">Unavailable</span>}
     </button>
   )
 }

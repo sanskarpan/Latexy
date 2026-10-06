@@ -6,14 +6,28 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 cd "$PROJECT_ROOT"
 
+VALIDATOR_PYTHON="$PROJECT_ROOT/backend/.venv/bin/python"
+if [[ ! -x "$VALIDATOR_PYTHON" ]] || ! "$VALIDATOR_PYTHON" -c 'import yaml' >/dev/null 2>&1; then
+  VALIDATOR_VENV="$(mktemp -d)/venv"
+  python3 -m venv "$VALIDATOR_VENV"
+  "$VALIDATOR_VENV/bin/python" -m pip install --disable-pip-version-check --quiet PyYAML==6.0.3
+  VALIDATOR_PYTHON="$VALIDATOR_VENV/bin/python"
+fi
+
 echo "==> Validating production compose rendering"
 # docker-compose.prod.yml now requires secrets (e.g. GRAFANA_PASSWORD:?) with no
-# weak defaults, so `config` needs the env file to interpolate. .env.production
-# is a committed placeholder template — its values only have to render, not be real.
-docker compose -f docker-compose.prod.yml --env-file .env.production config >/tmp/latexy-observability-compose.out
+# weak defaults, so `config` needs the committed example to interpolate. Its
+# placeholder values only have to render; runtime secrets stay untracked.
+# The example intentionally leaves LATEXY_VERSION blank so deployment cannot
+# start without an operator-selected immutable image. For this render-only
+# check, provide the checked-out commit as an inert SHA tag for this command;
+# this does not build, pull, or deploy an image and does not weaken production
+# startup validation.
+LATEXY_VERSION="${LATEXY_VERSION:-sha-$(git rev-parse HEAD)}" \
+  docker compose -f docker-compose.prod.yml --env-file .env.production.example config >/tmp/latexy-observability-compose.out
 
 echo "==> Validating monitoring YAML and dashboard JSON"
-python3 - <<'PY'
+"$VALIDATOR_PYTHON" - <<'PY'
 import json
 from pathlib import Path
 

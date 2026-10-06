@@ -52,6 +52,21 @@ describe('generateTimeline', () => {
     const result = generateTimeline([])
     expect(result).toContain('\\usepackage{tikz}')
   })
+
+  test('escapes every LaTeX metacharacter in one pass', () => {
+    const result = generateTimeline([
+      {
+        year: String.raw`\\input{secret}`,
+        label: '&%$#_{}~^',
+        description: String.raw`\\write18{touch /tmp/pwned}`,
+      },
+    ])
+
+    expect(result).toContain(String.raw`\textbackslash{}input\{secret\}`)
+    expect(result).toContain(String.raw`\&\%\$\#\_\{\}\textasciitilde{}\textasciicircum{}`)
+    expect(result).toContain(String.raw`\textbackslash{}write18\{touch /tmp/pwned\}`)
+    expect(result).not.toContain(String.raw`\textbackslash\{\}`)
+  })
 })
 
 // ── generateSkillBars ─────────────────────────────────────────────────────────
@@ -125,6 +140,22 @@ describe('generateFlowchart', () => {
   test('edge labels appear in output', () => {
     const result = generateFlowchart(nodes, edges)
     expect(result).toContain('Yes')
+  })
+
+  test('replaces external node IDs and drops dangling edges', () => {
+    const hostileNodes: FlowNode[] = [
+      { id: String.raw`a) node {\\input{/etc/passwd}}; %`, label: 'Safe', x: 0, y: 0, shape: 'rect' },
+      { id: 'normal', label: 'End', x: 1, y: 1, shape: 'circle' },
+    ]
+    const result = generateFlowchart(hostileNodes, [
+      { from: hostileNodes[0].id, to: 'normal' },
+      { from: 'missing', to: 'normal' },
+    ])
+
+    expect(result).toContain('(latexy-node-0)')
+    expect(result).toContain('(latexy-node-1)')
+    expect(result).not.toContain('input{/etc/passwd}')
+    expect(result.match(/\\draw\[->\]/g)).toHaveLength(1)
   })
 })
 

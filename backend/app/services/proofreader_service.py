@@ -12,10 +12,11 @@ No LLM — purely regex-based, fast and deterministic.
 
 from __future__ import annotations
 
-import re
 from typing import Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
+
+from ..utils import safe_regex as re
 
 # ── Response schemas ──────────────────────────────────────────────────────────
 

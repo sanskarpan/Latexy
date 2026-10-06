@@ -14,9 +14,21 @@ from __future__ import annotations
 import itertools
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.core.config import get_compile_timeout, settings
 from app.workers.latex_worker import compile_latex_task, submit_latex_compilation
 from app.workers.orchestrator import submit_optimize_and_compile
+
+
+@pytest.fixture(autouse=True)
+def _docker_capability_probe():
+    """Do not route global subprocess doubles through the Docker probe."""
+    with (
+        patch("app.workers.latex_worker.docker_engine_available", return_value=False),
+        patch("app.workers.orchestrator.docker_engine_available", return_value=False),
+    ):
+        yield
 
 # ---------------------------------------------------------------------------
 # 11A — get_compile_timeout helper
@@ -53,6 +65,24 @@ class TestGetCompileTimeout:
 _VALID_LATEX = r"\documentclass{article}\begin{document}Hello\end{document}"
 
 
+class _BoundedSyncStream:
+    """Small Popen.stdout double with the bounded-read contract."""
+
+    def __init__(self, chunks: list[str | bytes]):
+        self._payload = b"".join(
+            chunk.encode() if isinstance(chunk, str) else chunk for chunk in chunks
+        )
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self._payload)
+        chunk, self._payload = self._payload[:size], self._payload[size:]
+        return chunk
+
+    def close(self) -> None:
+        pass
+
+
 def _make_mock_task():
     """Return a mock Celery task self object."""
     mock_self = MagicMock()
@@ -84,8 +114,6 @@ class TestCompileLatexTaskTimeout:
 
     def test_timeout_emits_compile_timeout_error_code(self):
         """When compilation exceeds timeout, error_code must be 'compile_timeout'."""
-        def _one_log_line():
-            yield "This is pdflatex output\n"
 
         with (
             patch("app.workers.latex_worker.latex_service.validate_latex_content", return_value=True),
@@ -101,7 +129,7 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.time.time", side_effect=itertools.count(100, 100)),
         ):
             mock_proc = MagicMock()
-            mock_proc.stdout = _one_log_line()
+            mock_proc.stdout = _BoundedSyncStream(["This is pdflatex output\n"])
             mock_popen.return_value = mock_proc
 
             result = compile_latex_task(
@@ -114,9 +142,7 @@ class TestCompileLatexTaskTimeout:
             assert result["success"] is False
             assert result["error"] == "compile_timeout"
 
-            failed_calls = [
-                c for c in mock_publish.call_args_list if c.args[1] == "job.failed"
-            ]
+            failed_calls = [c for c in mock_publish.call_args_list if c.args[1] == "job.failed"]
             assert len(failed_calls) == 1
             payload = failed_calls[0].args[2]
             assert payload["error_code"] == "compile_timeout"
@@ -137,7 +163,7 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.time.time", side_effect=itertools.count(100, 100)),
         ):
             mock_proc = MagicMock()
-            mock_proc.stdout = iter(["log line\n"])
+            mock_proc.stdout = _BoundedSyncStream(["log line\n"])
             mock_popen.return_value = mock_proc
 
             compile_latex_task(
@@ -147,9 +173,7 @@ class TestCompileLatexTaskTimeout:
                 timeout_seconds=30,
             )
 
-            failed_calls = [
-                c for c in mock_publish.call_args_list if c.args[1] == "job.failed"
-            ]
+            failed_calls = [c for c in mock_publish.call_args_list if c.args[1] == "job.failed"]
             assert len(failed_calls) == 1
             payload = failed_calls[0].args[2]
             # Message must mention the timeout value
@@ -161,8 +185,9 @@ class TestCompileLatexTaskTimeout:
         from celery.exceptions import SoftTimeLimitExceeded
 
         class _SoftLimitStdout:
-            """Raising SoftTimeLimitExceeded on iteration simulates Celery's signal."""
-            def __iter__(self):
+            """Raising SoftTimeLimitExceeded on read simulates Celery's signal."""
+
+            def read(self, size: int) -> bytes:
                 raise SoftTimeLimitExceeded()
 
         with (
@@ -189,9 +214,7 @@ class TestCompileLatexTaskTimeout:
             assert result["success"] is False
             assert result["error"] == "compile_timeout"
 
-            failed_calls = [
-                c for c in mock_publish.call_args_list if c.args[1] == "job.failed"
-            ]
+            failed_calls = [c for c in mock_publish.call_args_list if c.args[1] == "job.failed"]
             assert len(failed_calls) == 1
             payload = failed_calls[0].args[2]
             assert payload["error_code"] == "compile_timeout"
@@ -211,22 +234,20 @@ class TestCompileLatexTaskTimeout:
             patch("app.workers.latex_worker.time.time", side_effect=itertools.count(100, 100)),
         ):
             mock_proc = MagicMock()
-            mock_proc.stdout = iter(["line\n"])
+            mock_proc.stdout = _BoundedSyncStream(["line\n"])
             mock_popen.return_value = mock_proc
 
             result = compile_latex_task(
                 latex_content=_VALID_LATEX,
                 job_id="test-job-explicit-timeout",
-                user_plan="pro",   # pro = 240s by default
+                user_plan="pro",  # pro = 240s by default
                 timeout_seconds=60,  # override to 60s
             )
 
             assert result["success"] is False
             assert result["error"] == "compile_timeout"
 
-            failed_calls = [
-                c for c in mock_publish.call_args_list if c.args[1] == "job.failed"
-            ]
+            failed_calls = [c for c in mock_publish.call_args_list if c.args[1] == "job.failed"]
             payload = failed_calls[0].args[2]
             assert "60" in payload["error_message"]
 
@@ -237,6 +258,20 @@ class TestCompileLatexTaskTimeout:
 
 
 class TestSubmitLatexCompilationTimeLimits:
+    def test_auto_fit_allows_bounded_probe_time_plus_the_plan_compile_limit(self):
+        with patch("app.workers.latex_worker.compile_latex_task") as mock_task:
+            submit_latex_compilation(
+                latex_content=_VALID_LATEX,
+                job_id="test-job-auto-fit",
+                user_plan="free",
+                auto_fit=True,
+            )
+
+        _, kwargs = mock_task.apply_async.call_args
+        assert kwargs["time_limit"] == settings.COMPILE_TIMEOUT_FREE * 2 + 30
+        assert kwargs["soft_time_limit"] == settings.COMPILE_TIMEOUT_FREE * 2 + 15
+        assert kwargs["kwargs"]["auto_fit"] is True
+
     def test_free_plan_time_limit(self):
         """submit_latex_compilation with free plan passes time_limit=60, soft_time_limit=45."""
         with patch("app.workers.latex_worker.compile_latex_task") as mock_task:

@@ -10,7 +10,8 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..data.official_snippets import OFFICIAL_SNIPPETS
@@ -24,6 +25,7 @@ from ..middleware.auth_middleware import (
     get_current_user_required as get_current_user,
 )
 from ..middleware.entitlements import require_feature
+from ..utils.uuid_guard import ensure_uuid
 
 router = APIRouter(prefix='/snippets', tags=['snippets'])
 admin_router = APIRouter(prefix='/admin', tags=['admin'])
@@ -60,7 +62,7 @@ class SnippetCreate(BaseModel):
     description: str = Field(..., min_length=10, max_length=500)
     content: str = Field(..., min_length=10, max_length=10_000)
     category: Literal['header', 'experience', 'skills', 'education', 'misc']
-    tags: list[str] = Field(default=[], max_items=10)
+    tags: list[str] = Field(default_factory=list, max_length=10)
 
     @field_validator('tags')
     @classmethod
@@ -184,6 +186,7 @@ async def get_snippet(
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
 ) -> SnippetResponse:
+    ensure_uuid(snippet_id, 'Snippet not found')
     result = await db.execute(select(Snippet).where(Snippet.id == snippet_id))
     snippet = result.scalar_one_or_none()
     if not snippet:
@@ -225,6 +228,7 @@ async def update_snippet(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ) -> SnippetResponse:
+    ensure_uuid(snippet_id, 'Snippet not found')
     result = await db.execute(select(Snippet).where(Snippet.id == snippet_id))
     snippet = result.scalar_one_or_none()
     if not snippet:
@@ -246,6 +250,7 @@ async def delete_snippet(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ) -> None:
+    ensure_uuid(snippet_id, 'Snippet not found')
     result = await db.execute(select(Snippet).where(Snippet.id == snippet_id))
     snippet = result.scalar_one_or_none()
     if not snippet:
@@ -262,22 +267,25 @@ async def install_snippet(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ) -> None:
+    ensure_uuid(snippet_id, 'Snippet not found')
     result = await db.execute(select(Snippet).where(Snippet.id == snippet_id))
     snippet = result.scalar_one_or_none()
     if not snippet:
         raise HTTPException(status_code=404, detail='Snippet not found')
 
-    # Idempotent: only add if not already installed
-    existing = await db.execute(
-        select(SnippetInstall).where(
-            SnippetInstall.snippet_id == snippet_id,
-            SnippetInstall.user_id == user_id,
-        )
+    inserted = await db.execute(
+        pg_insert(SnippetInstall)
+        .values(snippet_id=snippet_id, user_id=user_id)
+        .on_conflict_do_nothing(index_elements=['snippet_id', 'user_id'])
+        .returning(SnippetInstall.snippet_id)
     )
-    if existing.scalar_one_or_none() is None:
-        db.add(SnippetInstall(snippet_id=snippet_id, user_id=user_id))
-        snippet.installs_count = (snippet.installs_count or 0) + 1
-        await db.commit()
+    if inserted.scalar_one_or_none() is not None:
+        await db.execute(
+            update(Snippet)
+            .where(Snippet.id == snippet_id)
+            .values(installs_count=Snippet.installs_count + 1)
+        )
+    await db.commit()
 
 
 @router.delete('/{snippet_id}/install', status_code=204)
@@ -286,22 +294,25 @@ async def uninstall_snippet(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ) -> None:
+    ensure_uuid(snippet_id, 'Snippet not found')
     result = await db.execute(select(Snippet).where(Snippet.id == snippet_id))
     snippet = result.scalar_one_or_none()
     if not snippet:
         raise HTTPException(status_code=404, detail='Snippet not found')
 
-    existing = await db.execute(
-        select(SnippetInstall).where(
+    removed = await db.execute(
+        delete(SnippetInstall).where(
             SnippetInstall.snippet_id == snippet_id,
             SnippetInstall.user_id == user_id,
-        )
+        ).returning(SnippetInstall.snippet_id)
     )
-    install = existing.scalar_one_or_none()
-    if install:
-        await db.delete(install)
-        snippet.installs_count = max(0, (snippet.installs_count or 1) - 1)
-        await db.commit()
+    if removed.scalar_one_or_none() is not None:
+        await db.execute(
+            update(Snippet)
+            .where(Snippet.id == snippet_id)
+            .values(installs_count=func.greatest(0, Snippet.installs_count - 1))
+        )
+    await db.commit()
 
 
 @router.post('/{snippet_id}/upvote', status_code=204)
@@ -310,26 +321,39 @@ async def toggle_upvote(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ) -> None:
+    ensure_uuid(snippet_id, 'Snippet not found')
     result = await db.execute(select(Snippet).where(Snippet.id == snippet_id))
     snippet = result.scalar_one_or_none()
     if not snippet:
         raise HTTPException(status_code=404, detail='Snippet not found')
 
-    existing = await db.execute(
-        select(SnippetUpvote).where(
-            SnippetUpvote.snippet_id == snippet_id,
-            SnippetUpvote.user_id == user_id,
-        )
+    inserted = await db.execute(
+        pg_insert(SnippetUpvote)
+        .values(snippet_id=snippet_id, user_id=user_id)
+        .on_conflict_do_nothing(index_elements=['snippet_id', 'user_id'])
+        .returning(SnippetUpvote.snippet_id)
     )
-    upvote = existing.scalar_one_or_none()
-    if upvote:
-        # Toggle off
-        await db.delete(upvote)
-        snippet.upvotes_count = max(0, (snippet.upvotes_count or 1) - 1)
+    if inserted.scalar_one_or_none() is not None:
+        await db.execute(
+            update(Snippet)
+            .where(Snippet.id == snippet_id)
+            .values(upvotes_count=Snippet.upvotes_count + 1)
+        )
     else:
-        # Toggle on
-        db.add(SnippetUpvote(snippet_id=snippet_id, user_id=user_id))
-        snippet.upvotes_count = (snippet.upvotes_count or 0) + 1
+        removed = await db.execute(
+            delete(SnippetUpvote)
+            .where(
+                SnippetUpvote.snippet_id == snippet_id,
+                SnippetUpvote.user_id == user_id,
+            )
+            .returning(SnippetUpvote.snippet_id)
+        )
+        if removed.scalar_one_or_none() is not None:
+            await db.execute(
+                update(Snippet)
+                .where(Snippet.id == snippet_id)
+                .values(upvotes_count=func.greatest(0, Snippet.upvotes_count - 1))
+            )
     await db.commit()
 
 

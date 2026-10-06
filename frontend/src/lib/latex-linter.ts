@@ -257,6 +257,239 @@ function checkMissingLabels(lines: string[]): LintIssue[] {
   return issues
 }
 
+// ─── Duplicate-label check ───────────────────────────────────────────────────
+
+/**
+ * Environments whose contents are literal text rather than LaTeX commands.
+ * Keep this list aligned with the editor's folding/hover literal-environment
+ * list so examples such as `\label{...}` are not reported as definitions.
+ */
+const LITERAL_ENVIRONMENTS = new Set([
+  'verbatim',
+  'verbatim*',
+  'Verbatim',
+  'Verbatim*',
+  'lstlisting',
+  'minted',
+  'comment',
+  'xcomment',
+  'filecontents',
+  'filecontents*',
+])
+const MAX_LABEL_KEY_LENGTH = 256
+const MAX_TRACKED_LABELS = 10_000
+const MAX_DUPLICATE_ISSUES = 10_000
+const MAX_ARGUMENT_SCAN_LENGTH = MAX_LABEL_KEY_LENGTH + 1
+
+function readBracedArgument(
+  line: string,
+  commandEnd: number,
+): { value: string; end: number } | null {
+  let start = commandEnd
+  while (start < line.length && /\s/.test(line[start])) start++
+  if (line[start] !== '{') return null
+  // Do not use an unbounded indexOf here. A malformed document containing
+  // many commands with an opening brace but no close would otherwise turn
+  // the otherwise-linear scanner into quadratic work.
+  let close = -1
+  const scanEnd = Math.min(line.length, start + 1 + MAX_ARGUMENT_SCAN_LENGTH)
+  for (let i = start + 1; i < scanEnd; i++) {
+    if (line[i] === '}') {
+      close = i
+      break
+    }
+  }
+  if (close < 0 || close - start - 1 > MAX_LABEL_KEY_LENGTH) return null
+  const value = line.slice(start + 1, close)
+  if (/[{}\r\n\u0000-\u001f\u007f]/.test(value)) return null
+  return { value, end: close + 1 }
+}
+
+/** Return the end of a balanced group, bounded to avoid pathological input. */
+function skipBalancedArgument(line: string, start: number): number | null {
+  if (line[start] !== '{') return null
+  let depth = 0
+  let slashRun = 0
+  const scanEnd = Math.min(line.length, start + 1 + MAX_ARGUMENT_SCAN_LENGTH * 4)
+  for (let index = start; index < scanEnd; index++) {
+    const char = line[index]
+    if (char === '\\') {
+      slashRun++
+      continue
+    }
+    const escaped = slashRun % 2 === 1
+    slashRun = 0
+    if (escaped) continue
+    if (char === '{') depth++
+    else if (char === '}' && --depth === 0) return index + 1
+  }
+  return null
+}
+
+function commandBoundary(line: string, index: number): boolean {
+  const next = line[index]
+  return next === undefined || !/[A-Za-z@]/.test(next)
+}
+
+const NON_EXECUTING_COMMANDS = new Set(['string', 'meaning', 'show'])
+const INLINE_LITERAL_COMMANDS = new Set(['verb', 'lstinline', 'mintinline'])
+
+function controlSequenceEnd(line: string, start: number): number {
+  let end = start
+  while (end < line.length && /[A-Za-z@]/.test(line[end])) end++
+  return end
+}
+
+/** Skip an inline literal command and return the next source index. */
+function skipInlineLiteral(line: string, commandEnd: number, command: string): number {
+  let delimiterIndex = commandEnd
+  if (line[delimiterIndex] === '*') delimiterIndex++
+
+  // \lstinline accepts an optional key-value option list, while \mintinline
+  // takes a language group before the delimiter.
+  if (command === 'lstinline' && line[delimiterIndex] === '[') {
+    const optionEnd = line.indexOf(']', delimiterIndex + 1)
+    if (optionEnd < 0) return line.length
+    delimiterIndex = optionEnd + 1
+  } else if (command === 'mintinline') {
+    if (line[delimiterIndex] === '[') {
+      const optionEnd = line.indexOf(']', delimiterIndex + 1)
+      if (optionEnd < 0) return line.length
+      delimiterIndex = optionEnd + 1
+    }
+    const language = readBracedArgument(line, delimiterIndex)
+    if (!language) return line.length
+    delimiterIndex = language.end
+  }
+
+  if (delimiterIndex >= line.length) return line.length
+  const delimiter = line[delimiterIndex]
+  const close = line.indexOf(delimiter, delimiterIndex + 1)
+  return close < 0 ? line.length : close + 1
+}
+
+/**
+ * Report only the second and later literal `\label{key}` definitions. This is
+ * a bounded character scanner rather than a multiline regex: comments,
+ * literal environments, and inline `\verb` text are skipped without allowing
+ * a hostile document to trigger catastrophic backtracking.
+ */
+function checkDuplicateLabels(lines: string[]): LintIssue[] {
+  const firstDefinitions = new Map<string, true>()
+  const issues: LintIssue[] = []
+  let literalEnvironment: string | null = null
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex]
+    let index = 0
+    let slashRun = 0
+
+    while (index < line.length) {
+      if (literalEnvironment) {
+        const endStart = line.indexOf('\\end', index)
+        if (endStart < 0) break
+        const endArgument = readBracedArgument(line, endStart + '\\end'.length)
+        if (!endArgument || endArgument.value.trim() !== literalEnvironment) {
+          index = endStart + '\\end'.length
+          continue
+        }
+        literalEnvironment = null
+        index = endArgument.end
+        slashRun = 0
+        continue
+      }
+
+      const char = line[index]
+      if (char === '\\') {
+        const escapedBackslash = slashRun % 2 === 1
+        slashRun++
+        if (escapedBackslash) {
+          index++
+          continue
+        }
+      } else {
+        const escapedPercent = slashRun % 2 === 1
+        slashRun = 0
+        if (char === '%' && !escapedPercent) break
+        index++
+        continue
+      }
+
+      // In `\\label{key}`, the two slashes form TeX's line-break command;
+      // the following letters are text, not a label definition. Preserve
+      // parity so a real command after an even run (e.g. `\\\\\\label`) is
+      // still considered.
+
+      if (line.startsWith('\\begin', index) && commandBoundary(line, index + '\\begin'.length)) {
+        const beginArgument = readBracedArgument(line, index + '\\begin'.length)
+        if (beginArgument && LITERAL_ENVIRONMENTS.has(beginArgument.value.trim())) {
+          literalEnvironment = beginArgument.value.trim()
+          index = beginArgument.end
+          slashRun = 0
+          continue
+        }
+      }
+
+      const commandEnd = controlSequenceEnd(line, index + 1)
+      const command = line.slice(index + 1, commandEnd)
+      if (INLINE_LITERAL_COMMANDS.has(command) && commandBoundary(line, commandEnd)) {
+        index = skipInlineLiteral(line, commandEnd, command)
+        slashRun = 0
+        continue
+      }
+
+      // \string\label, \meaning\label, and \show\label turn the following
+      // control sequence into diagnostics/text rather than executing it.
+      // Suppress just that control sequence; ordinary \label commands remain
+      // eligible for detection.
+      if (NON_EXECUTING_COMMANDS.has(command) && commandBoundary(line, commandEnd)) {
+        let next = commandEnd
+        while (next < line.length && /\s/.test(line[next])) next++
+        if (line[next] === '\\') index = controlSequenceEnd(line, next + 1)
+        else index = next
+        slashRun = 0
+        continue
+      }
+
+      if (command === 'detokenize' && commandBoundary(line, commandEnd)) {
+        let argumentStart = commandEnd
+        while (argumentStart < line.length && /\s/.test(line[argumentStart])) argumentStart++
+        const argumentEnd = skipBalancedArgument(line, argumentStart)
+        index = argumentEnd ?? line.length
+        slashRun = 0
+        continue
+      }
+
+      if (command === 'label' && commandBoundary(line, commandEnd)) {
+        const labelArgument = readBracedArgument(line, commandEnd)
+        if (labelArgument) {
+          const key = labelArgument.value.trim()
+          if (key && firstDefinitions.has(key) && issues.length < MAX_DUPLICATE_ISSUES) {
+            issues.push({
+              line: lineIndex + 1,
+              column: index + 1,
+              endColumn: labelArgument.end + 1,
+              severity: 'warning',
+              ruleId: 'duplicate-label',
+              message: `Duplicate \\label{${key}} definition — labels must be unique; rename or remove this definition.`,
+              fixable: false,
+            })
+          } else if (key && firstDefinitions.size < MAX_TRACKED_LABELS) {
+            firstDefinitions.set(key, true)
+          }
+          index = labelArgument.end
+          slashRun = 0
+          continue
+        }
+      }
+
+      index++
+    }
+  }
+
+  return issues
+}
+
 // ─── Main lintLatex function ──────────────────────────────────────────────────
 
 export function lintLatex(content: string): LintIssue[] {
@@ -296,6 +529,7 @@ export function lintLatex(content: string): LintIssue[] {
   issues.push(...checkGlyphToUnicode(lines))
   issues.push(...checkHyperrefOrder(lines))
   issues.push(...checkMissingLabels(lines))
+  issues.push(...checkDuplicateLabels(lines))
 
   // Sort by line then column
   issues.sort((a, b) => a.line - b.line || a.column - b.column)

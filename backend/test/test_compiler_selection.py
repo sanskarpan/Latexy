@@ -163,6 +163,12 @@ class TestCompileLatexTaskCompilerParam:
     runs [compiler, -interaction=nonstopmode, ...] via Popen.
     """
 
+    @pytest.fixture(autouse=True)
+    def _docker_capability_probe(self):
+        """Keep the capability subprocess separate from the Popen command spy."""
+        with patch("app.workers.latex_worker.docker_engine_available", return_value=False):
+            yield
+
     def _make_mock_popen(self, returncode: int = 0):
         """Return a mock subprocess.Popen result."""
         mock_proc = MagicMock()
@@ -171,7 +177,7 @@ class TestCompileLatexTaskCompilerParam:
         mock_proc.wait = MagicMock(return_value=returncode)
         return mock_proc
 
-    def _run_task_with_mock(self, compiler: str) -> list:
+    def _run_task_with_mock(self, compiler: str, compile_settings=None) -> list:
         """Run compile_latex_task with a mocked Popen; return the captured cmd list.
 
         Note: Celery bound tasks must be called without a mock `self` arg —
@@ -206,6 +212,7 @@ class TestCompileLatexTaskCompilerParam:
                     latex_content=_LATEX,
                     job_id=job_id,
                     compiler=compiler,
+                    compile_settings=compile_settings,
                 )
             except Exception:
                 pass  # Any error after Popen is fine — we only care about the cmd
@@ -227,3 +234,9 @@ class TestCompileLatexTaskCompilerParam:
         cmd = self._run_task_with_mock("ghostscript")
         assert any("pdflatex" in str(c) for c in cmd), f"Expected pdflatex fallback in cmd, got: {cmd}"
         assert not any("ghostscript" in str(c) for c in cmd)
+
+    def test_halt_on_error_defaults_on_and_can_be_disabled(self):
+        assert "-halt-on-error" in self._run_task_with_mock("pdflatex")
+        assert "-halt-on-error" not in self._run_task_with_mock(
+            "pdflatex", {"halt_on_error": False}
+        )

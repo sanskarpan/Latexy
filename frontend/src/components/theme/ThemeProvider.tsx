@@ -13,22 +13,22 @@ import { apiClient } from '@/lib/api-client'
  * and `setMode` writes the cookie (for SSR on the next load) + the `data-mode`
  * attribute. Aesthetic (typeset/compiler) is handled separately by route.
  *
- * Account sync: there is currently no backend endpoint for a persisted user
- * theme preference (checked `api-client.ts` — the closest analogue,
- * `updateNotificationPrefs`, is a different feature). Until that endpoint
- * exists, mode is additionally cached per-account in localStorage
- * (`latexy-theme:acct:{userId}`) so at least a signed-in user gets a
- * consistent preference across browsers/devices *that have already seen*
- * that account locally, and a real cross-device sync should replace this
- * with a proper `PATCH /users/me` (or similar) call once one is added.
+ * Signed-in account preferences are fetched and updated through the account
+ * API. A per-account localStorage value is applied first as a fast cache; the
+ * cookie keeps server-rendered routes aligned on this device.
  */
 
 type Mode = 'light' | 'dark'
+type Contrast = 'normal' | 'high'
 
 interface ThemeCtx {
+  ready: boolean
   mode: Mode
   setMode: (m: Mode) => void
   toggle: () => void
+  contrast: Contrast
+  setContrast: (contrast: Contrast) => void
+  toggleContrast: () => void
 }
 
 const Ctx = createContext<ThemeCtx | null>(null)
@@ -37,29 +37,32 @@ function acctKey(userId: string) {
   return `latexy-theme:acct:${userId}`
 }
 
-// Reads the mode the pre-paint bootstrap script already applied to
-// `data-mode`, so `mode` reflects the real theme from the first client
-// render onward (used to drive things like the toggle's own icon once
-// mounted — see ModeToggle, which intentionally renders the SSR-default
-// icon until then, since `mode` itself can only resolve to 'light' during
-// SSR and reading the real value on the client's first render would be a
-// hydration mismatch). Falls back to the cookie, then OS preference, for the
-// rare case this runs before the bootstrap script has.
-function readInitialMode(): Mode {
-  if (typeof document === 'undefined') return 'light'
-  const attr = document.documentElement.getAttribute('data-mode')
-  if (attr === 'light' || attr === 'dark') return attr
-  const m = document.cookie.match(/(?:^|; )latexy-theme=(light|dark)/)
-  if (m) return m[1] as Mode
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // Lazy initializer runs synchronously on first client render, so it already
-  // matches whatever the pre-paint script set — no post-hydration flip.
-  const [mode, setModeState] = useState<Mode>(readInitialMode)
+  // The pre-paint script applies the saved/OS theme before styling. Keep state
+  // deterministic during SSR and first hydration, then synchronize controls
+  // from those already-applied root attributes in the effect below.
+  const [mode, setModeState] = useState<Mode>('light')
+  const [contrast, setContrastState] = useState<Contrast>('normal')
+  const [ready, setReady] = useState(false)
   const { data: session } = useSession()
   const userId = session?.user?.id
+
+  // The bootstrap has already set these attributes, so adopting them does not
+  // change the colors users see. It only brings the React state behind the
+  // theme controls into sync after hydration.
+  useEffect(() => {
+    const modeAttr = document.documentElement.getAttribute('data-mode')
+    if (modeAttr === 'light' || modeAttr === 'dark') setModeState(modeAttr)
+
+    const contrastAttr = document.documentElement.getAttribute('data-contrast')
+    if (contrastAttr === 'normal' || contrastAttr === 'high') {
+      setContrastState(contrastAttr)
+    }
+    // Controls are server-rendered before React can attach their handlers.
+    // Keep them disabled until this synchronization completes so a click
+    // during a slow hydration cannot appear to succeed while being discarded.
+    setReady(true)
+  }, [])
 
   const applyMode = useCallback((m: Mode) => {
     setModeState(m)
@@ -77,7 +80,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // the network request is in flight).
     try {
       const cached = window.localStorage.getItem(acctKey(userId))
-      if ((cached === 'light' || cached === 'dark') && cached !== mode) {
+      if (cached === 'light' || cached === 'dark') {
         applyMode(cached)
       }
     } catch {
@@ -94,9 +97,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(() => { /* anonymous/offline — device-local value stands */ })
-    // Only run when the account identity changes, not on every mode change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId])
+  }, [applyMode, userId])
 
   const setMode = useCallback(
     (m: Mode) => {
@@ -114,9 +115,27 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     [applyMode, userId],
   )
 
-  const toggle = useCallback(() => setMode(mode === 'dark' ? 'light' : 'dark'), [mode, setMode])
+  const toggle = useCallback(() => {
+    const appliedMode = document.documentElement.getAttribute('data-mode')
+    setMode(appliedMode === 'dark' ? 'light' : 'dark')
+  }, [setMode])
 
-  return <Ctx.Provider value={{ mode, setMode, toggle }}>{children}</Ctx.Provider>
+  const setContrast = useCallback((nextContrast: Contrast) => {
+    setContrastState(nextContrast)
+    document.documentElement.setAttribute('data-contrast', nextContrast)
+    document.cookie = `latexy-contrast=${nextContrast}; path=/; max-age=31536000; SameSite=Lax`
+  }, [])
+
+  const toggleContrast = useCallback(() => {
+    const appliedContrast = document.documentElement.getAttribute('data-contrast')
+    setContrast(appliedContrast === 'high' ? 'normal' : 'high')
+  }, [setContrast])
+
+  return (
+    <Ctx.Provider value={{ ready, mode, setMode, toggle, contrast, setContrast, toggleContrast }}>
+      {children}
+    </Ctx.Provider>
+  )
 }
 
 export function useTheme(): ThemeCtx {

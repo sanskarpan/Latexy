@@ -1,3 +1,12 @@
 packages:
   - frontend
   - packages/*
+
+publicHoistPattern:
+  - pdfjs-dist
+
+onlyBuiltDependencies:
+  - canvas
+  - esbuild
+  - sharp
+  - unrs-resolver

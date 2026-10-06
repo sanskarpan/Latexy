@@ -169,6 +169,24 @@ class TestConsumeQuota:
         snapshot = await entitlement_service.quota_snapshot(user_id, "free")
         assert snapshot["dimensions"]["compilations"]["used"] == limit
 
+    async def test_consumption_repairs_legacy_counter_without_expiry(self):
+        from app.core.redis import get_redis_cache_client
+
+        user_id = str(uuid.uuid4())
+        period = datetime.now(timezone.utc).strftime("%Y%m%d")
+        key = f"latexy:quota:compilations:{user_id}:{period}"
+        redis = await get_redis_cache_client()
+        await redis.set(key, 1)
+        assert await redis.ttl(key) == -1
+
+        ticket = await entitlement_service.consume_quota(
+            "compilations", user_id=user_id, plan="free"
+        )
+
+        assert ticket.allowed is True
+        assert ticket.used == 2
+        assert await redis.ttl(key) > 0
+
     async def test_unlimited_plan_never_denied_but_still_counted(self):
         user_id = str(uuid.uuid4())
         for _ in range(5):
@@ -212,6 +230,28 @@ class TestConsumeQuota:
             "compilations", user_id=user_id, plan="free"
         )
         await entitlement_service.refund_quota(ticket)
+        snapshot = await entitlement_service.quota_snapshot(user_id, "free")
+        assert snapshot["dimensions"]["compilations"]["used"] == 0
+
+    async def test_duplicate_or_oversized_refund_cannot_create_negative_balance(self):
+        user_id = str(uuid.uuid4())
+        ticket = await entitlement_service.consume_quota(
+            "compilations", user_id=user_id, plan="free"
+        )
+
+        # Two exception handlers may observe the same failed request. The
+        # receipt must make the second refund a no-op.
+        await entitlement_service.refund_quota(ticket)
+        await entitlement_service.refund_quota(ticket)
+        snapshot = await entitlement_service.quota_snapshot(user_id, "free")
+        assert snapshot["dimensions"]["compilations"]["used"] == 0
+
+        # A bad cost from a batch/error path must clamp at zero rather than
+        # creating negative usage that lets later requests bypass the limit.
+        second = await entitlement_service.consume_quota(
+            "compilations", user_id=user_id, plan="free"
+        )
+        await entitlement_service.refund_quota(second, cost=10_000)
         snapshot = await entitlement_service.quota_snapshot(user_id, "free")
         assert snapshot["dimensions"]["compilations"]["used"] == 0
 
@@ -334,8 +374,12 @@ class TestEnforceQuota:
 class TestJobSubmitQuota:
 
     async def test_free_user_blocked_only_at_the_daily_allowance(
-        self, client: AsyncClient, db_session: AsyncSession
+        self, client: AsyncClient, db_session: AsyncSession, monkeypatch
     ):
+        # This is a quota-route contract, not a worker integration test. Keeping
+        # real Celery dispatch enabled lets a concurrently running local worker
+        # refund failed test compiles while the loop is still measuring usage.
+        monkeypatch.setattr("app.api.job_routes.submit_latex_compilation", lambda **_: None)
         limit = get_plan_quota("free", "compilations")
         user_id = await _create_user(db_session, plan="free")
         headers = await _headers(db_session, user_id)
@@ -361,13 +405,14 @@ class TestJobSubmitQuota:
 
         for _ in range(get_plan_quota("free", "compilations") + 3):
             resp = await client.post("/jobs/submit", json=body, headers=headers)
-            assert resp.status_code == 200
+            assert resp.status_code == 200, resp.text
 
     async def test_watermarked_compile_spends_the_same_meter(
-        self, client: AsyncClient, db_session: AsyncSession
+        self, client: AsyncClient, db_session: AsyncSession, monkeypatch
     ):
         # /jobs/compile-watermarked runs the same pdflatex, so it must not be a
         # way around the compilations allowance.
+        monkeypatch.setattr("app.api.job_routes.submit_latex_compilation", lambda **_: None)
         limit = get_plan_quota("free", "compilations")
         user_id = await _create_user(db_session, plan="free")
         headers = await _headers(db_session, user_id)
@@ -380,7 +425,7 @@ class TestJobSubmitQuota:
             resp = await client.post(
                 "/jobs/compile-watermarked", json=body, headers=headers
             )
-            assert resp.status_code == 200
+            assert resp.status_code == 200, resp.text
 
         resp = await client.post("/jobs/compile-watermarked", json=body, headers=headers)
         assert resp.status_code == 402

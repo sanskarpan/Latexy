@@ -90,7 +90,7 @@ class EncryptionService:
             token = base64.b64decode(ciphertext.encode())
             return self._fernet.decrypt(token).decode()
         except (InvalidToken, Exception) as e:
-            logger.error(f"Decryption failed: {e}")
+            logger.error("Decryption failed", extra={"error_type": type(e).__name__})
             raise
 
     def encrypt_api_key(self, api_key: str, provider: str) -> str:

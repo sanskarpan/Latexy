@@ -70,7 +70,7 @@ class LLMService:
         try:
             return tiktoken.encoding_for_model("gpt-4")
         except Exception as exc:
-            logger.warning(f"Failed to load tiktoken model encoding, using fallback tokenizer: {exc}")
+            logger.warning("Failed to load tiktoken model encoding, using fallback tokenizer", extra={"error_type": type(exc).__name__})
 
             class _FallbackEncoding:
                 @staticmethod
@@ -278,12 +278,12 @@ class LLMService:
 
         except Exception as e:
             record_llm_call("openai", settings.OPENAI_MODEL, "error", total_seconds=time.time() - start_time)
-            logger.error(f"Error during resume optimization: {e}")
+            logger.error("Error during resume optimization", extra={"error_type": type(e).__name__})
             return OptimizationResponse(
                 success=False,
                 original_latex=request.latex_content,
                 job_description=request.job_description,
-                error_message=str(e),
+                error_message="Resume optimization failed unexpectedly",
                 optimization_time=time.time() - start_time
             )
 
@@ -412,7 +412,7 @@ Respond in this exact format with no other text outside these markers:
                 )
                 changes.append(change)
             except Exception as e:
-                logger.warning(f"Failed to parse change: {e}")
+                logger.warning("Failed to parse change", extra={"error_type": type(e).__name__})
                 continue
         return changes
 

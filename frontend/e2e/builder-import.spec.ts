@@ -11,11 +11,11 @@ async function mockWorkspaceSupport(page: Page) {
     }),
   )
   await page.route((url) => {
-    return url.pathname.startsWith('/templates') || url.pathname === '/tenants/current-context'
+    return url.pathname.startsWith('/templates') || url.pathname === '/tenants/resolve-host'
   }, async (route) => {
     const url = new URL(route.request().url())
 
-    if (url.pathname === '/tenants/current-context') {
+    if (url.pathname === '/tenants/resolve-host') {
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -63,7 +63,7 @@ test.describe('Builder Import Wizard', () => {
         body: JSON.stringify({
           success: true,
           format: 'json',
-          filename: 'kickresume-export.json',
+          filename: 'reactive-resume-export.json',
           name: 'Avery Stone',
           email: 'avery@example.com',
           experience_count: 3,
@@ -76,7 +76,7 @@ test.describe('Builder Import Wizard', () => {
 
     await page.route('**/formats/upload**', async (route) => {
       const url = new URL(route.request().url())
-      expect(url.searchParams.get('source_platform')).toBe('kickresume')
+      expect(url.searchParams.get('source_platform')).toBe('reactive_resume')
 
       return route.fulfill({
         status: 200,
@@ -84,7 +84,7 @@ test.describe('Builder Import Wizard', () => {
         body: JSON.stringify({
           success: true,
           format: 'json',
-          filename: 'kickresume-export.json',
+          filename: 'reactive-resume-export.json',
           is_direct: true,
           latex_content: '\\documentclass{article}\\begin{document}Imported builder resume\\end{document}',
         }),
@@ -92,13 +92,13 @@ test.describe('Builder Import Wizard', () => {
     })
 
     await openBuilderMode(page)
-    await page.locator('button[type="button"]').filter({ hasText: 'Kickresume' }).last().click()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByText('How to export from Kickresume')).toBeVisible()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await page.locator('button[type="button"]').filter({ hasText: 'Reactive Resume' }).last().click()
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
+    await expect(page.getByText('How to export from Reactive Resume')).toBeVisible()
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
 
     await page.locator('input[type="file"]').setInputFiles({
-      name: 'kickresume-export.json',
+      name: 'reactive-resume-export.json',
       mimeType: 'application/json',
       buffer: Buffer.from('{"basics":{"name":"Avery Stone"}}'),
     })
@@ -150,9 +150,9 @@ test.describe('Builder Import Wizard', () => {
     })
 
     await openBuilderMode(page)
-    await page.locator('button[type="button"]').filter({ hasText: 'Generic JSON / Other' }).last().click()
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await page.locator('button[type="button"]').filter({ hasText: 'Other Builder' }).last().click()
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
 
     await page.locator('input[type="file"]').setInputFiles({
       name: 'generic-builder.pdf',

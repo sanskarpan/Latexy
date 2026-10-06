@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useCallback, useEffect, useState } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, FileText, StickyNote, Plus, Pencil, Trash2,
-  Loader2, ChevronDown, ChevronRight, Check, X,
+  Loader2, ChevronDown, ChevronRight, Check, X, Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -14,8 +14,11 @@ import {
   type WorkspaceResumeItem,
   type RecruiterNoteResponse,
 } from '@/lib/api-client'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import SessionLoadError from '@/components/SessionLoadError'
+import CommentsPanel from '@/components/CommentsPanel'
+import { downloadBlob } from '@/lib/download'
 
 interface ResumeWithNotes {
   resume: WorkspaceResumeItem
@@ -27,11 +30,14 @@ interface ResumeWithNotes {
 export default function RecruiterDashboardPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const router = useRouter()
-  const { data: session, isPending: sessionLoading } = useSession()
+  const searchParams = useSearchParams()
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
 
   const [ws, setWs] = useState<WorkspaceDetailResponse | null>(null)
   const [items, setItems] = useState<ResumeWithNotes[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
 
   // Per-resume note drafts
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -40,40 +46,12 @@ export default function RecruiterDashboardPage() {
   const [saving, setSaving] = useState<Record<string, boolean>>({})
 
   const userId = session?.user?.id ?? ''
+  const requestedResumeId = searchParams.get('resume_id')
+  const requestedCommentId = searchParams.get('comment_id') ?? undefined
+  const memberRole = ws?.members.find((member) => member.user_id === userId)?.role
+  const canWrite = memberRole === 'owner' || memberRole === 'editor'
 
-  useEffect(() => {
-    if (!session?.user) return
-    Promise.all([
-      apiClient.getWorkspace(workspaceId),
-      apiClient.listWorkspaceResumes(workspaceId),
-    ])
-      .then(([detail, resumes]) => {
-        if (detail.owner_id !== session.user.id) {
-          router.replace(`/workspaces/${workspaceId}`)
-          return
-        }
-        setWs(detail)
-        setItems(resumes.map((r) => ({ resume: r, notes: [], expanded: false, loading: false })))
-      })
-      .catch(() => toast.error('Failed to load workspace'))
-      .finally(() => setLoading(false))
-  }, [session, workspaceId, router])
-
-  async function toggleExpand(resumeId: string) {
-    setItems((prev) =>
-      prev.map((item) => {
-        if (item.resume.id !== resumeId) return item
-        if (item.expanded) return { ...item, expanded: false }
-        // Load notes on first expand
-        if (item.notes.length === 0 && !item.loading) {
-          loadNotes(resumeId)
-        }
-        return { ...item, expanded: true }
-      })
-    )
-  }
-
-  async function loadNotes(resumeId: string) {
+  const loadNotes = useCallback(async (resumeId: string) => {
     setItems((prev) =>
       prev.map((item) => item.resume.id === resumeId ? { ...item, loading: true } : item)
     )
@@ -88,6 +66,56 @@ export default function RecruiterDashboardPage() {
         prev.map((item) => item.resume.id === resumeId ? { ...item, loading: false } : item)
       )
     }
+  }, [workspaceId])
+
+  useEffect(() => {
+    if (!session?.user) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setLoadError(null)
+    Promise.all([
+      apiClient.getWorkspace(workspaceId),
+      apiClient.listWorkspaceResumes(workspaceId),
+    ])
+      .then(([detail, resumes]) => {
+        const reviewer = detail.members.find((member) => member.user_id === session.user.id)
+        if (!reviewer) {
+          router.replace(`/workspaces/${workspaceId}`)
+          return
+        }
+        const reviewerCanWrite = reviewer.role === 'owner' || reviewer.role === 'editor'
+        setWs(detail)
+        setItems(resumes.map((r) => ({
+          resume: r,
+          notes: [],
+          expanded: r.id === requestedResumeId,
+          loading: false,
+        })))
+        if (reviewerCanWrite && requestedResumeId && resumes.some((resume) => resume.id === requestedResumeId)) {
+          void loadNotes(requestedResumeId)
+        }
+      })
+      .catch((error) => {
+        setLoadError(error instanceof Error ? error.message : 'Failed to load workspace')
+        toast.error('Failed to load workspace')
+      })
+      .finally(() => setLoading(false))
+  }, [session, workspaceId, router, reloadNonce, requestedResumeId, loadNotes])
+
+  async function toggleExpand(resumeId: string) {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.resume.id !== resumeId) return item
+        if (item.expanded) return { ...item, expanded: false }
+        // Load notes on first expand
+        if (canWrite && item.notes.length === 0 && !item.loading) {
+          loadNotes(resumeId)
+        }
+        return { ...item, expanded: true }
+      })
+    )
   }
 
   async function handleAddNote(resumeId: string) {
@@ -149,8 +177,43 @@ export default function RecruiterDashboardPage() {
     }
   }
 
+  async function handleDownload(resume: WorkspaceResumeItem) {
+    try {
+      const blob = await apiClient.downloadWorkspaceResume(workspaceId, resume.id)
+      downloadBlob(blob, `${resume.title.replace(/[^a-z0-9_-]+/gi, '_') || 'resume'}.pdf`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Resume download failed')
+    }
+  }
+
   if (sessionLoading || loading) return <LoadingSpinner />
-  if (!ws) return null
+  if (sessionError && !session) return <SessionLoadError area="Recruiter dashboard" />
+  if (!session?.user) return null
+  if (loadError || !ws) {
+    return (
+      <div className="min-h-screen bg-bg text-fg p-6">
+        <div role="alert" className="mx-auto max-w-xl rounded-[var(--radius-lg)] border border-err/20 bg-err/[0.07] p-6 text-center">
+          <p className="text-sm font-semibold text-err">Recruiter dashboard could not be loaded</p>
+          <p className="mt-1 text-xs text-fg-2">{loadError ?? 'The workspace response was empty.'}</p>
+          <div className="mt-4 flex justify-center gap-3">
+            <Link
+              href={`/workspaces/${workspaceId}`}
+              className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-xs font-semibold text-fg-2 transition hover:bg-surface-2"
+            >
+              Back to workspace
+            </Link>
+            <button
+              type="button"
+              onClick={() => setReloadNonce((value) => value + 1)}
+              className="rounded-[var(--radius-md)] border border-err/30 px-4 py-2 text-xs font-semibold text-err transition hover:bg-err/10"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-bg text-fg p-6 max-w-4xl mx-auto">
@@ -187,11 +250,12 @@ export default function RecruiterDashboardPage() {
               className="bg-surface border border-line rounded-[var(--radius-lg)] overflow-hidden"
             >
               {/* Resume header row */}
-              <button
-                onClick={() => toggleExpand(resume.id)}
-                className="w-full flex items-center justify-between px-5 py-4 hover:bg-surface-2 transition-colors text-left"
-              >
-                <div className="flex items-center gap-3">
+              <div className="flex items-stretch hover:bg-surface-2 transition-colors">
+                <button
+                  onClick={() => toggleExpand(resume.id)}
+                  className="flex min-w-0 flex-1 items-center justify-between px-5 py-4 text-left"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
                   <FileText className="h-4 w-4 text-fg-2 shrink-0" />
                   <span className="font-medium text-fg">{resume.title}</span>
                   {notes.length > 0 && (
@@ -199,15 +263,31 @@ export default function RecruiterDashboardPage() {
                       {notes.length} {notes.length === 1 ? 'note' : 'notes'}
                     </span>
                   )}
-                </div>
-                {expanded
-                  ? <ChevronDown className="h-4 w-4 text-fg-3" />
-                  : <ChevronRight className="h-4 w-4 text-fg-3" />
-                }
-              </button>
+                  <span className="text-[10px] text-fg-3">
+                    submitted {new Date(resume.shared_at).toLocaleDateString()}
+                    {resume.opened_at && resume.opened_actor === 'candidate' && resume.opened_source === 'candidate_self'
+                      ? ' · candidate viewed their submission'
+                      : ''}
+                    {resume.downloaded_at && resume.downloaded_actor === 'candidate' && resume.downloaded_source === 'candidate_self'
+                      ? ' · candidate downloaded their PDF'
+                      : ''}
+                  </span>
+                  </span>
+                  {expanded
+                    ? <ChevronDown className="h-4 w-4 text-fg-3" />
+                    : <ChevronRight className="h-4 w-4 text-fg-3" />
+                  }
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDownload(resume)}
+                  className="px-5 text-fg-3 hover:text-accent-strong"
+                  aria-label={`Download ${resume.title}`}
+                ><Download className="h-4 w-4" /></button>
+              </div>
 
               {/* Expanded notes section */}
-              {expanded && (
+              {canWrite && expanded && (
                 <div className="border-t border-line px-5 pb-5 pt-4">
                   {notesLoading ? (
                     <div className="flex justify-center py-4">
@@ -266,7 +346,7 @@ export default function RecruiterDashboardPage() {
                                       {new Date(note.created_at).toLocaleDateString()}
                                     </p>
                                   </div>
-                                  {note.author_id === userId && (
+                                  {canWrite && note.author_id === userId && (
                                     <div className="flex items-center gap-1 shrink-0">
                                       <button
                                         onClick={() =>
@@ -294,7 +374,7 @@ export default function RecruiterDashboardPage() {
                       )}
 
                       {/* Add note form */}
-                      <div className="space-y-2">
+                      {canWrite && <div className="space-y-2">
                         <textarea
                           value={drafts[resume.id] ?? ''}
                           onChange={(e) =>
@@ -315,9 +395,20 @@ export default function RecruiterDashboardPage() {
                           }
                           Add Note
                         </button>
-                      </div>
+                      </div>}
                     </>
                   )}
+                </div>
+              )}
+              {expanded && (
+                <div className="border-t border-line px-5 pb-5 pt-4">
+                  <h2 className="mb-2 text-sm font-semibold text-fg">Resume comments</h2>
+                  <CommentsPanel
+                    resumeId={resume.id}
+                    workspaceId={workspaceId}
+                    highlightCommentId={requestedResumeId === resume.id ? requestedCommentId : undefined}
+                    canComment={canWrite}
+                  />
                 </div>
               )}
             </div>

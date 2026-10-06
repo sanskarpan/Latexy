@@ -31,8 +31,21 @@ class TestUserPreferences:
         assert MeResponse(id="1", email="a@b.com", plan="free").preferences == {}
 
     def test_update_model_accepts_partial(self):
-        assert UserPreferencesUpdate(has_onboarded=True).model_dump() == {"has_onboarded": True, "theme": None}
+        assert UserPreferencesUpdate(has_onboarded=True).model_dump() == {
+            "has_onboarded": True,
+            "theme": None,
+            "spell_dictionary": None,
+        }
         assert UserPreferencesUpdate(theme="light").theme == "light"
+
+    def test_spell_dictionary_is_normalized_and_deduplicated(self):
+        body = UserPreferencesUpdate(spell_dictionary=[" OpenAI ", "openai", "Node.js"])
+        assert body.spell_dictionary == ["openai", "node.js"]
+
+    @pytest.mark.parametrize("words", [["two words"], [""], ["x" * 65], ["ok"] * 501])
+    def test_spell_dictionary_rejects_unbounded_or_invalid_words(self, words):
+        with pytest.raises(ValueError):
+            UserPreferencesUpdate(spell_dictionary=words)
 
     def _merge(self, existing_meta, has_onboarded=None, theme=None):
         """Mirror the endpoint's JSONB merge (a fresh dict, preferences sub-key)."""
@@ -59,3 +72,29 @@ class TestUserPreferences:
     def test_theme_validation_rejects_unknown(self, bad):
         # The endpoint validates theme ∈ {light, dark}; mirror that contract here.
         assert bad not in ("light", "dark")
+
+
+@pytest.mark.asyncio
+async def test_spell_dictionary_round_trips_without_replacing_other_preferences(client, auth_headers):
+    first = await client.patch(
+        "/me/preferences",
+        headers=auth_headers,
+        json={"has_onboarded": True, "theme": "dark"},
+    )
+    assert first.status_code == 200
+
+    updated = await client.patch(
+        "/me/preferences",
+        headers=auth_headers,
+        json={"spell_dictionary": [" OpenAI ", "openai", "Node.js"]},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["preferences"] == {
+        "has_onboarded": True,
+        "theme": "dark",
+        "spell_dictionary": ["openai", "node.js"],
+    }
+
+    loaded = await client.get("/me", headers=auth_headers)
+    assert loaded.status_code == 200
+    assert loaded.json()["preferences"] == updated.json()["preferences"]

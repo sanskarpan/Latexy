@@ -22,8 +22,14 @@ from celery.exceptions import SoftTimeLimitExceeded
 from ..core.celery_app import celery_app, get_task_priority
 from ..core.logging import get_logger
 from ..services import github_projects_service as gh
-from ..workers.event_publisher import get_worker_redis, is_cancelled, publish_event
-from ..workers.quota_refund import refund_quota_once
+from ..workers.event_publisher import (
+    get_worker_redis,
+    is_cancelled,
+    publish_event,
+    publish_owned_result,
+)
+from ..workers.job_lifecycle import admit_worker, clear_current_owner, stop_lease_heartbeat
+from ..workers.quota_refund import clear_quota_refund_receipt, refund_quota_once
 
 logger = get_logger(__name__)
 
@@ -88,14 +94,33 @@ async def _resolve_import_credentials(
             await engine.dispose()
 
 
-def _store_result(job_id: str, user_id: str, payload: Dict[str, Any]) -> None:
-    """Persist an owner-bound import result envelope with a ~1h TTL."""
-    r = get_worker_redis()
+def _store_result(
+    job_id: str,
+    user_id: str,
+    payload: Dict[str, Any],
+    *,
+    owner: Optional[str] = None,
+    terminal_status: Optional[str] = None,
+) -> bool:
+    """Persist an import result, fenced to the admitted worker when metered."""
     owned_payload = {**payload, "user_id": user_id}
-    r.setex(
+    resolved_status = terminal_status or (
+        "completed" if payload.get("status") == "completed" else "failed"
+    )
+    # The custom import envelope historically used ``status`` without the
+    # canonical success flag. The shared arbiter requires an explicit success
+    # decision before accepting a completed terminal write.
+    owned_payload.setdefault("success", resolved_status == "completed")
+    # The shared helper permits a direct write only when no lifecycle exists;
+    # even a malformed/missing metering payload cannot bypass an existing
+    # metered lifecycle without an owner and an unexpired lease.
+    return publish_owned_result(
+        job_id,
         gh.import_result_key(job_id),
-        gh.IMPORT_RESULT_TTL,
-        gh.encode_result(owned_payload),
+        owned_payload,
+        terminal_status=resolved_status,
+        ttl=gh.IMPORT_RESULT_TTL,
+        serialized_result=gh.encode_result(owned_payload),
     )
 
 
@@ -125,25 +150,72 @@ def import_github_projects_task(
     if job_id is None:
         job_id = str(uuid.uuid4())
 
-    def _terminal_failure(result: Dict[str, Any]) -> Dict[str, Any]:
-        refund_quota_once(
-            job_id,
-            quota_refund,
-            expected_dimension="ai_assists",
-        )
+    def _terminal_failure(
+        result: Dict[str, Any],
+        *,
+        terminal_accepted: bool = False,
+    ) -> Dict[str, Any]:
+        # Refund only an accepted failed/cancelled terminal result.  A rejected
+        # result means this worker lost its fence; cleanup owns reconciliation
+        # and must not race it with a refund.  Completed custom-key results are
+        # never refunded, even when their completion event was rejected.
+        if terminal_accepted:
+            refund_quota_once(
+                job_id,
+                quota_refund,
+                expected_dimension="ai_assists",
+            )
         return result
 
     if not user_id:
         logger.error("Refusing ownerless GitHub import job %s", job_id)
-        return _terminal_failure(
-            {"success": False, "job_id": job_id, "error": "user_id is required"}
-        )
+        return {"success": False, "job_id": job_id, "error": "user_id is required"}
 
     task_id = self.request.id
     worker_id = f"github-import-{task_id}"
+    lifecycle_owner = f"{worker_id}:{uuid.uuid4()}"
+    queue_redis = get_worker_redis()
+    if not admit_worker(queue_redis, job_id, lifecycle_owner, quota_refund, user_id):
+        # A duplicate delivery must not refund the receipt while the admitted
+        # owner may still be running. Cleanup or that owner owns the eventual
+        # terminal/refund decision.
+        return {
+            "success": False,
+            "job_id": job_id,
+            "error": "Job ownership unavailable",
+            }
+    def _release_owner() -> None:
+        stop_lease_heartbeat(job_id)
+        clear_current_owner(job_id)
+
     logger.info(f"GitHub import task {task_id} starting for job {job_id}")
 
-    publish_event(job_id, "job.started", {"worker_id": worker_id, "stage": "github_import"})
+    def _cancelled_result(projects: List[Dict[str, Any]]) -> Dict[str, Any]:
+        result = {"success": False, "job_id": job_id, "cancelled": True}
+        stored = _store_result(
+            job_id,
+            user_id,
+            {"status": "failed", "projects": projects, "error": "cancelled"},
+            owner=lifecycle_owner if quota_refund else None,
+            terminal_status="cancelled",
+        )
+        if stored:
+            try:
+                publish_event(job_id, "job.cancelled", {})
+            finally:
+                _terminal_failure(result, terminal_accepted=True)
+            return result
+        return _terminal_failure(result, terminal_accepted=stored)
+
+    try:
+        publish_event(
+            job_id,
+            "job.started",
+            {"worker_id": worker_id, "stage": "github_import"},
+        )
+    except Exception:
+        _release_owner()
+        raise
 
     # One HTTP client for every GitHub call → serial requests keep us clear of
     # GitHub's secondary rate limits.
@@ -151,23 +223,33 @@ def import_github_projects_task(
     try:
         github_token, api_key = asyncio.run(_resolve_import_credentials(user_id))
         if not github_token:
-            publish_event(
-                job_id,
-                "job.failed",
-                {
-                    "stage": "github_import",
-                    "error_code": "github_not_connected",
-                    "error_message": "No GitHub token available for this import.",
-                    "retryable": False,
-                },
-            )
-            _store_result(
+            stored = _store_result(
                 job_id,
                 user_id,
                 {"status": "failed", "projects": [], "error": "GitHub not connected"},
+                owner=lifecycle_owner if quota_refund else None,
             )
+            if stored:
+                try:
+                    publish_event(
+                        job_id,
+                        "job.failed",
+                        {
+                            "stage": "github_import",
+                            "error_code": "github_not_connected",
+                            "error_message": "No GitHub token available for this import.",
+                            "retryable": False,
+                        },
+                    )
+                finally:
+                    _terminal_failure(
+                        {"success": False, "job_id": job_id, "error": "GitHub not connected"},
+                        terminal_accepted=True,
+                    )
+                return {"success": False, "job_id": job_id, "error": "GitHub not connected"}
             return _terminal_failure(
-                {"success": False, "job_id": job_id, "error": "GitHub not connected"}
+                {"success": False, "job_id": job_id, "error": "GitHub not connected"},
+                terminal_accepted=stored,
             )
 
         client = httpx.Client(timeout=20)
@@ -194,8 +276,19 @@ def import_github_projects_task(
         top = gh.rank_repos(candidates)
 
         if not top:
-            _store_result(job_id, user_id, {"status": "completed", "projects": []})
-            publish_event(
+            stored = _store_result(
+                job_id,
+                user_id,
+                {"status": "completed", "projects": []},
+                owner=lifecycle_owner if quota_refund else None,
+            )
+            if not stored:
+                if is_cancelled(job_id):
+                    return _cancelled_result([])
+                return _terminal_failure(
+                    {"success": False, "job_id": job_id, "error": "Job ownership expired"},
+                )
+            entry_id = publish_event(
                 job_id,
                 "job.completed",
                 {
@@ -203,6 +296,10 @@ def import_github_projects_task(
                     "project_count": 0,
                 },
             )
+            if quota_refund and not entry_id:
+                return {"success": False, "job_id": job_id, "error": "Job ownership expired"}
+            if quota_refund:
+                clear_quota_refund_receipt(job_id)
             logger.info(f"GitHub import job {job_id}: no eligible projects")
             return {"success": True, "job_id": job_id, "project_count": 0}
 
@@ -210,11 +307,7 @@ def import_github_projects_task(
         total = len(top)
         for idx, repo in enumerate(top):
             if is_cancelled(job_id):
-                publish_event(job_id, "job.cancelled", {})
-                _store_result(job_id, user_id, {"status": "failed", "projects": projects, "error": "cancelled"})
-                return _terminal_failure(
-                    {"success": False, "job_id": job_id, "cancelled": True}
-                )
+                return _cancelled_result(projects)
 
             owner, name = repo["owner"], repo["name"]
             readme = gh.fetch_repo_readme(github_token, owner, name, client=client)
@@ -240,8 +333,19 @@ def import_github_projects_task(
                 },
             )
 
-        _store_result(job_id, user_id, {"status": "completed", "projects": projects})
-        publish_event(
+        stored = _store_result(
+            job_id,
+            user_id,
+            {"status": "completed", "projects": projects},
+            owner=lifecycle_owner if quota_refund else None,
+        )
+        if not stored:
+            if is_cancelled(job_id):
+                return _cancelled_result(projects)
+            return _terminal_failure(
+                {"success": False, "job_id": job_id, "error": "Job ownership expired"},
+            )
+        entry_id = publish_event(
             job_id,
             "job.completed",
             {
@@ -249,51 +353,95 @@ def import_github_projects_task(
                 "project_count": len(projects),
             },
         )
+        if quota_refund and not entry_id:
+            return {"success": False, "job_id": job_id, "error": "Job ownership expired"}
+        if quota_refund:
+            clear_quota_refund_receipt(job_id)
         logger.info(f"GitHub import job {job_id}: {len(projects)} projects imported")
         return {"success": True, "job_id": job_id, "project_count": len(projects)}
 
     except SoftTimeLimitExceeded:
         logger.error(f"GitHub import task {task_id} exceeded soft time limit for job {job_id}")
-        publish_event(
+        stored = _store_result(
             job_id,
-            "job.failed",
-            {
-                "stage": "github_import",
-                "error_code": "timeout",
-                "error_message": "Import exceeded time limit",
-                "retryable": False,
-            },
+            user_id,
+            {"status": "failed", "projects": [], "error": "timeout"},
+            owner=lifecycle_owner if quota_refund else None,
         )
-        _store_result(job_id, user_id, {"status": "failed", "projects": [], "error": "timeout"})
+        if stored:
+            try:
+                publish_event(
+                    job_id,
+                    "job.failed",
+                    {
+                        "stage": "github_import",
+                        "error_code": "timeout",
+                        "error_message": "Import exceeded time limit",
+                        "retryable": False,
+                    },
+                )
+            finally:
+                _terminal_failure(
+                    {"success": False, "job_id": job_id, "error": "Task exceeded time limit"},
+                    terminal_accepted=True,
+                )
+            return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
         return _terminal_failure(
-            {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
+            {"success": False, "job_id": job_id, "error": "Task exceeded time limit"},
+            terminal_accepted=stored,
         )
 
     except Exception as exc:
         from celery.exceptions import Retry
 
         if isinstance(exc, Retry):
+            _release_owner()
             raise
-        logger.error(f"GitHub import task {task_id} raised: {exc}")
+        logger.error("GitHub import task %s raised", task_id, extra={"error_type": type(exc).__name__})
         has_retries_left = self.request.retries < self.max_retries
-        publish_event(
-            job_id,
-            "job.failed",
-            {
-                "stage": "github_import",
-                "error_code": "github_import_error",
-                "error_message": str(exc),
-                "retryable": has_retries_left,
-            },
-        )
         if has_retries_left:
+            publish_event(
+                job_id,
+                "job.retrying",
+                {
+                    "stage": "github_import",
+                    "worker_id": worker_id,
+                    "attempt": self.request.retries + 2,
+                    "error_message": "GitHub import is retrying",
+                },
+            )
             raise self.retry(countdown=60, exc=exc)
-        _store_result(job_id, user_id, {"status": "failed", "projects": [], "error": str(exc)})
+        stored = _store_result(
+            job_id,
+            user_id,
+            {"status": "failed", "projects": [], "error": "GitHub import failed"},
+            owner=lifecycle_owner if quota_refund else None,
+        )
+        if stored:
+            try:
+                publish_event(
+                    job_id,
+                    "job.failed",
+                    {
+                        "stage": "github_import",
+                        "error_code": "github_import_error",
+                        "error_message": "GitHub import failed",
+                        "retryable": False,
+                    },
+                )
+            finally:
+                _terminal_failure(
+                    {"success": False, "job_id": job_id, "error": "GitHub import failed"},
+                    terminal_accepted=True,
+                )
+            return {"success": False, "job_id": job_id, "error": "GitHub import failed"}
         return _terminal_failure(
-            {"success": False, "job_id": job_id, "error": str(exc)}
+            {"success": False, "job_id": job_id, "error": "GitHub import failed"},
+            terminal_accepted=stored,
         )
 
     finally:
+        _release_owner()
         if client is not None:
             client.close()
 

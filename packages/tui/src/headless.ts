@@ -3,7 +3,7 @@ import type { LatexyConfig } from './lib/config.js'
 import { initApiClient } from './lib/api-client.js'
 import type { ApiClient } from './lib/api-client.js'
 import { wsClient } from './lib/ws-client.js'
-import type { WSServerError } from './lib/ws-client.js'
+import type { WSServerError, WSSocketError } from './lib/ws-client.js'
 import { resolveAtsScore } from './lib/event-types.js'
 import type { AnyEvent, JobCancelledEvent, JobCompletedEvent, JobFailedEvent } from './lib/event-types.js'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -15,6 +15,7 @@ const useJson = process.argv.includes('--json')
 // timeout. `rate_limited` is deliberately absent: ws_routes' limiter is a soft per-connection
 // throttle that drops the one frame and keeps going, so we retry the subscribe instead of aborting.
 const FATAL_WS_ERROR_CODES = new Set(['forbidden', 'invalid_request'])
+const UNREACHABLE_ERROR_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EHOSTUNREACH', 'ENETUNREACH', 'ECONNRESET'])
 const RATE_LIMIT_RETRY_MS = 1_000
 const MAX_RATE_LIMIT_RETRIES = 5
 
@@ -23,6 +24,27 @@ const VALUE_FLAGS = new Set([
   '--resume-id', '--compiler', '--output', '--jd', '--level', '--model',
   '--industry', '--page', '--limit',
 ])
+const BOOLEAN_FLAGS = new Set(['--json', '--wait'])
+
+/** Options shared by every machine-readable command. */
+const COMMON_HEADLESS_FLAGS = new Set(['--json'])
+
+/**
+ * Keep the headless CLI contract explicit. A flag accepted by one command is
+ * not silently accepted by another: this catches typos and prevents a value
+ * intended for one workflow from changing another workflow's positionals.
+ */
+const HEADLESS_ALLOWED_FLAGS: Record<string, ReadonlySet<string>> = {
+  compile: new Set([...COMMON_HEADLESS_FLAGS, '--resume-id', '--compiler', '--output']),
+  optimize: new Set([...COMMON_HEADLESS_FLAGS, '--jd', '--level', '--model']),
+  ats: new Set([...COMMON_HEADLESS_FLAGS, '--jd', '--industry']),
+  status: new Set([...COMMON_HEADLESS_FLAGS, '--wait']),
+  list: new Set([...COMMON_HEADLESS_FLAGS, '--page', '--limit']),
+}
+
+const KNOWN_HEADLESS_FLAGS = new Set(
+  Object.values(HEADLESS_ALLOWED_FLAGS).flatMap(flags => [...flags]),
+)
 
 type AuthenticatedConfig = LatexyConfig & { token: string }
 type TerminalJobEvent = JobCompletedEvent | JobFailedEvent | JobCancelledEvent
@@ -37,6 +59,14 @@ interface JobResultEnvelope {
 export interface HeadlessArgs {
   flags: Record<string, string>
   positional: string[]
+  /** Value-taking flags that were present without a usable following token. */
+  missingValueFlags: string[]
+  /** Flags that are not part of the headless CLI contract at all. */
+  unknownFlags: string[]
+  /** Known headless flags that do not apply to the selected command. */
+  irrelevantFlags: string[]
+  /** Boolean switches incorrectly supplied with an attached value. */
+  invalidBooleanFlags: string[]
 }
 
 /**
@@ -48,32 +78,62 @@ export interface HeadlessArgs {
  * to compile a file called "xelatex", and `--output out.pdf cv.tex` read out.pdf
  * as the LaTeX source, submitting a binary PDF as a job.
  */
-export function parseHeadlessArgs(argv: string[]): HeadlessArgs {
+export function parseHeadlessArgs(argv: string[], command?: string): HeadlessArgs {
   const flags: Record<string, string> = {}
   const positional: string[] = []
+  const missingValueFlags: string[] = []
+  const unknownFlags: string[] = []
+  const irrelevantFlags: string[] = []
+  const invalidBooleanFlags: string[] = []
+  const allowed = command == null ? null : HEADLESS_ALLOWED_FLAGS[command]
 
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i]!
     if (tok.startsWith('-')) {
       const eq = tok.indexOf('=')
       if (eq !== -1) {
-        flags[tok.slice(0, eq)] = tok.slice(eq + 1)
+        const key = tok.slice(0, eq)
+        const value = tok.slice(eq + 1)
+        if (!KNOWN_HEADLESS_FLAGS.has(key)) unknownFlags.push(key)
+        else if (allowed != null && !allowed.has(key)) irrelevantFlags.push(key)
+        if (BOOLEAN_FLAGS.has(key)) invalidBooleanFlags.push(key)
+        else if (VALUE_FLAGS.has(key) && value === '') missingValueFlags.push(key)
+        else flags[key] = value
         continue
       }
+      if (!KNOWN_HEADLESS_FLAGS.has(tok)) unknownFlags.push(tok)
+      else if (allowed != null && !allowed.has(tok)) irrelevantFlags.push(tok)
       if (VALUE_FLAGS.has(tok)) {
         const next = argv[i + 1]
         // A value-flag with a missing value must not silently swallow the path.
         if (next !== undefined && !next.startsWith('-')) {
           flags[tok] = next
           i++
-        }
+        } else missingValueFlags.push(tok)
         continue
       }
+      if (BOOLEAN_FLAGS.has(tok)) flags[tok] = 'true'
       continue // bare flag such as --json
     }
     positional.push(tok)
   }
-  return { flags, positional }
+  return { flags, positional, missingValueFlags, unknownFlags, irrelevantFlags, invalidBooleanFlags }
+}
+
+function headlessArgumentError(parsed: HeadlessArgs): string | null {
+  if (parsed.missingValueFlags.length > 0) {
+    return `Missing value for ${parsed.missingValueFlags[0]}`
+  }
+  if (parsed.unknownFlags.length > 0) {
+    return `Unknown option: ${parsed.unknownFlags[0]}`
+  }
+  if (parsed.irrelevantFlags.length > 0) {
+    return `Option ${parsed.irrelevantFlags[0]} is not valid for this command`
+  }
+  if (parsed.invalidBooleanFlags.length > 0) {
+    return `Option ${parsed.invalidBooleanFlags[0]} does not accept a value`
+  }
+  return null
 }
 
 function out(obj: unknown): void {
@@ -87,22 +147,51 @@ function log(msg: string): void {
 
 async function waitForJob(jobId: string, token: string, wsUrl: string): Promise<TerminalJobEvent> {
   return new Promise((resolve, reject) => {
-    wsClient.connect(wsUrl, token)
-    wsClient.drain()
-    wsClient.subscribe(jobId, '0')
-
     const timeout = setTimeout(() => {
       wsClient.destroy()
       reject(new Error('Job timed out after 5 minutes'))
     }, 300_000)
 
     let rateLimitRetries = 0
+    let connected = false
     const retryTimers: NodeJS.Timeout[] = []
     const cleanup = (): void => {
       clearTimeout(timeout)
       for (const t of retryTimers) clearTimeout(t)
       wsClient.off('server_error', onServerError)
+      wsClient.off('socket_error', onSocketError)
+      wsClient.off('connected', onConnected)
       wsClient.off('event', onEvent)
+    }
+
+    const onConnected = (): void => {
+      connected = true
+    }
+
+    const onSocketError = (err: WSSocketError): void => {
+      // A failure before the first connection can never deliver this job's
+      // terminal event. Abort promptly so headless CI reports a useful exit
+      // code instead of waiting five minutes while reconnect timers run. Once
+      // connected, tolerate socket errors so the WS client's replay/reconnect
+      // behavior can recover from a transient drop.
+      if (connected) return
+      cleanup()
+      wsClient.destroy()
+      if (err.status === 401 || err.status === 403) {
+        const authError = new Error(err.message) as Error & { status: number }
+        authError.status = err.status
+        reject(authError)
+      } else if (
+        (err.code != null && UNREACHABLE_ERROR_CODES.has(err.code))
+        || /fetch failed|aborted|timed out/i.test(err.message)
+      ) {
+        reject(new BackendUnreachableError(
+          `Cannot reach the Latexy event stream at ${wsUrl}. `
+          + 'Set LATEXY_API_URL or fix backendUrl in ~/.config/latexy/config.toml.'
+        ))
+      } else {
+        reject(new Error(err.message))
+      }
     }
 
     const onServerError = (err: WSServerError): void => {
@@ -134,7 +223,16 @@ async function waitForJob(jobId: string, token: string, wsUrl: string): Promise<
     }
 
     wsClient.on('server_error', onServerError)
+    wsClient.on('socket_error', onSocketError)
+    wsClient.on('connected', onConnected)
     wsClient.on('event', onEvent)
+
+    // Register listeners before opening the socket. `connect()` is currently
+    // asynchronous, but this ordering keeps a future synchronous transport
+    // implementation from racing the first error/event.
+    wsClient.connect(wsUrl, token)
+    wsClient.drain()
+    wsClient.subscribe(jobId, '0')
   })
 }
 
@@ -142,20 +240,55 @@ class BackendUnreachableError extends Error {}
 
 /**
  * fetch() rejects with a bare "TypeError: fetch failed" — say which URL was unreachable.
- * Scoped to the initial submit calls only: a later /download failure must not claim the whole
- * backend is down when the compile already succeeded.
+ * Used around each network phase that can fail before a useful JSON result is
+ * emitted, including a requested PDF download after a successful compile.
  */
 async function withReachableBackend<T>(backendUrl: string, fn: () => Promise<T>): Promise<T> {
   try {
     return await fn()
   } catch (err) {
-    if (!(err instanceof TypeError)) throw err
+    if (!isBackendReachabilityFailure(err)) throw err
     const code = (err as { cause?: { code?: string } }).cause?.code
     throw new BackendUnreachableError(
       `Cannot reach the Latexy backend at ${backendUrl}${code ? ` (${code})` : ''}. `
       + 'Set LATEXY_API_URL or fix backendUrl in ~/.config/latexy/config.toml.'
     )
   }
+}
+
+/**
+ * Fetch uses several shapes for an AbortSignal.timeout rejection depending on
+ * the Node/undici path: DOMException(TimeoutError), DOMException(AbortError),
+ * or a TypeError wrapping one of those. Treat those as connectivity failures
+ * for the documented exit-code contract, while leaving ordinary application
+ * errors untouched.
+ */
+function isBackendReachabilityFailure(err: unknown): boolean {
+  if (err instanceof TypeError) {
+    // Undici reports network and abort failures as TypeError in some Node
+    // versions. Do not classify every TypeError (for example, a programming
+    // error thrown while processing a successful response) as an outage.
+    if (/fetch failed|network|aborted|timed out|timeout/i.test(err.message)) return true
+    const cause = (err as { cause?: unknown }).cause
+    if (cause != null && typeof cause === 'object') {
+      const causeName = (cause as { name?: unknown }).name
+      const causeCode = (cause as { code?: unknown }).code
+      if (causeName === 'TimeoutError' || causeName === 'AbortError') return true
+      if (typeof causeCode === 'string' && UNREACHABLE_ERROR_CODES.has(causeCode)) return true
+    }
+    return false
+  }
+  if (err == null || typeof err !== 'object') return false
+
+  const error = err as { name?: unknown; cause?: unknown }
+  if (error.name === 'TimeoutError' || error.name === 'AbortError') return true
+
+  const cause = error.cause
+  if (cause == null || typeof cause !== 'object') return false
+  const causeName = (cause as { name?: unknown }).name
+  if (causeName === 'TimeoutError' || causeName === 'AbortError') return true
+  const causeCode = (cause as { code?: unknown }).code
+  return typeof causeCode === 'string' && UNREACHABLE_ERROR_CODES.has(causeCode)
 }
 
 async function authenticatedCommand(
@@ -248,33 +381,49 @@ async function compileJob(cfg: LatexyConfig & { token: string }, args: string[])
   const client = initApiClient(cfg.backendUrl, cfg.token)
   const wsUrl = cfg.backendUrl.replace(/^http/, 'ws') + '/ws/jobs'
 
-  const { flags, positional } = parseHeadlessArgs(args)
-  const resumeId = flags['--resume-id'] ?? null
-  const compiler = flags['--compiler'] ?? 'pdflatex'
+  const parsed = parseHeadlessArgs(args, 'compile')
+  const argumentError = headlessArgumentError(parsed)
+  if (argumentError != null) {
+    out({ success: false, error: argumentError })
+    return 3
+  }
+  const { flags, positional } = parsed
+  const explicitResumeId = flags['--resume-id'] ?? null
+  const requestedCompiler = flags['--compiler']
   const outputPath = flags['--output'] ?? null
+
+  // A local path is an explicit input and takes precedence over the persisted
+  // default. When no path or --resume-id is supplied, use the same saved
+  // default that interactive commands resolve through /list.
+  const filePath = positional.find(a => a !== 'compile')
+  const resumeId = explicitResumeId ?? (!filePath ? cfg.defaultResumeId : null)
 
   let jobId: string
 
   if (resumeId) {
     log(`Compiling resume ${resumeId}…`)
     const res = await withReachableBackend(cfg.backendUrl, async () => {
-      const resume = await client.get<{ latex_content: string }>(`/resumes/${resumeId}`)
+      const resume = await client.get<{
+        latex_content: string
+        metadata?: { compiler?: string } | null
+      }>(`/resumes/${resumeId}`)
+      const compiler = requestedCompiler ?? resume.metadata?.compiler
       return client.post<{ job_id: string }>('/jobs/submit', {
         job_type: 'latex_compilation',
         latex_content: resume.latex_content,
-        compiler,
+        ...(compiler ? { compiler } : {}),
       })
     })
     jobId = res.job_id
   } else {
     // Local file path: read content and submit via the job queue (same as --resume-id)
-    const filePath = positional.find(a => a !== 'compile')
     if (!filePath) {
-      out({ success: false, error: 'Provide a .tex file path or --resume-id <uuid>' })
+      out({ success: false, error: 'Provide a .tex file path, --resume-id <uuid>, or configure defaultResumeId' })
       return 3
     }
     log(`Compiling ${basename(filePath)}…`)
     const latex_content = await readFile(filePath, 'utf-8')
+    const compiler = requestedCompiler ?? 'pdflatex'
     const res = await withReachableBackend(cfg.backendUrl, () =>
       client.post<{ job_id: string }>('/jobs/submit', {
         job_type: 'latex_compilation',
@@ -290,9 +439,10 @@ async function compileJob(cfg: LatexyConfig & { token: string }, args: string[])
 
   if (ev.type === 'job.completed') {
     if (outputPath) {
-      const pdfRes = await fetch(`${cfg.backendUrl}/download/${jobId}`, {
+      const pdfRes = await withReachableBackend(cfg.backendUrl, () => fetch(`${cfg.backendUrl}/download/${jobId}`, {
         headers: { Authorization: `Bearer ${cfg.token}` },
-      })
+        signal: AbortSignal.timeout(60_000),
+      }))
       if (!pdfRes.ok) {
         const detail = (await pdfRes.text().catch(() => '')).slice(0, 200)
         out({
@@ -336,8 +486,14 @@ async function compileJob(cfg: LatexyConfig & { token: string }, args: string[])
 
 async function headlessOptimize(args: string[]): Promise<number> {
   return authenticatedCommand(async (cfg, client) => {
-    const { flags, positional } = parseHeadlessArgs(args)
-    const resumeId = positional[0]
+    const parsed = parseHeadlessArgs(args, 'optimize')
+    const argumentError = headlessArgumentError(parsed)
+    if (argumentError != null) {
+      out({ success: false, error: argumentError })
+      return 3
+    }
+    const { flags, positional } = parsed
+    const resumeId = positional[0] ?? cfg.defaultResumeId
     const jdInput = flags['--jd']
     const level = flags['--level'] ?? 'balanced'
 
@@ -371,9 +527,15 @@ async function headlessOptimize(args: string[]): Promise<number> {
 
 async function headlessAts(args: string[]): Promise<number> {
   return authenticatedCommand(async (cfg, client) => {
-    const { flags, positional } = parseHeadlessArgs(args)
+    const parsed = parseHeadlessArgs(args, 'ats')
+    const argumentError = headlessArgumentError(parsed)
+    if (argumentError != null) {
+      out({ success: false, error: argumentError })
+      return 3
+    }
+    const { flags, positional } = parsed
     const action = positional[0]
-    const resumeId = positional[1]
+    const resumeId = positional[1] ?? cfg.defaultResumeId
     if (action !== 'score' || !resumeId) {
       out({ success: false, error: 'Usage: latexy ats score <resume-id> [--jd <file|url|text>] [--industry <name>]' })
       return 3
@@ -402,14 +564,20 @@ async function headlessAts(args: string[]): Promise<number> {
 
 async function headlessStatus(args: string[]): Promise<number> {
   return authenticatedCommand(async (cfg, client) => {
-    const { positional } = parseHeadlessArgs(args)
+    const parsed = parseHeadlessArgs(args, 'status')
+    const argumentError = headlessArgumentError(parsed)
+    if (argumentError != null) {
+      out({ success: false, error: argumentError })
+      return 3
+    }
+    const { flags, positional } = parsed
     const jobId = positional[0]
     if (!jobId) {
       out({ success: false, error: 'Usage: latexy status <job-id> [--wait]' })
       return 3
     }
 
-    if (args.includes('--wait')) return waitForResult(cfg, client, jobId)
+    if (flags['--wait'] === 'true') return waitForResult(cfg, client, jobId)
 
     const state = await withReachableBackend(cfg.backendUrl, () =>
       client.get<Record<string, unknown>>(`/jobs/${jobId}/state`)
@@ -421,7 +589,13 @@ async function headlessStatus(args: string[]): Promise<number> {
 
 async function headlessList(args: string[]): Promise<number> {
   return authenticatedCommand(async (cfg, client) => {
-    const { flags } = parseHeadlessArgs(args)
+    const parsed = parseHeadlessArgs(args, 'list')
+    const argumentError = headlessArgumentError(parsed)
+    if (argumentError != null) {
+      out({ success: false, error: argumentError })
+      return 3
+    }
+    const { flags } = parsed
     const page = Number(flags['--page'] ?? '1')
     const limit = Number(flags['--limit'] ?? '100')
     if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) {

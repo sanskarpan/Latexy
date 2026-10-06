@@ -10,6 +10,8 @@ import {
   removeAccentColorFromPreamble,
   setMarginsInPreamble,
   LATEX_FONTS,
+  HOSTED_LATEX_FONT_PACKAGES,
+  isHostedFontAvailable,
   getInstalledPackages,
   addPackageToPreamble,
   removePackageFromPreamble,
@@ -250,6 +252,22 @@ describe('setFontInPreamble', () => {
       const result = setFontInPreamble(MINIMAL, font.package, font.command)
       expect(result).toContain(`\\usepackage{${font.package}}`)
     }
+  })
+
+  test('offers Atkinson Hyperlegible as a readability-focused document font', () => {
+    const font = LATEX_FONTS.find((option) => option.name === 'Atkinson Hyperlegible')
+    expect(font).toMatchObject({ package: 'atkinson', category: 'sans-serif' })
+    const result = setFontInPreamble(MINIMAL, font!.package, font!.command)
+    expect(result).toContain('\\usepackage{atkinson}')
+    expect(result).toContain('\\renewcommand{\\familydefault}{\\sfdefault}')
+  })
+
+  test('only enables font packages installed in the hosted compiler', () => {
+    const enabled = LATEX_FONTS.filter(isHostedFontAvailable)
+    expect(enabled.map((font) => font.name)).toContain('Atkinson Hyperlegible')
+    expect(enabled.map((font) => font.name)).toContain('Computer Modern')
+    expect(HOSTED_LATEX_FONT_PACKAGES.size).toBe(10)
+    expect(isHostedFontAvailable(LATEX_FONTS.find((font) => font.package === 'ebgaramond')!)).toBe(false)
   })
 })
 

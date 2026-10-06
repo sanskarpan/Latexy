@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const PORT = Number.parseInt(process.env.PLAYWRIGHT_QUALITY_PORT ?? '5182', 10)
+const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === '1'
 
 export default defineConfig({
     testDir: './e2e/quality',
@@ -8,7 +9,7 @@ export default defineConfig({
     fullyParallel: false,
     forbidOnly: Boolean(process.env.CI),
     retries: process.env.CI ? 1 : 0,
-    workers: process.env.CI ? 3 : 5,
+    workers: 1,
     reporter: process.env.CI
         ? [['list'], ['html', { outputFolder: 'playwright-quality-report', open: 'never' }]]
         : 'list',
@@ -52,12 +53,21 @@ export default defineConfig({
     ],
 
     webServer: {
-        command: `pnpm dev --port ${PORT}`,
+        command: `node scripts/playwright-server.mjs --port ${PORT}`,
         url: `http://localhost:${PORT}`,
-        reuseExistingServer: true,
-        timeout: 60_000,
+        reuseExistingServer,
+        timeout: 900_000,
+        gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
         env: {
-            NEXT_PUBLIC_WS_URL: `ws://localhost:${PORT}`,
+            // Keep unmocked sockets away from the Next HTTP port; quality
+            // cases that need a live backend opt in explicitly.
+            NEXT_PUBLIC_WS_URL: `ws://127.0.0.1:${PORT + 1000}`,
+            DATABASE_URL:
+                process.env.PLAYWRIGHT_DATABASE_URL
+                ?? 'postgresql://latexy:latexy_password@127.0.0.1:5434/latexy_test',
+            BETTER_AUTH_SECRET:
+                process.env.PLAYWRIGHT_BETTER_AUTH_SECRET
+                ?? 'playwright-local-secret-with-at-least-32-characters',
         },
     },
 })

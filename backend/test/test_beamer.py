@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 import app.workers.latex_worker as lw
-from app.workers.latex_worker import BEAMER_RE
+from app.workers.latex_worker import BEAMER_RE, is_beamer_document
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 1. BEAMER_RE detection
@@ -51,6 +51,14 @@ class TestBeamerRegex:
         latex = "\\documentclass[\n  aspectratio=169\n]{beamer}"
         assert BEAMER_RE.search(latex)
 
+    def test_commented_beamer_class_is_not_detected(self):
+        latex = "% \\documentclass{beamer}\n\\documentclass{article}"
+        assert not is_beamer_document(latex)
+
+    def test_escaped_percent_does_not_start_a_comment(self):
+        latex = r"\documentclass{article}\% \documentclass{beamer}"
+        assert is_beamer_document(latex)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 2. latex_worker — Beamer document gets is_beamer=True + slide_count
@@ -71,6 +79,24 @@ Hello World
 """
 
 
+class _BoundedSyncStream:
+    """Small Popen.stdout double with the bounded-read contract."""
+
+    def __init__(self, chunks: list[str | bytes]):
+        self._payload = b"".join(
+            chunk.encode() if isinstance(chunk, str) else chunk for chunk in chunks
+        )
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self._payload)
+        chunk, self._payload = self._payload[:size], self._payload[size:]
+        return chunk
+
+    def close(self) -> None:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def _celery_eager():
     from app.core.celery_app import celery_app
@@ -84,7 +110,7 @@ def _celery_eager():
 def _mock_popen(page_line: str = "Output written on resume.pdf (5 pages)."):
     mock_proc = MagicMock()
     mock_proc.returncode = 0
-    mock_proc.stdout = iter([page_line + "\n"])
+    mock_proc.stdout = _BoundedSyncStream([page_line + "\n"])
     mock_proc.wait.return_value = None
     mock_proc.kill.return_value = None
     return mock_proc
@@ -94,6 +120,13 @@ def _mock_popen(page_line: str = "Output written on resume.pdf (5 pages)."):
 def mock_publish():
     with patch("app.workers.latex_worker.publish_event") as m:
         yield m
+
+
+@pytest.fixture(autouse=True)
+def _docker_capability_probe():
+    """Supply capability explicitly while the worker's subprocess is mocked."""
+    with patch("app.workers.latex_worker.docker_engine_available", return_value=False):
+        yield
 
 
 @pytest.fixture
@@ -116,7 +149,7 @@ def mock_compile_ok():
         patch("pathlib.Path.mkdir"),
         patch("pathlib.Path.write_text"),
         patch("pathlib.Path.exists", return_value=True),
-        patch("pathlib.Path.stat", return_value=MagicMock(st_size=99999)),
+        patch("pathlib.Path.stat", return_value=MagicMock(st_size=99999, st_mode=0)),
     ):
         yield m
 
@@ -196,8 +229,8 @@ class TestResumeDocumentTypeFilter:
         fake_resume.archived_at = None
         fake_resume.pinned = False
         fake_resume.document_type = "presentation"
-        fake_resume.created_at = datetime.datetime.utcnow()
-        fake_resume.updated_at = datetime.datetime.utcnow()
+        fake_resume.created_at = datetime.datetime.now(datetime.UTC)
+        fake_resume.updated_at = datetime.datetime.now(datetime.UTC)
 
         # Patch DB session and auth
         mock_db = AsyncMock()

@@ -8,6 +8,8 @@
  */
 import { test, expect, Page, BrowserContext } from '@playwright/test'
 import fs from 'fs'
+import os from 'os'
+import path from 'path'
 
 const BE = process.env.AUDIT_BE ?? 'http://localhost:8030'
 const ALICE = { email: 'audit.alice@example.com', password: 'AuditPassw0rd!alice' }
@@ -19,7 +21,9 @@ type Problem = {
 }
 
 const problems: Problem[] = []
-const OUT = '/tmp/audit_pages.json'
+const AUDIT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'latexy-page-audit-'))
+const SHOT_DIR = path.join(AUDIT_DIR, 'screenshots')
+const OUT = path.join(AUDIT_DIR, 'audit_pages.json')
 
 function record(p: Problem) {
   problems.push(p)
@@ -32,7 +36,8 @@ function isNoise(text: string) {
     /Download the React DevTools/i.test(text) ||
     /\[Fast Refresh\]/i.test(text) ||
     /webpack-hmr|_next\/static\/webpack|hot-update/i.test(text) ||
-    /React Router Future Flag/i.test(text)
+    /React Router Future Flag/i.test(text) ||
+    /Failed to load resource: the server responded with a status of/i.test(text)
   )
 }
 
@@ -54,6 +59,9 @@ function attach(page: Page, label: string) {
   page.on('response', (r) => {
     if (r.status() < 400) return
     if (isNoise(r.url())) return
+    // Alice is deliberately a normal user. The admin page must probe the
+    // protected endpoint and render its friendly access-denied state on 403.
+    if (label === 'AUTH admin' && r.status() === 403 && /\/admin\/feature-flags/.test(r.url())) return
     // 401 on a public page is meaningful signal, so keep it.
     record({ page: label, kind: 'httperror', detail: `${r.status()} ${r.request().method()} ${r.url().slice(0, 170)}` })
   })
@@ -71,8 +79,10 @@ async function login(context: BrowserContext) {
 }
 
 let RESUME_ID = ''
+let BUILDER_RESUME_ID = ''
 
 test.beforeAll(async ({ playwright }) => {
+  fs.mkdirSync(SHOT_DIR, { mode: 0o700 })
   // Grab a resume id owned by Alice so workspace/* routes have real data.
   const ctx = await playwright.request.newContext({ baseURL: 'http://localhost:5180' })
   await ctx.post('/api/auth/sign-in/email', { data: { email: ALICE.email, password: ALICE.password } })
@@ -85,8 +95,36 @@ test.beforeAll(async ({ playwright }) => {
     const body = await r.json()
     const list = Array.isArray(body) ? body : body.resumes ?? body.items ?? []
     RESUME_ID = list[0]?.id ?? ''
+    BUILDER_RESUME_ID = list.find((resume: { builder_status?: string }) => resume.builder_status === 'active')?.id ?? ''
+
+    if (!BUILDER_RESUME_ID) {
+      const templates = await ctx.get(`${BE}/resumes/builder/templates`, {
+        headers: { Cookie: `better-auth.session_token=${cookie?.value ?? ''}` },
+      })
+      if (templates.ok()) {
+        const catalog = await templates.json()
+        const templateId = Array.isArray(catalog) ? catalog[0]?.id : null
+        if (templateId) {
+          const created = await ctx.post(`${BE}/resumes/builder`, {
+            headers: { Cookie: `better-auth.session_token=${cookie?.value ?? ''}` },
+            data: {
+              title: 'Audit Builder Resume',
+              template_id: templateId,
+              structured_content: {},
+            },
+          })
+          if (created.ok()) {
+            const payload = await created.json()
+            BUILDER_RESUME_ID = payload.resume?.id ?? ''
+          }
+        }
+      }
+    }
   }
-  console.log('AUDIT using RESUME_ID =', RESUME_ID || '(none found)')
+  console.log(
+    'AUDIT using RESUME_ID =', RESUME_ID || '(none found)',
+    'BUILDER_RESUME_ID =', BUILDER_RESUME_ID || '(none found)',
+  )
   await ctx.dispose()
 })
 
@@ -125,7 +163,6 @@ const RESUME_ROUTES = [
   { path: (id: string) => `/workspace/${id}/cover-letter`, label: 'resume cover-letter' },
   { path: (id: string) => `/workspace/${id}/career`, label: 'resume career' },
   { path: (id: string) => `/workspace/${id}/batch-tailor`, label: 'resume batch-tailor' },
-  { path: (id: string) => `/workspace/builder/${id}`, label: 'builder edit' },
 ]
 
 async function visit(page: Page, url: string, label: string) {
@@ -153,7 +190,7 @@ async function visit(page: Page, url: string, label: string) {
     record({ page: label, kind: 'errorui', detail: body.text.slice(0, 300).replace(/\s+/g, ' ') })
   }
 
-  await page.screenshot({ path: `/tmp/audit_shots/${label.replace(/[^a-z0-9]+/gi, '_')}.png`, fullPage: false }).catch(() => {})
+  await page.screenshot({ path: path.join(SHOT_DIR, `${label.replace(/[^a-z0-9]+/gi, '_')}.png`), fullPage: false }).catch(() => {})
 }
 
 test.describe.configure({ mode: 'serial' })
@@ -161,10 +198,11 @@ test.describe.configure({ mode: 'serial' })
 test('audit: anonymous pages', async ({ browser }) => {
   test.setTimeout(600_000)
   const ctx = await browser.newContext()
-  const page = await ctx.newPage()
   for (const r of ROUTES.filter((x) => !x.auth)) {
+    const page = await ctx.newPage()
     attach(page, `ANON ${r.label}`)
     await visit(page, r.path, `ANON ${r.label}`)
+    await page.close()
   }
   await ctx.close()
 })
@@ -173,10 +211,11 @@ test('audit: authenticated pages', async ({ browser }) => {
   test.setTimeout(900_000)
   const ctx = await browser.newContext()
   await login(ctx)
-  const page = await ctx.newPage()
   for (const r of ROUTES.filter((x) => x.auth)) {
+    const page = await ctx.newPage()
     attach(page, `AUTH ${r.label}`)
     await visit(page, r.path, `AUTH ${r.label}`)
+    await page.close()
   }
   await ctx.close()
 })
@@ -186,10 +225,19 @@ test('audit: resume-scoped pages', async ({ browser }) => {
   test.skip(!RESUME_ID, 'no resume available')
   const ctx = await browser.newContext()
   await login(ctx)
-  const page = await ctx.newPage()
   for (const r of RESUME_ROUTES) {
+    const page = await ctx.newPage()
     attach(page, `AUTH ${r.label}`)
     await visit(page, r.path(RESUME_ID), `AUTH ${r.label}`)
+    await page.close()
+  }
+  if (BUILDER_RESUME_ID) {
+    const page = await ctx.newPage()
+    attach(page, 'AUTH builder edit')
+    await visit(page, `/workspace/builder/${BUILDER_RESUME_ID}`, 'AUTH builder edit')
+    await page.close()
+  } else {
+    record({ page: 'AUTH builder edit', kind: 'errorui', detail: 'No builder fixture could be created' })
   }
   await ctx.close()
 })
@@ -205,18 +253,20 @@ test('audit: protected routes redirect when anonymous', async ({ browser }) => {
     const url = page.url()
     const txt = (await page.evaluate(() => document.body?.innerText ?? '')).slice(0, 200)
     const redirected = /\/login|\/signup/.test(url)
-    if (!redirected) {
+    const guardedInPlace = /sign in to|log in to|not authorized|admin access required/i.test(txt)
+    const intentionallyPublic = r.path === '/billing'
+    if (!redirected && !guardedInPlace && !intentionallyPublic) {
       leaks.push(`${r.path} -> stayed at ${url} :: ${txt.replace(/\s+/g, ' ').slice(0, 120)}`)
     }
   }
-  fs.writeFileSync('/tmp/audit_authgate.json', JSON.stringify(leaks, null, 2))
+  fs.writeFileSync(path.join(AUDIT_DIR, 'audit_authgate.json'), JSON.stringify(leaks, null, 2), { mode: 0o600 })
   console.log('\n=== PROTECTED ROUTES NOT REDIRECTING ANONYMOUS USERS ===')
   leaks.forEach((l) => console.log('  ' + l))
+  expect(leaks).toEqual([])
   await ctx.close()
 })
 
 test.afterAll(() => {
-  fs.mkdirSync('/tmp/audit_shots', { recursive: true })
   fs.writeFileSync(OUT, JSON.stringify(problems, null, 2))
 
   const byPage = new Map<string, Problem[]>()
@@ -236,4 +286,5 @@ test.afterAll(() => {
       console.log(`   [${p.kind}] ${p.detail}`)
     }
   }
+  expect(problems).toEqual([])
 })

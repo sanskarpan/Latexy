@@ -71,7 +71,10 @@ class DeveloperKeyService:
         except Exception as exc:
             # Fail CLOSED: if we cannot account for usage (Redis down), deny the
             # request rather than granting unmetered access to metered endpoints.
-            logger.error(f"Developer API rate-limit unavailable (Redis error), failing closed: {exc}")
+            logger.error(
+                "Developer API rate-limit unavailable (Redis error), failing closed",
+                extra={"error_type": type(exc).__name__},
+            )
             return {"allowed": False, "count": limit, "limit": limit, "unavailable": True}
 
     async def get_usage_history(self, user_id: str, days: int = 7) -> list[Dict[str, Any]]:
@@ -81,7 +84,7 @@ class DeveloperKeyService:
         try:
             redis = await get_redis_cache_client()
         except Exception as exc:
-            logger.warning(f"Developer API usage history unavailable: {exc}")
+            logger.warning("Developer API usage history unavailable", extra={"error_type": type(exc).__name__})
             redis = None
 
         today = datetime.now(timezone.utc).date()

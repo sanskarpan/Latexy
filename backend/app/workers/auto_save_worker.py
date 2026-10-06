@@ -8,6 +8,7 @@ Celery's prefork worker pool.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -16,6 +17,54 @@ from uuid import uuid4
 from ..core.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+
+class ResumePersistenceConflict(RuntimeError):
+    """The source changed after a generated job was dispatched."""
+
+
+async def apply_resume_content(
+    session,
+    *,
+    resume_id: str,
+    user_id: str,
+    latex_content: str,
+    expected_latex_sha256: str | None,
+) -> bool:
+    """Apply generated content while the caller owns the surrounding transaction.
+
+    The row lock and source-snapshot check are deliberately kept separate from
+    ``commit``.  Finalization can therefore update the resume, Compilation,
+    and its arbiter row in one database transaction; a later object-storage
+    failure cannot leave a resume applied behind a failed terminal decision.
+    """
+    from sqlalchemy import select
+
+    from ..database.models import Resume
+
+    if not isinstance(latex_content, str):
+        raise ValueError("latex_content must be a string")
+    if not expected_latex_sha256:
+        raise ResumePersistenceConflict("generated persistence requires a source snapshot")
+    resume = await session.scalar(
+        select(Resume)
+        .where(Resume.id == resume_id, Resume.user_id == user_id)
+        .with_for_update()
+    )
+    if resume is None:
+        return False
+    # Redelivery after a successful commit is idempotent. This check must
+    # precede the dispatch-snapshot comparison.
+    if resume.latex_content == latex_content:
+        return True
+    current_hash = hashlib.sha256((resume.latex_content or "").encode("utf-8")).hexdigest()
+    if current_hash != expected_latex_sha256:
+        raise ResumePersistenceConflict(
+            f"resume {resume_id} changed after generated job dispatch"
+        )
+    resume.latex_content = latex_content
+    resume.updated_at = datetime.now(timezone.utc)
+    return True
 
 
 @celery_app.task(
@@ -185,6 +234,83 @@ async def _do_auto_save(
             await engine.dispose()
 
 
+async def _persist_resume_content(
+    resume_id: str,
+    user_id: str,
+    latex_content: str,
+    expected_latex_content: str,
+    session_factory=None,
+) -> bool:
+    """Persist generated content into an owner-scoped résumé row."""
+
+
+    engine = None
+    if not isinstance(expected_latex_content, str):
+        raise ValueError("expected_latex_content is required for generated persistence")
+    if session_factory is None:
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from ..utils.db_url import resolve_database_url
+
+        db_url = resolve_database_url()
+        if not db_url:
+            logger.warning("DATABASE_URL not set — cannot persist resume %s", resume_id)
+            return False
+        engine = create_async_engine(db_url, echo=False)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_factory() as session:
+            persisted = await apply_resume_content(
+                session,
+                resume_id=resume_id,
+                user_id=user_id,
+                latex_content=latex_content,
+                expected_latex_sha256=hashlib.sha256(
+                    expected_latex_content.encode("utf-8")
+                ).hexdigest(),
+            )
+            if not persisted:
+                await session.rollback()
+                logger.error(
+                    "Could not persist generated content: resume %s is missing or not owned by %s",
+                    resume_id,
+                    user_id,
+                )
+                return False
+            await session.commit()
+            return True
+    except ResumePersistenceConflict:
+        raise
+    except Exception as exc:
+        logger.error("Failed to persist generated content for resume %s", resume_id, extra={"error_type": type(exc).__name__})
+        return False
+    finally:
+        if engine is not None:
+            await engine.dispose()
+
+
+def persist_resume_content(
+    resume_id: str,
+    user_id: str,
+    latex_content: str,
+    expected_latex_content: str,
+) -> bool:
+    """Synchronous worker bridge used before a generated variant is completed."""
+    import asyncio
+
+    if not isinstance(expected_latex_content, str):
+        raise ValueError("expected_latex_content is required for generated persistence")
+    return asyncio.run(
+        _persist_resume_content(
+            resume_id,
+            user_id,
+            latex_content,
+            expected_latex_content=expected_latex_content,
+        )
+    )
+
+
 def submit_auto_save_checkpoint(
     resume_id: str, user_id: str, latex_content: str
 ) -> None:
@@ -211,4 +337,4 @@ def submit_auto_save_checkpoint(
             queue="cleanup",
         )
     except Exception as exc:
-        logger.warning("Failed to enqueue auto-save for resume %s: %s", resume_id, exc)
+        logger.warning("Failed to enqueue auto-save for resume %s", resume_id, extra={"error_type": type(exc).__name__})

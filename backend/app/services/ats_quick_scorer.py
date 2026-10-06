@@ -3,13 +3,13 @@ ATS Quick Scorer — lightweight, pure-Python ATS scoring (<50ms target).
 No network calls, no DB writes, no Celery. Used by POST /ats/quick-score.
 """
 
-import re
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from ..core.observability import record_ats_score
 from ..core.tracing import traced
+from ..utils import safe_regex as re
 
 
 @dataclass

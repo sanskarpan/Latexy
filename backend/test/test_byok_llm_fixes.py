@@ -15,8 +15,14 @@ from __future__ import annotations
 
 import pytest
 from httpx import AsyncClient
+from pydantic import ValidationError
 
 import app.api.ai_routes as air
+from app.api.byok_routes import (
+    AddAPIKeyRequest,
+    GenerateWithProviderRequest,
+    ValidateAPIKeyRequest,
+)
 from app.services.llm_provider_service import (
     AnthropicProvider,
     BaseLLMProvider,
@@ -80,13 +86,34 @@ class TestPerModelPricing:
         haiku = a.calculate_cost(_USAGE, "claude-3-haiku-20240307")
         assert opus > haiku
 
-    def test_unknown_model_falls_back_to_capabilities(self):
+    def test_unknown_model_is_explicitly_unpriced(self):
         p = OpenAIProvider("sk-test")
-        caps = p.get_capabilities()
         cost = p.calculate_cost(_USAGE, "some-future-model-2030")
-        assert cost == pytest.approx(
-            caps.cost_per_1k_input_tokens + caps.cost_per_1k_output_tokens
-        )
+        assert cost == 0
+        assert p.get_model_pricing("some-future-model-2030") is None
+
+    async def test_anthropic_validation_uses_auth_only_models_endpoint(self, monkeypatch):
+        provider = AnthropicProvider("sk-ant-test")
+
+        class Response:
+            status_code = 200
+
+        class Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+            async def get(self, url, **_kwargs):
+                assert url == "https://api.anthropic.com/v1/models"
+                return Response()
+
+            async def post(self, *_args, **_kwargs):
+                raise AssertionError("validation must not buy an inference request")
+
+        monkeypatch.setattr("app.services.llm_provider_service.httpx.AsyncClient", Client)
+        assert await provider.validate_api_key() is True
 
 
 # ── Fallback scoping (#5) + usage_stats cleanup (#18) ────────────────────────
@@ -180,6 +207,60 @@ class TestByokEndpointGuards:
             },
         )
         assert r.status_code == 400
+
+
+class TestByokGenerateValidation:
+    _VALID = {
+        "provider": "openai",
+        "messages": [{"role": "user", "content": "hello"}],
+        "model": "gpt-4o-mini",
+    }
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("provider", "unknown"),
+            ("messages", []),
+            ("messages", [{"role": "tool", "content": "hello"}]),
+            ("messages", [{"role": "user", "content": "  "}]),
+            ("messages", [{"role": "user", "content": "hello", "name": "extra"}]),
+            ("messages", [{"role": "user", "content": "x"}] * 101),
+            ("messages", [{"role": "user", "content": "x" * 70_000}] * 3),
+            ("max_tokens", 0),
+            ("max_tokens", 32_769),
+            ("temperature", -0.1),
+            ("temperature", 2.1),
+            ("temperature", float("nan")),
+        ],
+    )
+    def test_rejects_invalid_provider_payloads(self, field, value):
+        with pytest.raises(ValidationError):
+            GenerateWithProviderRequest(**{**self._VALID, field: value})
+
+    def test_accepts_bounded_provider_payload(self):
+        request = GenerateWithProviderRequest(
+            **self._VALID,
+            max_tokens=4096,
+            temperature=0.2,
+        )
+        assert request.messages == self._VALID["messages"]
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"provider": "unknown", "api_key": "secret"},
+            {"provider": "openai", "api_key": ""},
+            {"provider": "openai", "api_key": "x" * 10_001},
+            {"provider": "openai", "api_key": "secret", "key_name": "x" * 101},
+        ],
+    )
+    def test_rejects_unstoreable_api_key_payloads(self, payload):
+        with pytest.raises(ValidationError):
+            AddAPIKeyRequest(**payload)
+
+    def test_validation_relay_uses_the_same_key_bounds(self):
+        with pytest.raises(ValidationError):
+            ValidateAPIKeyRequest(provider="openai", api_key="x" * 10_001)
 
 
 # ── ai_assists metering: consistent, and never charged to BYOK callers ───────

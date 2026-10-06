@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDown,
@@ -20,17 +20,24 @@ import {
 import { toast } from 'sonner'
 
 import BuilderPreview from '@/components/builder/BuilderPreview'
+import ElementVersionHistoryPanel, { type VersionableResumeElement } from '@/components/ElementVersionHistoryPanel'
+import ExportDropdown from '@/components/ExportDropdown'
+import SessionLoadError from '@/components/SessionLoadError'
 import {
   apiClient,
   type BuilderTemplateResponse,
   type StructuredResume,
 } from '@/lib/api-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import {
   cloneStructuredResume,
   createBuilderId,
   DEFAULT_STRUCTURED_RESUME,
   deriveBuilderMetrics,
   deriveBuilderPreview,
+  applyRestoredBullet,
+  reconcileBulletIds,
+  safeBuilderIdentity,
 } from '@/lib/resume-builder'
 
 type SectionKey = StructuredResume['section_order'][number]
@@ -202,6 +209,14 @@ function splitLines(value: string) {
   return value.split('\n').map(item => item.trim()).filter(Boolean)
 }
 
+function splitLinesWithIds(value: string, existingBullets: string[], existingIds: string[], entryId: string) {
+  const bullets = splitLines(value)
+  return {
+    bullets,
+    bullet_ids: reconcileBulletIds(existingBullets, existingIds, bullets, entryId),
+  }
+}
+
 function sectionCount(structured: StructuredResume, section: SectionKey) {
   switch (section) {
     case 'summary':
@@ -250,21 +265,76 @@ function sectionReady(structured: StructuredResume, section: SectionKey) {
 
 export default function BuilderResumePage() {
   const params = useParams<{ resumeId: string }>()
-  const router = useRouter()
   const resumeId = params.resumeId
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+
+  if (sessionLoading && !session) {
+    return <div className="content-shell py-16 text-sm text-fg-2">Loading builder…</div>
+  }
+  if (sessionError && !session) {
+    return <SessionLoadError area="Builder resume" />
+  }
+  if (!session) return null
+
+  // Keep all private editor state scoped to both authenticated owner and
+  // document. A late callback from an old owner/document then has no mounted
+  // state to mutate, including an A → B → A transition.
+  return (
+    <BuilderResumeForm
+      key={`${session.user.id}:${resumeId}`}
+      resumeId={resumeId}
+      session={session}
+      authUnverified={Boolean(sessionLoading || sessionError)}
+    />
+  )
+}
+
+type BuilderSession = NonNullable<ReturnType<typeof useRequireAuth>['session']>
+
+function BuilderResumeForm({
+  resumeId,
+  session,
+  authUnverified,
+}: {
+  resumeId: string
+  session: BuilderSession
+  authUnverified: boolean
+}) {
+  const ownerId = session.user.id
 
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveAttempt, setSaveAttempt] = useState(0)
   const [dirty, setDirty] = useState(false)
   const [templates, setTemplates] = useState<BuilderTemplateResponse[]>([])
   const [title, setTitle] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [structured, setStructured] = useState<StructuredResume>(cloneStructuredResume(DEFAULT_STRUCTURED_RESUME))
+  const structuredRef = useRef(structured)
+  structuredRef.current = structured
   const [templateFamily, setTemplateFamily] = useState('minimal')
   const [builderStatus, setBuilderStatus] = useState<'active' | 'detached'>('active')
   const [activeSection, setActiveSection] = useState<SectionKey>('summary')
   const initialLoad = useRef(true)
+  const completedLoadAttempt = useRef<number | null>(null)
+  const editRevision = useRef(0)
+  const saveRequestId = useRef(0)
   const sectionRefs = useRef<Partial<Record<SectionKey, HTMLElement | null>>>({})
+  const mountedRef = useRef(false)
+  const authVerifiedRef = useRef(!authUnverified)
+  authVerifiedRef.current = !authUnverified
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  const isCurrentRequest = () => mountedRef.current && authVerifiedRef.current
 
   const liveMetrics = useMemo(() => deriveBuilderMetrics(structured), [structured])
   const livePreview = useMemo(
@@ -277,42 +347,88 @@ export default function BuilderResumePage() {
   const warnings = liveMetrics.warnings
   const missingSections = liveMetrics.missing_sections
 
+  // Structured entry IDs are persisted by the builder. The slot suffix gives
+  // each bullet an explicit, user-visible identity for this builder surface;
+  // callers must never use mutable text as the identity.
+  const versionableElements = useMemo<VersionableResumeElement[]>(() => [
+    ...structured.experience.flatMap(entry => entry.bullets.map((content, index) => {
+      const bulletId = entry.bullet_ids?.[index] || `bullet-${index}`
+      return {
+        key: `experience:${safeBuilderIdentity(entry.id)}:bullet:${bulletId}`,
+        label: `${entry.company || entry.title || 'Experience'} · bullet ${index + 1}`,
+        type: 'bullet' as const,
+        content,
+        section: 'experience' as const,
+        entryId: entry.id,
+        bulletId,
+      }
+    })),
+    ...structured.projects.flatMap(project => project.bullets.map((content, index) => {
+      const bulletId = project.bullet_ids?.[index] || `bullet-${index}`
+      return {
+        key: `project:${safeBuilderIdentity(project.id)}:bullet:${bulletId}`,
+        label: `${project.name || 'Project'} · bullet ${index + 1}`,
+        type: 'bullet' as const,
+        content,
+        section: 'project' as const,
+        entryId: project.id,
+        bulletId,
+      }
+    })),
+  ], [structured.experience, structured.projects])
+
   const selectedTemplate = useMemo(
     () => templates.find(template => template.id === selectedTemplateId) ?? null,
     [selectedTemplateId, templates],
   )
 
   useEffect(() => {
+    if (authUnverified || !isCurrentRequest()) return
+    if (completedLoadAttempt.current === loadAttempt) return
     let cancelled = false
+    setLoading(true)
+    setLoadError(null)
     Promise.all([apiClient.getBuilderResume(resumeId), apiClient.getBuilderTemplates()])
       .then(([builder, availableTemplates]) => {
-        if (cancelled) return
+        if (cancelled || !isCurrentRequest()) return
         setTemplates(availableTemplates)
         setTitle(builder.resume.title)
         setSelectedTemplateId(builder.resume.selected_template_id ?? availableTemplates[0]?.id ?? '')
         setStructured(cloneStructuredResume(builder.resume.structured_content ?? DEFAULT_STRUCTURED_RESUME))
         setTemplateFamily(builder.template_family)
         setBuilderStatus((builder.resume.builder_status ?? 'active') as 'active' | 'detached')
+        setDirty(false)
+        setSaveError(null)
+        completedLoadAttempt.current = loadAttempt
       })
       .catch(error => {
-        toast.error(error instanceof Error ? error.message : 'Failed to load builder resume')
-        router.push('/workspace')
+        if (!cancelled && isCurrentRequest()) {
+          setLoadError(error instanceof Error ? error.message : 'Failed to load builder resume')
+        }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!cancelled && isCurrentRequest()) setLoading(false)
       })
     return () => {
       cancelled = true
     }
-  }, [resumeId, router])
+  }, [loadAttempt, ownerId, resumeId, authUnverified])
 
   useEffect(() => {
     if (initialLoad.current) {
       initialLoad.current = false
       return
     }
+    if (authUnverified) return
     if (!dirty || builderStatus === 'detached') return
+    if (!title.trim() || title.length > 255) {
+      setSaveError(!title.trim() ? 'A resume title is required' : 'Resume titles must be 255 characters or fewer')
+      return
+    }
     const timeout = window.setTimeout(async () => {
+      if (!isCurrentRequest()) return
+      const revision = editRevision.current
+      const requestId = ++saveRequestId.current
       setSaving(true)
       try {
         const updated = await apiClient.updateBuilderResume(resumeId, {
@@ -320,17 +436,32 @@ export default function BuilderResumePage() {
           template_id: selectedTemplateId,
           structured_content: structured,
         })
-        setTemplateFamily(updated.template_family)
-        setBuilderStatus((updated.resume.builder_status ?? 'active') as 'active' | 'detached')
-        setDirty(false)
+        if (isCurrentRequest() && requestId === saveRequestId.current && revision === editRevision.current) {
+          setTemplateFamily(updated.template_family)
+          setBuilderStatus((updated.resume.builder_status ?? 'active') as 'active' | 'detached')
+          setDirty(false)
+          setSaveError(null)
+        }
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Autosave failed')
+        if (isCurrentRequest() && requestId === saveRequestId.current && revision === editRevision.current) {
+          setSaveError(error instanceof Error ? error.message : 'Autosave failed')
+        }
       } finally {
-        setSaving(false)
+        if (mountedRef.current && requestId === saveRequestId.current) setSaving(false)
       }
     }, 600)
     return () => window.clearTimeout(timeout)
-  }, [dirty, structured, title, selectedTemplateId, resumeId, builderStatus])
+  }, [authUnverified, dirty, structured, title, selectedTemplateId, resumeId, builderStatus, saveAttempt])
+
+  useEffect(() => {
+    const warnIfDirty = (event: BeforeUnloadEvent) => {
+      if (!dirty) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warnIfDirty)
+    return () => window.removeEventListener('beforeunload', warnIfDirty)
+  }, [dirty])
 
   const mutateStructured = (mutator: (draft: StructuredResume) => void) => {
     setStructured(prev => {
@@ -338,7 +469,35 @@ export default function BuilderResumePage() {
       mutator(next)
       return next
     })
+    editRevision.current += 1
     setDirty(true)
+    setSaveError(null)
+  }
+
+  const restoreVersionableElement = (
+    element: VersionableResumeElement,
+    content: string,
+    expectedCurrentContent: string,
+  ) => {
+    const currentEntries = element.section === 'experience'
+      ? structuredRef.current.experience
+      : structuredRef.current.projects
+    const currentEntry = currentEntries.find(item => item.id === element.entryId)
+    const currentIndex = currentEntry?.bullet_ids.indexOf(element.bulletId) ?? -1
+    if (!currentEntry || currentIndex < 0 || currentEntry.bullets[currentIndex] !== expectedCurrentContent) {
+      return false
+    }
+    mutateStructured(draft => {
+      applyRestoredBullet(
+        draft,
+        element.section,
+        element.entryId,
+        element.bulletId,
+        content,
+        expectedCurrentContent,
+      )
+    })
+    return true
   }
 
   const moveSection = (sectionKey: SectionKey, direction: -1 | 1) => {
@@ -362,6 +521,9 @@ export default function BuilderResumePage() {
   }
 
   const forceReattach = async () => {
+    if (!isCurrentRequest()) return
+    const revision = editRevision.current
+    const requestId = ++saveRequestId.current
     setSaving(true)
     try {
       const updated = await apiClient.updateBuilderResume(resumeId, {
@@ -370,14 +532,21 @@ export default function BuilderResumePage() {
         structured_content: structured,
         force_reattach: true,
       })
+      if (!isCurrentRequest() || requestId !== saveRequestId.current) return
       setTemplateFamily(updated.template_family)
       setBuilderStatus('active')
-      setDirty(false)
+      if (revision === editRevision.current) {
+        setDirty(false)
+        setSaveError(null)
+      }
       toast.success('Builder reattached and LaTeX overwritten from structured data')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to reattach builder')
+      if (!isCurrentRequest() || requestId !== saveRequestId.current) return
+      const message = error instanceof Error ? error.message : 'Failed to reattach builder'
+      setSaveError(message)
+      toast.error(message)
     } finally {
-      setSaving(false)
+      if (mountedRef.current && requestId === saveRequestId.current) setSaving(false)
     }
   }
 
@@ -401,6 +570,23 @@ export default function BuilderResumePage() {
     return <div className="content-shell py-16 text-sm text-fg-2">Loading builder…</div>
   }
 
+  if (loadError) {
+    return (
+      <div className="content-shell py-16">
+        <div role="alert" className="mx-auto max-w-lg rounded-[var(--radius-lg)] border border-err/20 bg-err/10 p-6 text-center">
+          <h1 className="text-lg font-semibold text-fg">Builder resume could not be loaded</h1>
+          <p className="mt-2 text-sm text-fg-2">{loadError}</p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link href="/workspace" className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg-2">Back to workspace</Link>
+            <button type="button" onClick={() => setLoadAttempt(value => value + 1)} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-medium text-accent-fg">Retry</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!session) return null
+
   const hidden = new Set(structured.hidden_sections)
   const missingSet = new Set(missingSections)
 
@@ -416,12 +602,21 @@ export default function BuilderResumePage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Link href={`/workspace/${resumeId}/edit`} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
+          <ExportDropdown resumeId={resumeId} variant="toolbar" />
+          <Link href={`/workspace/${resumeId}/edit`} onClick={event => {
+            if (dirty && !window.confirm('Changes have not been saved. Open the advanced editor anyway?')) event.preventDefault()
+          }} className="rounded-[var(--radius-md)] border border-line-2 text-fg hover:bg-surface-2 px-4 py-2 text-xs">
             Open Advanced Editor
           </Link>
-          <div className="rounded-full border border-line px-3 py-2 text-xs text-fg-2">
-            {saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'All changes saved'}
-          </div>
+          {saveError ? (
+            <button type="button" aria-live="polite" onClick={() => setSaveAttempt(value => value + 1)} className="rounded-full border border-err/30 bg-err/10 px-3 py-2 text-xs text-err" title={saveError}>
+              Save failed · Retry
+            </button>
+          ) : (
+            <div aria-live="polite" className="rounded-full border border-line px-3 py-2 text-xs text-fg-2">
+              {saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'All changes saved'}
+            </div>
+          )}
         </div>
       </header>
 
@@ -547,9 +742,12 @@ export default function BuilderResumePage() {
                     id="builder-resume-title"
                     type="text"
                     value={title}
+                    maxLength={255}
                     onChange={event => {
                       setTitle(event.target.value)
+                      editRevision.current += 1
                       setDirty(true)
+                      setSaveError(null)
                     }}
                   />
                 </div>
@@ -560,7 +758,9 @@ export default function BuilderResumePage() {
                     value={selectedTemplateId}
                     onChange={event => {
                       setSelectedTemplateId(event.target.value)
+                      editRevision.current += 1
                       setDirty(true)
+                      setSaveError(null)
                     }}
                     className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-4 py-3 text-fg outline-none transition focus:border-accent focus:ring-accent focus:ring-offset-bg"
                   >
@@ -734,7 +934,9 @@ export default function BuilderResumePage() {
                       value={entry.bullets.join('\n')}
                       onFocus={() => setActiveSection('experience')}
                       onChange={event => mutateStructured(draft => {
-                        draft.experience[idx].bullets = splitLines(event.target.value)
+        const next = splitLinesWithIds(event.target.value, draft.experience[idx].bullets, draft.experience[idx].bullet_ids, draft.experience[idx].id)
+        draft.experience[idx].bullets = next.bullets
+        draft.experience[idx].bullet_ids = next.bullet_ids
                       })}
                     />
                   </div>
@@ -770,6 +972,7 @@ export default function BuilderResumePage() {
                   current: false,
                   summary: '',
                   bullets: [],
+                  bullet_ids: [],
                   technologies: [],
                 })
               })} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
@@ -986,7 +1189,9 @@ export default function BuilderResumePage() {
                       value={project.bullets.join('\n')}
                       onFocus={() => setActiveSection('projects')}
                       onChange={event => mutateStructured(draft => {
-                        draft.projects[idx].bullets = splitLines(event.target.value)
+                        const next = splitLinesWithIds(event.target.value, draft.projects[idx].bullets, draft.projects[idx].bullet_ids, draft.projects[idx].id)
+                        draft.projects[idx].bullets = next.bullets
+                        draft.projects[idx].bullet_ids = next.bullet_ids
                       })}
                     />
                   </div>
@@ -1020,6 +1225,7 @@ export default function BuilderResumePage() {
                   end_date: '',
                   description: '',
                   bullets: [],
+                  bullet_ids: [],
                   technologies: [],
                 })
               })} className="rounded-[var(--radius-md)] bg-accent text-accent-fg hover:brightness-110 px-4 py-2 text-xs">
@@ -1278,6 +1484,12 @@ export default function BuilderResumePage() {
             completenessScore={completenessScore}
             pageEstimate={pageEstimate}
             warnings={warnings}
+          />
+
+          <ElementVersionHistoryPanel
+            resumeId={resumeId}
+            elements={versionableElements}
+            onRestore={restoreVersionableElement}
           />
 
           <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">

@@ -67,8 +67,7 @@ async def test_create_application(client: AsyncClient, auth_headers: dict, app_p
     assert data["job_url"] == "https://acme.example.com/jobs/123"
     assert data["notes"] == "Referred by Alice"
     assert data["id"] is not None
-    assert "company_logo_url" in data
-    assert "logo.clearbit.com" in (data["company_logo_url"] or "")
+    assert data["company_logo_url"] == "https://logo.clearbit.com/acme.com"
 
 
 @pytest.mark.asyncio

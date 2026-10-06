@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FileText, Mail, Zap } from 'lucide-react'
 import { toast } from 'sonner'
@@ -13,13 +13,17 @@ import {
   type CoverLetterLength,
 } from '@/lib/api-client'
 import { useRequireAuth } from '@/hooks/useRequireAuth'
+import SessionLoadError from '@/components/SessionLoadError'
 import { useJobStream } from '@/hooks/useJobStream'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
 import LaTeXEditor, { type LaTeXEditorRef } from '@/components/LaTeXEditor'
 import ModeToggle from '@/components/theme/ModeToggle'
+import ContrastToggle from '@/components/theme/ContrastToggle'
 import LogViewer from '@/components/LogViewer'
 import PDFPreview from '@/components/PDFPreview'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import CoverLetterSignaturePanel from '@/components/CoverLetterSignaturePanel'
+import { downloadBlob } from '@/lib/download'
 
 const TONE_OPTIONS: { value: CoverLetterTone; label: string; desc: string }[] = [
   { value: 'formal', label: 'Formal', desc: 'Professional and polished' },
@@ -49,14 +53,15 @@ const LENGTH_OPTIONS: { value: CoverLetterLength; label: string; desc: string }[
 
 export default function CoverLetterPage() {
   const params = useParams()
-  const router = useRouter()
   const searchParams = useSearchParams()
-  const { session, isPending: sessionLoading } = useRequireAuth()
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const resumeId = params.resumeId as string
   const requestedCoverLetterId = searchParams.get('cl')
 
   const [resume, setResume] = useState<{ title: string; latex_content: string } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Form state
@@ -72,6 +77,7 @@ export default function CoverLetterPage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [existingCoverLetters, setExistingCoverLetters] = useState<CoverLetterResponse[]>([])
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false)
+  const [editorContent, setEditorContent] = useState('')
 
   // Unsaved-changes guard: don't silently lose cover-letter edits on reload/nav.
   useEffect(() => {
@@ -88,17 +94,103 @@ export default function CoverLetterPage() {
   const { enabled: autoCompile, toggle: toggleAutoCompile } = useAutoCompile()
   const editorRef = useRef<LaTeXEditorRef>(null)
   const pdfUrlRef = useRef<string | null>(null)
-  const { state: stream } = useJobStream(activeJobId)
+  const activeJobIdRef = useRef<string | null>(null)
+  const activeCoverLetterIdRef = useRef<string | null>(null)
+  const resumeIdRef = useRef(resumeId)
+  const sessionUserId = session?.user?.id ?? null
+  const sessionUserIdRef = useRef<string | null>(sessionUserId)
+  const requestedCoverLetterIdRef = useRef<string | null>(requestedCoverLetterId)
+  const mountedRef = useRef(false)
+  const generationJobIdRef = useRef<string | null>(null)
+  const generationCompileStartedRef = useRef<string | null>(null)
+  const completionTrackedJobIdRef = useRef<string | null>(null)
+  const ownerKey = JSON.stringify([resumeId, sessionUserId, requestedCoverLetterId])
+  const ownerKeyRef = useRef(ownerKey)
+  const ownerContextVersionRef = useRef(0)
+  const invalidatedOwnerKeyRef = useRef<string | null>(null)
+  const revokePdfPreview = useCallback(() => {
+    if (pdfUrlRef.current) {
+      URL.revokeObjectURL(pdfUrlRef.current)
+      pdfUrlRef.current = null
+    }
+    setPdfUrl(null)
+  }, [])
+  activeJobIdRef.current = activeJobId
+  activeCoverLetterIdRef.current = activeCoverLetterId
+  resumeIdRef.current = resumeId
+  sessionUserIdRef.current = sessionUserId
+  requestedCoverLetterIdRef.current = requestedCoverLetterId
+  // Keep the old stream detached for the render/effect boundary where the
+  // route or authenticated owner changes. Clearing only in an effect briefly
+  // exposes the previous completed job to the new owner and can autocompile
+  // its LaTeX under the new resume.
+  if (ownerKeyRef.current !== ownerKey) {
+    ownerKeyRef.current = ownerKey
+    ownerContextVersionRef.current += 1
+    invalidatedOwnerKeyRef.current = ownerKey
+    activeJobIdRef.current = null
+    activeCoverLetterIdRef.current = null
+    generationJobIdRef.current = null
+    generationCompileStartedRef.current = null
+    completionTrackedJobIdRef.current = null
+  }
+  const ownerContextVersion = ownerContextVersionRef.current
+  const streamJobId = invalidatedOwnerKeyRef.current === ownerKey ? null : activeJobId
+  const { state: stream } = useJobStream(streamJobId)
+
+  const isCurrentPage = useCallback((
+    expectedResumeId: string,
+    expectedUserId: string | null,
+    expectedCoverLetterId?: string | null,
+  ) => (
+    mountedRef.current &&
+    ownerContextVersionRef.current === ownerContextVersion &&
+    resumeIdRef.current === expectedResumeId &&
+    sessionUserIdRef.current === expectedUserId &&
+    requestedCoverLetterIdRef.current === requestedCoverLetterId &&
+    (expectedCoverLetterId === undefined || activeCoverLetterIdRef.current === expectedCoverLetterId)
+  ), [requestedCoverLetterId, ownerContextVersion])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  useEffect(() => {
+    if (invalidatedOwnerKeyRef.current !== ownerKey) return
+    invalidatedOwnerKeyRef.current = null
+    revokePdfPreview()
+    setResume(null)
+    setActiveJobId(null)
+    setActiveCoverLetterId(null)
+    setPdfUrl(null)
+    setExistingCoverLetters([])
+    setEditorContent('')
+    editorRef.current?.setValue('')
+    setJobDescription('')
+    setCompanyName('')
+    setRoleTitle('')
+    setHasUnsavedEdits(false)
+    setIsSubmitting(false)
+  }, [ownerKey, revokePdfPreview])
 
   // Load resume + existing cover letters
   useEffect(() => {
-    if (!session) return
+    if (sessionLoading) return
+    if (!session) {
+      setIsLoading(false)
+      return
+    }
+    let cancelled = false
     const fetchData = async () => {
+      setIsLoading(true)
+      setLoadError(null)
       try {
         const [data, cls] = await Promise.all([
           apiClient.getResume(resumeId),
           apiClient.getResumeCoverLetters(resumeId),
         ])
+        if (cancelled) return
         setResume(data)
         setExistingCoverLetters(cls)
 
@@ -106,65 +198,105 @@ export default function CoverLetterPage() {
         const requested = requestedCoverLetterId
           ? cls.find((c) => c.id === requestedCoverLetterId)
           : undefined
+        if (requestedCoverLetterId && !requested) {
+          setLoadError('The requested cover letter was not found for this resume.')
+          return
+        }
         const initial = requested ?? (cls.length > 0 ? cls[0] : undefined)
-        if (initial && initial.latex_content) {
-          editorRef.current?.setValue(initial.latex_content)
+        if (initial) {
           setActiveCoverLetterId(initial.id)
           setJobDescription(initial.job_description || '')
           setCompanyName(initial.company_name || '')
           setRoleTitle(initial.role_title || '')
           setTone(initial.tone as CoverLetterTone)
           setLengthPref(initial.length_preference as CoverLetterLength)
-          // Auto-compile the existing cover letter
-          try {
-            const r = await apiClient.compileLatex({ latex_content: initial.latex_content })
-            if (r.success && r.job_id) setActiveJobId(r.job_id)
-          } catch {
-            // Silent
+          if (initial.latex_content) {
+            editorRef.current?.setValue(initial.latex_content)
+            setEditorContent(initial.latex_content)
+            // Auto-compile the existing cover letter
+            try {
+              const r = await apiClient.compileLatex({ latex_content: initial.latex_content })
+              if (!cancelled && r.success && r.job_id) setActiveJobId(r.job_id)
+            } catch {
+              // Silent
+            }
           }
         }
-      } catch {
-        toast.error('Failed to load resume')
-        router.push('/workspace')
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : 'Failed to load cover-letter workspace')
+        }
       } finally {
-        setIsLoading(false)
+        if (!cancelled) setIsLoading(false)
       }
     }
-    fetchData()
-  }, [resumeId, router, session, requestedCoverLetterId])
+    void fetchData()
+    return () => { cancelled = true }
+  }, [loadAttempt, resumeId, session, sessionLoading, requestedCoverLetterId])
 
   // Stream LLM tokens into editor
   useEffect(() => {
     if (!stream.streamingLatex || !editorRef.current) return
     editorRef.current.setValue(stream.streamingLatex)
+    setEditorContent(stream.streamingLatex)
   }, [stream.streamingLatex])
 
   // Auto-compile after LLM generation completes (worker emits pdf_job_id: null)
-  const generationJobIdRef = useRef<string | null>(null)
+  // Set before the compile request starts. This is deliberately separate from
+  // activeJobId: a REST replay and a late WS completion can both re-run the
+  // completed effect while the compile request is still in flight.
   useEffect(() => {
     if (stream.status !== 'completed') return
+    const completedJobId = activeJobId
+    const completedResumeId = resumeId
+    const completedCoverLetterId = activeCoverLetterId
+    const completedUserId = sessionUserId
+    const completedRequestedCoverLetterId = requestedCoverLetterId
+    const isCurrentRoute = () => (
+      mountedRef.current &&
+      ownerContextVersionRef.current === ownerContextVersion &&
+      resumeIdRef.current === completedResumeId &&
+      activeCoverLetterIdRef.current === completedCoverLetterId &&
+      sessionUserIdRef.current === completedUserId &&
+      requestedCoverLetterIdRef.current === completedRequestedCoverLetterId
+    )
+    const isCurrentRun = () => (
+      isCurrentRoute() &&
+      activeJobIdRef.current === completedJobId &&
+      generationJobIdRef.current === completedJobId
+    )
+
     // If pdfJobId is set and different from the generation job, it's a compile job — fetch PDF
     if (stream.pdfJobId && stream.pdfJobId !== generationJobIdRef.current) {
+      const pdfJobId = stream.pdfJobId
       const fetchPdf = async () => {
         try {
-          const blob = await apiClient.downloadPdf(stream.pdfJobId!)
+          const blob = await apiClient.downloadPdf(pdfJobId)
+          if (!isCurrentRoute() || activeJobIdRef.current !== completedJobId) return
           const nextUrl = URL.createObjectURL(blob)
           if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
           pdfUrlRef.current = nextUrl
           setPdfUrl(nextUrl)
         } catch {
-          toast.error('Failed to load PDF')
+          if (isCurrentRoute() && activeJobIdRef.current === completedJobId) {
+            toast.error('Failed to load PDF')
+          }
         }
       }
-      fetchPdf()
-      return
+      void fetchPdf()
     }
     // Generation just completed (no real pdf_job_id) — auto-compile the generated LaTeX
-    if (activeJobId && activeJobId === generationJobIdRef.current) {
+    if (
+      activeJobId &&
+      activeJobId === generationJobIdRef.current &&
+      generationCompileStartedRef.current !== activeJobId
+    ) {
       const content = editorRef.current?.getValue()
       if (content && content.length > 50) {
-        apiClient.compileLatex({ latex_content: content }).then((r) => {
-          if (r.success && r.job_id) {
+        const generationJobId = activeJobId
+        generationCompileStartedRef.current = generationJobId
+        void apiClient.compileLatex({ latex_content: content }).then((r) => {
+          if (isCurrentRun() && r.success && r.job_id) {
             setActiveJobId(r.job_id)
           }
         }).catch(() => {
@@ -173,7 +305,9 @@ export default function CoverLetterPage() {
       }
       // Re-fetch cover letter from DB to get saved latex_content
       if (activeCoverLetterId) {
-        apiClient.getCoverLetter(activeCoverLetterId).then((cl) => {
+        const generationJobId = activeJobId
+        void apiClient.getCoverLetter(activeCoverLetterId).then((cl) => {
+          if (!isCurrentRoute() || generationJobIdRef.current !== generationJobId) return
           setExistingCoverLetters((prev) =>
             prev.map((item) => (item.id === cl.id ? cl : item))
           )
@@ -182,11 +316,12 @@ export default function CoverLetterPage() {
     }
 
     // Track analytics
-    if (activeJobId) {
+    if (activeJobId && completionTrackedJobIdRef.current !== activeJobId) {
+      completionTrackedJobIdRef.current = activeJobId
       apiClient.trackCompilation(activeJobId, 'completed')
       apiClient.trackFeatureUsage('cover_letter_generation')
     }
-  }, [stream.status, stream.pdfJobId, activeJobId, activeCoverLetterId])
+  }, [stream.status, stream.pdfJobId, stream.streamingLatex, activeJobId, activeCoverLetterId, resumeId, sessionUserId, requestedCoverLetterId, ownerContextVersion])
 
   // Track failed jobs
   useEffect(() => {
@@ -212,8 +347,11 @@ export default function CoverLetterPage() {
       return
     }
     setIsSubmitting(true)
-    setPdfUrl(null)
+    revokePdfPreview()
     setHasUnsavedEdits(false)
+    const requestResumeId = resumeId
+    const requestUserId = sessionUserId
+    const requestCoverLetterId = activeCoverLetterId
 
     try {
       const response = await apiClient.generateCoverLetter({
@@ -228,8 +366,10 @@ export default function CoverLetterPage() {
       if (!response.success || !response.job_id) {
         throw new Error(response.message || 'Failed to start generation')
       }
+      if (!isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) return
 
       generationJobIdRef.current = response.job_id
+      generationCompileStartedRef.current = null
       setActiveJobId(response.job_id)
       setActiveCoverLetterId(response.cover_letter_id)
 
@@ -253,9 +393,11 @@ export default function CoverLetterPage() {
 
       toast.success('Cover letter generation started')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Generation failed')
+      if (isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) {
+        toast.error(error instanceof Error ? error.message : 'Generation failed')
+      }
     } finally {
-      setIsSubmitting(false)
+      if (isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) setIsSubmitting(false)
     }
   }
 
@@ -266,14 +408,18 @@ export default function CoverLetterPage() {
       return
     }
     setIsSubmitting(true)
+    const requestResumeId = resumeId
+    const requestUserId = sessionUserId
+    const requestCoverLetterId = activeCoverLetterId
     try {
       const response = await apiClient.compileLatex({ latex_content: content })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
+      if (!isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) return
       setActiveJobId(response.job_id)
     } catch {
-      toast.error('Compilation failed')
+      if (isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) toast.error('Compilation failed')
     } finally {
-      setIsSubmitting(false)
+      if (isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) setIsSubmitting(false)
     }
   }
 
@@ -281,32 +427,45 @@ export default function CoverLetterPage() {
     if (!activeCoverLetterId) return
     const content = editorRef.current?.getValue()
     if (!content) return
+    const requestResumeId = resumeId
+    const requestUserId = sessionUserId
+    const requestCoverLetterId = activeCoverLetterId
     try {
-      await apiClient.updateCoverLetter(activeCoverLetterId, content)
+      await apiClient.updateCoverLetter(requestCoverLetterId, content)
+      if (!isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) return
       setHasUnsavedEdits(false)
       toast.success('Cover letter saved')
     } catch {
-      toast.error('Failed to save')
+      if (isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) toast.error('Failed to save')
     }
   }
 
   const handleAutoCompile = useCallback(async (content: string) => {
     if (isSubmitting) return
     setIsSubmitting(true)
+    const requestResumeId = resumeId
+    const requestUserId = sessionUserId
+    const requestCoverLetterId = activeCoverLetterId
     try {
       const response = await apiClient.compileLatex({ latex_content: content })
       if (!response.success || !response.job_id) throw new Error(response.message || 'Failed')
+      if (!isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) return
       setActiveJobId(response.job_id)
     } catch {
       // Silent
     } finally {
-      setIsSubmitting(false)
+      if (isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) setIsSubmitting(false)
     }
-  }, [isSubmitting])
+  }, [activeCoverLetterId, isCurrentPage, isSubmitting, resumeId, sessionUserId])
 
   const loadCoverLetter = async (cl: CoverLetterResponse) => {
-    if (!cl.latex_content) return
-    editorRef.current?.setValue(cl.latex_content)
+    // Detach the old generation before selecting another letter, including
+    // empty letters. Its stream must not refill the newly cleared editor.
+    activeJobIdRef.current = null
+    generationJobIdRef.current = null
+    generationCompileStartedRef.current = null
+    completionTrackedJobIdRef.current = null
+    setActiveJobId(null)
     setActiveCoverLetterId(cl.id)
     setJobDescription(cl.job_description || '')
     setCompanyName(cl.company_name || '')
@@ -314,10 +473,20 @@ export default function CoverLetterPage() {
     setTone(cl.tone as CoverLetterTone)
     setLengthPref(cl.length_preference as CoverLetterLength)
     setHasUnsavedEdits(false)
+    revokePdfPreview()
+    if (!cl.latex_content) {
+      editorRef.current?.setValue('')
+      setEditorContent('')
+      return
+    }
+    editorRef.current?.setValue(cl.latex_content)
+    setEditorContent(cl.latex_content)
+    const requestResumeId = resumeId
+    const requestUserId = sessionUserId
     // Compile loaded cover letter
     try {
       const r = await apiClient.compileLatex({ latex_content: cl.latex_content })
-      if (r.success && r.job_id) setActiveJobId(r.job_id)
+      if (isCurrentPage(requestResumeId, requestUserId, cl.id) && r.success && r.job_id) setActiveJobId(r.job_id)
     } catch {
       // Silent
     }
@@ -325,18 +494,59 @@ export default function CoverLetterPage() {
 
   const deleteCoverLetter = async (id: string) => {
     setConfirmDeleteId(null)
+    const requestResumeId = resumeId
+    const requestUserId = sessionUserId
+    const requestActiveCoverLetterId = activeCoverLetterId
     try {
       await apiClient.deleteCoverLetter(id)
+      if (!isCurrentPage(requestResumeId, requestUserId)) return
       setExistingCoverLetters(prev => prev.filter(cl => cl.id !== id))
-      if (activeCoverLetterId === id) {
+      if (requestActiveCoverLetterId === id && activeCoverLetterIdRef.current === id) {
+        activeJobIdRef.current = null
+        generationJobIdRef.current = null
+        generationCompileStartedRef.current = null
+        completionTrackedJobIdRef.current = null
+        setActiveJobId(null)
         setActiveCoverLetterId(null)
         editorRef.current?.setValue('')
-        setPdfUrl(null)
+        setEditorContent('')
+        revokePdfPreview()
       }
       toast.success('Cover letter deleted')
     } catch {
-      toast.error('Failed to delete')
+      if (isCurrentPage(requestResumeId, requestUserId)) toast.error('Failed to delete')
     }
+  }
+
+  const saveSignature = async (nextLatex: string): Promise<boolean> => {
+    if (!activeCoverLetterId) throw new Error('Generate or open a cover letter before adding a signature.')
+    editorRef.current?.setValue(nextLatex)
+    setEditorContent(nextLatex)
+    setHasUnsavedEdits(true)
+    const requestResumeId = resumeId
+    const requestUserId = sessionUserId
+    const requestCoverLetterId = activeCoverLetterId
+    let saved: CoverLetterResponse
+    try {
+      saved = await apiClient.updateCoverLetter(requestCoverLetterId, nextLatex)
+    } catch {
+      if (isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) toast.error('Failed to save signature')
+      return false
+    }
+    if (!isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) return false
+    setExistingCoverLetters((previous) => previous.map((item) => item.id === saved.id ? saved : item))
+    setHasUnsavedEdits(false)
+    try {
+      const compiled = await apiClient.compileLatex({ latex_content: nextLatex })
+      if (isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId) && compiled.success && compiled.job_id) setActiveJobId(compiled.job_id)
+    } catch {
+      if (isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)) {
+        toast.warning('Signature saved; compile the PDF to refresh the preview.')
+      }
+    }
+    // The compile response can arrive after another route/owner/letter was
+    // selected even though persistence itself succeeded earlier.
+    return isCurrentPage(requestResumeId, requestUserId, requestCoverLetterId)
   }
 
   const isProcessing = stream.status === 'queued' || stream.status === 'processing'
@@ -345,6 +555,25 @@ export default function CoverLetterPage() {
     return (
       <div className="flex h-screen items-center justify-center">
         <LoadingSpinner />
+      </div>
+    )
+  }
+
+  if (sessionError && !session) {
+    return <SessionLoadError area="Cover-letter workspace" />
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center px-6">
+        <div role="alert" className="max-w-md rounded-[var(--radius-lg)] border border-err/20 bg-err/10 p-6 text-center">
+          <h1 className="text-lg font-semibold text-fg">Cover-letter workspace could not be loaded</h1>
+          <p className="mt-2 text-sm text-fg-2">{loadError}</p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link href="/workspace" className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg-2">Back to workspace</Link>
+            <button type="button" onClick={() => setLoadAttempt(value => value + 1)} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-medium text-accent-fg">Retry</button>
+          </div>
+        </div>
       </div>
     )
   }
@@ -366,6 +595,7 @@ export default function CoverLetterPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <ContrastToggle />
           <ModeToggle />
           <Link
             href={`/workspace/${resumeId}/edit`}
@@ -487,6 +717,12 @@ export default function CoverLetterPage() {
           >
             {isProcessing || isSubmitting ? 'Generating...' : 'Generate Cover Letter'}
           </button>
+
+          <CoverLetterSignaturePanel
+            latex={editorContent}
+            disabled={isProcessing || !activeCoverLetterId || !editorContent}
+            onApply={saveSignature}
+          />
 
           {/* Pipeline Status */}
           <AnimatePresence>
@@ -618,7 +854,7 @@ export default function CoverLetterPage() {
         </aside>
 
         {/* Right main — editor + preview */}
-        <main className="space-y-6">
+        <div className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-2">
             {/* LaTeX Editor */}
             <section className="rounded-[var(--radius-lg)] border border-line bg-surface flex h-[620px] flex-col overflow-hidden">
@@ -631,6 +867,8 @@ export default function CoverLetterPage() {
                   <button
                     onClick={toggleAutoCompile}
                     title="Auto-compile on change (2s debounce)"
+                    aria-label="Auto-compile on change"
+                    aria-pressed={autoCompile}
                     className={`flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium transition ${
                       autoCompile
                         ? 'bg-accent-soft text-accent-strong ring-1 ring-accent'
@@ -663,7 +901,10 @@ export default function CoverLetterPage() {
                 <LaTeXEditor
                   ref={editorRef}
                   value=""
-                  onChange={() => setHasUnsavedEdits(true)}
+                  onChange={(value) => {
+                    setEditorContent(value)
+                    setHasUnsavedEdits(true)
+                  }}
                   readOnly={isProcessing}
                   onAutoCompile={autoCompile && !isProcessing ? handleAutoCompile : undefined}
                   hideEmptyAction
@@ -729,12 +970,7 @@ export default function CoverLetterPage() {
                         if (!stream.pdfJobId) return
                         try {
                           const blob = await apiClient.downloadPdf(stream.pdfJobId)
-                          const url = URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = url
-                          a.download = 'cover_letter.pdf'
-                          a.click()
-                          URL.revokeObjectURL(url)
+                          downloadBlob(blob, 'cover_letter.pdf')
                         } catch {
                           toast.error('Failed to download PDF')
                         }
@@ -747,7 +983,7 @@ export default function CoverLetterPage() {
               </motion.section>
             )}
           </AnimatePresence>
-        </main>
+        </div>
       </div>
     </div>
   )

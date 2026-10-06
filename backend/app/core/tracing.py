@@ -23,7 +23,7 @@ try:
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-    from opentelemetry.trace import format_span_id, format_trace_id
+    from opentelemetry.trace import Status, StatusCode, format_span_id, format_trace_id
 
     HAS_OTEL = True
 except ImportError:
@@ -108,7 +108,7 @@ def setup_telemetry(component: str) -> None:
             HTTPXClientInstrumentor().instrument()
             _httpx_instrumented = True
         except Exception as exc:  # pragma: no cover - optional dep
-            logger.debug("httpx instrumentation unavailable: %s", exc)
+            logger.debug("httpx instrumentation unavailable", extra={"error_type": type(exc).__name__})
 
     _provider_initialized = True
     logger.info(
@@ -133,10 +133,53 @@ def instrument_fastapi(app) -> None:
 def instrument_celery() -> None:
     """Instrument Celery once for producer/consumer spans."""
     global _celery_instrumented
+    _install_celery_privacy_guards()
     if not HAS_OTEL or _celery_instrumented or not settings.OTEL_ENABLED:
         return
     CeleryInstrumentor().instrument()
     _celery_instrumented = True
+
+
+def _install_celery_privacy_guards() -> None:
+    """Keep OpenTelemetry Celery failure spans free of caller-controlled text."""
+    if not HAS_OTEL:
+        return
+
+    from opentelemetry.instrumentation import celery as celery_instrumentation
+
+    instrumentor = celery_instrumentation.CeleryInstrumentor
+    if getattr(instrumentor, "_latexy_privacy_guard", False):
+        return
+
+    def safe_trace_failure(*args, **kwargs):
+        task = celery_instrumentation.utils.retrieve_task_from_sender(kwargs)
+        task_id = celery_instrumentation.utils.retrieve_task_id(kwargs)
+        if task is None or task_id is None:
+            return
+        ctx = celery_instrumentation.utils.retrieve_context(task, task_id)
+        if ctx is None:
+            return
+        span, _, _ = ctx
+        if span.is_recording():
+            span.set_status(Status(status_code=StatusCode.ERROR, description="task failed"))
+
+    def safe_trace_retry(*args, **kwargs):
+        task = celery_instrumentation.utils.retrieve_task_from_sender(kwargs)
+        task_id = celery_instrumentation.utils.retrieve_task_id_from_request(kwargs)
+        if task is None or task_id is None:
+            return
+        ctx = celery_instrumentation.utils.retrieve_context(task, task_id)
+        if ctx is None:
+            return
+        span, _, _ = ctx
+        if span.is_recording():
+            # Preserve a retry span marker without serializing the exception
+            # or provider message carried by ``reason``.
+            span.set_attribute("celery.retry", True)
+
+    instrumentor._trace_failure = staticmethod(safe_trace_failure)
+    instrumentor._trace_retry = staticmethod(safe_trace_retry)
+    instrumentor._latexy_privacy_guard = True
 
 
 def instrument_sqlalchemy(engine) -> None:
@@ -176,14 +219,27 @@ def traced(name: str, **attributes: Any):
         yield None
         return
     tracer = trace.get_tracer("latexy")
-    with tracer.start_as_current_span(name) as span:
-        for key, value in attributes.items():
-            if value is not None:
-                try:
-                    span.set_attribute(key, value)
-                except Exception:  # pragma: no cover - defensive
-                    pass
-        yield span
+    span = tracer.start_span(name)
+    try:
+        # ``start_as_current_span`` records exception objects and formats their
+        # messages by default.  Activate the span with both error hooks off;
+        # the sanitized status below preserves failure observability without
+        # exporting source, prompts, credentials, or provider diagnostics.
+        with trace.use_span(span, end_on_exit=False, record_exception=False, set_status_on_exception=False):
+            for key, value in attributes.items():
+                if value is not None:
+                    try:
+                        span.set_attribute(key, value)
+                    except Exception:  # pragma: no cover - defensive
+                        pass
+            try:
+                yield span
+            except Exception:
+                if span.is_recording():
+                    span.set_status(Status(status_code=StatusCode.ERROR, description="operation failed"))
+                raise
+    finally:
+        span.end()
 
 
 def set_span_attributes(**attributes: Any) -> None:

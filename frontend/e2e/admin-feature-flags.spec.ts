@@ -152,6 +152,28 @@ test.describe('/admin — 403 forbidden', () => {
   })
 })
 
+test.describe('/admin — authorization probe outage', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuth(page)
+    await mockFeatureFlagsConfig(page)
+    await page.route((url) => url.pathname === '/admin/feature-flags', (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Admin verification unavailable' }),
+      })
+    )
+  })
+
+  test('does not render the admin shell when authorization cannot be verified', async ({ page }) => {
+    await page.goto('/admin', { waitUntil: 'domcontentloaded' })
+
+    await expect(page.getByText('Could not verify admin access')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
+    await expect(page.getByRole('tablist', { name: 'Admin sections' })).not.toBeVisible()
+  })
+})
+
 // ------------------------------------------------------------------ //
 //  3. Admin panel — toggling flags                                    //
 // ------------------------------------------------------------------ //

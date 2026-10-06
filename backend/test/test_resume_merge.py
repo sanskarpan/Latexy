@@ -161,6 +161,7 @@ class TestResumeMerge:
         fetched = fetch_resp.json()
         assert fetched["title"] == "Merged Resume"
         assert fetched["parent_resume_id"] == id_a
+        assert fetched["metadata"]["compiler"] == "lualatex"
 
     async def test_merged_latex_has_valid_structure(
         self, client: AsyncClient, auth_headers: dict
@@ -293,25 +294,24 @@ AWS Solutions Architect, GCP Professional.
         assert "merged_latex" in data
         assert "new_resume_id" in data
 
-    async def test_duplicate_resume_ids_deduplicated(
+    async def test_duplicate_resume_ids_rejected(
         self, client: AsyncClient, auth_headers: dict
     ):
-        """Duplicate IDs in resume_ids are silently deduplicated."""
+        """Duplicate IDs are ambiguous and do not satisfy the distinct-input contract."""
         id_a = await self._create_resume(client, auth_headers, "R A", LATEX_A)
         id_b = await self._create_resume(client, auth_headers, "R B", LATEX_B)
 
-        # id_a appears twice — should be treated as [id_a, id_b]
         resp = await client.post(
             "/resumes/merge",
             headers=auth_headers,
             json={"resume_ids": [id_a, id_b, id_a], "section_choices": {}},
         )
-        assert resp.status_code == 201
+        assert resp.status_code == 422
 
-    async def test_section_choice_invalid_source_falls_back_to_primary(
+    async def test_section_choice_invalid_source_is_rejected(
         self, client: AsyncClient, auth_headers: dict
     ):
-        """section_choices pointing to an ID absent from resume_ids falls back to primary."""
+        """A section source must be one of the explicitly selected resumes."""
         id_a = await self._create_resume(client, auth_headers, "R A", LATEX_A)
         id_b = await self._create_resume(client, auth_headers, "R B", LATEX_B)
 
@@ -323,10 +323,7 @@ AWS Solutions Architect, GCP Professional.
                 "section_choices": {"Skills": "non-existent-resume-id"},
             },
         )
-        assert resp.status_code == 201
-        merged = resp.json()["merged_latex"]
-        # Falls back to A's Skills
-        assert "PostgreSQL" in merged
+        assert resp.status_code == 422
 
     async def test_resume_with_no_sections_merges_cleanly(
         self, client: AsyncClient, auth_headers: dict

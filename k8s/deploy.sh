@@ -8,6 +8,19 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAMESPACE="latexy"
+IMAGE_PREFIX="${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}"
+LATEXY_VERSION="${LATEXY_VERSION:-}"
+BACKEND_IMAGE="${BACKEND_IMAGE:-}"
+FRONTEND_IMAGE="${FRONTEND_IMAGE:-}"
+RENDER_DIR=""
+
+cleanup_rendered_manifests() {
+    if [[ -n "$RENDER_DIR" && -d "$RENDER_DIR" ]]; then
+        rm -rf "$RENDER_DIR"
+    fi
+}
+
+trap cleanup_rendered_manifests EXIT
 
 # Colors for output
 RED='\033[0;31m'
@@ -16,12 +29,60 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+validate_image_ref() {
+    local name="$1" image="$2"
+    if [[ -z "$image" ]]; then
+        log "ERROR" "$name is required. Set ${name} or LATEXY_VERSION to an immutable release/SHA tag."
+        return 1
+    fi
+    # Keep the value in a deliberately small OCI-reference subset.  Besides
+    # rejecting mutable tags, this prevents a ref from injecting sed/awk
+    # replacement syntax while manifests are rendered below.
+    if [[ "$image" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*(:(v[0-9]+\.[0-9]+\.[0-9]+|sha-[0-9a-fA-F]{7,64})|@sha256:[0-9a-fA-F]{64})$ ]]; then
+        return 0
+    fi
+    log "ERROR" "$name must use a safe release vX.Y.Z tag, sha- tag, or digest (never :latest): $image"
+    return 1
+}
+
+resolve_image_refs() {
+    if [[ -n "$LATEXY_VERSION" ]]; then
+        [[ -n "$BACKEND_IMAGE" ]] || BACKEND_IMAGE="$IMAGE_PREFIX/latexy-backend:$LATEXY_VERSION"
+        [[ -n "$FRONTEND_IMAGE" ]] || FRONTEND_IMAGE="$IMAGE_PREFIX/latexy-frontend:$LATEXY_VERSION"
+    fi
+    validate_image_ref BACKEND_IMAGE "$BACKEND_IMAGE"
+    validate_image_ref FRONTEND_IMAGE "$FRONTEND_IMAGE"
+}
+
+render_manifest() {
+    local source="$1" output="$2"
+    awk -v backend="$BACKEND_IMAGE" -v frontend="$FRONTEND_IMAGE" \
+        '{gsub(/__LATEXY_BACKEND_IMAGE__/, backend); gsub(/__LATEXY_FRONTEND_IMAGE__/, frontend); print}' \
+        "$source" > "$RENDER_DIR/$output"
+}
+
+render_deployment_manifests() {
+    RENDER_DIR="$(mktemp -d "${TMPDIR:-/tmp}/latexy-k8s.XXXXXX")"
+    render_manifest "$SCRIPT_DIR/backend/deployment.yaml" backend-deployment.yaml
+    render_manifest "$SCRIPT_DIR/frontend/deployment.yaml" frontend-deployment.yaml
+    render_manifest "$SCRIPT_DIR/celery/celery-worker.yaml" celery-worker.yaml
+    render_manifest "$SCRIPT_DIR/database/migrations-job.yaml" migrations-job.yaml
+}
+
+ensure_rendered_manifests() {
+    if [[ -z "$RENDER_DIR" ]]; then
+        resolve_image_refs
+        render_deployment_manifests
+    fi
+}
+
 # Function to log messages
 log() {
     local level="$1"
     shift
     local message="$*"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     
     case "$level" in
         "INFO")
@@ -145,7 +206,8 @@ provision_secrets() {
     # Third-party credentials: never generated, only passed through.
     for var in OPENAI_API_KEY ANTHROPIC_API_KEY GOOGLE_API_KEY OPENROUTER_API_KEY \
                RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET \
-               RESEND_API_KEY; do
+               RESEND_API_KEY GOOGLE_DRIVE_CLIENT_ID GOOGLE_DRIVE_CLIENT_SECRET \
+               SMTP_HOST SMTP_USER SMTP_PASSWORD; do
         if [[ -z "${!var:-}" ]]; then
             log "WARNING" "$var is not set — the matching feature will be disabled in the cluster"
         fi
@@ -176,7 +238,16 @@ provision_secrets() {
         --from-literal=razorpay-key-id="${RAZORPAY_KEY_ID:-}" \
         --from-literal=razorpay-key-secret="${RAZORPAY_KEY_SECRET:-}" \
         --from-literal=razorpay-webhook-secret="${RAZORPAY_WEBHOOK_SECRET:-}" \
+        --from-literal=razorpay-plan-weekly="${RAZORPAY_PLAN_WEEKLY:-}" \
+        --from-literal=razorpay-weekly-amount="${RAZORPAY_WEEKLY_AMOUNT:-0}" \
+        --from-literal=razorpay-lifetime-amount="${RAZORPAY_LIFETIME_AMOUNT:-0}" \
+        --from-literal=razorpay-billing-currency="${RAZORPAY_BILLING_CURRENCY:-INR}" \
         --from-literal=resend-api-key="${RESEND_API_KEY:-}" \
+        --from-literal=google-drive-client-id="${GOOGLE_DRIVE_CLIENT_ID:-}" \
+        --from-literal=google-drive-client-secret="${GOOGLE_DRIVE_CLIENT_SECRET:-}" \
+        --from-literal=smtp-host="${SMTP_HOST:-}" \
+        --from-literal=smtp-user="${SMTP_USER:-}" \
+        --from-literal=smtp-password="${SMTP_PASSWORD:-}" \
         --from-literal=flower-password="$flower_password" \
         --from-literal=flower-auth="${flower_user}:${flower_password}" \
         --dry-run=client -o yaml | kubectl apply -f -
@@ -244,8 +315,8 @@ deploy_redis() {
 # Function to deploy backend
 deploy_backend() {
     log "INFO" "Deploying Latexy backend..."
-    
-    kubectl apply -f "$SCRIPT_DIR/backend/deployment.yaml"
+    ensure_rendered_manifests
+    kubectl apply -f "$RENDER_DIR/backend-deployment.yaml"
     
     # Wait for backend to be ready
     log "INFO" "Waiting for backend to be ready..."
@@ -257,8 +328,8 @@ deploy_backend() {
 # Function to deploy frontend
 deploy_frontend() {
     log "INFO" "Deploying Latexy frontend..."
-    
-    kubectl apply -f "$SCRIPT_DIR/frontend/deployment.yaml"
+    ensure_rendered_manifests
+    kubectl apply -f "$RENDER_DIR/frontend-deployment.yaml"
     
     # Wait for frontend to be ready
     log "INFO" "Waiting for frontend to be ready..."
@@ -270,8 +341,8 @@ deploy_frontend() {
 # Function to deploy Celery workers
 deploy_celery() {
     log "INFO" "Deploying Celery workers..."
-    
-    kubectl apply -f "$SCRIPT_DIR/celery/celery-worker.yaml"
+    ensure_rendered_manifests
+    kubectl apply -f "$RENDER_DIR/celery-worker.yaml"
     
     # Wait for workers to be ready
     log "INFO" "Waiting for Celery workers to be ready..."
@@ -311,24 +382,22 @@ deploy_monitoring() {
     log "SUCCESS" "Monitoring stack deployed successfully"
 }
 
-# Function to run database migrations
+# Function to run database migrations before any new-revision application rollout.
+# Existing pods may remain live until the subsequent rolling update.
 run_migrations() {
     log "INFO" "Running database migrations..."
-    
-    # Get backend pod name
-    local backend_pod
-    backend_pod=$(kubectl get pods -n "$NAMESPACE" -l app=latexy-backend -o jsonpath='{.items[0].metadata.name}')
-    
-    if [[ -z "$backend_pod" ]]; then
-        log "ERROR" "No backend pod found"
-        return 1
-    fi
-    
-    # Run migrations
-    if kubectl exec -n "$NAMESPACE" "$backend_pod" -- alembic upgrade head; then
+    ensure_rendered_manifests
+
+    kubectl delete job latexy-migrations -n "$NAMESPACE" --ignore-not-found=true
+    kubectl apply -f "$RENDER_DIR/migrations-job.yaml"
+
+    if kubectl wait --for=condition=complete job/latexy-migrations \
+        -n "$NAMESPACE" --timeout=900s; then
+        kubectl logs -n "$NAMESPACE" job/latexy-migrations --all-containers=true
         log "SUCCESS" "Database migrations completed"
     else
-        log "ERROR" "Database migrations failed"
+        kubectl logs -n "$NAMESPACE" job/latexy-migrations --all-containers=true || true
+        log "ERROR" "Database migrations failed; application rollout is aborted"
         return 1
     fi
 }
@@ -477,6 +546,11 @@ usage() {
     echo "  $0 status             # Show status"
     echo "  $0 backend            # Deploy backend only"
     echo ""
+    echo "Images (required for deploy/backend/frontend/celery/migrate):"
+    echo "  LATEXY_VERSION=v1.2.3 (derives GHCR backend/frontend image refs), or"
+    echo "  BACKEND_IMAGE=... FRONTEND_IMAGE=... using a vX.Y.Z, sha-..., or @sha256:... ref"
+    echo "  Mutable :latest application images are rejected."
+    echo ""
     echo "Secrets:"
     echo "  No secrets are committed to the repo. On the first deploy this script"
     echo "  generates postgres/redis/flower passwords plus BETTER_AUTH_SECRET,"
@@ -501,6 +575,9 @@ main() {
     case "$command" in
         "deploy")
             log "INFO" "=== Starting Latexy Kubernetes Deployment ==="
+
+            resolve_image_refs
+            render_deployment_manifests
             
             if ! check_prerequisites; then
                 exit 1
@@ -509,16 +586,15 @@ main() {
             setup_namespace
             deploy_database
             deploy_redis
+            run_migrations
             deploy_backend
             deploy_frontend
             deploy_celery
             deploy_nginx
             deploy_monitoring
             
-            # Wait a bit for services to stabilize
+            # Wait a bit for services to stabilize after the migration-gated rollout
             sleep 30
-            
-            run_migrations
             
             if check_deployment_health; then
                 log "SUCCESS" "=== Deployment completed successfully ==="
@@ -553,16 +629,20 @@ main() {
             deploy_redis
             ;;
         "backend")
-            setup_namespace
-            deploy_backend
+            resolve_image_refs
+            log "ERROR" "Backend component rollout is refused without the migration-gated full deploy"
+            log "INFO" "Run '$0 deploy' with exact image refs instead"
+            exit 1
             ;;
         "frontend")
             setup_namespace
             deploy_frontend
             ;;
         "celery")
-            setup_namespace
-            deploy_celery
+            resolve_image_refs
+            log "ERROR" "Celery component rollout is refused without the migration-gated full deploy"
+            log "INFO" "Run '$0 deploy' with exact image refs instead"
+            exit 1
             ;;
         "nginx")
             setup_namespace
@@ -586,4 +666,3 @@ main() {
 
 # Run the main function
 main "$@"
-

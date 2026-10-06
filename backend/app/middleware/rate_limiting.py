@@ -135,7 +135,7 @@ _LIGHTWEIGHT_CALLS_PER_MINUTE = 300
 _LIGHTWEIGHT_CALLS_PER_HOUR = 6000
 
 # Third-party "Connect" buttons on the Settings page (GitHub, Zotero, Mendeley,
-# Dropbox) — a single deliberate click that kicks off an OAuth redirect, not
+# Dropbox, Google Drive) — a single deliberate click that kicks off an OAuth redirect, not
 # automated background traffic. These previously shared the SAME default
 # per-IP bucket as everything else, including expensive compile/AI calls, so
 # a user who had already spent their default per-minute budget on normal
@@ -150,6 +150,7 @@ _INTEGRATION_PATHS = {
     "/zotero/connect",
     "/mendeley/connect",
     "/dropbox/connect",
+    "/google-drive/connect",
 }
 _INTEGRATION_CALLS_PER_MINUTE = 10
 _INTEGRATION_CALLS_PER_HOUR = 100
@@ -255,7 +256,7 @@ return {m, h}
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Rate limiting error: {e}")
+            logger.error("Rate limiting error", extra={"error_type": type(e).__name__})
             # If there's an error with rate limiting, allow the request
             pass
 
@@ -358,6 +359,6 @@ class APIKeyRateLimitMiddleware(BaseHTTPMiddleware):
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Operation rate limiting error: {e}")
+            logger.error("Operation rate limiting error", extra={"error_type": type(e).__name__})
             # If there's an error, allow the request
             pass

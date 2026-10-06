@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { BookOpen, Loader2, Plus } from 'lucide-react'
 import { apiClient, type PublicationOut } from '@/lib/api-client'
 import { buildPublicationSection } from '@/lib/publication-format'
+import { isOrcidId, normalizeOrcidId } from '@/lib/orcid'
 
 const PUB_TYPES = [
   { key: 'journal', label: 'Journal' },
@@ -36,8 +37,20 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasFetched, setHasFetched] = useState(false)
+  const requestVersion = useRef(0)
+
+  const invalidateResults = () => {
+    requestVersion.current += 1
+    setPublications([])
+    setSelectedPubs(new Set())
+    setLatexSection('')
+    setHasFetched(false)
+    setError(null)
+    setIsLoading(false)
+  }
 
   const toggleType = (key: string) => {
+    invalidateResults()
     setSelectedTypes(prev =>
       prev.includes(key) ? prev.filter(t => t !== key) : [...prev, key]
     )
@@ -58,8 +71,10 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
   const deselectAll = () => setSelectedPubs(new Set())
 
   const handleFetch = async () => {
-    const id = orcidId.trim()
-    if (!id) return
+    const id = normalizeOrcidId(orcidId)
+    if (!isOrcidId(id)) return
+    const version = requestVersion.current + 1
+    requestVersion.current = version
     setIsLoading(true)
     setError(null)
     setPublications([])
@@ -75,14 +90,16 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
         pub_types: selectedTypes.length > 0 ? selectedTypes : undefined,
         citation_style: citationStyle,
       })
+      if (requestVersion.current !== version) return
       setPublications(data.publications)
       setLatexSection(data.latex_section)
       setSelectedPubs(new Set(data.publications.map((_, i) => i)))
       setHasFetched(true)
     } catch (err) {
+      if (requestVersion.current !== version) return
       setError(err instanceof Error ? err.message : 'Failed to fetch publications')
     } finally {
-      setIsLoading(false)
+      if (requestVersion.current === version) setIsLoading(false)
     }
   }
 
@@ -101,26 +118,24 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
     PUB_TYPES.find(t => t.key === pub_type)?.label ?? pub_type
 
   const handleCitationStyleChange = (style: CitationStyle) => {
+    invalidateResults()
     setCitationStyle(style)
-    setPublications([])
-    setSelectedPubs(new Set())
-    setLatexSection('')
-    setHasFetched(false)
   }
 
   return (
     <div className="space-y-5">
       {/* ORCID ID input */}
       <div>
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
+        <label htmlFor="publication-orcid" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-fg-2">
           ORCID iD
         </label>
         <input
           type="text"
+          id="publication-orcid"
           value={orcidId}
-          onChange={e => setOrcidId(e.target.value)}
+          onChange={e => { invalidateResults(); setOrcidId(e.target.value) }}
           onKeyDown={e => { if (e.key === 'Enter') handleFetch() }}
-          placeholder="0000-0000-0000-0000"
+          placeholder="0000-0000-0000-0000 or https://orcid.org/…"
           className="w-full rounded-[var(--radius-lg)] border border-line bg-bg px-3 py-2 text-sm text-fg outline-none transition focus:border-accent font-mono"
         />
         <p className="mt-1 text-[11px] text-fg-3">
@@ -170,7 +185,8 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
           <input
             type="number"
             value={yearFrom}
-            onChange={e => setYearFrom(e.target.value)}
+            onChange={e => { invalidateResults(); setYearFrom(e.target.value) }}
+            aria-label="Publication year from"
             placeholder="From"
             min={1900}
             max={2100}
@@ -180,7 +196,8 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
           <input
             type="number"
             value={yearTo}
-            onChange={e => setYearTo(e.target.value)}
+            onChange={e => { invalidateResults(); setYearTo(e.target.value) }}
+            aria-label="Publication year to"
             placeholder="To"
             min={1900}
             max={2100}
@@ -208,7 +225,7 @@ export default function PublicationsPanel({ insertAtCursor }: PublicationsPanelP
       {/* Fetch button */}
       <button
         onClick={handleFetch}
-        disabled={isLoading || !orcidId.trim()}
+        disabled={isLoading || !isOrcidId(normalizeOrcidId(orcidId))}
         className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2.5 text-sm font-semibold text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}

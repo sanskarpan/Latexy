@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 const { version } = JSON.parse(readFileSync('./package.json', 'utf-8')) as { version: string }
 
 export default defineConfig({
-  entry: { cli: 'src/cli.tsx' },
+  entry: { cli: 'src/cli.tsx', 'mcp-server': 'src/mcp/server.ts' },
   format: ['esm'],
   target: 'node22',
   platform: 'node',

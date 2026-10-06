@@ -1,0 +1,40 @@
+# This file is selected automatically for the repository-root context when
+# frontend/Dockerfile.prod is built. Keep host state and secrets out of the
+# context so they cannot clobber the frozen workspace install or enter layers.
+
+.git
+.git/**
+**/.git
+**/.git/**
+**/node_modules
+**/node_modules/**
+**/.next
+**/.next/**
+**/.env
+**/.env.*
+**/.envrc
+**/coverage
+**/coverage/**
+**/playwright-report
+**/playwright-report/**
+**/test-results
+**/test-results/**
+**/reports
+**/reports/**
+**/results
+**/results/**
+**/.turbo
+**/.turbo/**
+**/.cache
+**/.cache/**
+**/dist
+**/dist/**
+**/build
+**/build/**
+**/tmp
+**/tmp/**
+**/temp
+**/temp/**
+**/*.log
+**/*.tsbuildinfo
+**/.DS_Store

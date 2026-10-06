@@ -17,9 +17,10 @@ Design:
   - Preserves plain prose lines (e.g. after \\item or in abstract/document).
 """
 
-import re
 from dataclasses import dataclass, field
 from typing import List
+
+from ..utils import safe_regex as re
 
 # ── Types ───────────────────────────────────────────────────────────────────
 

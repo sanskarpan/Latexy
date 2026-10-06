@@ -31,8 +31,17 @@ class ObservedAsyncRedis(aioredis.Redis):
 
     @classmethod
     def from_url(cls, url: str, *, dependency_role: str, **kwargs):
-        pool = aioredis.ConnectionPool.from_url(url, **kwargs)
-        return cls(connection_pool=pool, dependency_role=dependency_role)
+        # The default pool raises MaxConnectionsError immediately when a short
+        # burst exceeds max_connections. That turned healthy quota requests
+        # into fail-closed 503s even though Redis answered each command in
+        # milliseconds. A bounded blocking pool applies backpressure instead.
+        pool = aioredis.BlockingConnectionPool.from_url(url, timeout=5, **kwargs)
+        client = cls(connection_pool=pool, dependency_role=dependency_role)
+        # Match redis.asyncio.Redis.from_url() ownership semantics. Passing an
+        # explicitly-created pool to Redis.__init__ otherwise marks the pool as
+        # externally owned, so client.aclose() leaves every pooled socket open.
+        client.auto_close_connection_pool = True
+        return client
 
     async def execute_command(self, *args, **options):
         try:
@@ -53,8 +62,12 @@ class ObservedSyncRedis(redis.Redis):
 
     @classmethod
     def from_url(cls, url: str, *, dependency_role: str, **kwargs):
-        pool = redis.ConnectionPool.from_url(url, **kwargs)
-        return cls(connection_pool=pool, dependency_role=dependency_role)
+        pool = redis.BlockingConnectionPool.from_url(url, timeout=5, **kwargs)
+        client = cls(connection_pool=pool, dependency_role=dependency_role)
+        # Keep this subclass factory equivalent to redis.Redis.from_url(): the
+        # client owns the pool it just created and close() must disconnect it.
+        client.auto_close_connection_pool = True
+        return client
 
     def execute_command(self, *args, **options):
         try:
@@ -133,34 +146,116 @@ class RedisManager:
             logger.info("Redis connections initialized successfully")
 
         except Exception as e:
-            logger.error(f"Failed to initialize Redis connections: {e}")
+            # Redis connection errors can embed the full connection URL, including
+            # username/password. Log only the exception class at this boundary.
+            logger.error("Failed to initialize Redis connections (%s)", type(e).__name__)
+            # from_url() allocates pools before the connectivity probes run.
+            # A failed probe must release every partially-created pool instead
+            # of leaving it reachable through the module globals.
+            await self.close_redis()
             raise
 
-    async def close_redis(self):
-        """Close Redis connections."""
-        global redis_client, redis_cache_client, sync_redis_client, sync_redis_cache_client
+    def init_sync_redis(self) -> None:
+        """Initialize only the synchronous clients owned by a worker process."""
+        global sync_redis_client, sync_redis_cache_client
 
+        queue_client = ObservedSyncRedis.from_url(
+            settings.REDIS_URL,
+            dependency_role="queue",
+            password=settings.REDIS_PASSWORD or None,
+            max_connections=settings.REDIS_MAX_CONNECTIONS,
+            decode_responses=True,
+            retry_on_timeout=True,
+        )
+        cache_client = ObservedSyncRedis.from_url(
+            settings.REDIS_CACHE_URL,
+            dependency_role="cache",
+            password=settings.REDIS_PASSWORD or None,
+            max_connections=settings.REDIS_MAX_CONNECTIONS,
+            decode_responses=True,
+            retry_on_timeout=True,
+        )
         try:
-            if redis_client:
-                await redis_client.aclose()
-                redis_client = None
+            queue_client.ping()
+            cache_client.ping()
+        except Exception:
+            queue_client.close()
+            cache_client.close()
+            raise
 
-            if redis_cache_client:
-                await redis_cache_client.aclose()
-                redis_cache_client = None
+        self.close_sync_redis()
+        sync_redis_client = queue_client
+        sync_redis_cache_client = cache_client
+        self.sync_redis_client = queue_client
+        self.sync_redis_cache_client = cache_client
 
-            if sync_redis_client:
-                sync_redis_client.close()
-                sync_redis_client = None
+    async def close_redis(self):
+        """Close every Redis client owned by this process.
 
-            if sync_redis_cache_client:
-                sync_redis_cache_client.close()
-                sync_redis_cache_client = None
+        Clear references before awaiting network cleanup so a concurrent caller
+        cannot acquire a client that is already closing.  Each client is then
+        closed independently: one broken pool must not prevent the remaining
+        queue/cache and sync/fallback pools from releasing their sockets.
+        """
+        global redis_client, redis_cache_client
 
-            logger.info("Redis connections closed")
+        async_clients = {
+            id(client): client
+            for client in (
+                redis_client,
+                redis_cache_client,
+                self.redis_client,
+                self.redis_cache_client,
+            )
+            if client is not None
+        }
+        redis_client = None
+        redis_cache_client = None
+        self.redis_client = None
+        self.redis_cache_client = None
+        # Snapshot/clear synchronous clients before the first await as well.
+        # A concurrent lazy re-initialization may then install a new generation
+        # without this shutdown pass accidentally closing it later.
+        self.close_sync_redis()
 
-        except Exception as e:
-            logger.error(f"Error closing Redis connections: {e}")
+        for client in async_clients.values():
+            try:
+                await client.aclose()
+            except Exception as exc:
+                logger.error("Error closing async Redis connection (%s)", type(exc).__name__)
+
+        logger.info("Redis connections closed")
+
+    def close_sync_redis(self) -> None:
+        """Close every synchronous Redis pool owned by this process."""
+        global sync_redis_client, sync_redis_cache_client
+        global _fallback_sync_redis_client, _fallback_sync_redis_cache_client
+
+        clients = {
+            id(client): client
+            for client in (
+                sync_redis_client,
+                sync_redis_cache_client,
+                self.sync_redis_client,
+                self.sync_redis_cache_client,
+                _fallback_sync_redis_client,
+                _fallback_sync_redis_cache_client,
+            )
+            if client is not None
+        }
+
+        sync_redis_client = None
+        sync_redis_cache_client = None
+        _fallback_sync_redis_client = None
+        _fallback_sync_redis_cache_client = None
+        self.sync_redis_client = None
+        self.sync_redis_cache_client = None
+
+        for client in clients.values():
+            try:
+                client.close()
+            except Exception as exc:
+                logger.error("Error closing sync Redis connection (%s)", type(exc).__name__)
 
     async def health_check(self) -> Dict[str, bool]:
         """Check Redis connection health."""
@@ -175,21 +270,21 @@ class RedisManager:
                 await redis_client.ping()
                 health["redis_queue"] = True
         except Exception as e:
-            logger.error(f"Redis queue health check failed: {e}")
+            logger.error("Redis queue health check failed (%s)", type(e).__name__)
 
         try:
             if redis_cache_client:
                 await redis_cache_client.ping()
                 health["redis_cache"] = True
         except Exception as e:
-            logger.error(f"Redis cache health check failed: {e}")
+            logger.error("Redis cache health check failed (%s)", type(e).__name__)
 
         try:
             if sync_redis_client:
                 sync_redis_client.ping()
                 health["redis_sync"] = True
         except Exception as e:
-            logger.error(f"Redis sync health check failed: {e}")
+            logger.error("Redis sync health check failed (%s)", type(e).__name__)
 
         return health
 
@@ -207,14 +302,14 @@ class RedisManager:
                 health["redis_queue"] = True
                 health["redis_sync"] = True
         except Exception as e:
-            logger.error(f"Redis queue sync health check failed: {e}")
+            logger.error("Redis queue sync health check failed (%s)", type(e).__name__)
 
         try:
             if sync_redis_cache_client:
                 sync_redis_cache_client.ping()
                 health["redis_cache"] = True
         except Exception as e:
-            logger.error(f"Redis cache sync health check failed: {e}")
+            logger.error("Redis cache sync health check failed (%s)", type(e).__name__)
 
         return health
 
@@ -239,10 +334,8 @@ class JobStatusManager:
         }
 
         key = f"{self.status_prefix}{job_id}"
-        await redis_client.setex(
-            key,
-            settings.JOB_RESULT_TTL,
-            json.dumps(status_data)
+        await redis_client.set(
+            key, json.dumps(status_data), ex=settings.JOB_RESULT_TTL
         )
 
         logger.debug(f"Set job status for {job_id}: {status}")
@@ -265,11 +358,7 @@ class JobStatusManager:
             raise RuntimeError("Redis client not initialized")
 
         key = f"{self.result_prefix}{job_id}"
-        await redis_client.setex(
-            key,
-            settings.JOB_RESULT_TTL,
-            json.dumps(result)
-        )
+        await redis_client.set(key, json.dumps(result), ex=settings.JOB_RESULT_TTL)
 
         logger.debug(f"Set job result for {job_id}")
 
@@ -297,10 +386,8 @@ class JobStatusManager:
         }
 
         key = f"{self.progress_prefix}{job_id}"
-        await redis_client.setex(
-            key,
-            settings.JOB_RESULT_TTL,
-            json.dumps(progress_data)
+        await redis_client.set(
+            key, json.dumps(progress_data), ex=settings.JOB_RESULT_TTL
         )
 
         logger.debug(f"Set job progress for {job_id}: {progress}%")
@@ -395,8 +482,8 @@ class CacheManager:
         cache_key = f"{self.cache_prefix}{key}"
         serialized_value = json.dumps(value) if not isinstance(value, str) else value
 
-        await redis_cache_client.setex(cache_key, ttl, serialized_value)
-        logger.debug(f"Set cache for key: {key}")
+        await redis_cache_client.set(cache_key, serialized_value, ex=ttl)
+        logger.debug("Cache value stored")
 
     async def get(self, key: str) -> Optional[Any]:
         """Get cache value."""
@@ -500,3 +587,25 @@ def get_sync_redis_client() -> redis.Redis:
             retry_on_timeout=True,
         )
     return _fallback_sync_redis_client
+
+
+_fallback_sync_redis_cache_client: Optional[redis.Redis] = None
+
+
+def get_sync_redis_cache_client() -> redis.Redis:
+    """Get the synchronous cache Redis client used by quota accounting."""
+    global _fallback_sync_redis_cache_client
+
+    if sync_redis_cache_client:
+        return sync_redis_cache_client
+
+    if _fallback_sync_redis_cache_client is None:
+        _fallback_sync_redis_cache_client = ObservedSyncRedis.from_url(
+            settings.REDIS_CACHE_URL,
+            dependency_role="cache",
+            password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
+            max_connections=settings.REDIS_MAX_CONNECTIONS,
+            decode_responses=True,
+            retry_on_timeout=True,
+        )
+    return _fallback_sync_redis_cache_client

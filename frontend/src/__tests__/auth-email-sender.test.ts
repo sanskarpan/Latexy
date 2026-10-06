@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { assertEmailTransportConfigured, sendEmail } from '@/lib/email'
+import { assertEmailTransportConfigured, clearDevEmailPreview, consumeDevEmailPreview, sendEmail } from '@/lib/email'
+import { GET as getEmailPreview } from '@/app/api/dev/email-preview/route'
 
 /**
  * The transactional email sender must never quietly swallow a production
@@ -26,32 +27,39 @@ describe('sendEmail without RESEND_API_KEY', () => {
   })
 
   afterEach(() => {
+    clearDevEmailPreview()
     vi.unstubAllEnvs()
     vi.restoreAllMocks()
   })
 
-  test('logs the action link in development instead of sending', async () => {
+  test('keeps the action link out of logs and exposes a one-time dev preview', async () => {
     vi.stubEnv('NODE_ENV', 'development')
 
     await sendEmail(RESET_EMAIL)
 
     const logged = info.mock.calls[0][0] as string
     expect(logged).toContain('RESEND_API_KEY not set')
-    expect(logged).toContain(RESET_EMAIL.link)
-    // The rendered bodies are never dumped — only the single action link.
+    expect(logged).not.toContain(RESET_EMAIL.link)
     expect(logged).not.toContain('<html>')
+    expect(consumeDevEmailPreview()).toEqual({
+      to: RESET_EMAIL.to,
+      subject: RESET_EMAIL.subject,
+      link: RESET_EMAIL.link,
+    })
+    expect(consumeDevEmailPreview()).toBeNull()
   })
 
-  test('warns loudly but still completes in production without a provider', async () => {
+  test('warns loudly and rejects a production send without a provider', async () => {
     vi.stubEnv('NODE_ENV', 'production')
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    // Email must not throw here: Better Auth awaits some senders (sign-up
-    // verification), and a throw would 500 the auth request. Degrade to a
-    // console log + a loud warning instead.
-    await expect(sendEmail(RESET_EMAIL)).resolves.toBeUndefined()
+    // A missing provider is a delivery failure, not a successful send. Better
+    // Auth may swallow this from background callbacks, but direct callers and
+    // observability hooks must still receive a rejection.
+    await expect(sendEmail(RESET_EMAIL)).rejects.toThrow(/Email delivery is unavailable/)
     expect(err).toHaveBeenCalledWith(expect.stringContaining('RESEND_API_KEY is not set'))
-    expect(info).toHaveBeenCalled()
+    expect(info).not.toHaveBeenCalled()
+    expect(consumeDevEmailPreview()).toBeNull()
   })
 
   /**
@@ -82,6 +90,47 @@ describe('sendEmail without RESEND_API_KEY', () => {
 
     await expect(sendEmail(RESET_EMAIL)).resolves.toBeUndefined()
     expect(info).toHaveBeenCalled()
+  })
+
+  test('serves the preview only to same-origin development requests', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    await sendEmail(RESET_EMAIL)
+
+    const crossOrigin = getEmailPreview(new Request('http://localhost:5180/api/dev/email-preview', {
+      headers: { Origin: 'https://attacker.example' },
+    }))
+    expect(crossOrigin.status).toBe(403)
+
+    const sameOrigin = getEmailPreview(new Request('http://localhost:5180/api/dev/email-preview', {
+      headers: { Origin: 'http://localhost:5180' },
+    }))
+    expect(sameOrigin.status).toBe(200)
+    await expect(sameOrigin.json()).resolves.toMatchObject({ link: RESET_EMAIL.link })
+  })
+
+  test('does not serve previews from public or rebinding hostnames', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    await sendEmail(RESET_EMAIL)
+
+    const publicHost = getEmailPreview(new Request('https://preview.example.com/api/dev/email-preview', {
+      headers: { Origin: 'https://preview.example.com' },
+    }))
+    expect(publicHost.status).toBe(404)
+
+    const rebindingHost = getEmailPreview(new Request('http://127.0.0.1.nip.io:5180/api/dev/email-preview', {
+      headers: { Origin: 'http://127.0.0.1.nip.io:5180' },
+    }))
+    expect(rebindingHost.status).toBe(404)
+  })
+
+  test('does not log recipient PII or sender configuration in dev', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('EMAIL_FROM', 'Latexy <private@example.com>')
+    await sendEmail(RESET_EMAIL)
+    const logged = info.mock.calls[0][0] as string
+    expect(logged).not.toContain(RESET_EMAIL.to)
+    expect(logged).not.toContain('private@example.com')
+    expect(logged).not.toContain(RESET_EMAIL.link)
   })
 })
 

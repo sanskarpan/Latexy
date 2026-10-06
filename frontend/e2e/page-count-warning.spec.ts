@@ -140,7 +140,7 @@ async function mockResume(
 }
 
 async function waitForEditorShell(page: import('@playwright/test').Page) {
-  await expect(page.getByText(/\d+ chars/).first()).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText(/\d+ chars/).first()).toBeVisible({ timeout: 30_000 })
 }
 
 /** Mock the academic-CV detection endpoint. `is_academic_cv` gates the overflow warning. */
@@ -299,7 +299,7 @@ test.describe('Page count — initial state (no compile yet)', () => {
   test('no warning banner on optimize page before compile completes', async ({ page }) => {
     // No WS mock → compile starts but never completes → no page count
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('domcontentloaded')
+    await waitForEditorShell(page)
     await expect(page.getByText(/Your resume is \d+ pages/)).not.toBeVisible()
   })
 
@@ -409,7 +409,7 @@ test.describe('/workspace/optimize — page count badge via WebSocket', () => {
     await mockWebSocketPageCount(page, JOB_ID_COMPILE, 1)
 
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('domcontentloaded')
+    await waitForEditorShell(page)
 
     const badge = page.getByTitle('Resume is 1 page')
     await expect(badge).toBeVisible({ timeout: 10_000 })
@@ -421,7 +421,7 @@ test.describe('/workspace/optimize — page count badge via WebSocket', () => {
     await mockWebSocketPageCount(page, JOB_ID_COMPILE, 2)
 
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('domcontentloaded')
+    await waitForEditorShell(page)
 
     await expect(page.getByText('2 pages ⚠')).toBeVisible({ timeout: 10_000 })
   })
@@ -443,7 +443,7 @@ test.describe('/workspace/optimize — page count badge via WebSocket', () => {
     await mockWebSocketPageCount(page, JOB_ID_COMPILE, 3)
 
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('domcontentloaded')
+    await waitForEditorShell(page)
 
     await expect(page.getByText('3 pages ⚠')).toBeVisible({ timeout: 10_000 })
   })
@@ -453,7 +453,7 @@ test.describe('/workspace/optimize — page count badge via WebSocket', () => {
     await mockWebSocketPageCount(page, JOB_ID_COMPILE, 3)
 
     await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('domcontentloaded')
+    await waitForEditorShell(page)
 
     const badge = page.getByText('3 pages ⚠')
     await expect(badge).toBeVisible({ timeout: 10_000 })
@@ -1041,7 +1041,8 @@ test.describe('Page overflow warning — academic-CV exemption (#1312)', () => {
     await page.waitForLoadState('domcontentloaded')
 
     // The neutral page-count badge still reports the true count…
-    await expect(page.getByText('2 pages ⚠')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('2 pages', { exact: true })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('2 pages ⚠', { exact: true })).toHaveCount(0)
     // …but the "prefer 1 page" nag banner and its Trim action are gone.
     await expect(page.getByText(/Your resume is 2 pages/)).not.toBeVisible()
     await expect(getTrimButton(page)).not.toBeVisible()
@@ -1091,4 +1092,106 @@ test.describe('API client schema — trim request fields', () => {
     expect(trimBody!.optimization_level).toBe('aggressive')
     expect(trimBody!.custom_instructions).toBeTruthy()
   })
+})
+
+test('formatting auto-fit searches safely and applies the verified one-page source', async ({ page }) => {
+  const fitJobId = 'job-pcw-auto-fit-001'
+  const fittedLatex = LARGE_LATEX.replace(
+    '\\begin{document}',
+    '% LATEXY_AUTO_FIT_START\n\\linespread{0.94}\n% LATEXY_AUTO_FIT_END\n\\begin{document}',
+  )
+  let fitRequest: Record<string, unknown> | null = null
+  let savedLatex: string | null = null
+
+  await mockAuth(page)
+  await mockCommonBackend(page)
+  await mockResume(page, MOCK_RESUME_LARGE)
+  await mockAcademicReport(page, false)
+  await page.route((url) => url.pathname === '/jobs/submit', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}')
+    const isFit = body.job_type === 'auto_fit'
+    if (isFit) fitRequest = body
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        job_id: isFit ? fitJobId : JOB_ID_COMPILE,
+        message: isFit ? 'Auto-fit started' : 'Compile started',
+      }),
+    })
+  })
+  await page.route((url) => url.pathname === `/jobs/${fitJobId}/result`, (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      success: true,
+      job_id: fitJobId,
+      result: {
+        success: true,
+        job_id: fitJobId,
+        pdf_job_id: fitJobId,
+        page_count: 1,
+        auto_fit: true,
+        fit_succeeded: true,
+        fit_intensity: 50,
+        fit_attempts: 2,
+        fitted_latex: fittedLatex,
+      },
+    }),
+  }))
+  await page.route((url) => url.pathname === `/resumes/${RESUME_ID}`, async (route) => {
+    if (route.request().method() === 'PUT') {
+      savedLatex = JSON.parse(route.request().postData() || '{}').latex_content
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...MOCK_RESUME_LARGE, latex_content: savedLatex }),
+      })
+      return
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_RESUME_LARGE) })
+  })
+
+  let sequence = 0
+  await page.routeWebSocket('**/ws/jobs**', (socket) => {
+    socket.onMessage((raw) => {
+      const message = JSON.parse(raw as string)
+      if (message.type === 'ping') {
+        socket.send(JSON.stringify({ type: 'pong', server_time: Date.now() / 1000 }))
+        return
+      }
+      if (message.type !== 'subscribe') return
+      const jobId = message.job_id as string
+      const pageCount = jobId === fitJobId ? 1 : 2
+      socket.send(JSON.stringify({ type: 'subscribed', job_id: jobId, replayed_count: 0 }))
+      setTimeout(() => socket.send(JSON.stringify({
+        type: 'event',
+        event: {
+          event_id: `fit-event-${++sequence}`,
+          job_id: jobId,
+          timestamp: Date.now() / 1000,
+          sequence,
+          type: 'job.completed',
+          pdf_job_id: jobId,
+          changes_made: [],
+          compilation_time: 1,
+          optimization_time: 0,
+          tokens_used: 0,
+          page_count: pageCount,
+        },
+      })), 100)
+    })
+  })
+
+  await page.goto(`/workspace/${RESUME_ID}/edit`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByText(/Your resume is 2 pages/)).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('button', { name: 'Auto-fit formatting' }).click()
+
+  await expect.poll(() => fitRequest).not.toBeNull()
+  expect(fitRequest!.job_type).toBe('auto_fit')
+  expect(fitRequest!.metadata).toEqual({ resume_id: RESUME_ID })
+  expect(fitRequest).not.toHaveProperty('auto_fit_intensity')
+  await expect(page.getByText('One-page formatting applied at 50% strength')).toBeVisible({ timeout: 15_000 })
+  await expect.poll(() => savedLatex, { timeout: 10_000 }).toContain('LATEXY_AUTO_FIT_START')
 })

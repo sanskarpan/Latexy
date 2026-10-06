@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
@@ -24,9 +24,13 @@ router = APIRouter(prefix="/byok", tags=["byok"])
 
 # Pydantic models
 class AddAPIKeyRequest(BaseModel):
-    provider: str = Field(..., description="Provider name (openai, anthropic, openrouter)")
-    api_key: str = Field(..., description="API key for the provider")
-    key_name: Optional[str] = Field(None, description="Custom name for the API key")
+    provider: str = Field(
+        ...,
+        pattern=r"^(openai|anthropic|openrouter)$",
+        description="Provider name (openai, anthropic, openrouter)",
+    )
+    api_key: str = Field(..., min_length=1, max_length=10_000, description="API key for the provider")
+    key_name: Optional[str] = Field(None, max_length=100, description="Custom name for the API key")
     validate_key: bool = Field(True, description="Whether to validate the key with the provider")
 
 
@@ -57,8 +61,8 @@ class UserAPIKeysResponse(BaseModel):
 
 
 class ValidateAPIKeyRequest(BaseModel):
-    provider: str
-    api_key: str
+    provider: str = Field(..., pattern=r"^(openai|anthropic|openrouter)$")
+    api_key: str = Field(..., min_length=1, max_length=10_000)
 
 
 class ValidateAPIKeyResponse(BaseModel):
@@ -86,7 +90,7 @@ class SupportedProvidersResponse(BaseModel):
 
 
 class TestProviderRequest(BaseModel):
-    provider: str
+    provider: str = Field(..., pattern=r"^(openai|anthropic|openrouter)$")
 
 
 class TestProviderResponse(BaseModel):
@@ -113,12 +117,31 @@ class UsageStatsResponse(BaseModel):
 
 
 class GenerateWithProviderRequest(BaseModel):
-    provider: str
-    messages: List[Dict[str, str]]
-    model: str
-    max_tokens: Optional[int] = None
-    temperature: float = 0.7
+    provider: str = Field(..., pattern=r"^(openai|anthropic|openrouter)$")
+    messages: List[Dict[str, str]] = Field(..., min_length=1, max_length=100)
+    model: str = Field(..., min_length=1, max_length=200)
+    max_tokens: Optional[int] = Field(None, ge=1, le=32_768)
+    temperature: float = Field(0.7, ge=0, le=2, allow_inf_nan=False)
     stream: bool = False
+
+    @field_validator("messages")
+    @classmethod
+    def validate_messages(cls, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        total_chars = 0
+        for message in messages:
+            if set(message) != {"role", "content"}:
+                raise ValueError("Each message must contain exactly role and content")
+            if message["role"] not in {"system", "user", "assistant"}:
+                raise ValueError("Message role must be system, user, or assistant")
+            content = message["content"]
+            if not content.strip():
+                raise ValueError("Message content must not be empty")
+            if len(content) > 100_000:
+                raise ValueError("A message exceeds the 100000 character limit")
+            total_chars += len(content)
+        if total_chars > 200_000:
+            raise ValueError("Messages exceed the 200000 character limit")
+        return messages
 
 
 class GenerateWithProviderResponse(BaseModel):
@@ -128,6 +151,7 @@ class GenerateWithProviderResponse(BaseModel):
     provider: Optional[str] = None
     usage: Optional[Dict[str, int]] = None
     cost: Optional[float] = None
+    pricing_known: Optional[bool] = None
     latency: Optional[float] = None
     error: Optional[str] = None
 
@@ -157,7 +181,7 @@ async def add_api_key(
         return AddAPIKeyResponse(**result)
 
     except Exception as e:
-        logger.error(f"Error adding API key: {e}")
+        logger.error("Error adding API key (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -177,7 +201,7 @@ async def get_user_api_keys(
         )
 
     except Exception as e:
-        logger.error(f"Error getting user API keys: {e}")
+        logger.error("Error getting user API keys (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -199,7 +223,7 @@ async def delete_api_key(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting API key: {e}")
+        logger.error("Error deleting API key (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -217,7 +241,7 @@ async def get_supported_providers():
         )
 
     except Exception as e:
-        logger.error(f"Error getting supported providers: {e}")
+        logger.error("Error getting supported providers (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -242,7 +266,7 @@ async def validate_api_key(
         )
 
     except Exception as e:
-        logger.error(f"Error validating API key: {e}")
+        logger.error("Error validating API key (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -263,7 +287,7 @@ async def test_provider_connection(
         return TestProviderResponse(**result)
 
     except Exception as e:
-        logger.error(f"Error testing provider connection: {e}")
+        logger.error("Error testing provider connection (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -290,7 +314,7 @@ async def get_usage_stats(
         )
 
     except Exception as e:
-        logger.error(f"Error getting usage stats: {e}")
+        logger.error("Error getting usage stats (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -343,16 +367,18 @@ async def generate_with_provider(
             provider=response.provider,
             usage=response.usage,
             cost=response.cost,
+            pricing_known=response.pricing_known,
             latency=response.latency
         )
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.info("BYOK provider request rejected (%s)", type(e).__name__)
+        raise HTTPException(status_code=400, detail="Provider request was invalid.") from e
     except Exception as e:
-        logger.error(f"Error generating with provider: {e}")
+        logger.error("Error generating with provider (%s)", type(e).__name__)
         return GenerateWithProviderResponse(
             success=False,
-            error=str(e)
+            error="Provider request failed. Please try again."
         )
 
 
@@ -392,7 +418,7 @@ async def get_system_health(
         }
 
     except Exception as e:
-        logger.error(f"Error getting system health: {e}")
+        logger.error("Error getting system health (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -422,7 +448,7 @@ async def load_user_providers(
         }
 
     except Exception as e:
-        logger.error(f"Error loading user providers: {e}")
+        logger.error("Error loading user providers (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -447,7 +473,7 @@ async def get_provider_models(provider: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting provider models: {e}")
+        logger.error("Error getting provider models (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -480,5 +506,5 @@ async def get_provider_capabilities(provider: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting provider capabilities: {e}")
+        logger.error("Error getting provider capabilities (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")

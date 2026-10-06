@@ -21,9 +21,17 @@ wheels/
 *.egg
 
 # Virtual environments
+.venv/
 venv/
 env/
 ENV/
+
+# Local credentials must never enter the build context or COPY . image layers.
+.env
+.env.*
+**/.env
+**/.env.*
+celerybeat-schedule*
 
 # IDE
 .vscode/
@@ -52,4 +60,3 @@ test/
 temp/
 tmp/
 *.tmp
-

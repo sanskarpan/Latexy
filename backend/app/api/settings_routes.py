@@ -25,6 +25,8 @@ class NotificationPrefs(BaseModel):
     job_failed: bool = True
     share_viewed: bool = False
     weekly_digest: bool = False
+    tracker_updates: bool = True
+    comment_mentions: bool = True
 
 
 @router.get("/notifications", response_model=NotificationPrefs)
@@ -44,6 +46,8 @@ async def get_notification_prefs(
         job_failed=prefs.get("job_failed", True),
         share_viewed=prefs.get("share_viewed", False),
         weekly_digest=prefs.get("weekly_digest", False),
+        tracker_updates=prefs.get("tracker_updates", True),
+        comment_mentions=prefs.get("comment_mentions", True),
     )
 
 
@@ -64,6 +68,8 @@ async def update_notification_prefs(
         "job_failed": body.job_failed,
         "share_viewed": body.share_viewed,
         "weekly_digest": body.weekly_digest,
+        "tracker_updates": body.tracker_updates,
+        "comment_mentions": body.comment_mentions,
     }
     await db.commit()
     logger.info(f"SETTINGS: updated notification prefs for user {user_id}: {user.email_notifications}")

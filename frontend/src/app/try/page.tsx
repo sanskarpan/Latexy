@@ -16,6 +16,7 @@ import { useJobStream } from '@/hooks/useJobStream'
 import { useTrialStatus } from '@/hooks/useTrialStatus'
 import LaTeXEditor, { LaTeXEditorRef } from '@/components/LaTeXEditor'
 import ModeToggle from '@/components/theme/ModeToggle'
+import ContrastToggle from '@/components/theme/ContrastToggle'
 import ChangeReviewModal from '@/components/ChangeReviewModal'
 import DiffViewerModal from '@/components/DiffViewerModal'
 import { useAutoCompile } from '@/hooks/useAutoCompile'
@@ -197,7 +198,10 @@ export default function TryPage() {
 
   const persistNow = useCallback(() => {
     try {
-      localStorage.setItem('latexy_try_latex', editorRef.current?.getValue() ?? latexContent)
+      // The imperative wrapper is available slightly before Monaco mounts and
+      // reports an empty string during that gap. Preserve the React buffer so
+      // an immediate Save cannot wipe the demo draft.
+      localStorage.setItem('latexy_try_latex', editorRef.current?.getValue() || latexContent)
       localStorage.setItem('latexy_try_jd', jobDescription)
       setPersistState('saved')
       toast.success('Saved locally')
@@ -210,7 +214,7 @@ export default function TryPage() {
     // The login round-trip returns to /try. Persist synchronously so an edit
     // made inside the autosave debounce window is not lost during navigation.
     try {
-      localStorage.setItem('latexy_try_latex', editorRef.current?.getValue() ?? latexContent)
+      localStorage.setItem('latexy_try_latex', editorRef.current?.getValue() || latexContent)
       localStorage.setItem('latexy_try_jd', jobDescription)
     } catch {
       /* localStorage unavailable — login must still remain reachable */
@@ -238,17 +242,35 @@ export default function TryPage() {
   }, [stream.streamingLatex, stream.status])
 
   useEffect(() => {
+    let disposed = false
+    const controller = new AbortController()
+
     const fetchPdf = async () => {
-      if (stream.status === 'completed' && stream.pdfJobId) {
-        try {
-          const blob = await apiClient.downloadPdf(stream.pdfJobId)
-          const url = URL.createObjectURL(blob)
-          if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
-          pdfUrlRef.current = url
-          setPdfUrl(url)
-        } catch {
-          toast.error('Failed to load PDF preview')
+      const pdfJobId = stream.pdfJobId
+      if (stream.status === 'completed' && pdfJobId) {
+        // Redis state/result/artifact writes are deliberately independent. A
+        // terminal event can reach the browser a little before the PDF cache is
+        // readable, so retry a few times instead of making one transient 404
+        // permanent. Abort the request when a newer compile supersedes it.
+        const retryDelays = [0, 250, 500, 1000, 2000]
+        for (let attempt = 0; attempt < retryDelays.length; attempt++) {
+          if (retryDelays[attempt] > 0) {
+            await new Promise<void>((resolve) => setTimeout(resolve, retryDelays[attempt]))
+          }
+          if (disposed || controller.signal.aborted) return
+          try {
+            const blob = await apiClient.downloadPdf(pdfJobId, controller.signal)
+            if (disposed || controller.signal.aborted) return
+            const url = URL.createObjectURL(blob)
+            if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+            pdfUrlRef.current = url
+            setPdfUrl(url)
+            return
+          } catch {
+            if (disposed || controller.signal.aborted) return
+          }
         }
+        if (!disposed) toast.error('Failed to load PDF preview')
       } else if (stream.status === 'queued' || stream.status === 'processing') {
         if (pdfUrlRef.current) {
           URL.revokeObjectURL(pdfUrlRef.current)
@@ -273,6 +295,11 @@ export default function TryPage() {
       }
     } else if (stream.status === 'failed' && activeJobId) {
       apiClient.trackCompilation(activeJobId, 'failed')
+    }
+
+    return () => {
+      disposed = true
+      controller.abort()
     }
   }, [stream.status, stream.pdfJobId, activeJobId, stream.tokensUsed, refetchATS])
 
@@ -578,12 +605,12 @@ export default function TryPage() {
     editorRef.current?.setValue(prev)
   }
   const resetEditor = () => {
-    const prev = editorRef.current?.getValue() ?? latexContent
+    const prev = editorRef.current?.getValue() || latexContent
     restoreContent(DEMO_RESUME_TEMPLATE)
     toast('Reset to demo template', { action: { label: 'Undo', onClick: () => restoreContent(prev) } })
   }
   const clearEditor = () => {
-    const prev = editorRef.current?.getValue() ?? latexContent
+    const prev = editorRef.current?.getValue() || latexContent
     restoreContent('')
     toast('Editor cleared', { action: { label: 'Undo', onClick: () => restoreContent(prev) } })
   }
@@ -597,7 +624,7 @@ export default function TryPage() {
   }
   const copySource = async () => {
     try {
-      await navigator.clipboard.writeText(editorRef.current?.getValue() ?? latexContent)
+      await navigator.clipboard.writeText(editorRef.current?.getValue() || latexContent)
       setSourceCopied(true)
       setTimeout(() => setSourceCopied(false), 1500)
     } catch {
@@ -776,7 +803,7 @@ export default function TryPage() {
             checkpointB={null}
             parentLatex={optimizeSnapshot}
             parentTitle="Original"
-            variantLatex={editorRef.current?.getValue() ?? latexContent}
+            variantLatex={editorRef.current?.getValue() || latexContent}
             variantTitle="AI Optimized"
             onRestore={revertOptimize}
             onClose={() => setShowOptimizeDiff(false)}
@@ -1057,7 +1084,7 @@ export default function TryPage() {
     <div className="fixed inset-0 top-0 flex flex-col bg-bg text-fg">
       <h1 className="sr-only">Résumé Studio</h1>
       {/* ── top project bar ── */}
-      <header className="flex h-12 flex-shrink-0 items-center gap-2 border-b border-line bg-surface px-3 sm:gap-3">
+      <header className="flex h-12 flex-shrink-0 items-center gap-1 border-b border-line bg-surface px-2 sm:gap-3 sm:px-3">
         <Link href="/" className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-[var(--radius-sm)] bg-accent font-display text-sm font-bold text-accent-fg" title="Home">L</Link>
         <span className="hidden font-display text-sm font-semibold text-fg sm:inline">Résumé Studio</span>
         <span className="hidden rounded-[var(--radius-sm)] bg-surface-2 px-1.5 py-0.5 font-mono text-[12px] text-fg-3 md:inline">resume.tex</span>
@@ -1070,19 +1097,22 @@ export default function TryPage() {
             : <><Loader2 size={10} className="animate-spin" /> Saving…</>}
         </span>
 
-        <div className="ml-1 flex items-center sm:ml-2">
+        <div className="ml-0 flex items-center sm:ml-2">
           <button
             onClick={() => runCompile('compile')}
             disabled={isSubmitting || isProcessing}
-            className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-3.5 py-1.5 font-ui text-xs font-semibold text-accent-fg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Recompile"
+            className="flex items-center gap-1.5 rounded-[var(--radius-md)] bg-accent px-2 py-1.5 font-ui text-xs font-semibold text-accent-fg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3.5"
           >
             {isProcessing || isSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Play size={12} className="fill-current" />}
-            {isProcessing || isSubmitting ? 'Compiling…' : 'Recompile'}
+            <span className="hidden sm:inline">{isProcessing || isSubmitting ? 'Compiling…' : 'Recompile'}</span>
           </button>
         </div>
         <button
           onClick={toggleAutoCompile}
           title="Auto-compile on change"
+          aria-label="Auto-compile on change"
+          aria-pressed={autoCompile}
           className={`hidden select-none items-center gap-1.5 rounded-[var(--radius-md)] border px-2 py-1.5 font-ui text-[12px] transition sm:flex ${
             autoCompile ? 'border-accent bg-accent-soft text-accent-strong' : 'border-line-2 text-fg-3 hover:text-fg'
           }`}
@@ -1101,8 +1131,15 @@ export default function TryPage() {
           >
             {pdfOpen ? <PanelRightClose size={15} /> : <PanelRight size={15} />}
           </button>
-          <ModeToggle />
-          <ExportDropdown latexContent={editorRef.current?.getValue() || latexContent} onPdfExport={handleDownload} />
+          <span className="hidden sm:inline-flex">
+            <ContrastToggle />
+          </span>
+          <ModeToggle className="hidden sm:inline-flex" />
+          <ExportDropdown
+            latexContent={editorRef.current?.getValue() || latexContent}
+            onPdfExport={handleDownload}
+            className="shrink-0 [&>button]:px-2 [&>button]:py-1.5 [&>button]:text-xs sm:[&>button]:px-4 sm:[&>button]:py-2 sm:[&>button]:text-sm"
+          />
           {resolvedSession ? (
             <Link href="/dashboard" title="Dashboard" className="grid h-7 w-7 place-items-center rounded-[var(--radius-pill)] bg-accent-soft font-ui text-[12px] font-semibold text-accent-strong">
               {(resolvedSession.user?.name || resolvedSession.user?.email || 'A').charAt(0).toUpperCase()}
@@ -1237,7 +1274,7 @@ export default function TryPage() {
         onClose={() => setDeepPanelOpen(false)}
         isLoading={isDeepAnalysisRunning || deepStream.status === 'queued' || deepStream.status === 'processing'}
         analysis={deepStream.deepAnalysis}
-        error={deepAnalysisError}
+        error={deepAnalysisError ?? deepStream.error}
         usesRemaining={flags.trial_limits ? deepAnalysisUsesRemaining : null}
         onRun={handleRunDeepAnalysis}
         isRunning={isDeepAnalysisRunning}

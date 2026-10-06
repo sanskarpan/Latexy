@@ -117,11 +117,17 @@ class TestQuickTailorBehaviour:
         self, client: AsyncClient, auth_headers: dict
     ) -> None:
         parent = await _create_resume(client, auth_headers)
+        settings_resp = await client.patch(
+            f"/resumes/{parent['id']}/settings",
+            headers=auth_headers,
+            json={"compiler": "xelatex", "main_file": "main.tex", "draft_mode": True},
+        )
+        assert settings_resp.status_code == 200, settings_resp.text
         with patch(
             "app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock
         ), patch(
             "app.workers.orchestrator.submit_optimize_and_compile"
-        ):
+        ) as mock_submit:
             resp = await client.post(
                 f"/resumes/{parent['id']}/quick-tailor",
                 headers=auth_headers,
@@ -133,6 +139,10 @@ class TestQuickTailorBehaviour:
         assert "job_id" in data
         assert isinstance(data["fork_id"], str) and len(data["fork_id"]) > 0
         assert isinstance(data["job_id"], str) and len(data["job_id"]) > 0
+        kwargs = mock_submit.call_args.kwargs
+        assert kwargs["compiler"] == "xelatex"
+        assert kwargs["compile_settings"]["main_file"] == "main.tex"
+        assert kwargs["compile_settings"]["draft_mode"] is True
 
     async def test_fork_has_correct_parent_resume_id(
         self, client: AsyncClient, auth_headers: dict
@@ -261,6 +271,10 @@ class TestQuickTailorBehaviour:
         mock_submit.assert_called_once()
         submit_kwargs = mock_submit.call_args.kwargs
         assert submit_kwargs["optimization_level"] == "aggressive"
+        assert submit_kwargs["resume_id"] == resp.json()["fork_id"]
+        assert submit_kwargs["metadata"]["persist_optimized_resume"] is True
+        assert submit_kwargs["metadata"]["resume_id"] == resp.json()["fork_id"]
+        assert isinstance(submit_kwargs["metadata"]["expected_latex_content"], str)
 
     async def test_fork_clones_latex_content_from_parent(
         self, client: AsyncClient, auth_headers: dict

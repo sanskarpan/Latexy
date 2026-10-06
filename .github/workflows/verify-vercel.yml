@@ -1,0 +1,119 @@
+name: Verify Vercel Production
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: vercel-production-certification
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    name: Certify exact main revision on Vercel
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: Production
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+      GH_TOKEN: ${{ github.token }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+
+    steps:
+      - name: Validate the immutable, current main SHA
+        id: freshness
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Refusing to certify a non-immutable SHA: $DEPLOY_SHA" >&2
+            exit 1
+          fi
+          latest_sha="$(gh api repos/${GITHUB_REPOSITORY}/commits/main --jq .sha)"
+          if [[ "$latest_sha" != "$DEPLOY_SHA" ]]; then
+            echo "Skipping stale CI run for $DEPLOY_SHA; current main is $latest_sha"
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ -z "$VERCEL_TOKEN" || -z "$VERCEL_PROJECT_ID" ]]; then
+            echo "VERCEL_TOKEN and VERCEL_PROJECT_ID must be configured" >&2
+            exit 1
+          fi
+          if [[ ! "$VERCEL_PROJECT_ID" =~ ^[A-Za-z0-9_-]+$ || ( -n "$VERCEL_ORG_ID" && ! "$VERCEL_ORG_ID" =~ ^[A-Za-z0-9_-]+$ ) ]]; then
+            echo "Vercel project/team identifiers contain unexpected characters" >&2
+            exit 1
+          fi
+          echo "current=true" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the successful Vercel deployment and canonical alias
+        if: steps.freshness.outputs.current == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployments_url="https://api.vercel.com/v6/deployments?projectId=${VERCEL_PROJECT_ID}&target=production&limit=100"
+          if [[ -n "$VERCEL_ORG_ID" ]]; then
+            deployments_url="${deployments_url}&teamId=${VERCEL_ORG_ID}"
+          fi
+          headers_file="$(mktemp)"
+          body_file="$(mktemp)"
+          trap 'rm -f "$headers_file" "$body_file"' EXIT
+
+          for attempt in $(seq 1 30); do
+            latest_sha="$(gh api repos/${GITHUB_REPOSITORY}/commits/main --jq .sha)"
+            if [[ "$latest_sha" != "$DEPLOY_SHA" ]]; then
+              echo "Skipping stale CI run for $DEPLOY_SHA; current main is $latest_sha"
+              exit 0
+            fi
+
+            deployments=""
+            if deployments="$(curl --fail --silent --show-error --max-time 20 \
+              -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+              -H 'Accept: application/json' "$deployments_url")"; then
+              deployment="$(jq -c --arg sha "$DEPLOY_SHA" \
+                'first(.deployments[]? | select(.meta.githubCommitSha == $sha) | select(.readyState == "READY" or .state == "READY")) // empty' \
+                <<<"$deployments")"
+            else
+              deployment=""
+            fi
+
+            if [[ -n "$deployment" ]]; then
+              deployment_id="$(jq -r '.uid // .id // empty' <<<"$deployment")"
+              deployment_url="$(jq -r '.url // empty' <<<"$deployment")"
+              detail=""
+              if [[ -n "$deployment_id" ]] && detail="$(curl --fail --silent --show-error --max-time 20 \
+                -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+                -H 'Accept: application/json' \
+                "https://api.vercel.com/v13/deployments/${deployment_id}")"; then
+                if jq -e '(.readyState == "READY") and ((.checksState // "completed") == "completed") and ((.checksConclusion // "succeeded") == "succeeded")' <<<"$detail" >/dev/null; then
+                  latest_sha="$(gh api repos/${GITHUB_REPOSITORY}/commits/main --jq .sha)"
+                  if [[ "$latest_sha" != "$DEPLOY_SHA" ]]; then
+                    echo "Skipping stale CI run for $DEPLOY_SHA; current main is $latest_sha"
+                    exit 0
+                  fi
+                  identity_url="https://latexy.xyz/api/deployment-identity"
+                  if curl --fail --silent --show-error --max-time 20 \
+                    -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+                    -D "$headers_file" -o "$body_file" "$identity_url" \
+                    && grep -Eiq '^cache-control:[[:space:]]*no-store' "$headers_file" \
+                    && jq -e --arg sha "$DEPLOY_SHA" \
+                      '.commitSha == $sha and .source == "vercel"' "$body_file" >/dev/null; then
+                    echo "Certified Vercel deployment ${deployment_id} (${deployment_url}) for ${DEPLOY_SHA}"
+                    exit 0
+                  fi
+                fi
+              fi
+            fi
+            echo "Vercel deployment/identity for $DEPLOY_SHA is not ready (attempt ${attempt}/30)"
+            sleep 20
+          done
+          echo "Timed out waiting for Vercel to serve the exact main SHA $DEPLOY_SHA" >&2
+          exit 1

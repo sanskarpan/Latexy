@@ -80,7 +80,11 @@ TEST_DATABASE_URL = _to_asyncpg_url(_raw_db_url) if _raw_db_url else ""
 # ── Set env before importing app so settings picks them up ───────────────────
 
 os.environ["SKIP_ENV_VALIDATION"] = "true"
-os.environ.setdefault("ENVIRONMENT", "test")
+os.environ["ENVIRONMENT"] = "test"
+# Never inherit production Modal dispatch from a developer's .env. Tests that
+# exercise Modal parity opt in explicitly with monkeypatch; ordinary fixtures
+# must not spawn remote work with locally configured credentials.
+os.environ["DEPLOY_TARGET"] = "local"
 # Always force test secrets — overrides anything in .env so make_jwt() matches settings
 os.environ["JWT_SECRET_KEY"] = "test_jwt_secret_32chars_minimum_!"
 os.environ["BETTER_AUTH_SECRET"] = "test_secret_key_32chars_minimum_!"
@@ -91,11 +95,16 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 # REDIS_URL (db 0), so a setdefault left the suite flushing the running dev
 # stack's job keys mid-run — jobs vanished seconds after completing and
 # GET /jobs/{id}/state started answering "Job not found".
-_TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15")
+_TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://localhost:6380/15")
+_TEST_REDIS_CACHE_URL = os.environ.get(
+    "TEST_REDIS_CACHE_URL", "redis://localhost:6380/14"
+)
 os.environ["REDIS_URL"] = _TEST_REDIS_URL
+os.environ["REDIS_CACHE_URL"] = _TEST_REDIS_CACHE_URL
 os.environ["CELERY_BROKER_URL"] = _TEST_REDIS_URL
 os.environ["CELERY_RESULT_BACKEND"] = _TEST_REDIS_URL
 os.environ["OPENAI_API_KEY"] = ""  # always disable live LLM in tests — use mocks instead
+os.environ["RESEND_API_KEY"] = ""  # invitations/digests must never email real recipients from tests
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # DEBUG=true in tests to get verbose error messages in responses.
 # Production validation is tested explicitly in test_health.py via DEBUG=false assertions.
@@ -121,12 +130,16 @@ def check_infrastructure():
     if _SKIP_INFRA:
         return
     import redis as sync_redis
-    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6380/15")
+    r = None
     try:
         r = sync_redis.from_url(redis_url, socket_connect_timeout=3)
         r.ping()
     except Exception as e:
         pytest.fail(f"Redis not available at {redis_url}: {e}. Start Redis before running tests.")
+    finally:
+        if r is not None:
+            r.close()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -137,10 +150,38 @@ def reset_test_redis():
         return
     import redis as sync_redis
 
-    client = sync_redis.from_url(_TEST_REDIS_URL, socket_connect_timeout=3)
-    client.flushdb()
+    clients = [
+        sync_redis.from_url(url, socket_connect_timeout=3)
+        for url in dict.fromkeys((_TEST_REDIS_URL, _TEST_REDIS_CACHE_URL))
+    ]
+    try:
+        for client in clients:
+            client.flushdb()
+        yield
+        for client in clients:
+            client.flushdb()
+    finally:
+        for client in clients:
+            client.close()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def initialize_test_worker_redis():
+    """Give direct Celery-task tests the isolated queue Redis client.
+
+    Worker entry now claims an existing lifecycle even for unmetered jobs, so
+    task tests must provide the same queue Redis dependency as production.
+    Individual event-publisher unit tests still replace/reset this module
+    singleton through their own fixture.
+    """
+    if _SKIP_INFRA:
+        yield
+        return
+    from app.workers.event_publisher import close_worker_redis, initialize_worker_redis
+
+    initialize_worker_redis(_TEST_REDIS_URL)
     yield
-    client.flushdb()
+    close_worker_redis()
 
 from app.database.connection import get_db
 from app.main import app
@@ -154,8 +195,8 @@ from app.main import app
 
 
 @pytest.fixture(autouse=True)
-def _reset_async_redis_singletons():
-    """Drop the async Redis client singletons before each test.
+async def _reset_process_connection_singletons():
+    """Close process-owned database and Redis clients around every test.
 
     aioredis connection pools bind to the event loop that created their
     connections. A test that drives a coroutine via ``asyncio.run()`` (its own
@@ -165,18 +206,21 @@ def _reset_async_redis_singletons():
     closed" — which surfaces, since the quota meter added in this branch, as a
     503 on the first authenticated job submission that runs afterwards.
 
-    Clearing the async singletons (module globals + manager attributes) forces
-    each test to lazily re-init the clients on its own running loop via
-    get_redis_client()/get_redis_cache_client(). Sync clients are untouched (no
-    loop affinity), and production is single-loop so this is test-only.
+    Closing rather than merely clearing the module references releases each
+    pool while pytest's session-scoped asyncio loop is still alive.  Merely
+    assigning ``None`` made passing tests leak queue/cache sockets and deferred
+    ``ResourceWarning`` messages into unrelated later tests.
     """
     import app.core.redis as _redis_mod
+    from app.database.connection import close_db
 
-    _redis_mod.redis_client = None
-    _redis_mod.redis_cache_client = None
-    _redis_mod.redis_manager.redis_client = None
-    _redis_mod.redis_manager.redis_cache_client = None
-    yield
+    await close_db()
+    await _redis_mod.redis_manager.close_redis()
+    try:
+        yield
+    finally:
+        await close_db()
+        await _redis_mod.redis_manager.close_redis()
 
 
 @pytest.fixture(autouse=True)
@@ -236,12 +280,25 @@ async def test_engine():
             ("users", "dropbox_access_token"),
             ("resumes", "archived_at"),
             ("resumes", "dropbox_sync_enabled"),
+            ("resumes", "portfolio_visible"),
             ("resumes", "document_type"),
             ("resumes", "structured_content"),
             ("resumes", "structured_version"),
             ("resumes", "selected_template_id"),
             ("resumes", "content_source"),
             ("resumes", "builder_status"),
+            ("saved_jobs", "id"),
+            ("job_alerts", "last_notified_at"),
+            ("application_reminders", "remind_at"),
+            ("application_interviews", "starts_at"),
+            ("tracker_companies", "id"),
+            ("tracker_contacts", "company_id"),
+            ("resume_comment_mentions", "id"),
+            ("user_macros", "script"),
+            ("user_macros", "script_version"),
+            ("user_macros", "script_hash"),
+            ("job_finalizations", "owner_epoch"),
+            ("job_finalizations", "job_type"),
         }
         for table_name, column_name in required_columns:
             result = await conn.execute(
@@ -350,9 +407,15 @@ async def db_session(db_session_factory) -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest.fixture
-async def client() -> AsyncGenerator[AsyncClient, None]:
+async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    # Resolve the test-owned session before constructing the ASGI client. The
+    # autouse dependency override then routes every DB-backed request through
+    # this session instead of lazily creating app.database.connection's
+    # process-global pool on the ASGI event loop. That pool can otherwise be
+    # replaced by a later lifespan on another loop, leaving asyncpg transports
+    # for ResourceWarning/UnraisableException failures.
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://localhost"
     ) as ac:
         yield ac
 

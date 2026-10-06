@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'vitest'
+import { buildJobResultRecoveryEvents, streamReducer } from '../hooks/useJobStream'
 import { jobStreamReducer, initialState } from '../hooks/useJobStream.reducer'
 import type { JobStreamState } from '../hooks/useJobStream.reducer'
 
@@ -10,6 +11,55 @@ const BASE_EVENT = {
   timestamp: 1000,
   sequence: 1,
 }
+
+describe('useJobStream REST recovery synthesis', () => {
+  test('replays deep ATS and cover-letter output without fabricating a PDF', () => {
+    const events = buildJobResultRecoveryEvents('cover-job', {
+      success: true,
+      job_id: 'cover-job',
+      pdf_job_id: null,
+      tokens_used: 12,
+      analysis_time: 1.5,
+      cover_letter_latex: '\\documentclass{letter}\\begin{document}Recovered\\end{document}',
+      deep_analysis: {
+        overall_score: 91,
+        overall_feedback: 'Strong match',
+        sections: [],
+        ats_compatibility: { score: 90, issues: [], keyword_gaps: [] },
+        job_match: null,
+        tokens_used: 12,
+        analysis_time: 1.5,
+        multi_dim_scores: { grammar: 92 },
+        industry_key: 'tech_saas',
+        industry_label: 'Technology / SaaS',
+      },
+    })
+
+    expect(events.map((event) => event.type)).toEqual([
+      'ats.deep_complete',
+      'llm.complete',
+      'job.completed',
+    ])
+    expect(events[events.length - 1]).toMatchObject({ job_id: 'cover-job', pdf_job_id: null })
+
+    const state = events.reduce(streamReducer, initialState)
+    const replayedState = [...events, ...events].reduce(streamReducer, initialState)
+    expect(state.status).toBe('completed')
+    expect(replayedState).toEqual(state)
+    expect(state.pdfJobId).toBeNull()
+    expect(state.deepAnalysis?.industry_key).toBe('tech_saas')
+    expect(state.streamingLatex).toContain('Recovered')
+  })
+
+  test('rejects a result whose canonical job identity does not match', () => {
+    const events = buildJobResultRecoveryEvents('new-job', {
+      success: true,
+      job_id: 'old-job',
+      pdf_job_id: null,
+    })
+    expect(events).toEqual([])
+  })
+})
 
 // ─── reset ────────────────────────────────────────────────────────────────────
 
@@ -184,6 +234,59 @@ describe('jobStreamReducer — job.completed', () => {
     expect(s.error).toBeNull()
     expect(s.errorCode).toBeNull()
   })
+
+  test('enriches an incomplete completion with the REST fallback pdf id', () => {
+    const first = jobStreamReducer(initialState, {
+      ...BASE_EVENT,
+      type: 'job.completed',
+      pdf_job_id: undefined as unknown as string,
+      ats_score: null,
+      ats_details: null,
+      changes_made: [],
+      compilation_time: 1,
+      optimization_time: 0,
+      tokens_used: 0,
+      page_count: 1,
+    })
+    const repaired = jobStreamReducer(first, {
+      ...BASE_EVENT,
+      event_id: 'evt-rest-complete',
+      type: 'job.completed',
+      pdf_job_id: 'pdf-from-result',
+      ats_score: null,
+      ats_details: null,
+      changes_made: [],
+      compilation_time: 1,
+      optimization_time: 0,
+      tokens_used: 0,
+      page_count: 1,
+    })
+
+    expect(repaired.status).toBe('completed')
+    expect(repaired.pdfJobId).toBe('pdf-from-result')
+  })
+
+  test('still ignores a late cancellation after completion enrichment', () => {
+    const completed = jobStreamReducer(initialState, {
+      ...BASE_EVENT,
+      type: 'job.completed',
+      pdf_job_id: 'pdf-abc',
+      ats_score: null,
+      ats_details: null,
+      changes_made: [],
+      compilation_time: 1,
+      optimization_time: 0,
+      tokens_used: 0,
+      page_count: 1,
+    })
+    const afterCancel = jobStreamReducer(completed, {
+      ...BASE_EVENT,
+      type: 'job.cancelled',
+    })
+
+    expect(afterCancel.status).toBe('completed')
+    expect(afterCancel.pdfJobId).toBe('pdf-abc')
+  })
 })
 
 // ─── job.failed ───────────────────────────────────────────────────────────────
@@ -223,6 +326,25 @@ describe('jobStreamReducer — job.failed', () => {
     expect(s.timeoutError).not.toBeNull()
     expect(s.timeoutError?.plan).toBe('free')
     expect(s.timeoutError?.upgradeMessage).toBe('Upgrade to Pro')
+    expect(s.timeoutError?.seconds).toBe(30)
+  })
+
+  test('uses the enforced timeout duration carried by the worker event', () => {
+    const s = jobStreamReducer(
+      initialState,
+      {
+        ...BASE_EVENT,
+        type: 'job.failed',
+        stage: 'latex_compilation',
+        error_code: 'compile_timeout',
+        error_message: 'Timed out',
+        retryable: false,
+        upgrade_message: 'Upgrade to Pro',
+        user_plan: 'basic',
+        timeout_seconds: 150,
+      },
+    )
+    expect(s.timeoutError?.seconds).toBe(150)
   })
 
   test('does not set timeoutError for non-timeout errors', () => {
@@ -262,6 +384,67 @@ describe('jobStreamReducer — ats.deep_complete', () => {
     )
     expect(s.deepAnalysis?.overall_score).toBe(82)
     expect(s.deepAnalysis?.multi_dim_scores?.grammar).toBe(90)
+  })
+
+  test('hydrates analysis after a recovered completion event', () => {
+    const completed = jobStreamReducer(
+      initialState,
+      {
+        ...BASE_EVENT,
+        type: 'job.completed',
+        pdf_job_id: 'deep-job',
+        ats_score: 82,
+        ats_details: null,
+        changes_made: [],
+        compilation_time: 0,
+        optimization_time: 3,
+        tokens_used: 500,
+      },
+    )
+    const recovered = jobStreamReducer(completed, {
+      ...BASE_EVENT,
+      type: 'ats.deep_complete',
+      overall_score: 82,
+      overall_feedback: 'Good resume.',
+      sections: [],
+      ats_compatibility: { score: 90, issues: [], keyword_gaps: [] },
+      job_match: null,
+      tokens_used: 500,
+      analysis_time: 3.2,
+      multi_dim_scores: { grammar: 90 },
+      industry_key: 'tech_saas',
+      industry_label: 'Technology / SaaS',
+    })
+    expect(recovered.status).toBe('completed')
+    expect(recovered.deepAnalysis?.multi_dim_scores?.grammar).toBe(90)
+    expect(recovered.deepAnalysis?.industry_key).toBe('tech_saas')
+  })
+})
+
+describe('jobStreamReducer — recovered generated output', () => {
+  test('hydrates cover-letter LaTeX after completion', () => {
+    const completed = jobStreamReducer(
+      initialState,
+      {
+        ...BASE_EVENT,
+        type: 'job.completed',
+        pdf_job_id: 'cover-job',
+        ats_score: null,
+        ats_details: null,
+        changes_made: [],
+        compilation_time: 0,
+        optimization_time: 1,
+        tokens_used: 10,
+      },
+    )
+    const recovered = jobStreamReducer(completed, {
+      ...BASE_EVENT,
+      type: 'llm.complete',
+      full_content: '\\documentclass{article}\\begin{document}Recovered\\end{document}',
+      tokens_total: 10,
+    })
+    expect(recovered.status).toBe('completed')
+    expect(recovered.streamingLatex).toContain('Recovered')
   })
 })
 

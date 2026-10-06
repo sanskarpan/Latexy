@@ -87,6 +87,8 @@ export default function VersionHistoryPanel({
 }: VersionHistoryPanelProps) {
   const [entries, setEntries] = useState<CheckpointEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [retryKey, setRetryKey] = useState(0)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [restoringId, setRestoringId] = useState<string | null>(null)
   const [beforeAfterId, setBeforeAfterId] = useState<string | null>(null)
@@ -95,19 +97,22 @@ export default function VersionHistoryPanel({
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    setLoadError(null)
     apiClient
       .listCheckpoints(resumeId, 50)
       .then((data) => {
         if (!cancelled) setEntries(data)
       })
-      .catch(() => {
-        if (!cancelled) toast.error('Failed to load version history')
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : 'Failed to load version history')
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [resumeId, refreshKey])
+  }, [resumeId, refreshKey, retryKey])
 
   // Toggle selection (max 2)
   const toggleSelect = useCallback((id: string) => {
@@ -207,6 +212,21 @@ export default function VersionHistoryPanel({
     )
   }
 
+  if (loadError && entries.length === 0) {
+    return (
+      <div role="alert" className="flex flex-col items-center gap-2 py-8 px-3 text-center">
+        <p className="text-xs text-err">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => setRetryKey((key) => key + 1)}
+          className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-[10px] font-medium text-fg-2 hover:bg-surface-2"
+        >
+          Retry
+        </button>
+      </div>
+    )
+  }
+
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center gap-1.5 py-8 text-center">
@@ -221,6 +241,12 @@ export default function VersionHistoryPanel({
 
   return (
     <div className="flex flex-col">
+      {loadError && (
+        <div role="alert" className="m-3 flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-err/30 bg-err/5 px-3 py-2">
+          <span className="text-[10px] text-err">Could not refresh version history.</span>
+          <button type="button" onClick={() => setRetryKey((key) => key + 1)} className="text-[10px] font-medium text-err underline">Retry</button>
+        </div>
+      )}
       {/* Compare button */}
       {selected.size === 2 && (
         <div className="sticky top-0 z-10 border-b border-line bg-bg/90 px-3 py-2 backdrop-blur-sm">

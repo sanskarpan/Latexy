@@ -2,6 +2,7 @@
 
 import base64
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -10,6 +11,10 @@ from ..core.logging import get_logger
 logger = get_logger(__name__)
 
 GITHUB_API = "https://api.github.com"
+
+
+class GitHubSyncConflict(Exception):
+    """The remote file changed since Latexy last observed it."""
 
 
 class GitHubSyncService:
@@ -22,6 +27,13 @@ class GitHubSyncService:
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
+    @staticmethod
+    def _repo_url(owner: str, repo: str, suffix: str = "") -> str:
+        return (
+            f"{GITHUB_API}/repos/{quote(owner, safe='')}/{quote(repo, safe='')}"
+            f"{suffix}"
+        )
+
     # ── Repo management ──────────────────────────────────────────────────
 
     async def ensure_repo(self, token: str, username: str, repo_name: str) -> None:
@@ -29,7 +41,7 @@ class GitHubSyncService:
         async with httpx.AsyncClient(timeout=15) as client:
             # Check if repo exists
             resp = await client.get(
-                f"{GITHUB_API}/repos/{username}/{repo_name}",
+                self._repo_url(username, repo_name),
                 headers=self._headers(token),
             )
             if resp.status_code == 200:
@@ -55,7 +67,7 @@ class GitHubSyncService:
                 # 422 (invalid name, org limits, …) is a real failure.
                 if self._is_name_already_exists(resp):
                     return
-                logger.error(f"GitHub repo creation rejected (422): {resp.text[:300]}")
+                logger.error("GitHub repo creation rejected with validation status 422")
             resp.raise_for_status()
 
     @staticmethod
@@ -83,42 +95,71 @@ class GitHubSyncService:
         path: str,
         content: str,
         commit_message: str,
+        expected_sha: Optional[str] = None,
     ) -> dict:
-        """Push (create or update) a file via the GitHub Contents API."""
-        url = f"{GITHUB_API}/repos/{owner}/{repo}/contents/{path}"
+        """Create or update a file without overwriting an unseen revision.
+
+        ``expected_sha`` is the blob revision remembered after the last Latexy
+        push or pull. GitHub also checks the SHA during the PUT, which closes
+        the race between our read and write.
+        """
+        url = self._repo_url(owner, repo, f"/contents/{quote(path, safe='/')}")
         headers = self._headers(token)
         encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
 
         async with httpx.AsyncClient(timeout=15) as client:
-            # Get current SHA if file exists (required for updates)
-            sha: Optional[str] = None
             get_resp = await client.get(url, headers=headers)
+            remote_sha: Optional[str] = None
             if get_resp.status_code == 200:
-                sha = get_resp.json().get("sha")
+                remote_sha = str(get_resp.json().get("sha") or "") or None
+                if not remote_sha:
+                    raise ValueError("GitHub file response did not include a blob SHA")
+            elif get_resp.status_code != 404:
+                get_resp.raise_for_status()
+
+            if expected_sha:
+                if remote_sha != expected_sha:
+                    raise GitHubSyncConflict
+            elif remote_sha:
+                # This Latexy resume has never observed the existing file. Do
+                # not claim it by overwriting content that may belong to a
+                # previous installation or another client.
+                raise GitHubSyncConflict
 
             payload: dict = {
                 "message": commit_message,
                 "content": encoded,
             }
-            if sha:
-                payload["sha"] = sha
+            if remote_sha:
+                payload["sha"] = remote_sha
 
             put_resp = await client.put(url, headers=headers, json=payload)
+            if put_resp.status_code == 409:
+                raise GitHubSyncConflict
             put_resp.raise_for_status()
             return put_resp.json()
 
     # ── Pull ─────────────────────────────────────────────────────────────
 
-    async def pull_file(
-        self, token: str, owner: str, repo: str, path: str
-    ) -> str:
-        """Fetch a file from a GitHub repo and return its decoded text content."""
-        url = f"{GITHUB_API}/repos/{owner}/{repo}/contents/{path}"
+    async def pull_file(self, token: str, owner: str, repo: str, path: str) -> dict:
+        """Fetch a file and return its decoded text plus immutable blob SHA."""
+        url = self._repo_url(owner, repo, f"/contents/{quote(path, safe='/')}")
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(url, headers=self._headers(token))
             resp.raise_for_status()
             data = resp.json()
-            return base64.b64decode(data["content"]).decode("utf-8")
+            if data.get("type") not in (None, "file"):
+                raise ValueError("GitHub path is not a regular file")
+            encoded = data.get("content")
+            sha = str(data.get("sha") or "")
+            if not isinstance(encoded, str) or not sha:
+                raise ValueError("GitHub file response is incomplete")
+            try:
+                raw = base64.b64decode("".join(encoded.split()), validate=True)
+                content = raw.decode("utf-8")
+            except (ValueError, UnicodeDecodeError) as exc:
+                raise ValueError("GitHub file is not valid UTF-8 LaTeX source") from exc
+            return {"content": content, "sha": sha}
 
     # ── User info ────────────────────────────────────────────────────────
 
@@ -146,7 +187,7 @@ class GitHubSyncService:
         """
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.delete(
-                f"{GITHUB_API}/applications/{client_id}/grant",
+                f"{GITHUB_API}/applications/{quote(client_id, safe='')}/grant",
                 auth=(client_id, client_secret),
                 headers={
                     "Accept": "application/vnd.github+json",

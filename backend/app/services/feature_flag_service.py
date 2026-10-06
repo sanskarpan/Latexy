@@ -49,7 +49,7 @@ class FeatureFlagService:
             _cache[key] = (enabled, now + _CACHE_TTL)
             return enabled
         except Exception as exc:
-            logger.warning(f"feature_flag_service.get_flag({key}) DB error: {exc}")
+            logger.warning("feature_flag_service.get_flag DB error", extra={"error_type": type(exc).__name__})
             try:
                 await db.rollback()
             except Exception:
@@ -107,6 +107,7 @@ class FeatureFlagService:
             pass
 
         # 2. Direct sync connection (FastAPI / non-worker context)
+        r = None
         try:
             import redis as _redis
 
@@ -114,25 +115,36 @@ class FeatureFlagService:
             r = _redis.from_url(settings.REDIS_URL, decode_responses=True,
                                 socket_connect_timeout=1, socket_timeout=1)
             val = r.get(redis_key)
-            r.close()
             if val is None:
                 return True
             return val == "1"
         except Exception as exc:
-            logger.debug(f"sync_get_flag({key}) Redis error: {exc}")
+            logger.debug("sync_get_flag Redis error", extra={"error_type": type(exc).__name__})
             return True  # fail open
+        finally:
+            if r is not None:
+                try:
+                    r.close()
+                except Exception as exc:
+                    logger.debug("sync_get_flag Redis close error", extra={"error_type": type(exc).__name__})
 
     async def _push_to_redis(self, key: str, enabled: bool) -> None:
         """Write flag value to Redis (async, best-effort)."""
+        r = None
         try:
             import redis.asyncio as aioredis
 
             from ..core.config import settings
             r = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
             await r.set(f"{REDIS_KEY_PREFIX}{key}", "1" if enabled else "0")
-            await r.aclose()
         except Exception as exc:
-            logger.debug(f"_push_to_redis({key}) error: {exc}")
+            logger.debug("_push_to_redis error", extra={"error_type": type(exc).__name__})
+        finally:
+            if r is not None:
+                try:
+                    await r.aclose()
+                except Exception as exc:
+                    logger.debug("_push_to_redis Redis close error", extra={"error_type": type(exc).__name__})
 
 
 # Module-level singleton

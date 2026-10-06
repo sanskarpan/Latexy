@@ -5,25 +5,36 @@ import Link from 'next/link'
 import { Users, Plus, Loader2, Building2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type WorkspaceResponse } from '@/lib/api-client'
-import { useSession } from '@/lib/auth-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import SessionLoadError from '@/components/SessionLoadError'
 
 export default function WorkspacesPage() {
-  const { data: session, isPending: sessionLoading } = useSession()
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const [workspaces, setWorkspaces] = useState<WorkspaceResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
 
   useEffect(() => {
-    if (!session?.user) return
+    if (!session?.user) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setLoadError(null)
     apiClient
       .listWorkspaces()
       .then(setWorkspaces)
-      .catch(() => toast.error('Failed to load workspaces'))
+      .catch((error) => {
+        setLoadError(error instanceof Error ? error.message : 'Failed to load workspaces')
+        toast.error('Failed to load workspaces')
+      })
       .finally(() => setLoading(false))
-  }, [session])
+  }, [session, reloadNonce])
 
   async function handleCreate() {
     const name = newName.trim()
@@ -54,6 +65,7 @@ export default function WorkspacesPage() {
   }
 
   if (sessionLoading || loading) return <LoadingSpinner />
+  if (sessionError && !session) return <SessionLoadError area="Team workspaces" />
   if (!session?.user) return null
 
   const userId = session.user.id
@@ -74,6 +86,20 @@ export default function WorkspacesPage() {
           New Workspace
         </button>
       </div>
+
+      {loadError && (
+        <div role="alert" className="mb-6 rounded-[var(--radius-lg)] border border-err/20 bg-err/[0.07] p-5 text-center">
+          <p className="text-sm font-semibold text-err">Team workspaces could not be loaded</p>
+          <p className="mt-1 text-xs text-fg-2">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => setReloadNonce((value) => value + 1)}
+            className="mt-4 rounded-[var(--radius-md)] border border-err/30 px-4 py-2 text-xs font-semibold text-err transition hover:bg-err/10"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Create form */}
       {showCreate && (
@@ -106,7 +132,7 @@ export default function WorkspacesPage() {
       )}
 
       {/* Workspace grid */}
-      {workspaces.length === 0 ? (
+      {loadError && workspaces.length === 0 ? null : workspaces.length === 0 ? (
         <div className="text-center py-20 text-fg-3">
           <Building2 className="h-12 w-12 mx-auto mb-4 opacity-30" />
           <p className="text-lg mb-1">No workspaces yet</p>

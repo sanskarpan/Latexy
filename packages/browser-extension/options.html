@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Latexy Job Companion settings</title>
+    <link rel="stylesheet" href="extension.css">
+  </head>
+  <body class="options">
+    <main>
+      <h1>Latexy Job Companion</h1>
+      <p>These optional identity fields stay in this browser's extension storage. They are inserted only when you click <strong>Autofill</strong>; Latexy never submits an application for you.</p>
+      <form id="profile-form">
+        <div class="grid">
+          <label>First name<input name="firstName" maxlength="100" autocomplete="given-name"></label>
+          <label>Last name<input name="lastName" maxlength="100" autocomplete="family-name"></label>
+          <label>Email<input name="email" maxlength="254" type="email" autocomplete="email"></label>
+          <label>Phone<input name="phone" maxlength="100" autocomplete="tel"></label>
+          <label>City<input name="city" maxlength="100" autocomplete="address-level2"></label>
+          <label>State / region<input name="region" maxlength="100" autocomplete="address-level1"></label>
+          <label>Country<input name="country" maxlength="100" autocomplete="country-name"></label>
+          <label>LinkedIn URL<input name="linkedin" maxlength="500" type="url"></label>
+          <label>Portfolio URL<input name="website" maxlength="500" type="url"></label>
+        </div>
+        <label>Latexy app
+          <select name="appOrigin">
+            <option value="https://latexy.xyz">latexy.xyz</option>
+            <option value="http://localhost:5180">Local development (localhost:5180)</option>
+            <option value="http://127.0.0.1:5180">Local development (127.0.0.1:5180)</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button type="submit" class="primary">Save locally</button>
+          <button type="button" id="clear">Clear profile</button>
+        </div>
+        <p id="status" role="status"></p>
+      </form>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

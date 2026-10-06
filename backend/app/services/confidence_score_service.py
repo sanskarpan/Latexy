@@ -10,10 +10,10 @@ Holistic 0-100 quality score across five dimensions (no LLM):
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import List
 
+from ..utils import safe_regex as re
 from .proofreader_service import proofread_latex
 
 # ── Types ─────────────────────────────────────────────────────────────────────

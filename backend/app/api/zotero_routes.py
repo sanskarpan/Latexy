@@ -7,6 +7,7 @@ import re
 import secrets
 import time
 import urllib.parse
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
@@ -24,6 +25,8 @@ from ..database.models import Resume, User
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
 from ..services.encryption_service import encryption_service
+from ..utils.bounded_io import BoundedReadError, read_httpx_response_bounded
+from ..utils.uuid_guard import ensure_uuid
 
 logger = get_logger(__name__)
 
@@ -36,7 +39,13 @@ _ZOTERO_API_BASE = "https://api.zotero.org"
 
 # Import safety caps — protect the JSON column / response size from huge libraries.
 _MAX_IMPORT_BYTES = 5_000_000  # 5 MB of concatenated BibTeX
-_MAX_IMPORT_PAGES = 200        # hard guard on the pagination loop
+_MAX_IMPORT_PAGES = 200  # hard guard on the pagination loop
+
+
+async def _read_import_page(response: httpx.Response, remaining_bytes: int) -> str:
+    """Read one provider page without exceeding the aggregate import budget."""
+    raw = await read_httpx_response_bounded(response, remaining_bytes)
+    return raw.decode("utf-8", errors="replace").strip()
 
 # ── OAuth 1.0a helpers ───────────────────────────────────────────────────────
 
@@ -56,9 +65,7 @@ def _oauth1_signature(
 ) -> str:
     """Compute HMAC-SHA1 OAuth 1.0a signature."""
     all_params = {**oauth_params, **extra_params}
-    normalized = "&".join(
-        f"{_penc(k)}={_penc(v)}" for k, v in sorted(all_params.items())
-    )
+    normalized = "&".join(f"{_penc(k)}={_penc(v)}" for k, v in sorted(all_params.items()))
     base = "&".join([_penc(method.upper()), _penc(url), _penc(normalized)])
     signing_key = f"{_penc(consumer_secret)}&{_penc(token_secret)}"
     sig = hmac.new(signing_key.encode(), base.encode(), hashlib.sha1)
@@ -85,14 +92,10 @@ def _oauth1_header(
     if token:
         oauth_params["oauth_token"] = token
 
-    sig = _oauth1_signature(
-        method, url, oauth_params, extra_params or {}, consumer_secret, token_secret
-    )
+    sig = _oauth1_signature(method, url, oauth_params, extra_params or {}, consumer_secret, token_secret)
     oauth_params["oauth_signature"] = sig
 
-    parts = ", ".join(
-        f'{k}="{_penc(v)}"' for k, v in sorted(oauth_params.items())
-    )
+    parts = ", ".join(f'{k}="{_penc(v)}"' for k, v in sorted(oauth_params.items()))
     return f"OAuth {parts}"
 
 
@@ -135,6 +138,7 @@ class ZoteroImportResponse(BaseModel):
     entries_count: int
     bibtex: str
     message: str
+    source: dict
 
 
 class ZoteroCollectionsResponse(BaseModel):
@@ -181,22 +185,18 @@ async def zotero_connect(
             )
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            logger.error(f"Zotero request token error: {exc.response.text}")
-            raise HTTPException(
-                status_code=502, detail="Failed to get Zotero request token"
-            )
+            logger.error("Zotero request token error (HTTP %s)", exc.response.status_code)
+            raise HTTPException(status_code=502, detail="Failed to get Zotero request token")
         except httpx.RequestError as exc:
-            logger.error(f"Zotero connection error: {exc}")
-            raise HTTPException(
-                status_code=502, detail="Zotero is unavailable, please try again"
-            )
+            logger.error("Zotero connection error (%s)", type(exc).__name__)
+            raise HTTPException(status_code=502, detail="Zotero is unavailable, please try again")
 
     params = dict(urllib.parse.parse_qsl(resp.text))
     request_token = params.get("oauth_token", "")
     request_token_secret = params.get("oauth_token_secret", "")
 
     if not request_token:
-        logger.error(f"Zotero returned no request_token: {resp.text}")
+        logger.error("Zotero returned an invalid request-token response")
         raise HTTPException(status_code=502, detail="Invalid response from Zotero OAuth")
 
     # Keep the request-token secret server-side and bind it to the initiator.
@@ -206,16 +206,12 @@ async def zotero_connect(
         ttl=600,
     )
 
-    return ZoteroOAuthStartResponse(
-        authorization_url=f"{_ZOTERO_AUTHORIZE_URL}?oauth_token={request_token}"
-    )
+    return ZoteroOAuthStartResponse(authorization_url=f"{_ZOTERO_AUTHORIZE_URL}?oauth_token={request_token}")
 
 
 def _zotero_error_redirect(reason: str) -> RedirectResponse:
     """Send the browser back to the settings page with a friendly error flag."""
-    return RedirectResponse(
-        f"{settings.FRONTEND_URL}/settings?zotero=error&reason={urllib.parse.quote(reason)}"
-    )
+    return RedirectResponse(f"{settings.FRONTEND_URL}/settings?zotero=error&reason={urllib.parse.quote(reason)}")
 
 
 @router.get("/callback")
@@ -296,10 +292,10 @@ async def zotero_complete(
             )
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            logger.error(f"Zotero access token error: {exc.response.text}")
+            logger.error("Zotero access token error (HTTP %s)", exc.response.status_code)
             raise HTTPException(status_code=502, detail="Zotero token exchange failed") from exc
         except httpx.RequestError as exc:
-            logger.error(f"Zotero connection error during token exchange: {exc}")
+            logger.error("Zotero connection error during token exchange (%s)", type(exc).__name__)
             raise HTTPException(status_code=502, detail="Zotero is unavailable, please try again") from exc
 
     params = dict(urllib.parse.parse_qsl(resp.text))
@@ -406,9 +402,7 @@ async def zotero_collections(
 
             page = resp.json()
             collections.extend(
-                {"key": c["key"], "name": c["data"]["name"]}
-                for c in page
-                if isinstance(c, dict) and "key" in c
+                {"key": c["key"], "name": c["data"]["name"]} for c in page if isinstance(c, dict) and "key" in c
             )
             total = int(resp.headers.get("Total-Results", len(page)))
             start += limit
@@ -424,6 +418,7 @@ async def zotero_import(
     user_id: str = Depends(get_current_user_required),
 ):
     """Import BibTeX from Zotero and store in resume metadata."""
+    ensure_uuid(body.resume_id, "Resume not found")
     # Auth check
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -439,18 +434,17 @@ async def zotero_import(
     zotero_user_id = meta.get("zotero_user_id", "")
 
     # Verify resume ownership
-    resume_result = await db.execute(
-        select(Resume).where(Resume.id == body.resume_id, Resume.user_id == user_id)
-    )
+    resume_result = await db.execute(select(Resume).where(Resume.id == body.resume_id, Resume.user_id == user_id))
     resume = resume_result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
     # Paginate items — Zotero BibTeX endpoint accepts start+limit
+    encoded_user_id = urllib.parse.quote(str(zotero_user_id), safe="")
     base_path = (
-        f"/users/{zotero_user_id}/collections/{body.collection_key}/items"
+        f"/users/{encoded_user_id}/collections/{urllib.parse.quote(body.collection_key, safe='')}/items"
         if body.collection_key
-        else f"/users/{zotero_user_id}/items"
+        else f"/users/{encoded_user_id}/items"
     )
     bibtex_pages: list[str] = []
     total_bytes = 0
@@ -463,36 +457,46 @@ async def zotero_import(
         while True:
             url = f"{_ZOTERO_API_BASE}{base_path}?format=bibtex&limit={limit}&start={start}"
             try:
-                resp = await client.get(url, headers={"Zotero-API-Key": token})
-                if resp.status_code == 403:
-                    raise HTTPException(
-                        status_code=401,
-                        detail="Zotero token is invalid or expired. Please reconnect in Settings.",
-                    )
-                if resp.status_code == 404:
-                    raise HTTPException(status_code=404, detail="Zotero collection not found.")
-                resp.raise_for_status()
+                async with client.stream("GET", url, headers={"Zotero-API-Key": token}) as resp:
+                    if resp.status_code == 403:
+                        raise HTTPException(
+                            status_code=401,
+                            detail="Zotero token is invalid or expired. Please reconnect in Settings.",
+                        )
+                    if resp.status_code == 404:
+                        raise HTTPException(status_code=404, detail="Zotero collection not found.")
+                    resp.raise_for_status()
+
+                    try:
+                        page_text = await _read_import_page(resp, _MAX_IMPORT_BYTES - total_bytes)
+                    except BoundedReadError:
+                        truncated = True
+                        break
+                    total_header = resp.headers.get("Total-Results", start + limit)
             except HTTPException:
                 raise
             except httpx.HTTPStatusError as exc:
-                logger.error(f"Zotero API error during import: {exc.response.status_code} {exc.response.text[:200]}")
+                logger.error("Zotero API error during import (HTTP %s)", exc.response.status_code)
                 raise HTTPException(
                     status_code=502,
                     detail=f"Zotero API returned error {exc.response.status_code}",
                 )
             except httpx.RequestError as exc:
-                logger.error(f"Zotero connection error: {exc}")
+                logger.error("Zotero connection error (%s)", type(exc).__name__)
                 raise HTTPException(status_code=502, detail="Zotero is unavailable, please try again")
 
-            page_text = resp.text.strip()
             if page_text:
-                bibtex_pages.append(page_text)
-                total_bytes += len(page_text.encode("utf-8"))
-                if total_bytes >= _MAX_IMPORT_BYTES:
+                page_bytes = len(page_text.encode("utf-8"))
+                if total_bytes + page_bytes > _MAX_IMPORT_BYTES:
                     truncated = True
                     break
+                bibtex_pages.append(page_text)
+                total_bytes += page_bytes
             pages_fetched += 1
-            total = int(resp.headers.get("Total-Results", len(bibtex_pages) * limit))
+            try:
+                total = int(total_header)
+            except (TypeError, ValueError):
+                total = start + limit
             start += limit
             if start >= total or pages_fetched >= _MAX_IMPORT_PAGES:
                 if pages_fetched >= _MAX_IMPORT_PAGES and start < total:
@@ -506,6 +510,15 @@ async def zotero_import(
     # Store in resume metadata
     rm = dict(resume.resume_settings or {})
     rm["bibtex"] = bibtex
+    source = {
+        "provider": "zotero",
+        "scope": "collection" if body.collection_key else "library",
+        "scope_id": body.collection_key,
+        "filename": "references.bib",
+        "read_only": True,
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+    }
+    rm["bibtex_source"] = source
     resume.resume_settings = rm
     await db.commit()
 
@@ -518,6 +531,7 @@ async def zotero_import(
         entries_count=entry_count,
         bibtex=bibtex,
         message=message,
+        source=source,
     )
 
 
@@ -528,15 +542,15 @@ async def clear_bibtex(
     user_id: str = Depends(get_current_user_required),
 ):
     """Remove stored BibTeX from a resume's metadata."""
-    resume_result = await db.execute(
-        select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
-    )
+    ensure_uuid(resume_id, "Resume not found")
+    resume_result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
     resume = resume_result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
     rm = dict(resume.resume_settings or {})
     rm.pop("bibtex", None)
+    rm.pop("bibtex_source", None)
     resume.resume_settings = rm
     await db.commit()
     return {"success": True}

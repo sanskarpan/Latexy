@@ -6,6 +6,7 @@ interface PricingPlan {
   price: number
   currency: string
   interval: string
+  purchase_type?: 'one_time' | 'subscription'
   billing_period?: string
   discount_percent?: number
   monthly_equivalent_price?: number
@@ -41,7 +42,7 @@ export default function PricingCard({
 }: PricingCardProps) {
   const formatPrice = (price: number) => {
     if (price === 0) return 'Free'
-    return `₹${(price / 100).toFixed(0)}`
+    return `₹${(price / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
   }
 
   const formatValue = (value: string | number) => {
@@ -70,12 +71,18 @@ export default function PricingCard({
       <div className="mb-5">
         <h3 className="text-xl font-semibold text-fg">{plan.name}</h3>
         <p className="mt-2 text-3xl font-semibold text-fg">{formatPrice(plan.price)}</p>
-        <p className="text-sm text-fg-2">{plan.price > 0 ? `per ${plan.interval}` : 'No payment required'}</p>
+        <p className="text-sm text-fg-2">
+          {plan.id === 'free'
+            ? 'No payment required'
+            : plan.price > 0
+              ? (plan.purchase_type === 'one_time' ? 'one-time payment' : `per ${plan.interval}`)
+              : 'Not configured'}
+        </p>
         {plan.price > 0 ? (
           <p className="mt-1 text-xs text-fg-3">Incl. GST &middot; no surprises at checkout</p>
         ) : null}
         {plan.monthly_equivalent_price ? (
-          <p className="mt-1 text-xs text-ok">₹{(plan.monthly_equivalent_price / 100).toFixed(0)}/month effective</p>
+          <p className="mt-1 text-xs text-ok">₹{(plan.monthly_equivalent_price / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/month effective</p>
         ) : null}
         {plan.requires_student_verification ? (
           <p className="mt-1 text-xs text-fg-2">Requires student email verification</p>

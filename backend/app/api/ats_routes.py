@@ -8,10 +8,10 @@ import json
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,13 +24,21 @@ from ..middleware.auth_middleware import get_current_user_optional, get_current_
 from ..middleware.entitlements import require_feature, require_feature_optional
 from ..middleware.rate_limiting import client_ip_id
 from ..services.api_key_service import api_key_service
+from ..services.ats_locale_profiles import ATS_LOCALE_PROFILES, ATS_PASS_THRESHOLD
 from ..services.ats_quick_scorer import quick_score_latex
 from ..services.ats_scoring_service import ats_scoring_service
 from ..services.ats_simulator_service import ATS_PROFILES, ats_simulator_service
 from ..services.entitlement_service import entitlement_service
 from ..services.industry_ats_profiles import INDUSTRY_PROFILES, detect_industry
 from ..workers.ats_worker import submit_ats_scoring, submit_deep_analyze_ats, submit_job_description_analysis
-from .job_routes import _write_initial_redis_state
+from ..workers.job_lifecycle import lifecycle_key
+from .job_routes import (
+    _delete_initial_redis_state,
+    _mark_dispatch_accepted,
+    _mark_dispatch_started,
+    _new_finalization_row,
+    _write_initial_redis_state,
+)
 
 logger = get_logger(__name__)
 
@@ -39,16 +47,16 @@ router = APIRouter(prefix="/ats", tags=["ats-scoring"])
 
 # ── Rate-limit constants (per-IP / global) ────────────────────────────────────
 # Anonymous rule-based endpoints (quick-score, simulate, keyword-density).
-_RULE_ENDPOINT_IP_LIMIT = 60          # requests
-_RULE_ENDPOINT_IP_WINDOW = 60         # per 60s
+_RULE_ENDPOINT_IP_LIMIT = 60  # requests
+_RULE_ENDPOINT_IP_WINDOW = 60  # per 60s
 # Anonymous LLM-backed deep analysis (burns the platform OpenAI key).
-_ANON_DEEP_IP_LIMIT = 10              # requests per IP
-_ANON_DEEP_IP_WINDOW = 3600          # per hour
-_ANON_DEEP_GLOBAL_LIMIT = 500        # platform-wide requests
-_ANON_DEEP_GLOBAL_WINDOW = 3600      # per hour
+_ANON_DEEP_IP_LIMIT = 10  # requests per IP
+_ANON_DEEP_IP_WINDOW = 3600  # per hour
+_ANON_DEEP_GLOBAL_LIMIT = 500  # platform-wide requests
+_ANON_DEEP_GLOBAL_WINDOW = 3600  # per hour
 # Authenticated benchmark endpoint.
-_BENCHMARK_LIMIT = 10                 # requests per user
-_BENCHMARK_WINDOW = 3600             # per hour
+_BENCHMARK_LIMIT = 10  # requests per user
+_BENCHMARK_WINDOW = 3600  # per hour
 
 # Atomic fixed-window limiter: INCR then EXPIRE only on first increment.
 _LUA_INCR_EXPIRE = """
@@ -97,9 +105,7 @@ async def _derive_user_plan(db: AsyncSession, user_id: Optional[str]) -> str:
     if not user_id:
         return "free"
     try:
-        result = await db.execute(
-            select(User.subscription_plan).where(User.id == user_id)
-        )
+        result = await db.execute(select(User.subscription_plan).where(User.id == user_id))
         plan = result.scalar_one_or_none()
         return plan or "free"
     except Exception:
@@ -110,11 +116,16 @@ async def _derive_user_plan(db: AsyncSession, user_id: Optional[str]) -> str:
 class ATSScoreRequest(BaseModel):
     latex_content: str = Field(..., max_length=200_000, description="LaTeX resume content")
     job_description: Optional[str] = Field(None, max_length=20_000, description="Job description for keyword matching")
-    industry: Optional[str] = Field(None, description="Industry for specialized scoring")
-    industry_override: Optional[str] = Field(None, description="Override auto-detected industry profile key")
-    device_fingerprint: Optional[str] = Field(None, description="Device fingerprint for anonymous users")
+    industry: Optional[str] = Field(None, max_length=100, description="Industry for specialized scoring")
+    industry_override: Optional[str] = Field(
+        None, max_length=100, description="Override auto-detected industry profile key"
+    )
+    locale: Literal["global", "india", "united_states", "united_kingdom"] = "global"
+    device_fingerprint: Optional[str] = Field(
+        None, min_length=1, max_length=255, description="Device fingerprint for anonymous users"
+    )
     async_processing: bool = Field(True, description="Whether to process asynchronously")
-    metadata: Optional[Dict] = Field(None, description="Additional metadata")
+    metadata: Optional[Dict] = Field(None, max_length=20, description="Additional metadata")
 
 
 class ATSScoreResponse(BaseModel):
@@ -131,12 +142,16 @@ class ATSScoreResponse(BaseModel):
     timestamp: Optional[str] = None
     industry_key: Optional[str] = None
     industry_label: Optional[str] = None
+    locale_key: Optional[str] = None
+    locale_label: Optional[str] = None
+    score_threshold: int = ATS_PASS_THRESHOLD
+    calibration_statement: Optional[str] = None
 
 
 class JobDescriptionAnalysisRequest(BaseModel):
     job_description: str = Field(..., max_length=20_000, description="Job description to analyze")
     async_processing: bool = Field(True, description="Whether to process asynchronously")
-    metadata: Optional[Dict] = Field(None, description="Additional metadata")
+    metadata: Optional[Dict] = Field(None, max_length=20, description="Additional metadata")
 
 
 class JobDescriptionAnalysisResponse(BaseModel):
@@ -178,7 +193,7 @@ async def score_resume_ats(
     request: ATSScoreRequest,
     http_request: Request,
     db: AsyncSession = Depends(get_db),
-    user_id: Optional[str] = Depends(get_current_user_optional)
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Score a resume for ATS compatibility."""
     try:
@@ -186,7 +201,8 @@ async def score_resume_ats(
         # anonymous caller cannot flood the ats Celery queue / CPU-bound scoring.
         if not await _rate_limit_ok(
             f"ratelimit:ats-rule:score:{_rate_limit_client(http_request, user_id)}",
-            _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
+            _RULE_ENDPOINT_IP_LIMIT,
+            _RULE_ENDPOINT_IP_WINDOW,
         ):
             raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
 
@@ -199,11 +215,7 @@ async def score_resume_ats(
 
         # Add IP address to metadata
         metadata = request.metadata or {}
-        metadata.update({
-            "ip_address": ip_address,
-            "submitted_via": "api",
-            "endpoint": "ats_score"
-        })
+        metadata.update({"ip_address": ip_address, "submitted_via": "api", "endpoint": "ats_score"})
 
         # Validate and resolve industry override (reject unknown keys)
         if request.industry_override is not None:
@@ -229,32 +241,72 @@ async def score_resume_ats(
             job_id = str(uuid.uuid4())
             # Queue priority must be derived server-side, never from the client body.
             user_plan = await _derive_user_plan(db, user_id)
-            # Register meta + state before enqueueing, otherwise GET /jobs/{id}/state
-            # and /jobs/{id}/result 404 forever even though the job runs.
-            # Best-effort like the deep-analyze path: the worker's job.started event
-            # re-creates the snapshot, so a Redis blip must not fail the submit.
+            finalization_record = _new_finalization_row(
+                job_id,
+                "ats_scoring",
+                user_id,
+                metadata,
+            )
+            db.add(finalization_record)
+            await db.commit()
+            dispatch_attempted = False
             try:
                 await _write_initial_redis_state(job_id, "ats_scoring", user_id, 15)
+                await _mark_dispatch_started(job_id)
+                dispatch_attempted = True
             except Exception as state_exc:
-                logger.warning(
-                    f"Redis state write failed for job {job_id}: {state_exc} — proceeding without state"
+                await _delete_initial_redis_state(job_id, user_id)
+                await db.delete(finalization_record)
+                await db.commit()
+                logger.error(f"Redis state write failed for ATS job {job_id}: {state_exc}")
+                raise HTTPException(
+                    status_code=503,
+                    detail="ATS job service temporarily unavailable. Please try again.",
                 )
-            submit_ats_scoring(
-                latex_content=request.latex_content,
-                job_id=job_id,
-                job_description=request.job_description,
-                industry=request.industry,
-                industry_profile_key=async_profile_key,
-                user_id=user_id,
-                user_plan=user_plan,
-                device_fingerprint=request.device_fingerprint,
-                metadata=metadata,
-            )
+            try:
+                submit_ats_scoring(
+                    latex_content=request.latex_content,
+                    job_id=job_id,
+                    job_description=request.job_description,
+                    industry=request.industry,
+                    industry_profile_key=async_profile_key,
+                    locale_key=request.locale,
+                    user_id=user_id,
+                    user_plan=user_plan,
+                    device_fingerprint=request.device_fingerprint,
+                    metadata=metadata,
+                )
+                await _mark_dispatch_accepted(job_id)
+            except Exception as dispatch_exc:
+                if not dispatch_attempted:
+                    await _delete_initial_redis_state(job_id, user_id)
+                    await db.delete(finalization_record)
+                    await db.commit()
+                else:
+                    # The broker call was attempted; preserve the lifecycle
+                    # and durable intent even if its client raised or the
+                    # acknowledgement was lost. Cleanup will fence it after
+                    # the bounded dispatch deadline.
+                    logger.error(
+                        "Ambiguous ATS dispatch for job %s; preserving lifecycle",
+                        job_id,
+                        extra={"error_type": type(dispatch_exc).__name__},
+                    )
+                    return ATSScoreResponse(
+                        success=True,
+                        job_id=job_id,
+                        message="ATS scoring job submitted successfully. Use the job ID to check status and results.",
+                    )
+                logger.error(f"Failed to dispatch ATS job {job_id}: {dispatch_exc}")
+                raise HTTPException(
+                    status_code=503,
+                    detail="ATS job service temporarily unavailable. Please try again.",
+                )
 
             return ATSScoreResponse(
                 success=True,
                 job_id=job_id,
-                message="ATS scoring job submitted successfully. Use the job ID to check status and results."
+                message="ATS scoring job submitted successfully. Use the job ID to check status and results.",
             )
         else:
             # Process synchronously (for testing or immediate results)
@@ -265,6 +317,7 @@ async def score_resume_ats(
                 job_description=request.job_description,
                 industry=request.industry,
                 industry_profile_key=resolved_profile_key,
+                locale_key=request.locale,
             )
 
             processing_time = asyncio.get_event_loop().time() - start_time
@@ -282,12 +335,16 @@ async def score_resume_ats(
                 timestamp=result.timestamp,
                 industry_key=result.industry_key,
                 industry_label=result.industry_label,
+                locale_key=result.locale_key,
+                locale_label=result.locale_label,
+                score_threshold=result.score_threshold,
+                calibration_statement=result.calibration_statement,
             )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in ATS scoring endpoint: {e}")
+        logger.error("ATS scoring endpoint failed", extra={"error_type": type(e).__name__})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -296,14 +353,15 @@ async def analyze_job_description_ats(
     request: JobDescriptionAnalysisRequest,
     http_request: Request,
     db: AsyncSession = Depends(get_db),
-    user_id: Optional[str] = Depends(get_current_user_optional)
+    user_id: Optional[str] = Depends(get_current_user_optional),
 ):
     """Analyze job description for ATS optimization insights."""
     try:
         # Per-IP rate limit (mirrors the sibling rule-based ATS endpoints).
         if not await _rate_limit_ok(
             f"ratelimit:ats-rule:analyze-jd:{_rate_limit_client(http_request, user_id)}",
-            _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
+            _RULE_ENDPOINT_IP_LIMIT,
+            _RULE_ENDPOINT_IP_WINDOW,
         ):
             raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
 
@@ -316,39 +374,75 @@ async def analyze_job_description_ats(
 
         # Add IP address to metadata
         metadata = request.metadata or {}
-        metadata.update({
-            "ip_address": ip_address,
-            "submitted_via": "api",
-            "endpoint": "analyze_job_description"
-        })
+        metadata.update({"ip_address": ip_address, "submitted_via": "api", "endpoint": "analyze_job_description"})
 
         if request.async_processing:
             # Generate job_id here (submission helper requires it as positional arg)
             job_id = str(uuid.uuid4())
             # Queue priority must be derived server-side, never from the client body.
             user_plan = await _derive_user_plan(db, user_id)
-            # Register meta + state before enqueueing, otherwise GET /jobs/{id}/state
-            # and /jobs/{id}/result 404 forever even though the job runs.
-            # Best-effort like the deep-analyze path: the worker's job.started event
-            # re-creates the snapshot, so a Redis blip must not fail the submit.
+            finalization_record = _new_finalization_row(
+                job_id,
+                "job_description_analysis",
+                user_id,
+                metadata,
+            )
+            db.add(finalization_record)
+            await db.commit()
+            dispatch_attempted = False
             try:
                 await _write_initial_redis_state(job_id, "job_description_analysis", user_id, 15)
+                await _mark_dispatch_started(job_id)
+                dispatch_attempted = True
             except Exception as state_exc:
-                logger.warning(
-                    f"Redis state write failed for job {job_id}: {state_exc} — proceeding without state"
+                await _delete_initial_redis_state(job_id, user_id)
+                await db.delete(finalization_record)
+                await db.commit()
+                logger.error(f"Redis state write failed for ATS job {job_id}: {state_exc}")
+                raise HTTPException(
+                    status_code=503,
+                    detail="ATS job service temporarily unavailable. Please try again.",
                 )
-            submit_job_description_analysis(
-                job_description=request.job_description,
-                job_id=job_id,
-                user_id=user_id,
-                user_plan=user_plan,
-                metadata=metadata,
-            )
+            try:
+                submit_job_description_analysis(
+                    job_description=request.job_description,
+                    job_id=job_id,
+                    user_id=user_id,
+                    user_plan=user_plan,
+                    metadata=metadata,
+                )
+                await _mark_dispatch_accepted(job_id)
+            except Exception as dispatch_exc:
+                if not dispatch_attempted:
+                    await _delete_initial_redis_state(job_id, user_id)
+                    await db.delete(finalization_record)
+                    await db.commit()
+                else:
+                    # The broker call was attempted; preserve the lifecycle
+                    # and durable intent when its acknowledgement is lost.
+                    # Cleanup can fence the reservation after the bounded
+                    # dispatch deadline, and the caller can safely retry by
+                    # polling the returned job id.
+                    logger.error(
+                        "Ambiguous ATS JD dispatch for job %s; preserving lifecycle",
+                        job_id,
+                        extra={"error_type": type(dispatch_exc).__name__},
+                    )
+                    return JobDescriptionAnalysisResponse(
+                        success=True,
+                        job_id=job_id,
+                        message="Job description analysis submitted successfully. Use the job ID to check status and results.",
+                    )
+                logger.error(f"Failed to dispatch ATS job {job_id}: {dispatch_exc}")
+                raise HTTPException(
+                    status_code=503,
+                    detail="ATS job service temporarily unavailable. Please try again.",
+                )
 
             return JobDescriptionAnalysisResponse(
                 success=True,
                 job_id=job_id,
-                message="Job description analysis submitted successfully. Use the job ID to check status and results."
+                message="Job description analysis submitted successfully. Use the job ID to check status and results.",
             )
         else:
             # Process synchronously
@@ -359,7 +453,7 @@ async def analyze_job_description_ats(
 
             # Basic analysis (simplified for sync processing)
             words = request.job_description.split()
-            sentences = request.job_description.split('.')
+            sentences = request.job_description.split(".")
 
             processing_time = asyncio.get_event_loop().time() - start_time
 
@@ -372,21 +466,21 @@ async def analyze_job_description_ats(
                 analysis_metrics={
                     "word_count": len(words),
                     "sentence_count": len(sentences),
-                    "keyword_count": len(keywords)
+                    "keyword_count": len(keywords),
                 },
                 optimization_tips=[
                     "Include identified keywords naturally in your resume",
                     "Use similar language and terminology as the job posting",
-                    "Address key requirements explicitly"
+                    "Address key requirements explicitly",
                 ],
                 processing_time=processing_time,
-                message="Basic job description analysis completed. Use async processing for detailed analysis."
+                message="Basic job description analysis completed. Use async processing for detailed analysis.",
             )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in job description analysis endpoint: {e}")
+        logger.error("Job description analysis endpoint failed", extra={"error_type": type(e).__name__})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -403,51 +497,63 @@ async def get_ats_recommendations(request: ATSRecommendationsRequest):
         # Prioritize improvements based on category scores
         for category, score in request.category_scores.items():
             if score < 50:
-                priority_improvements.append({
-                    "category": category,
-                    "current_score": score,
-                    "priority": "high",
-                    "potential_improvement": 100 - score,
-                    "recommended_actions": _get_category_recommendations(category, score)
-                })
+                priority_improvements.append(
+                    {
+                        "category": category,
+                        "current_score": score,
+                        "priority": "high",
+                        "potential_improvement": 100 - score,
+                        "recommended_actions": _get_category_recommendations(category, score),
+                    }
+                )
             elif score < 70:
-                priority_improvements.append({
-                    "category": category,
-                    "current_score": score,
-                    "priority": "medium",
-                    "potential_improvement": 100 - score,
-                    "recommended_actions": _get_category_recommendations(category, score)
-                })
+                priority_improvements.append(
+                    {
+                        "category": category,
+                        "current_score": score,
+                        "priority": "medium",
+                        "potential_improvement": 100 - score,
+                        "recommended_actions": _get_category_recommendations(category, score),
+                    }
+                )
 
         # Generate quick wins (easy improvements)
         if request.category_scores.get("formatting", 100) < 80:
-            quick_wins.extend([
-                "Remove complex tables and graphics",
-                "Use standard fonts (Arial, Helvetica, Calibri)",
-                "Ensure consistent formatting throughout"
-            ])
+            quick_wins.extend(
+                [
+                    "Remove complex tables and graphics",
+                    "Use standard fonts (Arial, Helvetica, Calibri)",
+                    "Ensure consistent formatting throughout",
+                ]
+            )
 
         if request.category_scores.get("keywords", 100) < 70:
-            quick_wins.extend([
-                "Include more action verbs (achieved, managed, developed)",
-                "Add quantifiable achievements with numbers",
-                "Include relevant technical skills"
-            ])
+            quick_wins.extend(
+                [
+                    "Include more action verbs (achieved, managed, developed)",
+                    "Add quantifiable achievements with numbers",
+                    "Include relevant technical skills",
+                ]
+            )
 
         # Generate long-term improvements
         if request.category_scores.get("content", 100) < 60:
-            long_term_improvements.extend([
-                "Restructure experience section for better impact",
-                "Develop stronger achievement statements",
-                "Align content more closely with target roles"
-            ])
+            long_term_improvements.extend(
+                [
+                    "Restructure experience section for better impact",
+                    "Develop stronger achievement statements",
+                    "Align content more closely with target roles",
+                ]
+            )
 
         if request.category_scores.get("structure", 100) < 70:
-            long_term_improvements.extend([
-                "Reorganize resume sections for better flow",
-                "Add missing sections (summary, skills)",
-                "Improve section headers and organization"
-            ])
+            long_term_improvements.extend(
+                [
+                    "Reorganize resume sections for better flow",
+                    "Add missing sections (summary, skills)",
+                    "Improve section headers and organization",
+                ]
+            )
 
         # Industry-specific tips
         if request.industry:
@@ -456,26 +562,26 @@ async def get_ats_recommendations(request: ATSRecommendationsRequest):
                     "Highlight programming languages and frameworks",
                     "Include GitHub or portfolio links",
                     "Mention agile/scrum experience",
-                    "Quantify technical achievements"
+                    "Quantify technical achievements",
                 ],
                 "finance": [
                     "Include financial modeling experience",
                     "Mention regulatory compliance knowledge",
                     "Highlight analytical and quantitative skills",
-                    "Include relevant certifications (CFA, FRM)"
+                    "Include relevant certifications (CFA, FRM)",
                 ],
                 "marketing": [
                     "Highlight campaign performance metrics",
                     "Include digital marketing tools experience",
                     "Mention brand management achievements",
-                    "Show ROI and conversion improvements"
+                    "Show ROI and conversion improvements",
                 ],
                 "healthcare": [
                     "Include patient care experience",
                     "Mention clinical skills and certifications",
                     "Highlight compliance and safety knowledge",
-                    "Include continuing education"
-                ]
+                    "Include continuing education",
+                ],
             }
             industry_specific_tips = industry_tips.get(request.industry, [])
 
@@ -491,11 +597,11 @@ async def get_ats_recommendations(request: ATSRecommendationsRequest):
             long_term_improvements=long_term_improvements[:5],  # Top 5 long-term
             industry_specific_tips=industry_specific_tips[:5],  # Top 5 industry tips
             estimated_score_improvement=estimated_improvement,
-            message=f"Generated {len(priority_improvements)} priority improvements and {len(quick_wins)} quick wins"
+            message=f"Generated {len(priority_improvements)} priority improvements and {len(quick_wins)} quick wins",
         )
 
     except Exception as e:
-        logger.error(f"Error generating ATS recommendations: {e}")
+        logger.error("ATS recommendations generation failed", extra={"error_type": type(e).__name__})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -514,13 +620,13 @@ async def get_industry_keywords(industry: str):
             "industry": industry,
             "keywords": industry_keywords,
             "count": len(industry_keywords),
-            "message": f"Retrieved {len(industry_keywords)} keywords for {industry} industry"
+            "message": f"Retrieved {len(industry_keywords)} keywords for {industry} industry",
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting industry keywords: {e}")
+        logger.error("Industry keyword lookup failed", extra={"error_type": type(e).__name__})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -529,31 +635,43 @@ async def get_supported_industries():
     """Get list of supported industries for ATS scoring."""
     try:
         from ..services.industry_ats_profiles import INDUSTRY_PROFILES
-        industries = [
-            {"key": key, "label": profile["label"]}
-            for key, profile in INDUSTRY_PROFILES.items()
-        ]
+
+        industries = [{"key": key, "label": profile["label"]} for key, profile in INDUSTRY_PROFILES.items()]
 
         return {
             "success": True,
             "industries": industries,
             "count": len(industries),
-            "message": f"Retrieved {len(industries)} supported industries"
+            "message": f"Retrieved {len(industries)} supported industries",
         }
 
     except Exception as e:
-        logger.error(f"Error getting supported industries: {e}")
+        logger.error("Supported industry lookup failed", extra={"error_type": type(e).__name__})
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/industry-profiles")
 async def get_industry_profiles():
     """Get all available industry calibration profiles."""
-    profiles = [
-        {"key": key, "label": profile["label"]}
-        for key, profile in INDUSTRY_PROFILES.items()
-    ]
+    profiles = [{"key": key, "label": profile["label"]} for key, profile in INDUSTRY_PROFILES.items()]
     return {"success": True, "profiles": profiles}
+
+
+@router.get("/locale-profiles")
+async def get_locale_profiles():
+    """Publish country overlays and the meaning of Latexy's good-score threshold."""
+    return {
+        "success": True,
+        "threshold": ATS_PASS_THRESHOLD,
+        "profiles": [
+            {
+                "key": key,
+                "label": profile["label"],
+                "calibration": profile["calibration"],
+            }
+            for key, profile in ATS_LOCALE_PROFILES.items()
+        ],
+    }
 
 
 # ── Quick Score (lightweight, no auth, no DB) ────────────────────────────
@@ -585,7 +703,8 @@ async def quick_score_ats(request: QuickScoreRequest, http_request: Request):
     """
     if not await _rate_limit_ok(
         f"ratelimit:ats-rule:quick-score:{_rate_limit_client(http_request)}",
-        _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
+        _RULE_ENDPOINT_IP_LIMIT,
+        _RULE_ENDPOINT_IP_WINDOW,
     ):
         raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
 
@@ -608,8 +727,8 @@ _JOB_TTL = 86400
 class DeepAnalyzeRequest(BaseModel):
     latex_content: str = Field(..., min_length=1, max_length=200_000)
     job_description: Optional[str] = Field(None, max_length=20_000)
-    device_fingerprint: Optional[str] = None  # required if unauthenticated
-    industry_override: Optional[str] = None   # explicit profile key, e.g. "tech_saas"
+    device_fingerprint: Optional[str] = Field(None, min_length=1, max_length=255)
+    industry_override: Optional[str] = Field(None, max_length=100)
 
 
 class DeepAnalyzeResponse(BaseModel):
@@ -620,8 +739,20 @@ class DeepAnalyzeResponse(BaseModel):
 
 
 class SemanticMatchRequest(BaseModel):
-    job_description: str = Field(..., min_length=50)
-    resume_ids: Optional[List[str]] = None  # omit = all user's resumes (max 20)
+    job_description: str = Field(..., min_length=50, max_length=20_000)
+    resume_ids: Optional[List[str]] = Field(None, min_length=1, max_length=20)
+
+    @field_validator("resume_ids")
+    @classmethod
+    def validate_resume_ids(cls, values: Optional[List[str]]) -> Optional[List[str]]:
+        if values is None:
+            return None
+        for value in values:
+            try:
+                uuid.UUID(value)
+            except (TypeError, ValueError, AttributeError):
+                raise ValueError("Every resume_id must be a valid UUID")
+        return values
 
 
 class SemanticMatchResultItem(BaseModel):
@@ -652,14 +783,14 @@ async def _write_deep_analysis_redis_state(
         "percent": 0,
         "last_updated": time.time(),
     }
-    await r.setex(f"latexy:job:{job_id}:state", _JOB_TTL, json.dumps(state))
+    await r.set(f"latexy:job:{job_id}:state", json.dumps(state), ex=_JOB_TTL)
     meta = {
         "job_id": job_id,
         "user_id": user_id,
         "job_type": "ats_deep",
         "submitted_at": time.time(),
     }
-    await r.setex(f"latexy:job:{job_id}:meta", _JOB_TTL, json.dumps(meta))
+    await r.set(f"latexy:job:{job_id}:meta", json.dumps(meta), ex=_JOB_TTL)
 
     event_id = str(uuid.uuid4())
     seq_key = f"latexy:job:{job_id}:seq"
@@ -677,9 +808,12 @@ async def _write_deep_analysis_redis_state(
     }
     payload_json = json.dumps(event)
     stream_key = f"latexy:stream:{job_id}"
-    await r.xadd(stream_key, {"payload": payload_json, "type": "job.queued",
-                               "sequence": str(seq), "event_id": event_id},
-                 maxlen=10000, approximate=True)
+    await r.xadd(
+        stream_key,
+        {"payload": payload_json, "type": "job.queued", "sequence": str(seq), "event_id": event_id},
+        maxlen=10000,
+        approximate=True,
+    )
     await r.expire(stream_key, _JOB_TTL)
     await r.publish(f"latexy:events:{job_id}", json.dumps({"type": "event", "event": event}))
 
@@ -716,9 +850,7 @@ async def deep_analyze_resume(
                 status_code=429,
                 detail="Too many anonymous deep-analysis requests. Please sign in for higher limits.",
             )
-        if not await _rate_limit_ok(
-            "ratelimit:deepanalyze:global", _ANON_DEEP_GLOBAL_LIMIT, _ANON_DEEP_GLOBAL_WINDOW
-        ):
+        if not await _rate_limit_ok("ratelimit:deepanalyze:global", _ANON_DEEP_GLOBAL_LIMIT, _ANON_DEEP_GLOBAL_WINDOW):
             raise HTTPException(
                 status_code=429,
                 detail="Deep analysis is temporarily at capacity. Please try again later.",
@@ -726,6 +858,7 @@ async def deep_analyze_resume(
 
         # Anonymous — check deep_analysis_trial feature flag next
         from ..services.feature_flag_service import feature_flag_service
+
         deep_trial_enabled = await feature_flag_service.get_flag("deep_analysis_trial", db)
 
         if not deep_trial_enabled:
@@ -735,11 +868,11 @@ async def deep_analyze_resume(
             # Enforce 2-use trial via device_fingerprint
             if not request.device_fingerprint:
                 raise HTTPException(
-                    status_code=401,
-                    detail="device_fingerprint is required for anonymous deep analysis"
+                    status_code=401, detail="device_fingerprint is required for anonymous deep analysis"
                 )
             # Load or create trial record atomically with row lock
             from sqlalchemy.exc import IntegrityError
+
             result = await db.execute(
                 select(DeepAnalysisTrial)
                 .where(DeepAnalysisTrial.device_fingerprint == request.device_fingerprint)
@@ -767,7 +900,7 @@ async def deep_analyze_resume(
             if trial.usage_count >= settings.DEEP_ANALYSIS_TRIAL_LIMIT:
                 raise HTTPException(
                     status_code=402,
-                    detail=f"Trial limit reached ({settings.DEEP_ANALYSIS_TRIAL_LIMIT} free deep analyses). Sign in for unlimited access."
+                    detail=f"Trial limit reached ({settings.DEEP_ANALYSIS_TRIAL_LIMIT} free deep analyses). Sign in for unlimited access.",
                 )
             uses_remaining = settings.DEEP_ANALYSIS_TRIAL_LIMIT - trial.usage_count - 1
 
@@ -779,6 +912,19 @@ async def deep_analyze_resume(
         except Exception:
             pass  # Fall back to platform key
 
+    # Allocate the identifier before any metered operation.  The same id is
+    # carried by the quota receipt, lifecycle fence, broker task, and result;
+    # recovery cannot safely reconcile a receipt that was charged first.
+    job_id = str(uuid.uuid4())
+    finalization_record = _new_finalization_row(
+        job_id,
+        "ats_deep_analysis",
+        user_id,
+        {},
+    )
+    db.add(finalization_record)
+    await db.commit()
+
     # Authenticated callers spend an ai_assists unit. Without this, signing in
     # REMOVED the limit — anonymous callers got a 2-use trial while signed-in
     # users got unlimited LLM-backed deep analysis on the platform key. A BYOK
@@ -787,9 +933,17 @@ async def deep_analyze_resume(
     if user_id is not None and not api_key:
         from .job_routes import _resolve_user_plan
 
-        quota_ticket = await entitlement_service.enforce_quota(
-            "ai_assists", user_id=user_id, plan=await _resolve_user_plan(db, user_id)
-        )
+        try:
+            quota_ticket = await entitlement_service.enforce_quota(
+                "ai_assists",
+                user_id=user_id,
+                plan=await _resolve_user_plan(db, user_id),
+                job_id=job_id,
+            )
+        except Exception:
+            await db.delete(finalization_record)
+            await db.commit()
+            raise
 
     # Increment trial counter BEFORE dispatching to avoid counting bypasses on commit failure
     # Only when deep_analysis_trial flag is enabled (trial object exists)
@@ -798,13 +952,56 @@ async def deep_analyze_resume(
         trial.last_used = datetime.now(timezone.utc)
         await db.commit()
 
-    job_id = str(uuid.uuid4())
+    async def refund_dispatch_charge() -> None:
+        if quota_ticket is not None:
+            try:
+                await entitlement_service.refund_quota(quota_ticket)
+            except Exception as exc:
+                logger.error("Failed to refund deep-analysis quota", extra={"error_type": type(exc).__name__})
+        if user_id is None and deep_trial_enabled and trial is not None:
+            try:
+                trial.usage_count = max(0, trial.usage_count - 1)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+
+    async def cleanup_deep_state() -> None:
+        """Remove pre-dispatch state and its lifecycle fence together."""
+        await _delete_initial_redis_state(job_id, user_id)
+        try:
+            redis = await get_redis_client()
+            await redis.delete(lifecycle_key(job_id))
+        except Exception:
+            logger.warning("Failed to remove deep-analysis lifecycle %s", job_id, exc_info=True)
+
     try:
         await _write_deep_analysis_redis_state(job_id, user_id)
     except Exception as e:
-        logger.warning(f"Redis state write failed for job {job_id}: {e} — proceeding without state")
+        logger.error(
+            "Redis state write failed for deep-analysis job %s",
+            job_id,
+            extra={"error_type": type(e).__name__},
+        )
+        await cleanup_deep_state()
+        try:
+            await db.delete(finalization_record)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+        await refund_dispatch_charge()
+        raise HTTPException(
+            status_code=503,
+            detail="Deep analysis service temporarily unavailable. Please try again.",
+        )
 
+    dispatch_attempted = False
     try:
+        # Start the durable dispatch fence immediately before the external
+        # broker call.  This applies to platform-metered, BYOK, and anonymous
+        # jobs alike so a worker cannot publish outside the cancellation/fence
+        # protocol, even when no quota receipt is present.
+        await _mark_dispatch_started(job_id)
+        dispatch_attempted = True
         submit_deep_analyze_ats(
             latex_content=request.latex_content,
             job_id=job_id,
@@ -812,19 +1009,30 @@ async def deep_analyze_resume(
             api_key=api_key,
             industry_override=request.industry_override,
             metadata={"user_id": user_id},
+            quota_refund=quota_ticket.refund_payload() if quota_ticket else None,
         )
+        await _mark_dispatch_accepted(job_id)
     except Exception as e:
-        logger.error(f"Failed to enqueue deep analysis job {job_id}: {e}")
-        # Refund the plan allowance / trial use charged before dispatch so a
-        # broker outage does not silently consume the caller's credit.
-        if quota_ticket is not None:
-            await entitlement_service.refund_quota(quota_ticket)
-        if user_id is None and deep_trial_enabled and trial is not None:
-            try:
-                trial.usage_count = max(0, trial.usage_count - 1)
-                await db.commit()
-            except Exception:
-                await db.rollback()
+        logger.error(
+            "Failed to enqueue deep analysis job %s",
+            job_id,
+            extra={"error_type": type(e).__name__},
+        )
+        if dispatch_attempted:
+            # The broker may have accepted the task before its response was
+            # lost. Keep the lifecycle, initial state, and receipt so cleanup
+            # can fence/refund only after the dispatch deadline; never issue a
+            # duplicate by asking the client to retry this request.
+            logger.error("Ambiguous deep-analysis dispatch for job %s", job_id, exc_info=True)
+            return DeepAnalyzeResponse(
+                success=True,
+                job_id=job_id,
+                uses_remaining=uses_remaining,
+                message="Deep analysis job submitted. Subscribe to WebSocket for live results.",
+            )
+        await cleanup_deep_state()
+        # Refund only a failure proven to occur before broker submission.
+        await refund_dispatch_charge()
         raise HTTPException(
             status_code=503,
             detail="Deep analysis service temporarily unavailable. Please try again.",
@@ -855,12 +1063,12 @@ async def semantic_match_resumes(
         raise HTTPException(status_code=503, detail="Embedding service not available")
 
     # Fetch resumes (filtered by IDs if provided)
-    q = select(Resume).where(Resume.user_id == user_id).limit(20)
+    q = select(Resume).where(
+        Resume.user_id == user_id,
+        Resume.archived_at.is_(None),
+    )
     if request.resume_ids:
-        q = select(Resume).where(
-            Resume.user_id == user_id,
-            Resume.id.in_(request.resume_ids[:20])
-        ).limit(20)
+        q = select(Resume).where(Resume.user_id == user_id, Resume.id.in_(request.resume_ids))
     result = await db.execute(q)
     resumes = result.scalars().all()
 
@@ -886,18 +1094,21 @@ async def semantic_match_resumes(
     for resume in resumes:
         if resume.content_embedding:
             continue
-        match_results.append(SemanticMatchResultItem(
-            resume_id=str(resume.id),
-            resume_title=resume.title or "Untitled",
-            similarity_score=None,
-            matched_keywords=[],
-            missing_keywords=[],
-            semantic_gaps={},
-            note="Embedding not yet computed. Please try again in a moment.",
-        ))
+        match_results.append(
+            SemanticMatchResultItem(
+                resume_id=str(resume.id),
+                resume_title=resume.title or "Untitled",
+                similarity_score=None,
+                matched_keywords=[],
+                missing_keywords=[],
+                semantic_gaps={},
+                note="Embedding not yet computed. Please try again in a moment.",
+            )
+        )
         if settings.OPENAI_API_KEY:
             try:
                 from ..workers.ats_worker import submit_embed_resume
+
                 submit_embed_resume(str(resume.id), resume.latex_content or "")
             except Exception:
                 pass
@@ -906,9 +1117,7 @@ async def semantic_match_resumes(
     cache_by_key: Dict[tuple, ResumeJobMatch] = {}
     if ready_resumes:
         cached_rows = await db.execute(
-            select(ResumeJobMatch).where(
-                ResumeJobMatch.resume_id.in_(list(resume_match_hash.keys()))
-            )
+            select(ResumeJobMatch).where(ResumeJobMatch.resume_id.in_(list(resume_match_hash.keys())))
         )
         for row in cached_rows.scalars().all():
             cache_by_key[(row.resume_id, row.jd_hash)] = row
@@ -922,14 +1131,16 @@ async def semantic_match_resumes(
         cached_row = cache_by_key.get((rid, match_key))
 
         if cached_row is not None:
-            match_results.append(SemanticMatchResultItem(
-                resume_id=rid,
-                resume_title=resume.title or "Untitled",
-                similarity_score=cached_row.similarity_score,
-                matched_keywords=cached_row.matched_keywords or [],
-                missing_keywords=cached_row.missing_keywords or [],
-                semantic_gaps=cached_row.semantic_gaps or {},
-            ))
+            match_results.append(
+                SemanticMatchResultItem(
+                    resume_id=rid,
+                    resume_title=resume.title or "Untitled",
+                    similarity_score=cached_row.similarity_score,
+                    matched_keywords=cached_row.matched_keywords or [],
+                    missing_keywords=cached_row.missing_keywords or [],
+                    semantic_gaps=cached_row.semantic_gaps or {},
+                )
+            )
             continue
 
         # --- Cache miss: embed JD on first need, then compute match ---
@@ -937,32 +1148,34 @@ async def semantic_match_resumes(
             try:
                 jd_emb = await embedding_service.embed_job_description(request.job_description)
             except Exception as e:
-                logger.error(f"JD embedding failed: {e}")
+                logger.error("JD embedding failed", extra={"error_type": type(e).__name__})
                 raise HTTPException(status_code=500, detail="Failed to embed job description")
 
         resume_text = ats_scoring_service._extract_text_from_latex(resume.latex_content)
-        match = await embedding_service.semantic_keyword_match(
-            resume.content_embedding, jd_emb, jd_text, resume_text
+        match = await embedding_service.semantic_keyword_match(resume.content_embedding, jd_emb, jd_text, resume_text)
+
+        new_cache_rows.append(
+            ResumeJobMatch(
+                user_id=user_id,
+                resume_id=rid,
+                jd_hash=match_key,
+                similarity_score=match["similarity_score"],
+                matched_keywords=match["matched_keywords"],
+                missing_keywords=match["missing_keywords"],
+                semantic_gaps=match["semantic_gaps"],
+            )
         )
 
-        new_cache_rows.append(ResumeJobMatch(
-            user_id=user_id,
-            resume_id=rid,
-            jd_hash=match_key,
-            similarity_score=match["similarity_score"],
-            matched_keywords=match["matched_keywords"],
-            missing_keywords=match["missing_keywords"],
-            semantic_gaps=match["semantic_gaps"],
-        ))
-
-        match_results.append(SemanticMatchResultItem(
-            resume_id=rid,
-            resume_title=resume.title or "Untitled",
-            similarity_score=match["similarity_score"],
-            matched_keywords=match["matched_keywords"],
-            missing_keywords=match["missing_keywords"],
-            semantic_gaps=match["semantic_gaps"],
-        ))
+        match_results.append(
+            SemanticMatchResultItem(
+                resume_id=rid,
+                resume_title=resume.title or "Untitled",
+                similarity_score=match["similarity_score"],
+                matched_keywords=match["matched_keywords"],
+                missing_keywords=match["missing_keywords"],
+                semantic_gaps=match["semantic_gaps"],
+            )
+        )
 
     # --- Single deferred cache write for all misses ---
     if new_cache_rows:
@@ -991,38 +1204,39 @@ def _get_category_recommendations(category: str, score: float) -> List[str]:
             "Use standard fonts like Arial or Calibri",
             "Remove tables, graphics, and complex formatting",
             "Ensure consistent spacing and alignment",
-            "Use simple bullet points instead of complex lists"
+            "Use simple bullet points instead of complex lists",
         ],
         "structure": [
             "Add missing required sections (contact, experience, education)",
             "Include recommended sections (summary, skills)",
             "Organize content in logical order",
-            "Use clear section headers"
+            "Use clear section headers",
         ],
         "content": [
             "Include more action verbs and strong language",
             "Add quantifiable achievements with specific numbers",
             "Align content with job requirements",
-            "Remove irrelevant or outdated information"
+            "Remove irrelevant or outdated information",
         ],
         "keywords": [
             "Include more relevant industry keywords",
             "Add technical skills and competencies",
             "Use job description terminology",
-            "Balance keyword density naturally"
+            "Balance keyword density naturally",
         ],
         "readability": [
             "Use shorter, more concise sentences",
             "Remove passive voice constructions",
             "Eliminate filler words and redundancy",
-            "Maintain professional tone throughout"
-        ]
+            "Maintain professional tone throughout",
+        ],
     }
 
     return recommendations.get(category, ["Improve overall quality and relevance"])
 
 
 # ── Feature 50: ATS Simulator ─────────────────────────────────────────────────
+
 
 class AtsSimulateRequest(BaseModel):
     latex_content: str = Field(..., max_length=200_000)
@@ -1055,12 +1269,7 @@ def _ats_simulate_cache_key(latex_content: str, ats_name: str) -> str:
 @router.get("/simulate/profiles")
 async def list_ats_profiles() -> dict:
     """Return all available ATS system profiles (no auth required)."""
-    return {
-        "profiles": [
-            {"key": k, "label": v["label"], "tier": v["tier"]}
-            for k, v in ATS_PROFILES.items()
-        ]
-    }
+    return {"profiles": [{"key": k, "label": v["label"], "tier": v["tier"]} for k, v in ATS_PROFILES.items()]}
 
 
 @router.post("/simulate", response_model=AtsSimulateResponse)
@@ -1078,7 +1287,8 @@ async def simulate_ats(
     """
     if not await _rate_limit_ok(
         f"ratelimit:ats-rule:simulate:{_rate_limit_client(http_request)}",
-        _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
+        _RULE_ENDPOINT_IP_LIMIT,
+        _RULE_ENDPOINT_IP_WINDOW,
     ):
         raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
 
@@ -1104,9 +1314,9 @@ async def simulate_ats(
     try:
         result = ats_simulator_service.simulate(request.latex_content, request.ats_name)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail="Invalid LaTeX or ATS simulation input.") from exc
     except Exception as exc:
-        logger.error(f"ATS simulate error: {exc}")
+        logger.error("ATS simulation failed", extra={"error_type": type(exc).__name__})
         raise HTTPException(status_code=500, detail="ATS simulation failed")
 
     issues_out = [
@@ -1133,7 +1343,7 @@ async def simulate_ats(
         r = await get_redis_client()
         cache_payload = response.model_dump()
         cache_payload.pop("cached", None)
-        await r.setex(cache_key, 1800, json.dumps(cache_payload))
+        await r.set(cache_key, json.dumps(cache_payload), ex=1800)
     except Exception:
         pass
 
@@ -1142,6 +1352,7 @@ async def simulate_ats(
 
 # ── Feature 54 — Keyword Density Map ────────────────────────────────────────
 
+
 class KeywordDensityRequest(BaseModel):
     resume_latex: str = Field(..., max_length=200_000)
     job_description: str = Field(..., max_length=20_000)
@@ -1149,27 +1360,72 @@ class KeywordDensityRequest(BaseModel):
 
 class KeywordEntry(BaseModel):
     keyword: str
-    status: str           # "present" | "partial" | "missing"
-    count: int            # occurrences in plain text
-    required: bool        # required vs preferred
-    suggested_location: Optional[str]   # "Skills section" | "Experience section"
+    status: str  # "present" | "partial" | "missing"
+    count: int  # occurrences in plain text
+    required: bool  # required vs preferred
+    suggested_location: Optional[str]  # "Skills section" | "Experience section"
 
 
 class KeywordDensityResponse(BaseModel):
     keywords: List[KeywordEntry]
-    coverage_score: int   # 0–100
+    coverage_score: int  # 0–100
 
 
 # Tech skill terms that belong in Skills section
-_TECH_TERMS = frozenset({
-    "python", "javascript", "typescript", "java", "golang", "rust", "kotlin",
-    "swift", "ruby", "php", "scala", "sql", "nosql", "postgresql", "mysql",
-    "mongodb", "redis", "elasticsearch", "aws", "gcp", "azure", "docker",
-    "kubernetes", "terraform", "react", "angular", "vue", "node", "django",
-    "flask", "fastapi", "spring", "rails", "graphql", "rest", "grpc",
-    "hadoop", "spark", "kafka", "airflow", "mlops", "pytorch", "tensorflow",
-    "git", "linux", "bash", "ci", "devops", "agile", "scrum",
-})
+_TECH_TERMS = frozenset(
+    {
+        "python",
+        "javascript",
+        "typescript",
+        "java",
+        "golang",
+        "rust",
+        "kotlin",
+        "swift",
+        "ruby",
+        "php",
+        "scala",
+        "sql",
+        "nosql",
+        "postgresql",
+        "mysql",
+        "mongodb",
+        "redis",
+        "elasticsearch",
+        "aws",
+        "gcp",
+        "azure",
+        "docker",
+        "kubernetes",
+        "terraform",
+        "react",
+        "angular",
+        "vue",
+        "node",
+        "django",
+        "flask",
+        "fastapi",
+        "spring",
+        "rails",
+        "graphql",
+        "rest",
+        "grpc",
+        "hadoop",
+        "spark",
+        "kafka",
+        "airflow",
+        "mlops",
+        "pytorch",
+        "tensorflow",
+        "git",
+        "linux",
+        "bash",
+        "ci",
+        "devops",
+        "agile",
+        "scrum",
+    }
+)
 
 
 def _suggested_location(keyword: str) -> str:
@@ -1206,7 +1462,8 @@ async def keyword_density(
     """
     if not await _rate_limit_ok(
         f"ratelimit:ats-rule:keyword-density:{_rate_limit_client(http_request)}",
-        _RULE_ENDPOINT_IP_LIMIT, _RULE_ENDPOINT_IP_WINDOW,
+        _RULE_ENDPOINT_IP_LIMIT,
+        _RULE_ENDPOINT_IP_WINDOW,
     ):
         raise HTTPException(status_code=429, detail="Too many requests. Please slow down.")
 
@@ -1225,9 +1482,9 @@ async def keyword_density(
     jd_keywords = ats_scoring_service._extract_keywords_from_job_description(request.job_description)
 
     # Build plain-text view of resume for matching
-    import re as _re
-
     from ..services.latex_text_extractor import extract_prose
+    from ..utils import safe_regex as _re
+
     segments = extract_prose(request.resume_latex)
     resume_text = " ".join(seg.text for seg in segments if seg.text.strip()).lower()
     if not resume_text.strip():
@@ -1255,7 +1512,7 @@ async def keyword_density(
                 keyword=kw,
                 status=status,
                 count=count,
-                required=True,   # all extracted keywords are treated as required
+                required=True,  # all extracted keywords are treated as required
                 suggested_location=_suggested_location(kw) if status == "missing" else None,
             )
         )
@@ -1271,7 +1528,7 @@ async def keyword_density(
     # Cache for 30 min
     try:
         r = await get_redis_client()
-        await r.setex(cache_key, 1800, json.dumps(response.model_dump()))
+        await r.set(cache_key, json.dumps(response.model_dump()), ex=1800)
     except Exception:
         pass
 
@@ -1290,6 +1547,8 @@ class BenchmarkResponse(BaseModel):
     industry: str
     sufficient_data: bool
     message: Optional[str] = None
+    cohort_label: str
+    methodology: str
 
 
 @router.get("/benchmark", response_model=BenchmarkResponse)
@@ -1302,7 +1561,7 @@ async def get_ats_benchmark(
     """
     Return the percentile rank of an ATS score within the anonymized Latexy cohort.
 
-    - Results are Redis-cached per industry for 1 hour.
+    - Results are Redis-cached per normalized score for 1 hour.
     - Rate-limited to 10 calls per user per hour.
     - Only aggregate statistics are returned — no individual resume data.
     - Returns sufficient_data=False with percentile=null when cohort < 50 scores.
@@ -1336,4 +1595,6 @@ async def get_ats_benchmark(
         industry=result.industry,
         sufficient_data=result.sufficient_data,
         message=result.message,
+        cohort_label=result.cohort_label,
+        methodology=result.methodology,
     )

@@ -15,6 +15,9 @@ import {
   type BatchJobStatus,
   type BatchStatusResponse,
 } from '@/lib/api-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
+import LoadingSpinner from '@/components/LoadingSpinner'
+import SessionLoadError from '@/components/SessionLoadError'
 // Note: bulkExport exports all user resumes, not batch-specific ones.
 // Per-variant "View" links are used instead for individual access.
 
@@ -69,6 +72,7 @@ function StatusBadge({ status }: { status: string }) {
 export default function BatchTailorPage() {
   const params = useParams()
   const resumeId = params.resumeId as string
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
 
   const [rows, setRows] = useState<RowData[]>([emptyRow()])
   const [submitting, setSubmitting] = useState(false)
@@ -76,6 +80,7 @@ export default function BatchTailorPage() {
   // Batch state (after submission)
   const [batchId, setBatchId] = useState<string | null>(null)
   const [batchStatus, setBatchStatus] = useState<BatchStatusResponse | null>(null)
+  const [batchError, setBatchError] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // ---------------------------------------------------------------- //
@@ -146,6 +151,7 @@ export default function BatchTailorPage() {
     try {
       const status = await apiClient.getBatchStatus(batchId)
       setBatchStatus(status)
+      setBatchError(null)
       // Stop polling when all jobs are in a terminal state
       const terminal = new Set(['completed', 'failed', 'cancelled'])
       const done = status.jobs.every(j => terminal.has(j.status))
@@ -153,8 +159,8 @@ export default function BatchTailorPage() {
         clearInterval(pollRef.current)
         pollRef.current = null
       }
-    } catch {
-      // swallow — network hiccup shouldn't crash UI
+    } catch (error) {
+      setBatchError(error instanceof Error ? error.message : 'Failed to load batch status')
     }
   }, [batchId])
 
@@ -178,6 +184,18 @@ export default function BatchTailorPage() {
   // ---------------------------------------------------------------- //
   //  Render                                                            //
   // ---------------------------------------------------------------- //
+
+  if (sessionLoading) {
+    return (
+      <div className="flex h-[70vh] items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    )
+  }
+
+  if (sessionError && !session) return <SessionLoadError area="Batch tailoring" />
+
+  if (!session) return null
 
   return (
     <div className="min-h-screen bg-bg text-fg">
@@ -348,8 +366,22 @@ export default function BatchTailorPage() {
           </div>
         )}
 
+        {batchId && batchError && (
+          <div role="alert" className="mt-4 rounded-[var(--radius-lg)] border border-err/20 bg-err/[0.07] p-5 text-center">
+            <p className="text-sm font-semibold text-err">Batch status could not be refreshed</p>
+            <p className="mt-1 text-xs text-fg-3">{batchError}</p>
+            <button
+              type="button"
+              onClick={fetchBatchStatus}
+              className="mt-3 rounded-[var(--radius-md)] border border-err/30 px-3 py-1.5 text-xs font-semibold text-err transition hover:bg-err/10"
+            >
+              Retry now
+            </button>
+          </div>
+        )}
+
         {/* Loading state before first poll result */}
-        {batchId && !batchStatus && (
+        {batchId && !batchStatus && !batchError && (
           <div className="flex justify-center py-16">
             <Loader2 className="w-8 h-8 animate-spin text-accent" />
           </div>

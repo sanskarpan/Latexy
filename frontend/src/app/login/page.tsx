@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import SignInForm from '@/components/auth/SignInForm'
+import { useI18n } from '@/components/I18nProvider'
 
 // Accept whichever intended-destination param an auth guard may have appended.
 const REDIRECT_KEYS = ['redirect', 'callbackURL', 'next', 'returnTo'] as const
@@ -18,6 +19,7 @@ function readRedirect(params: URLSearchParams): string | null {
 }
 
 function LoginInner() {
+  const { t } = useI18n()
   const redirect = readRedirect(useSearchParams())
   const signupHref = redirect ? `/signup?redirect=${encodeURIComponent(redirect)}` : '/signup'
 
@@ -28,12 +30,12 @@ function LoginInner() {
           <SignInForm redirect={redirect ?? undefined} />
 
           <p className="text-center font-body text-sm text-fg-3">
-            Don&apos;t have an account?{' '}
+            {t('auth.noAccount')}{' '}
             <Link
               href={signupHref}
               className="font-medium text-accent-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded-[var(--radius-sm)]"
             >
-              Sign up
+              {t('auth.signUp')}
             </Link>
           </p>
         </div>

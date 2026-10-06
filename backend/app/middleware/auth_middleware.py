@@ -43,10 +43,9 @@ async def _validate_better_auth_session(
 ) -> Optional[str]:
     """Return userId if the Better Auth session token is valid, else None."""
     try:
-        # TODO(AUTH-003): token column should have a hashed index (e.g. hash("token"))
-        # for O(1) lookup. Currently relies on a full sequential scan or btree on the
-        # raw token value. Add a schema migration to create the index before this
-        # table grows large.
+        # Better Auth owns the raw-token schema. uq_session_token supplies the
+        # exact-match btree used by this lookup (migration 0037 removes the older
+        # duplicate non-unique index), so this does not degrade to a table scan.
         result = await db.execute(
             text(
                 'SELECT "userId" FROM session '
@@ -57,7 +56,7 @@ async def _validate_better_auth_session(
         row = result.fetchone()
         return row[0] if row else None
     except Exception as exc:
-        logger.debug(f"Better Auth session lookup failed: {exc}")
+        logger.debug("Better Auth session lookup failed", extra={"error_type": type(exc).__name__})
         return None
 
 
@@ -291,7 +290,7 @@ async def require_admin(
         # A DB failure is not an authorization decision. Surface it as a 503 so a
         # transient outage does not masquerade as "Admin privileges required",
         # and log at error level so the real cause is diagnosable.
-        logger.error(f"require_admin email lookup failed: {exc}")
+        logger.error("require_admin email lookup failed", extra={"error_type": type(exc).__name__})
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Admin authorization check temporarily unavailable",
@@ -335,7 +334,7 @@ def require_role(*roles: str):
             )
             row = result.fetchone()
         except Exception as exc:
-            logger.error(f"require_role lookup failed: {exc}")
+            logger.error("require_role lookup failed", extra={"error_type": type(exc).__name__})
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Authorization check temporarily unavailable",

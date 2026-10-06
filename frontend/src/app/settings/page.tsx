@@ -4,16 +4,20 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { Bell, BookOpen, Mail, Calendar, Loader2, CheckCircle, Monitor, Unlink, ExternalLink, Cloud, LogIn, CircleAlert, Eye } from 'lucide-react'
 import { Github } from '@/components/icons/brand-icons'
-import { apiClient, type NotificationPrefs, type GitHubStatusResponse, type ZoteroStatusResponse, type MendeleyStatusResponse, type DropboxStatusResponse } from '@/lib/api-client'
-import { useSession } from '@/lib/auth-client'
+import { apiClient, type NotificationPrefs, type GitHubStatusResponse, type ZoteroStatusResponse, type MendeleyStatusResponse, type DropboxStatusResponse, type GoogleDriveStatusResponse } from '@/lib/api-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import { getNotificationPref, setNotificationPref } from '@/hooks/usePushNotifications'
 import { useOnboarding } from '@/components/onboarding/OnboardingFlow'
+import PersonalDictionarySettings from '@/components/PersonalDictionarySettings'
+import SecuritySettings from '@/components/auth/SecuritySettings'
+import ReferralPanel from '@/components/ReferralPanel'
+import { safeOAuthAuthorizationUrl } from '@/lib/oauth-navigation'
 
 function SettingsContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
-  const { data: sessionData, isPending: sessionLoading } = useSession()
+  const { session: sessionData, isPending: sessionLoading, error: sessionError } = useRequireAuth()
   const { resetOnboarding } = useOnboarding()
   const settingsTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
 
@@ -44,6 +48,8 @@ function SettingsContent() {
     job_failed: true,
     share_viewed: false,
     weekly_digest: false,
+    tracker_updates: true,
+    comment_mentions: true,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -108,6 +114,55 @@ function SettingsContent() {
   const [dbxError, setDbxError] = useState<string | null>(null)
   const [dbxSuccess, setDbxSuccess] = useState<string | null>(null)
 
+  // Google Drive (B50a). OAuth credentials never reach the browser; this
+  // state contains only the server-reported connection and least-privilege
+  // scope.
+  const [gdriveStatus, setGdriveStatus] = useState<GoogleDriveStatusResponse>({ connected: false, scope: null })
+  const [gdriveLoading, setGdriveLoading] = useState(true)
+  const [gdriveConnecting, setGdriveConnecting] = useState(false)
+  const [gdriveDisconnecting, setGdriveDisconnecting] = useState(false)
+  const [gdriveError, setGdriveError] = useState<string | null>(null)
+  const [gdriveSuccess, setGdriveSuccess] = useState<string | null>(null)
+  type GoogleDriveCompletionOwner = {
+    accountKey: string
+    ticket: string
+    active: boolean
+    statusApplied: boolean
+  }
+  const googleDriveCompletionOwnerRef = useRef<GoogleDriveCompletionOwner | null>(null)
+  const googleDriveStatusGenerationRef = useRef(0)
+  const googleDriveLifecycleRef = useRef(0)
+  const integrationStatusGenerationRef = useRef(0)
+  type OAuthCompletionOwner = {
+    accountKey: string
+    provider: string
+    ticket: string
+    active: boolean
+  }
+  const oauthCompletionOwnerRef = useRef<OAuthCompletionOwner | null>(null)
+
+  // Any deferred Google Drive response must lose ownership when this page is
+  // removed. The owner also gets replaced when the authenticated account
+  // changes, so an old OAuth callback cannot update the new account's card.
+  useEffect(() => {
+    const lifecycle = ++googleDriveLifecycleRef.current
+    return () => {
+      // React Strict Mode replays passive effects by running cleanup and then
+      // setup in the same turn. Defer invalidation so that replay can retain
+      // the in-flight one-use ticket and its owner instead of deduping it away.
+      queueMicrotask(() => {
+        // This ref is intentionally read at cleanup time to distinguish a
+        // Strict Mode replay from a real unmount.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        if (googleDriveLifecycleRef.current !== lifecycle) return
+        googleDriveStatusGenerationRef.current += 1
+        googleDriveCompletionOwnerRef.current = null
+        integrationStatusGenerationRef.current += 1
+        oauthCompletionOwnerRef.current = null
+      })
+    }
+  }, [])
+
   // Everything on this page is per-user, so wait for the Better Auth session to
   // resolve before fetching — otherwise these fire before AuthSync has published
   // the Bearer token and every integration wrongly renders as "not connected".
@@ -119,55 +174,120 @@ function SettingsContent() {
       setZotLoading(false)
       setMenLoading(false)
       setDbxLoading(false)
+      setGdriveLoading(false)
       return
     }
 
+    const accountKey = `${sessionData.user?.id ?? ''}:${sessionData.session?.token ?? ''}`
+    if (oauthCompletionOwnerRef.current && oauthCompletionOwnerRef.current.accountKey !== accountKey) {
+      oauthCompletionOwnerRef.current = null
+    }
+    const generation = ++integrationStatusGenerationRef.current
+    let cancelled = false
+    const current = () => !cancelled && integrationStatusGenerationRef.current === generation
+
     apiClient.getNotificationPrefs()
-      .then(setPrefs)
-      .catch((e) => {
-        console.error('Failed to load notification preferences', e)
+      .then((nextPrefs) => { if (current()) setPrefs(nextPrefs) })
+      .catch(() => {
+        if (!current()) return
+        console.error('Failed to load notification preferences')
         setError('Failed to load preferences')
       })
-      .finally(() => setLoading(false))
+      .finally(() => { if (current()) setLoading(false) })
 
     apiClient.getGitHubStatus()
-      .then(setGhStatus)
-      .catch((e) => {
-        console.error('Failed to load GitHub status', e)
+      .then((status) => { if (current()) setGhStatus(status) })
+      .catch(() => {
+        if (!current()) return
+        console.error('Failed to load GitHub status')
         setGhError('Failed to load GitHub status')
       })
-      .finally(() => setGhLoading(false))
+      .finally(() => { if (current()) setGhLoading(false) })
 
     apiClient.getZoteroStatus()
-      .then(setZotStatus)
-      .catch((e) => {
-        console.error('Failed to load Zotero status', e)
+      .then((status) => { if (current()) setZotStatus(status) })
+      .catch(() => {
+        if (!current()) return
+        console.error('Failed to load Zotero status')
         setZotError('Failed to load Zotero status')
       })
-      .finally(() => setZotLoading(false))
+      .finally(() => { if (current()) setZotLoading(false) })
 
     apiClient.getMendeleyStatus()
-      .then(setMenStatus)
-      .catch((e) => {
-        console.error('Failed to load Mendeley status', e)
+      .then((status) => { if (current()) setMenStatus(status) })
+      .catch(() => {
+        if (!current()) return
+        console.error('Failed to load Mendeley status')
         setMenError('Failed to load Mendeley status')
       })
-      .finally(() => setMenLoading(false))
+      .finally(() => { if (current()) setMenLoading(false) })
 
     apiClient.getDropboxStatus()
-      .then(setDbxStatus)
-      .catch((e) => {
-        console.error('Failed to load Dropbox status', e)
+      .then((status) => { if (current()) setDbxStatus(status) })
+      .catch(() => {
+        if (!current()) return
+        console.error('Failed to load Dropbox status')
         setDbxError('Failed to load Dropbox status')
       })
-      .finally(() => setDbxLoading(false))
+      .finally(() => { if (current()) setDbxLoading(false) })
+
+    return () => {
+      cancelled = true
+      if (integrationStatusGenerationRef.current === generation) integrationStatusGenerationRef.current += 1
+    }
+
   }, [sessionData, sessionLoading])
+
+  // Do not race an OAuth ticket exchange with the normal status read. A slow
+  // pre-redirect `connected: false` response must not overwrite the connected
+  // state returned after `/complete`.
+  useEffect(() => {
+    if (sessionLoading || !sessionData) return
+    const accountKey = `${sessionData.user?.id ?? ''}:${sessionData.session?.token ?? ''}`
+    const hasDriveTicket = searchParams.get('google_drive') === 'complete' && Boolean(searchParams.get('ticket'))
+    const completionOwner = googleDriveCompletionOwnerRef.current
+    if (completionOwner && completionOwner.accountKey !== accountKey) {
+      googleDriveStatusGenerationRef.current += 1
+      googleDriveCompletionOwnerRef.current = null
+    }
+    if (hasDriveTicket) return
+    if (completionOwner?.accountKey === accountKey) {
+      if (completionOwner.active) return
+      if (completionOwner.statusApplied) {
+        // The completion status is authoritative for the first render after
+        // router.replace removes the ticket. Consume this one suppression so a
+        // later settings/search-param change can perform a fresh read.
+        completionOwner.statusApplied = false
+        return
+      }
+    }
+
+    const generation = ++googleDriveStatusGenerationRef.current
+    let cancelled = false
+    setGdriveLoading(true)
+    apiClient.getGoogleDriveStatus()
+      .then((status) => {
+        if (!cancelled && googleDriveStatusGenerationRef.current === generation) setGdriveStatus(status)
+      })
+      .catch(() => {
+        if (cancelled || googleDriveStatusGenerationRef.current !== generation) return
+        console.error('Failed to load Google Drive status')
+        setGdriveError('Failed to load Google Drive status. Please retry.')
+      })
+      .finally(() => {
+        if (!cancelled && googleDriveStatusGenerationRef.current === generation) setGdriveLoading(false)
+      })
+    return () => {
+      cancelled = true
+      if (googleDriveStatusGenerationRef.current === generation) googleDriveStatusGenerationRef.current += 1
+    }
+  }, [searchParams, sessionData, sessionLoading])
 
   // Provider callbacks only return short-lived tickets. Exchange them through
   // the authenticated client so the backend can prove this browser is signed
   // in as the same Latexy user who initiated each OAuth flow.
   useEffect(() => {
-    const providers = ['github', 'zotero', 'mendeley', 'dropbox'] as const
+    const providers = ['github', 'zotero', 'mendeley', 'dropbox', 'google_drive'] as const
     type Provider = typeof providers[number]
     const provider = providers.find((name) => {
       const result = searchParams.get(name)
@@ -177,18 +297,22 @@ function SettingsContent() {
 
     const providerName = provider === 'github'
       ? 'GitHub'
+      : provider === 'google_drive'
+        ? 'Google Drive'
       : `${provider[0].toUpperCase()}${provider.slice(1)}`
     const setProviderError = (message: string | null) => {
       if (provider === 'github') setGhError(message)
       if (provider === 'zotero') setZotError(message)
       if (provider === 'mendeley') setMenError(message)
       if (provider === 'dropbox') setDbxError(message)
+      if (provider === 'google_drive') setGdriveError(message)
     }
     const setProviderConnecting = (value: boolean) => {
       if (provider === 'github') setGhConnecting(value)
       if (provider === 'zotero') setZotConnecting(value)
       if (provider === 'mendeley') setMenConnecting(value)
       if (provider === 'dropbox') setDbxConnecting(value)
+      if (provider === 'google_drive') setGdriveConnecting(value)
     }
 
     if (searchParams.get(provider) === 'error') {
@@ -216,10 +340,22 @@ function SettingsContent() {
       router.replace(pathname, { scroll: false })
       return
     }
-    const completionKey = `${provider}:${ticket}`
+    const accountKey = `${sessionData.user?.id ?? ''}:${sessionData.session?.token ?? ''}`
+    const completionKey = `${accountKey}:${provider}:${ticket}`
     if (oauthCompletionStartedRef.current === completionKey) return
 
     oauthCompletionStartedRef.current = completionKey
+    const googleDriveOwner = provider === 'google_drive'
+      ? { accountKey, ticket, active: true, statusApplied: false }
+      : null
+    const providerOwner = provider === 'google_drive'
+      ? null
+      : { accountKey, provider, ticket, active: true }
+    if (googleDriveOwner) {
+      googleDriveStatusGenerationRef.current += 1
+      googleDriveCompletionOwnerRef.current = googleDriveOwner
+    }
+    if (providerOwner) oauthCompletionOwnerRef.current = providerOwner
     router.replace(pathname, { scroll: false })
     setProviderConnecting(true)
     setProviderError(null)
@@ -227,36 +363,83 @@ function SettingsContent() {
     const complete = async (name: Provider) => {
       if (name === 'github') {
         await apiClient.completeGitHubOAuth(ticket)
-        setGhStatus(await apiClient.getGitHubStatus())
+        if (providerOwner !== oauthCompletionOwnerRef.current) return
+        const status = await apiClient.getGitHubStatus()
+        if (providerOwner !== oauthCompletionOwnerRef.current) return
+        setGhStatus(status)
         setGhSuccess('GitHub account connected successfully!')
-        scheduleTimer(() => setGhSuccess(null), 5000)
+        scheduleTimer(() => {
+          if (providerOwner === oauthCompletionOwnerRef.current) setGhSuccess(null)
+        }, 5000)
         const returnTo = searchParams.get('return_to')
         if (returnTo?.startsWith('/') && !returnTo.startsWith('//') && !returnTo.includes('\\')) {
           router.replace(returnTo)
         }
       } else if (name === 'zotero') {
         await apiClient.completeZoteroOAuth(ticket)
-        setZotStatus(await apiClient.getZoteroStatus())
+        if (providerOwner !== oauthCompletionOwnerRef.current) return
+        const status = await apiClient.getZoteroStatus()
+        if (providerOwner !== oauthCompletionOwnerRef.current) return
+        setZotStatus(status)
         setZotSuccess('Zotero connected successfully!')
-        scheduleTimer(() => setZotSuccess(null), 5000)
+        scheduleTimer(() => {
+          if (providerOwner === oauthCompletionOwnerRef.current) setZotSuccess(null)
+        }, 5000)
       } else if (name === 'mendeley') {
         await apiClient.completeMendeleyOAuth(ticket)
-        setMenStatus(await apiClient.getMendeleyStatus())
+        if (providerOwner !== oauthCompletionOwnerRef.current) return
+        const status = await apiClient.getMendeleyStatus()
+        if (providerOwner !== oauthCompletionOwnerRef.current) return
+        setMenStatus(status)
         setMenSuccess('Mendeley connected successfully!')
-        scheduleTimer(() => setMenSuccess(null), 5000)
+        scheduleTimer(() => {
+          if (providerOwner === oauthCompletionOwnerRef.current) setMenSuccess(null)
+        }, 5000)
       } else {
-        await apiClient.completeDropboxOAuth(ticket)
-        setDbxStatus(await apiClient.getDropboxStatus())
-        setDbxSuccess('Dropbox connected successfully!')
-        scheduleTimer(() => setDbxSuccess(null), 5000)
+        if (name === 'dropbox') {
+          await apiClient.completeDropboxOAuth(ticket)
+          if (providerOwner !== oauthCompletionOwnerRef.current) return
+          const status = await apiClient.getDropboxStatus()
+          if (providerOwner !== oauthCompletionOwnerRef.current) return
+          setDbxStatus(status)
+          setDbxSuccess('Dropbox connected successfully!')
+          scheduleTimer(() => {
+            if (providerOwner === oauthCompletionOwnerRef.current) setDbxSuccess(null)
+          }, 5000)
+        } else {
+          const owner = googleDriveOwner
+          if (!owner) return
+          await apiClient.completeGoogleDriveOAuth(ticket)
+          if (owner !== googleDriveCompletionOwnerRef.current) return
+          const status = await apiClient.getGoogleDriveStatus()
+          if (owner !== googleDriveCompletionOwnerRef.current || !owner.active) return
+          owner.statusApplied = true
+          owner.active = false
+          setGdriveStatus(status)
+          setGdriveSuccess('Google Drive connected successfully!')
+          scheduleTimer(() => {
+            if (owner === googleDriveCompletionOwnerRef.current) setGdriveSuccess(null)
+          }, 5000)
+        }
       }
     }
 
     complete(provider)
       .catch((e: unknown) => {
+        if (googleDriveOwner && googleDriveOwner !== googleDriveCompletionOwnerRef.current) return
+        if (providerOwner && providerOwner !== oauthCompletionOwnerRef.current) return
         setProviderError(e instanceof Error ? e.message : `Failed to complete ${providerName} connection`)
       })
-      .finally(() => setProviderConnecting(false))
+      .finally(() => {
+        if (googleDriveOwner && googleDriveOwner !== googleDriveCompletionOwnerRef.current) return
+        if (providerOwner && providerOwner !== oauthCompletionOwnerRef.current) return
+        setProviderConnecting(false)
+        if (googleDriveOwner) {
+          googleDriveOwner.active = false
+          setGdriveLoading(false)
+        }
+        if (providerOwner) providerOwner.active = false
+      })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, router, searchParams, sessionData, sessionLoading])
 
@@ -264,37 +447,54 @@ function SettingsContent() {
   useEffect(() => {
     let sawConnectedParam = false
 
+    const verifyLegacyConnection = async <T,>(
+      providerName: string,
+      loadStatus: () => Promise<T>,
+      setStatus: (status: T) => void,
+      setSuccess: (message: string | null) => void,
+      setProviderError: (message: string | null) => void,
+    ): Promise<boolean> => {
+      setProviderError(null)
+      try {
+        setStatus(await loadStatus())
+        setSuccess(`${providerName} connected successfully!`)
+        scheduleTimer(() => setSuccess(null), 5000)
+        return true
+      } catch {
+        console.error(`Failed to verify ${providerName} connection`)
+        setSuccess(null)
+        setProviderError(`${providerName} authorization completed, but the connection could not be verified. Refresh or try connecting again.`)
+        return false
+      }
+    }
+
     if (searchParams.get('github') === 'connected') {
       sawConnectedParam = true
-      setGhSuccess('GitHub account connected successfully!')
-      apiClient.getGitHubStatus().then(setGhStatus).catch(() => {})
-      scheduleTimer(() => setGhSuccess(null), 5000)
+      void verifyLegacyConnection('GitHub account', () => apiClient.getGitHubStatus(), setGhStatus, setGhSuccess, setGhError)
     }
     if (searchParams.get('zotero') === 'connected') {
       sawConnectedParam = true
-      setZotSuccess('Zotero connected successfully!')
-      apiClient.getZoteroStatus().then(setZotStatus).catch(() => {})
-      scheduleTimer(() => setZotSuccess(null), 5000)
-      if (window.opener) {
-        window.opener.postMessage({ type: 'zotero:connected' }, '*')
-        window.close()
-      }
+      void verifyLegacyConnection('Zotero', () => apiClient.getZoteroStatus(), setZotStatus, setZotSuccess, setZotError)
+        .then((verified) => {
+          if (verified && window.opener) {
+            window.opener.postMessage({ type: 'zotero:connected' }, window.location.origin)
+            window.close()
+          }
+        })
     }
     if (searchParams.get('mendeley') === 'connected') {
       sawConnectedParam = true
-      setMenSuccess('Mendeley connected successfully!')
-      apiClient.getMendeleyStatus().then(setMenStatus).catch(() => {})
-      scheduleTimer(() => setMenSuccess(null), 5000)
-      if (window.opener) {
-        window.opener.postMessage({ type: 'mendeley:connected' }, '*')
-        window.close()
-      }
+      void verifyLegacyConnection('Mendeley', () => apiClient.getMendeleyStatus(), setMenStatus, setMenSuccess, setMenError)
+        .then((verified) => {
+          if (verified && window.opener) {
+            window.opener.postMessage({ type: 'mendeley:connected' }, window.location.origin)
+            window.close()
+          }
+        })
     }
     if (searchParams.get('dropbox') === 'connected') {
       sawConnectedParam = true
-      setDbxSuccess('Dropbox account connected successfully!')
-      apiClient.getDropboxStatus().then(setDbxStatus).catch(() => {})
-      scheduleTimer(() => setDbxSuccess(null), 5000)
+      void verifyLegacyConnection('Dropbox account', () => apiClient.getDropboxStatus(), setDbxStatus, setDbxSuccess, setDbxError)
     }
 
     // Strip the OAuth success query params from the URL so a refresh or
@@ -396,7 +596,12 @@ function SettingsContent() {
     setGhConnecting(true)
     setGhError(null)
     try {
-      const { authorization_url: authorizationUrl } = await apiClient.startGitHubOAuth('sync')
+      const { authorization_url: rawAuthorizationUrl } = await apiClient.startGitHubOAuth('sync')
+      const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
+        hostname: 'github.com',
+        pathname: '/login/oauth/authorize',
+      })
+      if (!authorizationUrl) throw new Error('GitHub returned an invalid authorization URL. Please retry.')
       window.location.assign(authorizationUrl)
     } catch (e: unknown) {
       setGhError(e instanceof Error ? e.message : 'Failed to start GitHub connection')
@@ -408,7 +613,12 @@ function SettingsContent() {
     setZotConnecting(true)
     setZotError(null)
     try {
-      const { authorization_url: authorizationUrl } = await apiClient.startZoteroOAuth()
+      const { authorization_url: rawAuthorizationUrl } = await apiClient.startZoteroOAuth()
+      const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
+        hostname: 'www.zotero.org',
+        pathname: '/oauth/authorize',
+      })
+      if (!authorizationUrl) throw new Error('Zotero returned an invalid authorization URL. Please retry.')
       window.location.assign(authorizationUrl)
     } catch (e: unknown) {
       setZotError(e instanceof Error ? e.message : 'Failed to start Zotero connection')
@@ -434,7 +644,12 @@ function SettingsContent() {
     setDbxConnecting(true)
     setDbxError(null)
     try {
-      const { authorization_url: authorizationUrl } = await apiClient.startDropboxOAuth()
+      const { authorization_url: rawAuthorizationUrl } = await apiClient.startDropboxOAuth()
+      const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
+        hostname: 'www.dropbox.com',
+        pathname: '/oauth2/authorize',
+      })
+      if (!authorizationUrl) throw new Error('Dropbox returned an invalid authorization URL. Please retry.')
       window.location.assign(authorizationUrl)
     } catch (e: unknown) {
       setDbxError(e instanceof Error ? e.message : 'Failed to start Dropbox connection')
@@ -456,11 +671,64 @@ function SettingsContent() {
     }
   }
 
+  async function handleConnectGoogleDrive() {
+    if (gdriveConnecting || gdriveDisconnecting) return
+    setGdriveConnecting(true)
+    setGdriveError(null)
+    try {
+      const { authorization_url: rawAuthorizationUrl } = await apiClient.startGoogleDriveOAuth()
+      const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
+        hostname: 'accounts.google.com',
+        pathname: '/o/oauth2/v2/auth',
+      })
+      if (!authorizationUrl) {
+        throw new Error('Google Drive returned an invalid authorization URL. Please retry.')
+      }
+      window.location.assign(authorizationUrl)
+    } catch (e: unknown) {
+      setGdriveError(e instanceof Error ? e.message : 'Failed to start Google Drive connection')
+      setGdriveConnecting(false)
+    }
+  }
+
+  async function retryGoogleDriveStatus() {
+    if (gdriveLoading || gdriveConnecting || gdriveDisconnecting) return
+    setGdriveLoading(true)
+    setGdriveError(null)
+    try {
+      setGdriveStatus(await apiClient.getGoogleDriveStatus())
+    } catch (e: unknown) {
+      setGdriveError(e instanceof Error ? e.message : 'Failed to load Google Drive status. Please retry.')
+    } finally {
+      setGdriveLoading(false)
+    }
+  }
+
+  async function handleDisconnectGoogleDrive() {
+    if (gdriveConnecting || gdriveDisconnecting) return
+    if (!confirm('Disconnect Google Drive? Files already exported there will not be deleted.')) return
+    setGdriveDisconnecting(true)
+    setGdriveError(null)
+    try {
+      await apiClient.disconnectGoogleDrive()
+      setGdriveStatus({ connected: false, scope: null })
+    } catch (e: unknown) {
+      setGdriveError(e instanceof Error ? e.message : 'Failed to disconnect Google Drive')
+    } finally {
+      setGdriveDisconnecting(false)
+    }
+  }
+
   async function handleConnectMendeley() {
     setMenConnecting(true)
     setMenError(null)
     try {
-      const { authorization_url: authorizationUrl } = await apiClient.startMendeleyOAuth()
+      const { authorization_url: rawAuthorizationUrl } = await apiClient.startMendeleyOAuth()
+      const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
+        hostname: 'api.mendeley.com',
+        pathname: '/oauth/authorize',
+      })
+      if (!authorizationUrl) throw new Error('Mendeley returned an invalid authorization URL. Please retry.')
       window.location.assign(authorizationUrl)
     } catch (e: unknown) {
       setMenError(e instanceof Error ? e.message : 'Failed to start Mendeley connection')
@@ -492,6 +760,19 @@ function SettingsContent() {
             <Loader2 size={14} className="animate-spin" />
             Loading settings…
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (sessionError && !sessionData) {
+    return (
+      <div className="min-h-screen overflow-x-hidden bg-bg px-4 py-10">
+        <div role="alert" className="mx-auto max-w-xl rounded-[var(--radius-lg)] border border-err/20 bg-err/10 p-8 text-center">
+          <CircleAlert className="mx-auto text-err" size={24} />
+          <h1 className="mt-3 text-lg font-semibold text-fg">Settings could not verify your session</h1>
+          <p className="mt-2 text-sm text-fg-2">Check your connection and retry.</p>
+          <button type="button" onClick={() => window.location.reload()} className="mt-5 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg">Retry</button>
         </div>
       </div>
     )
@@ -540,6 +821,21 @@ function SettingsContent() {
           <h1 className="text-2xl font-semibold text-fg">Settings</h1>
           <p className="mt-1 text-sm text-fg-3">Manage your account preferences</p>
         </div>
+
+        {/* Account-synced spelling dictionary */}
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-5">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <BookOpen size={14} className="text-accent-strong" />
+            </div>
+            <h2 className="text-base font-semibold text-fg">Personal Dictionary</h2>
+          </div>
+          <PersonalDictionarySettings />
+        </div>
+
+        <SecuritySettings />
+
+        <ReferralPanel />
 
         {/* GitHub Integration card */}
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
@@ -843,6 +1139,76 @@ function SettingsContent() {
           )}
         </div>
 
+        {/* Google Drive export (B50a) */}
+        <div data-testid="google-drive-card" className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+              <Cloud size={14} className="text-accent-strong" />
+            </div>
+            <h2 className="text-base font-semibold text-fg">Google Drive export</h2>
+          </div>
+
+          {gdriveSuccess && (
+            <p role="status" className="rounded-[var(--radius-md)] bg-ok/10 px-3 py-2 text-[11px] text-ok ring-1 ring-ok/20">
+              {gdriveSuccess}
+            </p>
+          )}
+
+          {gdriveLoading ? (
+            <div className="flex items-center gap-2 text-fg-3 text-sm">
+              <Loader2 size={14} className="animate-spin" />
+              Checking Google Drive status…
+            </div>
+          ) : gdriveStatus.connected ? (
+            <div className="space-y-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ok/15">
+                  <CheckCircle size={14} className="text-ok" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-fg">Google Drive connected</p>
+                  <p className="text-[11px] text-fg-3">Exports go to a Latexy-created PDF in your Drive.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleDisconnectGoogleDrive}
+                disabled={gdriveDisconnecting || gdriveConnecting}
+                className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-err/20 px-3 py-1.5 text-[11px] font-medium text-err transition hover:bg-err/10 disabled:opacity-40"
+              >
+                {gdriveDisconnecting ? <Loader2 size={11} className="animate-spin" /> : <Unlink size={11} />}
+                {gdriveDisconnecting ? 'Disconnecting…' : 'Disconnect Google Drive'}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-[12px] text-fg-3">
+                Export your latest compiled resume PDF to Google Drive. This uses Google&apos;s{' '}
+                <span className="font-mono text-fg-2">drive.file</span> scope: Latexy can access files it creates for you,
+                not your whole Drive. Latexy does not read unrelated Drive files.
+              </p>
+              <button
+                type="button"
+                onClick={handleConnectGoogleDrive}
+                disabled={gdriveConnecting || gdriveDisconnecting}
+                className="flex items-center gap-2 rounded-[var(--radius-md)] bg-accent-soft px-4 py-2 text-sm font-semibold text-accent-strong ring-1 ring-accent/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {gdriveConnecting ? <Loader2 size={14} className="animate-spin" /> : <Cloud size={14} />}
+                {gdriveConnecting ? 'Connecting…' : 'Connect Google Drive'}
+              </button>
+            </div>
+          )}
+
+          {gdriveError && (
+            <div role="alert" className="flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] bg-err/10 px-3 py-2 text-[11px] text-err ring-1 ring-err/20">
+              <span>{gdriveError}</span>
+              {!gdriveConnecting && !gdriveDisconnecting && (
+                <button type="button" onClick={() => void retryGoogleDriveStatus()} className="font-semibold underline">Retry</button>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Notification preferences card */}
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 space-y-6">
           <div className="flex items-center gap-2.5">
@@ -974,6 +1340,74 @@ function SettingsContent() {
                       prefs.share_viewed ? 'translate-x-4' : 'translate-x-0'
                     }`}
                   />
+                </button>
+              </label>
+
+              <div className="border-t border-line" />
+
+              {/* Tracker updates toggle */}
+              <label className="flex items-start justify-between gap-4 cursor-pointer">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+                    <Bell size={13} className="text-accent-strong" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-fg">Application tracker updates</p>
+                    <p className="mt-0.5 text-[11px] text-fg-3">
+                      Receive emails for application reminders and saved-search review nudges
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Application tracker updates"
+                  aria-checked={prefs.tracker_updates}
+                  disabled={saving}
+                  onClick={() => persistPrefs({ ...prefs, tracker_updates: !prefs.tracker_updates })}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault()
+                      persistPrefs({ ...prefs, tracker_updates: !prefs.tracker_updates })
+                    }
+                  }}
+                  className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
+                    prefs.tracker_updates ? 'bg-accent' : 'bg-surface-2'
+                  }`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-fg shadow transition-transform ${prefs.tracker_updates ? 'translate-x-4' : 'translate-x-0'}`} />
+                </button>
+              </label>
+
+              <div className="border-t border-line" />
+
+              {/* Comment mention toggle */}
+              <label className="flex items-start justify-between gap-4 cursor-pointer">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-accent-soft">
+                    <Bell size={13} className="text-accent-strong" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-fg">Comment mention emails</p>
+                    <p className="mt-0.5 text-[11px] text-fg-3">Receive an email when a collaborator mentions you on a resume</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Comment mention emails"
+                  aria-checked={prefs.comment_mentions}
+                  disabled={saving}
+                  onClick={() => persistPrefs({ ...prefs, comment_mentions: !prefs.comment_mentions })}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault()
+                      persistPrefs({ ...prefs, comment_mentions: !prefs.comment_mentions })
+                    }
+                  }}
+                  className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${prefs.comment_mentions ? 'bg-accent' : 'bg-surface-2'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-fg shadow transition-transform ${prefs.comment_mentions ? 'translate-x-4' : 'translate-x-0'}`} />
                 </button>
               </label>
 

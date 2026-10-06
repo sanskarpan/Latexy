@@ -36,7 +36,7 @@ Coverage map:
 from __future__ import annotations
 
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import _insert_session
@@ -44,6 +44,7 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.portfolio_routes import _PORTFOLIO_APP_HOSTNAME
 from app.services.portfolio_generator import PortfolioGenerator
 
 # ── Shared constants ───────────────────────────────────────────────────────────
@@ -179,6 +180,14 @@ class TestPortfolioGeneratorUnit:
         html = gen._render(self._make_resume(), self._make_user(), "nonexistent_theme_xyz")
         assert "<!DOCTYPE html>" in html
 
+    def test_public_portfolio_uses_the_canonical_live_domain(self) -> None:
+        html = PortfolioGenerator()._render(
+            self._make_resume(), self._make_user(), "minimal"
+        )
+        assert _PORTFOLIO_APP_HOSTNAME == "latexy.xyz"
+        assert 'href="https://latexy.xyz"' in html
+        assert "latexy.io" not in html
+
 
 # ── HTTP integration tests ─────────────────────────────────────────────────────
 
@@ -214,6 +223,41 @@ class TestPortfolioEndpoints:
         data = resp.json()
         assert data["username"] == portfolio_user["username"]
         assert "resumes" in data
+
+    async def test_public_portfolio_includes_only_explicitly_visible_resumes(
+        self,
+        client: AsyncClient,
+        portfolio_user: dict[str, str],
+        db_session: AsyncSession,
+    ) -> None:
+        visible_id = str(uuid.uuid4())
+        private_id = str(uuid.uuid4())
+        await db_session.execute(
+            text(
+                "INSERT INTO resumes "
+                "(id, user_id, title, latex_content, is_template, portfolio_visible) "
+                "VALUES (:visible_id, :user_id, 'Public Resume', "
+                "'\\\\documentclass{article}\\\\begin{document}Accessible portfolio content"
+                "\\\\end{document}', false, true), "
+                "(:private_id, :user_id, 'Private Resume', 'private', false, false)"
+            ),
+            {
+                "visible_id": visible_id,
+                "private_id": private_id,
+                "user_id": portfolio_user["id"],
+            },
+        )
+        await db_session.commit()
+
+        response = await client.get(f"/portfolio/{portfolio_user['username']}")
+
+        assert response.status_code == 200
+        returned_resumes = response.json()["resumes"]
+        returned_ids = {resume["id"] for resume in returned_resumes}
+        assert visible_id in returned_ids
+        assert private_id not in returned_ids
+        visible_resume = next(resume for resume in returned_resumes if resume["id"] == visible_id)
+        assert "Accessible portfolio content" in visible_resume["accessible_text"]
 
     # 67I-03 ─────────────────────────────────────────────────────────────────
     async def test_check_username_available(self, client: AsyncClient) -> None:
@@ -487,6 +531,118 @@ class TestGeneratePortfolioEndpoint:
         """No auth header → 401."""
         resp = await client.post(f"/resumes/{test_resume['id']}/generate-portfolio")
         assert resp.status_code == 401
+
+
+class TestPortfolioContact:
+    async def test_contact_delivers_escaped_message_to_owner(
+        self,
+        client: AsyncClient,
+        portfolio_user: dict[str, str],
+    ) -> None:
+        limiter = AsyncMock()
+        sender = AsyncMock(return_value=True)
+        with (
+            patch("app.api.portfolio_routes._check_contact_rate_limit", limiter),
+            patch("app.api.portfolio_routes.email_service.send_email", sender),
+        ):
+            response = await client.post(
+                f"/portfolio/{portfolio_user['username']}/contact",
+                json={
+                    "name": "<script>Alice</script>",
+                    "email": "ALICE@EXAMPLE.COM",
+                    "message": "Hello <img src=x onerror=alert(1)>",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"success": True}
+        limiter.assert_awaited_once()
+        kwargs = sender.await_args.kwargs
+        assert kwargs["to"] == portfolio_user["email"]
+        assert "<script>" not in kwargs["html_body"]
+        assert "&lt;script&gt;Alice&lt;/script&gt;" in kwargs["html_body"]
+        assert "alice@example.com" in kwargs["html_body"]
+        assert "<img" not in kwargs["html_body"]
+
+    async def test_contact_rejects_invalid_or_blank_payload(
+        self,
+        client: AsyncClient,
+        portfolio_user: dict[str, str],
+    ) -> None:
+        invalid_payloads = (
+            {"name": "Alice", "email": "not-an-email", "message": "Hello"},
+            {"name": "   ", "email": "alice@example.com", "message": "Hello"},
+            {"name": "Alice", "email": "alice@example.com", "message": "  \n "},
+        )
+        for payload in invalid_payloads:
+            response = await client.post(
+                f"/portfolio/{portfolio_user['username']}/contact",
+                json=payload,
+            )
+            assert response.status_code == 422
+
+    async def test_contact_hides_disabled_or_unknown_portfolio(
+        self,
+        client: AsyncClient,
+        test_user: dict[str, str],
+        db_session: AsyncSession,
+    ) -> None:
+        username = f"disabled_{uuid.uuid4().hex[:8]}"
+        await db_session.execute(
+            text(
+                "UPDATE users SET public_username = :username, portfolio_enabled = false "
+                "WHERE id = :user_id"
+            ),
+            {"username": username, "user_id": test_user["id"]},
+        )
+        await db_session.commit()
+        payload = {"name": "Alice", "email": "alice@example.com", "message": "Hello"}
+
+        disabled = await client.post(f"/portfolio/{username}/contact", json=payload)
+        missing = await client.post("/portfolio/no_such_portfolio/contact", json=payload)
+
+        assert disabled.status_code == 404
+        assert missing.status_code == 404
+
+    async def test_contact_reports_delivery_failure(
+        self,
+        client: AsyncClient,
+        portfolio_user: dict[str, str],
+    ) -> None:
+        with (
+            patch(
+                "app.api.portfolio_routes._check_contact_rate_limit",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.api.portfolio_routes.email_service.send_email",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            response = await client.post(
+                f"/portfolio/{portfolio_user['username']}/contact",
+                json={"name": "Alice", "email": "alice@example.com", "message": "Hello"},
+            )
+
+        assert response.status_code == 503
+
+    async def test_contact_reports_rate_limiter_failure(
+        self,
+        client: AsyncClient,
+        portfolio_user: dict[str, str],
+    ) -> None:
+        with patch(
+            "app.api.portfolio_routes.get_redis_cache_client",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("redis unavailable"),
+        ):
+            response = await client.post(
+                f"/portfolio/{portfolio_user['username']}/contact",
+                json={"name": "Alice", "email": "alice@example.com", "message": "Hello"},
+            )
+
+        assert response.status_code == 503
 
 
 # ── Authentication tests ──────────────────────────────────────────────────────

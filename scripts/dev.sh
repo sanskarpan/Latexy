@@ -24,6 +24,12 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 MODE="${1:-all}"
 SUB="${2:-all}"
+DEV_REDIS_PORT="${REDIS_PORT:-6380}"
+
+# This launcher starts local Celery consumers. A production-oriented .env must
+# not silently send its API's jobs to Modal instead of those local consumers.
+export DEPLOY_TARGET="local"
+export ENVIRONMENT="development"
 
 # PID file — first line is SLOT=N, remaining lines are process PIDs
 PID_FILE="$PROJECT_ROOT/.dev-pids"
@@ -38,7 +44,12 @@ NC='\033[0m'
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 is_infra_running() {
-  docker ps --format "{{.Names}}" 2>/dev/null | grep -q "^latexy-postgres$"
+  local names
+  names="$(docker ps --format "{{.Names}}" 2>/dev/null)"
+  grep -qx "latexy-postgres" <<< "$names" &&
+    grep -qx "latexy-redis" <<< "$names" &&
+    grep -qx "latexy-minio" <<< "$names" &&
+    docker port latexy-redis 6379/tcp 2>/dev/null | grep -Eq ":${DEV_REDIS_PORT}$"
 }
 
 # Find first slot where BOTH backend port and frontend port are free.
@@ -62,10 +73,28 @@ resolve_venv_bin() {
   echo "$venv"
 }
 
+resolve_dev_auth_secret() {
+  # Match Settings precedence, including dotenv quoting. Never print this value
+  # in launcher logs; callers capture it and pass the same value to every app.
+  "$1" -c 'import os, sys; from dotenv import dotenv_values; values = {**dotenv_values(sys.argv[1]), **dotenv_values(sys.argv[2])}; print(os.environ.get("BETTER_AUTH_SECRET", values.get("BETTER_AUTH_SECRET") or ""), end="")' \
+    "$PROJECT_ROOT/.env" "$PROJECT_ROOT/backend/.env"
+}
+
+resolve_dev_tex_image() {
+  # Match custom image configuration precedence without sending dotenv files
+  # to Docker. The standard upstream default uses our locally warmed derivative;
+  # an explicitly exported image or a custom dotenv image is never overridden.
+  "$1" -c 'import os, sys; from dotenv import dotenv_values; values = {**dotenv_values(sys.argv[1]), **dotenv_values(sys.argv[2])}; configured = values.get("LATEX_DOCKER_IMAGE"); print(os.environ.get("LATEX_DOCKER_IMAGE") or (configured if configured and configured != "texlive/texlive:latest" else "latexy-tex-engine:local"), end="")' \
+    "$PROJECT_ROOT/.env" "$PROJECT_ROOT/backend/.env"
+}
+
 cleanup() {
   echo ""
   echo -e "${YELLOW}→ Shutting down app processes...${NC}"
-  kill $(jobs -p) 2>/dev/null || true
+  local job_pid
+  while IFS= read -r job_pid; do
+    [[ -n "$job_pid" ]] && kill "$job_pid" 2>/dev/null || true
+  done < <(jobs -p)
   wait 2>/dev/null || true
   rm -f "$PID_FILE"
   echo -e "${GREEN}✓ App processes stopped. Docker infra still running.${NC}"
@@ -129,7 +158,7 @@ stop_app() {
   kill_matching_processes "${PROJECT_ROOT}/backend/venv/bin/celery"
   kill_matching_processes "${PROJECT_ROOT}/backend/.venv/bin/uvicorn app.main:app"
   kill_matching_processes "${PROJECT_ROOT}/backend/venv/bin/uvicorn app.main:app"
-  kill_matching_processes "${PROJECT_ROOT}/frontend/node_modules/.*/next/dist/bin/next dev -p"
+  kill_matching_processes "${PROJECT_ROOT}/frontend/node_modules/.*/next/dist/bin/next dev .* -p"
 
   echo -e "${GREEN}✓ App processes stopped.${NC}"
 }
@@ -168,7 +197,7 @@ start_infra() {
   echo -e "${GREEN}  ✓ Redis ready${NC}"
 
   echo -e "${GREEN}→ Shared infra is up.${NC}"
-  echo "  Postgres: localhost:5434  Redis: localhost:6379  MinIO: localhost:9000"
+  echo "  Postgres: localhost:5434  Redis: localhost:${DEV_REDIS_PORT}  MinIO: localhost:9000"
 }
 
 # ── app ───────────────────────────────────────────────────────────────────────
@@ -179,6 +208,28 @@ start_app() {
   local ALEMBIC="${VENV_BIN}/alembic"
   local UVICORN="${VENV_BIN}/uvicorn"
   local CELERY="${VENV_BIN}/celery"
+  local -a FRONTEND_PNPM=(pnpm)
+
+  # The frontend's package contract and production images both use Node 22.
+  # Do not silently boot local development under another major (pnpm only
+  # warns), because native modules and Next.js behavior can then differ from
+  # every CI/deployment gate. Reuse a correct active Node when available, or
+  # let mise provide the declared runtime.
+  local node_major=""
+  if command -v node >/dev/null 2>&1; then
+    node_major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || true)"
+  fi
+  if [[ "$node_major" != "22" ]]; then
+    if command -v mise >/dev/null 2>&1 \
+      && mise exec node@22 -- node -e 'process.exit(process.versions.node.split(".")[0] === "22" ? 0 : 1)' \
+        >/dev/null 2>&1; then
+      FRONTEND_PNPM=(mise exec node@22 -- pnpm)
+    else
+      echo -e "${RED}✗ Node 22.x is required for the frontend (found ${node_major:-none}).${NC}"
+      echo "  Activate Node 22 or install it with: mise use --global node@22"
+      exit 1
+    fi
+  fi
 
   # ── Port slot auto-detection ──────────────────────────────────────────────
   local SLOT
@@ -199,15 +250,42 @@ start_app() {
   local DB_URL="postgresql+asyncpg://latexy:latexy_password@localhost:5434/latexy"
   # Plain (non-asyncpg) URL for the Next.js Better Auth pg pool.
   local FRONTEND_DB_URL="postgresql://latexy:latexy_password@localhost:5434/latexy"
-  # Better Auth signing secret — shared by backend + frontend. Sourced from the
-  # root .env so the frontend (which signs sessions) is not left without a secret.
-  local BETTER_AUTH_SECRET
-  BETTER_AUTH_SECRET="$(grep -E '^BETTER_AUTH_SECRET=' "$PROJECT_ROOT/.env" 2>/dev/null | head -1 | cut -d= -f2-)"
-  local REDIS="redis://localhost:6379/0"
-  local REDIS_CACHE="redis://localhost:6379/1"
+  # Backend .env overrides root .env, while an explicit process setting wins.
+  # Resolve once so Next signs sessions with exactly the secret FastAPI verifies.
+  local DEV_AUTH_SECRET
+  DEV_AUTH_SECRET="$(resolve_dev_auth_secret "$VENV_BIN/python")"
+  if [[ ${#DEV_AUTH_SECRET} -lt 32 ]]; then
+    echo -e "${RED}✗ Configure a BETTER_AUTH_SECRET of at least 32 characters before starting the app.${NC}"
+    exit 1
+  fi
+  local REDIS="redis://localhost:${DEV_REDIS_PORT}/0"
+  local REDIS_CACHE="redis://localhost:${DEV_REDIS_PORT}/1"
   local MINIO="http://localhost:9000"
   # Allow all dev frontend ports so CORS works for both dirs
   local CORS='["http://localhost:5180","http://localhost:5181","http://localhost:5182","http://localhost:5183","http://127.0.0.1:5180","http://127.0.0.1:5181"]'
+
+  # A cache-warmed sandbox avoids rebuilding the upstream image's fontconfig
+  # cache in every cold XeLaTeX container. Build with stdin-only Dockerfile input:
+  # no application context (especially .env credentials) is sent to Docker.
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    local DEV_TEX_IMAGE
+    DEV_TEX_IMAGE="$(resolve_dev_tex_image "$VENV_BIN/python")"
+    local DEV_TEX_SOURCE_HASH
+    DEV_TEX_SOURCE_HASH="$(shasum -a 256 "$PROJECT_ROOT/backend/Dockerfile.tex-engine" | awk '{print $1}')"
+    local DEV_TEX_BUILT_HASH
+    DEV_TEX_BUILT_HASH="$(docker image inspect --format '{{ index .Config.Labels "xyz.latexy.local-tex-source" }}' "$DEV_TEX_IMAGE" 2>/dev/null || true)"
+    if ! docker image inspect "$DEV_TEX_IMAGE" >/dev/null 2>&1 \
+      || { [[ "$DEV_TEX_IMAGE" == "latexy-tex-engine:local" ]] && [[ "$DEV_TEX_BUILT_HASH" != "$DEV_TEX_SOURCE_HASH" ]]; }; then
+      if [[ "$DEV_TEX_IMAGE" != "latexy-tex-engine:local" ]]; then
+        echo -e "${RED}✗ Configured LATEX_DOCKER_IMAGE is unavailable locally.${NC}"
+        exit 1
+      fi
+      echo -e "${CYAN}→ Building cache-warmed local TeX sandbox (first launch or sandbox update)...${NC}"
+      docker build --label "xyz.latexy.local-tex-source=$DEV_TEX_SOURCE_HASH" \
+        -t "$DEV_TEX_IMAGE" - < "$PROJECT_ROOT/backend/Dockerfile.tex-engine"
+    fi
+    export LATEX_DOCKER_IMAGE="$DEV_TEX_IMAGE"
+  fi
 
   # ── Migrations ────────────────────────────────────────────────────────────
   echo ""
@@ -215,6 +293,14 @@ start_app() {
   cd "$PROJECT_ROOT/backend"
   DATABASE_URL="$DB_URL" "$ALEMBIC" upgrade head 2>&1 | tail -3
   echo -e "${GREEN}  ✓ Migrations done${NC}"
+
+  # Keep a long-lived local database in sync with source-owned templates.
+  # This is an idempotent upsert; without it, templates added after the first
+  # database bootstrap (for example the regional EuroCV template) exist in the
+  # repository but never appear in the local gallery.
+  echo -e "${CYAN}→ Syncing built-in templates...${NC}"
+  DATABASE_URL="$DB_URL" "$VENV_BIN/python" -m app.scripts.seed_templates 2>&1 | tail -4
+  echo -e "${GREEN}  ✓ Templates synced${NC}"
 
   echo ""
   echo -e "${CYAN}→ Starting app processes (Ctrl+C to stop all)...${NC}"
@@ -234,11 +320,12 @@ start_app() {
   MINIO_ENDPOINT="$MINIO" \
   MINIO_ACCESS_KEY="minioadmin" \
   MINIO_SECRET_KEY="minioadmin_secret" \
+  BETTER_AUTH_SECRET="$DEV_AUTH_SECRET" \
   BETTER_AUTH_URL="http://localhost:${FRONTEND_PORT}" \
   FRONTEND_URL="http://localhost:${FRONTEND_PORT}" \
   CORS_ORIGINS="$CORS" \
   RATE_LIMIT_ENABLED="false" \
-  "$UVICORN" app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" --reload --reload-dir app \
+  "$UVICORN" app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" --ws-max-size 524288 --reload --reload-dir app \
     2>&1 | sed "s/^/[backend]  /" &
   echo $! >> "$PID_FILE"
 
@@ -252,6 +339,7 @@ start_app() {
   MINIO_ENDPOINT="$MINIO" \
   MINIO_ACCESS_KEY="minioadmin" \
   MINIO_SECRET_KEY="minioadmin_secret" \
+  BETTER_AUTH_SECRET="$DEV_AUTH_SECRET" \
   "$CELERY" -A app.core.celery_app worker --loglevel=info --concurrency=2 \
     -n "latexy-slot${SLOT}@%h" \
     --queues=latex,llm,combined,ats,cleanup,email \
@@ -262,24 +350,41 @@ start_app() {
   echo -e "${GREEN}  [beat]${NC}     celery beat"
   DATABASE_URL="$DB_URL" \
   REDIS_URL="$REDIS" \
+  REDIS_CACHE_URL="$REDIS_CACHE" \
   CELERY_BROKER_URL="$REDIS" \
   CELERY_RESULT_BACKEND="$REDIS" \
+  BETTER_AUTH_SECRET="$DEV_AUTH_SECRET" \
   "$CELERY" -A app.core.celery_app beat --loglevel=info \
     2>&1 | sed "s/^/[beat]     /" &
   echo $! >> "$PID_FILE"
 
   # ── Frontend ──────────────────────────────────────────────────────────────
   cd "$PROJECT_ROOT/frontend"
+  # Next/Turbopack can reuse browser chunks whose NEXT_PUBLIC_* values were
+  # inlined by a previous production build or another dev port slot. Keep the
+  # cache when its public runtime contract matches; otherwise remove only the
+  # generated `.next` tree so the browser cannot keep calling a stale backend.
+  local NEXT_CACHE_DIR="$PROJECT_ROOT/frontend/.next"
+  local NEXT_ENV_STAMP="$NEXT_CACHE_DIR/.latexy-dev-env"
+  local NEXT_ENV_VALUE="api=http://localhost:${BACKEND_PORT};ws=ws://localhost:${BACKEND_PORT};app=http://localhost:${FRONTEND_PORT}"
+  local CACHED_NEXT_ENV=""
+  [[ -f "$NEXT_ENV_STAMP" ]] && CACHED_NEXT_ENV="$(<"$NEXT_ENV_STAMP")"
+  if [[ -d "$NEXT_CACHE_DIR" && "$CACHED_NEXT_ENV" != "$NEXT_ENV_VALUE" ]]; then
+    echo -e "${YELLOW}  [frontend] clearing generated cache after public env change${NC}"
+    rm -rf "$NEXT_CACHE_DIR"
+  fi
+  mkdir -p "$NEXT_CACHE_DIR"
+  printf '%s\n' "$NEXT_ENV_VALUE" > "$NEXT_ENV_STAMP"
   echo -e "${GREEN}  [frontend]${NC} next.js on :${FRONTEND_PORT}"
   NEXT_PUBLIC_API_URL="http://localhost:${BACKEND_PORT}" \
   NEXT_PUBLIC_WS_URL="ws://localhost:${BACKEND_PORT}" \
   NEXT_PUBLIC_APP_URL="http://localhost:${FRONTEND_PORT}" \
   BETTER_AUTH_URL="http://localhost:${FRONTEND_PORT}" \
-  BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET}" \
+  BETTER_AUTH_SECRET="$DEV_AUTH_SECRET" \
   DATABASE_URL="${FRONTEND_DB_URL}" \
   BACKEND_URL="http://localhost:${BACKEND_PORT}" \
   PORT="${FRONTEND_PORT}" \
-  pnpm dev 2>&1 | sed "s/^/[frontend] /" &
+  "${FRONTEND_PNPM[@]}" dev 2>&1 | sed "s/^/[frontend] /" &
   echo $! >> "$PID_FILE"
 
   echo ""

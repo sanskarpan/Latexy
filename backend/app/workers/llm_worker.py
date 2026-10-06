@@ -19,9 +19,23 @@ from ..core.logging import get_logger
 from ..core.observability import record_llm_call
 from ..core.tracing import traced
 from ..services.llm_service import llm_service, parse_delimited_optimization
-from ..workers.event_publisher import is_cancelled, publish_event, publish_job_result
+from ..workers.event_publisher import get_worker_redis, is_cancelled, publish_event, publish_job_result
+from ..workers.job_lifecycle import admit_worker
+from ..workers.quota_refund import clear_quota_refund_receipt, refund_quota_once
+from .delimiter_stream import DelimitedStreamFilter
 
 logger = get_logger(__name__)
+
+
+def _refund_optimization_quota_once(
+    job_id: str, quota_refund: Optional[Dict[str, Any]]
+) -> bool:
+    """Return an optimization unit exactly once for a terminal failed job."""
+    return refund_quota_once(
+        job_id,
+        quota_refund,
+        expected_dimension="optimizations",
+    )
 
 
 @celery_app.task(
@@ -43,6 +57,7 @@ def optimize_resume_task(
     user_api_key: Optional[str] = None,
     metadata: Optional[Dict] = None,
     model: Optional[str] = None,
+    quota_refund: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Optimize a LaTeX resume using OpenAI with live token streaming.
@@ -62,22 +77,41 @@ def optimize_resume_task(
     worker_id = f"llm-{task_id}"
     logger.info(f"LLM task {task_id} starting for job {job_id}")
 
+    lifecycle_owner = f"{worker_id}:{uuid.uuid4()}"
+    queue_redis = get_worker_redis()
+    if not admit_worker(queue_redis, job_id, lifecycle_owner, quota_refund, user_id):
+        # A cleanup fence or a competing delivery owns the terminal decision.
+        # Never publish a result that could overwrite it.
+        return {
+            "success": False,
+            "job_id": job_id,
+            "error": "Job ownership unavailable",
+        }
+
     api_key = user_api_key or settings.OPENAI_API_KEY
+
+    def _terminal_failure(result: Dict[str, Any], event_payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Publish the fenced terminal result before refunding or notifying."""
+        accepted = publish_job_result(job_id, result)
+        if accepted:
+            publish_event(job_id, "job.cancelled" if result.get("cancelled") else "job.failed", event_payload)
+            _refund_optimization_quota_once(job_id, quota_refund)
+        return result
 
     # Validate API key BEFORE publishing job.started to avoid a confusing
     # started → immediately-failed event sequence on the frontend.
     if not api_key:
-        publish_event(job_id, "job.failed", {
+        result = {
+            "success": False,
+            "job_id": job_id,
+            "error": "No OpenAI API key configured",
+        }
+        return _terminal_failure(result, {
             "stage": "llm_optimization",
             "error_code": "llm_error",
             "error_message": "No OpenAI API key configured. Add one via BYOK settings.",
             "retryable": False,
         })
-        return {
-            "success": False,
-            "job_id": job_id,
-            "error": "No OpenAI API key configured",
-        }
 
     publish_event(job_id, "job.started", {
         "worker_id": worker_id,
@@ -150,6 +184,8 @@ def optimize_resume_task(
         for attempt in range(1, MAX_ATTEMPTS + 1):
             accumulated = ""
             token_count = 0
+            finish_reason: Optional[str] = None
+            visible_stream = DelimitedStreamFilter()
             with traced("llm.provider_call", provider=provider, model=model_name, attempt=attempt):
                 create_kwargs: Dict[str, Any] = dict(
                     model=model_name,
@@ -185,7 +221,11 @@ def optimize_resume_task(
                     if not chunk.choices:
                         continue
 
-                    delta = chunk.choices[0].delta.content
+                    choice = chunk.choices[0]
+                    reason = getattr(choice, "finish_reason", None)
+                    if isinstance(reason, str):
+                        finish_reason = reason
+                    delta = choice.delta.content
                     if delta:
                         accumulated += delta
                         token_count += 1
@@ -193,12 +233,35 @@ def optimize_resume_task(
                         # actually pans out is unknowable in advance, so the
                         # first attempt's tokens are shown live as normal; a
                         # retry (rare) republishes from scratch below.
-                        publish_event(job_id, "llm.token", {"token": delta})
+                        visible_delta = visible_stream.feed(delta)
+                        if visible_delta:
+                            publish_event(job_id, "llm.token", {"token": visible_delta})
 
                         # Check cancellation every 20 tokens to avoid hammering Redis
                         if token_count % 20 == 0 and is_cancelled(job_id):
-                            publish_event(job_id, "job.cancelled", {})
-                            return {"success": False, "job_id": job_id, "cancelled": True}
+                            return _terminal_failure(
+                                {"success": False, "job_id": job_id, "cancelled": True},
+                                {},
+                            )
+
+            if finish_reason == "length":
+                logger.warning(
+                    "[%s] attempt %s/%s: LLM output reached the token limit",
+                    job_id,
+                    attempt,
+                    MAX_ATTEMPTS,
+                )
+                # Ensure the exhausted final attempt cannot pass the delimiter
+                # check below merely because a closing marker happened to arrive
+                # before a truncated changes payload.
+                accumulated = ""
+                if attempt < MAX_ATTEMPTS:
+                    publish_event(job_id, "job.progress", {
+                        "percent": 10,
+                        "stage": "llm_optimization",
+                        "message": "Retrying — first AI response was truncated",
+                    })
+                continue
 
             optimized_latex, raw_changes = parse_delimited_optimization(accumulated, latex_content)
             changes_made = [
@@ -235,7 +298,12 @@ def optimize_resume_task(
             # Exhausted every retry with no usable output — this is a real
             # failure, not a resume that "didn't need changes". Say so.
             logger.error(f"[{job_id}] LLM optimization failed after {MAX_ATTEMPTS} attempts — no delimited output")
-            publish_event(job_id, "job.failed", {
+            result = {
+                "success": False,
+                "job_id": job_id,
+                "error": "LLM returned no usable output after retrying",
+            }
+            _terminal_failure(result, {
                 "stage": "llm_optimization",
                 "error_code": "llm_error",
                 "error_message": "The AI didn't return a usable result after retrying. Please try again.",
@@ -247,11 +315,7 @@ def optimize_resume_task(
                 prompt_build_seconds=prompt_build_seconds,
                 provider_call_seconds=provider_call_seconds,
             )
-            return {
-                "success": False,
-                "job_id": job_id,
-                "error": "LLM returned no usable output after retrying",
-            }
+            return result
 
         # Publish llm.complete with parsed LaTeX (not the raw JSON string)
         publish_event(job_id, "llm.complete", {
@@ -280,8 +344,9 @@ def optimize_resume_task(
             total_tokens=tokens_total or None,
         )
 
-        publish_job_result(job_id, result)
-        publish_event(job_id, "job.completed", {
+        if not publish_job_result(job_id, result):
+            return {"success": False, "job_id": job_id, "error": "Job ownership expired"}
+        completion_event = publish_event(job_id, "job.completed", {
             "percent": 100,
             "pdf_job_id": job_id,
             # This is a pure LLM rewrite — no ATS scoring stage runs here, so
@@ -297,6 +362,8 @@ def optimize_resume_task(
         logger.info(
             f"LLM task {task_id} succeeded for job {job_id} ({tokens_total} tokens)"
         )
+        if quota_refund and completion_event:
+            clear_quota_refund_receipt(job_id)
         return result
 
     except SoftTimeLimitExceeded:
@@ -308,33 +375,47 @@ def optimize_resume_task(
             extra={"job_id": job_id, "duration_ms": elapsed * 1000},
             exc_info=True,
         )
-        publish_event(job_id, "job.failed", {
+        result = {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
+        _terminal_failure(result, {
             "stage": "llm_optimization",
             "error_code": "timeout",
             "error_message": "Task exceeded time limit",
             "retryable": False,
         })
-        return {"success": False, "job_id": job_id, "error": "Task exceeded time limit"}
+        return result
 
     except Exception as exc:
         record_llm_call(provider, model_name, "error", total_seconds=time.perf_counter() - total_start)
-        logger.error(f"LLM task {task_id} raised: {exc}", exc_info=True)
+        logger.error("LLM task %s raised", task_id, extra={"error_type": type(exc).__name__})
         is_rate_limit = "rate limit" in str(exc).lower()
         has_retries_left = self.request.retries < self.max_retries
         retryable = has_retries_left
-        publish_event(job_id, "job.failed", {
-            "stage": "llm_optimization",
-            "error_code": "llm_error",
-            "error_message": str(exc),
-            "retryable": retryable,
-        })
         if has_retries_left:
+            publish_event(job_id, "job.failed", {
+                "stage": "llm_optimization",
+                "error_code": "llm_error",
+                "error_message": "LLM provider request failed",
+                "retryable": retryable,
+            })
+            publish_event(job_id, "job.retrying", {
+                "stage": "llm_optimization",
+                "attempt": self.request.retries + 2,
+                "error_message": "LLM provider request is retrying",
+            })
             if is_rate_limit:
                 # Exponential backoff: 30s, 60s, 120s — avoids hammering the API.
                 backoff = 30 * (2 ** self.request.retries)
                 raise self.retry(exc=exc, countdown=backoff)
             raise self.retry(countdown=120, exc=exc)
-        return {"success": False, "job_id": job_id, "error": str(exc)}
+        return _terminal_failure(
+            {"success": False, "job_id": job_id, "error": "LLM provider request failed"},
+            {
+                "stage": "llm_optimization",
+                "error_code": "llm_error",
+                "error_message": "LLM provider request failed",
+                "retryable": False,
+            },
+        )
 
 
 # ------------------------------------------------------------------ #
@@ -352,6 +433,7 @@ def submit_resume_optimization(
     priority: Optional[int] = None,
     metadata: Optional[Dict] = None,
     model: Optional[str] = None,
+    quota_refund: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Enqueue optimize_resume_task on the llm queue."""
     if priority is None:
@@ -370,6 +452,7 @@ def submit_resume_optimization(
             "user_api_key": user_api_key,
             "metadata": metadata,
             "model": model,
+            "quota_refund": quota_refund,
         })
         logger.info(f"Modal spawn: LLM optimization for job {job_id}")
         return job_id
@@ -384,9 +467,11 @@ def submit_resume_optimization(
             "user_api_key": user_api_key,
             "metadata": metadata,
             "model": model,
+            "quota_refund": quota_refund,
         },
         priority=priority,
         queue="llm",
+        task_id=job_id,
     )
     logger.info(f"Submitted LLM optimization for job {job_id}")
     return job_id

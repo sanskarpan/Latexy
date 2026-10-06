@@ -2,11 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ExternalLink, FileUp, Globe, Loader2, Star, X } from 'lucide-react'
+import { CheckCircle2, ExternalLink, FileUp, Globe, Loader2, Star, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Github } from '@/components/icons/brand-icons'
 import { apiClient, type ProjectEvidence } from '@/lib/api-client'
+import { safeOAuthAuthorizationUrl } from '@/lib/oauth-navigation'
 import { projectsToLatex, type ProjectSelection } from '@/lib/github-projects-latex'
+import {
+  clearLinkedInArchiveRequest,
+  formatLinkedInArchiveRequestDate,
+  LINKEDIN_DATA_EXPORT_URL,
+  readLinkedInArchiveRequest,
+  rememberLinkedInArchiveRequest,
+} from '@/lib/linkedin-import-progress'
 
 /**
  * Unified external-source import (External-Sources-to-Resume, F1). One modal, three
@@ -47,6 +55,7 @@ export default function ImportProjectsModal({
   const [selection, setSelection] = useState<Record<number, Selection>>({})
   const [error, setError] = useState<string | null>(null)
   const [urlInput, setUrlInput] = useState('')
+  const [archiveRequestedAt, setArchiveRequestedAt] = useState<string | null>(null)
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cancelledRef = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -144,10 +153,15 @@ export default function ImportProjectsModal({
     setPhase('checking')
     setError(null)
     try {
-      const { authorization_url: authorizationUrl } = await apiClient.startGitHubOAuth(
+      const { authorization_url: rawAuthorizationUrl } = await apiClient.startGitHubOAuth(
         'import',
         window.location.pathname,
       )
+      const authorizationUrl = safeOAuthAuthorizationUrl(rawAuthorizationUrl, {
+        hostname: 'github.com',
+        pathname: '/login/oauth/authorize',
+      })
+      if (!authorizationUrl) throw new Error('GitHub returned an invalid authorization URL. Please retry.')
       window.location.assign(authorizationUrl)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to start GitHub connection')
@@ -187,6 +201,10 @@ export default function ImportProjectsModal({
           setError('No projects or experience found in that file.')
           return setPhase('error')
         }
+        if (file.name.toLowerCase().endsWith('.zip')) {
+          clearLinkedInArchiveRequest()
+          setArchiveRequestedAt(null)
+        }
         loadProjects(res.projects)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to parse the file')
@@ -196,11 +214,18 @@ export default function ImportProjectsModal({
     [loadProjects]
   )
 
+  const rememberArchiveRequest = () => {
+    setArchiveRequestedAt(rememberLinkedInArchiveRequest())
+  }
+
   // Reset on open + when the source changes; auto-start GitHub (its input is implicit).
   useEffect(() => {
     if (!isOpen) return
     cancelledRef.current = false
     reset()
+    if (source === 'linkedin') {
+      setArchiveRequestedAt(readLinkedInArchiveRequest())
+    }
     if (source === 'github') beginGithub()
     return () => {
       cancelledRef.current = true
@@ -285,7 +310,11 @@ export default function ImportProjectsModal({
                 Pull projects from a source, review them, and insert the ones you pick.
               </p>
             </div>
-            <button onClick={onClose} className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg">
+            <button
+              onClick={onClose}
+              aria-label="Close import projects"
+              className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg"
+            >
               <X size={16} />
             </button>
           </div>
@@ -329,7 +358,38 @@ export default function ImportProjectsModal({
             )}
 
             {phase === 'input' && source === 'linkedin' && (
-              <div className="py-6 text-center">
+              <div className="space-y-4 py-2">
+                <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 text-left">
+                  <p className="text-xs font-semibold text-fg">1. Request your complete LinkedIn archive</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-fg-3">
+                    LinkedIn prepares the archive asynchronously. You can close this dialog and return
+                    when it is ready; this browser remembers that you requested it.
+                  </p>
+                  <a
+                    href={LINKEDIN_DATA_EXPORT_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={rememberArchiveRequest}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-line-2 px-3 py-2 text-xs font-semibold text-fg transition hover:bg-surface-2"
+                  >
+                    Request archive on LinkedIn
+                    <ExternalLink size={12} aria-hidden="true" />
+                  </a>
+                  {archiveRequestedAt && (
+                    <p className="mt-3 flex items-center gap-1.5 text-[10px] text-ok" role="status">
+                      <CheckCircle2 size={12} aria-hidden="true" />
+                      Request step saved on {formatLinkedInArchiveRequestDate(archiveRequestedAt)}.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-4 text-left">
+                  <p className="text-xs font-semibold text-fg">2. Import now or return with the archive</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-fg-3">
+                    Upload a profile PDF or current résumé now for a partial import, or upload the
+                    completed ZIP later for richer experience, education, and skills data.
+                  </p>
+                </div>
                 <input
                   ref={fileRef}
                   type="file"
@@ -342,11 +402,11 @@ export default function ImportProjectsModal({
                 />
                 <button
                   onClick={() => fileRef.current?.click()}
-                  className="mx-auto flex flex-col items-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-line-2 bg-surface px-8 py-8 text-fg-2 transition hover:border-accent hover:text-fg"
+                  className="mx-auto flex w-full flex-col items-center gap-2 rounded-[var(--radius-lg)] border border-dashed border-line-2 bg-surface px-8 py-8 text-fg-2 transition hover:border-accent hover:text-fg"
                 >
                   <FileUp size={22} />
-                  <span className="text-sm font-medium">Upload LinkedIn export or resume</span>
-                  <span className="text-[10px] text-fg-3">.zip (LinkedIn “Get a copy of your data”) · .pdf · .docx</span>
+                  <span className="text-sm font-medium">Choose archive, profile PDF, or résumé</span>
+                  <span className="text-[10px] text-fg-3">.zip · .pdf · .docx</span>
                 </button>
                 <p className="mx-auto mt-3 max-w-sm text-[10px] leading-relaxed text-fg-3">
                   Compliant by design — we never scrape LinkedIn. Your file is parsed in the request and not stored.

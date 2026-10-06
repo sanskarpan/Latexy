@@ -12,7 +12,6 @@ Endpoints:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
@@ -22,7 +21,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import settings
 from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import ApplicationSubmission, Compilation, JobApplication, Resume
@@ -32,10 +30,15 @@ from ..services.greenhouse_service import ApplicantData as GHApplicant
 from ..services.greenhouse_service import greenhouse_service
 from ..services.lever_service import ApplicantData as LeverApplicant
 from ..services.lever_service import lever_service
+from ..utils.bounded_io import read_file_bounded
+from ..utils.file_utils import get_job_files
+from ..utils.uuid_guard import ensure_uuid
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/apply", tags=["apply"])
+
+_MAX_APPLICATION_PDF_BYTES = 20 * 1024 * 1024
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
 
@@ -114,6 +117,7 @@ async def _get_resume_pdf(resume_id: str, user_id: str, db: AsyncSession) -> byt
     (falling back to the temp dir for fresh compilations).
     Raises HTTPException 404 if no PDF is found.
     """
+    ensure_uuid(resume_id, "Resume not found")
     # Verify resume ownership
     res = (await db.execute(
         select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id)
@@ -124,7 +128,11 @@ async def _get_resume_pdf(resume_id: str, user_id: str, db: AsyncSession) -> byt
     # Find latest successful compilation
     comp = (await db.execute(
         select(Compilation)
-        .where(Compilation.resume_id == resume_id, Compilation.status == "completed")
+        .where(
+            Compilation.resume_id == resume_id,
+            Compilation.user_id == user_id,
+            Compilation.status == "completed",
+        )
         .order_by(Compilation.created_at.desc())
         .limit(1)
     )).scalar_one_or_none()
@@ -139,16 +147,22 @@ async def _get_resume_pdf(resume_id: str, user_id: str, db: AsyncSession) -> byt
     if comp.pdf_path:
         try:
             from ..services.storage_service import download_bytes
-            data = download_bytes(comp.pdf_path)
+            data = download_bytes(comp.pdf_path, _MAX_APPLICATION_PDF_BYTES)
             if data:
                 return data
         except Exception as exc:
-            logger.warning(f"MinIO fetch failed for {comp.pdf_path}: {exc}")
+            logger.warning("MinIO fetch failed for application PDF", extra={"error_type": type(exc).__name__})
 
     # Fallback to temp dir
-    temp_pdf = Path(settings.TEMP_DIR) / comp.job_id / "resume.pdf"
-    if temp_pdf.exists():
-        return temp_pdf.read_bytes()
+    try:
+        _, temp_pdf, _ = get_job_files(str(comp.job_id))
+    except HTTPException:
+        temp_pdf = None
+    if temp_pdf is not None and temp_pdf.exists():
+        try:
+            return read_file_bounded(temp_pdf, _MAX_APPLICATION_PDF_BYTES)
+        except ValueError as exc:
+            logger.warning("Local PDF exceeds application limit", extra={"error_type": type(exc).__name__})
 
     raise HTTPException(
         status_code=422,
@@ -234,12 +248,12 @@ async def preview_greenhouse_job(
     try:
         company, job_id = greenhouse_service.parse_url(body.job_url)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail="Invalid Greenhouse job URL.") from exc
 
     try:
         details = await greenhouse_service.get_job_details(company, job_id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail="Greenhouse job was not found.") from exc
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=502,
@@ -265,12 +279,12 @@ async def preview_lever_job(
     try:
         company, posting_id = lever_service.parse_url(body.job_url)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail="Invalid Lever job URL.") from exc
 
     try:
         details = await lever_service.get_posting(company, posting_id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail="Lever job was not found.") from exc
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=502,
@@ -311,7 +325,7 @@ async def apply_greenhouse(
     try:
         company, job_id = greenhouse_service.parse_url(body.job_url)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail="Invalid Greenhouse job URL.") from exc
 
     # Fetch PDF
     pdf_bytes = await _get_resume_pdf(body.resume_id, user_id, db)
@@ -371,12 +385,23 @@ async def apply_greenhouse(
 
     except ValueError as exc:
         sub.status = "failed"
-        sub.error_message = str(exc)
-        logger.warning(f"Greenhouse submission rejected for user {user_id}: {exc}")
+        # Provider response bodies can contain echoed applicant fields or
+        # implementation details. Persist and return a stable public message;
+        # retain the raw exception only in server logs.
+        sub.error_message = "Greenhouse rejected the application"
+        logger.warning(
+            "Greenhouse submission rejected for user %s",
+            user_id,
+            extra={"error_type": type(exc).__name__},
+        )
     except httpx.HTTPStatusError as exc:
         sub.status = "failed"
         sub.error_message = f"Greenhouse API error {exc.response.status_code}"
-        logger.error(f"Greenhouse HTTP error for user {user_id}: {exc}")
+        logger.error(
+            "Greenhouse HTTP error for user %s",
+            user_id,
+            extra={"error_type": type(exc).__name__},
+        )
     except Exception:
         sub.status = "failed"
         # Do not leak internal exception text to the client — log it server-side only.
@@ -422,7 +447,7 @@ async def apply_lever(
     try:
         company, posting_id = lever_service.parse_url(body.job_url)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail="Invalid Lever job URL.") from exc
 
     # Fetch PDF
     pdf_bytes = await _get_resume_pdf(body.resume_id, user_id, db)
@@ -480,12 +505,20 @@ async def apply_lever(
 
     except ValueError as exc:
         sub.status = "failed"
-        sub.error_message = str(exc)
-        logger.warning(f"Lever submission rejected for user {user_id}: {exc}")
+        sub.error_message = "Lever rejected the application"
+        logger.warning(
+            "Lever submission rejected for user %s",
+            user_id,
+            extra={"error_type": type(exc).__name__},
+        )
     except httpx.HTTPStatusError as exc:
         sub.status = "failed"
         sub.error_message = f"Lever API error {exc.response.status_code}"
-        logger.error(f"Lever HTTP error for user {user_id}: {exc}")
+        logger.error(
+            "Lever HTTP error for user %s",
+            user_id,
+            extra={"error_type": type(exc).__name__},
+        )
     except Exception:
         sub.status = "failed"
         # Do not leak internal exception text to the client — log it server-side only.
@@ -535,6 +568,7 @@ async def get_submission(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single submission by ID (must belong to the authenticated user)."""
+    ensure_uuid(submission_id, "Submission not found")
     sub = (await db.execute(
         select(ApplicationSubmission).where(
             ApplicationSubmission.id == submission_id,

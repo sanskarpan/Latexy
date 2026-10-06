@@ -44,8 +44,8 @@ class HTMLParser(AbstractParser):
             return self._build_parsed_resume(text, filename, section_hints=headers)
 
         except Exception as e:
-            logger.error(f"Error parsing HTML: {e}")
-            raise ValueError(f"Failed to parse HTML: {str(e)}")
+            logger.error("Error parsing HTML", extra={"error_type": type(e).__name__})
+            raise ValueError("Failed to parse HTML input") from e
 
     def validate(self, file_content: bytes) -> tuple[bool, Optional[str]]:
         try:
@@ -53,5 +53,5 @@ class HTMLParser(AbstractParser):
             if '<html' not in content and '<!doctype' not in content:
                 return False, "Not a valid HTML file"
             return True, None
-        except Exception as e:
-            return False, str(e)
+        except Exception:
+            return False, "HTML validation failed"

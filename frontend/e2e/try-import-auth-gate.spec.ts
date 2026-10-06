@@ -132,4 +132,28 @@ test.describe('anonymous /try import authentication gate', () => {
     await expect(page.getByText(/GitHub isn't connected yet/i)).toBeVisible()
     expect(statusCalls).toBe(1)
   })
+
+  test.describe('mobile toolbar', () => {
+    test.use({ viewport: { width: 320, height: 720 } })
+
+    test('keeps primary toolbar actions within the viewport', async ({ page }) => {
+      await mockAnonymousTry(page)
+      await page.goto('/try', { waitUntil: 'domcontentloaded' })
+
+      const recompile = page.getByRole('button', { name: 'Recompile' })
+      const exportButton = page.getByRole('button', { name: /^Export/ })
+      const login = page.getByRole('link', { name: 'Log in' })
+      await expect(recompile).toBeVisible()
+      await expect(exportButton).toBeVisible()
+      await expect(login).toBeVisible()
+
+      for (const control of [recompile, exportButton, login]) {
+        const box = await control.boundingBox()
+        expect(box).not.toBeNull()
+        expect(box!.x).toBeGreaterThanOrEqual(0)
+        expect(box!.x + box!.width).toBeLessThanOrEqual(320)
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+    })
+  })
 })

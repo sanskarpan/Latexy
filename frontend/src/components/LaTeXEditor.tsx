@@ -2,7 +2,10 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from 'react'
+import katex from 'katex'
 import { toast } from 'sonner'
+import '@/lib/monaco-loader'
+import 'katex/dist/katex.min.css'
 
 let _latexLanguageRegistered = false
 import type { OnMount } from '@monaco-editor/react'
@@ -17,32 +20,112 @@ import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
 import { LATEX_SEARCH_PRESETS, type LatexSearchPreset } from '@/data/latex-search-presets'
 import { observeChanges, type TrackedChange, type TrackChangesHandle } from '@/lib/yjs-track-changes'
 import { classifyCollabClose } from '@/lib/collab-close'
+import { createYWebsocketChatTransport, type ChatTransport } from '@/lib/collab-chat'
+import { keepLatestSuggestionDecisions, namespaceSuggestionPresence, sanitizeSuggestionDecision, sanitizeSuggestionPresence, type SuggestionDecision, type SuggestionPresence } from '@/lib/suggestions'
+import {
+  extractCitationKeys,
+  extractLatexLabels,
+  matchLatexArgumentCompletion,
+} from '@/lib/latex-completions'
+import { buildLatexFoldingRanges } from '@/lib/latex-folding'
+import { countRenderedWords } from '@/lib/rendered-word-count'
+import { buildLatexHoverPreview, markdownCodeSpan, type LatexHoverPreview } from '@/lib/latex-hover-previews'
+import {
+  activateEditorKeybindings,
+  parseEditorKeybindingMode,
+  type EditorKeybindingAdapter,
+  type EditorKeybindingMode,
+} from '@/lib/editor-keybindings'
 
-const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
+const MonacoEditor = dynamic(() => import('@monaco-editor/react').then((module) => module.default), {
   ssr: false,
   loading: () => <div className="h-full w-full bg-bg" aria-hidden="true" />,
 })
 
 type MonacoEditorInstance = import('monaco-editor').editor.IStandaloneCodeEditor
 type MonacoNamespace = typeof import('monaco-editor')
+const completionBibliographyByModel = new WeakMap<
+  import('monaco-editor').editor.ITextModel,
+  () => string
+>()
 type LatexyMonacoTestWindow = Window & {
   __latexyMonacoEditor?: MonacoEditorInstance
   __latexyMonaco?: MonacoNamespace
+  __latexyKeybindingMode?: EditorKeybindingMode
+}
+
+function isEditorTestRuntime() {
+  return process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST === '1'
 }
 
 function exposeMonacoTestHook(editor: MonacoEditorInstance, monaco: MonacoNamespace) {
-  if (process.env.NODE_ENV === 'production' || typeof window === 'undefined') return
+  if (!isEditorTestRuntime() || typeof window === 'undefined') return
   const testWindow = window as LatexyMonacoTestWindow
   testWindow.__latexyMonacoEditor = editor
   testWindow.__latexyMonaco = monaco
 }
 
 function clearMonacoTestHook(editor?: MonacoEditorInstance | null) {
-  if (process.env.NODE_ENV === 'production' || typeof window === 'undefined') return
+  if (!isEditorTestRuntime() || typeof window === 'undefined') return
   const testWindow = window as LatexyMonacoTestWindow
   if (editor && testWindow.__latexyMonacoEditor && testWindow.__latexyMonacoEditor !== editor) return
   delete testWindow.__latexyMonacoEditor
   delete testWindow.__latexyMonaco
+}
+
+function LatexRichHoverCard({ preview, left, top }: {
+  preview: LatexHoverPreview
+  left: number
+  top: number
+}) {
+  return (
+    <div
+      role="tooltip"
+      data-testid="latex-rich-hover"
+      className="pointer-events-none absolute z-[70] max-w-sm rounded-[var(--radius-md)] border border-line bg-surface p-3 text-xs text-fg shadow-[var(--shadow-2)]"
+      style={{ left, top }}
+    >
+      {preview.kind === 'math' && (
+        <>
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-fg-3">Rendered math</p>
+          <div
+            className="overflow-x-auto py-1 text-center"
+            dangerouslySetInnerHTML={{
+              __html: katex.renderToString(preview.latex, {
+                displayMode: preview.displayMode,
+                throwOnError: false,
+                strict: 'warn',
+                trust: false,
+                output: 'htmlAndMathml',
+              }),
+            }}
+          />
+        </>
+      )}
+      {preview.kind === 'graphic' && (
+        <>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">Graphic include</p>
+          <p className="mt-2 break-all font-mono text-accent-strong">{preview.filename}</p>
+          {preview.options && <p className="mt-1 break-words text-fg-3">{preview.options}</p>}
+          <p className="mt-2 text-[10px] leading-relaxed text-fg-3">Previewed from source metadata; the compiled PDF is authoritative.</p>
+        </>
+      )}
+      {preview.kind === 'citation' && (
+        <>
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-fg-3">Citation preview</p>
+          <div className="space-y-2">
+            {preview.citations.slice(0, 5).map((citation) => (
+              <div key={citation.key}>
+                <p className="font-mono text-[10px] text-accent-strong">{citation.key}{citation.type ? ` · ${citation.type}` : ''}</p>
+                <p className="mt-0.5 font-medium">{citation.title ?? 'No saved bibliography metadata'}</p>
+                {(citation.author || citation.year) && <p className="mt-0.5 text-[10px] text-fg-3">{[citation.author, citation.year].filter(Boolean).join(' · ')}</p>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 // ── Collaboration permissions (Feature 40) ────────────────────────────────
@@ -78,8 +161,11 @@ export interface LaTeXEditorRef {
   highlightLine: (line: number) => void
   applyFix: (line: number, correctedCode: string) => void
   applyRewrite: (startLine: number, startColumn: number, endLine: number, endColumn: number, text: string) => void
+  /** Apply the exact server-authoritative source once, if the local source is unchanged. */
+  applySuggestionResult: (expectedContent: string, resultContent: string) => boolean
   applyMultipleRewrites: (edits: Array<{ startLine: number; startColumn: number; endLine: number; endColumn: number; text: string }>) => void
-  insertAtCursor: (text: string) => void
+  /** Insert text at the current caret. Returns false until Monaco is ready. */
+  insertAtCursor: (text: string) => boolean
   /** Returns pixel position of the cursor relative to the editor container, or null if unavailable */
   getCaretPosition: () => { top: number; left: number } | null
   acceptTrackedChange: (id: string) => void
@@ -91,6 +177,10 @@ export interface LaTeXEditorRef {
 interface LaTeXEditorProps {
   value: string
   onChange: (value: string) => void
+  /** Expose the live Monaco instance to integrations such as macro playback. */
+  onEditorReady?: (editor: MonacoEditorInstance | null) => void
+  /** Saved references.bib content used by citation autocomplete. */
+  bibliographyBibTeX?: string
   readOnly?: boolean
   logLines?: LogLine[]
   onSave?: () => void
@@ -112,6 +202,10 @@ interface LaTeXEditorProps {
   onExplainError?: (error: { line: number; message: string; surroundingLatex: string }) => void
   /** Actual page count from last compile result (null = not compiled yet) */
   pageCount?: number | null
+  /** Whether multi-page output should be styled as a resume overflow warning. */
+  warnOnMultiplePages?: boolean
+  /** pdftotext output from the last compile; used for an honest rendered-word count. */
+  renderedText?: string | null
   /** Called (debounced 200ms) when cursor moves to a different line — fires with raw line content */
   onCursorLineChange?: (lineContent: string, lineNumber: number) => void
   /** Called when cursor enters or leaves a summary/objective/profile section */
@@ -150,6 +244,15 @@ interface LaTeXEditorProps {
   collabRole?: string | null
   /** Fires when the set of remote-presence users changes */
   onPresenceChange?: (users: PresenceUser[]) => void
+  /** Exposes a bounded adapter over this editor's authenticated Y websocket. */
+  onChatTransport?: (transport: ChatTransport | null) => void
+  /** Ephemeral suggestion payload published through the existing Y.js awareness channel. */
+  suggestionPresence?: SuggestionPresence
+  /** Receives validated suggestion payloads from live peers. */
+  onSuggestionPresenceChange?: (peers: SuggestionPresence[]) => void
+  /** Server-confirmed decisions mirrored through Y.Map as a live notification. */
+  suggestionDecisions?: SuggestionDecision[]
+  onSuggestionDecisionsChange?: (decisions: SuggestionDecision[]) => void
   // ── Track Changes (Feature 41) ──────────────────────────────────────
   /** Current tracked changes to render as decorations */
   trackedChanges?: TrackedChange[]
@@ -178,7 +281,9 @@ const STRUCTURE_CMDS = [
 ]
 const DOC_CMDS = [
   'documentclass', 'usepackage', 'begin', 'end', 'item',
-  'label', 'ref', 'eqref', 'pageref', 'cite', 'citep', 'citet',
+  'label', 'ref', 'eqref', 'pageref', 'autoref', 'cref', 'Cref', 'vref', 'Vref', 'nameref',
+  'cite', 'citep', 'citet', 'citealp', 'citealt', 'citeauthor', 'citeyear',
+  'citeyearpar', 'nocite', 'parencite', 'textcite', 'autocite', 'footcite', 'smartcite',
   'bibitem', 'bibliography', 'bibliographystyle',
   'maketitle', 'title', 'author', 'date', 'today',
   'newcommand', 'renewcommand', 'providecommand',
@@ -430,10 +535,24 @@ function defineLatexyThemes(monaco: MonacoNamespace) {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, collabRole, onPresenceChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
+    { value, onChange, onEditorReady, bibliographyBibTeX = '', readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, warnOnMultiplePages = true, renderedText, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, collabRole, onPresenceChange, onChatTransport, suggestionPresence, onSuggestionPresenceChange, suggestionDecisions, onSuggestionDecisionsChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
     ref
   ) {
     const editorRef = useRef<any>(null)
+    const onEditorReadyRef = useRef(onEditorReady)
+    onEditorReadyRef.current = onEditorReady
+    const keybindingStatusRef = useRef<HTMLSpanElement>(null)
+    const keybindingAdapterRef = useRef<EditorKeybindingAdapter | null>(null)
+    const keybindingActivationRef = useRef(0)
+    const [keybindingMode, setKeybindingMode] = useState<EditorKeybindingMode>(() => {
+      if (typeof window === 'undefined') return 'standard'
+      return parseEditorKeybindingMode(localStorage.getItem('latexy_editor_keybindings'))
+    })
+    const [richHover, setRichHover] = useState<{
+      preview: LatexHoverPreview
+      left: number
+      top: number
+    } | null>(null)
     const monacoRef = useRef<any>(null)
     const disposablesRef = useRef<any[]>([])
     const proofreaderDecsRef = useRef<any>(null)
@@ -453,8 +572,20 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     spellCheckIssuesRef.current = spellCheckIssues
     const onPresenceChangeRef = useRef(onPresenceChange)
     onPresenceChangeRef.current = onPresenceChange
+    const onChatTransportRef = useRef(onChatTransport)
+    onChatTransportRef.current = onChatTransport
+    const onSuggestionPresenceChangeRef = useRef(onSuggestionPresenceChange)
+    onSuggestionPresenceChangeRef.current = onSuggestionPresenceChange
+    const onSuggestionDecisionsChangeRef = useRef(onSuggestionDecisionsChange)
+    onSuggestionDecisionsChangeRef.current = onSuggestionDecisionsChange
+    const suggestionDecisionsRef = useRef<SuggestionDecision[]>(suggestionDecisions ?? [])
+    suggestionDecisionsRef.current = suggestionDecisions ?? []
+    const suggestionPresenceRef = useRef<SuggestionPresence>(suggestionPresence ?? { items: [], decisions: [] })
+    suggestionPresenceRef.current = suggestionPresence ?? { items: [], decisions: [] }
     const onTrackedChangesUpdateRef = useRef(onTrackedChangesUpdate)
     onTrackedChangesUpdateRef.current = onTrackedChangesUpdate
+    const bibliographyBibTeXRef = useRef(bibliographyBibTeX)
+    bibliographyBibTeXRef.current = bibliographyBibTeX
 
     // Collaboration permissions: locked either by a known non-editing role or
     // by a permission-denied / revocation frame from the relay.
@@ -466,7 +597,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
     // Y.js collab refs — cleaned up on unmount
     const ydocRef = useRef<any>(null)
+    const suggestionYTextRef = useRef<any>(null)
     const providerRef = useRef<any>(null)
+    const suggestionDecisionsMapRef = useRef<any>(null)
     const bindingRef = useRef<any>(null)
     // Track changes refs (Feature 41)
     const trackChangesRef = useRef<TrackChangesHandle | null>(null)
@@ -479,6 +612,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     // Cleanup Y.js session on unmount
     useEffect(() => {
       return () => {
+        keybindingActivationRef.current += 1
+        keybindingAdapterRef.current?.dispose()
+        keybindingAdapterRef.current = null
         trackChangesRef.current?.cleanup()
         trackChangesRef.current = null
         bindingRef.current?.destroy()
@@ -487,8 +623,63 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         bindingRef.current = null
         providerRef.current = null
         ydocRef.current = null
+        suggestionYTextRef.current = null
+        onChatTransportRef.current?.(null)
       }
     }, [])
+
+    // Suggestions use awareness only; they are ephemeral metadata and never
+    // enter the Y.Text document. The existing authenticated provider remains
+    // the sole collaboration socket.
+    useEffect(() => {
+      providerRef.current?.awareness?.setLocalStateField('suggestions', suggestionPresenceRef.current)
+    }, [suggestionPresence])
+
+    useEffect(() => {
+      const map = suggestionDecisionsMapRef.current
+      // The relay only permits document writes from owner/editor roles. This
+      // map is a notification mirror; the server endpoint remains authoritative.
+      if (!map || (collabRole !== 'owner' && collabRole !== 'editor')) return
+      const prefix = providerRef.current?.awareness?.clientID == null ? '' : `${providerRef.current.awareness.clientID}:`
+      for (const decision of suggestionDecisionsRef.current.slice(-50)) {
+        const id = /^[a-zA-Z0-9_-]{1,32}:/.test(decision.id) ? decision.id : `${prefix}${decision.id}`
+        if (id) map.set(id, { ...decision, id })
+      }
+      const retained = new Set(keepLatestSuggestionDecisions(Array.from(map.values())).map((decision) => decision.id))
+      for (const [key, value] of Array.from(map.entries()) as Array<[string, unknown]>) {
+        const decision = sanitizeSuggestionDecision(value)
+        if (!decision || !retained.has(decision.id)) map.delete(key)
+      }
+    }, [collabRole, suggestionDecisions])
+
+    async function applyKeybindingMode(editor: MonacoEditorInstance, mode: EditorKeybindingMode) {
+      const activation = ++keybindingActivationRef.current
+      keybindingAdapterRef.current?.dispose()
+      keybindingAdapterRef.current = null
+      try {
+        const adapter = await activateEditorKeybindings(mode, editor, keybindingStatusRef.current)
+        if (activation !== keybindingActivationRef.current || editorRef.current !== editor) {
+          adapter.dispose()
+          return
+        }
+        keybindingAdapterRef.current = adapter
+        if (isEditorTestRuntime() && typeof window !== 'undefined') {
+          ;(window as LatexyMonacoTestWindow).__latexyKeybindingMode = mode
+        }
+      } catch (error) {
+        console.error(`[LaTeXEditor] Failed to activate ${mode} keybindings`, error)
+        if (keybindingStatusRef.current) keybindingStatusRef.current.textContent = 'KEYBINDINGS ERROR'
+        toast.error(`${mode === 'vim' ? 'Vim' : 'Emacs'} keybindings could not be loaded`)
+      }
+    }
+
+    useEffect(() => {
+      localStorage.setItem('latexy_editor_keybindings', keybindingMode)
+      const editor = editorRef.current as MonacoEditorInstance | null
+      if (editor) void applyKeybindingMode(editor, keybindingMode)
+    // The active editor is intentionally read from its ref; mode is the user-controlled trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [keybindingMode])
 
     const [searchPanelOpen, setSearchPanelOpen] = useState(false)
 
@@ -514,8 +705,8 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       // Prefer the public actions.findWithArgs action (registered in Monaco 0.34+,
       // stable in 0.55). It accepts searchString + isRegex directly without
       // touching any internal findController methods.
-      if (editor.getAction('actions.findWithArgs')) {
-        editor.trigger('keyboard', 'actions.findWithArgs', {
+      if (editor.getAction('editor.actions.findWithArgs')) {
+        editor.trigger('keyboard', 'editor.actions.findWithArgs', {
           searchString: preset.pattern,
           isRegex: true,
           matchCase: false,
@@ -544,6 +735,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       const textLines = lines.filter(l => !l.trim().startsWith('\\') || l.includes('item'))
       return Math.max(1, Math.round(textLines.length / 50))
     }, [value, pageCount])
+    const renderedWordCount = useMemo(
+      () => renderedText === null || renderedText === undefined
+        ? null
+        : countRenderedWords(renderedText),
+      [renderedText],
+    )
 
     useImperativeHandle(ref, () => ({
       setValue(content: string, opts?: { reveal?: boolean }) {
@@ -577,6 +774,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           range: new monaco.Range(lineNum, 1, lineNum, lineContent.length + 1),
           text: correctedCode,
         }])
+        onChange(editor.getValue())
       },
       applyRewrite(startLine: number, startColumn: number, endLine: number, endColumn: number, text: string) {
         const editor = editorRef.current
@@ -586,7 +784,32 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           range: new monaco.Range(startLine, startColumn, endLine, endColumn),
           text,
         }])
+        onChange(editor.getValue())
         editor.focus()
+      },
+      applySuggestionResult(expectedContent: string, resultContent: string) {
+        const editor = editorRef.current
+        if (!editor) return false
+        const yText = suggestionYTextRef.current
+        const ydoc = ydocRef.current
+        const current = yText ? yText.toString() : editor.getValue()
+        // The server's CAS was against expectedContent. Do not overwrite a
+        // newer local/collaborative edit while reconciling its committed result.
+        if (current !== expectedContent) return false
+        if (yText && ydoc) {
+          ydoc.transact(() => {
+            if (yText.toString() !== expectedContent) return
+            yText.delete(0, yText.length)
+            if (resultContent) yText.insert(0, resultContent)
+          }, 'suggestion-authoritative')
+        } else {
+          const model = editor.getModel()
+          if (!model || model.getValue() !== expectedContent) return false
+          model.setValue(resultContent)
+        }
+        onChange(editor.getValue())
+        editor.focus()
+        return true
       },
       applyMultipleRewrites(edits) {
         const editor = editorRef.current
@@ -601,14 +824,15 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           range: new monaco.Range(e.startLine, e.startColumn, e.endLine, e.endColumn),
           text: e.text,
         })))
+        onChange(editor.getValue())
         editor.focus()
       },
       insertAtCursor(text: string) {
         const editor = editorRef.current
         const monaco = monacoRef.current
-        if (!editor || !monaco) return
+        if (!editor || !monaco) return false
         const position = editor.getPosition()
-        if (!position) return
+        if (!position) return false
         editor.executeEdits('insert-bibtex', [{
           range: new monaco.Range(
             position.lineNumber, position.column,
@@ -616,7 +840,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           ),
           text,
         }])
+        // @monaco-editor/react does not consistently forward programmatic
+        // executeEdits through its onChange prop. Synchronize the controlled
+        // parent explicitly or its next render restores the pre-insert value.
+        onChange(editor.getValue())
         editor.focus()
+        return true
       },
       getCaretPosition() {
         const editor = editorRef.current
@@ -628,9 +857,17 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
         return { top: pixel.top, left: pixel.left }
       },
       acceptTrackedChange: (id: string) => { trackChangesRef.current?.acceptChange(id) },
-      rejectTrackedChange: (id: string) => { trackChangesRef.current?.rejectChange(id) },
+      rejectTrackedChange: (id: string) => {
+        if (trackChangesRef.current?.rejectChange(id) === false) {
+          toast.error('This change overlaps newer edits and could not be rejected safely')
+        }
+      },
       acceptAllTrackedChanges: () => { trackChangesRef.current?.acceptAll() },
-      rejectAllTrackedChanges: () => { trackChangesRef.current?.rejectAll() },
+      rejectAllTrackedChanges: () => {
+        if (trackChangesRef.current?.rejectAll() === false) {
+          toast.error('Some changes overlap newer edits and were left pending')
+        }
+      },
     }))
 
     // Apply log markers whenever logLines change
@@ -884,42 +1121,95 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       model.setValue(value)
     }, [collabEnabled, value])
 
-    // Auto-compile: debounce 2s after last keystroke
-    useEffect(() => {
-      const editor = editorRef.current
-      if (!editor) return
-
-      let timer: ReturnType<typeof setTimeout> | null = null
-      const disposable = editor.onDidChangeModelContent(() => {
-        if (!autoCompileRef.current) return
-        if (timer) clearTimeout(timer)
-        timer = setTimeout(() => {
-          const model = editor.getModel()
-          if (!model || model.getValueLength() < 100) return
-          autoCompileRef.current?.(editor.getValue())
-        }, 2000)
-      })
-
-      return () => {
-        disposable.dispose()
-        if (timer) clearTimeout(timer)
-      }
-    }, []) // stable — uses ref for callback
-
     // Cleanup on unmount
     useEffect(() => {
       return () => {
+        onEditorReadyRef.current?.(null)
         clearMonacoTestHook(editorRef.current)
         for (const d of disposablesRef.current) d?.dispose?.()
         disposablesRef.current = []
+        editorRef.current = null
+        monacoRef.current = null
       }
     }, [])
 
     const handleEditorDidMount: OnMount = async (editor, monaco) => {
       editorRef.current = editor
       monacoRef.current = monaco
+      onEditorReadyRef.current?.(editor)
       exposeMonacoTestHook(editor, monaco)
+      void applyKeybindingMode(editor, keybindingMode)
       disposablesRef.current.push({ dispose: () => clearMonacoTestHook(editor) })
+      const mountedModel = editor.getModel()
+      if (mountedModel) {
+        completionBibliographyByModel.set(mountedModel, () => bibliographyBibTeXRef.current)
+        disposablesRef.current.push({
+          dispose: () => completionBibliographyByModel.delete(mountedModel),
+        })
+      }
+
+      let richHoverTimer: ReturnType<typeof setTimeout> | null = null
+      const clearRichHover = () => {
+        if (richHoverTimer) clearTimeout(richHoverTimer)
+        richHoverTimer = null
+        setRichHover(null)
+      }
+      const hoverMoveDisposable = editor.onMouseMove((event) => {
+        if (richHoverTimer) clearTimeout(richHoverTimer)
+        const model = editor.getModel()
+        const position = event.target.position
+        if (!model || !position) {
+          setRichHover(null)
+          return
+        }
+        richHoverTimer = setTimeout(() => {
+          if (editor.getModel() !== model) return
+          const preview = buildLatexHoverPreview(
+            model.getValue(),
+            completionBibliographyByModel.get(model)?.() ?? '',
+            model.getOffsetAt(position),
+          )
+          if (!preview) {
+            setRichHover(null)
+            return
+          }
+          const visible = editor.getScrolledVisiblePosition(position)
+          if (!visible) return
+          const layout = editor.getLayoutInfo()
+          setRichHover({
+            preview,
+            left: Math.max(8, Math.min(visible.left + 28, layout.width - 370)),
+            top: visible.top + visible.height + 8,
+          })
+        }, 250)
+      })
+      const hoverLeaveDisposable = editor.onMouseLeave(clearRichHover)
+      const hoverScrollDisposable = editor.onDidScrollChange(clearRichHover)
+      disposablesRef.current.push(hoverMoveDisposable, hoverLeaveDisposable, hoverScrollDisposable, {
+        dispose: clearRichHover,
+      })
+
+      // Register against the real Monaco instance. A mount-only React effect can
+      // run before the dynamically imported editor exists and silently skip this
+      // listener for the component's entire lifetime.
+      let autoCompileTimer: ReturnType<typeof setTimeout> | null = null
+      const autoCompileDisposable = editor.onDidChangeModelContent(() => {
+        if (!autoCompileRef.current) return
+        if (autoCompileTimer) clearTimeout(autoCompileTimer)
+        autoCompileTimer = setTimeout(() => {
+          const model = editor.getModel()
+          if (!model) return
+          const content = editor.getValue()
+          if (!content.trim()) return
+          autoCompileRef.current?.(content)
+        }, 2000)
+      })
+      disposablesRef.current.push(autoCompileDisposable)
+      disposablesRef.current.push({
+        dispose: () => {
+          if (autoCompileTimer) clearTimeout(autoCompileTimer)
+        },
+      })
 
       // Always (re)define themes before applying one — never behind the language guard.
       defineLatexyThemes(monaco)
@@ -1065,55 +1355,31 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             }
           }
 
-          // \cite{ — scan document for \bibitem keys
-          const citeMatch = text.match(/\\(?:cite[tp]?|nocite)\{([^}]*)$/)
-          if (citeMatch) {
-            const partial = citeMatch[1]
+          // Citation/reference arguments — source-local plus the saved references.bib.
+          const argument = matchLatexArgumentCompletion(text)
+          if (argument) {
             const allText = model.getValue()
-            const bibRe = /\\bibitem(?:\[[^\]]*\])?\{([^}]+)\}/g
-            let m: RegExpExecArray | null
-            const seen = new Set<string>()
-            while ((m = bibRe.exec(allText)) !== null) {
-              if (!seen.has(m[1]) && m[1].startsWith(partial)) {
-                seen.add(m[1])
+            const candidates = argument.kind === 'citation'
+              ? extractCitationKeys(allText, completionBibliographyByModel.get(model)?.() ?? '')
+              : extractLatexLabels(allText)
+            for (const candidate of candidates) {
+              if (
+                candidate.startsWith(argument.partial)
+                && !argument.alreadyUsed.has(candidate)
+              ) {
                 suggestions.push({
-                  label: m[1],
-                  kind: monaco.languages.CompletionItemKind.Reference,
-                  insertText: m[1],
+                  label: candidate,
+                  kind: argument.kind === 'citation'
+                    ? monaco.languages.CompletionItemKind.Reference
+                    : monaco.languages.CompletionItemKind.Variable,
+                  insertText: candidate,
                   range: {
                     startLineNumber: position.lineNumber,
-                    startColumn: position.column - partial.length,
+                    startColumn: position.column - argument.partial.length,
                     endLineNumber: position.lineNumber,
                     endColumn: position.column,
                   },
-                  detail: 'Bibliography key',
-                })
-              }
-            }
-          }
-
-          // \ref{ / \eqref{ / \pageref{ — scan document for \label keys
-          const refMatch = text.match(/\\(?:eq)?(?:ref|pageref)\{([^}]*)$/)
-          if (refMatch) {
-            const partial = refMatch[1]
-            const allText = model.getValue()
-            const labelRe = /\\label\{([^}]+)\}/g
-            let m: RegExpExecArray | null
-            const seen = new Set<string>()
-            while ((m = labelRe.exec(allText)) !== null) {
-              if (!seen.has(m[1]) && m[1].startsWith(partial)) {
-                seen.add(m[1])
-                suggestions.push({
-                  label: m[1],
-                  kind: monaco.languages.CompletionItemKind.Variable,
-                  insertText: m[1],
-                  range: {
-                    startLineNumber: position.lineNumber,
-                    startColumn: position.column - partial.length,
-                    endLineNumber: position.lineNumber,
-                    endColumn: position.column,
-                  },
-                  detail: 'Label',
+                  detail: argument.kind === 'citation' ? 'Bibliography key' : 'Document label',
                 })
               }
             }
@@ -1143,86 +1409,72 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           return { suggestions }
         },
       })
-      disposablesRef.current.push(completionDisposable)
+      // Language providers are Monaco-global and guarded by
+      // _latexLanguageRegistered. Disposing them with the first editor instance
+      // would permanently remove autocomplete from later editor mounts.
+      void completionDisposable
 
       // ── Folding range provider ─────────────────────────────────────
       const foldingDisposable = monaco.languages.registerFoldingRangeProvider('latex', {
         provideFoldingRanges(model: import('monaco-editor').editor.ITextModel) {
-          const ranges: any[] = []
-          const lines = model.getLinesContent()
-
-          // \begin / \end pairs
-          const stack: { line: number; env: string }[] = []
-          for (let i = 0; i < lines.length; i++) {
-            const stripped = lines[i].replace(/(?<!\\)%.*$/, '')
-            const beginM = stripped.match(/\\begin\{([^}]+)\}/)
-            if (beginM) {
-              stack.push({ line: i + 1, env: beginM[1] })
-              continue
-            }
-            const endM = stripped.match(/\\end\{([^}]+)\}/)
-            if (endM) {
-              for (let j = stack.length - 1; j >= 0; j--) {
-                if (stack[j].env === endM[1]) {
-                  if (i + 1 > stack[j].line) {
-                    ranges.push({
-                      start: stack[j].line,
-                      end: i + 1,
-                      kind: monaco.languages.FoldingRangeKind.Region,
-                    })
-                  }
-                  stack.splice(j, 1)
-                  break
-                }
-              }
-            }
-          }
-
-          // Section hierarchy
-          const sectionCmds = [
-            { re: /\\part\*?\s*\{/, level: 0 },
-            { re: /\\chapter\*?\s*\{/, level: 1 },
-            { re: /\\section\*?\s*\{/, level: 2 },
-            { re: /\\subsection\*?\s*\{/, level: 3 },
-            { re: /\\subsubsection\*?\s*\{/, level: 4 },
-            { re: /\\paragraph\*?\s*\{/, level: 5 },
-          ]
-          const sections: { line: number; level: number }[] = []
-          for (let i = 0; i < lines.length; i++) {
-            const stripped = lines[i].replace(/(?<!\\)%.*$/, '')
-            for (const { re, level } of sectionCmds) {
-              if (re.test(stripped)) {
-                sections.push({ line: i + 1, level })
-                break
-              }
-            }
-          }
-          for (let i = 0; i < sections.length; i++) {
-            const cur = sections[i]
-            let end = lines.length
-            for (let j = i + 1; j < sections.length; j++) {
-              if (sections[j].level <= cur.level) {
-                end = sections[j].line - 1
-                break
-              }
-            }
-            if (end > cur.line) {
-              ranges.push({
-                start: cur.line,
-                end,
-                kind: monaco.languages.FoldingRangeKind.Region,
-              })
-            }
-          }
-
-          return ranges
+          return buildLatexFoldingRanges(model.getValue()).map((range) => ({
+            ...range,
+            kind: monaco.languages.FoldingRangeKind.Region,
+          }))
         },
       })
-      disposablesRef.current.push(foldingDisposable)
+      void foldingDisposable
 
       // ── Hover provider (show command description) ──────────────────
       const hoverDisposable = monaco.languages.registerHoverProvider('latex', {
         provideHover(model: import('monaco-editor').editor.ITextModel, position: import('monaco-editor').Position) {
+          const preview = buildLatexHoverPreview(
+            model.getValue(),
+            completionBibliographyByModel.get(model)?.() ?? '',
+            model.getOffsetAt(position),
+          )
+          if (preview) {
+            const start = model.getPositionAt(preview.start)
+            const end = model.getPositionAt(preview.end)
+            const range = new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column)
+            if (preview.kind === 'math') {
+              return {
+                range,
+                contents: [
+                  { value: '**Rendered math**' },
+                  { value: `Preview: ${markdownCodeSpan(preview.latex)}` },
+                  { value: '_Point at the formula for the visual KaTeX preview._' },
+                ],
+              }
+            }
+            if (preview.kind === 'graphic') {
+              return {
+                range,
+                contents: [
+                  { value: '**Graphic include**' },
+                  { value: `File: ${markdownCodeSpan(preview.filename)}` },
+                  ...(preview.options ? [{ value: `Options: ${markdownCodeSpan(preview.options)}` }] : []),
+                  { value: '_The current single-source workspace has no uploaded asset to thumbnail; the compiled PDF remains authoritative._' },
+                ],
+              }
+            }
+            const contents: Array<{ value: string }> = [{ value: '**Citation preview**' }]
+            for (const citation of preview.citations.slice(0, 5)) {
+              const key = citation.key
+              const title = citation.title?.replace(/[\\`*_{}[\]()#+.!|>-]/g, '\\$&')
+              const author = citation.author?.replace(/[\\`*_{}[\]()#+.!|>-]/g, '\\$&')
+              const year = citation.year?.replace(/[\\`*_{}[\]()#+.!|>-]/g, '\\$&')
+              contents.push({
+                value: [
+                  `${markdownCodeSpan(key)}${citation.type ? ` · ${citation.type}` : ''}`,
+                  title ? `**${title}**` : '_No saved bibliography metadata_',
+                  [author, year].filter(Boolean).join(' · '),
+                ].filter(Boolean).join('  \n'),
+              })
+            }
+            return { range, contents }
+          }
+
           const word = model.getWordAtPosition(position)
           if (!word) return null
 
@@ -1263,7 +1515,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           }
         },
       })
-      disposablesRef.current.push(hoverDisposable)
+      void hoverDisposable
 
         _latexLanguageRegistered = true
       } // end !_latexLanguageRegistered
@@ -1608,6 +1860,10 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             } catch {
               /* keep defaults */
             }
+            // Chat uses this protocol extension for its own rate-limit and
+            // live-revocation notices. The chat transport observes the same
+            // frame; do not turn a chat-only denial into an editor lock.
+            if (code === 'chat_rate_limited' || code === 'chat_forbidden') return
             // A role change is not a permission loss: the relay drops the socket
             // so the client re-handshakes with the new role. Locking here would
             // undo a promotion — the user would come back with less access than
@@ -1632,6 +1888,9 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           let collabGiveUpNotified = false
           let ticketRefreshInFlight = false
           provider.on('connection-close', (event: CloseEvent | null) => {
+            // Awareness is ephemeral; never retain peer suggestions after a
+            // disconnected session until a fresh awareness snapshot arrives.
+            onSuggestionPresenceChangeRef.current?.([])
             const code = event?.code
             const action = classifyCollabClose(code, transientCollabRejections)
             // provider.disconnect() clears shouldConnect before it emits close;
@@ -1684,6 +1943,19 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
           })
 
           const yText = ydoc.getText('content')
+          suggestionYTextRef.current = yText
+          const suggestionDecisionsMap = ydoc.getMap('suggestion-decisions')
+          suggestionDecisionsMapRef.current = suggestionDecisionsMap
+          const emitSuggestionDecisions = () => {
+            const allValues = Array.from(suggestionDecisionsMap.values())
+            const ownPrefix = `${provider.awareness.clientID}:`
+            const decisions = keepLatestSuggestionDecisions(allValues).map((decision) =>
+              decision.id.startsWith(ownPrefix) ? { ...decision, id: decision.id.slice(ownPrefix.length) } : decision,
+            )
+            onSuggestionDecisionsChangeRef.current?.(decisions)
+          }
+          suggestionDecisionsMap.observe(emitSuggestionDecisions)
+          emitSuggestionDecisions()
           const model = editor.getModel()
           if (!model) return
 
@@ -1705,13 +1977,14 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             trackChangesRef.current?.cleanup()
             trackChangesRef.current = observeChanges(yText, provider, (updatedChanges) => {
               onTrackedChangesUpdateRef.current?.(updatedChanges)
-            })
+            }, Y)
           }
 
           provider.awareness.setLocalStateField('user', {
             name: collabUser.name,
             color: collabUser.color,
           })
+          provider.awareness.setLocalStateField('suggestions', suggestionPresenceRef.current)
 
           // Broadcast presence changes to parent
           provider.awareness.on('change', () => {
@@ -1721,6 +1994,11 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
               .map(([, s]: [number, any]) => s?.user)
               .filter(Boolean)
             onPresenceChangeRef.current?.(others)
+            const peerSuggestions = Array.from(states.entries())
+              .filter(([id]: [number, any]) => id !== provider.awareness.clientID)
+              .map(([id, state]: [number, any]) => namespaceSuggestionPresence(sanitizeSuggestionPresence(state?.suggestions), id))
+              .filter((payload) => payload.items.length > 0 || payload.decisions.length > 0)
+            onSuggestionPresenceChangeRef.current?.(peerSuggestions)
           })
 
           // Seed the Y.Doc with the current value once synced (if remote doc is empty)
@@ -1734,6 +2012,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
           ydocRef.current = ydoc
           providerRef.current = provider
+          onChatTransportRef.current?.(createYWebsocketChatTransport(provider))
         } catch (err) {
           console.warn('[LaTeXEditor] Y.js collab init failed:', err)
         }
@@ -1743,35 +2022,23 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
 
     return (
       <div className="flex h-full flex-col">
-        {!value ? (
-          <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-            <p className="text-sm uppercase tracking-[0.14em] text-fg-3">Empty document</p>
-            <p className="mt-2 max-w-sm text-xs text-fg-3">
-              {hideEmptyAction ? 'Content will appear here once generated.' : 'Start writing or use a sample template.'}
-            </p>
-            {!hideEmptyAction && (
-              <button
-                onClick={() => onChange(BLANK_RESUME_TEMPLATE)}
-                className="mt-4 rounded-[var(--radius-md)] border border-line bg-surface px-4 py-2 text-xs font-medium text-fg-2 transition hover:bg-surface-2"
-              >
-                Insert Sample Resume
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="relative min-h-0 flex-1">
-            <LaTeXSearchPanel
-              presets={LATEX_SEARCH_PRESETS}
-              isOpen={searchPanelOpen}
-              onToggle={() => setSearchPanelOpen((v) => !v)}
-              onClose={() => setSearchPanelOpen(false)}
-              onPresetSelect={handlePresetSelect}
-            />
-            <MonacoEditor
+        <div className="relative min-h-0 flex-1">
+          <LaTeXSearchPanel
+            presets={LATEX_SEARCH_PRESETS}
+            isOpen={searchPanelOpen}
+            onToggle={() => setSearchPanelOpen((v) => !v)}
+            onClose={() => setSearchPanelOpen(false)}
+            onPresetSelect={handlePresetSelect}
+          />
+          <MonacoEditor
               height="100%"
               defaultLanguage="latex"
               theme={editorTheme}
-              {...(collabEnabled ? { defaultValue: '' } : { value })}
+              // A collaborative editor is uncontrolled once Y.js binds it, but
+              // it must still start with the fetched REST content. Mounting
+              // Monaco with an empty model can emit onChange('') before the
+              // async collaboration imports finish, erasing the parent buffer.
+              {...(collabEnabled ? { defaultValue: value } : { value })}
               onChange={(v) => onChange(v || '')}
               onMount={handleEditorDidMount}
               options={{
@@ -1785,6 +2052,10 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 automaticLayout: true,
                 tabSize: 2,
                 insertSpaces: true,
+                // Keep Monaco's native multi-cursor contract explicit so future
+                // option presets cannot silently replace Option/Alt-click.
+                multiCursorModifier: 'alt',
+                multiCursorPaste: 'spread',
                 renderLineHighlight: 'line',
                 cursorBlinking: 'smooth',
                 cursorSmoothCaretAnimation: 'on',
@@ -1814,9 +2085,25 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 renderValidationDecorations: 'on',
                 glyphMargin: true,
               }}
-            />
-          </div>
-        )}
+          />
+          {richHover && <LatexRichHoverCard {...richHover} />}
+          {!value && (
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+              <p className="text-sm uppercase tracking-[0.14em] text-fg-3">Empty document</p>
+              <p className="mt-2 max-w-sm text-xs text-fg-3">
+                {hideEmptyAction ? 'Content will appear here once generated.' : 'Start writing or use a sample template.'}
+              </p>
+              {!hideEmptyAction && (
+                <button
+                  onClick={() => onChange(BLANK_RESUME_TEMPLATE)}
+                  className="pointer-events-auto mt-4 rounded-[var(--radius-md)] border border-line bg-surface px-4 py-2 text-xs font-medium text-fg-2 transition hover:bg-surface-2"
+                >
+                  Insert Sample Resume
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Status bar */}
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line bg-bg px-3 py-1 text-[12px] uppercase tracking-[0.12em]">
@@ -1828,6 +2115,20 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 : 'LaTeX editor'}
           </span>
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-fg-3">
+            <label className="flex items-center gap-1 normal-case tracking-normal" title="Editor keybinding mode">
+              <span className="sr-only">Editor keybindings</span>
+              <select
+                aria-label="Editor keybindings"
+                value={keybindingMode}
+                onChange={(event) => setKeybindingMode(parseEditorKeybindingMode(event.target.value))}
+                className="rounded border border-line bg-surface px-1 py-0.5 text-[10px] uppercase text-fg-2 outline-none focus:border-accent"
+              >
+                <option value="standard">Standard</option>
+                <option value="vim">Vim</option>
+                <option value="emacs">Emacs</option>
+              </select>
+              <span ref={keybindingStatusRef} aria-live="polite" className="min-w-0 max-w-32 truncate text-[9px] text-fg-3" />
+            </label>
             {onAutoCompile && (
               <span className="flex items-center gap-1 text-[12px] text-accent-strong">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
@@ -1837,16 +2138,18 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
             {/* Page count badge — actual (post-compile) or estimated (pre-compile) */}
             {(pageCount !== null && pageCount !== undefined) ? (
               <span
-                title={`Resume is ${pageCount} page${pageCount === 1 ? '' : 's'}`}
+                title={`${warnOnMultiplePages ? 'Resume' : 'Document'} is ${pageCount} page${pageCount === 1 ? '' : 's'}`}
                 className={`text-[12px] font-medium px-1.5 py-0.5 rounded-[var(--radius-md)] ${
                   pageCount === 1
                     ? 'text-ok bg-ok/10'
+                    : !warnOnMultiplePages
+                    ? 'text-fg-2 bg-surface-2'
                     : pageCount === 2
                     ? 'text-warn bg-warn/10'
                     : 'text-err bg-err/10 animate-pulse'
                 }`}
               >
-                {pageCount} {pageCount === 1 ? 'page' : 'pages'}{pageCount > 1 ? ' ⚠' : ''}
+                {pageCount} {pageCount === 1 ? 'page' : 'pages'}{pageCount > 1 && warnOnMultiplePages ? ' ⚠' : ''}
               </span>
             ) : estimatedPageCount !== null ? (
               <span
@@ -1856,6 +2159,14 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
                 ~{estimatedPageCount} {estimatedPageCount === 1 ? 'page' : 'pages'}
               </span>
             ) : null}
+            {renderedWordCount !== null && (
+              <span
+                className="text-[12px] tabular-nums text-fg-3"
+                title="Word count from the last compiled PDF text (not LaTeX source tokens)"
+              >
+                {renderedWordCount.toLocaleString()} rendered {renderedWordCount === 1 ? 'word' : 'words'}
+              </span>
+            )}
             {onSpellCheckToggle && (
               <button
                 onClick={onSpellCheckToggle}

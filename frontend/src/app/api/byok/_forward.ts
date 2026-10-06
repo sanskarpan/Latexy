@@ -14,6 +14,10 @@ export function authHeaders(request: NextRequest): Record<string, string> {
   if (auth) headers['Authorization'] = auth
   const cookie = request.headers.get('cookie')
   if (cookie) headers['Cookie'] = cookie
+  const origin = request.headers.get('origin')
+  if (origin) headers['Origin'] = origin
+  const referer = request.headers.get('referer')
+  if (referer) headers['Referer'] = referer
   return headers
 }
 

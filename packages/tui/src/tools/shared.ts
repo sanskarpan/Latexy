@@ -37,7 +37,63 @@ export interface Resume {
  * else built on resolveResumeId — they simply were not in the list, and nothing
  * said so.
  */
-export const RESUME_PAGE = 200
+export const RESUME_PAGE = 100
+
+export interface ResumePage {
+  resumes: Resume[]
+  total?: number
+  page?: number
+  pages?: number
+}
+
+interface ResumeListOptions {
+  archived?: boolean
+  documentType?: string
+}
+
+/**
+ * Fetch every page of resumes visible to the current user.
+ *
+ * The API caps a page at 100 rows. Fetching only the first page made older
+ * resumes impossible to select in the TUI even though the response told us
+ * more pages existed. Keep pagination in one helper so `/list` and command
+ * pickers cannot drift apart again.
+ */
+export async function listAllResumes(
+  options: ResumeListOptions = {},
+): Promise<{ resumes: Resume[]; total: number }> {
+  const client = getApiClient()
+  const paramsFor = (page: number): string => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(RESUME_PAGE),
+    })
+    if (options.archived === true) params.set('archived', 'true')
+    if (options.documentType != null) params.set('document_type', options.documentType)
+    return params.toString()
+  }
+
+  const first = await client.get<ResumePage>(`/resumes/?${paramsFor(1)}`)
+  const firstResumes = first.resumes ?? []
+  const total = first.total ?? firstResumes.length
+  const pageCount = Math.max(
+    first.pages ?? 1,
+    Math.ceil(total / RESUME_PAGE),
+  )
+  if (pageCount <= 1) return { resumes: firstResumes, total }
+
+  const remaining: ResumePage[] = []
+  // Keep request pressure bounded for unusually large accounts. This runs only
+  // while opening a picker, where predictable ordering matters more than a
+  // burst of parallel requests.
+  for (let page = 2; page <= pageCount; page += 1) {
+    remaining.push(await client.get<ResumePage>(`/resumes/?${paramsFor(page)}`))
+  }
+  return {
+    resumes: [firstResumes, ...remaining.map(page => page.resumes ?? [])].flat(),
+    total,
+  }
+}
 
 /** Guard used by every authenticated command. Reports plainly and returns false. */
 export function requireAuth(): boolean {
@@ -67,13 +123,10 @@ export async function resolveResumeId(parsed: ParsedCommand): Promise<string | n
     parsed.positional.find(p => /^[0-9a-f-]{36}$/i.test(p))
   if (explicit) return explicit
 
-  const client = getApiClient()
   let resumes: Resume[] = []
-  let total = 0
   try {
-    const res = await client.get<{ resumes: Resume[]; total?: number }>(`/resumes/?limit=${RESUME_PAGE}`)
-    resumes = res.resumes ?? []
-    total = res.total ?? resumes.length
+    const result = await listAllResumes()
+    resumes = result.resumes
   } catch (err) {
     addMessage({ role: 'error', content: `Could not list resumes: ${describeError(err)}` })
     return null
@@ -93,15 +146,6 @@ export async function resolveResumeId(parsed: ParsedCommand): Promise<string | n
   const { defaultResumeId } = await readConfig()
   if (defaultResumeId != null) {
     if (resumes.some(r => r.id === defaultResumeId)) return defaultResumeId
-    // The listing is one page, so a default outside it is not evidence the
-    // resume is gone — ask directly before falling back to the picker. Only a
-    // genuinely deleted default should make us prompt again.
-    try {
-      await client.get<Resume>(`/resumes/${defaultResumeId}`)
-      return defaultResumeId
-    } catch {
-      /* deleted or inaccessible — prompt instead */
-    }
   }
 
   const { SelectOverlay } = await import('../components/overlays/SelectOverlay.js')
@@ -110,11 +154,7 @@ export async function resolveResumeId(parsed: ParsedCommand): Promise<string | n
     beginPick(resolve)
     openOverlay(
       React.createElement(SelectOverlay, {
-        // Say so when the list is a page rather than everything. Silently showing
-        // the first N of M reads as "these are all your resumes".
-        title: total > resumes.length
-          ? `Select a resume for /${parsed.name} — showing ${resumes.length} of ${total}`
-          : `Select a resume for /${parsed.name}`,
+        title: `Select a resume for /${parsed.name}`,
         load: async () =>
           resumes.map(r => ({ id: r.id, label: r.title, detail: formatAge(r.updated_at) })),
       }),

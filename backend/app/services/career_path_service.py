@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
 from ..database.models import CareerAnalysis, CareerRole, CareerTransition
+from .esco_service import ESCO_VERSION, esco_service
 
 logger = get_logger(__name__)
 
@@ -61,7 +62,7 @@ class CareerPathService:
             if extracted and extracted.lower() != "unknown":
                 return extracted
         except Exception as exc:
-            logger.warning(f"LLM role detection failed, using heuristic: {exc}")
+            logger.warning("LLM role detection failed, using heuristic", extra={"error_type": type(exc).__name__})
 
         return title
 
@@ -71,20 +72,18 @@ class CareerPathService:
         or a cventry degree arg.
         """
         # \resumeSubheading{Company}{Date}{Role}{Location}
-        m = re.search(r'\\resumeSubheading\s*\{[^}]*\}\s*\{[^}]*\}\s*\{([^}]+)\}', latex_content)
+        m = re.search(r"\\resumeSubheading\s*\{[^}]*\}\s*\{[^}]*\}\s*\{([^}]+)\}", latex_content)
         if m:
             return m.group(1).strip()
         # \cventry{years}{degree/title}{company}...
-        m = re.search(r'\\cventry\s*\{[^}]*\}\s*\{([^}]+)\}', latex_content)
+        m = re.search(r"\\cventry\s*\{[^}]*\}\s*\{([^}]+)\}", latex_content)
         if m:
             return m.group(1).strip()
         return "Software Engineer"
 
     # ── Role matching ─────────────────────────────────────────────────────────
 
-    async def match_career_role(
-        self, title: str, db: AsyncSession
-    ) -> Optional[CareerRole]:
+    async def match_career_role(self, title: str, db: AsyncSession) -> Optional[CareerRole]:
         """
         Fuzzy-match a free-text title against the career_roles table using
         PostgreSQL trigram similarity (pg_trgm extension).
@@ -94,19 +93,12 @@ class CareerPathService:
         try:
             # Try pg_trgm similarity first
             result = await db.execute(
-                text(
-                    "SELECT id, similarity(title, :title) AS sim "
-                    "FROM career_roles "
-                    "ORDER BY sim DESC "
-                    "LIMIT 1"
-                ),
+                text("SELECT id, similarity(title, :title) AS sim FROM career_roles ORDER BY sim DESC LIMIT 1"),
                 {"title": title},
             )
             row = result.fetchone()
             if row and row.sim and row.sim >= 0.25:
-                role_result = await db.execute(
-                    select(CareerRole).where(CareerRole.id == row.id)
-                )
+                role_result = await db.execute(select(CareerRole).where(CareerRole.id == row.id))
                 return role_result.scalar_one_or_none()
         except Exception:
             pass  # pg_trgm not installed — fall through to ILIKE
@@ -129,9 +121,7 @@ class CareerPathService:
 
         return None
 
-    async def search_roles(
-        self, query: str, db: AsyncSession, limit: int = 10
-    ) -> list[CareerRole]:
+    async def search_roles(self, query: str, db: AsyncSession, limit: int = 10) -> list[CareerRole]:
         """Search career roles by partial title match for autocomplete."""
         pattern = f"%{_escape_like(query)}%"
         result = await db.execute(
@@ -144,9 +134,7 @@ class CareerPathService:
 
     # ── Graph traversal ───────────────────────────────────────────────────────
 
-    async def find_path(
-        self, from_role_id: str, to_role_id: str, db: AsyncSession
-    ) -> list[CareerRole]:
+    async def find_path(self, from_role_id: str, to_role_id: str, db: AsyncSession) -> list[CareerRole]:
         """
         BFS over career_transitions to find shortest path from from_role_id
         to to_role_id. Returns ordered list of roles INCLUDING from and to.
@@ -182,15 +170,11 @@ class CareerPathService:
         return await self._resolve_roles_ordered([from_role_id, to_role_id], db)
 
     @staticmethod
-    async def _resolve_roles_ordered(
-        role_ids: list[str], db: AsyncSession
-    ) -> list[CareerRole]:
+    async def _resolve_roles_ordered(role_ids: list[str], db: AsyncSession) -> list[CareerRole]:
         """Bulk-fetch roles by id in a single query, preserving input order."""
         if not role_ids:
             return []
-        result = await db.execute(
-            select(CareerRole).where(CareerRole.id.in_(role_ids))
-        )
+        result = await db.execute(select(CareerRole).where(CareerRole.id.in_(role_ids)))
         role_map = {r.id: r for r in result.scalars().all()}
         return [role_map[rid] for rid in role_ids if rid in role_map]
 
@@ -209,16 +193,48 @@ class CareerPathService:
         LLM call: compare current skills vs target required_skills.
         Returns dict with gap_skills, timeline_months, llm_analysis.
         """
-        required = set(target_role.required_skills or [])
-        have = set(s.strip() for s in current_skills)
-        gap_skills = sorted(required - have)
+        required_skills = list(target_role.required_skills or [])
+        mappings, taxonomy_available = await esco_service.normalize_many(
+            [*current_skills, *required_skills], language="en"
+        )
+        if taxonomy_available:
+            by_input = {mapping["input"].casefold(): mapping for mapping in mappings}
+
+            def canonicalize(values: list[str]) -> list[tuple[str, str]]:
+                canonical: list[tuple[str, str]] = []
+                seen: set[str] = set()
+                for value in values:
+                    mapping = by_input.get(value.casefold())
+                    label = mapping["preferred_label"] if mapping else value
+                    identity = mapping["uri"] if mapping and mapping["matched"] else f"text:{label.casefold()}"
+                    if identity not in seen:
+                        seen.add(identity)
+                        canonical.append((identity, label))
+                return canonical
+
+            canonical_current = canonicalize(current_skills)
+            canonical_required = canonicalize(required_skills)
+            have_ids = {identity for identity, _ in canonical_current}
+            normalized_current_skills = [label for _, label in canonical_current]
+            gap_skills = sorted(label for identity, label in canonical_required if identity not in have_ids)
+        else:
+            normalized_current_skills = list(dict.fromkeys(skill.strip() for skill in current_skills))
+            current_labels = {skill.casefold() for skill in normalized_current_skills}
+            gap_skills = sorted(
+                dict.fromkeys(
+                    skill.strip()
+                    for skill in required_skills
+                    if skill.strip() and skill.casefold() not in current_labels
+                )
+            )
+            mappings = []
 
         # Estimate rough timeline from path transitions
         timeline_months = await self._estimate_timeline(path, db)
 
         # LLM narrative analysis
         llm_analysis = await self._llm_gap_analysis(
-            current_skills=current_skills,
+            current_skills=normalized_current_skills,
             target_role=target_role,
             gap_skills=gap_skills,
             path=path,
@@ -228,14 +244,16 @@ class CareerPathService:
         )
 
         return {
+            "current_skills": normalized_current_skills,
             "gap_skills": gap_skills,
             "timeline_months": timeline_months,
             "llm_analysis": llm_analysis,
+            "skill_taxonomy": f"ESCO {ESCO_VERSION}" if taxonomy_available else None,
+            "skill_taxonomy_language": "en" if taxonomy_available else None,
+            "skill_taxonomy_mappings": mappings or None,
         }
 
-    async def _estimate_timeline(
-        self, path: list[CareerRole], db: AsyncSession
-    ) -> int:
+    async def _estimate_timeline(self, path: list[CareerRole], db: AsyncSession) -> int:
         """Sum avg_years across path transitions, return total in months."""
         if len(path) <= 1:
             return 0
@@ -266,11 +284,11 @@ class CareerPathService:
         years_str = f"{timeline_months // 12}" if timeline_months else "N/A"
 
         prompt = f"""You are a career coach. A user's resume shows they have these skills:
-{', '.join(current_skills[:30]) or 'unspecified'}
+{", ".join(current_skills[:30]) or "unspecified"}
 
-They want to reach: **{target_role.title}** ({target_role.level.replace('-', ' ')}, {target_role.industry.replace('_', ' ')})
-Required skills for that role: {', '.join(target_role.required_skills or [])}
-Skills gap to address: {', '.join(gap_skills) or 'None — already qualified!'}
+They want to reach: **{target_role.title}** ({target_role.level.replace("-", " ")}, {target_role.industry.replace("_", " ")})
+Required skills for that role: {", ".join(target_role.required_skills or [])}
+Skills gap to address: {", ".join(gap_skills) or "None — already qualified!"}
 Suggested path: {path_str}
 Estimated timeline: ~{years_str} year(s)
 
@@ -289,7 +307,7 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
                 api_key=api_key,
             )
         except Exception as exc:
-            logger.warning(f"LLM gap analysis failed: {exc}")
+            logger.warning("LLM gap analysis failed", extra={"error_type": type(exc).__name__})
             # Fallback plaintext
             lines = [
                 f"## Career Path: {path_str}",
@@ -327,21 +345,18 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
                 max_tokens=300,
             )
             import json
+
             # Extract JSON array from response
-            m = re.search(r'\[.*?\]', result, re.DOTALL)
+            m = re.search(r"\[.*?\]", result, re.DOTALL)
             if m:
                 parsed = json.loads(m.group(0))
                 # Validate shape: keep only non-empty strings, cap the count.
                 if isinstance(parsed, list):
-                    skills = [
-                        s.strip()
-                        for s in parsed
-                        if isinstance(s, str) and s.strip()
-                    ][:40]
+                    skills = [s.strip() for s in parsed if isinstance(s, str) and s.strip()][:40]
                     if skills:
                         return skills
         except Exception as exc:
-            logger.warning(f"LLM skill extraction failed: {exc}")
+            logger.warning("LLM skill extraction failed", extra={"error_type": type(exc).__name__})
 
         return self._heuristic_extract_skills(latex_content)
 
@@ -364,33 +379,33 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
                 api_key=api_key,
             )
             import json
-            m = re.search(r'\[.*?\]', result, re.DOTALL)
+
+            m = re.search(r"\[.*?\]", result, re.DOTALL)
             if m:
                 parsed = json.loads(m.group(0))
                 if isinstance(parsed, list):
-                    return [
-                        s.strip()
-                        for s in parsed
-                        if isinstance(s, str) and s.strip()
-                    ][:20]
+                    return [s.strip() for s in parsed if isinstance(s, str) and s.strip()][:20]
         except Exception as exc:
-            logger.warning(f"LLM required-skill inference failed for '{role_title}': {exc}")
+            logger.warning(
+                "LLM required-skill inference failed for role",
+                extra={"error_type": type(exc).__name__},
+            )
         return []
 
     def _heuristic_extract_skills(self, latex_content: str) -> list[str]:
         """Extract skills by scanning Skills/Technologies sections."""
         skills = []
         in_skills = False
-        for line in latex_content.split('\n'):
-            if re.search(r'\\section\{.*?(?:skill|tech|language|tool)', line, re.I):
+        for line in latex_content.split("\n"):
+            if re.search(r"\\section\{.*?(?:skill|tech|language|tool)", line, re.I):
                 in_skills = True
-            elif re.search(r'\\section\{', line):
+            elif re.search(r"\\section\{", line):
                 in_skills = False
             if in_skills:
                 # Extract items inside \item or textbf
-                found = re.findall(r'\\item\s+([^\\\n,;]+)', line)
+                found = re.findall(r"\\item\s+([^\\\n,;]+)", line)
                 skills.extend(s.strip() for s in found if s.strip())
-                found2 = re.findall(r'\\textbf\{([^}]+)\}', line)
+                found2 = re.findall(r"\\textbf\{([^}]+)\}", line)
                 skills.extend(s.strip() for s in found2 if s.strip())
         return list(dict.fromkeys(skills))[:30]
 
@@ -462,8 +477,11 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
             resume_id=resume_id,
             target_role_id=target_role_id,
             target_role_freetext=target_role_freetext,
-            current_skills=current_skills,
+            current_skills=gap_data["current_skills"],
             gap_skills=gap_data["gap_skills"],
+            skill_taxonomy=gap_data["skill_taxonomy"],
+            skill_taxonomy_language=gap_data["skill_taxonomy_language"],
+            skill_taxonomy_mappings=gap_data["skill_taxonomy_mappings"],
             path_role_ids=[r.id for r in path] if path else None,
             timeline_months=gap_data["timeline_months"],
             llm_analysis=gap_data["llm_analysis"],
@@ -473,12 +491,9 @@ Write a concise (3–5 paragraphs) career development plan in Markdown. Cover:
         await db.refresh(analysis)
         return analysis
 
-
     # ── LLM helper ────────────────────────────────────────────────────────────
 
-    async def _llm_complete(
-        self, system: str, user: str, max_tokens: int = 400, api_key: Optional[str] = None
-    ) -> str:
+    async def _llm_complete(self, system: str, user: str, max_tokens: int = 400, api_key: Optional[str] = None) -> str:
         """
         Thin wrapper that calls the LLM (OpenAI) with a simple system + user
         message pair and returns the text content.

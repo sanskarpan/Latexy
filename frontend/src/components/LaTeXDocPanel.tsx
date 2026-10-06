@@ -242,6 +242,7 @@ export default function LaTeXDocPanel({ command, mode = 'reference' }: LaTeXDocP
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-3" />
           <input
             type="text"
+            aria-label="Search LaTeX commands"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search commands…"

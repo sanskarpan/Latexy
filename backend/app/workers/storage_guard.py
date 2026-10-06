@@ -1,7 +1,10 @@
 """Cross-worker guard tying stored compilation objects to a specific database.
 
-``latex_worker`` uploads ``compilations/{job_id}/resume.pdf`` only after the
-owning ``Compilation`` row is updated, and ``cleanup_worker`` deletes objects
+``latex_worker`` uploads an owner-tokenized
+``compilations/{job_id}/finalization-<owner-hash>.pdf`` and records the
+owning ``Compilation`` row only after the upload succeeds; the database
+identity marker is written only after that durable row commit, and
+``cleanup_worker`` deletes objects
 whose job_id has no row. Those two decisions are only sound if BOTH workers are
 talking to the SAME database — otherwise the pruner sees every live PDF as an
 orphan and deletes it.
@@ -35,9 +38,9 @@ def record_compilation_database(identity: str) -> None:
     try:
         from .event_publisher import get_worker_redis
 
-        get_worker_redis().setex(_MARKER_KEY, _MARKER_TTL, identity)
+        get_worker_redis().set(_MARKER_KEY, identity, ex=_MARKER_TTL)
     except Exception as exc:  # best-effort: a missing stamp only blocks pruning
-        logger.debug(f"Could not record compilation database marker: {exc}")
+        logger.debug("Could not record compilation database marker", extra={"error_type": type(exc).__name__})
 
 
 def read_compilation_database() -> Optional[str]:
@@ -47,7 +50,7 @@ def read_compilation_database() -> Optional[str]:
 
         value = get_worker_redis().get(_MARKER_KEY)
     except Exception as exc:
-        logger.warning(f"Could not read compilation database marker: {exc}")
+        logger.warning("Could not read compilation database marker", extra={"error_type": type(exc).__name__})
         return None
     if isinstance(value, bytes):
         value = value.decode()

@@ -40,14 +40,15 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: 'checkpoint', description: 'Create named checkpoint', usage: '/checkpoint [resume-id] [label] | /checkpoint --delete', isLocal: false , implemented: true },
   { name: 'restore', description: 'Restore to a checkpoint', usage: '/restore [resume-id]', isLocal: false , implemented: true },
   { name: 'diff', description: 'Show diff with parent variant', usage: '/diff [resume-id]', isLocal: false , implemented: true },
-  { name: 'export', description: 'Export resume to another format', usage: '/export [resume-id] --format tex|md|txt|html|json|yaml|xml|docx', isLocal: false , implemented: true },
+  { name: 'export', description: 'Export resume to another format', usage: '/export [resume-id] --format tex|md|txt|html|json|yaml|xml|docx|svg|jpeg', isLocal: false , implemented: true },
   { name: 'share', description: 'Generate and copy share link', usage: '/share [resume-id] [--revoke]', isLocal: false , implemented: true },
   { name: 'snippets', description: 'Search the snippet marketplace', usage: '/snippets [query]', isLocal: false , implemented: true },
+  { name: 'macros', description: 'List or run deterministic document macros', usage: '/macros [--run macro-id] [--resume resume-id] [--apply]', isLocal: false , implemented: true },
   { name: 'settings', description: 'Show or change notification settings', usage: '/settings [--set <key>=<true|false>]', isLocal: false , implemented: true },
   { name: 'help', description: 'Show help', usage: '/help [command]', isLocal: true , implemented: true },
   { name: 'model', description: 'List LLM providers and their models', usage: '/model', isLocal: false , implemented: true },
   { name: 'clear', description: 'Clear transcript', usage: '/clear', isLocal: true , implemented: true },
-  { name: 'logout', description: 'Clear session and exit', usage: '/logout', isLocal: true , implemented: true },
+  { name: 'logout', description: 'Clear session and return to sign-in', usage: '/logout', isLocal: true , implemented: true },
 ]
 
 export const COMMAND_MAP = new Map(SLASH_COMMANDS.map(c => [c.name, c]))

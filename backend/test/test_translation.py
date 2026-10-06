@@ -107,9 +107,7 @@ class TestTranslateCacheKey:
 
 @pytest.mark.asyncio
 class TestTranslateValidation:
-    async def test_missing_target_language_returns_422(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
+    async def test_missing_target_language_returns_422(self, client: AsyncClient, auth_headers: dict) -> None:
         resp = await client.post(
             "/ai/translate",
             json={"resume_id": "some-id", "language_code": "fr"},
@@ -117,9 +115,7 @@ class TestTranslateValidation:
         )
         assert resp.status_code == 422
 
-    async def test_target_language_too_long_returns_422(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
+    async def test_target_language_too_long_returns_422(self, client: AsyncClient, auth_headers: dict) -> None:
         resp = await client.post(
             "/ai/translate",
             json={
@@ -131,9 +127,7 @@ class TestTranslateValidation:
         )
         assert resp.status_code == 422
 
-    async def test_language_code_too_long_returns_422(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
+    async def test_language_code_too_long_returns_422(self, client: AsyncClient, auth_headers: dict) -> None:
         resp = await client.post(
             "/ai/translate",
             json={
@@ -145,9 +139,7 @@ class TestTranslateValidation:
         )
         assert resp.status_code == 422
 
-    async def test_missing_resume_id_returns_422(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
+    async def test_missing_resume_id_returns_422(self, client: AsyncClient, auth_headers: dict) -> None:
         resp = await client.post(
             "/ai/translate",
             json={"target_language": "French", "language_code": "fr"},
@@ -173,23 +165,24 @@ class TestTranslateEndpoint:
         assert resp.status_code in (200, 201), f"Resume creation failed: {resp.text}"
         return resp.json()["id"]
 
-    async def test_latex_commands_preserved(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
+    async def test_latex_commands_preserved(self, client: AsyncClient, auth_headers: dict) -> None:
         resume_id = await self._create_resume(client, auth_headers)
+        settings_resp = await client.patch(
+            f"/resumes/{resume_id}/settings",
+            json={"compiler": "pdflatex"},
+            headers=auth_headers,
+        )
+        assert settings_resp.status_code == 200
 
-        with patch(_SETTINGS_PATCH) as mock_settings, patch(
-            "app.api.ai_routes.openai.AsyncOpenAI"
-        ) as mock_cls, patch(
-            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "app.api.ai_routes.cache_manager.set", new_callable=AsyncMock
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
         ):
             _mock_settings(mock_settings)
             mock_openai = AsyncMock()
-            mock_openai.chat.completions.create = AsyncMock(
-                return_value=_make_openai_response(_TRANSLATED_FR)
-            )
+            mock_openai.chat.completions.create = AsyncMock(return_value=_make_openai_response(_TRANSLATED_FR))
             mock_cls.return_value = mock_openai
 
             resp = await client.post(
@@ -208,29 +201,216 @@ class TestTranslateEndpoint:
         assert "variant_resume_id" in data
 
         # Verify variant preserves LaTeX structure
-        variant_resp = await client.get(
-            f"/resumes/{data['variant_resume_id']}", headers=auth_headers
-        )
+        variant_resp = await client.get(f"/resumes/{data['variant_resume_id']}", headers=auth_headers)
         assert variant_resp.status_code == 200
         assert r"\section" in variant_resp.json()["latex_content"]
+        assert variant_resp.json()["metadata"]["compiler"] == "pdflatex"
 
-    async def test_variant_title_has_language_code(
+    async def test_hindi_translation_configures_harfbuzz_and_lualatex(
         self, client: AsyncClient, auth_headers: dict
     ) -> None:
         resume_id = await self._create_resume(client, auth_headers)
+        translated_hi = _TRANSLATED_FR.replace("Expérience", "अनुभव")
 
-        with patch(_SETTINGS_PATCH) as mock_settings, patch(
-            "app.api.ai_routes.openai.AsyncOpenAI"
-        ) as mock_cls, patch(
-            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "app.api.ai_routes.cache_manager.set", new_callable=AsyncMock
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
+        ):
+            _mock_settings(mock_settings)
+            mock_openai = AsyncMock()
+            mock_openai.chat.completions.create = AsyncMock(return_value=_make_openai_response(translated_hi))
+            mock_cls.return_value = mock_openai
+
+            resp = await client.post(
+                "/ai/translate",
+                json={
+                    "resume_id": resume_id,
+                    "target_language": "Hindi",
+                    "language_code": "HI",
+                },
+                headers=auth_headers,
+            )
+
+        assert resp.status_code == 200, resp.text
+        variant_resp = await client.get(f"/resumes/{resp.json()['variant_resume_id']}", headers=auth_headers)
+        variant = variant_resp.json()
+        assert variant["metadata"]["compiler"] == "lualatex"
+        assert "Renderer=HarfBuzz,Script=Devanagari" in variant["latex_content"]
+        assert "Noto Sans Devanagari" in variant["latex_content"]
+        assert "BoldFont={Noto Sans Devanagari Bold}" in variant["latex_content"]
+        assert "ItalicFeatures={FakeSlant=0.15}" in variant["latex_content"]
+        assert r"\babelprovide[onchar=ids fonts]{english}" in variant["latex_content"]
+        assert r"\renewcommand{\bfdefault}{b}" in variant["latex_content"]
+        assert r"\renewcommand{\labelitemi}{\foreignlanguage{english}{\textbullet}}" in variant["latex_content"]
+        assert r'\catcode"2022=\active' in variant["latex_content"]
+        assert r"\babelfont[english]{rm}{Latin Modern Roman}" in variant["latex_content"]
+        assert r"\usepackage[english,hindi,provide=*]{babel}" in variant["latex_content"]
+
+    @pytest.mark.parametrize(
+        ("target_language", "language_code", "language_command"),
+        [("Hindi", "hi", r"\texthindi"), ("Marathi", "mr", r"\textmarathi")],
+    )
+    async def test_devanagari_prompt_preserves_latin_runs_inside_script_spans(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        target_language: str,
+        language_code: str,
+        language_command: str,
+    ) -> None:
+        """Provider guidance covers email/URL/product text without body rewriting."""
+
+        resume_id = await self._create_resume(client, auth_headers)
+        translated = _TRANSLATED_FR.replace(
+            "Expérience",
+            rf"{language_command}{{अनुभव email@example.com •}}",
+        )
+
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
+        ):
+            _mock_settings(mock_settings)
+            mock_openai = AsyncMock()
+            mock_openai.chat.completions.create = AsyncMock(return_value=_make_openai_response(translated))
+            mock_cls.return_value = mock_openai
+
+            response = await client.post(
+                "/ai/translate",
+                json={
+                    "resume_id": resume_id,
+                    "target_language": target_language,
+                    "language_code": language_code,
+                },
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200, response.text
+        system_prompt = mock_openai.chat.completions.create.await_args.kwargs["messages"][0]["content"]
+        user_prompt = mock_openai.chat.completions.create.await_args.kwargs["messages"][1]["content"]
+        assert "Wrap every preserved Latin-script run" in system_prompt
+        assert "email addresses, bullets" in system_prompt
+        assert r"\textenglish{...}" in system_prompt
+        assert user_prompt == _SAMPLE_LATEX
+
+        variant = (await client.get(f"/resumes/{response.json()['variant_resume_id']}", headers=auth_headers)).json()
+        body = variant["latex_content"]
+        assert rf"{language_command}{{अनुभव email@example.com •}}" in body
+        assert rf"{language_command}{{अनुभव \textenglish{{email@example.com}}" not in body
+
+    async def test_japanese_translation_configures_offline_cjk_stack_and_lualatex(
+        self, client: AsyncClient, auth_headers: dict
+    ) -> None:
+        resume_id = await self._create_resume(client, auth_headers)
+        translated_ja = _TRANSLATED_FR.replace("Expérience", "経験").replace(
+            "Ingénieur Senior", "シニアエンジニア"
+        )
+
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
+        ):
+            _mock_settings(mock_settings)
+            mock_openai = AsyncMock()
+            mock_openai.chat.completions.create = AsyncMock(return_value=_make_openai_response(translated_ja))
+            mock_cls.return_value = mock_openai
+
+            resp = await client.post(
+                "/ai/translate",
+                json={
+                    "resume_id": resume_id,
+                    "target_language": "Japanese",
+                    "language_code": "JA",
+                },
+                headers=auth_headers,
+            )
+
+        assert resp.status_code == 200, resp.text
+        variant = (await client.get(f"/resumes/{resp.json()['variant_resume_id']}", headers=auth_headers)).json()
+        assert variant["metadata"]["compiler"] == "lualatex"
+        assert r"\usepackage{luatexja-fontspec}" in variant["latex_content"]
+        assert r"\setmainjfont{Noto Sans CJK JP}" in variant["latex_content"]
+        assert "シニアエンジニア" in variant["latex_content"]
+
+    async def test_cjk_code_must_match_target_language(self, client: AsyncClient, auth_headers: dict) -> None:
+        resume_id = await self._create_resume(client, auth_headers)
+        resp = await client.post(
+            "/ai/translate",
+            json={
+                "resume_id": resume_id,
+                "target_language": "French",
+                "language_code": "ja",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422
+
+    async def test_invalid_hindi_translation_refunds_quota(self, client: AsyncClient, auth_headers: dict) -> None:
+        resume_id = await self._create_resume(client, auth_headers)
+
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
+            patch(
+                "app.api.ai_routes._charge_ai_assist",
+                new_callable=AsyncMock,
+                return_value="ticket",
+            ),
+            patch("app.api.ai_routes.entitlement_service.refund_quota", new_callable=AsyncMock) as refund,
         ):
             _mock_settings(mock_settings)
             mock_openai = AsyncMock()
             mock_openai.chat.completions.create = AsyncMock(
-                return_value=_make_openai_response(_TRANSLATED_FR)
+                return_value=_make_openai_response("अनुवाद, लेकिन दस्तावेज़ नहीं")
             )
+            mock_cls.return_value = mock_openai
+
+            resp = await client.post(
+                "/ai/translate",
+                json={
+                    "resume_id": resume_id,
+                    "target_language": "Hindi",
+                    "language_code": "hi",
+                },
+                headers=auth_headers,
+            )
+
+        assert resp.status_code == 502
+        refund.assert_awaited_once_with("ticket")
+
+    async def test_devanagari_code_must_match_target_language(self, client: AsyncClient, auth_headers: dict) -> None:
+        resume_id = await self._create_resume(client, auth_headers)
+        resp = await client.post(
+            "/ai/translate",
+            json={
+                "resume_id": resume_id,
+                "target_language": "French",
+                "language_code": "hi",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 422
+
+    async def test_variant_title_has_language_code(self, client: AsyncClient, auth_headers: dict) -> None:
+        resume_id = await self._create_resume(client, auth_headers)
+
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.openai.AsyncOpenAI") as mock_cls,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
+        ):
+            _mock_settings(mock_settings)
+            mock_openai = AsyncMock()
+            mock_openai.chat.completions.create = AsyncMock(return_value=_make_openai_response(_TRANSLATED_FR))
             mock_cls.return_value = mock_openai
 
             resp = await client.post(
@@ -250,18 +430,17 @@ class TestTranslateEndpoint:
         assert variant_resp.status_code == 200
         assert variant_resp.json()["title"].endswith("— [FR]")
 
-    async def test_cached_on_second_call(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
+    async def test_cached_on_second_call(self, client: AsyncClient, auth_headers: dict) -> None:
         resume_id = await self._create_resume(client, auth_headers)
 
         # Second call: cache returns the translated string
-        with patch(
-            "app.api.ai_routes.cache_manager.get",
-            new_callable=AsyncMock,
-            return_value=_TRANSLATED_FR,
-        ), patch(
-            "app.api.ai_routes.cache_manager.set", new_callable=AsyncMock
+        with (
+            patch(
+                "app.api.ai_routes.cache_manager.get",
+                new_callable=AsyncMock,
+                return_value=_TRANSLATED_FR,
+            ),
+            patch("app.api.ai_routes.cache_manager.set", new_callable=AsyncMock),
         ):
             resp = await client.post(
                 "/ai/translate",
@@ -287,13 +466,12 @@ class TestTranslateEndpoint:
         )
         assert resp.status_code in (401, 403)
 
-    async def test_resume_not_found(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
+    async def test_resume_not_found(self, client: AsyncClient, auth_headers: dict) -> None:
         import uuid
 
-        with patch(_SETTINGS_PATCH) as mock_settings, patch(
-            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
         ):
             _mock_settings(mock_settings)
             resp = await client.post(
@@ -308,17 +486,17 @@ class TestTranslateEndpoint:
 
         assert resp.status_code == 404
 
-    async def test_no_api_key_returns_503(
-        self, client: AsyncClient, auth_headers: dict
-    ) -> None:
+    async def test_no_api_key_returns_503(self, client: AsyncClient, auth_headers: dict) -> None:
         resume_id = await self._create_resume(client, auth_headers)
 
-        with patch(_SETTINGS_PATCH) as mock_settings, patch(
-            "app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "app.services.api_key_service.api_key_service.get_user_provider",
-            new_callable=AsyncMock,
-            return_value=None,
+        with (
+            patch(_SETTINGS_PATCH) as mock_settings,
+            patch("app.api.ai_routes.cache_manager.get", new_callable=AsyncMock, return_value=None),
+            patch(
+                "app.services.api_key_service.api_key_service.get_user_provider",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
             mock_settings.OPENAI_API_KEY = ""
             mock_settings.OPENAI_MODEL = "gpt-4o-mini"

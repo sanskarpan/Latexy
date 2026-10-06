@@ -55,6 +55,7 @@ const SEEDED_STRUCTURED: StructuredResume = {
       current: true,
       summary: '',
       bullets: ['Reduced p95 latency by 40%', 'Led API platform migration'],
+      bullet_ids: ['exp-1-bullet-1', 'exp-1-bullet-2'],
       technologies: ['Python', 'PostgreSQL'],
     },
   ],
@@ -126,6 +127,23 @@ function builderResponse(overrides?: Partial<BuilderResumeResponse>): BuilderRes
     },
     template_family: 'ats',
     ...overrides,
+    ats_profile: overrides?.ats_profile ?? {
+      identity: { given_name: 'Taylor', family_name: 'Builder' },
+      contact: {
+        email: 'taylor@example.com',
+        phone: '+1-555-0102',
+        city: 'Remote',
+        region: '',
+        country: '',
+      },
+      links: {
+        linkedin: 'linkedin.com/in/taylor',
+        personal_site: 'https://example.com',
+      },
+      work: [],
+      education: [],
+      skills: ['Python', 'Go', 'Distributed Systems'],
+    },
   }
 }
 
@@ -158,7 +176,7 @@ test.describe('Guided Resume Builder', () => {
     const seededResponse: BuilderSeedUploadResponse = {
       success: true,
       filename: 'resume.json',
-      format: 'json',
+      format: 'json_resume_v1',
       structured_content: SEEDED_STRUCTURED,
       metrics: {
         completeness_score: 82,
@@ -166,6 +184,7 @@ test.describe('Guided Resume Builder', () => {
         warnings: [],
         missing_sections: [],
       },
+      interchange_warnings: ['1 non-LinkedIn/GitHub profile is not editable in the guided builder.'],
     }
 
     await page.route('**/resumes/builder/templates', route =>
@@ -207,6 +226,7 @@ test.describe('Guided Resume Builder', () => {
     })
 
     await expect(page.getByText('Taylor Builder')).toBeVisible()
+    await expect(page.getByText(/non-LinkedIn\/GitHub profile/)).toBeVisible()
     await page.getByRole('button', { name: 'Start Guided Builder' }).click()
     await expect(page).toHaveURL(/\/workspace\/builder\/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa$/)
   })
@@ -271,11 +291,107 @@ test.describe('Guided Resume Builder', () => {
     await page.getByLabel('Name', { exact: true }).fill('AWS Certified Developer')
     await expect(page.getByText('AWS Certified Developer')).toBeVisible()
 
-    await page.locator('select').selectOption(BUILDER_TEMPLATES[1].id)
+    await page.getByLabel('Template').selectOption(BUILDER_TEMPLATES[1].id)
     await expect(page.getByText('Unsaved changes')).toBeVisible()
     await expect(page.getByText('All changes saved')).toBeVisible({ timeout: 8000 })
     await expect(page.getByLabel('Template')).toHaveValue(BUILDER_TEMPLATES[1].id)
     await expect(page.getByText('Family: executive · Executive')).toBeVisible()
+  })
+
+  test('builder editor downloads its structured JSON Resume interchange document', async ({ page }) => {
+    await page.route('**/resumes/builder/templates', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
+    )
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse()) }),
+    )
+    await page.route('**/export/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/json', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'content-disposition': 'attachment; filename="resume.json"' },
+        body: JSON.stringify({
+          $schema: 'https://raw.githubusercontent.com/jsonresume/resume-schema/v1.0.0/schema.json',
+          basics: { name: 'Taylor Builder' },
+          meta: { version: 'v1.0.0' },
+        }),
+      }),
+    )
+
+    await page.goto('/workspace/builder/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+    await page.getByRole('button', { name: /Export/ }).click()
+    const downloadPromise = page.waitForEvent('download')
+    await page.getByRole('button', { name: /^JSON JSON Resume format/ }).click()
+    const download = await downloadPromise
+
+    expect(download.suggestedFilename()).toBe('resume.json')
+    await expect(page.getByText('Downloaded as JSON')).toBeVisible()
+  })
+
+  test('saved resume SVG export has correct download and persistent retry', async ({ page }) => {
+    await page.route('**/resumes/builder/templates', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
+    )
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse()) }),
+    )
+    let attempts = 0
+    await page.route('**/export/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/svg', async route => {
+      attempts += 1
+      if (attempts === 1) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'renderer unavailable' }) })
+      return route.fulfill({ status: 200, contentType: 'image/svg+xml', headers: { 'content-disposition': 'attachment; filename="resume.svg"' }, body: '<svg xmlns="http://www.w3.org/2000/svg"><text>Resume</text></svg>' })
+    })
+
+    await page.goto('/workspace/builder/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+    await page.getByRole('button', { name: /Export/ }).click()
+    await page.getByRole('button', { name: /^SVG / }).click()
+    const exportError = page.getByRole('alert').filter({ hasText: 'renderer unavailable' })
+    await expect(exportError).toBeVisible()
+    const downloadPromise = page.waitForEvent('download')
+    await exportError.getByRole('button', { name: 'Retry' }).click()
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toBe('resume.svg')
+    expect(attempts).toBe(2)
+  })
+
+  test('compiled PDF email reports provider failure and keeps a retry action', async ({ page }) => {
+    await page.route('**/resumes/builder/templates', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(BUILDER_TEMPLATES) }),
+    )
+    await page.route('**/resumes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/builder', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(builderResponse()) }),
+    )
+    let attempts = 0
+    await page.route('**/export/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/email', async route => {
+      expect(route.request().method()).toBe('POST')
+      expect(route.request().postDataJSON()).toEqual({})
+      attempts += 1
+      if (attempts === 1) {
+        return route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: 'Email provider did not accept the document; please retry' }),
+        })
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: 'accepted',
+          recipient: 'verified_account_email',
+          retry_behavior: 'provider_idempotent',
+        }),
+      })
+    })
+
+    await page.goto('/workspace/builder/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+    await page.getByRole('button', { name: /Export/ }).click()
+    await page.getByRole('button', { name: /^Email me / }).click()
+    const exportError = page.getByRole('alert').filter({ hasText: 'Email provider did not accept the PDF' })
+    await expect(exportError).toBeVisible()
+    await exportError.getByRole('button', { name: 'Retry' }).click()
+    await expect(page.getByText('PDF email accepted for your verified account email.')).toBeVisible()
+    expect(attempts).toBe(2)
   })
 
   test('detached builder state exposes explicit reattach action', async ({ page }) => {

@@ -1,21 +1,27 @@
 """Portfolio / public profile routes (Feature 67)."""
 
+import asyncio
 import re
 import socket
 from datetime import datetime
+from html import escape
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
+from ..core.redis import get_redis_cache_client
 from ..database.connection import get_db
 from ..database.models import Resume, User
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
+from ..middleware.rate_limiting import client_ip_id
+from ..services.document_export_service import document_export_service
+from ..services.email_service import email_service
 
 logger = get_logger(__name__)
 
@@ -25,7 +31,7 @@ _USERNAME_RE = re.compile(r"^[a-z0-9_-]{3,30}$")
 _VALID_THEMES = frozenset({"minimal", "dark", "professional"})
 
 # Hostname a custom domain must be pointed at (via CNAME) to be verified.
-_PORTFOLIO_APP_HOSTNAME = "latexy.io"
+_PORTFOLIO_APP_HOSTNAME = "latexy.xyz"
 
 
 def _resolve_ips(hostname: str) -> set[str]:
@@ -74,6 +80,7 @@ class PublicResumeOut(BaseModel):
     title: str
     created_at: datetime
     updated_at: datetime
+    accessible_text: str
 
 
 class PortfolioResponse(BaseModel):
@@ -106,6 +113,55 @@ class DomainVerifyResponse(BaseModel):
 class ResolveDomainResponse(BaseModel):
     domain: str
     username: Optional[str]
+
+
+class PortfolioContactRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    email: str = Field(..., min_length=3, max_length=254)
+    message: str = Field(..., min_length=1, max_length=5000)
+
+    @field_validator("name", "message")
+    @classmethod
+    def validate_non_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Value cannot be blank")
+        return value
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+            raise ValueError("Enter a valid email address")
+        return value
+
+
+async def _check_contact_rate_limit(request: Request, username: str) -> None:
+    """Limit both a sender IP and the recipient portfolio's inbox."""
+    buckets = (
+        (f"cache:ratelimit:portfolio-contact:ip:{client_ip_id(request)}", 5),
+        (f"cache:ratelimit:portfolio-contact:recipient:{username}", 20),
+    )
+    try:
+        redis = await get_redis_cache_client()
+        for key, limit in buckets:
+            count = await redis.incr(key)
+            if count == 1:
+                await redis.expire(key, 3600)
+            if count > limit:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Too many contact messages. Please try again later.",
+                )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Portfolio contact rate-limit check failed (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="Messaging is temporarily unavailable. Please try again later.",
+        ) from exc
 
 
 # ── Fixed-path endpoints MUST come before the {username} wildcard ─────────────
@@ -212,8 +268,10 @@ async def verify_domain(
         f"Add a CNAME record for {domain} → {_PORTFOLIO_APP_HOSTNAME} and retry."
     )
     try:
-        domain_ips = _resolve_ips(domain)
-        app_ips = _resolve_ips(_PORTFOLIO_APP_HOSTNAME)
+        domain_ips, app_ips = await asyncio.gather(
+            asyncio.to_thread(_resolve_ips, domain),
+            asyncio.to_thread(_resolve_ips, _PORTFOLIO_APP_HOSTNAME),
+        )
         if not domain_ips:
             message = f"Could not resolve {domain}"
         elif not app_ips:
@@ -259,6 +317,53 @@ async def resolve_domain(
 # ── Wildcard endpoint MUST be LAST ────────────────────────────────────────────
 
 
+@router.post("/{username}/contact")
+async def contact_portfolio_owner(
+    username: str,
+    body: PortfolioContactRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, bool]:
+    """Deliver a rate-limited visitor message without exposing the owner email."""
+    normalized_username = username.lower()
+    result = await db.execute(
+        select(User).where(
+            User.public_username == normalized_username,
+            User.portfolio_enabled.is_(True),
+        )
+    )
+    owner = result.scalar_one_or_none()
+    if owner is None:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    await _check_contact_rate_limit(request, normalized_username)
+    safe_name = escape(body.name)
+    safe_email = escape(body.email)
+    safe_message = escape(body.message).replace("\n", "<br>")
+    try:
+        sent = await email_service.send_email(
+            to=owner.email,
+            subject=f"New portfolio message for @{normalized_username}",
+            html_body=(
+                f"<p><strong>From:</strong> {safe_name} ({safe_email})</p>"
+                f"<p>{safe_message}</p>"
+            ),
+            text_body=f"From: {body.name} <{body.email}>\n\n{body.message}",
+        )
+    except Exception as exc:
+        logger.error("Portfolio contact delivery failed (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="Messaging is temporarily unavailable. Please try again later.",
+        ) from exc
+    if not sent:
+        raise HTTPException(
+            status_code=503,
+            detail="Messaging is temporarily unavailable. Please try again later.",
+        )
+    return {"success": True}
+
+
 @router.get("/{username}", response_model=PortfolioResponse)
 async def get_portfolio(
     username: str,
@@ -275,7 +380,11 @@ async def get_portfolio(
 
     resumes_result = await db.execute(
         select(Resume)
-        .where(Resume.user_id == user.id, Resume.archived_at.is_(None))
+        .where(
+            Resume.user_id == user.id,
+            Resume.archived_at.is_(None),
+            Resume.portfolio_visible.is_(True),
+        )
         .order_by(Resume.updated_at.desc())
     )
     resumes = resumes_result.scalars().all()
@@ -291,6 +400,7 @@ async def get_portfolio(
                 title=r.title,
                 created_at=r.created_at,
                 updated_at=r.updated_at,
+                accessible_text=document_export_service.to_text(r.latex_content)[:50_000],
             )
             for r in resumes
         ],

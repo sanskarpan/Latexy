@@ -7,6 +7,7 @@ the protocol tests; the auth/Redis integration is covered by test_auth.py
 and test_jobs.py which use the async ASGI transport.
 """
 
+import asyncio
 import json
 import time
 import uuid
@@ -19,10 +20,30 @@ from app.api.ws_routes import (
     WebSocketTicketRequest,
     _consume_ws_ticket,
     _job_ws_access_ok,
+    _stop_background_task,
     _ws_ticket_key,
     create_websocket_ticket,
 )
 from app.main import app
+
+
+@pytest.mark.asyncio
+async def test_background_task_stop_awaits_finally_cleanup() -> None:
+    cleanup_complete = asyncio.Event()
+
+    async def _background() -> None:
+        try:
+            await asyncio.sleep(3600)
+        finally:
+            await asyncio.sleep(0)
+            cleanup_complete.set()
+
+    task = asyncio.create_task(_background())
+    await asyncio.sleep(0)
+    await _stop_background_task(task, "test task")
+
+    assert task.done()
+    assert cleanup_complete.is_set()
 
 # ---------------------------------------------------------------------------
 # Shared mock: patch event_bus and redis for all WebSocket tests
@@ -48,6 +69,12 @@ def ws_client():
     with (
         patch("app.api.ws_routes.event_bus") as mock_bus,
         patch("app.api.ws_routes.get_redis_client", new_callable=AsyncMock, return_value=mock_redis),
+        # Cancellation's durable DB arbiter is covered by the job-cancellation
+        # integration tests. Protocol tests only verify that a cancel message
+        # does not tear down the socket, so keep the worker-side helper mocked
+        # and avoid opening a process-global asyncpg pool on TestClient's
+        # disposable portal loop.
+        patch("app.api.ws_routes._request_cancellation", new=AsyncMock()),
     ):
         mock_bus.subscribe = AsyncMock(return_value=0)
         mock_bus.disconnect = AsyncMock()
@@ -55,8 +82,11 @@ def ws_client():
 
         # TestClient without context-manager avoids running the full lifespan
         # (which would reinitialise globals in a background thread loop).
-        client = TestClient(app, raise_server_exceptions=True)
-        yield client
+        client = TestClient(app, base_url="http://localhost", raise_server_exceptions=True)
+        try:
+            yield client
+        finally:
+            client.close()
 
 
 # ---------------------------------------------------------------------------

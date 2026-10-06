@@ -60,7 +60,7 @@ class PortfolioGenerator:
             storage_service.upload_bytes(key, html.encode(), content_type="text/html")
             logger.info("Portfolio uploaded: %s", key)
         except Exception as exc:
-            logger.warning("MinIO upload failed for %s: %s", key, exc)
+            logger.warning("MinIO upload failed", extra={"error_type": type(exc).__name__})
             # Return a data URI fallback so the endpoint is still usable in
             # environments without MinIO (e.g. local dev without Docker).
             import base64

@@ -1,8 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BookOpen, Check, ChevronDown, ChevronRight, Copy, ExternalLink, Loader2, Plus, PlusCircle, RefreshCw, Search, Unlink, X } from 'lucide-react'
-import { apiClient, type BibTeXEntry, type ZoteroCollection, type ZoteroStatusResponse, type MendeleyStatusResponse } from '@/lib/api-client'
+import { AlertTriangle, BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight, Copy, ExternalLink, Loader2, Plus, PlusCircle, RefreshCw, Search, Unlink, X, XCircle } from 'lucide-react'
+import { apiClient, type BibTeXEntry, type CitationVerification, type ZoteroCollection, type ZoteroStatusResponse, type MendeleyStatusResponse } from '@/lib/api-client'
+import type { ReferenceLibrarySource } from '@/lib/api-client'
+import { downloadBlob } from '@/lib/download'
+import { detectReferenceIdentifierType } from '@/lib/reference-identifiers'
+import { isOrcidId, normalizeOrcidId } from '@/lib/orcid'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8030'
 
@@ -10,15 +14,14 @@ interface ReferencesPanelProps {
   resumeId?: string
   onInsertBibTeX: (bibtex: string) => void
   onInsertCiteKey: (citeKey: string) => void
+  onLibraryChange?: (bibtex: string) => void
 }
 
 // Detect type of a single line of text
-function detectLineType(line: string): 'doi' | 'arxiv' | null {
-  const trimmed = line.trim()
-  if (!trimmed) return null
-  if (/^10\.\d{4,}\//.test(trimmed) || /doi\.org\//i.test(trimmed)) return 'doi'
-  if (/^\d{4}\.\d{4,}(v\d+)?$/.test(trimmed) || /arxiv\.org\//i.test(trimmed)) return 'arxiv'
-  return null
+const detectLineType = detectReferenceIdentifierType
+
+function isTrustedOAuthMessage(event: MessageEvent, popup: Window | null): boolean {
+  return popup !== null && event.origin === window.location.origin && event.source === popup
 }
 
 function TypeBadge({ type }: { type: 'doi' | 'arxiv' | null }) {
@@ -49,6 +52,102 @@ function CopyButton({ text }: { text: string }) {
     >
       {copied ? <Check className="h-3 w-3 text-ok" /> : <Copy className="h-3 w-3" />}
     </button>
+  )
+}
+
+function CitationCheckSection({ savedBibtex }: { savedBibtex: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [bibtex, setBibtex] = useState('')
+  const [results, setResults] = useState<CitationVerification[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const check = async () => {
+    if (!bibtex.trim() || loading) return
+    setLoading(true)
+    setError(null)
+    setResults([])
+    try {
+      const response = await apiClient.verifyCitations(bibtex)
+      setResults(response.results)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Citation check failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const statusIcon = (status: CitationVerification['status']) => {
+    if (status === 'verified') return <CheckCircle2 className="h-3.5 w-3.5 text-ok" />
+    if (status === 'mismatch') return <AlertTriangle className="h-3.5 w-3.5 text-warn" />
+    return <XCircle className="h-3.5 w-3.5 text-err" />
+  }
+
+  return (
+    <div className="border-t border-line">
+      <button
+        type="button"
+        onClick={() => setExpanded(value => !value)}
+        className="flex w-full items-center justify-between px-3 py-2.5 text-[11px] font-semibold text-fg-2 transition hover:text-fg"
+      >
+        <span className="flex items-center gap-2">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Check BibTeX citations
+        </span>
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      </button>
+      {expanded && (
+        <div className="space-y-2 px-3 pb-3">
+          <p className="text-[10px] leading-snug text-fg-3">
+            Cross-check up to 20 works against Crossref or arXiv. Your bibliography is sent only for this check.
+          </p>
+          {savedBibtex && (
+            <button
+              type="button"
+              onClick={() => { setBibtex(savedBibtex); setResults([]); setError(null) }}
+              className="text-[10px] font-medium text-accent-strong hover:underline"
+            >
+              Use saved references.bib
+            </button>
+          )}
+          <textarea
+            aria-label="BibTeX citations to check"
+            value={bibtex}
+            onChange={event => { setBibtex(event.target.value); setResults([]); setError(null) }}
+            placeholder={'@article{key,\n  title={...}, doi={10.1000/...}\n}'}
+            rows={6}
+            maxLength={200000}
+            className="w-full resize-y rounded-[var(--radius-md)] bg-bg p-2.5 font-mono text-[10px] text-fg placeholder:text-fg-3 ring-1 ring-line outline-none focus:ring-line-2"
+          />
+          <button
+            type="button"
+            onClick={() => { void check() }}
+            disabled={!bibtex.trim() || loading}
+            className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+            {loading ? 'Checking…' : 'Check scholarly records'}
+          </button>
+          {error && <p role="alert" className="text-[10px] text-err">{error}</p>}
+          {results.length > 0 && (
+            <div aria-label="Citation check results" className="space-y-1.5">
+              {results.map(result => (
+                <div key={result.cite_key} className="rounded-[var(--radius-md)] border border-line bg-surface px-2.5 py-2">
+                  <div className="flex items-center gap-1.5">
+                    {statusIcon(result.status)}
+                    <code className="text-[10px] text-accent-strong">{result.cite_key}</code>
+                    <span className="ml-auto text-[9px] uppercase text-fg-3">{result.source}</span>
+                  </div>
+                  {result.matched_title && <p className="mt-1 text-[10px] text-fg-2">{result.matched_title}</p>}
+                  {result.identifier && <p className="mt-0.5 break-all text-[9px] text-fg-3">{result.identifier}</p>}
+                  {result.issues.map(issue => <p key={issue} className="mt-1 text-[10px] text-err">{issue}</p>)}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -153,10 +252,12 @@ function EntryCard({
 
 function ZoteroSection({
   resumeId,
+  importedSource,
   onBibTeXImported,
 }: {
   resumeId?: string
-  onBibTeXImported: (bibtex: string, count: number) => void
+  importedSource: ReferenceLibrarySource | null
+  onBibTeXImported: (bibtex: string, count: number, source: ReferenceLibrarySource) => void
 }) {
   const [status, setStatus] = useState<ZoteroStatusResponse | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
@@ -167,22 +268,33 @@ function ZoteroSection({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [statusReloadNonce, setStatusReloadNonce] = useState(0)
+  const oauthPopup = useRef<Window | null>(null)
 
   useEffect(() => {
+    setStatusLoading(true)
+    setError(null)
     apiClient.getZoteroStatus()
       .then(setStatus)
-      .catch(() => setStatus({ connected: false, username: null, user_id: null }))
+      .catch(error => {
+        setStatus(null)
+        setError(error instanceof Error ? error.message : 'Zotero status could not be loaded')
+      })
       .finally(() => setStatusLoading(false))
-  }, [])
+  }, [statusReloadNonce])
 
   // Listen for OAuth popup completing
   useEffect(() => {
     const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'zotero:connected') {
+      if (isTrustedOAuthMessage(e, oauthPopup.current) && e.data?.type === 'zotero:connected') {
+        oauthPopup.current = null
         setStatusLoading(true)
         apiClient.getZoteroStatus()
           .then(s => { setStatus(s); setSuccess('Zotero connected!') })
-          .catch(() => null)
+          .catch(error => {
+            setStatus(null)
+            setError(error instanceof Error ? error.message : 'Zotero status could not be loaded')
+          })
           .finally(() => setStatusLoading(false))
       }
     }
@@ -191,7 +303,11 @@ function ZoteroSection({
   }, [])
 
   const handleConnect = () => {
-    window.open(`${API_BASE}/zotero/connect`, '_blank', 'width=600,height=700,popup=1')
+    setError(null)
+    oauthPopup.current = window.open(`${API_BASE}/zotero/connect`, '_blank', 'width=600,height=700,popup=1')
+    if (!oauthPopup.current) {
+      setError('The Zotero sign-in popup was blocked. Allow popups for Latexy and try again.')
+    }
   }
 
   const handleDisconnect = async () => {
@@ -229,7 +345,7 @@ function ZoteroSection({
     setSuccess(null)
     try {
       const result = await apiClient.importFromZotero(resumeId, selectedCollection || undefined)
-      onBibTeXImported(result.bibtex, result.entries_count)
+      onBibTeXImported(result.bibtex, result.entries_count, result.source)
       setSuccess(`Imported ${result.entries_count} entries from Zotero`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import failed')
@@ -271,7 +387,16 @@ function ZoteroSection({
             <p className="rounded-[var(--radius-md)] bg-err/10 px-2 py-1.5 text-[10px] text-err">{error}</p>
           )}
 
-          {!status?.connected ? (
+          {status === null ? (
+            <button
+              type="button"
+              onClick={() => setStatusReloadNonce(value => value + 1)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:bg-accent-soft"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Retry Zotero status
+            </button>
+          ) : !status.connected ? (
             <button
               onClick={handleConnect}
               className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110"
@@ -291,6 +416,10 @@ function ZoteroSection({
                   Disconnect
                 </button>
               </div>
+
+              <p className="text-[10px] leading-snug text-fg-3">
+                One-way, read-only snapshot saved as references.bib. Refresh manually to pull provider changes.
+              </p>
 
               {/* Collection picker */}
               <div className="flex items-center gap-1">
@@ -320,7 +449,12 @@ function ZoteroSection({
                 className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlusCircle className="h-3 w-3" />}
-                {importing ? 'Importing…' : 'Import BibTeX'}
+                {importing
+                  ? 'Refreshing…'
+                  : importedSource?.provider === 'zotero' &&
+                      importedSource.scope_id === (selectedCollection || null)
+                    ? 'Refresh references.bib'
+                    : 'Import as references.bib'}
               </button>
               {!resumeId && (
                 <p className="text-center text-[10px] text-fg-3">Open a resume to import</p>
@@ -337,10 +471,12 @@ function ZoteroSection({
 
 function MendeleySection({
   resumeId,
+  importedSource,
   onBibTeXImported,
 }: {
   resumeId?: string
-  onBibTeXImported: (bibtex: string, count: number) => void
+  importedSource: ReferenceLibrarySource | null
+  onBibTeXImported: (bibtex: string, count: number, source: ReferenceLibrarySource) => void
 }) {
   const [status, setStatus] = useState<MendeleyStatusResponse | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
@@ -348,21 +484,32 @@ function MendeleySection({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [statusReloadNonce, setStatusReloadNonce] = useState(0)
+  const oauthPopup = useRef<Window | null>(null)
 
   useEffect(() => {
+    setStatusLoading(true)
+    setError(null)
     apiClient.getMendeleyStatus()
       .then(setStatus)
-      .catch(() => setStatus({ connected: false, name: null }))
+      .catch(error => {
+        setStatus(null)
+        setError(error instanceof Error ? error.message : 'Mendeley status could not be loaded')
+      })
       .finally(() => setStatusLoading(false))
-  }, [])
+  }, [statusReloadNonce])
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'mendeley:connected') {
+      if (isTrustedOAuthMessage(e, oauthPopup.current) && e.data?.type === 'mendeley:connected') {
+        oauthPopup.current = null
         setStatusLoading(true)
         apiClient.getMendeleyStatus()
           .then(s => { setStatus(s); setSuccess('Mendeley connected!') })
-          .catch(() => null)
+          .catch(error => {
+            setStatus(null)
+            setError(error instanceof Error ? error.message : 'Mendeley status could not be loaded')
+          })
           .finally(() => setStatusLoading(false))
       }
     }
@@ -371,7 +518,11 @@ function MendeleySection({
   }, [])
 
   const handleConnect = () => {
-    window.open(`${API_BASE}/mendeley/connect`, '_blank', 'width=600,height=700,popup=1')
+    setError(null)
+    oauthPopup.current = window.open(`${API_BASE}/mendeley/connect`, '_blank', 'width=600,height=700,popup=1')
+    if (!oauthPopup.current) {
+      setError('The Mendeley sign-in popup was blocked. Allow popups for Latexy and try again.')
+    }
   }
 
   const handleDisconnect = async () => {
@@ -395,7 +546,7 @@ function MendeleySection({
     setSuccess(null)
     try {
       const result = await apiClient.importFromMendeley(resumeId)
-      onBibTeXImported(result.bibtex, result.entries_count)
+      onBibTeXImported(result.bibtex, result.entries_count, result.source)
       setSuccess(`Imported ${result.entries_count} entries from Mendeley`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import failed')
@@ -437,7 +588,16 @@ function MendeleySection({
             <p className="rounded-[var(--radius-md)] bg-err/10 px-2 py-1.5 text-[10px] text-err">{error}</p>
           )}
 
-          {!status?.connected ? (
+          {status === null ? (
+            <button
+              type="button"
+              onClick={() => setStatusReloadNonce(value => value + 1)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:bg-accent-soft"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Retry Mendeley status
+            </button>
+          ) : !status.connected ? (
             <button
               onClick={handleConnect}
               className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110"
@@ -458,13 +618,21 @@ function MendeleySection({
                 </button>
               </div>
 
+              <p className="text-[10px] leading-snug text-fg-3">
+                One-way, read-only snapshot saved as references.bib. Refresh manually to pull provider changes.
+              </p>
+
               <button
                 onClick={handleImport}
                 disabled={importing || !resumeId}
                 className="flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-accent-soft py-1.5 text-[11px] font-medium text-accent-strong ring-1 ring-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlusCircle className="h-3 w-3" />}
-                {importing ? 'Importing…' : 'Import All BibTeX'}
+                {importing
+                  ? 'Refreshing…'
+                  : importedSource?.provider === 'mendeley'
+                    ? 'Refresh references.bib'
+                    : 'Import as references.bib'}
               </button>
               {!resumeId && (
                 <p className="text-center text-[10px] text-fg-3">Open a resume to import</p>
@@ -478,16 +646,6 @@ function MendeleySection({
 }
 
 // ── ORCID import section ──────────────────────────────────────────────────
-
-/** Strip https://orcid.org/ prefix and return bare ORCID ID, or the input unchanged. */
-function normalizeOrcidInput(raw: string): string {
-  const m = raw.match(/orcid\.org\/(\d{4}-\d{4}-\d{4}-[\dXx]{4})/i)
-  return m ? m[1] : raw.trim()
-}
-
-function isValidOrcid(id: string): boolean {
-  return /^\d{4}-\d{4}-\d{4}-\d{3}[\dXx]$/i.test(id)
-}
 
 function OrcidSection({
   onInsertBibTeX,
@@ -503,8 +661,8 @@ function OrcidSection({
   const [fetched, setFetched] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const orcidId = normalizeOrcidInput(input)
-  const valid = isValidOrcid(orcidId)
+  const orcidId = normalizeOrcidId(input)
+  const valid = isOrcidId(orcidId)
 
   const handleFetch = async () => {
     if (!valid || loading) return
@@ -607,12 +765,12 @@ function OrcidSection({
 
 function LibrarySection({
   bibtex,
-  onInsertBibTeX,
+  source,
   onInsertCiteKey,
   onClear,
 }: {
   bibtex: string
-  onInsertBibTeX: (b: string) => void
+  source: ReferenceLibrarySource | null
   onInsertCiteKey: (k: string) => void
   onClear: () => void
 }) {
@@ -644,7 +802,7 @@ function LibrarySection({
           className="flex flex-1 items-center gap-2 transition hover:text-fg text-left"
         >
           <BookOpen className="h-3.5 w-3.5" />
-          Imported Library ({entries.length})
+          Read-only references.bib ({entries.length})
         </button>
         <div className="flex items-center gap-1">
           <button
@@ -676,24 +834,23 @@ function LibrarySection({
                 >
                   \cite
                 </button>
-                <button
-                  onClick={() => onInsertBibTeX('\n' + p.raw)}
-                  className="rounded px-1.5 py-0.5 text-[9px] text-ok transition hover:bg-ok/10 hover:text-ok"
-                  title="Insert full BibTeX entry"
-                >
-                  BibTeX
-                </button>
               </div>
             </div>
           ))}
 
           <button
-            onClick={() => onInsertBibTeX('\n' + bibtex)}
+            type="button"
+            onClick={() => downloadBlob(new Blob([bibtex], { type: 'application/x-bibtex' }), 'references.bib')}
             className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-ok/10 py-1.5 text-[10px] font-medium text-ok ring-1 ring-ok/20 transition hover:bg-ok/20"
           >
-            <PlusCircle className="h-3 w-3" />
-            Insert All ({entries.length}) entries
+            <BookOpen className="h-3 w-3" />
+            Download references.bib
           </button>
+          {source?.synced_at && (
+            <p className="mt-2 text-center text-[9px] text-fg-3">
+              Last refreshed {new Date(source.synced_at).toLocaleString()}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -702,25 +859,63 @@ function LibrarySection({
 
 // ── Main panel ────────────────────────────────────────────────────────────
 
-export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCiteKey }: ReferencesPanelProps) {
+export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCiteKey, onLibraryChange }: ReferencesPanelProps) {
   const [input, setInput] = useState('')
   const [entries, setEntries] = useState<BibTeXEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [fetched, setFetched] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [importedBibTeX, setImportedBibTeX] = useState('')
+  const [importedSource, setImportedSource] = useState<ReferenceLibrarySource | null>(null)
+  const [libraryLoading, setLibraryLoading] = useState(Boolean(resumeId))
+  const [libraryLoadError, setLibraryLoadError] = useState<string | null>(null)
+  const [libraryReloadNonce, setLibraryReloadNonce] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Hydrate saved BibTeX from resume metadata on mount
   useEffect(() => {
-    if (!resumeId) return
+    let cancelled = false
+    if (!resumeId) {
+      setImportedBibTeX('')
+      onLibraryChange?.('')
+      setImportedSource(null)
+      setLibraryLoadError(null)
+      setLibraryLoading(false)
+      return
+    }
+
+    // Never carry one resume's references into another resume while the new
+    // request is pending or failed.
+    setImportedBibTeX('')
+    setImportedSource(null)
+    setLibraryLoadError(null)
+    setLibraryLoading(true)
     apiClient.getResume(resumeId)
       .then(resume => {
+        if (cancelled) return
         const bibtex = resume.metadata?.bibtex
-        if (typeof bibtex === 'string' && bibtex) setImportedBibTeX(bibtex)
+        const savedBibTeX = typeof bibtex === 'string' ? bibtex : ''
+        setImportedBibTeX(savedBibTeX)
+        onLibraryChange?.(savedBibTeX)
+        const source = resume.metadata?.bibtex_source
+        setImportedSource(
+          source && typeof source === 'object'
+            ? source as ReferenceLibrarySource
+            : null,
+        )
       })
-      .catch(() => {})
-  }, [resumeId])
+      .catch(error => {
+        if (cancelled) return
+        setLibraryLoadError(
+          error instanceof Error ? error.message : 'Saved references could not be loaded',
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setLibraryLoading(false)
+      })
+
+    return () => { cancelled = true }
+  }, [resumeId, libraryReloadNonce, onLibraryChange])
 
   const lines = input.split('\n').filter(l => l.trim())
 
@@ -751,6 +946,27 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
   }
 
   const successCount = entries.filter(e => e.bibtex).length
+
+  const handleClearLibrary = useCallback(async () => {
+    const previousBibTeX = importedBibTeX
+    const previousSource = importedSource
+    setImportedBibTeX('')
+    onLibraryChange?.('')
+    setImportedSource(null)
+    setLibraryLoadError(null)
+    if (!resumeId) return
+
+    try {
+      await apiClient.clearResumeBibTeX(resumeId)
+    } catch (error) {
+      setImportedBibTeX(previousBibTeX)
+      onLibraryChange?.(previousBibTeX)
+      setImportedSource(previousSource)
+      setLibraryLoadError(
+        error instanceof Error ? error.message : 'Saved references could not be cleared',
+      )
+    }
+  }, [importedBibTeX, importedSource, onLibraryChange, resumeId])
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -837,16 +1053,28 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
           )}
         </div>
 
+        <CitationCheckSection savedBibtex={importedBibTeX} />
+
         {/* Zotero import */}
         <ZoteroSection
           resumeId={resumeId}
-          onBibTeXImported={(bib, _count) => setImportedBibTeX(bib)}
+          importedSource={importedSource}
+          onBibTeXImported={(bib, _count, source) => {
+            setImportedBibTeX(bib)
+            onLibraryChange?.(bib)
+            setImportedSource(source)
+          }}
         />
 
         {/* Mendeley import */}
         <MendeleySection
           resumeId={resumeId}
-          onBibTeXImported={(bib, _count) => setImportedBibTeX(bib)}
+          importedSource={importedSource}
+          onBibTeXImported={(bib, _count, source) => {
+            setImportedBibTeX(bib)
+            onLibraryChange?.(bib)
+            setImportedSource(source)
+          }}
         />
 
         {/* ORCID publications */}
@@ -855,16 +1083,35 @@ export default function ReferencesPanel({ resumeId, onInsertBibTeX, onInsertCite
           onInsertCiteKey={onInsertCiteKey}
         />
 
+        {libraryLoading && (
+          <div className="flex items-center justify-center gap-2 border-t border-line px-3 py-3 text-[11px] text-fg-3">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Loading saved references…
+          </div>
+        )}
+
+        {libraryLoadError && !libraryLoading && (
+          <div role="alert" className="border-t border-line px-3 py-3">
+            <p className="text-[11px] text-err">Saved references could not be loaded.</p>
+            <p className="mt-1 break-words text-[10px] text-fg-3">{libraryLoadError}</p>
+            <button
+              type="button"
+              onClick={() => setLibraryReloadNonce(value => value + 1)}
+              className="mt-2 flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[10px] font-medium text-accent-strong ring-1 ring-accent transition hover:bg-accent-soft"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Retry saved library
+            </button>
+          </div>
+        )}
+
         {/* Imported library */}
         {importedBibTeX && (
           <LibrarySection
             bibtex={importedBibTeX}
-            onInsertBibTeX={onInsertBibTeX}
+            source={importedSource}
             onInsertCiteKey={onInsertCiteKey}
-            onClear={() => {
-              setImportedBibTeX('')
-              if (resumeId) apiClient.clearResumeBibTeX(resumeId).catch(() => {})
-            }}
+            onClear={() => { void handleClearLibrary() }}
           />
         )}
       </div>

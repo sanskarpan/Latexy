@@ -35,6 +35,28 @@ SAMPLE_BIBTEX = """\
 """
 
 
+def _set_stream_body(response: MagicMock, body: str | bytes, *, content_length: int | None = None) -> None:
+    """Give mocked httpx responses the streaming interface used by imports."""
+    raw = body.encode() if isinstance(body, str) else body
+    response.headers = dict(getattr(response, "headers", {}) or {})
+    if content_length is not None:
+        response.headers["content-length"] = str(content_length)
+
+    async def aiter_bytes(*, chunk_size: int | None = None):
+        del chunk_size
+        yield raw
+
+    response.aiter_bytes = aiter_bytes
+
+
+def _stream_context(response: MagicMock) -> MagicMock:
+    """Return an async context manager matching AsyncClient.stream()."""
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=response)
+    context.__aexit__ = AsyncMock(return_value=False)
+    return context
+
+
 async def _get_user(db_session: AsyncSession, auth_headers: dict) -> User:
     """Retrieve the User row matching the auth Bearer token."""
     token = auth_headers["Authorization"].replace("Bearer ", "")
@@ -47,9 +69,7 @@ async def _get_user(db_session: AsyncSession, auth_headers: dict) -> User:
     return user_result.scalar_one()
 
 
-async def _create_resume(
-    client: AsyncClient, auth_headers: dict, title: str = "Test Resume"
-) -> dict:
+async def _create_resume(client: AsyncClient, auth_headers: dict, title: str = "Test Resume") -> dict:
     resp = await client.post(
         "/resumes/",
         headers=auth_headers,
@@ -175,18 +195,14 @@ class TestZoteroStatus:
 
 @pytest.mark.asyncio
 class TestZoteroConnect:
-    async def test_connect_returns_503_when_unconfigured(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_connect_returns_503_when_unconfigured(self, client: AsyncClient, auth_headers: dict):
         with patch("app.api.zotero_routes.settings") as mock_settings:
             mock_settings.ZOTERO_CLIENT_KEY = ""
             mock_settings.ZOTERO_CLIENT_SECRET = ""
             resp = await client.post("/zotero/connect", headers=auth_headers)
         assert resp.status_code == 503
 
-    async def test_connect_returns_zotero_authorization_url(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_connect_returns_zotero_authorization_url(self, client: AsyncClient, auth_headers: dict):
         mock_resp = MagicMock()
         mock_resp.text = "oauth_token=reqtok&oauth_token_secret=reqsec"
         mock_resp.raise_for_status = MagicMock()
@@ -211,18 +227,18 @@ class TestZoteroConnect:
         assert resp.status_code == 200
         assert "zotero.org/oauth/authorize" in resp.json()["authorization_url"]
 
-    async def test_callback_only_issues_completion_ticket(
-        self, client: AsyncClient
-    ):
+    async def test_callback_only_issues_completion_ticket(self, client: AsyncClient):
         with (
             patch("app.api.zotero_routes.cache_manager") as mock_cache,
             patch("app.api.zotero_routes.secrets.token_urlsafe", return_value="ticket-1"),
             patch("httpx.AsyncClient") as mock_http,
         ):
-            mock_cache.pop = AsyncMock(return_value={
-                "user_id": "user-1",
-                "request_token_secret": "request-secret",
-            })
+            mock_cache.pop = AsyncMock(
+                return_value={
+                    "user_id": "user-1",
+                    "request_token_secret": "request-secret",
+                }
+            )
             mock_cache.set = AsyncMock()
             resp = await client.get(
                 "/zotero/callback?oauth_token=request-token&oauth_verifier=verifier",
@@ -244,19 +260,22 @@ class TestZoteroConnect:
         )
         mock_http.assert_not_called()
 
-    async def test_complete_rejects_cross_user_and_replay(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_complete_rejects_cross_user_and_replay(self, client: AsyncClient, auth_headers: dict):
         with (
             patch("app.api.zotero_routes.cache_manager") as mock_cache,
             patch("httpx.AsyncClient") as mock_http,
         ):
-            mock_cache.pop = AsyncMock(side_effect=[{
-                "user_id": "different-user",
-                "oauth_token": "request-token",
-                "oauth_verifier": "verifier",
-                "request_token_secret": "request-secret",
-            }, None])
+            mock_cache.pop = AsyncMock(
+                side_effect=[
+                    {
+                        "user_id": "different-user",
+                        "oauth_token": "request-token",
+                        "oauth_verifier": "verifier",
+                        "request_token_secret": "request-secret",
+                    },
+                    None,
+                ]
+            )
             first = await client.post(
                 "/zotero/complete",
                 json={"ticket": "one-time-ticket"},
@@ -275,10 +294,12 @@ class TestZoteroConnect:
 
     async def test_denial_without_verifier_is_friendly(self, client: AsyncClient):
         with patch("app.api.zotero_routes.cache_manager") as mock_cache:
-            mock_cache.pop = AsyncMock(return_value={
-                "user_id": "user-1",
-                "request_token_secret": "request-secret",
-            })
+            mock_cache.pop = AsyncMock(
+                return_value={
+                    "user_id": "user-1",
+                    "request_token_secret": "request-secret",
+                }
+            )
             resp = await client.get(
                 "/zotero/callback?denied=request-token",
                 follow_redirects=False,
@@ -296,9 +317,7 @@ class TestZoteroConnect:
 
 @pytest.mark.asyncio
 class TestZoteroImport:
-    async def test_import_without_token_returns_401(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_import_without_token_returns_401(self, client: AsyncClient, auth_headers: dict):
         resp = await client.post(
             "/zotero/import",
             json={"resume_id": "00000000-0000-0000-0000-000000000000"},
@@ -329,12 +348,13 @@ class TestZoteroImport:
         mock_resp.text = SAMPLE_BIBTEX
         mock_resp.status_code = 200
         mock_resp.raise_for_status = MagicMock()
+        _set_stream_body(mock_resp, SAMPLE_BIBTEX)
 
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_instance = AsyncMock()
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
             mock_instance.__aexit__ = AsyncMock(return_value=False)
-            mock_instance.get = AsyncMock(return_value=mock_resp)
+            mock_instance.stream = MagicMock(return_value=_stream_context(mock_resp))
             mock_client_cls.return_value = mock_instance
 
             resp = await client.post(
@@ -348,12 +368,23 @@ class TestZoteroImport:
         assert data["success"] is True
         assert data["entries_count"] == 2
         assert "@article" in data["bibtex"]
+        assert data["source"]["provider"] == "zotero"
+        assert data["source"]["filename"] == "references.bib"
+        assert data["source"]["read_only"] is True
 
         # Verify stored in resume.metadata via GET
         get_resp = await client.get(f"/resumes/{resume['id']}", headers=auth_headers)
         assert get_resp.status_code == 200
         meta = get_resp.json().get("metadata") or {}
         assert "bibtex" in meta
+        assert meta["bibtex_source"]["scope"] == "library"
+
+        clear_resp = await client.delete(f"/zotero/bibtex/{resume['id']}", headers=auth_headers)
+        assert clear_resp.status_code == 200
+        cleared = await client.get(f"/resumes/{resume['id']}", headers=auth_headers)
+        cleared_meta = cleared.json().get("metadata") or {}
+        assert "bibtex" not in cleared_meta
+        assert "bibtex_source" not in cleared_meta
 
     async def test_import_zotero_api_error_returns_502(
         self,
@@ -376,16 +407,14 @@ class TestZoteroImport:
         error_resp.status_code = 500
         error_resp.text = "Internal Server Error"
         error_resp.raise_for_status = MagicMock(
-            side_effect=httpx.HTTPStatusError(
-                "500", request=MagicMock(), response=error_resp
-            )
+            side_effect=httpx.HTTPStatusError("500", request=MagicMock(), response=error_resp)
         )
 
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_instance = AsyncMock()
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
             mock_instance.__aexit__ = AsyncMock(return_value=False)
-            mock_instance.get = AsyncMock(return_value=error_resp)
+            mock_instance.stream = MagicMock(return_value=_stream_context(error_resp))
             mock_client_cls.return_value = mock_instance
 
             resp = await client.post(
@@ -421,7 +450,7 @@ class TestZoteroImport:
             mock_instance = AsyncMock()
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
             mock_instance.__aexit__ = AsyncMock(return_value=False)
-            mock_instance.get = AsyncMock(return_value=forbidden_resp)
+            mock_instance.stream = MagicMock(return_value=_stream_context(forbidden_resp))
             mock_client_cls.return_value = mock_instance
 
             resp = await client.post(
@@ -475,17 +504,19 @@ class TestZoteroImport:
         mock_resp.text = SAMPLE_BIBTEX
         mock_resp.status_code = 200
         mock_resp.raise_for_status = MagicMock()
+        _set_stream_body(mock_resp, SAMPLE_BIBTEX)
         captured_urls: list[str] = []
 
-        async def fake_get(url: str, **kwargs):
+        def fake_stream(method: str, url: str, **kwargs):
+            assert method == "GET"
             captured_urls.append(url)
-            return mock_resp
+            return _stream_context(mock_resp)
 
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_instance = AsyncMock()
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
             mock_instance.__aexit__ = AsyncMock(return_value=False)
-            mock_instance.get = fake_get
+            mock_instance.stream = fake_stream
             mock_client_cls.return_value = mock_instance
 
             resp = await client.post(
@@ -497,9 +528,7 @@ class TestZoteroImport:
         assert resp.status_code == 200
         assert any("collections/ABCD1234" in u for u in captured_urls)
 
-    async def test_collection_key_too_long_returns_422(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_collection_key_too_long_returns_422(self, client: AsyncClient, auth_headers: dict):
         """collection_key > 20 chars → Pydantic 422."""
         resp = await client.post(
             "/zotero/import",
@@ -511,9 +540,7 @@ class TestZoteroImport:
         )
         assert resp.status_code == 422
 
-    async def test_collection_key_bad_chars_returns_422(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_collection_key_bad_chars_returns_422(self, client: AsyncClient, auth_headers: dict):
         """A collection_key with path/query characters is rejected (422), not
         interpolated into the Zotero API URL."""
         for bad in ("ABCD/123", "abcd1234", "AB?C#123", "ABC12345X"):
@@ -565,9 +592,7 @@ class TestZoteroDisconnect:
 
 @pytest.mark.asyncio
 class TestZoteroCollections:
-    async def test_collections_without_token_returns_401(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_collections_without_token_returns_401(self, client: AsyncClient, auth_headers: dict):
         resp = await client.get("/zotero/collections", headers=auth_headers)
         assert resp.status_code == 401
 
@@ -651,18 +676,14 @@ class TestMendeleyStatus:
 
 @pytest.mark.asyncio
 class TestMendeleyConnect:
-    async def test_connect_returns_503_when_unconfigured(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_connect_returns_503_when_unconfigured(self, client: AsyncClient, auth_headers: dict):
         with patch("app.api.mendeley_routes.settings") as mock_settings:
             mock_settings.MENDELEY_CLIENT_ID = ""
             mock_settings.MENDELEY_CLIENT_SECRET = ""
             resp = await client.post("/mendeley/connect", headers=auth_headers)
         assert resp.status_code == 503
 
-    async def test_connect_returns_mendeley_authorization_url(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_connect_returns_mendeley_authorization_url(self, client: AsyncClient, auth_headers: dict):
         with (
             patch("app.api.mendeley_routes.settings") as mock_settings,
             patch("app.api.mendeley_routes.cache_manager") as mock_cache,
@@ -699,17 +720,17 @@ class TestMendeleyConnect:
         )
         mock_http.assert_not_called()
 
-    async def test_complete_rejects_cross_user_and_replay(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_complete_rejects_cross_user_and_replay(self, client: AsyncClient, auth_headers: dict):
         with (
             patch("app.api.mendeley_routes.cache_manager") as mock_cache,
             patch("httpx.AsyncClient") as mock_http,
         ):
-            mock_cache.pop = AsyncMock(side_effect=[
-                {"user_id": "different-user", "code": "victim-code"},
-                None,
-            ])
+            mock_cache.pop = AsyncMock(
+                side_effect=[
+                    {"user_id": "different-user", "code": "victim-code"},
+                    None,
+                ]
+            )
             first = await client.post(
                 "/mendeley/complete",
                 json={"ticket": "one-time-ticket"},
@@ -746,9 +767,7 @@ class TestMendeleyConnect:
 
 @pytest.mark.asyncio
 class TestMendeleyImport:
-    async def test_import_without_token_returns_401(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_import_without_token_returns_401(self, client: AsyncClient, auth_headers: dict):
         resp = await client.post(
             "/mendeley/import",
             json={"resume_id": "00000000-0000-0000-0000-000000000000"},
@@ -770,25 +789,22 @@ class TestMendeleyImport:
 
         resume = await _create_resume(client, auth_headers)
 
-        probe_resp = MagicMock()
-        probe_resp.status_code = 200
-
         bibtex_resp = MagicMock()
         bibtex_resp.text = SAMPLE_BIBTEX
         bibtex_resp.status_code = 200
         bibtex_resp.raise_for_status = MagicMock()
         bibtex_resp.headers = {}
+        _set_stream_body(bibtex_resp, SAMPLE_BIBTEX)
 
-        async def fake_get(url: str, **kwargs):
-            if "profiles/me" in url:
-                return probe_resp
-            return bibtex_resp
+        def fake_stream(method: str, url: str, **kwargs):
+            assert method == "GET"
+            return _stream_context(bibtex_resp)
 
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_instance = AsyncMock()
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
             mock_instance.__aexit__ = AsyncMock(return_value=False)
-            mock_instance.get = fake_get
+            mock_instance.stream = fake_stream
             mock_client_cls.return_value = mock_instance
 
             resp = await client.post(
@@ -801,6 +817,48 @@ class TestMendeleyImport:
         data = resp.json()
         assert data["success"] is True
         assert "@article" in data["bibtex"]
+        assert data["source"]["provider"] == "mendeley"
+        assert data["source"]["filename"] == "references.bib"
+
+        get_resp = await client.get(f"/resumes/{resume['id']}", headers=auth_headers)
+        assert get_resp.json()["metadata"]["bibtex_source"]["read_only"] is True
+
+    async def test_mendeley_rejects_cross_origin_pagination_link(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        db_session: AsyncSession,
+    ):
+        """A provider Link header cannot exfiltrate the bearer token."""
+        from app.services.encryption_service import encryption_service
+
+        user = await _get_user(db_session, auth_headers)
+        user.user_metadata = {"mendeley_token": encryption_service.encrypt("mtoken")}
+        await db_session.commit()
+        resume = await _create_resume(client, auth_headers)
+
+        first_page = MagicMock()
+        first_page.text = SAMPLE_BIBTEX
+        first_page.status_code = 200
+        first_page.raise_for_status = MagicMock()
+        first_page.headers = {"Link": '<https://attacker.invalid/steal>; rel="next"'}
+        _set_stream_body(first_page, SAMPLE_BIBTEX)
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_instance = AsyncMock()
+            mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
+            mock_instance.__aexit__ = AsyncMock(return_value=False)
+            mock_instance.stream = MagicMock(return_value=_stream_context(first_page))
+            mock_client_cls.return_value = mock_instance
+
+            resp = await client.post(
+                "/mendeley/import",
+                json={"resume_id": resume["id"]},
+                headers=auth_headers,
+            )
+
+        assert resp.status_code == 502
+        assert mock_instance.stream.call_count == 1
 
     async def test_mendeley_api_error_returns_502(
         self,
@@ -822,21 +880,18 @@ class TestMendeleyImport:
         error_resp = MagicMock()
         error_resp.status_code = 500
         error_resp.raise_for_status = MagicMock(
-            side_effect=httpx.HTTPStatusError(
-                "500", request=MagicMock(), response=error_resp
-            )
+            side_effect=httpx.HTTPStatusError("500", request=MagicMock(), response=error_resp)
         )
 
-        async def fake_get(url: str, **kwargs):
-            if "profiles/me" in url:
-                return probe_resp
-            return error_resp
+        def fake_stream(method: str, url: str, **kwargs):
+            assert method == "GET"
+            return _stream_context(error_resp)
 
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_instance = AsyncMock()
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
             mock_instance.__aexit__ = AsyncMock(return_value=False)
-            mock_instance.get = fake_get
+            mock_instance.stream = fake_stream
             mock_client_cls.return_value = mock_instance
 
             resp = await client.post(
@@ -874,20 +929,21 @@ class TestMendeleyImport:
         bibtex_resp.status_code = 200
         bibtex_resp.raise_for_status = MagicMock()
         bibtex_resp.headers = {}
+        _set_stream_body(bibtex_resp, SAMPLE_BIBTEX)
 
         refresh_resp = MagicMock()
         refresh_resp.status_code = 200
         refresh_resp.raise_for_status = MagicMock()
-        refresh_resp.json = MagicMock(
-            return_value={"access_token": "fresh", "refresh_token": "newref"}
-        )
+        refresh_resp.json = MagicMock(return_value={"access_token": "fresh", "refresh_token": "newref"})
 
         with patch("httpx.AsyncClient") as mock_client_cls:
             mock_instance = AsyncMock()
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
             mock_instance.__aexit__ = AsyncMock(return_value=False)
             # First documents call 401, then success after refresh.
-            mock_instance.get = AsyncMock(side_effect=[unauthorized, bibtex_resp])
+            mock_instance.stream = MagicMock(
+                side_effect=[_stream_context(unauthorized), _stream_context(bibtex_resp)]
+            )
             mock_instance.post = AsyncMock(return_value=refresh_resp)
             mock_client_cls.return_value = mock_instance
 
@@ -928,7 +984,7 @@ class TestMendeleyImport:
             mock_instance = AsyncMock()
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
             mock_instance.__aexit__ = AsyncMock(return_value=False)
-            mock_instance.get = AsyncMock(return_value=probe_resp)
+            mock_instance.stream = MagicMock(return_value=_stream_context(probe_resp))
             mock_client_cls.return_value = mock_instance
 
             resp = await client.post(

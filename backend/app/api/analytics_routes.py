@@ -28,6 +28,29 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 # Limits for untrusted, client-supplied event metadata (SEC/DoS guard).
 _MAX_METADATA_BYTES = 4096
 _MAX_METADATA_DEPTH = 5
+_REDACTED_METADATA_KEYS = frozenset(
+    {
+        "authorization",
+        "cookie",
+        "password",
+        "token",
+        "secret",
+        "api_key",
+        "access_token",
+        "refresh_token",
+        "email",
+        "phone",
+        "name",
+        "first_name",
+        "last_name",
+        "address",
+        "ip_address",
+        "user_agent",
+        "resume_content",
+        "latex_content",
+        "prompt",
+    }
+)
 
 
 def _payload_depth(obj: Any, depth: int = 1) -> int:
@@ -43,10 +66,32 @@ def _payload_depth(obj: Any, depth: int = 1) -> int:
     return depth
 
 
+def _redact_metadata(value: Any) -> Any:
+    """Strip credentials and direct identifiers before telemetry persistence."""
+    if isinstance(value, dict):
+        return {
+            key: (
+                "[redacted]"
+                if str(key).casefold() in _REDACTED_METADATA_KEYS
+                else _redact_metadata(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_metadata(item) for item in value]
+    return value
+
+
 # Pydantic models for request/response
 class EventTrackingRequest(BaseModel):
-    event_type: str = Field(..., description="Type of event to track")
-    device_fingerprint: Optional[str] = Field(None, description="Device fingerprint for anonymous users")
+    event_type: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        pattern=r"^[A-Za-z0-9_.:-]+$",
+        description="Type of event to track",
+    )
+    device_fingerprint: Optional[str] = Field(None, min_length=1, max_length=255, description="Device fingerprint for anonymous users")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional event metadata")
 
     @field_validator("metadata")
@@ -63,7 +108,7 @@ class EventTrackingRequest(BaseModel):
             raise ValueError(f"metadata exceeds maximum allowed size of {_MAX_METADATA_BYTES} bytes")
         if _payload_depth(value) > _MAX_METADATA_DEPTH:
             raise ValueError(f"metadata nesting exceeds maximum depth of {_MAX_METADATA_DEPTH}")
-        return value
+        return _redact_metadata(value)
 
 class UserAnalyticsResponse(BaseModel):
     user_id: str
@@ -167,7 +212,7 @@ async def track_event(
             )
 
     except Exception as e:
-        logger.error(f"Error tracking event: {e}")
+        logger.error("Error tracking event (%s)", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -209,13 +254,17 @@ async def get_my_analytics(
         return UserAnalyticsResponse(**analytics_data)
 
     except Exception as e:
-        logger.error(f"Error getting user analytics: {e}")
+        logger.error("Error getting user analytics (%s)", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
         )
 
-@router.get("/me/timeseries", response_model=UserAnalyticsTimeseriesResponse)
+@router.get(
+    "/me/timeseries",
+    response_model=UserAnalyticsTimeseriesResponse,
+    dependencies=[Depends(require_feature("analytics"))],
+)
 async def get_my_analytics_timeseries(
     days: int = Query(default=30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
@@ -248,7 +297,7 @@ async def get_my_analytics_timeseries(
 
         return UserAnalyticsTimeseriesResponse(**timeseries)
     except Exception as e:
-        logger.error(f"Error getting user analytics timeseries: {e}")
+        logger.error("Error getting user analytics timeseries (%s)", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -280,7 +329,7 @@ async def get_user_analytics(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting user analytics: {e}")
+        logger.error("Error getting user analytics (%s)", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -302,7 +351,7 @@ async def get_system_analytics(
         return SystemAnalyticsResponse(**analytics_data)
 
     except Exception as e:
-        logger.error(f"Error getting system analytics: {e}")
+        logger.error("Error getting system analytics (%s)", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -324,7 +373,7 @@ async def get_conversion_funnel(
         return ConversionFunnelResponse(**funnel_data)
 
     except Exception as e:
-        logger.error(f"Error getting conversion funnel: {e}")
+        logger.error("Error getting conversion funnel (%s)", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -365,7 +414,7 @@ async def track_compilation(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error tracking compilation event: {e}")
+        logger.error("Error tracking compilation event (%s)", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -406,7 +455,7 @@ async def track_optimization(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error tracking optimization event: {e}")
+        logger.error("Error tracking optimization event (%s)", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -446,7 +495,7 @@ async def track_page_view(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error tracking page view: {e}")
+        logger.error("Error tracking page view (%s)", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -486,7 +535,7 @@ async def track_feature_usage(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error tracking feature usage: {e}")
+        logger.error("Error tracking feature usage (%s)", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
@@ -511,7 +560,7 @@ async def get_analytics_dashboard(
         }
 
     except Exception as e:
-        logger.error(f"Error getting analytics dashboard: {e}")
+        logger.error("Error getting analytics dashboard (%s)", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Check, ChevronDown, ChevronRight, Loader2, Phone, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type ContactChange } from '@/lib/api-client'
@@ -29,14 +29,62 @@ export default function ContactFormatterPanel({
   const [formattedLatex, setFormattedLatex] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(true)
+  const requestIdRef = useRef(0)
+  const modalRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLElement | null>(null)
+  const titleId = useId()
 
   // Reset on open
   useEffect(() => {
-    if (!isOpen) return
+    requestIdRef.current += 1
+    if (!isOpen) {
+      setLoading(false)
+      return
+    }
+    triggerRef.current = document.activeElement as HTMLElement | null
     setChanges(null)
     setFormattedLatex(null)
     setPreviewOpen(true)
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const frame = requestAnimationFrame(() => modalRef.current?.focus())
+    return () => {
+      cancelAnimationFrame(frame)
+      document.body.style.overflow = previousOverflow
+      triggerRef.current?.focus?.()
+    }
   }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onClose()
+        return
+      }
+      if (event.key !== 'Tab' || !modalRef.current) return
+      const focusable = Array.from(modalRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.offsetParent !== null || element === document.activeElement)
+      if (focusable.length === 0) {
+        event.preventDefault()
+        modalRef.current.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === modalRef.current)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [isOpen, onClose])
 
   const handleDetect = useCallback(async () => {
     const latex = getLatex()
@@ -47,17 +95,20 @@ export default function ContactFormatterPanel({
     setLoading(true)
     setChanges(null)
     setFormattedLatex(null)
+    const requestId = ++requestIdRef.current
     try {
       const result = await apiClient.formatContacts(latex)
+      if (requestId !== requestIdRef.current) return
       setChanges(result.changes)
       setFormattedLatex(result.formatted_latex)
       if (result.changes.length === 0) {
         toast.info('All contacts are already normalized')
       }
     } catch (err) {
+      if (requestId !== requestIdRef.current) return
       toast.error(err instanceof Error ? err.message : 'Detection failed')
     } finally {
-      setLoading(false)
+      if (requestId === requestIdRef.current) setLoading(false)
     }
   }, [getLatex])
 
@@ -77,16 +128,17 @@ export default function ContactFormatterPanel({
       className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)]"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-surface shadow-[var(--shadow-2)]">
+      <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-surface shadow-[var(--shadow-2)] focus:outline-none">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <div className="flex items-center gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] bg-ok/15">
               <Phone size={13} className="text-ok" />
             </div>
-            <h2 className="text-sm font-semibold text-fg">Normalize Contacts</h2>
+            <h2 id={titleId} className="text-sm font-semibold text-fg">Normalize Contacts</h2>
           </div>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close"
             className="rounded-[var(--radius-md)] p-1.5 text-fg-3 transition hover:bg-surface-2 hover:text-fg-2"
@@ -102,8 +154,10 @@ export default function ContactFormatterPanel({
 
           {/* Detect button */}
           <button
+            type="button"
             onClick={handleDetect}
             disabled={loading}
+            aria-busy={loading}
             className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-line bg-surface-2 py-2 text-xs font-semibold text-fg-2 transition hover:bg-surface-2 disabled:opacity-50"
           >
             {loading ? (
@@ -123,7 +177,9 @@ export default function ContactFormatterPanel({
               ) : (
                 <div className="rounded-[var(--radius-md)] border border-line bg-bg">
                   <button
+                    type="button"
                     onClick={() => setPreviewOpen((o) => !o)}
+                    aria-expanded={previewOpen}
                     className="flex w-full items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-fg-3"
                   >
                     <span>{changes.length} change{changes.length !== 1 ? 's' : ''} found</span>
@@ -158,12 +214,14 @@ export default function ContactFormatterPanel({
               {changes.length > 0 && (
                 <div className="flex gap-2">
                   <button
+                    type="button"
                     onClick={onClose}
                     className="flex-1 rounded-[var(--radius-md)] border border-line py-2 text-xs font-semibold text-fg-3 transition hover:text-fg-2"
                   >
                     Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={handleApply}
                     className="flex flex-1 items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-ok/20 py-2 text-xs font-semibold text-ok ring-1 ring-ok/20 transition hover:bg-ok/30"
                   >

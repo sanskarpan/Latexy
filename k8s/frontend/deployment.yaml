@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: ghcr.io/sanskarpan/latexy-frontend:latest
+        image: __LATEXY_FRONTEND_IMAGE__
         ports:
         - containerPort: 5180
         env:

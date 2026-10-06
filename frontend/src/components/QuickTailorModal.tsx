@@ -32,25 +32,17 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
   useEffect(() => {
     if (!jobId || step !== 'progress') return
     if (state.status === 'completed') {
-      const saveAndFinish = async () => {
-        if (forkId && state.streamingLatex) {
-          try {
-            await apiClient.updateResume(forkId, { latex_content: state.streamingLatex })
-          } catch {
-            setStep('error')
-            setErrorMessage('Tailoring finished but saving the result failed. Please try again.')
-            return
-          }
-        }
-        setStep('done')
-        onDone?.(forkId!)
-      }
-      void saveAndFinish()
+      // Completion is emitted only after the worker's owner-scoped persistence
+      // gate writes the optimized LaTeX to the fork. The browser must not repeat
+      // that authoritative save: a transient PATCH failure used to turn a
+      // successful paid optimization into a false failure or lost result.
+      setStep('done')
+      if (forkId) onDone?.(forkId)
     } else if (state.status === 'failed' || state.status === 'cancelled') {
       setStep('error')
       setErrorMessage(state.error ?? 'Optimization failed. Please try again.')
     }
-  }, [state.status, state.error, state.streamingLatex, jobId, step, forkId, onDone])
+  }, [state.status, state.error, jobId, step, forkId, onDone])
 
   const handleSubmit = useCallback(async () => {
     if (jobDescription.trim().length < 10) return
@@ -88,12 +80,11 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
   }, [reset])
 
   const handleDismiss = useCallback(() => {
-    if (step === 'progress') {
-      handleCancel()
-    } else {
-      onClose()
-    }
-  }, [step, handleCancel, onClose])
+    // Dismissal only closes the progress view. The explicit Cancel button is
+    // the sole cancellative action, so Escape/backdrop/X cannot discard paid
+    // work that safely continues and persists on the server.
+    onClose()
+  }, [onClose])
 
   // Close on Escape
   useEffect(() => {
@@ -225,7 +216,8 @@ export default function QuickTailorModal({ resumeId, resumeTitle, onClose, onDon
               )}
             </div>
             <p className="text-center text-xs text-fg-3">
-              This typically takes 30–90 seconds. Don&apos;t close this window.
+              This typically takes 30–90 seconds. You can close this window;
+              tailoring will continue in the background.
             </p>
             <div className="flex justify-end">
               <button

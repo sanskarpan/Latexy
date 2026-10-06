@@ -11,6 +11,10 @@ const WORKSPACE_SOURCE = readFileSync(
   fileURLToPath(new URL('../app/workspace/[resumeId]/edit/page.tsx', import.meta.url)),
   'utf8'
 )
+const OPTIMIZE_SOURCE = readFileSync(
+  fileURLToPath(new URL('../app/workspace/[resumeId]/optimize/page.tsx', import.meta.url)),
+  'utf8'
+)
 const CHANGE_REVIEW_SOURCE = readFileSync(
   fileURLToPath(new URL('../components/ChangeReviewModal.tsx', import.meta.url)),
   'utf8'
@@ -62,5 +66,11 @@ describe('optimization review staging', () => {
     expect(applyHandler).toContain('apiClient.recordOptimization')
     expect(WORKSPACE_SOURCE.slice(0, WORKSPACE_SOURCE.indexOf('const applyOptimizationCandidate')))
       .not.toContain('apiClient.recordOptimization')
+  })
+
+  test('authenticated optimizer preserves review snapshots and newer source edits', () => {
+    expect(OPTIMIZE_SOURCE).toContain("activeJobKind === 'optimize'")
+    expect(OPTIMIZE_SOURCE).toContain('currentLatex !== compareOriginalLatex')
+    expect(OPTIMIZE_SOURCE).toContain('return false')
   })
 })

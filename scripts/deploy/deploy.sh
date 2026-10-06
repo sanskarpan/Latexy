@@ -27,7 +27,8 @@ log() {
     local level="$1"
     shift
     local message="$*"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     
     case "$level" in
         "INFO")
@@ -114,6 +115,8 @@ load_environment() {
     
     if [[ -f "$PROJECT_ROOT/.env.$DEPLOY_ENV" ]]; then
         set -a
+        # DEPLOY_ENV is the selected environment name; the file is existence-checked above.
+        # shellcheck disable=SC1090
         source "$PROJECT_ROOT/.env.$DEPLOY_ENV"
         set +a
         log "SUCCESS" "Environment variables loaded"
@@ -124,10 +127,33 @@ load_environment() {
 
 # Function to get current version
 get_current_version() {
-    if [[ -f "$PROJECT_ROOT/VERSION" ]]; then
-        cat "$PROJECT_ROOT/VERSION"
-    else
-        git describe --tags --always --dirty 2>/dev/null || echo "unknown"
+    local exact_tag
+    exact_tag=$(git describe --exact-match --tags HEAD 2>/dev/null || true)
+
+    # A deploy must identify a clean immutable checkout.  Do not let a stale
+    # VERSION file or a `git describe` string such as v1.2.3-4-gabc become an
+    # image tag that does not correspond to a published release.
+    if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
+        log "ERROR" "Refusing to deploy a dirty checkout; commit or remove local changes first"
+        return 1
+    fi
+
+    if [[ "$exact_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        printf '%s\n' "$exact_tag"
+        return 0
+    fi
+
+    printf 'sha-%s\n' "$(git rev-parse --verify HEAD)"
+}
+
+# Compose image tags must identify one release or source revision.  In
+# particular, --skip-build is never allowed to fall back to an unset value or
+# to the mutable :latest tag.
+validate_image_version() {
+    local version="$1"
+    if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && ! "$version" =~ ^sha-[0-9a-fA-F]{7,64}$ ]]; then
+        log "ERROR" "LATEXY_VERSION must be a vX.Y.Z release tag or sha-<commit> tag: $version"
+        return 1
     fi
 }
 
@@ -199,6 +225,12 @@ build_images() {
     
     local version
     version=$(get_current_version)
+
+    # Compose's image keys are exact revision tags. Set the same revision for
+    # the build, migration container, and application rollout; never retag
+    # through a mutable :latest alias.
+    LATEXY_VERSION="$version"
+    export LATEXY_VERSION
     
     # Build production images
     if docker-compose -f docker-compose.prod.yml build \
@@ -211,12 +243,27 @@ build_images() {
         return 1
     fi
     
-    # Tag images with version. The names must match the `image:` keys in
-    # docker-compose.prod.yml, otherwise these tags point at nothing.
-    docker tag "${IMAGE_PREFIX}/latexy-frontend:latest" "${IMAGE_PREFIX}/latexy-frontend:$version"
-    docker tag "${IMAGE_PREFIX}/latexy-backend:latest" "${IMAGE_PREFIX}/latexy-backend:$version"
+    log "SUCCESS" "Images built with exact revision: $LATEXY_VERSION"
+}
 
-    log "SUCCESS" "Images tagged with version: $version"
+# Start only stateful dependencies before migrations. Existing app processes may
+# still serve the previous revision; no new revision process starts until the
+# exact backend image has completed Alembic successfully.
+start_stateful_services() {
+    log "INFO" "Starting stateful dependencies for migration..."
+    if docker-compose -f docker-compose.prod.yml up -d --wait \
+        postgres redis minio tempo; then
+        # minio-init is a one-shot job; run it after MinIO is healthy rather
+        # than asking --wait to treat an exited init container as a service.
+        if ! docker-compose -f docker-compose.prod.yml run --rm --no-deps minio-init; then
+            log "ERROR" "Object-storage bucket initialization failed"
+            return 1
+        fi
+        log "SUCCESS" "Stateful dependencies are ready"
+    else
+        log "ERROR" "Stateful dependencies failed to become ready"
+        return 1
+    fi
 }
 
 # Function to deploy services
@@ -236,7 +283,7 @@ deploy_services() {
     
     # Deploy with zero-downtime strategy
     log "INFO" "Starting new containers..."
-    if docker-compose -f docker-compose.prod.yml up -d --remove-orphans; then
+    if docker-compose -f docker-compose.prod.yml up -d --no-build --remove-orphans; then
         log "SUCCESS" "Services deployed successfully"
     else
         log "ERROR" "Failed to deploy services"
@@ -298,7 +345,7 @@ check_service_health() {
 run_migrations() {
     log "INFO" "Running database migrations..."
     
-    if docker-compose -f docker-compose.prod.yml exec -T backend alembic upgrade head; then
+    if docker-compose -f docker-compose.prod.yml run --rm --no-deps backend alembic upgrade head; then
         log "SUCCESS" "Database migrations completed"
     else
         log "ERROR" "Database migrations failed"
@@ -309,6 +356,8 @@ run_migrations() {
 # Function to rollback deployment
 rollback_deployment() {
     local version="$1"
+
+    validate_image_version "$version"
     
     log "INFO" "Rolling back to version: $version"
     
@@ -331,12 +380,14 @@ rollback_deployment() {
         log "INFO" "Stopped current services"
     fi
     
-    # Use previous images
-    docker tag "${IMAGE_PREFIX}/latexy-frontend:$version" "${IMAGE_PREFIX}/latexy-frontend:latest"
-    docker tag "${IMAGE_PREFIX}/latexy-backend:$version" "${IMAGE_PREFIX}/latexy-backend:latest"
-    
-    # Deploy
-    if deploy_services; then
+    # Point every Compose service, including the migration container, at the
+    # requested exact rollback revision. Do not retag through :latest.
+    LATEXY_VERSION="$version"
+    export LATEXY_VERSION
+
+    # Migrate before starting application processes, preserving the rollback
+    # backup/recovery boundary used by the previous implementation.
+    if start_stateful_services && run_migrations && deploy_services; then
         log "SUCCESS" "Rollback completed successfully"
     else
         log "ERROR" "Rollback failed"
@@ -429,6 +480,19 @@ main() {
                 ;;
         esac
     done
+
+    case "$DEPLOY_ENV" in
+        production)
+            ;;
+        staging)
+            log "ERROR" "Staging topology is not configured; refusing to use production Compose"
+            return 1
+            ;;
+        *)
+            log "ERROR" "Unsupported deployment environment: $DEPLOY_ENV"
+            return 1
+            ;;
+    esac
     
     # Set backup flag
     if [[ "$skip_backup" == "true" ]]; then
@@ -449,6 +513,11 @@ main() {
     
     # Handle rollback
     if [[ -n "$rollback_version" ]]; then
+        if ! check_prerequisites; then
+            send_notification "error" "$rollback_version" "Prerequisites check failed"
+            exit 1
+        fi
+        load_environment
         if rollback_deployment "$rollback_version"; then
             send_notification "success" "$rollback_version" "Rollback completed successfully"
             log "SUCCESS" "=== Rollback completed successfully ==="
@@ -468,6 +537,27 @@ main() {
     
     # Load environment
     load_environment
+
+    if [[ "$skip_build" == "true" ]]; then
+        if [[ -z "${LATEXY_VERSION:-}" ]]; then
+            log "ERROR" "--skip-build requires LATEXY_VERSION for the exact prebuilt image"
+            exit 1
+        fi
+        if [[ -n "${LATEXY_VERSION:-}" ]]; then
+            if ! validate_image_version "$LATEXY_VERSION"; then
+                exit 1
+            fi
+            export LATEXY_VERSION
+        fi
+    else
+        # A normal build and its migration/deploy must share the revision that
+        # was just built, regardless of a stale value in the env file.
+        LATEXY_VERSION="$version"
+        if ! validate_image_version "$LATEXY_VERSION"; then
+            exit 1
+        fi
+        export LATEXY_VERSION
+    fi
     
     # Create backup
     if [[ "$dry_run" != "true" ]]; then
@@ -485,26 +575,30 @@ main() {
         fi
     fi
     
-    # Build images
-    if [[ "$skip_build" != "true" && "$dry_run" != "true" ]]; then
+    # Build exact application images, start only stateful dependencies, and run
+    # migrations from that same backend image before any new revision process starts.
+    if [[ "$dry_run" != "true" && "$skip_build" != "true" ]]; then
         if ! build_images; then
             send_notification "error" "$version" "Image build failed"
             exit 1
         fi
     fi
-    
-    # Deploy services
-    if ! deploy_services "$dry_run"; then
-        send_notification "error" "$version" "Service deployment failed"
-        exit 1
-    fi
-    
-    # Run migrations
+
     if [[ "$dry_run" != "true" ]]; then
+        if ! start_stateful_services; then
+            send_notification "error" "$version" "Stateful dependency startup failed"
+            exit 1
+        fi
         if ! run_migrations; then
             send_notification "error" "$version" "Database migrations failed"
             exit 1
         fi
+    fi
+
+    # Deploy services
+    if ! deploy_services "$dry_run"; then
+        send_notification "error" "$version" "Service deployment failed"
+        exit 1
     fi
     
     # Cleanup
@@ -522,4 +616,3 @@ main() {
 
 # Run the main function
 main "$@"
-

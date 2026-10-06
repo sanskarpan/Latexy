@@ -66,19 +66,208 @@
       transition: background 0.15s;
     }
     button:hover { background: rgba(168,85,247,0.3); }
+    .reader { display: none; margin-top: 1.5rem; text-align: left; }
+    .reader iframe {
+      display: block;
+      width: 100%;
+      height: min(60vh, 560px);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 0.5rem;
+      background: #fff;
+    }
+    .reader-actions { display: flex; justify-content: center; gap: 0.75rem; }
+    .reader-actions button, .reader-actions a { margin-top: 1rem; }
+    .reader-actions a {
+      display: inline-block;
+      padding: 0.6rem 1.5rem;
+      background: rgba(168,85,247,0.2);
+      border: 1px solid rgba(168,85,247,0.35);
+      color: #c084fc;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      text-decoration: none;
+    }
+    .reader-actions a:hover { background: rgba(168,85,247,0.3); }
+    .reader-title { margin: 0.75rem 0 0; color: #a1a1aa; font-size: 0.8rem; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="logo">L</div>
-    <h1>You're offline</h1>
-    <p>Latexy couldn't reach the server. Your drafts are saved locally and will sync automatically when you reconnect.</p>
+    <h1 id="offline-heading">You're offline</h1>
+    <p id="offline-message">Latexy couldn't reach the server. Your drafts are saved locally and will sync automatically when you reconnect.</p>
     <div class="badge">
       <span class="dot"></span>
       No internet connection
     </div>
     <br />
-    <button onclick="location.reload()">Try Again</button>
+    <button id="retry-button" type="button">Try Again</button>
+    <section id="offline-reader" class="reader" aria-labelledby="offline-heading">
+      <iframe id="offline-pdf" title="Offline saved PDF preview"></iframe>
+      <p id="offline-title" class="reader-title"></p>
+      <div class="reader-actions">
+        <a id="offline-download" download>Download PDF</a>
+      </div>
+    </section>
   </div>
+  <script>
+    (() => {
+      'use strict'
+
+      const DB_NAME = 'latexy-offline'
+      const DB_VERSION = 3
+      const PDF_STORE = 'compiled-pdfs'
+      const OWNER_KEY = 'latexy:last-authenticated-owner'
+      const MAX_PDF_BYTES = 5 * 1024 * 1024
+      const pathMatch = window.location.pathname.match(/^\/workspace\/([^/]+)\/edit(?:\/|$)/)
+      let resumeId = null
+      if (pathMatch) {
+        try { resumeId = decodeURIComponent(pathMatch[1]) } catch { resumeId = null }
+      }
+      const heading = document.getElementById('offline-heading')
+      const message = document.getElementById('offline-message')
+      const reader = document.getElementById('offline-reader')
+      const frame = document.getElementById('offline-pdf')
+      const title = document.getElementById('offline-title')
+      const download = document.getElementById('offline-download')
+      const retry = document.getElementById('retry-button')
+      let ownerId = null
+      let pdfUrl = null
+      let loadGeneration = 0
+
+      function rememberedOwner() {
+        try { return window.localStorage.getItem(OWNER_KEY) || null } catch { return null }
+      }
+
+      function openDb() {
+        return new Promise((resolve, reject) => {
+          // The app owns schema creation/migration. The public fallback must
+          // never create a partial v3 database that can break offline-drafts.
+          const request = window.indexedDB.open(DB_NAME)
+          request.onupgradeneeded = () => request.transaction.abort()
+          request.onsuccess = () => {
+            const db = request.result
+            if (db.version !== DB_VERSION) {
+              db.close()
+              reject(new Error('Unsupported offline database version'))
+              return
+            }
+            resolve(db)
+          }
+          request.onerror = () => reject(request.error)
+        })
+      }
+
+      function keyFor(owner, resume) { return JSON.stringify([owner, resume]) }
+
+      async function readPdf(owner, resume) {
+        if (!owner || !resume) return null
+        const db = await openDb()
+        try {
+          const record = await new Promise((resolve, reject) => {
+            const tx = db.transaction(PDF_STORE, 'readonly')
+            const request = tx.objectStore(PDF_STORE).get(keyFor(owner, resume))
+            request.onsuccess = () => resolve(request.result || null)
+            request.onerror = () => reject(request.error)
+          })
+          if (!record || record.key !== keyFor(owner, resume) || record.ownerId !== owner || record.resumeId !== resume) return null
+          if (!(record.pdf instanceof Blob) || record.pdf.size === 0 || record.pdf.size > MAX_PDF_BYTES || (await record.pdf.slice(0, 5).text()) !== '%PDF-') {
+            return null
+          }
+          return record
+        } finally {
+          db.close()
+        }
+      }
+
+      function revokePdf() {
+        if (pdfUrl) window.URL.revokeObjectURL(pdfUrl)
+        pdfUrl = null
+        frame.removeAttribute('src')
+        download.removeAttribute('href')
+        reader.style.display = 'none'
+      }
+
+      function showUnavailable() {
+        revokePdf()
+        heading.textContent = "You're offline"
+        message.textContent = 'Latexy could not find a saved PDF for this resume on this device.'
+        retry.hidden = false
+      }
+
+      async function loadPdf() {
+        const requestedOwner = rememberedOwner()
+        const generation = ++loadGeneration
+        ownerId = requestedOwner
+        if (!requestedOwner || !resumeId) {
+          showUnavailable()
+          return
+        }
+        try {
+          const record = await readPdf(requestedOwner, resumeId)
+          // The owner marker can change while the IndexedDB request is in flight.
+          if (generation !== loadGeneration) return
+          if (rememberedOwner() !== requestedOwner) {
+            revokePdf()
+            showUnavailable()
+            return
+          }
+          if (!record) {
+            showUnavailable()
+            return
+          }
+          revokePdf()
+          // The header check above proves the bytes are PDF-shaped, but the
+          // persisted Blob MIME is untrusted. Preserve bytes/size while
+          // forcing native PDF handling instead of same-origin HTML execution.
+          const pdfBlob = new Blob([record.pdf], { type: 'application/pdf' })
+          pdfUrl = window.URL.createObjectURL(pdfBlob)
+          frame.src = pdfUrl
+          download.href = pdfUrl
+          download.download = (String(record.title || 'Resume').replace(/[^a-z0-9._-]+/gi, '_').replace(/^_+|_+$/g, '') || 'Resume') + '.pdf'
+          title.textContent = String(record.title || 'Resume')
+          heading.textContent = 'Offline saved PDF'
+          message.textContent = 'This private PDF was restored from this device. It is not fetched from the network.'
+          retry.hidden = true
+          reader.style.display = 'block'
+        } catch {
+          if (generation !== loadGeneration) return
+          if (rememberedOwner() !== requestedOwner) {
+            revokePdf()
+            showUnavailable()
+            return
+          }
+          showUnavailable()
+        }
+      }
+
+      retry.addEventListener('click', () => window.location.reload())
+      download.addEventListener('click', (event) => {
+        if (!ownerId || rememberedOwner() !== ownerId) {
+          event.preventDefault()
+          loadGeneration += 1
+          revokePdf()
+          showUnavailable()
+        }
+      })
+      window.addEventListener('pagehide', () => {
+        loadGeneration += 1
+        revokePdf()
+      })
+      window.addEventListener('pageshow', (event) => {
+        if (event.persisted) void loadPdf()
+      })
+      window.addEventListener('storage', (event) => {
+        if (event.key !== OWNER_KEY && event.key !== null) return
+        const nextOwner = rememberedOwner()
+        if (nextOwner === ownerId) return
+        loadGeneration += 1
+        ownerId = nextOwner
+        revokePdf()
+        showUnavailable()
+      })
+      void loadPdf()
+    })()
+  </script>
 </body>
 </html>

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.celery_app import get_task_priority
 from ..core.logging import get_logger
+from ..core.redis import get_redis_client
 from ..database.connection import get_db
 from ..database.models import User
 from ..middleware.auth_middleware import get_current_user_optional
@@ -20,6 +21,8 @@ from ..services.api_key_service import api_key_service
 from ..services.document_converter_service import ALLOWED_SOURCE_PLATFORMS
 from ..services.entitlement_service import entitlement_service
 from ..services.format_detection import ResumeFormat, format_detection_service
+from ..utils.file_utils import read_upload_capped
+from ..workers.job_lifecycle import lifecycle_key
 
 logger = get_logger(__name__)
 
@@ -29,28 +32,6 @@ router = APIRouter(prefix="/formats", tags=["formats"])
 # into memory. Matches the largest per-format limit (PDF/image = 10 MB) so a single
 # oversized upload to an unauthenticated endpoint cannot exhaust worker memory.
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-
-
-async def _read_upload_capped(file: UploadFile, max_bytes: int = _MAX_UPLOAD_BYTES) -> bytes:
-    """Read an UploadFile in chunks, aborting once max_bytes is exceeded.
-
-    Prevents multi-GB uploads from being fully buffered into memory before the
-    per-format size check runs. Returns the file bytes (<= max_bytes).
-    """
-    chunks: List[bytes] = []
-    total = 0
-    while True:
-        chunk = await file.read(65536)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > max_bytes:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large (max {max_bytes // (1024 * 1024)} MB)",
-            )
-        chunks.append(chunk)
-    return b"".join(chunks)
 
 
 class FormatInfo(BaseModel):
@@ -94,7 +75,7 @@ async def get_supported_formats():
             total_count=len(formats_info)
         )
     except Exception as e:
-        logger.error(f"Error getting supported formats: {e}")
+        logger.error("Error getting supported formats (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -106,7 +87,7 @@ async def detect_file_format(file: UploadFile = File(...)):
     """
     try:
         # Read file content (capped to prevent OOM on unauthenticated endpoint)
-        content = await _read_upload_capped(file)
+        content = await read_upload_capped(file, _MAX_UPLOAD_BYTES)
 
         # Detect format
         detected_format = format_detection_service.detect_format(
@@ -143,7 +124,7 @@ async def detect_file_format(file: UploadFile = File(...)):
     except Exception as e:
         # Log the detailed exception server-side only; return a generic 500 so we
         # neither leak internals nor signal HTTP 200 on failure.
-        logger.error(f"Error detecting format: {e}")
+        logger.error("Error detecting format (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -177,7 +158,7 @@ async def get_format_info(format_name: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting format info: {e}")
+        logger.error("Error getting format info (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -189,7 +170,7 @@ async def validate_file_format(file: UploadFile = File(...)):
     """
     try:
         # Read file content (capped to prevent OOM on unauthenticated endpoint)
-        content = await _read_upload_capped(file)
+        content = await read_upload_capped(file, _MAX_UPLOAD_BYTES)
 
         # Detect format
         detected_format = format_detection_service.detect_format(
@@ -257,7 +238,7 @@ async def validate_file_format(file: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error validating file: {e}")
+        logger.error("Error validating file (%s)", type(e).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -291,7 +272,7 @@ async def parse_for_preview(file: UploadFile = File(...)):
     No LLM conversion — used by the import wizard to confirm content before converting.
     """
     try:
-        content = await _read_upload_capped(file)
+        content = await read_upload_capped(file, _MAX_UPLOAD_BYTES)
         filename = file.filename or "upload"
 
         detected_format = format_detection_service.detect_format(
@@ -311,7 +292,7 @@ async def parse_for_preview(file: UploadFile = File(...)):
         try:
             parsed = await parser.parse(content, filename)
         except ValueError as ve:
-            raise HTTPException(status_code=422, detail=str(ve))
+            raise HTTPException(status_code=422, detail="Could not parse the uploaded file.") from ve
 
         contact = parsed.contact or {}
         return ParsePreviewResponse(
@@ -328,7 +309,7 @@ async def parse_for_preview(file: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error(f"Error in parse_for_preview: {exc}")
+        logger.error("Error in parse_for_preview (%s)", type(exc).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -353,7 +334,7 @@ async def upload_for_conversion(
             logger.warning(f"Unknown source_platform '{source_platform}'; ignoring")
             source_platform = None
 
-        content = await _read_upload_capped(file)
+        content = await read_upload_capped(file, _MAX_UPLOAD_BYTES)
         filename = file.filename or "upload"
 
         # Detect format
@@ -388,7 +369,7 @@ async def upload_for_conversion(
         try:
             parsed = await parser.parse(content, filename)
         except ValueError as ve:
-            raise HTTPException(status_code=422, detail=str(ve))
+            raise HTTPException(status_code=422, detail="Could not parse the uploaded file.") from ve
 
         # LaTeX passthrough — return content directly
         if detected_format == ResumeFormat.LATEX:
@@ -429,20 +410,40 @@ async def upload_for_conversion(
         # plan's ai_assists allowance. Charged here — after every validation has
         # passed and before the job is queued — and refunded if the enqueue
         # fails. A BYOK caller pays their own provider, so nothing is charged.
+        job_id = str(uuid.uuid4())
+        from ..api.job_routes import _new_finalization_row
+
+        finalization_record = _new_finalization_row(job_id, "document_conversion", user_id, {})
+        db.add(finalization_record)
+        await db.commit()
         quota_ticket = None
         if not user_api_key:
-            quota_ticket = await entitlement_service.enforce_quota(
-                "ai_assists", user_id=user_id, plan=user_plan
-            )
+            try:
+                quota_ticket = await entitlement_service.enforce_quota(
+                    "ai_assists", user_id=user_id, plan=user_plan, job_id=job_id
+                )
+            except Exception:
+                await db.delete(finalization_record)
+                await db.commit()
+                raise
 
         # Queue LLM conversion job
-        from ..api.job_routes import _write_initial_redis_state
+        from ..api.job_routes import (
+            _delete_initial_redis_state,
+            _mark_dispatch_accepted,
+            _mark_dispatch_started,
+            _write_initial_redis_state,
+        )
         from ..workers.converter_worker import submit_document_conversion
 
-        job_id = str(uuid.uuid4())
         estimated_seconds = 45
+        dispatch_attempted = False
         try:
             await _write_initial_redis_state(job_id, "document_conversion", user_id, estimated_seconds)
+            await _mark_dispatch_started(job_id)
+            # Set this only immediately before the external broker/Modal call;
+            # lifecycle initialization itself is still pre-dispatch.
+            dispatch_attempted = True
 
             submit_document_conversion(
                 extracted_data=parsed.to_dict(),
@@ -453,13 +454,37 @@ async def upload_for_conversion(
                 source_hint=source_hint,
                 source_platform=source_platform,
                 priority=get_task_priority(user_plan),
+                quota_refund=quota_ticket.refund_payload() if quota_ticket else None,
             )
+            await _mark_dispatch_accepted(job_id)
         except Exception:
+            if dispatch_attempted:
+                # A broker/Modal response can be lost after work was accepted;
+                # preserve the job for worker/cleanup reconciliation.
+                logger.error("Ambiguous document conversion dispatch for job %s", job_id, exc_info=True)
+                return UploadForConversionResponse(
+                    success=True,
+                    job_id=job_id,
+                    format=detected_format.value,
+                    filename=filename,
+                    is_direct=False,
+                )
             if quota_ticket is not None:
                 await entitlement_service.refund_quota(quota_ticket)
+            try:
+                await db.delete(finalization_record)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+            try:
+                redis = await get_redis_client()
+                await redis.delete(lifecycle_key(job_id))
+                await _delete_initial_redis_state(job_id, user_id)
+            except Exception:
+                logger.warning("Failed to clean undispatched conversion %s", job_id, exc_info=True)
             raise
 
-        logger.info(f"Queued document conversion job {job_id} for {filename} ({detected_format.value})")
+        logger.info("Queued document conversion job %s (%s)", job_id, detected_format.value)
         return UploadForConversionResponse(
             success=True,
             job_id=job_id,
@@ -471,5 +496,5 @@ async def upload_for_conversion(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error(f"Error in upload_for_conversion: {exc}")
+        logger.error("Error in upload_for_conversion (%s)", type(exc).__name__)
         raise HTTPException(status_code=500, detail="Internal server error")

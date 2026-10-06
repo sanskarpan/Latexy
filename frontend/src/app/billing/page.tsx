@@ -1,12 +1,13 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useFeatureFlags } from '@/contexts/FeatureFlagsContext'
 import PricingCard from '@/components/billing/PricingCard'
 import SubscriptionManager from '@/components/billing/SubscriptionManager'
 import { useSession } from '@/lib/auth-client'
+import { isTeamInviteOwnerCurrent, type TeamInviteOwner } from '@/lib/team-invite-ownership'
 import {
   apiClient,
   type BillingAvailability,
@@ -17,16 +18,41 @@ import {
 
 type BillingPeriod = 'monthly' | 'annual'
 
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => { open: () => void }
+  }
+}
+
 /**
  * Navigate a pre-opened tab to `url`. The tab must be opened synchronously
  * within the click gesture (see callers) to avoid popup blocking. Falls back
  * to a fresh window.open when the pre-opened tab is unavailable.
  */
+function safeNavigationUrl(url: string): string | null {
+  try {
+    const destination = new URL(url, window.location.origin)
+    return destination.protocol === 'http:' || destination.protocol === 'https:'
+      ? destination.href
+      : null
+  } catch {
+    return null
+  }
+}
+
 function openInTab(tab: Window | null, url: string): void {
+  const destination = safeNavigationUrl(url)
+  if (!destination) {
+    tab?.close()
+    toast.error('The destination URL is invalid.')
+    return
+  }
+
   if (tab) {
-    tab.location.href = url
+    tab.opener = null
+    tab.location.href = destination
   } else {
-    window.open(url, '_blank')
+    window.open(destination, '_blank', 'noopener,noreferrer')
   }
 }
 
@@ -36,6 +62,7 @@ interface PricingPlan {
   price: number
   currency: string
   interval: string
+  purchase_type?: 'one_time' | 'subscription'
   billing_period?: BillingPeriod
   discount_percent?: number
   monthly_equivalent_price?: number
@@ -52,7 +79,7 @@ interface PricingPlan {
   }
 }
 
-const MONTHLY_PLAN_IDS = ['free', 'basic', 'pro', 'byok', 'student', 'team']
+const MONTHLY_PLAN_IDS = ['free', 'basic', 'pro', 'byok', 'student', 'team', 'weekly', 'lifetime']
 const ANNUAL_PLAN_IDS = ['free', 'basic_annual', 'pro_annual', 'byok_annual', 'student', 'team']
 
 const formatFeature = (value: string | number) => {
@@ -78,9 +105,16 @@ const COMPARISON_ROWS: { label: string; value: (plan: PricingPlan) => string | n
 ]
 
 function BillingPageContent() {
-  const { data: session, isPending } = useSession()
-  const sessionToken = session?.session?.token ?? null
-  const sessionUser = session?.user ?? null
+  const { data: session, isPending, error: sessionError } = useSession()
+  const lastKnownSessionRef = useRef<typeof session>(null)
+  if (session) {
+    lastKnownSessionRef.current = session
+  } else if (!isPending && !sessionError) {
+    lastKnownSessionRef.current = null
+  }
+  const effectiveSession = session ?? ((isPending || sessionError) ? lastKnownSessionRef.current : null)
+  const sessionToken = effectiveSession?.session?.token ?? null
+  const sessionUser = effectiveSession?.user ?? null
   const isAuthenticated = Boolean(sessionUser?.email)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -104,7 +138,23 @@ function BillingPageContent() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [teamLoading, setTeamLoading] = useState(false)
   const [handledStudentToken, setHandledStudentToken] = useState<string | null>(null)
-  const [handledTeamToken, setHandledTeamToken] = useState<string | null>(null)
+  const [teamInviteChecking, setTeamInviteChecking] = useState(false)
+  const [teamInviteAccepting, setTeamInviteAccepting] = useState(false)
+  const [teamInviteReady, setTeamInviteReady] = useState(false)
+  const [teamInviteAccepted, setTeamInviteAccepted] = useState(false)
+  const [teamInviteError, setTeamInviteError] = useState<string | null>(null)
+  const studentVerifyGenerationRef = useRef(0)
+  const studentVerifyAttemptRef = useRef<{
+    token: string
+    accountKey: string
+    generation: number
+  } | null>(null)
+  // Invitation preview/accept requests are owned by both the token and the
+  // authenticated account generation. A late response from a previous token
+  // or account must never overwrite the current invitation state.
+  const teamInviteGenerationRef = useRef(0)
+  const teamInviteOwnerRef = useRef<TeamInviteOwner | null>(null)
+  const teamInviteAcceptanceRef = useRef<TeamInviteOwner | null>(null)
 
   // Note: the Bearer token is published to apiClient by <AuthSync /> in the root
   // layout — it is the single source of truth. Mirroring it from here would race
@@ -131,40 +181,184 @@ function BillingPageContent() {
     fetchPlans()
   }, [fetchPlans])
 
+  useEffect(() => {
+    // Standard Checkout is only needed when the server has exposed a
+    // configured lifetime order. Entitlements still come exclusively from the
+    // signed server webhook, never from this browser callback.
+    if (!plans.lifetime || document.querySelector('script[data-razorpay-checkout]')) return
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
+    script.dataset.razorpayCheckout = 'true'
+    document.body.appendChild(script)
+    return () => script.remove()
+  }, [plans.lifetime])
+
   const studentVerifyToken = searchParams.get('student_verify')
   const teamInviteToken = searchParams.get('team_invite')
+  const studentVerifyAccountKey = sessionUser && sessionToken
+    ? `${sessionUser.id}:${sessionToken}`
+    : null
 
   useEffect(() => {
-    if (!studentVerifyToken || handledStudentToken === studentVerifyToken || !sessionToken) {
-      return
+    const generation = ++studentVerifyGenerationRef.current
+    const previousAttempt = studentVerifyAttemptRef.current
+    if (
+      previousAttempt &&
+      studentVerifyToken &&
+      studentVerifyAccountKey &&
+      previousAttempt.token === studentVerifyToken &&
+      previousAttempt.accountKey === studentVerifyAccountKey
+    ) {
+      // React Strict Mode replays effects after cleanup. Transfer ownership to
+      // the replay instead of issuing a second verification request.
+      previousAttempt.generation = generation
+      return () => {
+        if (studentVerifyGenerationRef.current === generation) {
+          studentVerifyGenerationRef.current += 1
+        }
+      }
     }
+    if (!studentVerifyToken || handledStudentToken === studentVerifyToken || !studentVerifyAccountKey) {
+      studentVerifyAttemptRef.current = null
+      return () => {
+        if (studentVerifyGenerationRef.current === generation) {
+          studentVerifyGenerationRef.current += 1
+        }
+      }
+    }
+    const owner = { token: studentVerifyToken, accountKey: studentVerifyAccountKey, generation }
+    studentVerifyAttemptRef.current = owner
     const verify = async () => {
       const result = await apiClient.verifyStudentSubscription(studentVerifyToken)
+      const stillCurrent =
+        studentVerifyGenerationRef.current === owner.generation &&
+        studentVerifyAttemptRef.current === owner &&
+        studentVerifyToken === owner.token &&
+        studentVerifyAccountKey === owner.accountKey
+      if (!stillCurrent) return
+      studentVerifyAttemptRef.current = null
       if (result.success) {
-        toast.success(result.data?.message || 'Student plan activated')
+        toast.success(result.data?.message || 'Student email verified')
+        // The short URL is returned by the server and may be an external
+        // payment-provider link; reject non-http(s) schemes before navigating.
+        if (result.data?.shortUrl && safeNavigationUrl(result.data.shortUrl)) {
+          window.location.assign(result.data.shortUrl)
+        } else if (result.data?.shortUrl) {
+          toast.error('The verification destination URL is invalid.')
+        }
       } else {
         toast.error(result.error || 'Student verification failed')
       }
       setHandledStudentToken(studentVerifyToken)
     }
     verify()
-  }, [handledStudentToken, sessionToken, studentVerifyToken])
+    return () => {
+      if (studentVerifyGenerationRef.current === generation) {
+        studentVerifyGenerationRef.current += 1
+      }
+    }
+  }, [handledStudentToken, studentVerifyAccountKey, studentVerifyToken])
 
   useEffect(() => {
-    if (!teamInviteToken || handledTeamToken === teamInviteToken || !sessionToken) {
+    const generation = ++teamInviteGenerationRef.current
+    teamInviteOwnerRef.current = teamInviteToken && sessionToken
+      ? { token: teamInviteToken, sessionToken, generation }
+      : null
+    teamInviteAcceptanceRef.current = null
+
+    if (!teamInviteToken || !sessionToken) {
+      setTeamInviteChecking(false)
+      setTeamInviteAccepting(false)
+      setTeamInviteReady(false)
+      setTeamInviteAccepted(false)
+      setTeamInviteError(null)
       return
     }
-    const joinSeat = async () => {
-      const result = await apiClient.joinTeamSeat(teamInviteToken)
+    let cancelled = false
+    setTeamInviteChecking(true)
+    setTeamInviteAccepting(false)
+    setTeamInviteReady(false)
+    setTeamInviteAccepted(false)
+    setTeamInviteError(null)
+    const previewInvite = async () => {
+      const result = await apiClient.previewTeamSeat(teamInviteToken)
+      if (cancelled || teamInviteGenerationRef.current !== generation) return
+      setTeamInviteChecking(false)
       if (result.success) {
-        toast.success(result.data?.message || 'Team seat activated')
+        setTeamInviteReady(true)
       } else {
-        toast.error(result.error || 'Unable to join team seat')
+        setTeamInviteError(result.error || 'Unable to load team invitation')
       }
-      setHandledTeamToken(teamInviteToken)
     }
-    joinSeat()
-  }, [handledTeamToken, sessionToken, teamInviteToken])
+    previewInvite()
+    return () => {
+      cancelled = true
+      // Invalidate in-flight acceptance work on token/account changes and
+      // unmount, before a late response can reach the next owner.
+      if (teamInviteGenerationRef.current === generation) {
+        teamInviteGenerationRef.current += 1
+        teamInviteOwnerRef.current = null
+        teamInviteAcceptanceRef.current = null
+      }
+    }
+  }, [sessionToken, teamInviteToken])
+
+  const handleAcceptTeamInvite = async () => {
+    const owner = teamInviteOwnerRef.current
+    if (
+      !isTeamInviteOwnerCurrent(owner, teamInviteToken, sessionToken, teamInviteGenerationRef.current) ||
+      teamInviteAcceptanceRef.current !== null
+    ) return
+
+    const requestGeneration = owner.generation
+    const requestToken = owner.token
+    const requestSessionToken = owner.sessionToken
+    teamInviteAcceptanceRef.current = {
+      token: requestToken,
+      sessionToken: requestSessionToken,
+      generation: requestGeneration,
+    }
+    setTeamInviteAccepting(true)
+    setTeamInviteError(null)
+    const result = await apiClient.joinTeamSeat(requestToken)
+    const stillCurrent = isTeamInviteOwnerCurrent(
+      teamInviteOwnerRef.current,
+      requestToken,
+      requestSessionToken,
+      requestGeneration,
+    )
+    if (!stillCurrent) return
+    teamInviteAcceptanceRef.current = null
+    setTeamInviteAccepting(false)
+    if (!result.success) {
+      setTeamInviteError(result.error || 'Unable to join team seat')
+      // 403/404/409 mean the invitation is no longer actionable. Hide the
+      // pending guidance and accept CTA; transient failures remain retryable.
+      if (result.status === 403 || result.status === 404 || result.status === 409) {
+        setTeamInviteReady(false)
+      } else {
+        setTeamInviteReady(true)
+      }
+      return
+    }
+    setTeamInviteReady(false)
+    setTeamInviteAccepted(true)
+    toast.success(result.data?.message || 'Team seat activated')
+    const refreshed = await apiClient.getCurrentSubscription()
+    if (
+      isTeamInviteOwnerCurrent(
+        teamInviteOwnerRef.current,
+        requestToken,
+        requestSessionToken,
+        requestGeneration,
+      ) &&
+      refreshed.success &&
+      refreshed.data
+    ) {
+      setCurrentSubscription(refreshed.data)
+    }
+  }
 
   const visiblePlans = useMemo(() => {
     const order = billingPeriod === 'annual' ? ANNUAL_PLAN_IDS : MONTHLY_PLAN_IDS
@@ -184,7 +378,7 @@ function BillingPageContent() {
     appliedCoupon?.discountPercent && couponScopePlan
       ? Math.round(couponScopePlan.price * (1 - appliedCoupon.discountPercent / 100))
       : null
-  const formatRupees = (paise: number) => `₹${(paise / 100).toFixed(0)}`
+  const formatRupees = (paise: number) => `₹${(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) return
@@ -277,7 +471,7 @@ function BillingPageContent() {
   }
 
   const handleSelectPlan = async (planId: string) => {
-    if (planId !== 'free' && billingStatus && !billingStatus.available && planId !== 'student') {
+    if (planId !== 'free' && billingStatus && !billingStatus.available) {
       toast.error(billingStatus.message)
       return
     }
@@ -306,6 +500,7 @@ function BillingPageContent() {
     // after the await avoids the browser popup blocker that fires when
     // window.open is called outside a user gesture.
     const checkoutTab = window.open('', '_blank')
+    if (checkoutTab) checkoutTab.opener = null
     const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(planId, billingPeriod)
     if (abort) {
       checkoutTab?.close()
@@ -317,7 +512,7 @@ function BillingPageContent() {
       sessionUser.email,
       sessionUser.name || '',
       {
-        billingPeriod,
+        billingPeriod: planId === 'weekly' ? 'weekly' : billingPeriod,
         couponCode: couponCodeForPlan,
       },
     )
@@ -345,6 +540,28 @@ function BillingPageContent() {
       return
     }
 
+    if (result.data.checkoutType === 'one_time' && result.data.orderId) {
+      if (!window.Razorpay || !result.data.keyId) {
+        checkoutTab?.close()
+        toast.error('Lifetime checkout is temporarily unavailable. Please try again.')
+        return
+      }
+      checkoutTab?.close()
+      const checkout = new window.Razorpay({
+        key: result.data.keyId,
+        amount: result.data.amount,
+        currency: result.data.currency,
+        order_id: result.data.orderId,
+        name: 'Latexy',
+        description: 'Latexy Lifetime plan',
+        prefill: { email: sessionUser.email, name: sessionUser.name || '' },
+        handler: () => toast.success('Payment received. Your Lifetime access will appear after verification.'),
+        modal: { ondismiss: () => undefined },
+      })
+      checkout.open()
+      return
+    }
+
     if (result.data.verificationRequired) {
       toast.success(result.data.message || 'Verification email sent')
       if (result.data.verificationPreviewUrl) {
@@ -364,6 +581,7 @@ function BillingPageContent() {
     setActivePlan(studentCheckoutPlan)
     // Pre-open synchronously within the click gesture to avoid popup blocking.
     const previewTab = window.open('', '_blank')
+    if (previewTab) previewTab.opener = null
     const { code: couponCodeForPlan, abort } = await resolveCouponForPlan(studentCheckoutPlan, 'monthly')
     if (abort) {
       previewTab?.close()
@@ -410,6 +628,7 @@ function BillingPageContent() {
     setTeamLoading(true)
     // Pre-open synchronously within the click gesture to avoid popup blocking.
     const previewTab = window.open('', '_blank')
+    if (previewTab) previewTab.opener = null
     const result = await apiClient.inviteTeamSeat(inviteEmail.trim())
     setTeamLoading(false)
     if (!result.success || !result.data) {
@@ -461,7 +680,7 @@ function BillingPageContent() {
         <section className="rounded-[var(--radius-lg)] border border-line bg-surface p-6 sm:p-8">
           <h1 className="text-3xl font-bold text-fg tracking-tight">Pricing & Billing</h1>
           <p className="mt-2 max-w-2xl text-fg-2">
-            Compare monthly and annual plans, unlock the student discount, and manage seats for team subscriptions.
+            Compare configured plans, including optional weekly and lifetime offers, unlock the student discount, and manage seats for team subscriptions.
           </p>
           {billingStatus && !billingStatus.available && (
             <div className="mt-4 rounded-[var(--radius-lg)] border border-warn/30 bg-warn/10 p-4 text-sm text-warn">
@@ -477,8 +696,37 @@ function BillingPageContent() {
             </div>
           )}
           {teamInviteToken && !sessionToken && !isPending && (
+            <div className="mt-4 flex flex-col gap-3 rounded-[var(--radius-lg)] border border-accent/30 bg-accent-soft p-4 text-sm text-accent-strong sm:flex-row sm:items-center sm:justify-between">
+              <p>Sign in with the invited email address to review and activate your team seat.</p>
+              <button
+                type="button"
+                onClick={() => router.push(
+                  `/login?redirect=${encodeURIComponent(`/billing?team_invite=${teamInviteToken}`)}`,
+                )}
+                className="shrink-0 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110"
+              >
+                Sign in to review invitation
+              </button>
+            </div>
+          )}
+          {teamInviteToken && sessionToken && (
             <div className="mt-4 rounded-[var(--radius-lg)] border border-accent/30 bg-accent-soft p-4 text-sm text-accent-strong">
-              Sign in with the invited email address to activate your team seat.
+              {teamInviteChecking && <p>Checking your team invitation...</p>}
+              {teamInviteError && <p>{teamInviteError}</p>}
+              {teamInviteReady && (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p>Review the invitation and accept it to activate your team seat.</p>
+                  <button
+                    type="button"
+                    onClick={handleAcceptTeamInvite}
+                    disabled={teamInviteAccepting}
+                    className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:opacity-60"
+                  >
+                    {teamInviteAccepting ? 'Activating...' : 'Accept team invitation'}
+                  </button>
+                </div>
+              )}
+              {teamInviteAccepted && <p>Team seat activated successfully.</p>}
             </div>
           )}
         </section>
@@ -611,7 +859,7 @@ function BillingPageContent() {
                       disabled={
                         plan.id === 'free'
                           ? isFreeTier
-                          : plan.id !== 'student' && !!billingStatus && !billingStatus.available
+                          : !!billingStatus && !billingStatus.available
                       }
                       disabledLabel={plan.id === 'free' ? 'Current Plan' : 'Unavailable'}
                     />

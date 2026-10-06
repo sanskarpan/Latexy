@@ -8,7 +8,7 @@
  * and to stay consistent with the existing PDFPreview pattern.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type KeyboardEvent } from 'react'
 import { ChevronLeft, ChevronRight, Maximize2, Loader2, Presentation } from 'lucide-react'
 
 interface Props {
@@ -36,11 +36,27 @@ export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
   }, [total])
 
   const openFullscreen = useCallback(() => {
-    if (pdfUrl) window.open(pdfUrl, '_blank')
+    if (pdfUrl) window.open(pdfUrl, '_blank', 'noopener,noreferrer')
   }, [pdfUrl])
 
   // Build the PDF URL with a page anchor so the browser jumps to that slide
   const pagedUrl = pdfUrl ? `${pdfUrl}#page=${currentSlide}` : null
+
+  const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+      event.preventDefault()
+      prevSlide()
+    } else if (event.key === 'ArrowRight' || event.key === 'PageDown') {
+      event.preventDefault()
+      nextSlide()
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      setCurrentSlide(1)
+    } else if (event.key === 'End' && total) {
+      event.preventDefault()
+      setCurrentSlide(total)
+    }
+  }, [nextSlide, prevSlide, total])
 
   // ── Empty / loading states ────────────────────────────────────────────────
 
@@ -67,7 +83,13 @@ export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
   // ── Main viewer ───────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full flex-col">
+    <div
+      className="flex h-full flex-col outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+      role="region"
+      aria-label="Presentation preview"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+    >
       {/* Slide iframe */}
       <div className="relative min-h-0 flex-1">
         <iframe
@@ -91,7 +113,7 @@ export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
         </button>
 
         {/* Slide counter */}
-        <span className="tabular-nums text-[11px] text-fg-3">
+        <span aria-live="polite" className="tabular-nums text-[11px] text-fg-3">
           {total ? (
             <>
               <span className="text-fg-2">{currentSlide}</span>
@@ -124,6 +146,7 @@ export default function SlideViewer({ pdfUrl, isLoading, slideCount }: Props) {
             onClick={openFullscreen}
             className="flex h-6 w-6 items-center justify-center rounded-[var(--radius-md)] text-fg-3 transition hover:bg-surface-2 hover:text-fg"
             aria-label="Open PDF in new tab"
+            title="Open presentation PDF in a new tab"
           >
             <Maximize2 size={12} />
           </button>

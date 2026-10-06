@@ -1,18 +1,31 @@
 # Latexy — Complete Application Inventory (QA Audit Reference)
 
-> Generated for a production-readiness QA audit. Static analysis only — the app was **not** run. All references are `file:line` where available. This document drives the QA test matrix; completeness is prioritized over prose. Includes surfaces not reachable from the visible nav.
+> Generated for a production-readiness QA audit. The route table remains a static source inventory; the HTTP totals below were recomputed from the current FastAPI OpenAPI schema. This document drives the QA test matrix; completeness is prioritized over prose. Includes surfaces not reachable from the visible nav.
+>
+> **Reproducibility (2026-09-26):** with the local backend serving on port 8030,
+> run `curl -fsS http://127.0.0.1:8030/openapi.json > /tmp/latexy-openapi.json`.
+> Count `len(schema["paths"])` and method objects carrying `operationId` to
+> reproduce the HTTP totals below. Count frontend pages with
+> `rg --files frontend/src/app -g 'page.tsx' | wc -l`; count API router modules
+> with `rg --files backend/app/api -g '*_routes.py' | wc -l`. The OpenAPI schema
+> excludes WebSocket handlers, which are listed separately in §6.
+>
+> **Rechecked 2026-10-04:** the mounted local schema still has 322 HTTP paths /
+> 377 operations, with 44 frontend pages and 44 router modules. Auth descriptions
+> below now reflect the shared `useRequireAuth` guard; older line references and
+> other feature descriptions remain source-inventory hints, not runtime proof.
 
 ## Summary Counts
 
 | Metric | Count |
 |---|---|
-| **Frontend routes** (`page.tsx`) | **38** (+1 root `layout.tsx`, +1 auth-unrelated `middleware.ts`) |
-| **Backend endpoints** | **~297** total → **295 REST** across 36 routers + **2 WebSocket** |
-| **Backend routers** (`*_routes.py`) | 36 (+ `routes.py` main/legacy aggregator) |
-| **Background workers** (Celery) | 13 task modules; 5 Celery Beat periodic schedules |
+| **Frontend routes** (`page.tsx`) | **44** (+1 root `layout.tsx`, +1 auth-unrelated `middleware.ts`; counted from `frontend/src/app/**/page.tsx`) |
+| **Backend endpoints** | **322 HTTP paths / 377 OpenAPI operations** + **2 WebSocket paths** (recomputed from the mounted app on 2026-09-26) |
+| **Backend routers** (`*_routes.py`) | **44** (+ `routes.py` main/legacy aggregator) |
+| **Background workers** (Celery) | 12 task modules; **8** Celery Beat schedules; **7** Modal scheduled functions |
 | **User journeys identified** | **18** end-to-end flows |
 
-Endpoint counts per router group: Group A (10 routers) = 88; Group B (12 routers) = 70; Group C (14 routers incl. `routes.py`) = 139 (137 REST + 2 WebSocket).
+The earlier Group A/B/C static partition (297 total) is retained in historical audit notes only; the OpenAPI totals above are the current contract count.
 
 ---
 
@@ -20,14 +33,16 @@ Endpoint counts per router group: Group A (10 routers) = 88; Group B (12 routers
 
 ## 1. Routes / Pages
 
-Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). There is **no server-side auth middleware and no central route guard**. Backend is the real enforcement point (token validated against the `session` table). See §Auth Gating Mechanism below.
+Auth model: **client-side, per-page**, with a shared `useRequireAuth` hook on protected pages and some page-specific soft/RBAC gates. There is **no server-side auth middleware**. Backend is the authorization enforcement point (token validated against the `session` table). See §Auth Gating Mechanism below.
 
 | URL Path | File (rel. `frontend/src/`) | Access | Purpose |
 |---|---|---|---|
 | `/` | `app/page.tsx` | Public | Landing page ("Typeset" marketing specimen) |
 | — | `app/layout.tsx` | N/A | Root layout: providers, `AuthSync`, `GlobalHeader`, footer, theme bootstrap |
+| `/accessibility` | `app/accessibility/page.tsx` | Public | Accessibility statement and product commitments |
 | `/admin` | `app/admin/page.tsx` | Protected (RBAC) | Admin control plane: feature flags, entitlements matrix, users/roles; 403-probe gate (`:648-686`) |
 | `/admin/tenant` | `app/admin/tenant/page.tsx` | Protected (RBAC) | Tenant admin dashboard: tenant members, roles, settings |
+| `/tenant-invite` | `app/tenant-invite/page.tsx` | Auth-aware | Email-bound tenant/cohort invitation acceptance |
 | `/billing` | `app/billing/page.tsx` | Protected (soft) | Subscription/billing mgmt; inline sign-in prompt (`:460`); student-verify/team-invite tokens |
 | `/byok` | `app/byok/page.tsx` | Protected | BYOK API-key management; redirect `/login` (`:38-39`) |
 | `/dashboard` | `app/dashboard/page.tsx` | Protected | Analytics KPIs, activity chart, recent runs; redirect `/login` (`:38-41`) |
@@ -45,26 +60,30 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | `/templates` | `app/templates/page.tsx` | Public (action-gated) | Template gallery; "use template" pushes `/login` (`:92`) |
 | `/tracker` | `app/tracker/page.tsx` | Protected | Job-application tracker (kanban); redirect `/login` (`:317`) |
 | `/try` | `app/try/page.tsx` | Public | Resume Studio / trial editor (Monaco + streaming); "Log in" link, no redirect (`:720`) |
+| `/two-factor` | `app/two-factor/page.tsx` | Public (auth challenge) | TOTP or backup-code sign-in challenge; fixed post-verification destination |
 | `/u/[username]` | `app/u/[username]/page.tsx` | Public (dynamic) | Public user portfolio; custom-domain rewrite target |
+| `/privacy` | `app/privacy/page.tsx` | Public | Privacy policy |
+| `/terms` | `app/terms/page.tsx` | Public | Terms of service |
 | `/updates` | `app/updates/page.tsx` | Public | Marketing changelog/updates |
 | `/verify-email` | `app/verify-email/page.tsx` | Public (auth) | Email-verification landing |
 | `/workspace` | `app/workspace/page.tsx` | Protected | Resume list/grid workspace; redirect `/login` (`:139-140`) |
-| `/workspace/[resumeId]/batch-tailor` | `app/workspace/[resumeId]/batch-tailor/page.tsx` | Protected* | Batch-tailor a resume to multiple jobs (no in-page guard) |
+| `/workspace/[resumeId]/batch-tailor` | `app/workspace/[resumeId]/batch-tailor/page.tsx` | Protected | Batch-tailor a resume to multiple jobs; shared auth guard and session-load error gate |
 | `/workspace/[resumeId]/career` | `app/workspace/[resumeId]/career/page.tsx` | Protected (soft) | Career-path analysis for a target role (`:110`) |
 | `/workspace/[resumeId]/cover-letter` | `app/workspace/[resumeId]/cover-letter/page.tsx` | Protected | Cover-letter generator; redirect `/login` (`:66-67`) |
 | `/workspace/[resumeId]/edit` | `app/workspace/[resumeId]/edit/page.tsx` | Protected (gate-before-fetch) | Resume editor (`:995`) |
 | `/workspace/[resumeId]/optimize` | `app/workspace/[resumeId]/optimize/page.tsx` | Protected (gate-before-fetch) | Resume optimize flow (`:113`) |
-| `/workspace/builder/[resumeId]` | `app/workspace/builder/[resumeId]/page.tsx` | Protected* | Structured resume builder (existing) (no in-page guard) |
-| `/workspace/builder/new` | `app/workspace/builder/new/page.tsx` | Protected* | Structured resume builder (new) (no in-page guard) |
+| `/workspace/builder/[resumeId]` | `app/workspace/builder/[resumeId]/page.tsx` | Protected | Structured resume builder (existing); shared auth guard before initial data load |
+| `/workspace/builder/new` | `app/workspace/builder/new/page.tsx` | Protected | Structured resume builder (new); shared auth guard and owner-keyed private form |
 | `/workspace/cover-letters` | `app/workspace/cover-letters/page.tsx` | Protected | Cover-letter list; redirect `/login` (`:23-24`) |
 | `/workspace/history` | `app/workspace/history/page.tsx` | Protected (soft) | Compilation/optimization history (`:55`) |
 | `/workspace/merge` | `app/workspace/merge/page.tsx` | Protected | Merge/compare resumes; redirect `/login` (`:37-38`) |
 | `/workspace/new` | `app/workspace/new/page.tsx` | Protected (gate-before-fetch) | Create new resume (`:99`) |
+| `/workspace/variant/[resumeId]` | `app/workspace/variant/[resumeId]/page.tsx` | Protected | Source-linked builder variant visibility workflow |
 | `/workspaces` | `app/workspaces/page.tsx` | Protected | Team workspaces list |
 | `/workspaces/[workspaceId]` | `app/workspaces/[workspaceId]/page.tsx` | Protected | Team workspace detail: members, roles |
 | `/workspaces/[workspaceId]/recruiter` | `app/workspaces/[workspaceId]/recruiter/page.tsx` | Protected | Recruiter view within a team workspace |
 
-\* No dedicated in-page `useSession` redirect — effectively protected via child components / API 401s. **QA flag:** verify these builder/batch-tailor pages actually block unauthenticated access.
+Client auth guards are UX boundaries, not substitutes for API authorization. Continue testing initial unauthenticated loads, transient verification failures, account changes, and deferred mutations independently.
 
 **Dynamic routes:** `/r/[token]`, `/u/[username]`, `/workspace/[resumeId]/*`, `/workspace/builder/[resumeId]`, `/workspaces/[workspaceId]`, `/workspaces/[workspaceId]/recruiter`.
 
@@ -72,8 +91,8 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 
 1. **`AuthSync`** (`components/AuthSync.tsx`, mounted in `app/layout.tsx:6,67`) — reads `useSession()`; on resolution: `apiClient.setAuthToken(token)` (`:33`), `apiClient.markAuthResolved()` (`:37`), `wsClient.setToken(token)` (`:40`). No-ops while `isPending` (`:26`). Renders `null`; enforces nothing — it only bridges the token so FastAPI can validate it against the `session` table.
 2. **`middleware.ts`** (`frontend/src/middleware.ts`) — **NOT auth.** Rewrites custom portfolio domains → `/u/{username}` via `GET /portfolio/resolve-domain` (`:26-72`); known domains pass through (`:34-41`). No login checks.
-3. **Per-page redirect** (`useSession` + `useEffect` → `router.push('/login')`) is the dominant protected idiom. Variants: hard redirect, **soft gate** (inline sign-in panel, no redirect), **gate-before-fetch** (skip data load), **action-gated** (page public, action needs login), **RBAC** (backend 403-probe on admin page).
-4. **No** `useAuthGuard`/`ProtectedRoute`/`requireAuth` helper exists — every page reimplements the check inline. **QA implication:** auth is genuinely enforced server-side; some pages have inconsistent or missing client guards.
+3. **Shared client guard** (`hooks/useRequireAuth.ts`) redirects only after an authoritative empty session response. It retains the last known identity during pending/error refreshes and does not infer logout from an offline lookup. Pages remain responsible for gating their data loads and mutations. Variants also include **soft gates**, **action-gated** public pages, and backend-probed **RBAC**.
+4. **QA implication:** server authorization, retained-session UX, and asynchronous response ownership are separate contracts. A shared auth hook alone does not prevent an old account's deferred callback from changing the current page.
 
 ## 2. Components by Area (`frontend/src/components/`)
 
@@ -128,7 +147,7 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 ### ATS
 | File | Purpose |
 |---|---|
-| `ATSScoreCard.tsx` | Full ATS score breakdown |
+| `ATSScoreCard.tsx` | Full ATS score breakdown, published 80+ threshold/calibration, locale and industry selectors, benchmark, and findings-guided reviewable optimization action |
 | `ATSScoreBadge.tsx` | Compact ATS score pill |
 | `ATSTextView.tsx` | Plain-text extraction an ATS sees |
 | `KeywordDensityMap.tsx` | Keyword frequency heatmap vs JD |
@@ -145,17 +164,18 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 |---|---|
 | `GuidedIntakePanel.tsx` | Collapsible "fine-tune the AI" intake (industry/seniority/tone/emphasize/downplay) |
 | `ChangeReviewModal.tsx` | Per-change accept/reject/edit review of AI edits |
-| `ChangesPanel.tsx` | Side panel of AI-proposed changes |
+| `ChangesPanel.tsx` | Side panel for pending live-collaborator Y.js edits |
 | `QuickTailorModal.tsx` | Quick one-shot tailor-to-JD |
 | `WritingAssistantWidget.tsx` | Inline AI writing assistant |
-| `BulletGeneratorWidget.tsx` | Generate achievement bullets |
+| `BulletGeneratorWidget.tsx` | Generate fact-grounded achievement bullets or browse the four-axis phrase library; unsupported metrics remain `[X]` placeholders |
+| `CoverLetterSignaturePanel.tsx` | Type, draw, upload, replace, or remove a persistent cover-letter signature |
 | `SummaryGeneratorWidget.tsx` | Generate resume summary/objective |
 | `ProofreadPanel.tsx` | AI proofreading suggestions |
 | `ContactFormatterPanel.tsx` | Normalize contact-info block |
 | `DateStandardizerPanel.tsx` | Standardize date formats |
 | `DesignPanel.tsx` | Accent-color / design presets |
 | `JobDescriptionInput.tsx` | Paste target JD |
-| `CompareModal.tsx` | Side-by-side version compare |
+| `CompareModal.tsx` | Source, side-by-side PDF, and rendered-pixel version compare |
 | `DiffViewerModal.tsx` | Text-diff viewer |
 
 ### Billing / BYOK / Auth
@@ -179,7 +199,7 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | `TemplatePreviewModal.tsx` | Full-preview modal for a template |
 | `TemplateCustomizerPanel.tsx` | Customize template variables |
 | `ImportProjectsModal.tsx` | Unified import: GitHub / URL / LinkedIn |
-| `ImportFromBuilderWizard.tsx` | 4-step wizard: Kickresume/Resume.io/Novoresume/generic |
+| `ImportFromBuilderWizard.tsx` | 4-step wizard: Reactive Resume v4/v5, JSON Resume, Rezi/Teal documents, other builders |
 | `MultiFormatUpload.tsx` | Drag-drop upload (JSON/PDF/DOCX...) |
 | `builder/BuilderPreview.tsx` | Live preview inside builder-import flow |
 | `AddApplicationModal.tsx` | Add job application to tracker |
@@ -263,8 +283,9 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 ### ai_routes.py — prefix `/ai`
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/ai/generate-bullets` `:258` | optional + `require_feature_optional(ai_writing)` | AI bullet generation |
-| POST | `/ai/generate-summary` `:366` | optional + `require_feature_optional(ai_writing)` | AI summary variants |
+| POST | `/ai/generate-bullets` `:438` | optional + `require_feature_optional(ai_writing)` | AI bullet generation with evidence-bound metric sanitization |
+| POST | `/ai/phrase-library` `:591` | optional + `require_feature_optional(ai_writing)` | Cached 8–12 phrase suggestions indexed by title, seniority, industry, and skill category |
+| POST | `/ai/generate-summary` `:678` | optional + `require_feature_optional(ai_writing)` | AI summary variants |
 | POST | `/ai/proofread` `:458` | Public + `require_feature_optional(ai_writing)` | Rule-based proofread (no LLM) |
 | POST | `/ai/explain-error` `:468` | optional | Explain LaTeX error |
 | POST | `/ai/rewrite` `:591` | optional + `require_feature_optional(ai_writing)` | AI rewrite of selection |
@@ -313,7 +334,8 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | POST | `/ats/recommendations` `:393` | Public | Generate improvement recommendations |
 | GET | `/ats/industry-keywords/{industry}` `:502` | Public | Keywords for an industry |
 | GET | `/ats/supported-industries` `:527` | Public | List industries |
-| GET | `/ats/industry-profiles` `:549` | Public | List calibration profiles |
+| GET | `/ats/industry-profiles` `:581` | Public | List industry calibration profiles |
+| GET | `/ats/locale-profiles` `:588` | Public | List Global/India/US/UK rule overlays and the published threshold |
 | POST | `/ats/quick-score` `:575` | Public + `require_feature_optional(ats_score)` | Lightweight quick-score |
 | POST | `/ats/deep-analyze` `:687` | optional + `require_feature_optional(ats_deep)` | LLM deep section analysis (anon trial) |
 | POST | `/ats/semantic-match` `:841` | required + `require_feature(ats_deep)` | Rank resumes by JD similarity |
@@ -363,7 +385,7 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | GET | `/cover-letters/stats` `:253` | required | Count |
 | POST | `/cover-letters/generate` `:266` | required + `require_feature(cover_letters)` | Generate via AI (async job) |
 | GET | `/cover-letters/{id}` `:363` | required | Get one |
-| PUT | `/cover-letters/{id}` `:374` | required | Update LaTeX |
+| PUT | `/cover-letters/{id}` `:374` | required | Update LaTeX, including self-contained signature markers |
 | DELETE | `/cover-letters/{id}` `:389` | required | Delete |
 | GET | `/cover-letters/resume/{resume_id}` `:401` | required | List for a resume |
 
@@ -400,6 +422,13 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | GET | `/export/{id}/{fmt}` `:187` | required + `require_feature(exports)` (owner) | Export in format (tex/md/txt/html/json/yaml/xml/docx) |
 | POST | `/export/content/{fmt}` `:232` | Public | Export raw LaTeX content |
 
+### document_delivery_routes.py — prefix `/export`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/export/{resume_id}/email` `:196` | required + `require_feature(exports)`; verified owner | Queue delivery of the latest owned compiled PDF to the account's verified email; recipient is never caller-supplied |
+| GET | `/export/{resume_id}/email/status` `:268` | required + `require_feature(exports)`; verified owner | Read durable pending/processing/accepted/failed delivery state |
+| POST | `/export/{resume_id}/email/retry` `:291` | required + `require_feature(exports)`; verified owner | Retry a failed delivery within the bounded retry policy |
+
 ### format_routes.py — prefix `/formats`
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
@@ -421,9 +450,19 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | POST | `/github/resumes/{id}/disable` `:271` | required | Disable sync |
 | POST | `/github/resumes/{id}/push` `:296` | required | Push LaTeX |
 | POST | `/github/resumes/{id}/pull` `:356` | required | Pull LaTeX |
-| POST | `/github/import-projects` `:408` | `require_feature(ai_import_github)` | Enqueue async project import |
-| GET | `/github/import-projects/{job_id}` `:461` | `require_feature(ai_import_github)` | Import job result |
+| POST | `/github/import-projects` `:635` | `require_feature(ai_import_github)` | Enqueue async project import |
+| GET | `/github/import-projects/{job_id}` `:717` | `require_feature(ai_import_github)` | Import job result |
 | GET | `/github/resumes/{id}/status` `:484` | required | Per-resume sync status |
+
+### google_drive_routes.py — prefix `/google-drive`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/google-drive/connect` `:198` | required + `require_feature(integration_google_drive)` | Start purpose-bound `drive.file` OAuth |
+| GET | `/google-drive/callback` `:233` | Public (Redis CSRF/state) | Convert provider callback into an authenticated completion ticket |
+| POST | `/google-drive/complete` `:260` | required | Exchange the one-time ticket and store encrypted grant state |
+| GET | `/google-drive/status` `:348` | required | Read current connection/scope state |
+| DELETE | `/google-drive/disconnect` `:370` | required | Revoke where possible and remove local encrypted grant |
+| POST | `/google-drive/resumes/{resume_id}/export` `:401` | required + `require_feature(integration_google_drive)`; owner | Create/update one deterministic app-owned PDF in Drive |
 
 ### interview_routes.py — `/interview-prep` + `resume_interview_router` `/resumes`
 | Method | Path | Auth | Purpose |
@@ -436,7 +475,7 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 ### job_routes.py — prefix `/jobs`
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/jobs/submit` `:323` | optional (anon device-trial; auth plan-quota) | Submit job (compile/optimize/combined/ats) |
+| POST | `/jobs/submit` `:323` | optional generally; `auto_fit` requires an authenticated owner | Submit compile/optimize/combined/ATS jobs, or one metered formatting-only one-page fit search |
 | POST | `/jobs/compile-watermarked` `:557` | optional (same metering) | Compile with watermark |
 | POST | `/jobs/batch` `:647` | required + `require_feature(batch_tailor)` (owner) | Batch-tailor across JDs (201) |
 | GET | `/jobs/batch/{batch_id}` `:778` | required (owner) | Batch status |
@@ -489,6 +528,12 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | GET | `/api/v1/jobs/{job_id}` `:243` | dev-key (owner) | Poll job |
 | GET | `/api/v1/jobs/{job_id}/pdf` `:273` | dev-key `export` scope (owner) | Download PDF |
 
+### referral_routes.py — prefix `/referral`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/referral/status` `:26` | required | Read the caller's privacy-safe referral attribution/reward status |
+| POST | `/referral/claim` `:34` | required | Claim a first-party referral token with self/duplicate and paid-webhook checks |
+
 ### reference_routes.py — prefix `/references`
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
@@ -529,7 +574,7 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/resumes/builder/templates` `:367` | Public | List builder templates |
-| POST | `/resumes/builder/seed-upload` `:386` | required | Parse upload → builder content |
+| POST | `/resumes/builder/seed-upload` | required | Parse upload → builder content; JSON syntax/semantic errors return field path + source line/column |
 | POST | `/resumes/builder` `:421` | required + `require_feature(resume_builder)` | Create builder-backed resume |
 | GET | `/resumes/stats` `:454` | required | Resume stats |
 | POST | `/resumes/` `:499` | required | Create resume |
@@ -548,6 +593,8 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | PATCH | `/resumes/{id}/archive` `:986` | required | Archive |
 | PATCH | `/resumes/{id}/unarchive` `:1000` | required | Unarchive |
 | POST | `/resumes/{id}/fork` `:1027` | required | Create variant/fork |
+| GET | `/resumes/{id}/variant-visibility` | required owner | Read a source-linked builder variant's master content and visibility-derived preview |
+| PATCH | `/resumes/{id}/variant-visibility` | required owner | Persist section, entry, and occurrence-safe list-item visibility without copying master content |
 | POST | `/resumes/{id}/quick-tailor` `:1110` | required (quota) | Fork + tailored optimize job |
 | GET | `/resumes/{id}/academic-cv-report` `:1178` | required | Detect academic CV |
 | POST | `/resumes/{id}/academic-cv-convert` `:1193` | required (quota) | Convert academic CV → industry |
@@ -572,6 +619,28 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | POST | `/resumes/{id}/generate-references` `:2424` | required | Generate LaTeX reference page |
 | POST | `/resumes/merge` `:2539` | required | Merge 2–4 resumes |
 | POST | `/resumes/{id}/generate-portfolio` `:2637` | required | Generate static HTML portfolio |
+
+### element_version_routes.py — prefix `/resumes`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/resumes/{resume_id}/element-versions` `:418` | required; owner | Create an immutable manual/AI/import element snapshot with idempotency |
+| GET | `/resumes/{resume_id}/element-versions` `:437` | required; owner | Cursor-paginate one element's immutable version history |
+| POST | `/resumes/{resume_id}/element-versions/{version_id}/restore` `:554` | required; owner | Restore a version through a server-authoritative mutation |
+| POST | `/resumes/{resume_id}/element-versions/{version_id}/fork` `:565` | required; owner | Fork a version into a new resume variant |
+
+### suggestion_routes.py — prefix `/resumes`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/resumes/{resume_id}/suggestion-decisions` `:205` | required; owner/editor | Persist an accept/reject/edit decision for a collaborator suggestion |
+| GET | `/resumes/{resume_id}/suggestion-decisions/{suggestion_id}` `:384` | required; owner/editor | Read one server-authoritative suggestion decision |
+
+### review_routes.py — anonymous share + authenticated review comments
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/share/{share_token}/review-comments` `:238` | Public review capability | List bounded comments for the currently live share token |
+| POST | `/share/{share_token}/review-comments` `:259` | Public review capability + Redis/IP rate limit | Add one bounded pseudonymous review comment; no account required |
+| GET | `/resumes/{resume_id}/review-comments` `:411` | required; owner/editor | List bounded authenticated review-comment history |
+| PATCH | `/resumes/{resume_id}/review-comments/{comment_id}/resolve` `:437` | required; owner/editor | Resolve/unresolve a review comment under row-lock authorization |
 
 ### scraper_routes.py — no prefix
 | Method | Path | Auth | Purpose |
@@ -600,15 +669,16 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 ### sources_routes.py — prefix `/sources`
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/sources/import-url` `:62` | `require_feature(ai_import_url)` | Import projects from public URL (SSRF-guarded + LLM) |
-| POST | `/sources/import-linkedin` `:142` | `require_feature(ai_import_linkedin)` | Import from LinkedIn export/resume file |
+| POST | `/sources/import-url` `:89` | `require_feature(ai_import_url)` | Import projects from public URL (SSRF-guarded + LLM) |
+| POST | `/sources/import-linkedin` `:185` | `require_feature(ai_import_linkedin)` | Import from LinkedIn export/resume file |
 
 ### team_routes.py — prefix `/team`
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/team/seats` `:77` | required (+ team owner) | List seats |
 | POST | `/team/invite` `:91` | required (+ team owner) | Invite teammate |
-| GET | `/team/join/{token}` `:172` | required (email match) | Accept/activate seat |
+| GET | `/team/join/{token}` | required (email match) | Preview invitation; read-only |
+| POST | `/team/join/{token}` | required (email match) | Explicitly accept/activate seat |
 | DELETE | `/team/seats/{seat_id}` `:213` | required (+ team owner) | Remove seat |
 
 ### telemetry_routes.py — prefix `/telemetry`
@@ -637,14 +707,19 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/tenants/current-context` `:157` | Public (Host header) | Resolved tenant branding for host |
-| POST | `/tenants` `:164` | required | Create tenant (caller=owner) |
+| GET | `/tenants/resolve-host` | Public | Cached tenant branding lookup for frontend/custom-host routing |
+| POST | `/tenants` `:164` | required (+ team/admin) | Provision tenant (caller=owner; university admin-controlled) |
 | GET | `/tenants/my` `:212` | required | Tenants I own/belong to |
+| POST/GET | `/tenants/{id}/cohorts` | required (+ tenant owner/admin) | Create/list institution cohorts |
+| GET | `/tenants/{id}/cohorts/{cohort_id}/submissions` | required (+ tenant owner/admin) | Explicit student submissions and milestones |
 | PATCH | `/tenants/{id}` `:240` | required (+ owner/admin) | Update branding |
 | GET | `/tenants/{id}/members` `:278` | required (+ member) | List members |
-| POST | `/tenants/{id}/members/invite` `:319` | required (+ owner/admin) | Invite member |
+| POST | `/tenants/{id}/members/invite` `:319` | required (+ owner/admin) | Create expiring, email-bound tenant/cohort invite |
+| POST | `/tenants/invitations/{token}/accept` | required | Accept single-use invite for matching account email |
 | DELETE | `/tenants/{id}/members/{uid}` `:375` | required (+ owner/admin) | Remove member |
-| GET | `/tenants/{id}/stats` `:408` | required (+ owner/admin) | Tenant stats |
-| POST | `/tenants/{id}/domain/verify` `:450` | required (+ owner/admin) | DNS TXT verification |
+| DELETE | `/tenants/{id}/membership` | required (+ member) | Leave tenant (owner excluded) |
+| GET | `/tenants/{id}/stats` `:408` | required (+ owner/admin) | Roster stats only; never infers ownership of personal docs |
+| POST | `/tenants/{id}/domain/verify` `:450` | required (+ owner/admin) | Live DNS TXT ownership verification and activation |
 
 ### tracker_routes.py — prefix `/tracker` (all required)
 | Method | Path | Auth | Purpose |
@@ -656,6 +731,35 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | PUT | `/tracker/applications/{id}` `:263` | required | Update |
 | DELETE | `/tracker/applications/{id}` `:312` | required | Delete |
 | PATCH | `/tracker/applications/{id}/status` `:330` | required | Update status |
+
+### tracker_workflow_routes.py — prefix `/tracker` (all required + `application_tracker` feature where noted)
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST/GET/DELETE | `/tracker/saved-jobs` `:328-391` | required | User-owned saved-job capture/list/bulk delete |
+| PUT/DELETE | `/tracker/saved-jobs/{item_id}` `:349-391` | required | Edit/delete one saved job |
+| POST | `/tracker/saved-jobs/{item_id}/track` `:394` | required | Convert a saved job into a tracked application |
+| POST/GET | `/tracker/alerts` `:438-456` | required | Create/list recurring reminders for a user-supplied source search; Latexy does not scrape or claim new jobs |
+| PUT/DELETE | `/tracker/alerts/{item_id}` `:490-521` | required | Edit/delete an alert; edits invalidate pending delivery claims |
+| GET | `/tracker/stale-applications` `:459` | required | List user-owned applications with stale follow-up state (“since your last update”), not employer-response telemetry |
+| POST/GET | `/tracker/applications/{app_id}/reminders` `:524-558` | required | Create/list future application reminders |
+| PUT/DELETE | `/tracker/applications/{app_id}/reminders/{item_id}` `:561-608` | required | Edit/delete reminder; reschedules invalidate pending delivery claims |
+| POST/GET | `/tracker/applications/{app_id}/interviews` `:611-644` | required | Create/list user-owned interview records |
+| PUT/DELETE | `/tracker/applications/{app_id}/interviews/{item_id}` `:646-707` | required | Edit/delete interview |
+| GET | `/tracker/applications/{app_id}/interviews/{item_id}.ics` `:720-761` | required | Download escaped/folded ICS for one interview; no external calendar write |
+| POST/GET | `/tracker/companies` `:764-787` | required | User-owned company CRM records |
+| PUT/DELETE | `/tracker/companies/{item_id}` `:789-818` | required | Edit/delete company |
+| POST/GET | `/tracker/contacts` `:820-839` | required | User-supplied contact records |
+| PUT/DELETE | `/tracker/contacts/{item_id}` `:842-869` | required | Edit/delete contact; no recruiter lookup/scraping |
+
+### email_status_routes.py — prefix `/tracker/email-status`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/tracker/email-status/parse` `:60-77` | required + `application_tracker` feature | Parse one bounded user-pasted RFC 5322 message into conservative, review-required status/company/role evidence. No mailbox access, tracker write, or send. |
+
+### outreach_routes.py — prefix `/outreach`
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/outreach/drafts` `:92-206` | required + `application_tracker` feature; owned application/contact | Generate one transient, editable/copy-only outreach draft from user-owned tracker data. Response is `sent=false`; no persistence, sending, recruiter lookup, or scraping. |
 
 ### workspace_routes.py — prefix `/workspaces` (all required + owner/member checks)
 | Method | Path | Auth | Purpose |
@@ -675,6 +779,10 @@ Auth model: **client-side, per-page** (`useSession` + `useEffect` redirect). The
 | GET | `/workspaces/{id}/resumes/{rid}/notes` `:592` | required (+ member) | List recruiter notes |
 | PATCH | `/workspaces/{id}/resumes/{rid}/notes/{nid}` `:619` | required (+ member, author) | Edit note |
 | DELETE | `/workspaces/{id}/resumes/{rid}/notes/{nid}` `:657` | required (+ member, author/owner) | Delete note |
+
+Workspace/cohort `opened_*` and `downloaded_*` milestones are explicitly
+`candidate_self` activity (candidate-self), not employer/ATS view or download
+telemetry. No employer-side application outcome feed is exposed.
 
 ### ws_routes.py — no prefix (WebSocket, auth via `?token=`)
 | Method | Path | Auth | Purpose |
@@ -699,7 +807,7 @@ Config: `backend/app/core/celery_app.py` — task routes by module → queue; pr
 
 | Worker module | Celery task(s) | Queue | Trigger |
 |---|---|---|---|
-| `latex_worker.py` | `compile_latex_task` (`:369`) | `latex` | `/compile`, `/jobs/submit`, `/jobs/compile-watermarked`, public API compile, orchestrator |
+| `latex_worker.py` | `compile_latex_task` (`:369`) | `latex` | `/compile`, `/jobs/submit`, `/jobs/compile-watermarked`, public API compile, orchestrator; safely materializes embedded cover-letter signatures |
 | `llm_worker.py` | `optimize_resume_task` (`:29`) | `llm` | `/optimize`, `/jobs/submit` (optimize), quick-tailor |
 | `orchestrator.py` | `optimize_and_compile_task` (`:83`) | `combined` | `/optimize-and-compile`, `/jobs/submit` (combined) |
 | `ats_worker.py` | `score_resume_ats_task` (`:32`), `analyze_job_description_ats_task` (`:183`), `deep_analyze_ats_task` (`:647`), `embed_resume_task` (`:748`) | `ats` | `/ats/score` (async), JD analyze, `/ats/deep-analyze`, embeddings for semantic match |
@@ -713,7 +821,7 @@ Config: `backend/app/core/celery_app.py` — task routes by module → queue; pr
 | `event_publisher.py` | (not a task) | — | Sync Redis publish helpers used by all workers (`publish_event`, `publish_job_result`, `is_cancelled`) |
 | `storage_guard.py` | (not a task) | — | Compilation-DB bookkeeping helpers |
 
-**Celery Beat schedule** (`celery_app.py:105-130`): `cleanup-expired-jobs` (3600s), `cleanup-temp-files` (1800s), `health-check` (300s), `weekly-digest-monday-9am` (crontab Mon 09:00), `sample-queue-depths` (20s, observability).
+**Celery Beat schedule** (`celery_app.py:119-155`): `cleanup-expired-jobs` (3600s), `cleanup-temp-files` (1800s), `health-check` (300s), `weekly-digest-monday-9am` (crontab Mon 09:00), `comment-mention-delivery-recovery` (60s), `document-email-delivery-recovery` (60s), `tracker-notifications` (300s), and `sample-queue-depths` (20s, observability) — **8 schedule entries**. Modal defines seven deployed scheduled functions in `modal_app.py` (hourly cleanup, 30-minute temp cleanup, health, weekly digest, tracker notifications, comment-mention recovery, document-email recovery); this inventory does not claim deployment success.
 
 ## 8. External Integrations
 
@@ -724,7 +832,7 @@ Config: `backend/app/core/celery_app.py` — task routes by module → queue; pr
 | **Gemini / OpenRouter** | `llm_provider_service.py` | httpx/requests | BYOK / multi-provider LLM |
 | **Razorpay** | `payment_service.py` | `razorpay` SDK | Subscriptions, `/billing/webhook` (HMAC) |
 | **MinIO / S3** | `storage_service.py` | `boto3` | PDF/thumbnail/template object storage, presigned URLs |
-| **Email** | `email_service.py` | `resend` (default) or SMTP (`smtplib`) via httpx | Job completion/failure, shared-resume views, weekly digest, verification |
+| **Email** | `email_service.py` | `resend` (default) or SMTP (`smtplib`) via httpx | Job completion/failure, shared-resume views, weekly digest, verification, tracker reminders/alerts; tracker delivery does not imply employer/ATS telemetry and generic SMTP may ignore idempotency headers |
 | **GitHub** | `github_sync_service.py`, `github_projects_service.py` | httpx (OAuth) | Resume repo sync, project import |
 | **Dropbox** | `dropbox_sync_service.py` | httpx (OAuth) | Resume file sync |
 | **Zotero / Mendeley** | `reference_service.py`, `publications_service.py` | httpx (OAuth 1.0a / 2.0) | Bibliography import |
@@ -769,21 +877,21 @@ Config: `backend/app/core/celery_app.py` — task routes by module → queue; pr
 | 1 | **Signup → onboarding → dashboard** | `/signup` (SignUpForm) → `/verify-email` → `OnboardingFlow` (4 steps) → `/dashboard` (KPIs) |
 | 2 | **Anonymous trial compile** | `/try` (Monaco) → `POST /public/compile` (device trial, `useTrialStatus`) → WS `/ws/jobs` stream → PDF preview → "Log in" prompt at limit |
 | 3 | **Create resume → edit → compile → PDF** | `/workspace/new` or `/workspace` → `POST /resumes/` → `/workspace/[id]/edit` (LaTeXEditor) → `POST /compile` / `/jobs/submit` → `latex_worker` → `/download/{job_id}` PDF |
-| 4 | **AI optimize → review → ATS** | `/workspace/[id]/optimize` → `GuidedIntakePanel` → `POST /optimize` (`require_feature(llm_optimize)`) → `llm_worker` → `ChangeReviewModal` (`/optimize/segment-changes` + `/apply-changes`) → `POST /ats/score` |
+| 4 | **AI optimize → review → ATS** | `/workspace/[id]/optimize` → `GuidedIntakePanel` or `ATSScoreCard` findings action → `POST /optimize` (`require_feature(llm_optimize)`) → `llm_worker` → automatic `ChangeReviewModal` (`/optimize/segment-changes` + `/apply-changes`) → compile → explicit version save → `POST /ats/score` |
 | 5 | **Deep ATS + semantic match** | ATS panels → `POST /ats/deep-analyze` (`ats_worker`) → `POST /ats/semantic-match` (embeddings) → score history |
 | 6 | **Quick tailor to JD** | `QuickTailorModal` → `POST /resumes/{id}/quick-tailor` (fork + optimize job, quota) |
 | 7 | **Batch tailor** | `/workspace/[id]/batch-tailor` → `POST /jobs/batch` (`require_feature(batch_tailor)`) → poll `/jobs/batch/{id}` |
 | 8 | **Templates → resume** | `/templates` (public gallery) → `TemplatePreviewModal` → login → `POST /templates/{id}/use` (`require_feature(templates)`) |
-| 9 | **Guided builder** | `/workspace/builder/new` → `POST /resumes/builder/seed-upload` → `PATCH /resumes/{id}/builder` → `POST /resumes/builder` → compile |
+| 9 | **Guided builder** | `/workspace/builder/new` → source-aware strict validation at `POST /resumes/builder/seed-upload` → `PATCH /resumes/{id}/builder` → `POST /resumes/builder` → compile |
 | 10 | **Import external projects** | `ImportProjectsModal` → GitHub (`/github/import-projects` → `github_import_worker`) / URL (`/sources/import-url`) / LinkedIn (`/sources/import-linkedin`) |
 | 11 | **Import from builder platform** | `ImportFromBuilderWizard` (4 steps) → `/formats/parse` → `/formats/upload` → `converter_worker` → LaTeX |
-| 12 | **Cover letter** | `/workspace/[id]/cover-letter` → `POST /cover-letters/generate` (`cover_letter_worker`) → `/workspace/cover-letters` list |
+| 12 | **Cover letter** | `/workspace/[id]/cover-letter` → `POST /cover-letters/generate` (`cover_letter_worker`) → optional type/draw/upload signature → validated isolated compile → `/workspace/cover-letters` list |
 | 13 | **Job tracker CRUD** | `/tracker` (kanban) → `AddApplicationModal` → `POST /tracker/applications` (`require_feature(application_tracker)`) → status transitions → `/tracker/stats` |
 | 14 | **One-click apply** | `ApplyModal` → `/apply/detect` → `/apply/{greenhouse|lever}/preview` → `POST /apply/{platform}` (`require_feature(one_click_apply)`) → `/apply/submissions` |
 | 15 | **BYOK key add** | `/byok` (`APIKeyManager`+`ProviderSelector`) → `POST /byok/api-keys` (`require_feature(byok)`, Fernet-encrypted) → `POST /byok/validate` → `/byok/generate` |
 | 16 | **Billing / subscription** | `/pricing` → `/billing` (`SubscriptionManager`) → `POST /subscription/create` (Razorpay) → `/billing/webhook` (HMAC) → `/subscription/current` |
 | 17 | **Admin control plane** | `/admin` (403-probe) → feature flags (`PATCH /admin/feature-flags/{key}`), entitlements matrix/kill-switch, users/roles |
-| 18 | **Tenant white-label** | `/admin/tenant` → `POST /tenants` → `PATCH /tenants/{id}` (branding) → `TenantThemeSync` applies theme by Host → `/tenants/{id}/domain/verify` |
+| 18 | **Tenant white-label / careers centre** | admin/team provisioning → live DNS verification → host propagation + dynamic verified-origin CORS → visible branding → email-bound invite acceptance → cohort submission → milestone dashboard/recruiter notes/PDF download; optional operator OIDC (LDAP via broker) |
 
 **Additional supporting journeys** (secondary): resume sharing (`/resumes/{id}/share` → `/r/[token]`), public portfolio (`/generate-portfolio` → `/u/[username]`), team workspaces + recruiter notes (`/workspaces/*`), live collaboration (`/ws/collab/{resume_id}` CRDT + comments), version history/checkpoints, references/publications (Zotero/Mendeley/ORCID), interview prep, career-path analysis, developer public API (`/api/v1/*`), cloud sync (GitHub/Dropbox).
 

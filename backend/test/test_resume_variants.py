@@ -132,6 +132,26 @@ class TestForkResume:
         data = resp.json()
         assert data["tags"] == ["python", "backend"]
 
+    async def test_fork_preserves_compiler_preference(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        parent = await _create_resume(client, auth_headers, title="XeLaTeX Parent")
+        settings_resp = await client.patch(
+            f"/resumes/{parent['id']}/settings",
+            headers=auth_headers,
+            json={"compiler": "xelatex"},
+        )
+        assert settings_resp.status_code == 200
+
+        resp = await client.post(
+            f"/resumes/{parent['id']}/fork",
+            headers=auth_headers,
+            json={},
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["metadata"]["compiler"] == "xelatex"
+
 
 # ---------------------------------------------------------------------------
 # GET /resumes/{resume_id}/variants
@@ -191,7 +211,7 @@ class TestDiffWithParent:
         await client.put(
             f"/resumes/{variant['id']}",
             headers=auth_headers,
-            json={"latex_content": _LATEX_V2},
+            json={"latex_content": _LATEX_V2, "expected_latex_content": _LATEX},
         )
 
         resp = await client.get(

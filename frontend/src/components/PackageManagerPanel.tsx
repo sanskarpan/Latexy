@@ -82,6 +82,7 @@ export default function PackageManagerPanel({
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-3"
           />
           <input
+            aria-label="Search LaTeX packages"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search packages…"
@@ -90,6 +91,7 @@ export default function PackageManagerPanel({
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
+              aria-label="Clear package search"
               className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg-2"
             >
               <X size={11} />
@@ -170,6 +172,7 @@ export default function PackageManagerPanel({
                     {installed ? (
                       <button
                         onClick={() => handleRemove(pkg.name)}
+                        aria-label={`Remove ${pkg.name} from preamble`}
                         title="Remove from preamble"
                         className="flex shrink-0 items-center gap-1 rounded-[var(--radius-md)] bg-surface-2 px-2 py-1 text-[10px] text-ok ring-1 ring-line transition hover:text-err"
                       >
@@ -179,6 +182,7 @@ export default function PackageManagerPanel({
                     ) : (
                       <button
                         onClick={() => handleAdd(pkg)}
+                        aria-label={`Add ${pkg.name} to preamble`}
                         title="Add to preamble"
                         className="flex shrink-0 items-center gap-1 rounded-[var(--radius-md)] bg-surface-2 px-2 py-1 text-[10px] text-fg-2 ring-1 ring-line transition hover:bg-accent-soft hover:text-accent-strong hover:ring-accent"
                       >
@@ -283,6 +287,7 @@ function InstalledChip({
       <span className="font-mono">{name}</span>
       <button
         onClick={() => onRemove(name)}
+        aria-label={`Remove ${name} from preamble`}
         title={`Remove ${name}`}
         className="rounded transition hover:text-err"
       >

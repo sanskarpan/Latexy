@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { X, UserPlus, Users, Crown, Eye, MessageSquare, Trash2, Loader2, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type CollaboratorInfo, type CollabRole, type PresenceUser } from '@/lib/api-client'
@@ -46,12 +46,30 @@ export default function CollaboratorPanel({
 }: CollaboratorPanelProps) {
   const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([])
   const [loadingList, setLoadingList] = useState(false)
+  const [listError, setListError] = useState<string | null>(null)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<CollabRole>('editor')
   const [inviting, setInviting] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [roleChangeId, setRoleChangeId] = useState<string | null>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
+  const listRequestRef = useRef(0)
+
+  const loadCollaborators = useCallback(async () => {
+    const requestId = ++listRequestRef.current
+    setLoadingList(true)
+    setListError(null)
+    try {
+      const data = await apiClient.listCollaborators(resumeId)
+      if (requestId === listRequestRef.current) setCollaborators(data)
+    } catch (error) {
+      if (requestId === listRequestRef.current) {
+        setListError(error instanceof Error ? error.message : 'Could not load collaborators')
+      }
+    } finally {
+      if (requestId === listRequestRef.current) setLoadingList(false)
+    }
+  }, [resumeId])
 
   useEffect(() => {
     if (!open) return
@@ -62,12 +80,9 @@ export default function CollaboratorPanel({
 
   useEffect(() => {
     if (!open || !isOwner) return
-    setLoadingList(true)
-    apiClient.listCollaborators(resumeId)
-      .then(setCollaborators)
-      .catch(() => toast.error('Could not load collaborators'))
-      .finally(() => setLoadingList(false))
-  }, [open, resumeId, isOwner])
+    void loadCollaborators()
+    return () => { listRequestRef.current += 1 }
+  }, [open, isOwner, loadCollaborators])
 
   if (!open) return null
 
@@ -209,12 +224,23 @@ export default function CollaboratorPanel({
                 <div className="flex justify-center py-4">
                   <Loader2 size={16} className="animate-spin text-fg-3" />
                 </div>
+              ) : listError && collaborators.length === 0 ? (
+                <div role="alert" className="flex flex-col items-center gap-2 py-3 text-center">
+                  <p className="text-[11px] text-err">{listError}</p>
+                  <button type="button" onClick={() => void loadCollaborators()} className="rounded border border-line px-2 py-1 text-[10px] text-fg-2 hover:bg-surface-2">Retry</button>
+                </div>
               ) : collaborators.length === 0 ? (
                 <p className="py-3 text-center text-[11px] text-fg-3">
                   No collaborators yet. Invite someone above.
                 </p>
               ) : (
                 <div className="space-y-1">
+                  {listError && (
+                    <div role="alert" className="flex items-center justify-between gap-2 rounded border border-err/30 bg-err/5 px-2 py-1.5">
+                      <span className="text-[10px] text-err">Could not refresh collaborators.</span>
+                      <button type="button" onClick={() => void loadCollaborators()} className="text-[10px] text-err underline">Retry</button>
+                    </div>
+                  )}
                   {collaborators.map((collab) => {
                     const isLiveUser = presenceUsers.some((p) => p.name === collab.user_name)
                     return (

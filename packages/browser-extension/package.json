@@ -1,0 +1,13 @@
+{
+  "name": "@latexy/browser-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node --check extraction.js && node --check autofill.js && node --check bridge.js && node --check popup.js && node --check options.js && node scripts/check-package.js"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}

@@ -18,6 +18,7 @@ them without touching the network or an LLM provider.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any, Dict, List, Optional
 
@@ -36,6 +37,7 @@ from .job_scraper_service import (
     SSRFError,
     _assert_public_url,
     _html_to_clean_text,
+    _safe_url_for_log,
     _SSRFGuardTransport,
 )
 
@@ -129,7 +131,7 @@ async def fetch_url_text(url: str, *, client: Optional[httpx.AsyncClient] = None
     """
     # Pre-flight guard so an obviously-internal URL fails fast with SSRFError
     # (the transport guard below is the real enforcement, incl. redirects).
-    _assert_public_url(url)
+    await asyncio.to_thread(_assert_public_url, url)
 
     owns_client = client is None
     client = client or httpx.AsyncClient(
@@ -273,7 +275,11 @@ def extract_projects(
         )
         raw = response.choices[0].message.content or ""
     except Exception as exc:
-        logger.warning(f"extract_projects LLM call failed for {source_url}: {exc}")
+        logger.warning(
+            "extract_projects LLM call failed for %s (%s)",
+            _safe_url_for_log(source_url),
+            type(exc).__name__,
+        )
         return _degrade_to_metadata(truncated, source_url)
 
     projects = _parse_project_array(raw)

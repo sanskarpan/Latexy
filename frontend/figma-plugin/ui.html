@@ -140,6 +140,9 @@
     })
 
     window.onmessage = (event) => {
+      // Figma's plugin UI is sandboxed and its parent origin is not a stable
+      // web origin. Bind the channel to the actual parent window instead.
+      if (event.source !== parent) return
       const msg = event.data.pluginMessage
       if (!msg) return
       importBtn.disabled = false

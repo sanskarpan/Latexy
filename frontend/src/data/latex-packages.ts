@@ -987,15 +987,6 @@ export const LATEX_PACKAGES: LaTeXPackage[] = [
     loadOrder: 40,
   },
   {
-    name: 'minted',
-    description: 'Code highlighting via Pygments (requires --shell-escape)',
-    category: 'utils',
-    usage: '\\usepackage{minted}',
-    example: '\\begin{minted}{python}\nprint("hello")\n\\end{minted}',
-    note: 'Requires --shell-escape flag and Python/Pygments installed',
-    loadOrder: 40,
-  },
-  {
     name: 'algorithm2e',
     description: 'Algorithm pseudo-code environment',
     category: 'utils',

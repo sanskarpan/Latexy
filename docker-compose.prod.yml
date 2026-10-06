@@ -6,9 +6,15 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
       - ./nginx/ssl:/etc/ssl:ro
       - ./nginx/logs:/var/log/nginx
+    environment:
+      - NGINX_SERVER_NAME=${NGINX_SERVER_NAME:?set NGINX_SERVER_NAME to the public hostname}
+    command:
+      - /bin/sh
+      - -c
+      - envsubst '$$NGINX_SERVER_NAME' < /etc/nginx/nginx.conf.template > /tmp/nginx.conf && exec nginx -c /tmp/nginx.conf -g 'daemon off;'
     depends_on:
       - frontend
       - backend
@@ -23,15 +29,17 @@ services:
 
   # Frontend Service
   frontend:
-    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-frontend:${LATEXY_VERSION:-latest}
+    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-frontend:${LATEXY_VERSION:?set LATEXY_VERSION to an immutable release tag or sha}
     build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
+      context: .
+      dockerfile: frontend/Dockerfile.prod
       args:
         # NEXT_PUBLIC_* are inlined into the browser bundle at build time.
         # NEXT_PUBLIC_WS_URL must be the absolute public ws(s):// origin.
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?set NEXT_PUBLIC_APP_URL to the public origin, e.g. https://latexy.xyz}
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
-        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:?set NEXT_PUBLIC_WS_URL to the public WebSocket origin, e.g. wss://latexy.com}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:?set NEXT_PUBLIC_WS_URL to the public WebSocket origin, e.g. wss://latexy.xyz}
+        BUILD_VERSION: ${BUILD_VERSION:-local}
     environment:
       - NODE_ENV=production
       - PORT=5180
@@ -41,7 +49,7 @@ services:
       # pg Pool straight from DATABASE_URL, so both are mandatory.
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
       - DATABASE_URL=${DATABASE_URL:?set DATABASE_URL}
-      - BETTER_AUTH_URL=${BETTER_AUTH_URL:?set BETTER_AUTH_URL to the public origin, e.g. https://latexy.com}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:?set BETTER_AUTH_URL to the public origin, e.g. https://latexy.xyz}
       # Server-only backend base. NEXT_PUBLIC_API_URL is the same-origin path
       # "/api", which Node's fetch() cannot parse; middleware.ts and the
       # /api/byok/ route handlers need an absolute in-cluster URL.
@@ -82,7 +90,7 @@ services:
 
   # Backend Service
   backend:
-    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-backend:${LATEXY_VERSION:-latest}
+    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-backend:${LATEXY_VERSION:?set LATEXY_VERSION to an immutable release tag or sha}
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
@@ -102,15 +110,42 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
       # JSON array — pydantic-settings parses List[str] fields as JSON,
-      # e.g. CORS_ORIGINS=["https://latexy.com","https://www.latexy.com"]
-      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS to a JSON array of public origins, e.g. ["https://latexy.com"]}
+      # e.g. CORS_ORIGINS=["https://latexy.xyz","https://www.latexy.xyz"]
+      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS to a JSON array of public origins, e.g. ["https://latexy.xyz"]}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_CACHE_URL=redis://redis:6379/1
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET:-latexy}
+      # Optional export integrations. Google Drive stays unavailable until its
+      # OAuth client is configured; document email stays disabled by default.
+      - GOOGLE_DRIVE_CLIENT_ID=${GOOGLE_DRIVE_CLIENT_ID:-}
+      - GOOGLE_DRIVE_CLIENT_SECRET=${GOOGLE_DRIVE_CLIENT_SECRET:-}
+      - GOOGLE_DRIVE_REDIRECT_URI=${GOOGLE_DRIVE_REDIRECT_URI:-}
+      - EMAIL_ENABLED=${EMAIL_ENABLED:-false}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-resend}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-noreply@latexy.io}
+      - EMAIL_FROM_NAME=${EMAIL_FROM_NAME:-Latexy}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
       - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+      - RAZORPAY_PLAN_WEEKLY=${RAZORPAY_PLAN_WEEKLY:-}
+      - RAZORPAY_WEEKLY_AMOUNT=${RAZORPAY_WEEKLY_AMOUNT:-0}
+      - RAZORPAY_LIFETIME_AMOUNT=${RAZORPAY_LIFETIME_AMOUNT:-0}
+      - RAZORPAY_BILLING_CURRENCY=${RAZORPAY_BILLING_CURRENCY:-INR}
+      - REFERRAL_PROGRAM_ENABLED=${REFERRAL_PROGRAM_ENABLED:-false}
+      - REFERRAL_REWARD_DAYS=${REFERRAL_REWARD_DAYS:-0}
+      - REFERRAL_QUALIFYING_PLAN_FAMILIES=${REFERRAL_QUALIFYING_PLAN_FAMILIES:-["basic","pro","byok","student","team","weekly","lifetime"]}
+      - REFERRAL_MAX_ATTRIBUTIONS_PER_REFERRER=${REFERRAL_MAX_ATTRIBUTIONS_PER_REFERRER:-1000}
+      - REFERRAL_ATTRIBUTION_WINDOW_HOURS=${REFERRAL_ATTRIBUTION_WINDOW_HOURS:-24}
       # JSON object mapping coupon code -> Razorpay offer ID, e.g.
       # {"LAUNCH20":"offer_ABC123"}. Razorpay only discounts a subscription
       # through an offer, so a percentage coupon with no mapping here is
@@ -125,9 +160,14 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4318/v1/traces}
       - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-latexy}
     depends_on:
-      - redis
-      - postgres
-      - tempo
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      tempo:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8030/health"]
@@ -148,7 +188,7 @@ services:
 
   # Celery Worker
   celery-worker:
-    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-backend:${LATEXY_VERSION:-latest}
+    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-backend:${LATEXY_VERSION:?set LATEXY_VERSION to an immutable release tag or sha}
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
@@ -159,11 +199,26 @@ services:
       - DATABASE_URL=${DATABASE_URL:?set DATABASE_URL}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
-      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS to a JSON array of public origins, e.g. ["https://latexy.com"]}
+      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS to a JSON array of public origins, e.g. ["https://latexy.xyz"]}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_CACHE_URL=redis://redis:6379/1
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET:-latexy}
+      # Email notification tasks run on this worker, so keep its provider
+      # settings aligned with the API service.
+      - EMAIL_ENABLED=${EMAIL_ENABLED:-false}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-resend}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-noreply@latexy.io}
+      - EMAIL_FROM_NAME=${EMAIL_FROM_NAME:-Latexy}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - API_KEY_ENCRYPTION_KEY=${API_KEY_ENCRYPTION_KEY:?set API_KEY_ENCRYPTION_KEY (Fernet key, required in production)}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -174,9 +229,14 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4318/v1/traces}
       - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-latexy}
     depends_on:
-      - redis
-      - postgres
-      - tempo
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      tempo:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping"]
@@ -197,7 +257,7 @@ services:
 
   # Celery Beat Scheduler
   celery-beat:
-    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-backend:${LATEXY_VERSION:-latest}
+    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-backend:${LATEXY_VERSION:?set LATEXY_VERSION to an immutable release tag or sha}
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
@@ -209,7 +269,7 @@ services:
       - DATABASE_URL=${DATABASE_URL:?set DATABASE_URL}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
-      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS to a JSON array of public origins, e.g. ["https://latexy.com"]}
+      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS to a JSON array of public origins, e.g. ["https://latexy.xyz"]}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_CACHE_URL=redis://redis:6379/1
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -234,7 +294,7 @@ services:
 
   # Flower Monitoring (Optional)
   flower:
-    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-backend:${LATEXY_VERSION:-latest}
+    image: ${LATEXY_IMAGE_PREFIX:-ghcr.io/sanskarpan}/latexy-backend:${LATEXY_VERSION:?set LATEXY_VERSION to an immutable release tag or sha}
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
@@ -247,11 +307,11 @@ services:
       - DATABASE_URL=${DATABASE_URL:?set DATABASE_URL}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?set JWT_SECRET_KEY}
-      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS to a JSON array of public origins, e.g. ["https://latexy.com"]}
+      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS to a JSON array of public origins, e.g. ["https://latexy.xyz"]}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     ports:
-      - "5555:5555"
+      - "127.0.0.1:${FLOWER_PORT:-5555}:5555"
     depends_on:
       - redis
     restart: unless-stopped
@@ -278,16 +338,54 @@ services:
           memory: 512M
           cpus: '0.5'
 
-  # PostgreSQL Database (for development - use managed DB in production)
+  # Private S3-compatible object storage for compiled PDFs and share links.
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - latexy-network
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 '$${MINIO_ACCESS_KEY}' '$${MINIO_SECRET_KEY}' &&
+        mc mb --ignore-existing 'local/$${MINIO_BUCKET}'
+      "
+    environment:
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET:-latexy}
+    restart: "no"
+    networks:
+      - latexy-network
+
+  # PostgreSQL Database (pgvector-enabled; replace DATABASE_URL with a managed
+  # service and disable this service if desired).
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg16
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-latexy}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
@@ -419,6 +517,7 @@ volumes:
   celery_beat_data:
   prometheus_data:
   grafana_data:
+  minio_data:
 
 networks:
   latexy-network:

@@ -175,6 +175,12 @@ class TestAcademicCVRoutes:
         auth_headers: dict,
     ) -> None:
         resume = await _create_resume(client, auth_headers, ACADEMIC_CV_LATEX)
+        settings_resp = await client.patch(
+            f"/resumes/{resume['id']}/settings",
+            headers=auth_headers,
+            json={"compiler": "lualatex", "main_file": "cv.tex", "halt_on_error": False},
+        )
+        assert settings_resp.status_code == 200, settings_resp.text
         with patch("app.api.job_routes._write_initial_redis_state", new_callable=AsyncMock) as mock_write, patch(
             "app.workers.orchestrator.submit_optimize_and_compile"
         ) as mock_submit:
@@ -202,6 +208,9 @@ class TestAcademicCVRoutes:
         assert kwargs["resume_id"] == variant_id
         assert kwargs["optimization_level"] == "aggressive"
         assert "Target industry: Data Science / Machine Learning." in kwargs["custom_instructions"]
+        assert kwargs["compiler"] == "lualatex"
+        assert kwargs["compile_settings"]["main_file"] == "cv.tex"
+        assert kwargs["compile_settings"]["halt_on_error"] is False
 
     async def test_convert_endpoint_rejects_non_academic_without_force(
         self,

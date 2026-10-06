@@ -13,20 +13,43 @@ control is how the engine is invoked. These tests pin that invocation:
 """
 
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.services import latex_service as ls
 from app.services.latex_service import find_recorder_read_escape as real_find_recorder
 
+
+class _EmptyPipe:
+    async def read(self, size: int) -> bytes:
+        return b""
+
+
+class _BoundedSyncStream:
+    """Small Popen.stdout double with the bounded-read contract."""
+
+    def __init__(self, chunks: list[str | bytes]):
+        self._payload = b"".join(
+            chunk.encode() if isinstance(chunk, str) else chunk for chunk in chunks
+        )
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self._payload)
+        chunk, self._payload = self._payload[:size], self._payload[size:]
+        return chunk
+
+    def close(self) -> None:
+        pass
+
 # real_find_recorder is bound at import time, so it survives the conftest fixture that
 # relaxes the fail-closed "no recorder file" rule for the mocked-subprocess unit tests.
 
 # ── Invocation hardening ──────────────────────────────────────────────────────
 
-class TestSandboxFlags:
 
+class TestSandboxFlags:
     def test_shell_escape_is_disabled(self):
         assert "-no-shell-escape" in ls.LATEX_SANDBOX_FLAGS
 
@@ -49,7 +72,6 @@ class TestSandboxFlags:
 
 
 class TestEngineEnv:
-
     def test_worker_credentials_are_not_inherited(self):
         secrets = {
             "DATABASE_URL": "postgresql://u:p@host/db",
@@ -72,7 +94,6 @@ class TestEngineEnv:
 
 
 class TestLocalEngineGate:
-
     def test_opt_in_via_env(self):
         with patch.dict("os.environ", {"ALLOW_LOCAL_LATEX_ENGINE": "true"}, clear=False):
             assert ls.local_engine_allowed() is True
@@ -91,6 +112,7 @@ class TestLocalEngineGate:
             patch.object(ls, "running_in_container", return_value=False),
         ):
             import os
+
             os.environ.pop("ALLOW_LOCAL_LATEX_ENGINE", None)
             assert ls.local_engine_allowed() is False
 
@@ -108,6 +130,7 @@ class TestLocalEngineGate:
             patch.object(ls.shutil, "which", return_value=None),
         ):
             import os
+
             os.environ.pop("ALLOW_LOCAL_LATEX_ENGINE", None)
             assert ls.docker_engine_available() is False
             assert ls.local_engine_allowed() is True
@@ -119,6 +142,7 @@ class TestLocalEngineGate:
             patch.object(ls.Path, "exists", return_value=True),
         ):
             import os
+
             os.environ.pop("KUBERNETES_SERVICE_HOST", None)
             assert ls.running_in_container() is True
 
@@ -128,6 +152,7 @@ class TestLocalEngineGate:
             patch.object(ls, "running_in_container", return_value=False),
         ):
             import os
+
             os.environ.pop("ALLOW_LOCAL_LATEX_ENGINE", None)
             assert ls.local_engine_allowed() is True
 
@@ -156,30 +181,38 @@ class TestLocalEngineGate:
 
 # ── Read confinement ──────────────────────────────────────────────────────────
 
+
 class TestEngineReadEscape:
     """The denylist cannot be won by string matching, so reads are policed on the
     engine's own transcript. One \\newcommand defeated the source-level guard:
     \\newcommand{\\zz}{\\input}\\zz{../../etc/hostname} compiled and the file came
     back in extracted_text."""
 
-    @pytest.mark.parametrize("line,expected", [
-        ("(/workspace/../../etc/hostname)", "/etc/hostname"),
-        ("(/etc/passwd)", "/etc/passwd"),
-        ("(../../etc/hostname)", "/etc/hostname"),
-        ('("/etc/my secrets.txt")', "/etc/my secrets.txt"),
-    ])
+    @pytest.mark.parametrize(
+        "line,expected",
+        [
+            ("(/workspace/../../etc/hostname)", "/etc/hostname"),
+            ("(/etc/passwd)", "/etc/passwd"),
+            ("(../../etc/hostname)", "/etc/hostname"),
+            ('("/etc/my secrets.txt")', "/etc/my secrets.txt"),
+        ],
+    )
     def test_reads_outside_the_jail_are_detected(self, line, expected):
         assert ls.find_engine_read_escape(line, "/workspace") == expected
 
-    @pytest.mark.parametrize("line", [
-        "(/workspace/resume.aux)",
-        "(./resume.aux) )",
-        "(/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls",
-        "(/usr/share/texmf/tex/latex/foo.sty)",
-        "Output written on /workspace/resume.pdf (1 page, 12439 bytes).",
-        "Overfull \\hbox (12.0pt too wide) in paragraph at lines 10/12",
-        "This is pdfTeX, Version 3.14 (TeX Live 2026)",
-    ])
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "(/workspace/resume.aux)",
+            "(./resume.aux) )",
+            "(/usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls",
+            "(/opt/homebrew/Cellar/texlive/20260301/share/texmf-dist/tex/latex/base/article.cls",
+            "(/usr/share/texmf/tex/latex/foo.sty)",
+            "Output written on /workspace/resume.pdf (1 page, 12439 bytes).",
+            "Overfull \\hbox (12.0pt too wide) in paragraph at lines 10/12",
+            "This is pdfTeX, Version 3.14 (TeX Live 2026)",
+        ],
+    )
     def test_legitimate_lines_are_not_flagged(self, line):
         assert ls.find_engine_read_escape(line, "/workspace") is None
 
@@ -193,12 +226,14 @@ class TestEngineReadEscape:
 
         published = []
         proc = MagicMock()
-        proc.stdout = iter([
-            "(/workspace/resume.tex\n",
-            "(/workspace/../../etc/hostname)\n",
-            "c828f9c599ec\n",
-            "Output written on resume.pdf (1 page, 100 bytes).\n",
-        ])
+        proc.stdout = _BoundedSyncStream(
+            [
+                "(/workspace/resume.tex\n",
+                "(/workspace/../../etc/hostname)\n",
+                "c828f9c599ec\n",
+                "Output written on resume.pdf (1 page, 100 bytes).\n",
+            ]
+        )
         proc.returncode = 0
         proc.wait.return_value = 0
 
@@ -235,7 +270,7 @@ class TestEngineReadEscape:
         import app.workers.orchestrator as orch
 
         proc = MagicMock()
-        proc.stdout = iter(["(/workdir/../../etc/hostname)\n", "c828f9c599ec\n"])
+        proc.stdout = _BoundedSyncStream(["(/workdir/../../etc/hostname)\n", "c828f9c599ec\n"])
         proc.returncode = 0
         proc.wait.return_value = 0
 
@@ -257,9 +292,7 @@ class TestEngineReadEscape:
         assert error == ls.ENGINE_READ_ESCAPE_ERROR
         assert page_count is None and pdf is None
         proc.kill.assert_called_once()
-        assert not any(
-            "etc/hostname" in str(call.args) for call in pub.call_args_list
-        )
+        assert not any("etc/hostname" in str(call.args) for call in pub.call_args_list)
 
 
 class TestRecorderReadEscape:
@@ -277,12 +310,10 @@ class TestRecorderReadEscape:
         return fls
 
     def test_openin_read_outside_the_jail_is_detected(self, tmp_path):
-        fls = self._fls(tmp_path, (
-            "PWD /workspace\n"
-            "INPUT /workspace/resume.tex\n"
-            "INPUT /etc/hostname\n"
-            "OUTPUT /workspace/resume.pdf\n"
-        ))
+        fls = self._fls(
+            tmp_path,
+            ("PWD /workspace\nINPUT /workspace/resume.tex\nINPUT /etc/hostname\nOUTPUT /workspace/resume.pdf\n"),
+        )
         assert real_find_recorder(fls, "/workspace") == "/etc/hostname"
 
     def test_another_jobs_directory_is_detected(self, tmp_path):
@@ -294,15 +325,18 @@ class TestRecorderReadEscape:
         assert real_find_recorder(fls, "/workspace") == "/etc/hostname"
 
     def test_ordinary_compile_is_not_flagged(self, tmp_path):
-        fls = self._fls(tmp_path, (
-            "PWD /workspace\n"
-            "INPUT /workspace/resume.tex\n"
-            "INPUT sections/experience.tex\n"
-            "INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls\n"
-            "OUTPUT /workspace/resume.log\n"
-            "OUTPUT /workspace/resume.pdf\n"
-            "INPUT /workspace/resume.aux\n"
-        ))
+        fls = self._fls(
+            tmp_path,
+            (
+                "PWD /workspace\n"
+                "INPUT /workspace/resume.tex\n"
+                "INPUT sections/experience.tex\n"
+                "INPUT /usr/local/texlive/2026/texmf-dist/tex/latex/base/article.cls\n"
+                "OUTPUT /workspace/resume.log\n"
+                "OUTPUT /workspace/resume.pdf\n"
+                "INPUT /workspace/resume.aux\n"
+            ),
+        )
         assert real_find_recorder(fls, "/workspace") is None
 
     def test_missing_recorder_file_fails_closed(self, tmp_path):
@@ -311,9 +345,7 @@ class TestRecorderReadEscape:
     def test_missing_recorder_file_tolerated_when_the_engine_never_ran(self, tmp_path):
         # `docker run` itself failing must surface as its own error, not as a
         # spurious confinement failure — there is nothing to leak.
-        assert real_find_recorder(
-            tmp_path / "resume.fls", "/workspace", require_recorder=False
-        ) is None
+        assert real_find_recorder(tmp_path / "resume.fls", "/workspace", require_recorder=False) is None
 
     def test_recorder_file_clobbered_by_openout_is_rejected(self, tmp_path):
         """\\openout over <jobname>.fls is allowed by openout_any=p (same directory).
@@ -323,9 +355,7 @@ class TestRecorderReadEscape:
         by NUL padding and the clobber records itself as an OUTPUT.
         """
         fls = tmp_path / "resume.fls"
-        fls.write_bytes(
-            b"PWD /workspace\n" + b"\x00" * 512 + b"OUTPUT /workspace/resume.pdf\n"
-        )
+        fls.write_bytes(b"PWD /workspace\n" + b"\x00" * 512 + b"OUTPUT /workspace/resume.pdf\n")
         assert "overwritten" in real_find_recorder(fls, "/workspace")
 
     def test_document_writing_the_recorder_file_is_rejected(self, tmp_path):
@@ -345,7 +375,7 @@ class TestRecorderReadEscape:
                 "PWD /workspace\nINPUT /workspace/resume.tex\nINPUT /etc/hostname\n"
             )
             proc = MagicMock()
-            proc.stdout = iter(["(/workspace/resume.tex\n", "924acb30d9bb\n"])
+            proc.stdout = _BoundedSyncStream(["(/workspace/resume.tex\n", "924acb30d9bb\n"])
             proc.returncode = 0
             proc.wait.return_value = 0
             return proc
@@ -387,7 +417,7 @@ class TestRecorderReadEscape:
                 "PWD /workdir\nINPUT /workdir/resume.tex\nINPUT /etc/hostname\n"
             )
             proc = MagicMock()
-            proc.stdout = iter(["(/workdir/resume.tex\n"])
+            proc.stdout = _BoundedSyncStream(["(/workdir/resume.tex\n"])
             proc.returncode = 0
             proc.wait.return_value = 0
             return proc
@@ -415,11 +445,19 @@ class TestRecorderReadEscape:
 
 # ── The unauthenticated /public/compile path ──────────────────────────────────
 
+
 class TestServiceCompilePath:
     """LaTeXService.compile_latex backs POST /compile, POST /public/compile (no auth)
     and optimize-and-compile, so it needs the same controls as the Celery path."""
 
-    def _run(self, tmp_path, fls_body: str | None, *, docker: bool = True):
+    def _run(
+        self,
+        tmp_path,
+        fls_body: str | None,
+        *,
+        docker: bool = True,
+        returncode: int = 0,
+    ):
         import asyncio
 
         job_id = str(uuid.uuid4())
@@ -428,15 +466,14 @@ class TestServiceCompilePath:
             job_dir = tmp_path / job_id
             if fls_body is not None:
                 (job_dir / "resume.fls").write_text(fls_body)
-            (job_dir / "resume.pdf").write_bytes(b"%PDF-1.5 924acb30d9bb")
+            if returncode == 0:
+                (job_dir / "resume.pdf").write_bytes(b"%PDF-1.5 924acb30d9bb")
             (job_dir / "resume.log").write_text("(/workspace/resume.tex\n924acb30d9bb\n")
             proc = MagicMock()
-            proc.returncode = 0
-
-            async def _communicate():
-                return b"", b""
-
-            proc.communicate = _communicate
+            proc.returncode = returncode
+            proc.stdout = _EmptyPipe()
+            proc.stderr = _EmptyPipe()
+            proc.wait = AsyncMock()
             _fake_exec.cmd = list(cmd)
             return proc
 
@@ -445,15 +482,11 @@ class TestServiceCompilePath:
             patch.object(ls, "docker_engine_available", return_value=docker),
             patch("asyncio.create_subprocess_exec", side_effect=_fake_exec),
         ):
-            result = asyncio.run(
-                ls.LaTeXService().compile_latex("\\documentclass{article}x", job_id=job_id)
-            )
+            result = asyncio.run(ls.LaTeXService().compile_latex("\\documentclass{article}x", job_id=job_id))
         return result, getattr(_fake_exec, "cmd", []), tmp_path / job_id
 
     def test_recorder_escape_withholds_the_pdf_and_the_transcript(self, tmp_path):
-        result, _, job_dir = self._run(
-            tmp_path, "PWD /workspace\nINPUT /etc/hostname\n"
-        )
+        result, _, job_dir = self._run(tmp_path, "PWD /workspace\nINPUT /etc/hostname\n")
         assert result.success is False
         assert result.message == ls.ENGINE_READ_ESCAPE_ERROR
         assert result.log_output is None
@@ -465,6 +498,11 @@ class TestServiceCompilePath:
         result, _, _ = self._run(tmp_path, "PWD /workspace\nINPUT /workspace/resume.tex\n")
         assert result.success is True
         assert result.log_output is None
+
+    def test_failed_compile_removes_job_directory(self, tmp_path):
+        result, _, job_dir = self._run(tmp_path, None, returncode=1)
+        assert result.success is False
+        assert not job_dir.exists()
 
     def test_command_is_hardened(self, tmp_path):
         _, cmd, _ = self._run(tmp_path, "PWD /workspace\n")
@@ -484,9 +522,10 @@ class TestServiceCompilePath:
 
 # ── Worker command construction ───────────────────────────────────────────────
 
+
 def _popen_stub(cmd, **kwargs):
     proc = MagicMock()
-    proc.stdout = iter(["Output written on resume.pdf (1 page, 100 bytes).\n"])
+    proc.stdout = _BoundedSyncStream(["Output written on resume.pdf (1 page, 100 bytes).\n"])
     proc.returncode = 0
     proc.wait.return_value = 0
     return proc
@@ -568,21 +607,27 @@ class TestWorkerInvocation:
 
 # ── Combined path shares the validator ────────────────────────────────────────
 
+
 class TestCombinedPathValidates:
     """The combined job used to skip validate_latex_content entirely."""
 
-    @pytest.mark.parametrize("body", [
-        r"\input{/etc/passwd}",
-        r"\makeatletter\@@input /etc/passwd",
-        r"\csname input\endcsname{/etc/passwd}",
-        r"\immediate\write 18{id}",
-    ])
+    @pytest.mark.parametrize(
+        "body",
+        [
+            r"\input{/etc/passwd}",
+            r"\makeatletter\@@input /etc/passwd",
+            r"\csname input\endcsname{/etc/passwd}",
+            r"\immediate\write 18{id}",
+        ],
+    )
     def test_malicious_llm_output_is_rejected_before_compiling(self, body):
         import app.workers.orchestrator as orch
 
         latex = r"\documentclass{article}\begin{document}%s\end{document}" % body
-        with patch("app.workers.orchestrator.subprocess.Popen") as popen, \
-                patch("app.workers.orchestrator.publish_event"):
+        with (
+            patch("app.workers.orchestrator.subprocess.Popen") as popen,
+            patch("app.workers.orchestrator.publish_event"),
+        ):
             success, _, error, page_count, pdf = orch._run_latex_stage("job-x", latex)
 
         popen.assert_not_called()

@@ -43,7 +43,9 @@ export function applyTenantTheme(tenant: TenantBranding): void {
   }
 
   root.setAttribute('data-tenant-slug', tenant.slug)
+  root.setAttribute('data-tenant-name', tenant.name)
   document.title = `${tenant.name} | Powered by Latexy`
+  window.dispatchEvent(new CustomEvent('latexy:tenant-theme', { detail: tenant }))
 }
 
 /**
@@ -61,6 +63,8 @@ export function clearTenantTheme(): void {
   root.style.removeProperty('--focus')
   root.removeAttribute('data-tenant-logo')
   root.removeAttribute('data-tenant-slug')
+  root.removeAttribute('data-tenant-name')
+  window.dispatchEvent(new CustomEvent('latexy:tenant-theme', { detail: null }))
 }
 
 function hexToRgb(hex: string): string {

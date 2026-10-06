@@ -2,42 +2,84 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, LayoutTemplate, Sparkles, Upload, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
   apiClient,
+  BuilderSeedValidationError,
   type BuilderMetricsResponse,
   type BuilderTemplateResponse,
+  type ResumeValidationIssue,
 } from '@/lib/api-client'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 import {
   cloneStructuredResume,
   DEFAULT_STRUCTURED_RESUME,
   deriveBuilderMetrics,
 } from '@/lib/resume-builder'
 
+type BuilderSession = NonNullable<ReturnType<typeof useRequireAuth>['session']>
+
 export default function NewBuilderPage() {
+  const { session, isPending: sessionLoading, error: sessionError } = useRequireAuth()
+
+  if (sessionLoading && !session) {
+    return <div className="content-shell py-16 text-sm text-fg-2">Loading builder…</div>
+  }
+  if (sessionError && !session) {
+    return (
+      <div className="content-shell py-16">
+        <div role="alert" className="mx-auto max-w-lg rounded-[var(--radius-lg)] border border-err/20 bg-err/10 p-6 text-center">
+          <h1 className="text-lg font-semibold text-fg">Builder could not be loaded</h1>
+          <p className="mt-2 text-sm text-fg-2">Your session could not be verified. Check your connection and retry.</p>
+          <button type="button" onClick={() => window.location.reload()} className="mt-5 rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-medium text-accent-fg">
+            Retry
+          </button>
+        </div>
+      </div>
+    )
+  }
+  if (!session) return null
+
+  // The form owns all mutable draft state. Remounting it on an authenticated
+  // identity change prevents an in-flight create/upload from crossing owners,
+  // including an A → B → A account switch.
+  return <NewBuilderForm key={session.user.id} session={session} authUnverified={Boolean(sessionLoading || sessionError)} />
+}
+
+function NewBuilderForm({ authUnverified }: { session: BuilderSession; authUnverified: boolean }) {
   const router = useRouter()
+  const mountedRef = useRef(true)
+  const authVerifiedRef = useRef(!authUnverified)
+  authVerifiedRef.current = !authUnverified
   const [title, setTitle] = useState('')
   const [templates, setTemplates] = useState<BuilderTemplateResponse[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
   const [structured, setStructured] = useState(cloneStructuredResume(DEFAULT_STRUCTURED_RESUME))
   const [seedMetrics, setSeedMetrics] = useState<BuilderMetricsResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [creating, setCreating] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadIssues, setUploadIssues] = useState<ResumeValidationIssue[]>([])
 
   useEffect(() => {
     let cancelled = false
+    setLoading(true)
+    setLoadError(null)
     apiClient.getBuilderTemplates()
       .then(result => {
         if (cancelled) return
         setTemplates(result)
         setSelectedTemplateId(result[0]?.id ?? '')
       })
-      .catch(() => {
-        if (!cancelled) toast.error('Failed to load builder templates')
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : 'Failed to load builder templates')
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -45,7 +87,16 @@ export default function NewBuilderPage() {
     return () => {
       cancelled = true
     }
+  }, [loadAttempt])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
   }, [])
+
+  const isCurrentRequest = () => mountedRef.current && authVerifiedRef.current
 
   const selectedTemplate = useMemo(
     () => templates.find(template => template.id === selectedTemplateId) ?? null,
@@ -55,29 +106,48 @@ export default function NewBuilderPage() {
 
   const handleSeedUpload = async (file: File | null) => {
     if (!file) return
+    if (!isCurrentRequest()) {
+      toast.error('Session verification is still in progress. Please try again.')
+      return
+    }
     setUploading(true)
+    setUploadIssues([])
     try {
       const seeded = await apiClient.seedBuilderFromUpload(file)
+      if (!isCurrentRequest()) return
       setStructured(cloneStructuredResume(seeded.structured_content))
       setSeedMetrics(seeded.metrics)
       if (!title.trim()) {
         setTitle(file.name.replace(/\.[^.]+$/, ''))
       }
       toast.success('Imported resume content into the builder')
+      for (const warning of seeded.interchange_warnings ?? []) toast.warning(warning)
     } catch (error) {
+      if (!isCurrentRequest()) return
+      if (error instanceof BuilderSeedValidationError) {
+        setUploadIssues(error.issues)
+      }
       toast.error(error instanceof Error ? error.message : 'Failed to seed builder from upload')
     } finally {
-      setUploading(false)
+      if (mountedRef.current) setUploading(false)
     }
   }
 
   const handleCreate = async () => {
+    if (!isCurrentRequest()) {
+      toast.error('Session verification is still in progress. Please try again.')
+      return
+    }
     if (!title.trim()) {
       toast.error('Enter a resume title')
       return
     }
     if (!selectedTemplateId) {
       toast.error('Select a builder template')
+      return
+    }
+    if (title.trim().length > 255) {
+      toast.error('Resume titles must be 255 characters or fewer')
       return
     }
     setCreating(true)
@@ -87,13 +157,34 @@ export default function NewBuilderPage() {
         template_id: selectedTemplateId,
         structured_content: structured,
       })
+      if (!isCurrentRequest()) return
       toast.success('Builder draft created')
       router.push(`/workspace/builder/${created.resume.id}`)
     } catch (error) {
+      if (!isCurrentRequest()) return
       toast.error(error instanceof Error ? error.message : 'Failed to create builder draft')
     } finally {
-      setCreating(false)
+      if (mountedRef.current) setCreating(false)
     }
+  }
+
+  if (loading) {
+    return <div className="content-shell py-16 text-sm text-fg-2">Loading builder templates…</div>
+  }
+
+  if (loadError) {
+    return (
+      <div className="content-shell py-16">
+        <div role="alert" className="mx-auto max-w-lg rounded-[var(--radius-lg)] border border-err/20 bg-err/10 p-6 text-center">
+          <h1 className="text-lg font-semibold text-fg">Builder could not be loaded</h1>
+          <p className="mt-2 text-sm text-fg-2">{loadError}</p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Link href="/workspace/new" className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm text-fg-2">Back</Link>
+            <button type="button" onClick={() => setLoadAttempt(value => value + 1)} className="rounded-[var(--radius-md)] bg-accent px-4 py-2 text-sm font-medium text-accent-fg">Retry</button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -121,6 +212,7 @@ export default function NewBuilderPage() {
             type="text"
             value={title}
             onChange={event => setTitle(event.target.value)}
+            maxLength={255}
             placeholder="Senior Backend Engineer — Core Resume"
             className="w-full rounded-[var(--radius-md)] border border-line bg-bg px-4 py-3 text-base text-fg outline-none transition focus:border-accent"
           />
@@ -138,11 +230,28 @@ export default function NewBuilderPage() {
               <input
                 type="file"
                 className="hidden"
+                disabled={uploading}
                 accept=".json,.pdf,.doc,.docx,.txt,.md,.html,.yaml,.yml,.toml,.xml,.tex"
                 onChange={event => void handleSeedUpload(event.target.files?.[0] ?? null)}
               />
             </label>
           </div>
+          {uploadIssues.length > 0 && (
+            <div role="alert" className="mt-3 rounded-[var(--radius-md)] border border-err/30 bg-err/5 p-4">
+              <p className="text-sm font-semibold text-err">Import validation failed</p>
+              <ul className="mt-2 space-y-2 text-xs text-fg-2">
+                {uploadIssues.map((issue, index) => (
+                  <li key={`${issue.path}-${issue.line ?? 'unknown'}-${index}`}>
+                    <code className="font-mono text-err">{issue.path}</code>
+                    {issue.line != null && (
+                      <span> — line {issue.line}{issue.column != null ? `, column ${issue.column}` : ''}</span>
+                    )}
+                    <span>: {issue.message}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-6">
@@ -188,11 +297,9 @@ export default function NewBuilderPage() {
           <LayoutTemplate className="h-4 w-4 text-accent-strong" />
           <h2 className="text-sm font-semibold text-fg">Choose a builder-native template</h2>
         </div>
-        {loading ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, idx) => (
-              <div key={idx} className="h-48 animate-pulse rounded-[var(--radius-lg)] bg-surface-2" />
-            ))}
+        {templates.length === 0 ? (
+          <div role="status" className="rounded-[var(--radius-lg)] border border-line bg-surface-2 p-6 text-sm text-fg-2">
+            No builder-compatible templates are currently available.
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

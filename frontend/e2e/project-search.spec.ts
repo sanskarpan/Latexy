@@ -107,7 +107,7 @@ async function mockWorkspaceApi(page: Page) {
         })
       }
 
-      if (path === '/jobs' && method === 'GET') {
+      if ((path === '/jobs' || path === '/jobs/') && method === 'GET') {
         return route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -235,6 +235,28 @@ test.describe('Project Search — workspace page', () => {
     await openSearchModal(page)
     await page.locator('input[placeholder*="Search across all resumes"]').fill('SRCH_UNIQ_42')
     await expect(page.getByText('Software Engineer Resume')).toBeVisible({ timeout: 3000 })
+  })
+
+  test('clearing a query prevents an older response from restoring stale results', async ({ page }) => {
+    await page.route('**/resumes/search**', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(SEARCH_RESPONSE_MATCH),
+      })
+    })
+    await gotoWorkspace(page)
+    await openSearchModal(page)
+    const input = page.locator('input[placeholder*="Search across all resumes"]')
+    await input.fill('SRCH_UNIQ_42')
+    await page.waitForTimeout(350)
+    await input.fill('')
+    await page.waitForTimeout(750)
+
+    const modal = page.locator('.fixed.inset-0').last()
+    await expect(modal.getByText('Software Engineer Resume')).not.toBeVisible()
+    await expect(modal.getByText(/type at least 2 characters/i)).toBeVisible()
   })
 
   test('result shows resume title', async ({ page }) => {

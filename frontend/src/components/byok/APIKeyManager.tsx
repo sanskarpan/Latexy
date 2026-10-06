@@ -31,6 +31,8 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
   // on this flag (rather than the providers flag) stops existing keys from
   // briefly flashing "No API Keys Yet" if providers happen to resolve first.
   const [keysLoading, setKeysLoading] = useState(true)
+  const [keysError, setKeysError] = useState<string | null>(null)
+  const [providersError, setProvidersError] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newKey, setNewKey] = useState(initialKey)
   const [saving, setSaving] = useState(false)
@@ -45,6 +47,8 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
   }, [])
 
   const fetchAPIKeys = useCallback(async () => {
+    setKeysLoading(true)
+    setKeysError(null)
     try {
       const response = await fetch('/api/byok/api-keys')
       if (!response.ok) throw new Error('Failed to fetch API keys')
@@ -53,13 +57,15 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
       setApiKeys(keys)
       onKeysChange?.(keys)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Unable to load keys')
+      setKeysError(error instanceof Error ? error.message : 'Unable to load keys')
     } finally {
       setKeysLoading(false)
     }
   }, [onKeysChange])
 
   const fetchProviders = useCallback(async () => {
+    setLoading(true)
+    setProvidersError(null)
     try {
       const response = await fetch('/api/byok/providers')
       if (!response.ok) throw new Error('Failed to fetch providers')
@@ -73,7 +79,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
       }
       setProviders(providerMap)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Unable to load providers')
+      setProvidersError(error instanceof Error ? error.message : 'Unable to load providers')
     } finally {
       setLoading(false)
     }
@@ -176,7 +182,7 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
       toast.success('API key added')
       setShowAddModal(false)
       setNewKey(initialKey)
-      fetchAPIKeys()
+      void fetchAPIKeys()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to add key')
     } finally {
@@ -187,10 +193,10 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
   const deleteAPIKey = async (keyId: string) => {
     if (!confirm('Delete this API key?')) return
     try {
-      const response = await fetch(`/api/byok/api-keys/${keyId}`, { method: 'DELETE' })
+      const response = await fetch(`/api/byok/api-keys/${encodeURIComponent(keyId)}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('Failed to delete API key')
       toast.success('API key deleted')
-      fetchAPIKeys()
+      void fetchAPIKeys()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete key')
     }
@@ -209,16 +215,30 @@ const APIKeyManager: React.FC<APIKeyManagerProps> = ({ onKeysChange }) => {
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="rounded-[var(--radius-md)] bg-accent px-3 py-2 text-sm font-semibold text-accent-fg hover:brightness-110"
+          disabled={Boolean(providersError) || Object.keys(providers).length === 0}
+          title={providersError ?? (Object.keys(providers).length === 0 ? 'No providers are currently available' : undefined)}
+          className="rounded-[var(--radius-md)] bg-accent px-3 py-2 text-sm font-semibold text-accent-fg hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Add Key
         </button>
       </div>
 
+      {providersError ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-err/20 bg-err/10 p-4 text-sm text-err">
+          <span>{providersError}</span>
+          <button type="button" onClick={() => void fetchProviders()} className="rounded-[var(--radius-md)] border border-err/30 px-3 py-1.5 text-xs font-semibold">Retry providers</button>
+        </div>
+      ) : null}
+
       <div className="space-y-3">
         {keysLoading ? (
           <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-8 text-center text-fg-2">
             Loading your keys...
+          </div>
+        ) : keysError ? (
+          <div role="alert" className="rounded-[var(--radius-lg)] border border-err/20 bg-err/10 p-6 text-center text-sm text-err">
+            <p>{keysError}</p>
+            <button type="button" onClick={() => void fetchAPIKeys()} className="mt-3 rounded-[var(--radius-md)] border border-err/30 px-3 py-1.5 text-xs font-semibold">Retry keys</button>
           </div>
         ) : apiKeys.length === 0 ? (
           <div className="rounded-[var(--radius-lg)] border border-line bg-surface p-8 text-center">

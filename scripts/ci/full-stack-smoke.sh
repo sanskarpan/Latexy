@@ -10,8 +10,9 @@ BACKEND_PORT="${BACKEND_PORT:-8030}"
 FRONTEND_PORT="${FRONTEND_PORT:-5180}"
 
 export DATABASE_URL="${DATABASE_URL:-postgresql+asyncpg://latexy:latexy_password@localhost:5434/latexy}"
-export REDIS_URL="${REDIS_URL:-redis://localhost:6379/0}"
-export REDIS_CACHE_URL="${REDIS_CACHE_URL:-redis://localhost:6379/1}"
+REDIS_PORT="${REDIS_PORT:-6380}"
+export REDIS_URL="${REDIS_URL:-redis://localhost:${REDIS_PORT}/0}"
+export REDIS_CACHE_URL="${REDIS_CACHE_URL:-redis://localhost:${REDIS_PORT}/1}"
 export CELERY_BROKER_URL="${CELERY_BROKER_URL:-$REDIS_URL}"
 export CELERY_RESULT_BACKEND="${CELERY_RESULT_BACKEND:-$REDIS_URL}"
 export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-sK6fP1vR9mL0dQ4xN8cT2yH7aB5uE3wJ6rZ9pC4nV1k=}"
@@ -24,6 +25,9 @@ export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://localhost:${BACKEND_PO
 export NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL:-ws://localhost:${BACKEND_PORT}}"
 export CORS_ORIGINS="${CORS_ORIGINS:-[\"http://localhost:${FRONTEND_PORT}\",\"http://127.0.0.1:${FRONTEND_PORT}\"]}"
 export ENVIRONMENT="${ENVIRONMENT:-staging}"
+# This is a local-service smoke, never a remote Modal workload. Environment
+# variables take precedence over deployment settings in a developer's .env.
+export DEPLOY_TARGET="local"
 export BILLING_MODE="${BILLING_MODE:-disabled}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 export NEXT_TELEMETRY_DISABLED=1
@@ -70,7 +74,7 @@ else
   echo "==> Starting backend on :${BACKEND_PORT}"
   (
     cd "$BACKEND_DIR"
-    "${backend_uvicorn[@]}" app.main:app --host 127.0.0.1 --port "$BACKEND_PORT"
+    "${backend_uvicorn[@]}" app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" --ws-max-size 524288
   ) &
   backend_pid=$!
   started_backend=1
@@ -115,6 +119,9 @@ echo "==> Running Playwright full-stack smoke"
 if ! (
   cd "$FRONTEND_DIR"
   PLAYWRIGHT_REQUIRE_BACKEND=1 \
+  PLAYWRIGHT_REUSE_EXISTING_SERVER=1 \
+  PLAYWRIGHT_BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}" \
+  PLAYWRIGHT_API_URL="http://127.0.0.1:${BACKEND_PORT}" \
   PLAYWRIGHT_PORT="$FRONTEND_PORT" \
   pnpm exec playwright test e2e/full-stack-smoke.spec.ts --project=chromium --workers=1
 ); then

@@ -14,6 +14,7 @@ Covers:
 from __future__ import annotations
 
 import uuid
+from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
@@ -98,6 +99,37 @@ async def _create_member(
     return member_id, token
 
 
+async def _add_personal_collaborator(
+    db: AsyncSession,
+    resume_id: str,
+    owner_headers: dict,
+    collaborator_headers: dict,
+    role: str,
+) -> None:
+    async def user_id(headers: dict) -> str:
+        token = headers["Authorization"].removeprefix("Bearer ")
+        result = await db.execute(
+            sa_text('SELECT "userId" FROM session WHERE token = :token'),
+            {"token": token},
+        )
+        return result.scalar_one()
+
+    await db.execute(
+        sa_text(
+            "INSERT INTO resume_collaborators "
+            "(resume_id, user_id, role, invited_by) "
+            "VALUES (:resume_id, :user_id, :role, :invited_by)"
+        ),
+        {
+            "resume_id": resume_id,
+            "user_id": await user_id(collaborator_headers),
+            "role": role,
+            "invited_by": await user_id(owner_headers),
+        },
+    )
+    await db.commit()
+
+
 # ── Add comment ───────────────────────────────────────────────────────────────
 
 
@@ -150,6 +182,193 @@ class TestAddComment:
             json={"content": "Unauthorized"},
         )
         assert resp.status_code == 403
+
+    @pytest.mark.parametrize("role", ["editor", "commenter"])
+    async def test_writable_personal_collaborator_can_add_comment(
+        self,
+        role: str,
+        client: AsyncClient,
+        auth_headers: dict,
+        auth_headers2: dict,
+        db_session: AsyncSession,
+    ):
+        resume = await _create_resume(client, auth_headers)
+        await _add_personal_collaborator(
+            db_session, resume["id"], auth_headers, auth_headers2, role
+        )
+
+        response = await client.post(
+            f"/resumes/{resume['id']}/comments",
+            headers=auth_headers2,
+            json={"content": "Personal collaborator comment"},
+        )
+
+        assert response.status_code == 201, response.text
+
+    async def test_viewer_can_list_but_cannot_add_personal_comment(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        auth_headers2: dict,
+        db_session: AsyncSession,
+    ):
+        resume = await _create_resume(client, auth_headers)
+        await _add_comment(client, auth_headers, resume["id"])
+        await _add_personal_collaborator(
+            db_session, resume["id"], auth_headers, auth_headers2, "viewer"
+        )
+
+        listed = await client.get(
+            f"/resumes/{resume['id']}/comments", headers=auth_headers2
+        )
+        denied = await client.post(
+            f"/resumes/{resume['id']}/comments",
+            headers=auth_headers2,
+            json={"content": "Viewer write"},
+        )
+
+        assert listed.status_code == 200, listed.text
+        assert len(listed.json()) == 1
+        assert denied.status_code == 403
+
+    async def test_workspace_viewer_cannot_add_comment(
+        self, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
+    ):
+        ws = await _create_workspace(client, auth_headers)
+        resume = await _create_resume(client, auth_headers)
+        await _share_resume(client, auth_headers, ws["id"], resume["id"])
+        member_id, token = await _create_member(db_session, client, auth_headers, ws["id"])
+        await db_session.execute(
+            sa_text("UPDATE workspace_members SET role = 'viewer' WHERE workspace_id = :ws AND user_id = :uid"),
+            {"ws": ws["id"], "uid": member_id},
+        )
+        await db_session.commit()
+        response = await client.post(
+            f"/resumes/{resume['id']}/comments",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"workspace_id": ws["id"], "content": "viewer cannot write"},
+        )
+        assert response.status_code == 403
+
+    async def test_workspace_viewer_cannot_enumerate_mention_participants(
+        self, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
+    ):
+        ws = await _create_workspace(client, auth_headers)
+        resume = await _create_resume(client, auth_headers)
+        await _share_resume(client, auth_headers, ws["id"], resume["id"])
+        member_id, token = await _create_member(db_session, client, auth_headers, ws["id"])
+        await db_session.execute(
+            sa_text("UPDATE workspace_members SET role = 'viewer' WHERE workspace_id = :ws AND user_id = :uid"),
+            {"ws": ws["id"], "uid": member_id},
+        )
+        await db_session.commit()
+
+        response = await client.get(
+            f"/resumes/{resume['id']}/comments/participants?workspace_id={ws['id']}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 403
+
+    async def test_mentions_are_deduplicated_and_self_is_not_persisted(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        db_session: AsyncSession,
+    ):
+        resume = await _create_resume(client, auth_headers)
+        collaborator_id, _ = await _create_member(
+            db_session, client, auth_headers, (await _create_workspace(client, auth_headers))["id"]
+        )
+        owner_id = (
+            await db_session.execute(
+                sa_text('SELECT "userId" FROM session WHERE token = :token'),
+                {"token": auth_headers["Authorization"].removeprefix("Bearer ")},
+            )
+        ).scalar_one()
+        await db_session.execute(
+            sa_text("INSERT INTO resume_collaborators (resume_id, user_id, role, invited_by) VALUES (:rid, :uid, 'commenter', :inviter)"),
+            {"rid": resume["id"], "uid": collaborator_id, "inviter": owner_id},
+        )
+        await db_session.commit()
+        with patch("app.workers.email_worker.submit_comment_mention_email") as enqueue:
+            response = await client.post(
+                f"/resumes/{resume['id']}/comments",
+                headers=auth_headers,
+                json={
+                    "content": "Hi @Member",
+                    "mentioned_user_ids": [collaborator_id, collaborator_id, owner_id],
+                },
+            )
+        assert response.status_code == 201, response.text
+        assert [m["user_id"] for m in response.json()["mentions"]] == [collaborator_id]
+        assert "email" not in response.json()["mentions"][0]
+        enqueue.assert_called_once()
+
+    async def test_workspace_picker_excludes_personal_collaborator_from_other_scope(
+        self, client: AsyncClient, auth_headers: dict, db_session: AsyncSession
+    ):
+        workspace = await _create_workspace(client, auth_headers, "Shared scope")
+        other_workspace = await _create_workspace(client, auth_headers, "Other scope")
+        resume = await _create_resume(client, auth_headers)
+        await _share_resume(client, auth_headers, workspace["id"], resume["id"])
+        unrelated_id, _ = await _create_member(db_session, client, auth_headers, other_workspace["id"])
+        owner_id = (
+            await db_session.execute(
+                sa_text('SELECT "userId" FROM session WHERE token = :token'),
+                {"token": auth_headers["Authorization"].removeprefix("Bearer ")},
+            )
+        ).scalar_one()
+        await db_session.execute(
+            sa_text("INSERT INTO resume_collaborators (resume_id, user_id, role, invited_by) VALUES (:rid, :uid, 'commenter', :inviter)"),
+            {"rid": resume["id"], "uid": unrelated_id, "inviter": owner_id},
+        )
+        await db_session.commit()
+
+        response = await client.get(
+            f"/resumes/{resume['id']}/comments/participants?workspace_id={workspace['id']}",
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+        assert unrelated_id not in {item["user_id"] for item in response.json()}
+
+    async def test_removed_personal_collaborator_cannot_mutate_old_comment(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        auth_headers2: dict,
+        db_session: AsyncSession,
+    ):
+        resume = await _create_resume(client, auth_headers)
+        await _add_personal_collaborator(
+            db_session, resume["id"], auth_headers, auth_headers2, "commenter"
+        )
+        comment = await _add_comment(client, auth_headers2, resume["id"])
+        collaborator_id = (
+            await db_session.execute(
+                sa_text(
+                    'SELECT "userId" FROM session WHERE token = :token'
+                ),
+                {
+                    "token": auth_headers2["Authorization"].removeprefix("Bearer ")
+                },
+            )
+        ).scalar_one()
+        await db_session.execute(
+            sa_text(
+                "DELETE FROM resume_collaborators "
+                "WHERE resume_id = :resume_id AND user_id = :user_id"
+            ),
+            {"resume_id": resume["id"], "user_id": collaborator_id},
+        )
+        await db_session.commit()
+
+        response = await client.patch(
+            f"/resumes/{resume['id']}/comments/{comment['id']}",
+            headers=auth_headers2,
+            json={"content": "No longer authorized"},
+        )
+
+        assert response.status_code == 403
 
     async def test_non_member_cannot_add_workspace_comment(
         self, client: AsyncClient, auth_headers: dict, auth_headers2: dict

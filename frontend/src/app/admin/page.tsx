@@ -646,20 +646,37 @@ function InlineError({ message }: { message: string }) {
 export default function AdminPage() {
   const [tab, setTab] = useState<TabId>('flags')
   const [forbidden, setForbidden] = useState(false)
+  const [probeError, setProbeError] = useState<string | null>(null)
   const [checking, setChecking] = useState(true)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   // Probe authorization once via the flags endpoint (already admin-gated).
-  useEffect(() => {
+  const checkAuthorization = useCallback(() => {
+    setChecking(true)
+    setForbidden(false)
+    setProbeError(null)
     apiClient
       .getAdminFeatureFlags()
       .then(() => setForbidden(false))
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err)
-        if (msg.includes('403') || msg.includes('Forbidden')) setForbidden(true)
+        if (
+          msg.includes('401') ||
+          msg.includes('403') ||
+          msg.includes('Unauthorized') ||
+          msg.includes('Forbidden')
+        ) {
+          setForbidden(true)
+        } else {
+          setProbeError(msg || 'Unable to verify admin access')
+        }
       })
       .finally(() => setChecking(false))
   }, [])
+
+  useEffect(() => {
+    checkAuthorization()
+  }, [checkAuthorization])
 
   const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
@@ -685,6 +702,22 @@ export default function AdminPage() {
         <p className="text-sm text-fg-3">
           Admin access required. Ask an administrator to grant you the admin role.
         </p>
+      </div>
+    )
+  }
+
+  if (probeError) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-4 text-center">
+        <p className="text-lg font-semibold text-fg-2">Could not verify admin access</p>
+        <p role="alert" className="max-w-lg text-sm text-err">{probeError}</p>
+        <button
+          type="button"
+          onClick={checkAuthorization}
+          className="rounded-[var(--radius-md)] border border-line px-4 py-2 text-sm font-medium text-fg hover:bg-surface-2"
+        >
+          Retry
+        </button>
       </div>
     )
   }

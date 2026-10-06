@@ -102,6 +102,7 @@ interface ConfidenceScorePanelProps {
   onClose: () => void
   score: ConfidenceScoreResponse | null
   loading: boolean
+  error: string | null
   onRefresh: () => void
 }
 
@@ -115,6 +116,7 @@ export default function ConfidenceScorePanel({
   onClose,
   score,
   loading,
+  error,
   onRefresh,
 }: ConfidenceScorePanelProps) {
   if (!isOpen) return null
@@ -146,6 +148,17 @@ export default function ConfidenceScorePanel({
             <span className="h-4 w-4 animate-spin rounded-full border border-line border-t-fg" />
             Analyzing resume quality…
           </div>
+        ) : error && !score ? (
+          <div role="alert" className="flex flex-col items-center gap-3 py-12 text-center">
+            <p className="text-xs text-err">{error}</p>
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="rounded-[var(--radius-md)] border border-line px-3 py-1.5 text-xs text-fg-2 transition hover:bg-surface-2"
+            >
+              Retry score
+            </button>
+          </div>
         ) : !score ? (
           <div className="flex flex-col items-center gap-3 py-12">
             <p className="text-xs text-fg-3">No score yet</p>
@@ -158,6 +171,12 @@ export default function ConfidenceScorePanel({
           </div>
         ) : (
           <>
+            {error && (
+              <div role="alert" className="mb-3 flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-err/30 bg-err/5 px-3 py-2">
+                <span className="text-[10px] text-err">{error}</span>
+                <button type="button" onClick={onRefresh} className="text-[10px] text-err underline">Retry</button>
+              </div>
+            )}
             {/* Score badge + radar */}
             <div className="flex items-center gap-4">
               {/* Circular badge */}

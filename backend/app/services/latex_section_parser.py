@@ -6,9 +6,10 @@ Used by Feature 53 (AI Section Reordering) and Feature 69 (Resume Merger).
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import List
+
+from ..utils import safe_regex as re
 
 
 @dataclass
