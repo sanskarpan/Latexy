@@ -38,7 +38,7 @@ async def get_trial_limit_for_user(user_id: Optional[str], db: AsyncSession) -> 
             if row.lower() in test_emails:
                 return TEST_TRIAL_LIMIT
     except Exception as exc:
-        logger.warning(f"Failed to look up trial limit for user {user_id}: {exc}")
+        logger.warning("Failed to look up trial limit for user %s", user_id, extra={"error_type": type(exc).__name__})
     return TRIAL_LIMIT
 
 class TrialService:
@@ -89,7 +89,7 @@ class TrialService:
             }
 
         except Exception as e:
-            logger.error(f"Error getting trial status: {e}")
+            logger.error("Error getting trial status", extra={"error_type": type(e).__name__})
             return {
                 "usageCount": 0,
                 "remainingUses": limit,
@@ -172,7 +172,7 @@ class TrialService:
             }
 
         except Exception as e:
-            logger.error(f"Error checking rate limits: {e}")
+            logger.error("Error checking rate limits", extra={"error_type": type(e).__name__})
             # Allow on error to avoid blocking legitimate users
             return {
                 "allowed": True,
@@ -310,7 +310,7 @@ class TrialService:
             }
 
         except Exception as e:
-            logger.error(f"Error in check_and_track_usage: {e}")
+            logger.error("Error in check_and_track_usage", extra={"error_type": type(e).__name__})
             await db.rollback()
             record_trial_use("blocked")
             return {
@@ -388,7 +388,7 @@ class TrialService:
             }
 
         except Exception as e:
-            logger.error(f"Error tracking usage: {e}")
+            logger.error("Error tracking usage", extra={"error_type": type(e).__name__})
             await db.rollback()
             return {
                 "success": False,
@@ -413,7 +413,7 @@ class TrialService:
             await db.commit()
             return True
         except Exception as e:
-            logger.error(f"Error resetting trial: {e}")
+            logger.error("Error resetting trial", extra={"error_type": type(e).__name__})
             await db.rollback()
             return False
 
@@ -436,7 +436,7 @@ class TrialService:
             logger.info(f"Blocked device {device_fingerprint[:8]}... for {reason}")
             return True
         except Exception as e:
-            logger.error(f"Error blocking device: {e}")
+            logger.error("Error blocking device", extra={"error_type": type(e).__name__})
             await db.rollback()
             return False
 
