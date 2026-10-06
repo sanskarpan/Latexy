@@ -10,7 +10,7 @@ test.describe('Legal pages + footer', () => {
   test('/privacy renders the Privacy Policy content', async ({ page }) => {
     await page.goto('/privacy', { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('heading', { name: /Privacy Policy/i }).first()).toBeVisible()
-    await expect(page.getByText(/Information We Collect/i).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: /Information we process/i })).toBeVisible()
   })
 
   test('/terms renders the Terms of Service content', async ({ page }) => {
