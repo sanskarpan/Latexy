@@ -1,43 +1,32 @@
 'use client'
 
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
-import {
-  PERSONAL_DICTIONARY_EVENT,
-  addWordToDict,
-  getPersonalDict,
-  normalizeDictionaryWord,
-  removeWordFromDict,
-  syncPersonalDictionary,
-} from '@/hooks/useSpellCheck'
+import { normalizeDictionaryWord, usePersonalDictionary } from '@/hooks/useSpellCheck'
+import { useRequireAuth } from '@/hooks/useRequireAuth'
 
 export default function PersonalDictionarySettings() {
-  const [words, setWords] = useState<string[]>([])
-  const [entry, setEntry] = useState('')
-  const [loading, setLoading] = useState(true)
+  const { session, isPending, error: sessionError } = useRequireAuth()
+  const ownerId = session?.user?.id ?? null
+  const dictionaryScope = useMemo(() => ({
+    ownerId,
+    authToken: session?.session?.token ?? null,
+    confirmed: ownerId !== null || (!isPending && !sessionError),
+  }), [isPending, ownerId, session?.session?.token, sessionError])
+  const dictionary = usePersonalDictionary(dictionaryScope)
+  const words = useMemo(
+    () => [...dictionary.words].sort((a, b) => a.localeCompare(b)),
+    [dictionary.words],
+  )
+  const ownerKey = dictionaryScope.confirmed ? dictionaryScope.ownerId ?? 'anonymous' : 'unconfirmed'
+  const [entryState, setEntryState] = useState({ ownerKey, value: '' })
+  const entry = entryState.ownerKey === ownerKey ? entryState.value : ''
   const [error, setError] = useState<string | null>(null)
 
-  const refresh = () => setWords([...getPersonalDict()].sort((a, b) => a.localeCompare(b)))
-
   useEffect(() => {
-    let active = true
-    const handleChange = () => refresh()
-    window.addEventListener(PERSONAL_DICTIONARY_EVENT, handleChange)
-    syncPersonalDictionary()
-      .then(() => {
-        if (active) refresh()
-      })
-      .catch(() => {
-        if (active) setError('Your saved dictionary could not be loaded. Local words are still available on this device.')
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-    return () => {
-      active = false
-      window.removeEventListener(PERSONAL_DICTIONARY_EVENT, handleChange)
-    }
-  }, [])
+    setError(null)
+    setEntryState({ ownerKey, value: '' })
+  }, [ownerKey])
 
   function handleAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -51,15 +40,13 @@ export default function PersonalDictionarySettings() {
       return
     }
     setError(null)
-    addWordToDict(normalized)
-    setEntry('')
-    refresh()
+    dictionary.addWord(normalized)
+    setEntryState({ ownerKey, value: '' })
   }
 
   function handleRemove(word: string) {
     setError(null)
-    removeWordFromDict(word)
-    refresh()
+    dictionary.removeWord(word)
   }
 
   return (
@@ -74,7 +61,7 @@ export default function PersonalDictionarySettings() {
           <input
             id="personal-dictionary-word"
             value={entry}
-            onChange={(event) => setEntry(event.target.value)}
+            onChange={(event) => setEntryState({ ownerKey, value: event.target.value })}
             maxLength={64}
             autoComplete="off"
             placeholder="e.g. OpenAI"
@@ -90,9 +77,9 @@ export default function PersonalDictionarySettings() {
         </button>
       </form>
 
-      {error && <p role="alert" className="text-[11px] text-err">{error}</p>}
+      {(error || dictionary.error) && <p role="alert" className="text-[11px] text-err">{error || dictionary.error}</p>}
 
-      {loading ? (
+      {dictionary.loading ? (
         <div className="flex items-center gap-2 text-sm text-fg-3">
           <Loader2 size={13} className="animate-spin" />
           Loading dictionary…
