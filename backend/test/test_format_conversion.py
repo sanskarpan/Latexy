@@ -493,6 +493,26 @@ class TestFormatDetection:
         result = format_detection_service.detect_format("resume.yaml", None, b"name: Jane")
         assert result == ResumeFormat.YAML
 
+    def test_plain_text_contact_labels_are_not_misclassified_as_yaml(self):
+        from app.services.format_detection import ResumeFormat, format_detection_service
+
+        content = (
+            b"John Doe\nEmail: john.doe@example.com\n"
+            b"Phone: (415) 555-2671\n\nEXPERIENCE\n"
+        )
+        result = format_detection_service.detect_format("resume.txt", "text/plain", content)
+
+        assert result == ResumeFormat.TEXT
+
+    def test_invalid_json_prefix_falls_back_to_text(self):
+        from app.services.format_detection import ResumeFormat, format_detection_service
+
+        result = format_detection_service.detect_format(
+            "resume.txt", "text/plain", b'{"name": "Jane" trailing prose'
+        )
+
+        assert result == ResumeFormat.TEXT
+
     def test_detects_yml_by_extension(self):
         from app.services.format_detection import ResumeFormat, format_detection_service
         result = format_detection_service.detect_format("resume.yml", None, b"name: Jane")
