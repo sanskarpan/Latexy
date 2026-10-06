@@ -164,6 +164,7 @@ test.describe('Template Gallery with mocked API', () => {
 
     // Single route handler for all template API requests
     await page.route((url) => url.pathname.startsWith('/templates'), async (route) => {
+      if (route.request().resourceType() === 'document') return route.continue()
       const url = new URL(route.request().url())
       const path = url.pathname
 
@@ -353,6 +354,347 @@ test.describe('Template Gallery with mocked API', () => {
     await requestPromise
     // After successful use, navigates to the edit page
     await expect(page).toHaveURL(/\/workspace\/.*\/edit/)
+  })
+
+  test('late template creation cannot navigate after the preview closes and reopens', async ({ page }) => {
+    let releaseUse!: () => void
+    let useStarted!: () => void
+    const useStartedPromise = new Promise<void>((resolve) => { useStarted = resolve })
+    const useGate = new Promise<void>((resolve) => { releaseUse = resolve })
+    await page.route(
+      (url) => url.pathname.endsWith('/use') && url.pathname.startsWith('/templates/'),
+      async (route) => {
+        useStarted()
+        await useGate
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ resume_id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', title: 'Created from old preview' }),
+        })
+      },
+    )
+    await page.route(
+      (url) => /^\/templates\/[0-9a-f-]{36}$/.test(url.pathname) && url.pathname !== '/templates/categories',
+      async (route) => {
+        const id = new URL(route.request().url()).pathname.split('/').pop()
+        const selected = MOCK_TEMPLATES.find((template) => template.id === id) ?? MOCK_TEMPLATES[0]
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ...selected, latex_content: MOCK_TEMPLATE_DETAIL.latex_content }),
+        })
+      },
+    )
+
+    const firstCard = page.locator('.group').first()
+    await firstCard.hover()
+    await firstCard.getByRole('button', { name: 'Preview' }).click()
+    await expect(page.getByRole('button', { name: 'Use This Template' })).toBeVisible()
+    const useClick = page.getByRole('button', { name: 'Use This Template' }).click()
+    await useStartedPromise
+
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[role="dialog"]')).not.toBeVisible()
+
+    const secondCard = page.locator('.group').nth(1)
+    await secondCard.hover()
+    await secondCard.getByRole('button', { name: 'Preview' }).click()
+    await expect(page.locator('[role="dialog"] h2')).toContainText('Finance Pro')
+
+    const useResponsePromise = page.waitForResponse((response) =>
+      response.url().includes('/use') && response.request().method() === 'POST',
+    )
+    releaseUse()
+    await useResponsePromise
+    await useClick
+    await expect(page.getByText('Creating…', { exact: true })).toHaveCount(0)
+    await expect(page).toHaveURL(/\/workspace\/new/)
+    await expect(page.locator('[role="dialog"] h2')).toContainText('Finance Pro')
+  })
+
+  test('template library ignores late creation after the preview closes and reopens', async ({ page }) => {
+    await page.goto('/templates', { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('h3', { hasText: 'SWE Clean Resume' })).toBeVisible()
+
+    let releaseUse!: () => void
+    let useStarted!: () => void
+    const useStartedPromise = new Promise<void>((resolve) => { useStarted = resolve })
+    const useGate = new Promise<void>((resolve) => { releaseUse = resolve })
+    await page.route(
+      (url) => url.pathname.endsWith('/use') && url.pathname.startsWith('/templates/'),
+      async (route) => {
+        useStarted()
+        await useGate
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ resume_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', title: 'Created from old library preview' }),
+        })
+      },
+    )
+    await page.route(
+      (url) => /^\/templates\/[0-9a-f-]{36}$/.test(url.pathname) && url.pathname !== '/templates/categories',
+      async (route) => {
+        const id = new URL(route.request().url()).pathname.split('/').pop()
+        const selected = MOCK_TEMPLATES.find((template) => template.id === id) ?? MOCK_TEMPLATES[0]
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ...selected, latex_content: MOCK_TEMPLATE_DETAIL.latex_content }),
+        })
+      },
+    )
+
+    const firstCard = page.locator('.group').first()
+    await firstCard.hover()
+    await firstCard.getByRole('button', { name: 'Preview' }).click()
+    await expect(page.getByRole('button', { name: 'Use This Template' })).toBeVisible()
+    const useClick = page.getByRole('button', { name: 'Use This Template' }).click()
+    await useStartedPromise
+
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[role="dialog"]')).not.toBeVisible()
+
+    const secondCard = page.locator('.group').nth(1)
+    await secondCard.hover()
+    await secondCard.getByRole('button', { name: 'Preview' }).click()
+    await expect(page.locator('[role="dialog"] h2')).toContainText('Finance Pro')
+
+    const useResponsePromise = page.waitForResponse((response) =>
+      response.url().includes('/use') && response.request().method() === 'POST',
+    )
+    releaseUse()
+    await useResponsePromise
+    await useClick
+    await expect(page.getByText('Creating…', { exact: true })).toHaveCount(0)
+    await expect(page).toHaveURL(/\/templates/)
+    await expect(page.locator('[role="dialog"] h2')).toContainText('Finance Pro')
+  })
+
+  test('stale template failure does not strand a reopened preview on either surface', async ({ page }) => {
+    let releaseFirst!: () => void
+    let firstUseStarted!: () => void
+    let firstUseGate = Promise.resolve()
+    let useCalls = 0
+    await page.route(
+      (url) => url.pathname.endsWith('/use') && url.pathname.startsWith('/templates/'),
+      async (route) => {
+        useCalls += 1
+        if (useCalls === 1) {
+          firstUseStarted()
+          await firstUseGate
+          await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'deferred template failure' }) })
+          return
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ resume_id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', title: 'Recovered template' }),
+        })
+      },
+    )
+    await page.route(
+      (url) => /^\/templates\/[0-9a-f-]{36}$/.test(url.pathname) && url.pathname !== '/templates/categories',
+      async (route) => {
+        const id = new URL(route.request().url()).pathname.split('/').pop()
+        const selected = MOCK_TEMPLATES.find((template) => template.id === id) ?? MOCK_TEMPLATES[0]
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ...selected, latex_content: MOCK_TEMPLATE_DETAIL.latex_content }),
+        })
+      },
+    )
+
+    for (const surface of ['/workspace/new', '/templates'] as const) {
+      if (surface === '/templates') {
+        await page.goto(surface, { waitUntil: 'domcontentloaded' })
+        await expect(page.locator('h3', { hasText: 'SWE Clean Resume' })).toBeVisible()
+      } else {
+        await expect(page.locator('h3', { hasText: 'SWE Clean Resume' })).toBeVisible()
+      }
+      useCalls = 0
+      firstUseGate = new Promise<void>((resolve) => { releaseFirst = resolve })
+      const firstUseStartedPromise = new Promise<void>((resolve) => { firstUseStarted = resolve })
+
+      const firstCard = page.locator('.group').first()
+      await firstCard.hover()
+      await firstCard.getByRole('button', { name: 'Preview' }).click()
+      await expect(page.getByRole('button', { name: 'Use This Template' })).toBeVisible()
+      const firstClick = page.getByRole('button', { name: 'Use This Template' }).click()
+      await firstUseStartedPromise
+
+      await page.keyboard.press('Escape')
+      await expect(page.locator('[role="dialog"]')).not.toBeVisible()
+      const secondCard = page.locator('.group').nth(1)
+      await secondCard.hover()
+      await secondCard.getByRole('button', { name: 'Preview' }).click()
+      await expect(page.locator('[role="dialog"] h2')).toContainText('Finance Pro')
+
+      const firstResponse = page.waitForResponse((response) =>
+        response.url().includes('/use') && response.request().method() === 'POST' && response.status() === 503,
+      )
+      releaseFirst()
+      await firstResponse
+      await firstClick
+      await expect(page.getByText('Creating…', { exact: true })).toHaveCount(0)
+      await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Failed to create resume' })).toHaveCount(0)
+      await expect(page.locator('[role="dialog"] h2')).toContainText('Finance Pro')
+
+      const secondResponse = page.waitForResponse((response) =>
+        response.url().includes('/use') && response.request().method() === 'POST' && response.status() === 200,
+      )
+      const secondClick = page.getByRole('button', { name: 'Use This Template' }).click()
+      await secondResponse
+      await secondClick
+      await expect(page).toHaveURL(/\/workspace\/cccccccc-cccc-cccc-cccc-cccccccccccc\/edit$/)
+      expect(useCalls).toBe(2)
+    }
+  })
+
+  test('unmounted template create ignores its deferred completion on both surfaces', async ({ page }) => {
+    let releaseUse!: () => void
+    let useStarted!: () => void
+    let useGate = Promise.resolve()
+    const installUseBodyProbe = () => {
+      const state = window as Window & { __templateUseBodyRead?: boolean }
+      state.__templateUseBodyRead = false
+      const originalFetch = window.fetch.bind(window)
+      window.fetch = async (input, init) => {
+        const response = await originalFetch(input, init)
+        const requestedUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+        if (requestedUrl.includes('/use')) {
+          const originalJson = response.json.bind(response)
+          response.json = async () => {
+            const value = await originalJson()
+            state.__templateUseBodyRead = true
+            return value
+          }
+        }
+        return response
+      }
+    }
+    await page.addInitScript(installUseBodyProbe)
+    await page.evaluate(installUseBodyProbe)
+    await page.route(
+      (url) => url.pathname.endsWith('/use') && url.pathname.startsWith('/templates/'),
+      async (route) => {
+        useStarted()
+        await useGate
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ resume_id: 'dddddddd-dddd-dddd-dddd-dddddddddddd', title: 'Unmounted template' }),
+        })
+      },
+    )
+
+    for (const surface of ['/workspace/new', '/templates'] as const) {
+      if (surface === '/templates') {
+        await page.goto(surface, { waitUntil: 'domcontentloaded' })
+        await expect(page.locator('h3', { hasText: 'SWE Clean Resume' })).toBeVisible()
+      } else {
+        await expect(page.locator('h3', { hasText: 'SWE Clean Resume' })).toBeVisible()
+      }
+      await page.evaluate(() => { (window as Window & { __templateUseBodyRead?: boolean }).__templateUseBodyRead = false })
+      useGate = new Promise<void>((resolve) => { releaseUse = resolve })
+      const useStartedPromise = new Promise<void>((resolve) => { useStarted = resolve })
+      const firstCard = page.locator('.group').first()
+      const useClick = firstCard.getByRole('button', { name: 'Use Template' }).click()
+      await useStartedPromise
+
+      const navigation = page.waitForURL(/\/workspace$/, { waitUntil: 'commit' })
+      if (surface === '/workspace/new') {
+        await page.getByRole('link', { name: 'Back to Workspace', exact: true }).click()
+      } else {
+        await page.getByRole('link', { name: 'Workspace', exact: true }).first().click()
+      }
+      await navigation
+
+      const useResponse = page.waitForResponse((response) =>
+        response.url().includes('/use') && response.request().method() === 'POST' && response.status() === 200,
+      )
+      releaseUse()
+      await useResponse
+      await useClick
+      await expect.poll(() => page.evaluate(() => Boolean((window as Window & { __templateUseBodyRead?: boolean }).__templateUseBodyRead))).toBe(true)
+      await page.evaluate(() => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      }))
+      await expect(page).toHaveURL(/\/workspace$/)
+    }
+  })
+
+  test('owner A create stays stale across an A to B to A session epoch', async ({ page }) => {
+    let owner = 'owner-a'
+    const sessionOwners: string[] = []
+    let releaseUse!: () => void
+    let useStarted!: () => void
+    const useGate = new Promise<void>((resolve) => { releaseUse = resolve })
+    const useStartedPromise = new Promise<void>((resolve) => { useStarted = resolve })
+    let useCalls = 0
+
+    await page.route('**/api/auth/get-session', (route) => {
+      sessionOwners.push(owner)
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          session: { id: `session-${owner}`, userId: owner, token: `token-${owner}`, expiresAt: '2099-01-01T00:00:00Z' },
+          user: { id: owner, email: `${owner}@example.com`, name: owner },
+        }),
+      })
+    })
+    await page.route(
+      (url) => url.pathname.endsWith('/use') && url.pathname.startsWith('/templates/'),
+      async (route) => {
+        useCalls += 1
+        useStarted()
+        if (useCalls === 1) await useGate
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ resume_id: useCalls === 1 ? 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee' : 'ffffffff-ffff-ffff-ffff-ffffffffffff', title: 'Owner A template' }),
+        })
+      },
+    )
+
+    const notifySessionChange = async (nextOwner: string) => {
+      const previousResponses = sessionOwners.filter(value => value === nextOwner).length
+      owner = nextOwner
+      await page.evaluate(() => {
+        const message = JSON.stringify({ event: 'session', data: { trigger: 'test-owner-switch' } })
+        localStorage.setItem('better-auth.message', message)
+        window.dispatchEvent(new StorageEvent('storage', { key: 'better-auth.message', newValue: message }))
+      })
+      await expect.poll(() => sessionOwners.filter(value => value === nextOwner).length).toBeGreaterThan(previousResponses)
+      await page.getByRole('button', { name: 'Open account menu' }).click()
+      await expect(page.getByRole('menu', { name: 'Account menu' })).toContainText(`${nextOwner}@example.com`)
+      await page.keyboard.press('Escape')
+    }
+
+    await notifySessionChange('owner-a')
+    const firstCard = page.locator('.group').first()
+    const useClick = firstCard.getByRole('button', { name: 'Use Template' }).click()
+    await useStartedPromise
+
+    await notifySessionChange('owner-b')
+    await notifySessionChange('owner-a')
+    const useResponse = page.waitForResponse((response) =>
+      response.url().includes('/use') && response.request().method() === 'POST' && response.status() === 200,
+    )
+    releaseUse()
+    await useResponse
+    await useClick
+    await expect(page.getByText('Creating…', { exact: true })).toHaveCount(0)
+    await expect(page).toHaveURL(/\/workspace\/new/)
+    const retryResponse = page.waitForResponse((response) =>
+      response.url().includes('/use') && response.request().method() === 'POST' && response.status() === 200,
+    )
+    await firstCard.getByRole('button', { name: 'Use Template' }).click()
+    await retryResponse
+    await expect(page).toHaveURL(/\/workspace\/ffffffff-ffff-ffff-ffff-ffffffffffff\/edit$/)
+    expect(useCalls).toBe(2)
   })
 
   test('pressing Escape closes preview modal', async ({ page }) => {
