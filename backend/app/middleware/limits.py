@@ -7,42 +7,79 @@ import asyncio
 from fastapi import Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-class BodySizeLimitMiddleware(BaseHTTPMiddleware):
-    """Reject requests whose declared body exceeds a global byte ceiling (413).
+class BodySizeLimitMiddleware:
+    """Bound both declared and chunked request bodies before handlers read them."""
 
-    Guards against memory exhaustion from oversized uploads/JSON before the
-    handler reads the body. Clients uploading files send Content-Length, so this
-    is enforced up front.
-    """
-
-    def __init__(self, app, max_bytes: int) -> None:
-        super().__init__(app)
+    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
+        self.app = app
         self.max_bytes = max_bytes
 
-    async def dispatch(self, request: Request, call_next):
-        content_length = request.headers.get("content-length")
+    def _too_large_response(self, request_id: str | None = None) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            content={
+                "error": {
+                    "code": "payload_too_large",
+                    "message": f"Request body exceeds the {self.max_bytes} byte limit.",
+                    "request_id": request_id,
+                }
+            },
+        )
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        content_length = headers.get(b"content-length")
         if content_length:
             try:
-                if int(content_length) > self.max_bytes:
-                    return JSONResponse(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        content={
-                            "error": {
-                                "code": "payload_too_large",
-                                "message": f"Request body exceeds the {self.max_bytes} byte limit.",
-                                "request_id": getattr(request.state, "request_id", None),
-                            }
-                        },
-                    )
-            except ValueError:
+                if int(content_length.decode("ascii")) > self.max_bytes:
+                    await self._too_large_response()(scope, receive, send)
+                    return
+            except (UnicodeDecodeError, ValueError):
                 pass
-        return await call_next(request)
+
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            body = message.get("body", b"")
+            total += len(body)
+            if total > self.max_bytes:
+                await self._too_large_response()(scope, receive, send)
+                return
+            chunks.append(body)
+            if not message.get("more_body", False):
+                break
+
+        replayed = False
+        response_finished = asyncio.Event()
+
+        async def replay_receive() -> Message:
+            nonlocal replayed
+            if replayed:
+                # End-of-body is not a client disconnect. An immediate disconnect
+                # here makes Starlette cancel streaming responses before they emit.
+                await response_finished.wait()
+                return {"type": "http.disconnect"}
+            replayed = True
+            return {"type": "http.request", "body": b"".join(chunks), "more_body": False}
+
+        try:
+            await self.app(scope, replay_receive, send)
+        finally:
+            response_finished.set()
 
 
 class TimeoutMiddleware(BaseHTTPMiddleware):
@@ -73,3 +110,28 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
                     }
                 },
             )
+        except RuntimeError as exc:
+            # Starlette's BaseHTTPMiddleware uses this exact exception when a
+            # downstream handler observes http.disconnect before it has sent a
+            # response. This is normal for a browser aborting a poll (the user
+            # starts another compile, navigates away, or the tab is suspended),
+            # and must not be logged as a server failure or turned into a 500.
+            # Keep the response shape valid for the outer middleware stack; the
+            # ASGI server will discard it if the socket is already closed.
+            if str(exc) != "No response returned.":
+                raise
+            # The same RuntimeError is also raised when an application simply
+            # returns without sending a response. Do not hide that programming
+            # error behind a client-abort status. `_wrapped_rcv_disconnected`
+            # is set by Starlette's _CachedRequest when its downstream app has
+            # consumed an actual disconnect frame; `is_disconnected()` covers
+            # middleware stacks that expose the receive channel directly.
+            disconnected = await request.is_disconnected()
+            disconnected = disconnected or bool(getattr(request, "_wrapped_rcv_disconnected", False))
+            if not disconnected:
+                raise
+            logger.debug(
+                "request_client_disconnected",
+                extra={"path": request.url.path, "method": request.method},
+            )
+            return JSONResponse(status_code=499, content=None)
