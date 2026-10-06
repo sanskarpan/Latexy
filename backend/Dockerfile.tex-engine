@@ -1,0 +1,74 @@
+# Local sandbox image. Build without sending any application build context:
+# docker build -t latexy-tex-engine:local - < backend/Dockerfile.tex-engine
+ARG TEXLIVE_BASE_IMAGE=texlive/texlive:latest
+FROM ${TEXLIVE_BASE_IMAGE}
+
+# Keep the local sandbox aligned with the application/Modal images. TeX Live's
+# font collection alone does not include the system font used by the shipped
+# Hindi template, or the Noto CJK families used by multilingual documents.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-lohit-deva fonts-noto-core fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+
+# OCI layers may round directory mtimes to whole seconds. Upstream fontconfig
+# caches retain nanosecond mtimes, invalidating the full TeX font tree in every
+# fresh container. Normalize first, then bake valid caches for cold invocations.
+# Only font directory metadata changes; no fonts or engine security controls are
+# removed. This image contains no application code or credentials.
+RUN set -eu; \
+    engine_fonts="$(kpsewhich -var-value=TEXMFDIST)/fonts"; \
+    find "$engine_fonts" /usr/share/fonts /usr/local/share/fonts \
+      -type d -exec touch -m -d '@1704067200' {} +; \
+    fc-cache --force --system-only; \
+    luaotfload-tool --update --force; \
+    command -v pdflatex; command -v xelatex; command -v lualatex
+
+# ``luaotfload-tool --update`` warms the names index but does not compile the
+# fontloader/LuaTeX-ja cache entries that LuaHBTeX creates on first use. Engine
+# jobs run in an ephemeral container with a writable overlay; runtime cache
+# changes are discarded when it exits. Precompile the exact hosted mixed-script
+# faces and shape policy while building the image. Keep this probe tiny,
+# self-contained, and removed after the layer is committed: it carries no
+# application source or credentials.
+RUN set -eu; \
+    probe="$(mktemp -d)"; \
+    trap 'rm -rf "$probe"' EXIT; \
+    export TEXMFVAR="$(kpsewhich -var-value=TEXMFVAR)"; \
+    export TEXMFCACHE="$(kpsewhich -var-value=TEXMFCACHE)"; \
+    printf '%s\n' \
+      '\documentclass{article}' \
+      '\usepackage{geometry}' \
+      '\usepackage{fontspec}' \
+      '\usepackage{luatexja-fontspec}' \
+      '\setmainjfont{Noto Sans CJK JP}' \
+      '\usepackage{polyglossia}' \
+      '\setmainfont{Latin Modern Roman}' \
+      '\setmainlanguage{english}' \
+      '\setotherlanguage{arabic}' \
+      '\setotherlanguage{hebrew}' \
+      '\setotherlanguage{hindi}' \
+      '\newfontfamily\arabicfont[Script=Arabic]{Noto Naskh Arabic}' \
+      '\newfontfamily\hebrewfont[Script=Hebrew]{Noto Sans Hebrew}' \
+      '\newfontfamily\hindifont[Renderer=HarfBuzz,Script=Devanagari,BoldFont={Noto Sans Devanagari Bold},ItalicFont={Noto Sans Devanagari},ItalicFeatures={FakeSlant=0.15},BoldItalicFont={Noto Sans Devanagari Bold},BoldItalicFeatures={FakeSlant=0.15}]{Noto Sans Devanagari}' \
+      '\begin{document}' \
+      '\textenglish{Latin email@example.com •}' \
+      '日本語' \
+      '\textarabic{العربية}' \
+      '\texthebrew{עברית}' \
+      '\texthindi{हिंदी \textenglish{email@example.com •} \textbf{बोल्ड} \textit{तिरछा} \textbf{\textit{दोनों}}}' \
+      '\begin{itemize}' \
+      '\item \texthindi{भुगतान मंच \textenglish{email@example.com •}}' \
+      '\begin{itemize}\item \texthindi{दूसरा स्तर}\end{itemize}' \
+      '\end{itemize}' \
+      '\end{document}' > "$probe/font-probe.tex"; \
+    lualatex -no-shell-escape -recorder -interaction=batchmode -halt-on-error \
+      -output-directory="$probe" "$probe/font-probe.tex" >"$probe/font-probe.stdout" 2>&1 & \
+    engine_pid="$!"; \
+    (sleep 125; kill "$engine_pid" 2>/dev/null || true) & \
+    watchdog_pid="$!"; \
+    set +e; wait "$engine_pid"; engine_rc="$?"; set -e; \
+    kill "$watchdog_pid" 2>/dev/null || true; \
+    wait "$watchdog_pid" 2>/dev/null || true; \
+    test "$engine_rc" -eq 0; \
+    test -s "$probe/font-probe.pdf"; \
+    ! grep -Eq 'Missing character|Font shape .*undefined|Some font shapes were not available|Fatal error|^! ' "$probe/font-probe.log"
