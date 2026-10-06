@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func as sa_func
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +21,16 @@ from ..database.models import CoverLetter, Resume, User
 from ..middleware.auth_middleware import get_current_user_required
 from ..middleware.entitlements import require_feature
 from ..services.api_key_service import api_key_service
-from ..services.entitlement_service import entitlement_service
+from ..services.entitlement_service import QuotaTicket, entitlement_service
 from ..utils.uuid_guard import ensure_uuid
 from ..workers.cover_letter_worker import submit_cover_letter_generation
+from ..workers.job_lifecycle import lifecycle_key
+from .job_routes import (
+    _delete_initial_redis_state,
+    _mark_dispatch_accepted,
+    _mark_dispatch_started,
+    _new_finalization_row,
+)
 
 logger = get_logger(__name__)
 
@@ -55,6 +62,8 @@ class GenerateCoverLetterResponse(BaseModel):
 
 
 class CoverLetterResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     user_id: Optional[str]
     resume_id: str
@@ -69,15 +78,8 @@ class CoverLetterResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
 class CoverLetterListItem(CoverLetterResponse):
     resume_title: str = ""
-
-    class Config:
-        from_attributes = True
 
 
 class PaginatedCoverLettersResponse(BaseModel):
@@ -115,7 +117,7 @@ async def _write_initial_redis_state(
         "percent": 0,
         "last_updated": time.time(),
     }
-    await r.setex(f"latexy:job:{job_id}:state", _JOB_TTL, json.dumps(state))
+    await r.set(f"latexy:job:{job_id}:state", json.dumps(state), ex=_JOB_TTL)
 
     meta = {
         "job_id": job_id,
@@ -123,7 +125,7 @@ async def _write_initial_redis_state(
         "job_type": job_type,
         "submitted_at": time.time(),
     }
-    await r.setex(f"latexy:job:{job_id}:meta", _JOB_TTL, json.dumps(meta))
+    await r.set(f"latexy:job:{job_id}:meta", json.dumps(meta), ex=_JOB_TTL)
 
     event_id = str(uuid.uuid4())
     seq_key = f"latexy:job:{job_id}:seq"
@@ -279,21 +281,6 @@ async def generate_cover_letter(
     job_id = str(uuid.uuid4())
     cover_letter_id = str(uuid.uuid4())
 
-    # Create cover letter DB record (latex_content filled by worker on completion)
-    cl = CoverLetter(
-        id=cover_letter_id,
-        user_id=user_id,
-        resume_id=request.resume_id,
-        job_description=request.job_description,
-        company_name=request.company_name,
-        role_title=request.role_title,
-        tone=request.tone,
-        length_preference=request.length_preference,
-        generation_job_id=job_id,
-    )
-    db.add(cl)
-    await db.commit()
-
     # Resolve the user's subscription plan (for queue priority) and BYOK key
     # (so paid conversions spend the user's key, not the platform key).
     user_plan = "free"
@@ -315,19 +302,67 @@ async def generate_cover_letter(
     # Charged after ownership and plan resolution, before the job is queued, and
     # refunded below if the enqueue fails. A BYOK caller pays their own provider,
     # so nothing is charged.
-    quota_ticket = None
-    if not user_api_key:
-        quota_ticket = await entitlement_service.enforce_quota(
-            "optimizations", user_id=user_id, plan=user_plan
+    quota_ticket: Optional[QuotaTicket] = None
+    # Establish the durable output identity before quota consumption. A process
+    # crash after the receipt is written can therefore be reconciled by job_id.
+    cl = CoverLetter(
+        id=cover_letter_id,
+        user_id=user_id,
+        resume_id=request.resume_id,
+        job_description=request.job_description,
+        company_name=request.company_name,
+        role_title=request.role_title,
+        tone=request.tone,
+        length_preference=request.length_preference,
+        generation_job_id=job_id,
+    )
+    row_committed = False
+    finalization_record = _new_finalization_row(
+        job_id,
+        "cover_letter_generation",
+        user_id,
+        {"resume_id": request.resume_id},
+        cover_letter_id=cover_letter_id,
+        cover_letter_apply_requested=True,
+    )
+    dispatch_attempted = False
+    dispatched = False
+
+    db.add(cl)
+    db.add(finalization_record)
+    try:
+        await db.commit()
+        row_committed = True
+    except Exception:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to start cover letter generation. Please try again.",
         )
 
-    # Write initial Redis state for WebSocket streaming, then enqueue the task.
-    # If either step fails, roll back the CoverLetter row so we don't leave an
-    # orphaned, permanently-empty "generating" record behind.
+    if not user_api_key:
+        try:
+            quota_ticket = await entitlement_service.enforce_quota(
+                "optimizations", user_id=user_id, plan=user_plan, job_id=job_id
+            )
+        except Exception:
+            try:
+                await db.delete(finalization_record)
+                await db.delete(cl)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+            raise
+
     try:
         await _write_initial_redis_state(
             job_id, "cover_letter_generation", user_id, estimated_seconds=60
         )
+        # Establish the durable dispatch intent immediately before the broker
+        # call. If the process dies after this point, cleanup must preserve the
+        # receipt because the broker may have accepted work without returning.
+        await _mark_dispatch_started(job_id)
+        dispatch_attempted = True
         submit_cover_letter_generation(
             resume_latex=resume.latex_content,
             job_description=request.job_description,
@@ -340,13 +375,48 @@ async def generate_cover_letter(
             length_preference=request.length_preference,
             user_api_key=user_api_key,
             user_plan=user_plan,
+            quota_refund=quota_ticket.refund_payload() if quota_ticket else None,
         )
+        await _mark_dispatch_accepted(job_id)
+        dispatched = True
     except Exception as exc:
-        logger.error(f"Failed to submit cover letter job {job_id}: {exc}")
+        logger.error(
+            "Failed to submit cover letter job %s",
+            job_id,
+            extra={"error_type": type(exc).__name__},
+        )
+        if dispatched or dispatch_attempted:
+            # The broker may have accepted the task even when its client raised,
+            # or post-dispatch bookkeeping may have failed. Preserve the row,
+            # lifecycle, and receipt so cleanup can fence before refunding.
+            logger.error(
+                "Ambiguous cover letter dispatch for job %s; preserving lifecycle",
+                job_id,
+                extra={"error_type": type(exc).__name__},
+            )
+            return GenerateCoverLetterResponse(
+                success=True,
+                job_id=job_id,
+                cover_letter_id=cover_letter_id,
+                message="Cover letter generation started",
+            )
         if quota_ticket is not None:
             await entitlement_service.refund_quota(quota_ticket)
-        await db.delete(cl)
-        await db.commit()
+        await _delete_initial_redis_state(job_id, user_id)
+        try:
+            redis = await get_redis_client()
+            await redis.delete(lifecycle_key(job_id))
+        except Exception:
+            logger.warning("Failed to remove cover letter lifecycle %s", job_id, exc_info=True)
+        if row_committed:
+            try:
+                await db.delete(finalization_record)
+                await db.delete(cl)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+        else:
+            await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Failed to start cover letter generation. Please try again.",
