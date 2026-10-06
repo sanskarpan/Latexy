@@ -6,10 +6,16 @@ import { Eye, EyeOff } from 'lucide-react'
 import { signIn, authClient } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { supportsPasskeys } from '@/lib/passkey-security'
+import { useI18n } from '@/components/I18nProvider'
 
 const GOOGLE_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === 'true'
 const GITHUB_ENABLED = process.env.NEXT_PUBLIC_OAUTH_GITHUB_ENABLED === 'true'
-const ANY_OAUTH = GOOGLE_ENABLED || GITHUB_ENABLED
+
+interface OidcProvider {
+  id: string
+  label: string
+}
 
 // How long a social redirect can sit at "Redirecting..." before we treat the
 // handshake as stalled and hand control back to the user.
@@ -32,8 +38,11 @@ function friendlyAuthError(message: string | undefined, fallback: string): strin
   if (text.includes('invalid') && (text.includes('password') || text.includes('credential'))) {
     return 'Incorrect email or password. Please try again.'
   }
-  if (text.includes('not found') || text.includes('no user')) {
-    return 'We couldn’t find an account with that email.'
+  // Never distinguish an unknown email from a bad password. Better Auth's
+  // server intentionally uses one credential failure class; keep the browser
+  // copy equally non-enumerating even if an adapter emits different wording.
+  if (text.includes('not found') || text.includes('no user') || text.includes('invalid email')) {
+    return 'Incorrect email or password. Please try again.'
   }
   if (text.includes('too many') || text.includes('rate limit')) {
     return 'Too many attempts. Please wait a moment and try again.'
@@ -67,12 +76,15 @@ function GithubIcon() {
 }
 
 export default function SignInForm({ redirect }: { redirect?: string }) {
+  const { t } = useI18n()
   const dest = safeDest(redirect)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [socialLoading, setSocialLoading] = useState<'google' | 'github' | null>(null)
+  const [socialLoading, setSocialLoading] = useState<'google' | 'github' | 'oidc' | null>(null)
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
+  const [oidcProvider, setOidcProvider] = useState<OidcProvider | null>(null)
   const [error, setError] = useState('')
   const errorRef = useRef<HTMLDivElement>(null)
   const socialTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -89,6 +101,15 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
     }
   }, [])
 
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/auth/providers', { signal: controller.signal })
+      .then((response) => response.ok ? response.json() as Promise<{ oidc: OidcProvider | null }> : null)
+      .then((payload) => setOidcProvider(payload?.oidc ?? null))
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [])
+
   const forgotHref =
     dest === '/workspace'
       ? '/forgot-password'
@@ -102,6 +123,11 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
       const result = await signIn.email({ email, password })
       if (result.error) {
         setError(friendlyAuthError(result.error.message, 'Sign in failed'))
+      } else if ((result.data as { twoFactorRedirect?: boolean } | undefined)?.twoFactorRedirect) {
+        // twoFactorClient owns the redirect to the challenge page. Do not
+        // replace it with the requested destination or this login would bypass
+        // the second factor in the browser navigation flow.
+        return
       } else {
         window.location.href = dest
       }
@@ -150,21 +176,84 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
     }
   }
 
+  const handleOidc = async () => {
+    if (!oidcProvider) return
+    setSocialLoading('oidc')
+    setError('')
+    clearSocialTimeout()
+    socialTimeoutRef.current = setTimeout(() => {
+      setSocialLoading(null)
+      setError('Taking longer than expected — try again.')
+    }, SOCIAL_TIMEOUT_MS)
+    try {
+      const result = await authClient.signIn.oauth2({
+        providerId: oidcProvider.id,
+        callbackURL: dest,
+      })
+      if (result?.error || !result?.data?.url) {
+        clearSocialTimeout()
+        setError(friendlyAuthError(result?.error?.message, 'Organization SSO is unavailable right now'))
+        setSocialLoading(null)
+      }
+    } catch {
+      clearSocialTimeout()
+      setError('Organization SSO sign-in failed')
+      setSocialLoading(null)
+    }
+  }
+
+  const handlePasskey = async () => {
+    if (!supportsPasskeys()) {
+      setError('Passkeys need a supported browser on a secure connection. Use email and password instead.')
+      return
+    }
+    setPasskeyLoading(true)
+    setError('')
+    try {
+      const result = await authClient.signIn.passkey()
+      if (result.error || !result.data) {
+        setError(friendlyAuthError(result.error?.message, 'Passkey sign-in was not completed. Try again or use email and password.'))
+      } else if ((result.data as { twoFactorRedirect?: boolean }).twoFactorRedirect) {
+        // The server withheld the passkey session and installed the short-lived
+        // two-factor challenge cookie. Only navigate after that response.
+        window.location.href = '/two-factor'
+      } else {
+        window.location.href = dest
+      }
+    } catch {
+      setError('Passkey sign-in was not completed. Try again or use email and password.')
+    } finally {
+      setPasskeyLoading(false)
+    }
+  }
+
+  const anyOAuth = GOOGLE_ENABLED || GITHUB_ENABLED || !!oidcProvider
+
   return (
     <div className="mx-auto w-full max-w-md rounded-[var(--radius-lg)] border border-line bg-surface p-6 shadow-[var(--shadow-2)] sm:p-8">
       <div className="mb-8 text-center">
         <p className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">Latexy</p>
         <h1 className="mt-3 font-display text-3xl font-semibold tracking-[-0.02em] text-fg">
-          Welcome back
+          {t('auth.welcomeBack')}
         </h1>
-        <p className="mt-2 font-body text-sm text-fg-2">Sign in to continue to your workspace.</p>
+        <p className="mt-2 font-body text-sm text-fg-2">{t('auth.signInContinue')}</p>
       </div>
 
       <div className="space-y-5">
         {/* Social OAuth — buttons render only when the provider is configured */}
-        {ANY_OAUTH && (
+        {anyOAuth && (
           <>
-            <div className={`grid gap-3 ${GOOGLE_ENABLED && GITHUB_ENABLED ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {oidcProvider && (
+                <button
+                  type="button"
+                  onClick={handleOidc}
+                  disabled={!!socialLoading || isLoading}
+                  className={`${oauthBtnClass} sm:col-span-2`}
+                >
+                  {socialLoading === 'oidc' ? t('auth.redirecting') : `Continue with ${oidcProvider.label}`}
+                </button>
+              )}
               {GOOGLE_ENABLED && (
                 <button
                   type="button"
@@ -173,7 +262,7 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
                   className={oauthBtnClass}
                 >
                   <GoogleIcon />
-                  {socialLoading === 'google' ? 'Redirecting...' : 'Google'}
+                  {socialLoading === 'google' ? t('auth.redirecting') : 'Google'}
                 </button>
               )}
               {GITHUB_ENABLED && (
@@ -184,7 +273,7 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
                   className={oauthBtnClass}
                 >
                   <GithubIcon />
-                  {socialLoading === 'github' ? 'Redirecting...' : 'GitHub'}
+                  {socialLoading === 'github' ? t('auth.redirecting') : 'GitHub'}
                 </button>
               )}
             </div>
@@ -192,7 +281,7 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-line" />
               <span className="font-ui text-xs uppercase tracking-[0.16em] text-fg-3">
-                or continue with email
+                {t('auth.orEmail')}
               </span>
               <div className="h-px flex-1 bg-line" />
             </div>
@@ -202,7 +291,7 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
         <form onSubmit={handleSubmit} className="space-y-5" aria-describedby={error ? 'signin-error' : undefined}>
           <div className="space-y-2">
             <label htmlFor="email" className={labelClass}>
-              Email
+            {t('auth.email')}
             </label>
             <Input
               type="email"
@@ -218,13 +307,13 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label htmlFor="password" className={labelClass}>
-                Password
+                {t('auth.password')}
               </label>
               <Link
                 href={forgotHref}
                 className="font-ui text-xs font-medium text-accent-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg rounded-[var(--radius-sm)]"
               >
-                Forgot password?
+                {t('auth.forgotPassword')}
               </Link>
             </div>
             <div className="relative">
@@ -274,9 +363,21 @@ export default function SignInForm({ redirect }: { redirect?: string }) {
             size="lg"
             className="w-full min-h-[44px]"
           >
-            Sign In
+            {t('auth.signIn')}
           </Button>
         </form>
+
+        <div className="space-y-3 border-t border-line pt-5">
+          <button
+            type="button"
+            onClick={handlePasskey}
+            disabled={isLoading || !!socialLoading || passkeyLoading}
+            className={oauthBtnClass + ' w-full'}
+          >
+            {passkeyLoading ? t('auth.waitingPasskey') : t('auth.passkey')}
+          </button>
+          <p className="text-center text-[10px] text-fg-3">{t('auth.passkeyHint')}</p>
+        </div>
       </div>
     </div>
   )
