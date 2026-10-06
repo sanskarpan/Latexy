@@ -105,13 +105,18 @@ interface JobItemProps {
 }
 
 const JobItem: React.FC<JobItemProps> = ({ job, onJobClick, onJobComplete }) => {
-  const { cancel } = useJobStatus(job.job_id, {
+  const canCancel = !['completed', 'failed', 'cancelled'].includes(job.status)
+  // Terminal rows are immutable history. Subscribing every one of them to the
+  // live job hook opened a WebSocket subscription and then fetched state plus
+  // result for every row on every dashboard visit (30 needless requests for
+  // ten completed jobs). Only active rows need live status/cancellation.
+  const { cancel } = useJobStatus(canCancel ? job.job_id : null, {
     onComplete: (result) => {
       onJobComplete?.(job.job_id, result)
     },
   })
 
-  const jobType = job.metadata?.job_type || 'latex_compilation'
+  const jobType = job.job_type || job.metadata?.job_type || 'latex_compilation'
   const typeConf = jobTypeConfig[jobType as keyof typeof jobTypeConfig] || jobTypeConfig.latex_compilation
   const statConf = statusConfig[job.status as keyof typeof statusConfig] || statusConfig.pending
 
@@ -126,8 +131,6 @@ const JobItem: React.FC<JobItemProps> = ({ job, onJobClick, onJobComplete }) => 
     if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
     return new Date(timestamp * 1000).toLocaleDateString()
   }
-
-  const canCancel = !['completed', 'failed', 'cancelled'].includes(job.status)
 
   return (
     <motion.div
@@ -228,11 +231,11 @@ export const JobQueue: React.FC<JobQueueProps> = ({
       const matchesSearch =
         !searchQuery ||
         job.job_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (job.metadata?.job_type || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (job.job_type || job.metadata?.job_type || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (job.message || '').toLowerCase().includes(searchQuery.toLowerCase())
 
       const matchesStatus = statusFilter === 'all' || job.status === statusFilter
-      const matchesType = typeFilter === 'all' || (job.metadata?.job_type || 'latex_compilation') === typeFilter
+      const matchesType = typeFilter === 'all' || (job.job_type || job.metadata?.job_type || 'latex_compilation') === typeFilter
 
       return matchesSearch && matchesStatus && matchesType
     }) || []
@@ -280,7 +283,7 @@ export const JobQueue: React.FC<JobQueueProps> = ({
             <p className="text-[10px] uppercase tracking-wider text-fg-3">Failed</p>
           </div>
           <div className="rounded-[var(--radius-md)] border border-line bg-surface p-3 text-center">
-            <p className="text-xl font-bold text-fg-2">{systemHealth?.active_jobs_count || 0}</p>
+            <p className="text-xl font-bold text-fg-2">{systemHealth?.active_jobs_count ?? 'Unavailable'}</p>
             <p className="text-[10px] uppercase tracking-wider text-fg-3">Queued</p>
           </div>
         </div>
@@ -408,10 +411,16 @@ export const JobQueue: React.FC<JobQueueProps> = ({
               {systemHealth.status}
             </span>
           </div>
-          <div className="flex items-center justify-between text-[10px] text-fg-3 mt-1">
-            <span>{systemHealth.websocket_connections} WS connections</span>
-            <span>{systemHealth.active_jobs_count} active</span>
-          </div>
+          {(systemHealth.websocket_connections != null || systemHealth.active_jobs_count != null) && (
+            <div className="flex items-center justify-between text-[10px] text-fg-3 mt-1">
+              {systemHealth.websocket_connections != null && (
+                <span>{systemHealth.websocket_connections} WS connections</span>
+              )}
+              {systemHealth.active_jobs_count != null && (
+                <span>{systemHealth.active_jobs_count} active</span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
