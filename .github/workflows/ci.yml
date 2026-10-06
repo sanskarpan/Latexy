@@ -12,6 +12,12 @@ on:
 permissions:
   contents: read
 
+# Superseded PR revisions need no duplicate runners. Main and manual runs keep
+# separate groups and are never cancelled by a newer PR or main push.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Classification is deliberately fail-closed. A missing event range, an
   # unknown path, or a classifier/runtime error makes every scoped job run.
