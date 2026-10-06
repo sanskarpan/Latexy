@@ -441,3 +441,80 @@ compiler repair.
   UI controls does not establish cancellation of server-created documents,
   cross-account dispatch safety while waiting for auth readiness, authenticated
   production acceptance, or a fix for the shared hydration defect.
+
+## Completed publication checkpoint and continuing QA
+
+- PR #1766's main `1cb54c0b5d8f40b1f7773b7f2057084c166fd8d8` passed
+  canonical CI 37456414849, Vercel certification 37457109804 and the complete
+  automatic Modal workflow 37457109763. Independent history reported v51 with
+  that tag. All six previously missing Hindi/Europecv/Polish PDF and PNG assets
+  returned 200 with the correct types. All three PDFs were rendered and visually
+  inspected; this is not PDF/UA or every employer parser certification. #1765
+  was closed after this acceptance, not after source review alone.
+- Thumbnail-integrity PR #1768 merged to main
+  `9ce682f60ebe3117c85a1610fb3463a72ac751cf`. Canonical CI 37458069402,
+  automatic Modal 37458827239 and Vercel certification 37458827163 passed;
+  independent live identities matched v52/9ce682f6. #1767 was closed with the
+  regression and rollout boundaries recorded.
+- Preview-lifetime PR #1769 merged normally to main
+  `40e199abb2f0e9dae132ea435463027d14f8ebe9`, source-identical to tested head
+  `96de1130661b853f256c26436e942cb08efbf3af`. All required contexts and both
+  PR CI runs passed. Main CI 37459298989 and Vercel certification 37460001529
+  passed, and the public deployment identity independently matched this SHA.
+  Modal workflow 37460001501 **attempt 1 failed before migrations/deployment**
+  because its canonical-CI lookup did not find the just-completed run. The same
+  lookup subsequently returned that exact successful run; gated attempt 2
+  completed every step and independently published v53/tag40e199ab. A transient
+  lookup/event-timing failure is verified; GitHub's internal indexing mechanism
+  is an inference. Reliability follow-up is #1775, not a waived provenance gate.
+- Direct live health, readiness and worker health passed after v53 publication,
+  as did all six affected Unicode asset requests. The public catalog contains
+  61 rows, none missing PDF/thumbnail URLs; this does not independently fetch
+  all 122 objects. Local and remote main matched, with linear history, strict
+  required checks, administrator enforcement and conversation resolution enabled.
+  Another worktree can start from this published checkpoint.
+- The browser skill was used to inspect actual deployed public DOM. `/privacy`
+  contains the conservative current-system disclosure; the four policy/domain
+  guards pass independently. The current browser session still cannot fetch
+  `/templates`, although the direct API returns 200 and the exact origin CORS
+  header. Authenticated production flows are not certified; a safe non-admin QA
+  sign-in was requested without requesting a password in chat. #1732 counsel
+  review, #1731 tenant wildcard provisioning and #1683 exposed-account rotation
+  were not inferred from source fixes or deployment.
+- Live `/privacy` exposes a separate confirmed rendering defect: an indented
+  Markdown list continuation becomes a paragraph. #1770 / PR #1774 preserve
+  list semantics without changing legal wording. Root reviewed the four-line
+  change and independently ran the actual React server-render regression plus
+  policy/domain controls: five tests passed, as did scoped ESLint. The agent's
+  non-incremental TypeScript check passed. Protected publication/live DOM
+  acceptance for this follow-up remain pending at this writing.
+- #1771 / PR #1773 repair the backfill's basic compiler invocation boundary:
+  the old actual batch loop omitted a subprocess environment and engine guards,
+  inheriting the function environment. All active DB templates are eligible,
+  including admin-controlled source, so the boundary is not immutable repository
+  files alone. No real secret-reading TeX or ordinary-user exploit was tested.
+  Both passes now use the shared credential-filtered `engine_env()`, explicit
+  flags and temporary working directory. Root's 18 strict-warning offline
+  backfill/shared-environment controls pass, and the agent's actual Europecv
+  compile passes in a disposable scrubbed environment. An expanded offline
+  sandbox sweep had three worker-Redis-initialization failures; these are not
+  counted as passing or evidence of this narrow fix's failure. PR #1773 merged
+  normally to source-identical main `af81781fff0c4e58c472df7f56607ea879fb78c0`;
+  canonical main CI and its exact deployment remain pending. Recorder generation
+  alone does not certify the normal worker's complete read/isolation boundary.
+- #1776 is a new synthetic browser-confirmed private draft boundary: an A title
+  and imported source survive an in-place B session refresh and are submitted
+  with B authorization. Two diagnostic controls pass on sealed pre-preview-fix
+  production port 5485; current main retains the same unscoped form state. No
+  real database write was made. Better Auth 1.6.25 has built-in storage messaging
+  and focus/visibility refresh; sign-in need not broadcast immediately. The fix
+  requires fresh-source proof, same-owner/error preservation and deferred-create
+  isolation. The diagnostic assertion of bad behavior is not a passing safety
+  regression and must not ship unchanged.
+- #1772 now tracks the recurring React **error code** 418 (not GitHub issue
+  #418). Historical zero-retry failure evidence remains unresolved; an async
+  root headers/loading/provider interaction is still a hypothesis. Old temporary
+  logs are unavailable, and narrowed CI success does not close this defect.
+  Whole-product accessibility, native WebKit, authenticated production ownership,
+  Upstash capacity instrumentation, publishing/payment/legal prerequisites and
+  the broad remediation goal remain open.
