@@ -1,9 +1,10 @@
 """GitHub OAuth + sync routes (Feature 37)."""
 
+import json
 import secrets
 import urllib.parse
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 import httpx
@@ -12,6 +13,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from ..core.config import resolve_plan_family, settings
 from ..core.logging import get_logger
@@ -24,8 +26,18 @@ from ..services import github_projects_service as gh_projects
 from ..services.encryption_service import encryption_service
 from ..services.entitlement_service import entitlement_service
 from ..services.external_budget_service import enforce_external_budget
-from ..services.github_sync_service import github_sync_service
+from ..services.github_sync_service import GitHubSyncConflict, github_sync_service
+from ..services.job_result_recovery import recover_terminal_job
+from ..utils.uuid_guard import ensure_uuid
 from ..workers.github_import_worker import submit_github_import
+from ..workers.job_lifecycle import lifecycle_key
+from .job_routes import (
+    _delete_initial_redis_state,
+    _mark_dispatch_accepted,
+    _mark_dispatch_started,
+    _new_finalization_row,
+    _write_initial_redis_state,
+)
 
 logger = get_logger(__name__)
 
@@ -33,6 +45,8 @@ router = APIRouter(prefix="/github", tags=["github"])
 
 _GITHUB_IMPORTS_PER_USER_HOUR = 20
 _GITHUB_IMPORTS_GLOBAL_PER_HOUR = 500
+_GITHUB_SYNC_SHA_KEY = "github_sync_sha"
+_MAX_SYNCED_LATEX_LENGTH = 1_000_000
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -64,7 +78,12 @@ class GitHubPullResponse(BaseModel):
 
 
 class GitHubEnableRequest(BaseModel):
-    repo_name: str = "latexy-resumes"
+    repo_name: str = Field(
+        default="latexy-resumes",
+        min_length=1,
+        max_length=100,
+        pattern=r"^[A-Za-z0-9_.-]+$",
+    )
 
 
 class GitHubResumeStatus(BaseModel):
@@ -245,13 +264,13 @@ async def github_complete(
         logger.error(f"GitHub token exchange failed: {exc.response.status_code}")
         raise HTTPException(status_code=502, detail="GitHub token exchange failed") from exc
     except httpx.RequestError as exc:
-        logger.error(f"GitHub connection error during token exchange: {exc}")
+        logger.error("GitHub connection error during token exchange (%s)", type(exc).__name__)
         raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again") from exc
 
     access_token = data.get("access_token")
     if not access_token:
         error = data.get("error", "token_exchange_failed")
-        logger.error(f"GitHub OAuth returned no access token: {error}")
+        logger.error("GitHub OAuth returned no access token (%s)", type(error).__name__)
         raise HTTPException(status_code=400, detail=f"GitHub authorization failed: {error}")
 
     # Get GitHub username
@@ -261,7 +280,7 @@ async def github_complete(
         logger.error(f"GitHub profile fetch failed: {exc.response.status_code}")
         raise HTTPException(status_code=502, detail="GitHub profile fetch failed") from exc
     except httpx.RequestError as exc:
-        logger.error(f"GitHub connection error during profile fetch: {exc}")
+        logger.error("GitHub connection error during profile fetch (%s)", type(exc).__name__)
         raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again") from exc
 
     username = (gh_user.get("login") or "").strip()
@@ -374,6 +393,7 @@ async def enable_github_sync(
     user_id: str = Depends(get_current_user_required),
 ):
     """Enable GitHub sync for a resume — creates the repo if needed."""
+    ensure_uuid(resume_id, "Resume not found")
     user_result = await db.execute(select(User).where(User.id == user_id))
     user = user_result.scalar_one_or_none()
     if not user or not user.github_access_token:
@@ -381,6 +401,8 @@ async def enable_github_sync(
             status_code=400,
             detail="GitHub not connected. Go to Settings → GitHub Integration to connect your account.",
         )
+    if not user.github_username:
+        raise HTTPException(status_code=400, detail="GitHub connection is incomplete. Reconnect GitHub.")
     if "repo" not in _github_granted_scopes(user):
         raise HTTPException(
             status_code=403,
@@ -399,16 +421,21 @@ async def enable_github_sync(
     try:
         await github_sync_service.ensure_repo(token, user.github_username, body.repo_name)
     except httpx.HTTPStatusError as exc:
-        logger.error(f"Failed to create GitHub repo: {exc}")
+        logger.error("Failed to create GitHub repo (%s)", type(exc).__name__)
         raise HTTPException(
             status_code=502,
             detail=f"Failed to create GitHub repo: {exc.response.status_code}",
         )
     except httpx.RequestError as exc:
-        logger.error(f"GitHub connection error: {exc}")
+        logger.error("GitHub connection error (%s)", type(exc).__name__)
         raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again")
 
     resume.github_sync_enabled = True
+    if resume.github_repo_name != body.repo_name:
+        metadata = dict(resume.resume_settings or {})
+        metadata.pop(_GITHUB_SYNC_SHA_KEY, None)
+        resume.resume_settings = metadata
+        flag_modified(resume, "resume_settings")
     resume.github_repo_name = body.repo_name
     await db.commit()
     await db.refresh(resume)
@@ -427,6 +454,7 @@ async def disable_github_sync(
     user_id: str = Depends(get_current_user_required),
 ):
     """Disable GitHub sync for a resume."""
+    ensure_uuid(resume_id, "Resume not found")
     resume_result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
     resume = resume_result.scalar_one_or_none()
     if not resume:
@@ -450,10 +478,13 @@ async def push_to_github(
     user_id: str = Depends(get_current_user_required),
 ):
     """Push the resume's LaTeX content to GitHub."""
+    ensure_uuid(resume_id, "Resume not found")
     user_result = await db.execute(select(User).where(User.id == user_id))
     user = user_result.scalar_one_or_none()
     if not user or not user.github_access_token:
         raise HTTPException(status_code=400, detail="GitHub not connected")
+    if not user.github_username:
+        raise HTTPException(status_code=400, detail="GitHub connection is incomplete. Reconnect GitHub.")
     if "repo" not in _github_granted_scopes(user):
         raise HTTPException(
             status_code=403,
@@ -470,11 +501,15 @@ async def push_to_github(
 
     # Use stable resume.id as filename so renames don't break sync
     file_path = f"{resume.id}.tex"
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     commit_message = f"Latexy: {resume.title} — {timestamp}"
 
     # Decrypt token for API calls
     token = encryption_service.decrypt(user.github_access_token)
+    metadata = dict(resume.resume_settings or {})
+    expected_sha = metadata.get(_GITHUB_SYNC_SHA_KEY)
+    if not isinstance(expected_sha, str) or not expected_sha:
+        expected_sha = None
 
     try:
         result = await github_sync_service.push_file(
@@ -484,19 +519,34 @@ async def push_to_github(
             path=file_path,
             content=resume.latex_content,
             commit_message=commit_message,
+            expected_sha=expected_sha,
         )
         commit_url = result.get("commit", {}).get("html_url")
+        synced_sha = result.get("content", {}).get("sha")
+        if not isinstance(synced_sha, str) or not synced_sha:
+            raise ValueError("GitHub push response did not include the new blob SHA")
+    except GitHubSyncConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="The GitHub file changed since the last sync. Pull it first, review the result, then push again.",
+        ) from exc
     except httpx.HTTPStatusError as exc:
-        logger.error(f"GitHub push failed: {exc}")
+        logger.error("GitHub push failed (%s)", type(exc).__name__)
         raise HTTPException(
             status_code=502,
             detail=f"GitHub push failed: {exc.response.status_code}",
         )
     except httpx.RequestError as exc:
-        logger.error(f"GitHub connection error during push: {exc}")
+        logger.error("GitHub connection error during push (%s)", type(exc).__name__)
         raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again")
+    except ValueError as exc:
+        logger.error("GitHub returned an invalid push response (%s)", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="GitHub returned an invalid response") from exc
 
-    resume.github_last_sync_at = datetime.utcnow()
+    metadata[_GITHUB_SYNC_SHA_KEY] = synced_sha
+    resume.resume_settings = metadata
+    flag_modified(resume, "resume_settings")
+    resume.github_last_sync_at = datetime.now(timezone.utc)
     await db.commit()
 
     return GitHubSyncResponse(
@@ -513,10 +563,13 @@ async def pull_from_github(
     user_id: str = Depends(get_current_user_required),
 ):
     """Pull the latest LaTeX content from GitHub."""
+    ensure_uuid(resume_id, "Resume not found")
     user_result = await db.execute(select(User).where(User.id == user_id))
     user = user_result.scalar_one_or_none()
     if not user or not user.github_access_token:
         raise HTTPException(status_code=400, detail="GitHub not connected")
+    if not user.github_username:
+        raise HTTPException(status_code=400, detail="GitHub connection is incomplete. Reconnect GitHub.")
     if "repo" not in _github_granted_scopes(user):
         raise HTTPException(
             status_code=403,
@@ -538,7 +591,7 @@ async def pull_from_github(
     token = encryption_service.decrypt(user.github_access_token)
 
     try:
-        content = await github_sync_service.pull_file(
+        remote = await github_sync_service.pull_file(
             token=token,
             owner=user.github_username,
             repo=resume.github_repo_name,
@@ -547,14 +600,38 @@ async def pull_from_github(
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
             raise HTTPException(status_code=404, detail="File not found on GitHub")
-        logger.error(f"GitHub pull failed: {exc}")
+        logger.error("GitHub pull failed (%s)", type(exc).__name__)
         raise HTTPException(
             status_code=502,
             detail=f"GitHub pull failed: {exc.response.status_code}",
         )
     except httpx.RequestError as exc:
-        logger.error(f"GitHub connection error during pull: {exc}")
+        logger.error("GitHub connection error during pull (%s)", type(exc).__name__)
         raise HTTPException(status_code=502, detail="GitHub is unavailable, please try again")
+    except ValueError as exc:
+        logger.error("GitHub returned invalid file content (%s)", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="The GitHub file is not valid UTF-8 LaTeX source") from exc
+
+    content = remote["content"]
+    if len(content) > _MAX_SYNCED_LATEX_LENGTH:
+        raise HTTPException(status_code=413, detail="The GitHub LaTeX file exceeds the 1 MB document limit")
+    if "\x00" in content:
+        raise HTTPException(status_code=422, detail="The GitHub LaTeX file contains unsupported null bytes")
+    metadata = dict(resume.resume_settings or {})
+    metadata[_GITHUB_SYNC_SHA_KEY] = remote["sha"]
+    # A pulled source file invalidates a compiled anonymous share artifact in
+    # exactly the same way as a normal editor save.
+    metadata.pop("share_anonymous_job_id", None)
+    metadata.pop("share_anonymous_pending", None)
+    resume.resume_settings = metadata
+    flag_modified(resume, "resume_settings")
+    if content != resume.latex_content and resume.selected_template_id and resume.structured_content:
+        resume.builder_status = "detached"
+        resume.content_source = "manual_latex"
+    resume.latex_content = content
+    resume.github_last_sync_at = datetime.now(timezone.utc)
+    resume.updated_at = datetime.now(timezone.utc)
+    await db.commit()
 
     return GitHubPullResponse(success=True, latex_content=content)
 
@@ -585,9 +662,18 @@ async def import_github_projects(
     if isinstance(user.subscription_plan, str) and user.subscription_plan:
         user_plan = user.subscription_plan
 
-    quota_ticket = await entitlement_service.enforce_quota(
-        "ai_assists", user_id=user_id, plan=user_plan
-    )
+    job_id = str(uuid.uuid4())
+    finalization_record = _new_finalization_row(job_id, "github_import", user_id, {})
+    db.add(finalization_record)
+    await db.commit()
+    try:
+        quota_ticket = await entitlement_service.enforce_quota(
+            "ai_assists", user_id=user_id, plan=user_plan, job_id=job_id
+        )
+    except Exception:
+        await db.delete(finalization_record)
+        await db.commit()
+        raise
     try:
         await enforce_external_budget(
             "import-github",
@@ -599,18 +685,24 @@ async def import_github_projects(
         )
     except Exception:
         await entitlement_service.refund_quota(quota_ticket)
+        try:
+            await db.delete(finalization_record)
+            await db.commit()
+        except Exception:
+            await db.rollback()
         raise
 
-    job_id = str(uuid.uuid4())
-    redis = await get_redis_client()
+    redis = None
     result_key = gh_projects.import_result_key(job_id)
+    dispatched = False
+    dispatch_attempted = False
     try:
+        redis = await get_redis_client()
         # Establish ownership before dispatch. Without this marker an arbitrary
         # UUID looked like a legitimate pending job, and there was no owner to
         # check until (or even after) the worker wrote its result.
-        await redis.setex(
+        await redis.set(
             result_key,
-            gh_projects.IMPORT_RESULT_TTL,
             gh_projects.encode_result(
                 {
                     "user_id": user_id,
@@ -618,18 +710,45 @@ async def import_github_projects(
                     "projects": [],
                 }
             ),
+            ex=gh_projects.IMPORT_RESULT_TTL,
         )
+        await _write_initial_redis_state(job_id, "github_import", user_id, 120)
+        # Lifecycle initialization is still pre-dispatch. Only mark the call
+        # ambiguous immediately before invoking the broker/Modal submit helper.
+        await _mark_dispatch_started(job_id)
+        dispatch_attempted = True
         submit_github_import(
             job_id=job_id,
             user_id=user_id,
             user_plan=resolve_plan_family(user_plan),
             quota_refund=quota_ticket.refund_payload(),
         )
+        await _mark_dispatch_accepted(job_id)
+        dispatched = True
     except Exception as exc:
+        if dispatched or dispatch_attempted:
+            logger.error(
+                "Ambiguous GitHub import dispatch for job %s; preserving lifecycle",
+                job_id,
+                extra={"error_type": type(exc).__name__},
+            )
+            return GitHubImportStartResponse(job_id=job_id)
         await entitlement_service.refund_quota(quota_ticket)
-        logger.error(f"Failed to submit GitHub import job {job_id}: {exc}")
         try:
-            await redis.delete(result_key)
+            await db.delete(finalization_record)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+        logger.error("Failed to submit GitHub import job %s (%s)", job_id, type(exc).__name__)
+        try:
+            if redis is not None:
+                await redis.delete(result_key)
+                if not dispatch_attempted:
+                    # No broker call occurred, so a partially-created
+                    # dispatch lifecycle cannot protect work that was never
+                    # submitted. Remove it before compensating the receipt.
+                    await redis.delete(lifecycle_key(job_id))
+            await _delete_initial_redis_state(job_id, user_id)
         except Exception as cleanup_exc:
             logger.warning(
                 "Failed to remove undispatched GitHub import marker %s: %s",
@@ -647,6 +766,7 @@ async def import_github_projects(
 @router.get("/import-projects/{job_id}", response_model=GitHubImportResultResponse)
 async def get_github_import_result(
     job_id: str,
+    db: AsyncSession = Depends(get_db),
     user_id: str = Depends(require_feature("ai_import_github")),
 ):
     """Return the candidate ProjectEvidence for an import job.
@@ -654,13 +774,82 @@ async def get_github_import_result(
     ``status`` is ``pending`` until the worker writes a result (~1h TTL),
     then ``completed`` or ``failed``.
     """
-    redis = await get_redis_client()
-    raw = await redis.get(gh_projects.import_result_key(job_id))
+    try:
+        redis = await get_redis_client()
+        raw = await redis.get(gh_projects.import_result_key(job_id))
+    except Exception as exc:
+        # A Redis outage is not evidence that the import is absent.  Do not
+        # turn an unavailable transport into a durable-result bypass, because
+        # the fallback is intentionally only for a successful cache miss.
+        logger.warning("GitHub import result lookup unavailable (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Import status temporarily unavailable") from exc
     envelope = gh_projects.decode_result(raw)
     # A miss, malformed/legacy ownerless envelope, and another user's job are
     # deliberately indistinguishable so this endpoint cannot enumerate jobs.
-    if envelope is None or envelope.get("user_id") != user_id:
+    if envelope is None:
+        recovery = await recover_terminal_job(
+            db,
+            job_id=job_id,
+            user_id=user_id,
+            expected_type="github_import",
+        )
+        if recovery is not None:
+            payload = recovery["payload"]
+            return GitHubImportResultResponse(
+                status=recovery["state"],
+                projects=payload.get("projects", []),
+                error=recovery["error"],
+            )
         raise HTTPException(status_code=404, detail="Import job not found")
+    if envelope.get("user_id") != user_id:
+        raise HTTPException(status_code=404, detail="Import job not found")
+
+    # The worker can commit the durable terminal decision and then die before
+    # replacing the import-specific pending marker.  Reconcile that case from
+    # the same bounded, owner-scoped row; a still-pending DB row simply falls
+    # through to the existing pending response below.
+    if envelope.get("status") == "pending":
+        recovery = await recover_terminal_job(
+            db,
+            job_id=job_id,
+            user_id=user_id,
+            expected_type="github_import",
+        )
+        if recovery is not None:
+            payload = recovery["payload"]
+            return GitHubImportResultResponse(
+                status=recovery["state"],
+                projects=payload.get("projects", []),
+                error=recovery["error"],
+            )
+
+    # Generic lifecycle cleanup writes a canonical failure result when a worker
+    # dies after admission. Surface that terminal evidence even if the
+    # import-specific pending envelope is still present; otherwise a crashed
+    # import remains ``pending`` forever from this endpoint's perspective.
+    if envelope.get("status") == "pending":
+        terminal_raw = await redis.get(f"latexy:job:{job_id}:result")
+        try:
+            terminal = json.loads(terminal_raw) if terminal_raw else None
+        except (TypeError, ValueError, json.JSONDecodeError):
+            terminal = None
+        if isinstance(terminal, dict) and terminal.get("success") is False:
+            return GitHubImportResultResponse(
+                status="failed",
+                projects=[],
+                error=terminal.get("error") or "GitHub import failed",
+            )
+        state_raw = await redis.get(f"latexy:job:{job_id}:state")
+        try:
+            state = json.loads(state_raw) if state_raw else None
+        except (TypeError, ValueError, json.JSONDecodeError):
+            state = None
+        if isinstance(state, dict) and state.get("status") in {"failed", "cancelled"}:
+            return GitHubImportResultResponse(
+                status="failed",
+                projects=[],
+                error="GitHub import cancelled" if state["status"] == "cancelled" else "GitHub import failed",
+            )
 
     return GitHubImportResultResponse(
         status=envelope.get("status", "pending"),
@@ -676,6 +865,7 @@ async def get_resume_github_status(
     user_id: str = Depends(get_current_user_required),
 ):
     """Get GitHub sync status for a resume."""
+    ensure_uuid(resume_id, "Resume not found")
     resume_result = await db.execute(select(Resume).where(Resume.id == resume_id, Resume.user_id == user_id))
     resume = resume_result.scalar_one_or_none()
     if not resume:
