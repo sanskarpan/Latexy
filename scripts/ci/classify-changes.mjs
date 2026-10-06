@@ -238,6 +238,10 @@ export function classifyChanges(changes) {
     if (change.status === 'T' || change.status === 'U' || change.status === 'X' || change.status === 'B') return allScope()
     if (change.oldMode === '120000' || change.newMode === '120000' ||
         change.oldMode === '160000' || change.newMode === '160000') return allScope()
+    // A documentation suffix does not make an executable safe to skip. Inspect
+    // both sides so removing its executable bit or renaming it cannot hide it.
+    if ((change.oldMode === '100755' || change.newMode === '100755') &&
+        [change.path, change.oldPath].filter(Boolean).some(isSafeDocPath)) return allScope()
   }
   return classifyPaths(changes.flatMap((change) => [change.path, change.oldPath].filter(Boolean)))
 }
