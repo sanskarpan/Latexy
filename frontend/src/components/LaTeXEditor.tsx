@@ -15,7 +15,6 @@ import ATSScoreBadge from '@/components/ATSScoreBadge'
 import { apiClient, getCollabWebSocketUrl } from '@/lib/api-client'
 import type { PresenceUser, ProofreadIssue, SpellCheckIssue } from '@/lib/api-client'
 import type { LintIssue } from '@/lib/latex-linter'
-import { addWordToDict, getPersonalDict } from '@/hooks/useSpellCheck'
 import LaTeXSearchPanel from '@/components/LaTeXSearchPanel'
 import { LATEX_SEARCH_PRESETS, type LatexSearchPreset } from '@/data/latex-search-presets'
 import { observeChanges, type TrackedChange, type TrackChangesHandle } from '@/lib/yjs-track-changes'
@@ -233,6 +232,10 @@ interface LaTeXEditorProps {
   onSpellCheckToggle?: () => void
   /** Whether spell check is loading (for status bar pulse) */
   spellCheckLoading?: boolean
+  /** Read the current account-scoped dictionary from delayed Monaco callbacks. */
+  getPersonalDictionary?: () => ReadonlySet<string>
+  /** Add a word to the current account-scoped dictionary. */
+  onAddWordToDictionary?: (word: string) => void
   // ── Collaboration (Feature 40) ─────────────────────────────────────
   /** Enable Y.js CRDT collaboration */
   collabEnabled?: boolean
@@ -535,7 +538,7 @@ function defineLatexyThemes(monaco: MonacoNamespace) {
 
 const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, onEditorReady, bibliographyBibTeX = '', readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, warnOnMultiplePages = true, renderedText, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, collabEnabled, collabResumeId, collabUser, collabRole, onPresenceChange, onChatTransport, suggestionPresence, onSuggestionPresenceChange, suggestionDecisions, onSuggestionDecisionsChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
+    { value, onChange, onEditorReady, bibliographyBibTeX = '', readOnly = false, logLines = [], onSave, onCompile, onCursorChange, syncLine, onAutoCompile, hideEmptyAction = false, atsScore, atsScoreLoading, onATSBadgeClick, onShowDocs, onExplainError, pageCount, warnOnMultiplePages = true, renderedText, onCursorLineChange, onCursorInSummarySection, onWritingAssistantAction, proofreadIssues, lintIssues, spellCheckIssues, spellCheckEnabled, onSpellCheckToggle, spellCheckLoading, getPersonalDictionary, onAddWordToDictionary, collabEnabled, collabResumeId, collabUser, collabRole, onPresenceChange, onChatTransport, suggestionPresence, onSuggestionPresenceChange, suggestionDecisions, onSuggestionDecisionsChange, trackedChanges, onTrackedChangesUpdate, confidenceScore, confidenceScoreLoading, onConfidenceBadgeClick, commentedLines, onCommentIconClick },
     ref
   ) {
     const editorRef = useRef<any>(null)
@@ -570,6 +573,10 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
     onShowDocsRef.current = onShowDocs
     const spellCheckIssuesRef = useRef(spellCheckIssues)
     spellCheckIssuesRef.current = spellCheckIssues
+    const getPersonalDictionaryRef = useRef(getPersonalDictionary)
+    getPersonalDictionaryRef.current = getPersonalDictionary
+    const onAddWordToDictionaryRef = useRef(onAddWordToDictionary)
+    onAddWordToDictionaryRef.current = onAddWordToDictionary
     const onPresenceChangeRef = useRef(onPresenceChange)
     onPresenceChangeRef.current = onPresenceChange
     const onChatTransportRef = useRef(onChatTransport)
@@ -1007,7 +1014,7 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       const model = editor.getModel()
       if (!model) return
 
-      const dict = getPersonalDict()
+      const dict = getPersonalDictionaryRef.current?.() ?? new Set<string>()
 
       const markers = (spellCheckIssues ?? []).flatMap((issue) => {
         // Extract the flagged word from the model to check personal dictionary
@@ -1714,12 +1721,12 @@ const LaTeXEditor = forwardRef<LaTeXEditorRef, LaTeXEditorProps>(
       // ── Spell-check code actions (right-click replacements + Add to Dictionary) ──
       // Register a command for "Add to dictionary" so it can be referenced by code actions
       const addToDictCmdId = editor.addCommand(0, (_ctx: any, word: string) => {
-        addWordToDict(word)
+        onAddWordToDictionaryRef.current?.(word)
         // Force markers to refresh by clearing and re-setting with updated dictionary
         const m = editor.getModel()
         const mc = monacoRef.current
         if (!m || !mc) return
-        const dict = getPersonalDict()
+        const dict = getPersonalDictionaryRef.current?.() ?? new Set<string>()
         const refreshed = (spellCheckIssuesRef.current ?? []).flatMap((issue) => {
           const w = m.getValueInRange({
             startLineNumber: issue.line,
