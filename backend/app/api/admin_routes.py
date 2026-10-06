@@ -10,10 +10,11 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.errors import error_body
+from ..core.logging import get_logger
 from ..database.connection import get_db
 from ..database.models import User
 from ..middleware.auth_middleware import require_admin
@@ -21,6 +22,7 @@ from ..services.entitlement_service import entitlement_service
 from ..services.feature_flag_service import feature_flag_service
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 # RBAC roles assignable via the admin API.
 _ASSIGNABLE_ROLES = frozenset({"user", "support", "admin"})
@@ -92,13 +94,17 @@ async def update_feature_flag(
     key: str,
     body: FlagUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(require_admin),
+    admin_user_id: str = Depends(require_admin),
 ):
     """Toggle a feature flag. Admin only."""
     try:
         flag = await feature_flag_service.update_flag(key, body.enabled, db)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Feature flag {key!r} not found")
+    logger.info(
+        "admin_feature_flag_updated",
+        extra={"admin_user_id": admin_user_id, "feature_key": key, "enabled": body.enabled},
+    )
     return FlagDetail(
         key=flag.key,
         enabled=flag.enabled,
@@ -136,7 +142,7 @@ async def update_kill_switch(
     key: str,
     body: KillSwitchUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(require_admin),
+    admin_user_id: str = Depends(require_admin),
 ) -> dict:
     """Toggle a global feature kill-switch. Admin only. 404 if the key is not gateable."""
     try:
@@ -150,6 +156,10 @@ async def update_kill_switch(
                 None,
             ),
         )
+    logger.info(
+        "admin_kill_switch_updated",
+        extra={"admin_user_id": admin_user_id, "feature_key": key, "enabled": body.enabled},
+    )
     return await entitlement_service.get_state(db)
 
 
@@ -157,7 +167,7 @@ async def update_kill_switch(
 async def update_matrix_cell(
     body: MatrixUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(require_admin),
+    admin_user_id: str = Depends(require_admin),
 ) -> dict:
     """Set a per-plan-family feature cell. Admin only.
 
@@ -185,6 +195,15 @@ async def update_matrix_cell(
         )
     await entitlement_service.set_matrix_cell(
         body.plan_family, body.feature_key, body.enabled, db
+    )
+    logger.info(
+        "admin_entitlement_matrix_updated",
+        extra={
+            "admin_user_id": admin_user_id,
+            "plan_family": body.plan_family,
+            "feature_key": body.feature_key,
+            "enabled": body.enabled,
+        },
     )
     return await entitlement_service.get_state(db)
 
@@ -277,6 +296,13 @@ async def update_user_role(
             ),
         )
 
+    # Serialize role mutations around one transaction-scoped advisory lock so
+    # concurrent demotions cannot both observe the same last-admin count.
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(:lock_id)"),
+        {"lock_id": 4_752_861_103},
+    )
+
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
@@ -303,7 +329,17 @@ async def update_user_role(
                 ),
             )
 
+    previous_role = user.role
     user.role = new_role
     await db.commit()
     await db.refresh(user)
+    logger.info(
+        "admin_user_role_updated",
+        extra={
+            "admin_user_id": admin_user_id,
+            "target_user_id": user_id,
+            "previous_role": previous_role,
+            "new_role": new_role,
+        },
+    )
     return _user_summary(user)
