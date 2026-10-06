@@ -16,13 +16,15 @@ Covers:
 from __future__ import annotations
 
 import json
+import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 from httpx import AsyncClient
 
-from app.services.job_scraper_service import _SSRFGuardTransport
+from app.services import url_projects_service as url_import
+from app.services.job_scraper_service import SSRFError, _SSRFGuardTransport
 
 # ---------------------------------------------------------------------------
 # HTML fixtures
@@ -93,6 +95,107 @@ async def test_ssrf_transport_rejects_non_public_dns_answer() -> None:
     ):
         with pytest.raises(httpx.ConnectError, match="non-public"):
             await transport.handle_async_request(request)
+
+
+@pytest.mark.asyncio
+async def test_url_import_rejects_private_redirect_with_guarded_default_client() -> None:
+    """The real URL-import client must guard redirect hops, not only preflight."""
+    responses = [
+        httpx.Response(
+            302,
+            headers={"location": "http://private.example/secrets"},
+        )
+    ]
+    sent: list[httpx.Request] = []
+
+    async def fake_inner_request(_transport, request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return responses.pop(0)
+
+    resolved_hosts: list[str] = []
+
+    def fake_getaddrinfo(host, port, *args, **kwargs):
+        resolved_hosts.append(host)
+        address = {
+            "public.example": "8.8.8.8",
+            "private.example": "127.0.0.1",
+        }[host]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0))]
+
+    with (
+        patch("app.services.job_scraper_service.socket.getaddrinfo", side_effect=fake_getaddrinfo),
+        patch.object(httpx.AsyncHTTPTransport, "handle_async_request", new=fake_inner_request),
+    ):
+        with pytest.raises(SSRFError, match="Blocked or unreachable host"):
+            await url_import.fetch_url_text("https://public.example/portfolio")
+
+    assert resolved_hosts == ["public.example", "public.example", "private.example"]
+    assert [request.url.host for request in sent] == ["8.8.8.8"]
+
+
+@pytest.mark.asyncio
+async def test_url_import_rejects_non_http_redirect_with_guarded_default_client() -> None:
+    """A redirect to a non-http(s) scheme must never reach an inner transport."""
+    responses = [
+        httpx.Response(302, headers={"location": "file:///etc/passwd"})
+    ]
+    sent: list[httpx.Request] = []
+
+    async def fake_inner_request(_transport, request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return responses.pop(0)
+
+    resolved_hosts: list[str] = []
+
+    def fake_getaddrinfo(host, port, *args, **kwargs):
+        resolved_hosts.append(host)
+        address = {"public.example": "8.8.8.8"}[host]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0))]
+
+    with (
+        patch("app.services.job_scraper_service.socket.getaddrinfo", side_effect=fake_getaddrinfo),
+        patch.object(httpx.AsyncHTTPTransport, "handle_async_request", new=fake_inner_request),
+    ):
+        with pytest.raises(SSRFError, match="Blocked or unreachable host"):
+            await url_import.fetch_url_text("https://public.example/portfolio")
+
+    assert resolved_hosts == ["public.example"] * 2
+    assert [request.url.host for request in sent] == ["8.8.8.8"]
+
+
+@pytest.mark.asyncio
+async def test_url_import_allows_public_redirect_and_revalidates_each_hop() -> None:
+    """A public redirect remains usable while both destinations are pinned."""
+    responses = [
+        httpx.Response(302, headers={"location": "https://next.example/landing"}),
+        httpx.Response(
+            200,
+            headers={"content-type": "text/html; charset=utf-8"},
+            content=b"<html><body><h1>Public portfolio</h1></body></html>",
+        ),
+    ]
+    sent: list[httpx.Request] = []
+
+    async def fake_inner_request(_transport, request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return responses.pop(0)
+
+    resolved_hosts: list[str] = []
+
+    def fake_getaddrinfo(host, port, *args, **kwargs):
+        resolved_hosts.append(host)
+        address = {"public.example": "8.8.8.8", "next.example": "1.1.1.1"}[host]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0))]
+
+    with (
+        patch("app.services.job_scraper_service.socket.getaddrinfo", side_effect=fake_getaddrinfo),
+        patch.object(httpx.AsyncHTTPTransport, "handle_async_request", new=fake_inner_request),
+    ):
+        text = await url_import.fetch_url_text("https://public.example/portfolio")
+
+    assert "Public portfolio" in text
+    assert resolved_hosts == ["public.example", "public.example", "next.example"]
+    assert [request.url.host for request in sent] == ["8.8.8.8", "1.1.1.1"]
 
 
 def _lever_html(title: str = "Backend Engineer", company: str = "StartupX") -> str:
@@ -216,6 +319,14 @@ class TestPlatformDetection:
     def test_www_prefix_stripped(self):
         from app.services.job_scraper_service import _detect_platform
         assert _detect_platform("https://www.greenhouse.io/acme/jobs/1") == "greenhouse"
+
+    def test_www_lookalike_domain_is_not_treated_as_greenhouse(self):
+        from app.services.job_scraper_service import _detect_platform
+        assert _detect_platform("https://wwwgreenhouse.io/acme/jobs/1") == "generic"
+
+    def test_subdomain_of_greenhouse_remains_supported(self):
+        from app.services.job_scraper_service import _detect_platform
+        assert _detect_platform("https://boards.greenhouse.io/acme/jobs/1") == "greenhouse"
 
 
 # ---------------------------------------------------------------------------
