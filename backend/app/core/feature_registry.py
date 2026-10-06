@@ -85,6 +85,8 @@ FEATURE_REGISTRY: list[FeatureDef] = [
                "Sync resumes with a GitHub repository."),
     FeatureDef("integration_dropbox", "Dropbox Integration", "integrations",
                "Sync resumes with Dropbox."),
+    FeatureDef("integration_google_drive", "Google Drive Export", "integrations",
+               "Export completed resumes to the user's Google Drive."),
     FeatureDef("integration_zotero", "Zotero Integration", "integrations",
                "Import references from Zotero."),
     FeatureDef("integration_mendeley", "Mendeley Integration", "integrations",
