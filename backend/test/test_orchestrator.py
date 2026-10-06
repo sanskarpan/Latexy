@@ -5,6 +5,7 @@ Tests the individual stage helpers (_run_ats_stage, JSON parse logic) and the
 main task entry-point guards (missing API key, cancellation).  OpenAI and
 subprocess.Popen are mocked so no live services are required.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,6 +33,7 @@ JD = "Software engineer role requiring Python, AWS, Docker, Kubernetes."
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def eager_celery():
     celery_app.conf.task_always_eager = True
@@ -39,6 +41,13 @@ def eager_celery():
     yield
     celery_app.conf.task_always_eager = False
     celery_app.conf.task_eager_propagates = False
+
+
+@pytest.fixture(autouse=True)
+def docker_capability_probe():
+    """Use an explicit capability result while subprocesses are mocked."""
+    with patch("app.workers.orchestrator.docker_engine_available", return_value=False):
+        yield
 
 
 @pytest.fixture
@@ -100,11 +109,29 @@ def _make_openai_stream(tokens: list[str], tokens_total: int = 100):
     return iter(chunks)
 
 
+class _BoundedSyncStream:
+    """Small Popen.stdout double with the bounded-read contract."""
+
+    def __init__(self, chunks: list[str | bytes]):
+        self._payload = b"".join(
+            chunk.encode() if isinstance(chunk, str) else chunk for chunk in chunks
+        )
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self._payload)
+        chunk, self._payload = self._payload[:size], self._payload[size:]
+        return chunk
+
+    def close(self) -> None:
+        pass
+
+
 def _make_popen(returncode: int = 0, stdout_lines: list[str] | None = None):
     """Build a mock subprocess.Popen object."""
     mock_proc = MagicMock()
     mock_proc.returncode = returncode
-    mock_proc.stdout = iter(stdout_lines or ["This is pdflatex output\n"])
+    mock_proc.stdout = _BoundedSyncStream(stdout_lines or ["This is pdflatex output\n"])
     mock_proc.wait.return_value = None
     mock_proc.kill.return_value = None
     return mock_proc
@@ -112,8 +139,8 @@ def _make_popen(returncode: int = 0, stdout_lines: list[str] | None = None):
 
 # ── _run_ats_stage ─────────────────────────────────────────────────────────────
 
-class TestRunAtsStage:
 
+class TestRunAtsStage:
     def test_returns_score_and_details_on_success(self, mock_scoring_service):
         score, details = _run_ats_stage(str(uuid.uuid4()), GOOD_LATEX, JD)
         assert score == 78.0
@@ -180,8 +207,8 @@ class TestRunAtsStage:
 
 # ── main task — missing API key guard ─────────────────────────────────────────
 
-class TestOrchestratorMissingApiKey:
 
+class TestOrchestratorMissingApiKey:
     def test_no_api_key_publishes_job_failed(self, mock_publish, mock_result_store):
         with patch("app.workers.orchestrator.settings") as mock_settings:
             mock_settings.OPENAI_API_KEY = ""
@@ -263,19 +290,31 @@ class TestOrchestratorMissingApiKey:
 
 # ── full pipeline with all mocks ──────────────────────────────────────────────
 
-class TestOrchestratorFullPipeline:
 
-    def _run_full(self, mock_publish, mock_result_store, mock_not_cancelled, mock_scoring_service, cancelled=False):
+class TestOrchestratorFullPipeline:
+    def _run_full(
+        self,
+        mock_publish,
+        mock_result_store,
+        mock_not_cancelled,
+        mock_scoring_service,
+        cancelled=False,
+        latex_content=GOOD_LATEX,
+        stdout_lines=None,
+    ):
         """Helper to run the orchestrator with all external deps mocked."""
         job_id = str(uuid.uuid4())
-        llm_response = json.dumps({"optimized_latex": GOOD_LATEX, "changes": [
-            {"section": "summary", "change_type": "added", "reason": "Added summary"}
-        ]})
+        llm_response = json.dumps(
+            {
+                "optimized_latex": latex_content,
+                "changes": [{"section": "summary", "change_type": "added", "reason": "Added summary"}],
+            }
+        )
         tokens = list(llm_response)
 
         mock_proc = _make_popen(
             returncode=0,
-            stdout_lines=["pdflatex output line\n", "No errors\n"],
+            stdout_lines=stdout_lines or ["pdflatex output line\n", "No errors\n"],
         )
 
         # Use return_value=False when not testing cancellation to avoid
@@ -307,7 +346,7 @@ class TestOrchestratorFullPipeline:
             mock_client.chat.completions.create.return_value = _make_openai_stream(tokens)
 
             res = optimize_and_compile_task.apply(
-                args=[GOOD_LATEX, JD],
+                args=[latex_content, JD],
                 kwargs={"job_id": job_id, "user_api_key": "sk-test-key"},
             ).result
         return res, mock_publish.call_args_list
@@ -386,9 +425,7 @@ class TestOrchestratorFullPipeline:
         types = [c.args[1] for c in calls]
         assert "llm.complete" in types
 
-    def test_pdf_job_id_matches_job_id(
-        self, mock_publish, mock_result_store, mock_not_cancelled, mock_scoring_service
-    ):
+    def test_pdf_job_id_matches_job_id(self, mock_publish, mock_result_store, mock_not_cancelled, mock_scoring_service):
         res, _ = self._run_full(mock_publish, mock_result_store, mock_not_cancelled, mock_scoring_service)
         assert res["pdf_job_id"] == res["job_id"]
 
@@ -406,8 +443,31 @@ class TestOrchestratorFullPipeline:
         assert completed, "job.completed event not emitted"
         assert "page_count" in completed[0].args[2]
 
+    def test_beamer_metadata_matches_direct_compile_contract(
+        self, mock_publish, mock_result_store, mock_not_cancelled, mock_scoring_service
+    ):
+        beamer_latex = (
+            r"% \documentclass{beamer}" + "\n"
+            r"\documentclass{beamer}\begin{document}"
+            r"\begin{frame}{Title}Hello\end{frame}\end{document}"
+        )
+        res, calls = self._run_full(
+            mock_publish,
+            mock_result_store,
+            mock_not_cancelled,
+            mock_scoring_service,
+            latex_content=beamer_latex,
+            stdout_lines=["Output written on resume.pdf (3 pages, 123 bytes).\n"],
+        )
+        completed = next(c.args[2] for c in calls if c.args[1] == "job.completed")
+        assert res["is_beamer"] is True
+        assert res["slide_count"] == 3
+        assert completed["is_beamer"] is True
+        assert completed["slide_count"] == 3
+
 
 # ── Page count extraction ─────────────────────────────────────────────────────
+
 
 class TestOrchestratorPageCount:
     """Tests that _run_latex_stage correctly extracts page count from pdflatex logs."""
@@ -438,35 +498,28 @@ class TestOrchestratorPageCount:
             ).result
         return res, mock_publish.call_args_list
 
-    def test_page_count_extracted_from_pdflatex_output(
-        self, mock_publish, mock_result_store, mock_scoring_service
-    ):
+    def test_page_count_extracted_from_pdflatex_output(self, mock_publish, mock_result_store, mock_scoring_service):
         res, _ = self._run_with_stdout([self.PAGE_COUNT_LINE], mock_publish, mock_result_store, mock_scoring_service)
         assert res["page_count"] == 2
 
-    def test_single_page_extracted(
-        self, mock_publish, mock_result_store, mock_scoring_service
-    ):
+    def test_single_page_extracted(self, mock_publish, mock_result_store, mock_scoring_service):
         res, _ = self._run_with_stdout([self.SINGLE_PAGE_LINE], mock_publish, mock_result_store, mock_scoring_service)
         assert res["page_count"] == 1
 
-    def test_page_count_none_when_line_absent(
-        self, mock_publish, mock_result_store, mock_scoring_service
-    ):
-        res, _ = self._run_with_stdout(["pdflatex normal output\n"], mock_publish, mock_result_store, mock_scoring_service)
+    def test_page_count_none_when_line_absent(self, mock_publish, mock_result_store, mock_scoring_service):
+        res, _ = self._run_with_stdout(
+            ["pdflatex normal output\n"], mock_publish, mock_result_store, mock_scoring_service
+        )
         assert res["page_count"] is None
 
-    def test_page_count_in_job_completed_event(
-        self, mock_publish, mock_result_store, mock_scoring_service
-    ):
-        _, calls = self._run_with_stdout(
-            [self.PAGE_COUNT_LINE], mock_publish, mock_result_store, mock_scoring_service
-        )
+    def test_page_count_in_job_completed_event(self, mock_publish, mock_result_store, mock_scoring_service):
+        _, calls = self._run_with_stdout([self.PAGE_COUNT_LINE], mock_publish, mock_result_store, mock_scoring_service)
         completed = [c for c in calls if c.args[1] == "job.completed"]
         assert completed[0].args[2]["page_count"] == 2
 
 
 # ── JSON parse fallback ───────────────────────────────────────────────────────
+
 
 class TestLLMJsonParsing:
     """The orchestrator tries JSON first, then regex fallback."""
@@ -491,26 +544,20 @@ class TestLLMJsonParsing:
             ).result
         return res
 
-    def test_valid_json_response_uses_optimized_latex(
-        self, mock_publish, mock_result_store, mock_scoring_service
-    ):
+    def test_valid_json_response_uses_optimized_latex(self, mock_publish, mock_result_store, mock_scoring_service):
         target_latex = "\\documentclass{article}\\begin{document}Optimized\\end{document}"
         payload = json.dumps({"optimized_latex": target_latex, "changes": []})
         res = self._run_with_tokens(list(payload), mock_publish, mock_result_store, mock_scoring_service)
         assert res["optimized_latex"] == target_latex
 
-    def test_valid_json_response_extracts_changes(
-        self, mock_publish, mock_result_store, mock_scoring_service
-    ):
+    def test_valid_json_response_extracts_changes(self, mock_publish, mock_result_store, mock_scoring_service):
         changes = [{"section": "summary", "change_type": "added", "reason": "Better ATS"}]
         payload = json.dumps({"optimized_latex": GOOD_LATEX, "changes": changes})
         res = self._run_with_tokens(list(payload), mock_publish, mock_result_store, mock_scoring_service)
         assert len(res["changes_made"]) == 1
         assert res["changes_made"][0]["section"] == "summary"
 
-    def test_invalid_json_falls_back_to_original(
-        self, mock_publish, mock_result_store, mock_scoring_service
-    ):
+    def test_invalid_json_falls_back_to_original(self, mock_publish, mock_result_store, mock_scoring_service):
         # Pure garbage — not parseable as JSON and no regex match
         res = self._run_with_tokens(list("not json at all"), mock_publish, mock_result_store, mock_scoring_service)
         # Falls back to original latex_content
@@ -520,8 +567,8 @@ class TestLLMJsonParsing:
 
 # ── submit_optimize_and_compile ───────────────────────────────────────────────
 
-class TestSubmitOptimizeAndCompile:
 
+class TestSubmitOptimizeAndCompile:
     def test_dispatches_task(self):
         job_id = str(uuid.uuid4())
         with patch.object(optimize_and_compile_task, "apply_async") as mock_apply:
@@ -576,3 +623,16 @@ class TestSubmitOptimizeAndCompile:
             )
             kwargs = mock_apply.call_args[1]["kwargs"]
             assert kwargs["user_id"] == user_id
+
+    def test_reference_compile_settings_are_forwarded(self):
+        job_id = str(uuid.uuid4())
+        compile_settings = {"bibtex": "@article{x, title={X}}"}
+        with patch.object(optimize_and_compile_task, "apply_async") as mock_apply:
+            submit_optimize_and_compile(
+                latex_content=GOOD_LATEX,
+                job_description=JD,
+                job_id=job_id,
+                compile_settings=compile_settings,
+            )
+
+        assert mock_apply.call_args.kwargs["kwargs"]["compile_settings"] == compile_settings
