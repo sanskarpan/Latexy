@@ -366,7 +366,7 @@ def test_ci_scope_jobs_keep_required_contexts_and_fail_closed():
 
 
 def test_editor_compile_sync_regressions_use_the_existing_scoped_browser_job():
-    """The desktop editor contract must run without adding an unconditional job."""
+    """Browser regressions stay in one scoped job with durable evidence."""
     workflow = yaml.load(_read(".github/workflows/ci.yml"), Loader=yaml.BaseLoader)
     job = workflow["jobs"]["cross-browser-quality"]
     assert job["needs"] == "classify-changes"
@@ -385,9 +385,22 @@ def test_editor_compile_sync_regressions_use_the_existing_scoped_browser_job():
     assert "--workers=1" in step["run"]
     assert "--output=test-results/editor-compile-sync" in step["run"]
     assert "if" not in step  # Normal success chaining: no softened failure gate.
+    hydration = next(
+        step for step in job["steps"]
+        if step.get("name") == "Verify Better Auth hydration snapshot contract"
+    )
+    assert hydration["env"] == {"HYDRATION_AUTH_CLIENT_BASELINE": "0"}
+    assert "e2e/hydration-session-store.opt-in.ts" in hydration["run"]
+    assert "--config=playwright.hydration.config.ts" in hydration["run"]
+    assert "--retries=0" in hydration["run"]
+    assert "--trace=on" in hydration["run"]
+    assert "--workers=1" in hydration["run"]
+    assert "--output=test-results/hydration-session-store" in hydration["run"]
+    assert "if" not in hydration  # Candidate failures must fail the scoped job.
     artifact = next(step for step in job["steps"] if step.get("name") == "Upload browser quality evidence")
     assert artifact["if"] == "${{ !cancelled() }}"
     assert "frontend/test-results/editor-compile-sync" in artifact["with"]["path"]
+    assert "frontend/test-results/hydration-session-store" in artifact["with"]["path"]
 
 
 def test_modal_deploy_requires_main_ci_and_skips_stale_automatic_runs():
