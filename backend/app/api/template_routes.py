@@ -70,8 +70,8 @@ CATEGORY_LABELS: dict[str, str] = {
 }
 
 _DOCUMENT_CLASS_RE = re.compile(
-    r"(?m)^[ \t]*\\documentclass(?:\[[^\]\r\n]{0,1000}\])?"
-    r"[ \t]*\{[ \t]*([^}\r\n]{1,100})[ \t]*\}"
+    r"(?m)^[ \t]*+\\documentclass(?:\[[^\]\r\n]{0,1000}+\])?"
+    r"[ \t]*+\{[ \t]*+([^}\r\n]{1,100}+)[ \t]*+\}"
 )
 _NON_TAGGABLE_RESUME_CLASSES = frozenset({"beamer", "beamerarticle"})
 
