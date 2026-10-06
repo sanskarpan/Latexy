@@ -336,7 +336,7 @@ async def track_compilation(
     compilation_id: str,
     compilation_status: str = Query(..., alias="status"),
     device_fingerprint: Optional[str] = None,
-    compilation_time: Optional[float] = None,
+    compilation_time: Optional[float] = Query(default=None, allow_inf_nan=False),
     http_request: Request = None,
     db: AsyncSession = Depends(get_db),
     user_id: Optional[str] = Depends(get_current_user_optional),
