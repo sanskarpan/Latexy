@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -26,10 +27,8 @@ logger = get_logger(__name__)
 #   https://job-boards.greenhouse.io/acme/jobs/12345
 #   https://grnh.se/... (short links — not resolvable without redirect)
 
-_GH_URL_RE = re.compile(
-    r"(?:boards|job-boards)\.greenhouse\.io/(?P<company>[^/]+)/jobs/(?P<job_id>\d+)",
-    re.IGNORECASE,
-)
+_COMPANY_RE = re.compile(r"[A-Za-z0-9_-]{1,100}")
+_JOB_ID_RE = re.compile(r"\d{1,30}")
 
 _GH_API_BASE = "https://boards-api.greenhouse.io/v1/boards"
 
@@ -68,13 +67,28 @@ class GreenhouseService:
         Extract (company_slug, job_id) from a Greenhouse job URL.
         Raises ValueError if the URL is not recognizable.
         """
-        m = _GH_URL_RE.search(job_url)
-        if not m:
+        parsed = urlsplit(job_url)
+        parts = [part for part in parsed.path.split("/") if part]
+        if (
+            parsed.scheme not in {"http", "https"}
+            or (parsed.hostname or "").lower()
+            not in {"boards.greenhouse.io", "job-boards.greenhouse.io"}
+            or len(parts) != 3
+            or parts[1].lower() != "jobs"
+            or not _COMPANY_RE.fullmatch(parts[0])
+            or not _JOB_ID_RE.fullmatch(parts[2])
+        ):
             raise ValueError(
                 f"Cannot parse Greenhouse job URL — expected "
                 f"boards.greenhouse.io/<company>/jobs/<id>. Got: {job_url!r}"
             )
-        return m.group("company"), m.group("job_id")
+        return parts[0], parts[2]
+
+    @staticmethod
+    def _api_url(company: str, job_id: str) -> str:
+        if not _COMPANY_RE.fullmatch(company) or not _JOB_ID_RE.fullmatch(job_id):
+            raise ValueError("Invalid Greenhouse company or job identifier")
+        return f"{_GH_API_BASE}/{quote(company, safe='')}/jobs/{quote(job_id, safe='')}"
 
     # ── Job details ──────────────────────────────────────────────────────────
 
@@ -83,7 +97,7 @@ class GreenhouseService:
         Fetch job title, location, and apply URL from the Greenhouse board API.
         Raises httpx.HTTPStatusError on upstream 4xx/5xx.
         """
-        url = f"{_GH_API_BASE}/{company}/jobs/{job_id}"
+        url = self._api_url(company, job_id)
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(url)
 
@@ -128,7 +142,7 @@ class GreenhouseService:
         Returns the parsed JSON response dict.
         Raises ValueError on validation errors; httpx.HTTPStatusError on HTTP errors.
         """
-        url = f"{_GH_API_BASE}/{company}/jobs/{job_id}"
+        url = self._api_url(company, job_id)
 
         files: dict = {
             "first_name": (None, applicant.first_name),
@@ -152,8 +166,7 @@ class GreenhouseService:
             resp = await client.post(url, files=files)
 
         if resp.status_code in (400, 422):
-            body = _safe_json(resp)
-            raise ValueError(f"Greenhouse rejected application: {body}")
+            raise ValueError("Greenhouse rejected application")
 
         resp.raise_for_status()
         return _safe_json(resp) or {"status": "submitted"}
