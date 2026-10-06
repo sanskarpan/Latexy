@@ -62,18 +62,24 @@ class Publication:
     pub_type: str       # "journal" | "conference" | "preprint" | "book_chapter"
 
 
+class OrcidNotFoundError(ValueError):
+    """An otherwise valid ORCID identifier has no public record."""
+
+
 class PublicationsService:
     # ── ORCID fetch ──────────────────────────────────────────────────────────
 
     async def fetch_from_orcid(self, orcid_id: str) -> List[Publication]:
         """Fetch all works for an ORCID iD and return as Publication list."""
-        url = f"{ORCID_API_BASE}/{orcid_id}/works"
+        if not re.fullmatch(r"\d{4}-\d{4}-\d{4}-\d{3}[\dX]", orcid_id):
+            raise ValueError("Invalid ORCID iD")
+        url = f"{ORCID_API_BASE}/{quote(orcid_id, safe='')}/works"
         headers = {"Accept": "application/json"}
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(url, headers=headers)
             if resp.status_code == 404:
-                raise ValueError(f"ORCID iD not found: {orcid_id}")
+                raise OrcidNotFoundError("ORCID iD not found")
             resp.raise_for_status()
             data = resp.json()
 
