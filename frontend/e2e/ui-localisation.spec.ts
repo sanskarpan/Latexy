@@ -15,4 +15,3 @@ test.describe('B55 UI localisation', () => {
     await expect(page.getByRole('combobox', { name: 'इंटरफ़ेस भाषा' })).toHaveValue('hi')
   })
 })
-
