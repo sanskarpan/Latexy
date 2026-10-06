@@ -143,3 +143,28 @@ class TestReferencesPageEndpoint:
         )
         assert resp.status_code == 200
         assert "jane@acme.com" in resp.json()["latex_content"]
+
+    async def test_reference_fields_cannot_inject_latex(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        resume_id = await self._create_resume(client, auth_headers)
+        resp = await client.post(
+            f"/resumes/{resume_id}/generate-references",
+            headers=auth_headers,
+            json={
+                "references": [{
+                    "name": r"Eve}\\input{/etc/passwd}",
+                    "title": "Engineer",
+                    "company": "Example",
+                    "email": r"eve%7D@example.com",
+                    "relationship": "Colleague",
+                }]
+            },
+        )
+
+        assert resp.status_code == 200
+        latex = resp.json()["latex_content"]
+        assert r"\textbackslash{}input\{/etc/passwd\}" in latex
+        assert r"\input{/etc/passwd}" not in latex
+        assert r"eve\%7D@example.com" in latex
+        assert r"\textbackslash\{\}" not in latex
