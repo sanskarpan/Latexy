@@ -110,3 +110,39 @@ test('GitHub import retries in place and inserts edited evidence', async ({ page
   expect(saved).not.toContain('Original imported bullet')
   expect(saved?.split('edited\\_project')).toHaveLength(2)
 })
+
+test('LinkedIn archive request survives closing and clears after ZIP import', async ({ page }) => {
+  await page.route('**/sources/import-linkedin', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ projects: [{ ...PROJECT, source: 'linkedin' }] }),
+    })
+  )
+
+  await openAuthenticatedImport(page)
+  await page.getByRole('button', { name: 'LinkedIn', exact: true }).click()
+  await expect(page.getByText('1. Request your complete LinkedIn archive')).toBeVisible()
+  await expect(page.getByText(/profile PDF or current résumé now for a partial import/i)).toBeVisible()
+
+  const requestLink = page.getByRole('link', { name: /Request archive on LinkedIn/i })
+  await requestLink.evaluate((element) => {
+    element.addEventListener('click', (event) => event.preventDefault(), { once: true })
+    ;(element as HTMLElement).click()
+  })
+  await expect(page.getByText(/Request step saved on/i)).toBeVisible()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('latexy-linkedin-archive-requested-at'))).not.toBeNull()
+
+  await page.getByRole('button', { name: 'Close import projects' }).click()
+  await page.locator('nav button[title="Import"]').click()
+  await page.getByRole('button', { name: /^Import projects/i }).click()
+  await expect(page.getByText(/Request step saved on/i)).toBeVisible()
+
+  await page.locator('input[type="file"][accept=".zip,.pdf,.docx"]').setInputFiles({
+    name: 'Basic_LinkedInDataExport.zip',
+    mimeType: 'application/zip',
+    buffer: Buffer.from('mock archive'),
+  })
+  await expect(page.getByLabel('Project title 1')).toHaveValue('original-project')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('latexy-linkedin-archive-requested-at'))).toBeNull()
+})
