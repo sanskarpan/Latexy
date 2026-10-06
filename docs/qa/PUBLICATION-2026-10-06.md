@@ -550,3 +550,25 @@ compiler repair.
   body/handler barriers and existing template-lifetime controls. It is not yet
   published or an authenticated production claim. Main publication readiness
   applies to the merged revisions above, not these uncommitted QA changes.
+
+### Exact 5f466798 rollout and pending browser acceptance
+
+- Canonical main CI 37463194119, Vercel verification 37463969659 and the
+  complete automatic Modal workflow 37463969750 subsequently succeeded.
+  Independent checks confirm public Vercel identity
+  `5f466798ba83ba91e78f7cbc8c9bf4924233a72d` and Modal v56 tagged with that
+  exact SHA. #1775 production acceptance is recorded. This rollout did not
+  naturally reproduce delayed API visibility; the delayed/fail-closed cases
+  remain executed-shell test evidence rather than a live-delay claim.
+- A stronger fresh #1776 browser run passed six cases and failed one:
+  same-owner refresh/reload emitted React hydration error code 418 despite
+  correct draft retention/reset assertions. The page-error assertion remains
+  enabled, and #1772 stays open. Response reader probes are being tightened to
+  record completed JSON/text reads rather than just reader invocation.
+- #1778 tracks a separately reproduced local-upload race: select A, clear it,
+  select B, resolve B then A, and the old read overwrites the newer import.
+  The sealed old-source run has three expected safety failures and three
+  passing controls. Its desired-safety tests and generation/lifecycle repair
+  are not yet accepted or published. Root source review caught a StrictMode
+  effect replay regression in the pending repair before publication; the
+  agent is correcting it before the combined fresh-source browser checkpoint.
