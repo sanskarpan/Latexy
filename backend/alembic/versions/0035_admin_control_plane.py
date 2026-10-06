@@ -109,12 +109,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Remove only the kill-switch rows we inserted (gateable feature keys).
-    conn = op.get_bind()
-    conn.execute(
-        sa.text("DELETE FROM feature_flags WHERE key = ANY(:keys)"),
-        {"keys": GATEABLE_KEYS},
-    )
-
+    # The upgrade deliberately uses ``ON CONFLICT DO NOTHING`` so pre-existing
+    # operational rows survive.  There is no ownership marker distinguishing
+    # rows inserted by this migration from rows that existed before it (or were
+    # added later), so deleting by key here would destroy unrelated state on
+    # downgrade.  Leave the shared feature_flags rows intact; this is safer than
+    # attempting an irreversible, ambiguous cleanup.
     op.drop_table("plan_features")
     op.drop_column("users", "role")
