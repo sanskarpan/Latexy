@@ -128,6 +128,29 @@ describe('insertProjectLatex', () => {
     )
   })
 
+  test('falls back to React state while the Monaco ref is not mounted yet', () => {
+    const editor = {
+      insertAtCursor: vi.fn(),
+      getValue: vi.fn(() => ''),
+    }
+
+    expect(insertProjectLatex(editor, 'existing resume', 'PROJECT')).toBe(
+      'existing resume\nPROJECT'
+    )
+    expect(editor.insertAtCursor).toHaveBeenCalledWith('PROJECT')
+  })
+
+  test('falls back to the live editor buffer if insertion makes no change', () => {
+    const editor = {
+      insertAtCursor: vi.fn(),
+      getValue: vi.fn(() => 'newer editor buffer'),
+    }
+
+    expect(insertProjectLatex(editor, 'stale React state', 'PROJECT')).toBe(
+      'newer editor buffer\nPROJECT'
+    )
+  })
+
   test('ignores an empty snippet without touching the editor', () => {
     const editor = {
       insertAtCursor: vi.fn(),
@@ -157,6 +180,22 @@ describe('GitHub import client', () => {
     expect(url).toContain('/github/import-projects/gh-job-1')
     expect(res.status).toBe('completed')
     expect(res.projects[0].title).toBe('my_project')
+  })
+})
+
+describe('LinkedIn import on-ramp', () => {
+  test('supports a resumable archive request and an immediate partial import', () => {
+    expect(IMPORT_MODAL_SOURCE).toContain('rememberLinkedInArchiveRequest')
+    expect(IMPORT_MODAL_SOURCE).toContain('readLinkedInArchiveRequest')
+    expect(IMPORT_MODAL_SOURCE).toContain('Request archive on LinkedIn')
+    expect(IMPORT_MODAL_SOURCE).toContain('profile PDF or current résumé now for a partial import')
+    expect(IMPORT_MODAL_SOURCE).toContain("file.name.toLowerCase().endsWith('.zip')")
+    expect(IMPORT_MODAL_SOURCE).toContain('clearLinkedInArchiveRequest')
+  })
+
+  test('keeps the compliant user-owned upload boundary explicit', () => {
+    expect(IMPORT_MODAL_SOURCE).toContain('we never scrape LinkedIn')
+    expect(IMPORT_MODAL_SOURCE).toContain('Your file is parsed in the request and not stored')
   })
 })
 
