@@ -7,30 +7,21 @@
  * the typed reference / single source of truth.
  *
  * Strategies:
- *  - App shell (HTML, CSS, JS)  → StaleWhileRevalidate (fast load + background update)
- *  - API GET /resumes           → NetworkFirst, cache 5 min (always try network first)
- *  - MinIO PDF assets           → CacheFirst, cache 7 days (PDFs rarely change)
+ *  - App shell (CSS, JS)         → StaleWhileRevalidate (fast load + background update)
+ *  - API, navigation and PDFs   → network only (may contain private resume data)
  *  - Offline fallback           → /offline.html (served when all strategies fail)
  */
 
 export const SW_CACHE_STRATEGY_DOCS = {
+  navigation: {
+    match: "request.mode === 'navigate'",
+    handler: 'NetworkOnly',
+    fallback: '/offline.html',
+  },
   appShell: {
-    urlPattern: /^\/(_next\/static|_next\/image)/,
+    urlPattern: /\/_next\/(?:static|image)\//,
     handler: 'StaleWhileRevalidate',
     cacheName: 'latexy-app-shell',
   },
-  resumeApi: {
-    urlPattern: /^https?:\/\/.*\/resumes($|\?)/,
-    handler: 'NetworkFirst',
-    cacheName: 'latexy-api-resumes',
-    networkTimeoutSeconds: 5,
-    expireMaxAgeSeconds: 5 * 60,
-  },
-  pdfAssets: {
-    urlPattern: /\.pdf$/,
-    handler: 'CacheFirst',
-    cacheName: 'latexy-pdf-cache',
-    expireMaxAgeSeconds: 7 * 24 * 60 * 60,
-    expireMaxEntries: 30,
-  },
+  excludedPrivateData: ['API responses', 'navigation responses', 'PDF responses'],
 } as const
