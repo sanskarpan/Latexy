@@ -2,7 +2,6 @@
 Analytics Service for tracking user behavior and system metrics.
 """
 
-import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 from uuid import UUID
@@ -10,10 +9,11 @@ from uuid import UUID
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.logging import get_logger
 from ..core.redis import cache_manager, redis_manager
 from ..database.models import Compilation, DeviceTrial, Optimization, Payment, Subscription, UsageAnalytics, User
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class AnalyticsService:
     """Service for collecting and analyzing usage data."""
