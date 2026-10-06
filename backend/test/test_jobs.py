@@ -14,14 +14,16 @@ about job plumbing, not about the money meter.
 import json
 import re
 import uuid
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import get_redis_client
-from app.database.models import Compilation
+from app.database.models import Compilation, Resume
 
 VALID_LATEX = r"""
 \documentclass[letterpaper,11pt]{article}
@@ -36,12 +38,269 @@ Python, TypeScript, Docker
 
 # ── Job submission ─────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestJobSubmission:
+    async def test_quota_rejection_removes_precommitted_placeholder(
+        self,
+        client: AsyncClient,
+        pro_auth_headers: dict,
+        db_session: AsyncSession,
+    ):
+        """A denied quota charge must not leave the pre-commit row orphaned."""
+        before = (
+            await db_session.execute(
+                select(Compilation).where(Compilation.status == "processing")
+            )
+        ).scalars().all()
+        with patch(
+            "app.api.job_routes._consume_job_quota",
+            side_effect=HTTPException(status_code=402, detail="quota exceeded"),
+        ):
+            response = await client.post(
+                "/jobs/submit",
+                json={"job_type": "latex_compilation", "latex_content": VALID_LATEX},
+                headers=pro_auth_headers,
+            )
 
-    async def test_submit_latex_compilation(
+        assert response.status_code == 402
+        rows = (
+            await db_session.execute(
+                select(Compilation).where(Compilation.status == "processing")
+            )
+        ).scalars().all()
+        assert len(rows) == len(before)
+
+    async def test_compilation_row_is_committed_before_worker_dispatch(
+        self,
+        client: AsyncClient,
+        pro_auth_headers: dict,
+        db_session: AsyncSession,
+        monkeypatch,
+    ):
+        """A fast worker must be able to reconcile the row it was given."""
+        observed_statuses = []
+        ordering = []
+        original_commit = db_session.commit
+
+        async def tracked_commit():
+            ordering.append("commit-start")
+            result = await original_commit()
+            ordering.append("commit-done")
+            return result
+
+        monkeypatch.setattr(db_session, "commit", tracked_commit)
+
+        def dispatch(**_kwargs):
+            ordering.append("dispatch")
+            observed_statuses.extend(
+                row.status
+                for row in db_session
+                if isinstance(row, Compilation)
+            )
+
+        with patch("app.api.job_routes.submit_latex_compilation", side_effect=dispatch):
+            response = await client.post(
+                "/jobs/submit",
+                json={"job_type": "latex_compilation", "latex_content": VALID_LATEX},
+                headers=pro_auth_headers,
+            )
+
+        assert response.status_code in (200, 202)
+        assert observed_statuses == ["processing"]
+        assert ordering.index("commit-done") < ordering.index("dispatch")
+
+    async def test_dispatch_failure_refunds_and_preserves_terminal_compilation_row(
+        self,
+        client: AsyncClient,
+        pro_auth_headers: dict,
+        db_session: AsyncSession,
+    ):
+        """Cleanup must not delete a row a worker terminalized before failure surfaced."""
+        ticket = MagicMock()
+        ticket.refund_payload.return_value = {}
+        refund = AsyncMock()
+        dispatched_job_id = []
+
+        def dispatch(**kwargs):
+            dispatched_job_id.append(kwargs["job_id"])
+            row = next(row for row in db_session if isinstance(row, Compilation))
+            row.status = "completed"
+            raise RuntimeError("broker unavailable after worker completion")
+
+        with (
+            patch("app.api.job_routes._consume_job_quota", new=AsyncMock(return_value=ticket)),
+            patch("app.api.job_routes.entitlement_service.refund_quota", new=refund),
+            patch("app.api.job_routes.submit_latex_compilation", side_effect=dispatch),
+        ):
+            response = await client.post(
+                "/jobs/submit",
+                json={"job_type": "latex_compilation", "latex_content": VALID_LATEX},
+                headers=pro_auth_headers,
+            )
+
+        assert response.status_code == 200
+        refund.assert_not_awaited()
+        row = (
+            await db_session.execute(
+                select(Compilation).where(Compilation.job_id == dispatched_job_id[0])
+            )
+        ).scalar_one_or_none()
+        assert row is not None
+        assert row.status == "completed"
+
+    async def test_malformed_embedded_signature_is_rejected_before_dispatch(
         self, client: AsyncClient, auth_headers: dict
     ):
+        source = VALID_LATEX.replace(
+            r"\end{document}",
+            "% LATEXY_SIGNATURE_START\n"
+            "% LATEXY_SIGNATURE_DATA:not-base64!\n"
+            r"\includegraphics{latexy-signature.png}"
+            "\n% LATEXY_SIGNATURE_END\n"
+            r"\end{document}",
+        )
+        with patch("app.api.job_routes.submit_latex_compilation") as submit:
+            response = await client.post(
+                "/jobs/submit",
+                json={"job_type": "latex_compilation", "latex_content": source},
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 422
+        assert "base64" in response.json()["detail"]
+        submit.assert_not_called()
+
+    async def test_auto_fit_requires_an_owned_resume(self, client: AsyncClient, pro_auth_headers: dict):
+        with patch("app.api.job_routes.submit_latex_compilation") as submit:
+            missing_id = await client.post(
+                "/jobs/submit",
+                json={"job_type": "auto_fit", "latex_content": VALID_LATEX},
+                headers=pro_auth_headers,
+            )
+            unknown_id = await client.post(
+                "/jobs/submit",
+                json={
+                    "job_type": "auto_fit",
+                    "latex_content": VALID_LATEX,
+                    "metadata": {"resume_id": str(uuid.uuid4())},
+                },
+                headers=pro_auth_headers,
+            )
+
+        assert missing_id.status_code == 422
+        assert unknown_id.status_code == 404
+        submit.assert_not_called()
+
+    async def test_auto_fit_rejects_anonymous_callers(self, client: AsyncClient):
+        response = await client.post(
+            "/jobs/submit",
+            json={
+                "job_type": "auto_fit",
+                "latex_content": VALID_LATEX,
+                "metadata": {"resume_id": str(uuid.uuid4())},
+            },
+        )
+
+        assert response.status_code == 401
+
+    async def test_fit_intensity_is_not_silently_ignored_on_other_job_types(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        response = await client.post(
+            "/jobs/submit",
+            json={
+                "job_type": "latex_compilation",
+                "latex_content": VALID_LATEX,
+                "auto_fit_intensity": 50,
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
+
+    async def test_auto_fit_dispatches_one_metered_formatting_job(self, client: AsyncClient, pro_auth_headers: dict):
+        created = await client.post(
+            "/resumes/",
+            json={"title": "Two pages", "latex_content": VALID_LATEX},
+            headers=pro_auth_headers,
+        )
+        resume_id = created.json()["id"]
+
+        with patch("app.api.job_routes.submit_latex_compilation") as submit:
+            response = await client.post(
+                "/jobs/submit",
+                json={
+                    "job_type": "auto_fit",
+                    "latex_content": VALID_LATEX,
+                    "metadata": {"resume_id": resume_id},
+                    "auto_fit_intensity": 75,
+                },
+                headers=pro_auth_headers,
+            )
+
+        assert response.status_code == 200, response.text
+        assert submit.call_args.kwargs["auto_fit"] is True
+        assert submit.call_args.kwargs["auto_fit_intensity"] == 75
+        assert submit.call_args.kwargs["metadata"]["skip_auto_save"] is True
+
+    async def test_auto_fit_rejects_presentations(self, client: AsyncClient, pro_auth_headers: dict):
+        created = await client.post(
+            "/resumes/",
+            json={
+                "title": "Slides",
+                "latex_content": VALID_LATEX,
+                "document_type": "presentation",
+            },
+            headers=pro_auth_headers,
+        )
+        response = await client.post(
+            "/jobs/submit",
+            json={
+                "job_type": "auto_fit",
+                "latex_content": VALID_LATEX,
+                "metadata": {"resume_id": created.json()["id"]},
+            },
+            headers=pro_auth_headers,
+        )
+
+        assert response.status_code == 422
+
+    async def test_saved_reference_library_reaches_compile_worker(
+        self, client: AsyncClient, auth_headers: dict, db_session
+    ):
+        created = await client.post(
+            "/resumes/",
+            json={"title": "References", "latex_content": VALID_LATEX},
+            headers=auth_headers,
+        )
+        assert created.status_code == 201
+        resume_id = created.json()["id"]
+        bibtex = "@article{x, title={X}}"
+        await db_session.execute(
+            update(Resume)
+            .where(Resume.id == resume_id)
+            .values(resume_settings={"bibtex": bibtex, "halt_on_error": False, "draft_mode": True})
+        )
+        await db_session.commit()
+
+        with patch("app.api.job_routes.submit_latex_compilation") as submit:
+            response = await client.post(
+                "/jobs/submit",
+                json={
+                    "job_type": "latex_compilation",
+                    "latex_content": VALID_LATEX,
+                    "metadata": {"resume_id": resume_id},
+                },
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200, response.text
+        assert submit.call_args.kwargs["compile_settings"]["bibtex"] == bibtex
+        assert submit.call_args.kwargs["compile_settings"]["halt_on_error"] is False
+        assert submit.call_args.kwargs["compile_settings"]["draft_mode"] is True
+
+    async def test_submit_latex_compilation(self, client: AsyncClient, auth_headers: dict):
         with patch(
             "app.workers.latex_worker.submit_latex_compilation",
             return_value=None,
@@ -58,9 +317,7 @@ class TestJobSubmission:
         # Validate UUID format
         uuid.UUID(data["job_id"])
 
-    async def test_submit_missing_latex_content(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_submit_missing_latex_content(self, client: AsyncClient, auth_headers: dict):
         resp = await client.post(
             "/jobs/submit",
             json={"job_type": "latex_compilation"},
@@ -68,9 +325,23 @@ class TestJobSubmission:
         )
         assert resp.status_code in (400, 422)
 
-    async def test_submit_invalid_job_type(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_invalid_anonymous_request_does_not_consume_trial(self, client: AsyncClient):
+        with patch(
+            "app.api.job_routes.trial_service.check_and_track_usage",
+            new=AsyncMock(),
+        ) as consume:
+            response = await client.post(
+                "/jobs/submit",
+                json={
+                    "job_type": "combined",
+                    "device_fingerprint": f"invalid-{uuid.uuid4()}",
+                },
+            )
+
+        assert response.status_code == 422
+        consume.assert_not_awaited()
+
+    async def test_submit_invalid_job_type(self, client: AsyncClient, auth_headers: dict):
         resp = await client.post(
             "/jobs/submit",
             json={"job_type": "nonexistent_type", "latex_content": VALID_LATEX},
@@ -78,9 +349,7 @@ class TestJobSubmission:
         )
         assert resp.status_code in (400, 422)
 
-    async def test_submit_combined_job(
-        self, client: AsyncClient, pro_auth_headers: dict
-    ):
+    async def test_submit_combined_job(self, client: AsyncClient, pro_auth_headers: dict):
         with patch(
             "app.workers.orchestrator.submit_optimize_and_compile",
             return_value=None,
@@ -99,11 +368,47 @@ class TestJobSubmission:
         data = resp.json()
         assert data["success"] is True
         assert "job_id" in data
-        assert re.match(r'^[0-9a-f-]{36}$', data["job_id"]), "job_id should be a UUID"
+        assert re.match(r"^[0-9a-f-]{36}$", data["job_id"]), "job_id should be a UUID"
 
-    async def test_submit_ats_scoring(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_combined_job_forwards_active_byok_key(self, client: AsyncClient, pro_auth_headers: dict):
+        with (
+            patch(
+                "app.api.job_routes.api_key_service.get_user_provider",
+                new=AsyncMock(return_value="sk-user-owned"),
+            ),
+            patch(
+                "app.api.job_routes.submit_optimize_and_compile",
+                return_value=None,
+            ) as submit,
+        ):
+            response = await client.post(
+                "/jobs/submit",
+                json={
+                    "job_type": "combined",
+                    "latex_content": VALID_LATEX,
+                    "model": "gpt-4o",
+                },
+                headers=pro_auth_headers,
+            )
+
+        assert response.status_code == 200, response.text
+        assert submit.call_args.kwargs["user_api_key"] == "sk-user-owned"
+        assert submit.call_args.kwargs["model"] == "gpt-4o"
+
+    async def test_arbitrary_client_model_is_rejected(self, client: AsyncClient, pro_auth_headers: dict):
+        response = await client.post(
+            "/jobs/submit",
+            json={
+                "job_type": "combined",
+                "latex_content": VALID_LATEX,
+                "model": "arbitrary-expensive-preview-model",
+            },
+            headers=pro_auth_headers,
+        )
+
+        assert response.status_code == 422
+
+    async def test_submit_ats_scoring(self, client: AsyncClient, auth_headers: dict):
         with patch(
             "app.workers.ats_worker.submit_ats_scoring",
             return_value=None,
@@ -121,17 +426,15 @@ class TestJobSubmission:
         data = resp.json()
         assert data["success"] is True
         assert "job_id" in data
-        assert re.match(r'^[0-9a-f-]{36}$', data["job_id"]), "job_id should be a UUID"
+        assert re.match(r"^[0-9a-f-]{36}$", data["job_id"]), "job_id should be a UUID"
 
 
 # ── Job state polling ─────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestJobState:
-
-    async def test_get_state_nonexistent_job(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_get_state_nonexistent_job(self, client: AsyncClient, auth_headers: dict):
         fake_id = str(uuid.uuid4())
         resp = await client.get(f"/jobs/{fake_id}/state", headers=auth_headers)
         assert resp.status_code == 404
@@ -144,9 +447,7 @@ class TestJobState:
         resp = await client.get(f"/jobs/{fake_id}/state")
         assert resp.status_code == 404
 
-    async def test_get_state_after_submit(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_get_state_after_submit(self, client: AsyncClient, auth_headers: dict):
         """State should be readable immediately after job submission."""
         with patch(
             "app.api.job_routes.submit_latex_compilation",
@@ -173,12 +474,10 @@ class TestJobState:
 
 # ── Job cancellation ─────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestJobCancellation:
-
-    async def test_cancel_nonexistent_job(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_cancel_nonexistent_job(self, client: AsyncClient, auth_headers: dict):
         fake_id = str(uuid.uuid4())
         resp = await client.delete(f"/jobs/{fake_id}", headers=auth_headers)
         assert resp.status_code == 404
@@ -190,18 +489,16 @@ class TestJobCancellation:
         """A valid anonymous job can be cancelled without authentication."""
         fake_id = str(uuid.uuid4())
         r = await get_redis_client()
-        await r.setex(
+        await r.set(
             f"latexy:job:{fake_id}:meta",
-            3600,
             json.dumps({"job_id": fake_id, "user_id": None}),
+            ex=3600,
         )
 
         resp = await client.delete(f"/jobs/{fake_id}")
         assert resp.status_code in (200, 204)
 
-    async def test_cancel_owned_job_requires_matching_user(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_cancel_owned_job_requires_matching_user(self, client: AsyncClient, auth_headers: dict):
         with patch("app.api.job_routes.submit_latex_compilation", return_value=None):
             submit = await client.post(
                 "/jobs/submit",
@@ -220,9 +517,9 @@ class TestJobCancellation:
 
 # ── PDF download ─────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestPDFDownload:
-
     async def test_download_nonexistent_pdf(self, client: AsyncClient):
         fake_id = str(uuid.uuid4())
         resp = await client.get(f"/download/{fake_id}")
@@ -236,9 +533,9 @@ class TestPDFDownload:
 
 # ── Trial / anonymous access ─────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestTrialSystem:
-
     async def test_trial_status_with_fingerprint(self, client: AsyncClient):
         fp = "test_device_fingerprint_abc123"
         resp = await client.get(f"/public/trial-status?fingerprint={fp}")
@@ -254,12 +551,10 @@ class TestTrialSystem:
 
 # ── Error path tests ─────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestJobSubmissionErrorPaths:
-
-    async def test_combined_job_missing_job_description(
-        self, client: AsyncClient, pro_auth_headers: dict
-    ):
+    async def test_combined_job_missing_job_description(self, client: AsyncClient, pro_auth_headers: dict):
         """combined job without job_description is accepted (JD is optional)."""
         with patch(
             "app.workers.orchestrator.submit_optimize_and_compile",
@@ -272,9 +567,7 @@ class TestJobSubmissionErrorPaths:
             )
         assert resp.status_code == 200
 
-    async def test_llm_optimization_missing_job_description(
-        self, client: AsyncClient, pro_auth_headers: dict
-    ):
+    async def test_llm_optimization_missing_job_description(self, client: AsyncClient, pro_auth_headers: dict):
         """llm_optimization without job_description is accepted (JD is optional)."""
         with patch(
             "app.workers.llm_worker.submit_resume_optimization",
@@ -287,9 +580,7 @@ class TestJobSubmissionErrorPaths:
             )
         assert resp.status_code == 200
 
-    async def test_submit_with_empty_metadata_dict(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_submit_with_empty_metadata_dict(self, client: AsyncClient, auth_headers: dict):
         """Empty metadata dict is valid and should not cause 500."""
         with patch(
             "app.workers.latex_worker.submit_latex_compilation",
@@ -306,9 +597,7 @@ class TestJobSubmissionErrorPaths:
             )
         assert resp.status_code in (200, 202)
 
-    async def test_submit_with_large_metadata_is_sanitised(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_submit_with_large_metadata_is_sanitised(self, client: AsyncClient, auth_headers: dict):
         """Metadata with too many keys should be accepted (sanitised server-side)."""
         oversized_meta = {f"key_{i}": "x" * 300 for i in range(20)}
         with patch(
@@ -353,17 +642,11 @@ class TestJobSubmissionErrorPaths:
         assert resp.status_code in (200, 202)
         job_id = resp.json()["job_id"]
 
-        row = (
-            await db_session.execute(
-                select(Compilation).where(Compilation.job_id == job_id)
-            )
-        ).scalar_one_or_none()
+        row = (await db_session.execute(select(Compilation).where(Compilation.job_id == job_id))).scalar_one_or_none()
         assert row is not None, "Compilation row was not created"
         assert row.resume_id is None
 
-    async def test_result_not_available_for_queued_job(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_result_not_available_for_queued_job(self, client: AsyncClient, auth_headers: dict):
         """Result endpoint should return 404 for a job that was just queued."""
         with patch(
             "app.workers.latex_worker.submit_latex_compilation",
@@ -383,12 +666,10 @@ class TestJobSubmissionErrorPaths:
 
 # ── Estimated time in response ─────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestEstimatedTime:
-
-    async def test_latex_compilation_has_estimated_time(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_latex_compilation_has_estimated_time(self, client: AsyncClient, auth_headers: dict):
         with patch("app.workers.latex_worker.submit_latex_compilation", return_value=None):
             resp = await client.post(
                 "/jobs/submit",
@@ -402,9 +683,7 @@ class TestEstimatedTime:
         assert isinstance(data["estimated_time"], int)
         assert data["estimated_time"] > 0
 
-    async def test_combined_job_has_estimated_time(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_combined_job_has_estimated_time(self, client: AsyncClient, auth_headers: dict):
         with patch("app.workers.orchestrator.submit_optimize_and_compile", return_value=None):
             resp = await client.post(
                 "/jobs/submit",
@@ -419,9 +698,7 @@ class TestEstimatedTime:
             pytest.skip("Submit failed")
         assert resp.json()["estimated_time"] > 0
 
-    async def test_pro_plan_has_lower_estimated_time(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_pro_plan_has_lower_estimated_time(self, client: AsyncClient, auth_headers: dict):
         """Pro plan should have lower estimated time (0.7x multiplier)."""
         free_resp = None
         pro_resp = None
@@ -450,9 +727,7 @@ class TestEstimatedTime:
         # authenticated user), so a "pro" body value no longer buys a lower time.
         assert pro_resp.json()["estimated_time"] == free_resp.json()["estimated_time"]
 
-    async def test_ats_scoring_has_expected_estimated_time(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_ats_scoring_has_expected_estimated_time(self, client: AsyncClient, auth_headers: dict):
         with patch("app.workers.ats_worker.submit_ats_scoring", return_value=None):
             resp = await client.post(
                 "/jobs/submit",
@@ -471,9 +746,9 @@ class TestEstimatedTime:
 
 # ── Jobs health endpoint ───────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestJobsHealth:
-
     async def test_health_endpoint_returns_200(self, client: AsyncClient):
         resp = await client.get("/jobs/health")
         assert resp.status_code == 200
@@ -493,8 +768,29 @@ class TestJobsHealth:
         resp = await client.get("/jobs/health")
         assert resp.json()["status"] in ("healthy", "degraded", "unhealthy")
 
+    async def test_health_failure_does_not_expose_internal_exception(self):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.api.job_routes import jobs_health, redis_manager
+
+        leaked_secret = "redis://private-user:private-password@cache.example/0"
+        with (
+            patch.object(redis_manager, "redis_client", MagicMock()),
+            patch.object(
+                redis_manager,
+                "health_check",
+                new=AsyncMock(side_effect=ConnectionError(leaked_secret)),
+            ),
+        ):
+            result = await jobs_health()
+
+        assert result["status"] == "unhealthy"
+        assert result["error"] == "Job infrastructure is unavailable"
+        assert leaked_secret not in str(result)
+
 
 # ── System cleanup endpoint ────────────────────────────────────────────────────
+
 
 async def _admin_headers(db_session) -> dict:
     """Insert an admin user + Better Auth session and point ADMIN_EMAIL at it."""
@@ -515,9 +811,7 @@ async def _admin_headers(db_session) -> dict:
     )
     token = f"test_sess_{uuid.uuid4().hex}"
     await db_session.execute(
-        text(
-            'INSERT INTO session (id, "userId", "expiresAt", token) VALUES (:id, :uid, :exp, :tok)'
-        ),
+        text('INSERT INTO session (id, "userId", "expiresAt", token) VALUES (:id, :uid, :exp, :tok)'),
         {
             "id": str(uuid.uuid4()),
             "uid": admin_id,
@@ -532,7 +826,6 @@ async def _admin_headers(db_session) -> dict:
 
 @pytest.mark.asyncio
 class TestSystemCleanup:
-
     async def test_cleanup_requires_admin(self, client: AsyncClient):
         # No auth → 401; the endpoint must not be anonymously triggerable.
         resp = await client.post("/jobs/system/cleanup?cleanup_type=temp_files")
@@ -559,9 +852,7 @@ class TestSystemCleanup:
         headers = await _admin_headers(db_session)
         # max_age_hours=0 must be clamped to >=1 so in-flight temp files aren't purged.
         with patch("app.api.job_routes.submit_temp_files_cleanup", return_value="c1") as mock_submit:
-            resp = await client.post(
-                "/jobs/system/cleanup?cleanup_type=temp_files&max_age_hours=0", headers=headers
-            )
+            resp = await client.post("/jobs/system/cleanup?cleanup_type=temp_files&max_age_hours=0", headers=headers)
         assert resp.status_code == 200
         assert mock_submit.call_args.kwargs["max_age_hours"] >= 1
 
@@ -577,9 +868,9 @@ class TestSystemCleanup:
 
 # ── List jobs endpoint ─────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 class TestListJobs:
-
     async def test_list_jobs_unauthenticated_returns_empty(self, client: AsyncClient):
         resp = await client.get("/jobs/")
         assert resp.status_code == 200
@@ -594,9 +885,7 @@ class TestListJobs:
         assert "jobs" in data
         assert "total_count" in data
 
-    async def test_list_jobs_includes_submitted_job(
-        self, client: AsyncClient, auth_headers: dict
-    ):
+    async def test_list_jobs_includes_submitted_job(self, client: AsyncClient, auth_headers: dict):
         """A submitted job must be indexed in the user ZSET and returned by GET /jobs/."""
         with patch("app.api.job_routes.submit_latex_compilation", return_value=None):
             submit = await client.post(
