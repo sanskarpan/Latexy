@@ -595,3 +595,30 @@ compiler repair.
 - React error code 418 did not recur in this checkpoint. Earlier fresh failure
   evidence remains valid and #1772 is not closed by an intermittent clean run.
   Neither owner nor uploader acceptance here implies authenticated live QA.
+
+### Owner publication and continued QA
+
+- Owner/draft PR #1779 merged normally after all 21 required contexts passed,
+  clean mergeability and no unresolved review threads, to source-identical main
+  `6e4de96976ecaf1efa3de8c8b39790ea534919fd`. Canonical main CI 37467253098,
+  Vercel verification 37467962504 and every step of automatic Modal rollout
+  37467962473 succeeded. Independent history and public identity confirm
+  Modal v57 and Vercel at that exact SHA. The local main pointer is updated;
+  another worktree can consume this published owner boundary.
+- Uploader PR #1780 contains only its component and six-case safety file,
+  individually committed. Its branch was updated normally against the new
+  main, retaining strict fresh-head CI; acceptance/merge remain pending here.
+- #1781 is a newly verified ordinary theme-toggle race. A delayed initial
+  account preference GET reverses a newer visible toggle, despite the mocked
+  preference PATCH containing the user's selected mode. Three sealed-source
+  diagnostics/control cases reproduced it. The desired-safety expansion has
+  three expected old-source failures and two passing controls, including ABA
+  owner and multiple-toggle cases. A narrow owner/request/choice-epoch repair
+  is under review; negative assertions need completed-body barriers before
+  fresh-source acceptance. No real database/provider write was made.
+- A separate sealed-source hydration diagnostic reproduced React code 418
+  during reload, but structural churn/React stack alone does not establish
+  causality. The installed Next App Router aliases both browser and server to
+  its vendored React canary runtime: package React 18 paths or stale `.next`
+  references do not prove a runtime mismatch. Diagnostic-only files are kept
+  out of accepted PRs; a diagnostic that records errors is not a safety pass.
