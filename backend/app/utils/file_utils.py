@@ -48,16 +48,45 @@ def validate_file_upload(file: UploadFile) -> None:
         )
 
 
+async def read_upload_capped(
+    file: UploadFile,
+    max_bytes: int | None = None,
+) -> bytes:
+    """Read an upload without trusting Content-Length or UploadFile.size."""
+    limit = settings.MAX_FILE_SIZE if max_bytes is None else max_bytes
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(64 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size: {limit} bytes",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def validate_job_id(job_id: str) -> None:
     """Validate job ID format."""
     try:
         uuid.UUID(job_id)
-    except ValueError:
+    except (ValueError, AttributeError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid job ID format")
 
 
 def get_job_files(job_id: str) -> tuple[Path, Path, Path]:
-    """Get file paths for a job."""
+    """Get file paths for a server-generated job beneath the temp root.
+
+    Callers frequently use these paths as a local fallback after a cache or
+    object-storage lookup.  Keep the validation next to path construction so
+    a future caller cannot accidentally turn a corrupt/request-controlled job
+    id into a path traversal primitive.
+    """
+    validate_job_id(job_id)
     job_dir = settings.TEMP_DIR / job_id
     pdf_file = job_dir / "resume.pdf"
     log_file = job_dir / "resume.log"
