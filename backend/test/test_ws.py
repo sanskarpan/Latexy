@@ -77,7 +77,10 @@ def ws_client():
         # TestClient without context-manager avoids running the full lifespan
         # (which would reinitialise globals in a background thread loop).
         client = TestClient(app, raise_server_exceptions=True)
-        yield client
+        try:
+            yield client
+        finally:
+            client.close()
 
 
 # ---------------------------------------------------------------------------
