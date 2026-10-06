@@ -26,12 +26,20 @@ async function mockSettingsDependencies(page: Page, session: typeof SESSION | nu
     body: JSON.stringify({ connected: false }),
   })
   await page.route('**/github/status', disconnected)
+  await page.route('**/google-drive/status', disconnected)
+  await page.route('**/api/referral', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ available: false, message: 'Referral program unavailable in test' }),
+  }))
 }
 
 const PROVIDERS = [
   {
     name: 'Zotero',
     path: 'zotero',
+    authorizationUrl: 'https://www.zotero.org/oauth/authorize?oauth_token=test-token',
+    authorizationRoute: 'https://www.zotero.org/oauth/authorize**',
     success: 'Zotero connected successfully!',
     status: { connected: true, username: 'bound-user', user_id: 'zotero-1' },
     connectedText: '@bound-user',
@@ -39,6 +47,8 @@ const PROVIDERS = [
   {
     name: 'Mendeley',
     path: 'mendeley',
+    authorizationUrl: 'https://api.mendeley.com/oauth/authorize?client_id=test-client',
+    authorizationRoute: 'https://api.mendeley.com/oauth/authorize**',
     success: 'Mendeley connected successfully!',
     status: { connected: true, name: 'Bound User' },
     connectedText: 'Bound User',
@@ -46,6 +56,8 @@ const PROVIDERS = [
   {
     name: 'Dropbox',
     path: 'dropbox',
+    authorizationUrl: 'https://www.dropbox.com/oauth2/authorize?client_id=test-client',
+    authorizationRoute: 'https://www.dropbox.com/oauth2/authorize**',
     success: 'Dropbox connected successfully!',
     status: { connected: true, display_name: 'Bound User', account_id: 'dropbox-1' },
     connectedText: 'Dropbox connected',
@@ -57,6 +69,7 @@ for (const provider of PROVIDERS) {
     await mockSettingsDependencies(page, SESSION)
     let connected = false
     let completionCalls = 0
+    let appOrigin = ''
 
     for (const other of PROVIDERS) {
       await page.route(`**/${other.path}/status`, (route) =>
@@ -80,10 +93,19 @@ for (const provider of PROVIDERS) {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          authorization_url: `${new URL(page.url()).origin}/settings?${provider.path}=complete&ticket=one-time-ticket`,
+          authorization_url: provider.authorizationUrl,
         }),
       })
     })
+    await page.route(provider.authorizationRoute, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: `<script>window.location.replace(${JSON.stringify(
+          `${appOrigin}/settings?${provider.path}=complete&ticket=one-time-ticket`,
+        )})</script>`,
+      })
+    )
     await page.route(`**/${provider.path}/complete`, async (route) => {
       completionCalls += 1
       expect(route.request().method()).toBe('POST')
@@ -100,6 +122,7 @@ for (const provider of PROVIDERS) {
     })
 
     await page.goto('/settings', { waitUntil: 'domcontentloaded' })
+    appOrigin = new URL(page.url()).origin
     const connect = page.getByRole('button', { name: `Connect ${provider.name}` })
     await expect(connect).toBeVisible()
     await connect.click()
