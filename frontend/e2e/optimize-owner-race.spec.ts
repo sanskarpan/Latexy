@@ -82,15 +82,19 @@ test.describe('optimization owner-scoped settings', () => {
     await switchOwner(page, owner, 'owner-b')
     await expect.poll(() => sessionResponses).toBeGreaterThan(1)
     await expect(page.getByText('Optimize "Owner B resume"')).toBeVisible()
-    await page.getByRole('button', { name: /Enterprise \/ Corporate/ }).click()
-    await expect.poll(() => settingsCalls).toBe(2)
+    // The new owner’s persisted enterprise persona is loaded before the old
+    // owner’s deferred request is released. Change it to startup so this test
+    // also proves the new owner is not left mutation-locked by the old write.
     await expectActivePersona(page, 'Enterprise / Corporate')
+    await page.getByRole('button', { name: /Startup \/ Scale-up/ }).click()
+    await expect.poll(() => settingsCalls).toBe(2)
+    await expectActivePersona(page, 'Startup / Scale-up')
 
     try {
       releaseSettings()
       await expect.poll(() => settingsFinished).toBe(true)
       await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 50)))))
-      await expectActivePersona(page, 'Enterprise / Corporate')
+      await expectActivePersona(page, 'Startup / Scale-up')
     } finally {
       releaseSettings()
     }
@@ -118,5 +122,70 @@ test.describe('optimization owner-scoped settings', () => {
     await page.getByRole('button', { name: /Startup \/ Scale-up/ }).click()
     await expect.poll(() => settingsCalls).toBe(1)
     await expectActivePersona(page, 'Startup / Scale-up')
+  })
+
+  test('same-owner auth revalidation does not strand a failed persona mutation', async ({ page }) => {
+    let sessionResponses = 0
+    let refreshStarted = false
+    let releaseRefresh!: () => void
+    const refreshGate = new Promise<void>(resolve => { releaseRefresh = resolve })
+    let settingsStarted = false
+    let settingsFinished = false
+    let settingsCalls = 0
+    let releaseSettings!: () => void
+    const settingsGate = new Promise<void>(resolve => { releaseSettings = resolve })
+
+    await page.route('**/api/auth/get-session', async route => {
+      sessionResponses += 1
+      if (sessionResponses === 2) {
+        refreshStarted = true
+        await refreshGate
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          session: { id: 'session-owner-a', userId: 'owner-a', token: 'token-owner-a', expiresAt: '2099-01-01T00:00:00Z' },
+          user: { id: 'owner-a', email: 'owner-a@example.com', name: 'Owner A' },
+        }),
+      })
+    })
+    await page.route('**/ws/**', route => route.abort())
+    await page.route(`**/resumes/${RESUME_ID}`, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(resumeResponse('owner-a')) }))
+    await page.route(`**/resumes/${RESUME_ID}/settings`, async route => {
+      settingsCalls += 1
+      if (settingsCalls === 1) {
+        settingsStarted = true
+        await settingsGate
+        settingsFinished = true
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'settings request expired during auth revalidation' }) })
+        return
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(resumeResponse('owner-a')) })
+    })
+
+    await page.goto(`/workspace/${RESUME_ID}/optimize`, { waitUntil: 'domcontentloaded' })
+    await expect(page.getByText('Optimize "Owner A resume"')).toBeVisible()
+    await page.getByRole('button', { name: /Startup \/ Scale-up/ }).click()
+    await expect.poll(() => settingsStarted).toBe(true)
+
+    await page.evaluate(() => {
+      const message = JSON.stringify({ event: 'session', data: { trigger: 'test-auth-refresh' } })
+      localStorage.setItem('better-auth.message', message)
+      window.dispatchEvent(new StorageEvent('storage', { key: 'better-auth.message', newValue: message }))
+    })
+    await expect.poll(() => refreshStarted).toBe(true)
+
+    releaseSettings()
+    await expect.poll(() => settingsFinished).toBe(true)
+    // The failed write must not roll back while auth is pending, and cleanup
+    // must release the busy gate so the same owner can retry after verification.
+    await expectActivePersona(page, 'Startup / Scale-up')
+    releaseRefresh()
+    await expect.poll(() => sessionResponses).toBe(2)
+
+    await page.getByRole('button', { name: /Enterprise \/ Corporate/ }).click()
+    await expect.poll(() => settingsCalls).toBe(2)
+    await expectActivePersona(page, 'Enterprise / Corporate')
   })
 })
