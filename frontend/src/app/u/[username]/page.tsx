@@ -97,6 +97,14 @@ export default async function PortfolioPage({ params }: PageProps) {
                     year: 'numeric',
                   })}
                 </p>
+                <details className="mt-4 text-sm">
+                  <summary className={`cursor-pointer font-medium ${accentClass}`}>
+                    Read accessible resume text
+                  </summary>
+                  <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words font-sans text-sm leading-6">
+                    {r.accessible_text || 'No readable text is available for this resume.'}
+                  </pre>
+                </details>
               </div>
             ))}
           </div>
@@ -108,14 +116,14 @@ export default async function PortfolioPage({ params }: PageProps) {
         <h2 className="text-2xl font-bold mb-6 pb-2 border-b border-current/20">
           Contact
         </h2>
-        <ContactForm />
+        <ContactForm username={username} />
       </section>
 
       {/* Footer */}
       <footer className="text-center py-8 text-sm text-gray-500">
         Powered by{' '}
         <a
-          href="https://latexy.io"
+          href="https://latexy.xyz"
           target="_blank"
           rel="noopener noreferrer"
           className={accentClass}
