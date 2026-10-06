@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiClient, type CreateApplicationRequest, type JobApplication, type ResumeResponse } from '@/lib/api-client'
+import type { ExtensionJobCapture } from '@/lib/extension-capture'
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
@@ -24,6 +25,7 @@ interface AddApplicationModalProps {
   // Pre-fill when opened from workspace card
   prefillResumeId?: string
   prefillResumeTitle?: string
+  prefillCapture?: ExtensionJobCapture | null
 }
 
 export default function AddApplicationModal({
@@ -31,17 +33,23 @@ export default function AddApplicationModal({
   onCreated,
   prefillResumeId,
   prefillResumeTitle,
+  prefillCapture,
 }: AddApplicationModalProps) {
-  const [companyName, setCompanyName] = useState('')
-  const [roleTitle, setRoleTitle] = useState('')
+  const [companyName, setCompanyName] = useState(prefillCapture?.company ?? '')
+  const [roleTitle, setRoleTitle] = useState(prefillCapture?.title ?? '')
   const [status, setStatus] = useState('applied')
-  const [jobUrl, setJobUrl] = useState('')
+  const [jobUrl, setJobUrl] = useState(prefillCapture?.url ?? '')
   const [resumeId, setResumeId] = useState(prefillResumeId ?? '')
-  const [jobDescription, setJobDescription] = useState('')
-  const [notes, setNotes] = useState('')
+  const [jobDescription, setJobDescription] = useState(prefillCapture?.description ?? '')
+  const [notes, setNotes] = useState(
+    prefillCapture?.location ? `Location: ${prefillCapture.location}` : '',
+  )
   const [appliedAt, setAppliedAt] = useState(new Date().toISOString().slice(0, 10))
-  const [showJD, setShowJD] = useState(false)
+  const [showJD, setShowJD] = useState(Boolean(prefillCapture?.description))
   const [resumes, setResumes] = useState<ResumeResponse[]>([])
+  const [resumesLoading, setResumesLoading] = useState(true)
+  const [resumesError, setResumesError] = useState<string | null>(null)
+  const [resumesReloadNonce, setResumesReloadNonce] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const firstInputRef = useRef<HTMLInputElement>(null)
@@ -53,13 +61,26 @@ export default function AddApplicationModal({
   useEffect(() => {
     triggerRef.current = document.activeElement as HTMLElement | null
     firstInputRef.current?.focus()
-    apiClient.listResumes().then((data) => {
-      setResumes(Array.isArray(data) ? data : [])
-    }).catch(() => {})
     return () => {
       triggerRef.current?.focus?.()
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    setResumesLoading(true)
+    setResumesError(null)
+    apiClient.listAllResumes().then((data) => {
+      if (!cancelled) setResumes(Array.isArray(data) ? data : [])
+    }).catch((error) => {
+      if (!cancelled) {
+        setResumesError(error instanceof Error ? error.message : 'Failed to load resumes')
+      }
+    }).finally(() => {
+      if (!cancelled) setResumesLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [resumesReloadNonce])
 
   // Keyboard handling: Escape closes the dialog, Tab is trapped within it.
   useEffect(() => {
@@ -133,11 +154,11 @@ export default function AddApplicationModal({
         aria-modal="true"
         aria-labelledby="add-application-title"
         tabIndex={-1}
-        className="relative w-full max-w-lg rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)] focus:outline-none"
+        className="relative flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[var(--radius-lg)] border border-line bg-bg shadow-[var(--shadow-2)] focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-line px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-line px-5 py-4">
           <h2 id="add-application-title" className="text-sm font-semibold text-fg">Add Application</h2>
           <button
             type="button"
@@ -149,13 +170,20 @@ export default function AddApplicationModal({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4 p-5">
+        <form onSubmit={handleSubmit} className="min-h-0 space-y-4 overflow-y-auto p-5">
+          {prefillCapture && (
+            <div className="rounded-[var(--radius-md)] border border-accent/30 bg-accent-soft px-3 py-2 text-xs leading-relaxed text-fg-2">
+              Imported from the browser extension. Review every field before saving;
+              this has not submitted an application to the employer.
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2 sm:col-span-1">
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
+              <label htmlFor="application-company" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
                 Company *
               </label>
               <input
+                id="application-company"
                 ref={firstInputRef}
                 type="text"
                 value={companyName}
@@ -166,10 +194,11 @@ export default function AddApplicationModal({
               />
             </div>
             <div className="col-span-2 sm:col-span-1">
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
+              <label htmlFor="application-role" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
                 Role *
               </label>
               <input
+                id="application-role"
                 type="text"
                 value={roleTitle}
                 onChange={(e) => setRoleTitle(e.target.value)}
@@ -182,10 +211,11 @@ export default function AddApplicationModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
+              <label htmlFor="application-status" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
                 Status
               </label>
               <select
+                id="application-status"
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
                 className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
@@ -198,10 +228,11 @@ export default function AddApplicationModal({
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
+              <label htmlFor="application-date" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
                 Applied On
               </label>
               <input
+                id="application-date"
                 type="date"
                 value={appliedAt}
                 onChange={(e) => setAppliedAt(e.target.value)}
@@ -211,10 +242,11 @@ export default function AddApplicationModal({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
+            <label htmlFor="application-url" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
               Job URL
             </label>
             <input
+              id="application-url"
               type="url"
               value={jobUrl}
               onChange={(e) => setJobUrl(e.target.value)}
@@ -224,15 +256,17 @@ export default function AddApplicationModal({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
+            <label htmlFor="application-resume" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
               Linked Resume
             </label>
             <select
+              id="application-resume"
               value={resumeId}
               onChange={(e) => setResumeId(e.target.value)}
+              disabled={resumesLoading}
               className="w-full rounded-[var(--radius-md)] border border-line bg-surface-2 px-3 py-2 text-sm text-fg outline-none transition focus:border-accent"
             >
-              <option value="">— None —</option>
+              <option value="">{resumesLoading ? 'Loading resumes…' : '— None —'}</option>
               {resumes.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.title}
@@ -240,13 +274,26 @@ export default function AddApplicationModal({
                 </option>
               ))}
             </select>
+            {resumesError && (
+              <div role="alert" className="mt-2 flex items-center justify-between gap-3 text-xs text-err">
+                <span>Resumes could not be loaded. You can add the application without one.</span>
+                <button
+                  type="button"
+                  onClick={() => setResumesReloadNonce((value) => value + 1)}
+                  className="shrink-0 font-semibold underline underline-offset-2"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
+            <label htmlFor="application-notes" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-fg-3">
               Notes
             </label>
             <textarea
+              id="application-notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Referral, recruiter name, etc."
@@ -265,6 +312,7 @@ export default function AddApplicationModal({
             </button>
             {showJD && (
               <textarea
+                aria-label="Job description"
                 value={jobDescription}
                 onChange={(e) => setJobDescription(e.target.value)}
                 placeholder="Paste the full job description..."
