@@ -147,13 +147,15 @@ class TestDeleteMacro:
         macro = make_macro(owner.id)
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = macro
+        mock_result.scalar_one_or_none.return_value = None
         mock_db = AsyncMock()
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         with pytest.raises(HTTPException) as exc_info:
             await delete_macro(macro_id=macro.id, db=mock_db, user_id=attacker.id)
-        assert exc_info.value.status_code == 403
+        # Macro ids are owner-private; an attacker must not be able to probe
+        # whether another user's id exists.
+        assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
     async def test_delete_not_found_raises_404(self):
