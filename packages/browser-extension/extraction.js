@@ -5,8 +5,8 @@ export function extractJobPosting(doc = document, currentUrl = location.href) {
   const text = (value, max = MAX_SHORT, preserveLines = false) => {
     if (typeof value !== 'string') return ''
     const normalized = value
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ')
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' ')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script(?=[\s/>])[^>]*>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style(?=[\s/>])[^>]*>/gi, ' ')
       .replace(/<br\s*\/?>|<\/(?:p|li|div|h[1-6])>/gi, '\n')
       .replace(/<[^>]+>/g, ' ')
       // Decode once: an encoded ampersand must not expose another entity
