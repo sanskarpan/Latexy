@@ -123,8 +123,11 @@ async function mockNewResumeDependencies(
       body: JSON.stringify({ id: owner.current, role: 'user' }),
     })
   })
-  await page.route((url) => url.pathname === '/entitlements', (route) =>
+  await page.route((url) => url.pathname === '/config/entitlements', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ features: {} }) })
+  )
+  await page.route((url) => url.pathname === '/tenants/resolve-host', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tenant: null }) })
   )
   await page.route((url) => url.pathname === '/resumes/', async (route) => {
     if (route.request().method() !== 'POST') return route.fallback()
