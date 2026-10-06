@@ -746,3 +746,36 @@ compiler repair.
   load errors. Repairs require positive controls for these alongside old-source
   race failures. No new dictionary, variant or security repair is accepted or
   published merely because it has been implemented by an agent.
+
+### Dictionary, variant and security repair verification checkpoint
+
+- Root reviewed the scoped implementations and API dispatch boundary, then
+  ran scoped ESLint, full nonincremental TypeScript and the complete unit suite:
+  **158 files / 1,004 tests passed**. Artifact
+  `/tmp/latexy-1783-1785-root-unit-final.log`. The obsolete linked-variant
+  source-text assertion was updated to check the actual stronger mounted,
+  owner, epoch, resume and generation guard; newer-edit assertions remain.
+- #1783 now scopes cache keys and synchronization to account identity, retains
+  ownerless legacy words for anonymous reads only, and rejects stale owner/token
+  dispatch after the auth-ready wait. Local edits/removals during synchronization
+  and stale-dispatch retry have focused runtime coverage. Dictionary load/PATCH
+  failures expose a generic unsynchronized-local-state notice, not private terms.
+  Historical server-side words of unknown provenance are not automatically
+  deleted or attributed to an account.
+- #1784 adds guarded load/save callbacks and preserves same-owner token-refresh
+  and transient-error drafts. A load-failure Retry control protects against the
+  owner-epoch loading gate hiding errors indefinitely. This does not claim a
+  global queued-mutation dispatch repair for unrelated API calls.
+- #1785 now has stronger MFA evidence in addition to the passkey proof: with B
+  visibly applied, releasing and consuming A's synthetic enable response on the
+  sealed old build displayed one A setup URI and one A backup-code element.
+  The desired-safety assertion failed; ordinary synthetic setup passed. Root
+  independently read
+  `/tmp/latexy-settings-passkey-owner-isolation-5485-mfa-owner-red-final.log`
+  and its body-reader positive control. This is simulated UI exposure, not a
+  finding that real credentials or server authorization were compromised.
+- New dictionary, variant and security fixtures fail closed for unmatched API,
+  external and non-GET traffic. A fresh isolated Node 22 production snapshot is
+  being tested on 5495/7495 with one worker and zero retries; acceptance and
+  focused protected publication follow separately. No fresh browser or deployed
+  acceptance is claimed at this checkpoint. Hydration #1772 remains open.
