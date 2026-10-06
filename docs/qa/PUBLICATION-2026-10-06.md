@@ -181,7 +181,11 @@ certification.
   are not an authenticated feature or end-to-end compilation certification.
 - Modal rollout run
   [37443095334](https://github.com/sanskarpan/Latexy/actions/runs/37443095334)
-  is applying production migrations before deployment. Backend production
+  failed while building the TeX image, before the migration function or backend
+  deployment ran. Modal serialized the raw multiline warm-up script as a
+  Dockerfile `RUN`; its parser rejected the shell `fi` line. The existing backend
+  deployment was not replaced. The blocker is tracked in
+  [#1758](https://github.com/sanskarpan/Latexy/issues/1758). Backend production
   certification remains pending; it is separate from PR previews.
 - Next scoped QA follow-ups are tracked as
   [#1752](https://github.com/sanskarpan/Latexy/issues/1752) (render-action
@@ -212,3 +216,13 @@ certification.
   `/tmp/latexy-post-publication-security-focused-2026-10-06.log`.
 - These changes still require their own protected PR checks and merge; passing
   local tests does not place them in the published main snapshot.
+- Follow-up PR: [#1757](https://github.com/sanskarpan/Latexy/pull/1757).
+- The Modal blocker fix serializes the unchanged warm-up script as UTF-8
+  base64, decoded into `sh` through a single physical Dockerfile command.
+  Round-trip controls cover multiline text, Unicode, quotes, backslashes and
+  shell metacharacters; executable controls retain non-zero failure status
+  with bounded subprocess deadlines. Pinned Modal 1.5.4's offline Dockerfile
+  generation was also inspected. Independent root parity/manifest suites:
+  **105 passed**, strict warning flags and scoped Ruff clean. Log:
+  `/tmp/latexy-modal-serialization-root-review-2026-10-06.log`.
+  This is local/offline evidence, not a successful production retry.
