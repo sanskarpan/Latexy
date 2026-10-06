@@ -29,11 +29,16 @@ async function installPublicPageMocks(page: Page) {
     await page.route('**/tenants/resolve-host**', route =>
         route.fulfill({ status: 200, headers: jsonHeaders, body: '{"tenant":null}' })
     )
-    await page.route('http://localhost:8030/templates/**', route =>
-        route.fulfill({ status: 200, headers: jsonHeaders, body: '[]' })
+    await page.route(
+        url => url.pathname === '/templates' || url.pathname.startsWith('/templates/'),
+        async route => {
+            if (!['fetch', 'xhr'].includes(route.request().resourceType())) return route.fallback()
+            return route.fulfill({ status: 200, headers: jsonHeaders, body: '[]' })
+        }
     )
-    await page.route('http://localhost:8030/public/trial-status?*', route =>
-        route.fulfill({
+    await page.route(
+        url => url.pathname === '/public/trial-status' || url.pathname === '/api/public/trial-status',
+        route => route.fulfill({
             status: 200,
             headers: jsonHeaders,
             body: JSON.stringify({
