@@ -403,3 +403,41 @@ compilation as an error. Scoped Ruff and diff checks pass. Log:
 Actual Unicode asset compilation and a green protected-main rollout remain
 required; the separate existing PNG-warning behavior is not certified by this
 compiler repair.
+
+## Subsequent isolated QA checkpoints
+
+- Compiler-policy PR [#1766](https://github.com/sanskarpan/Latexy/pull/1766)
+  merged at 11:26:26 UTC through normal protected rebase. Main is
+  `1cb54c0b5d8f40b1f7773b7f2057084c166fd8d8`, source-identical to validated
+  head `7a48e57880b7d98524894a5819e472a4262f11ee`. Both PR CI runs and all
+  21 aggregated required contexts passed; branch protections remain enabled.
+  Canonical main CI and actual asset-generation acceptance remain pending at
+  this writing. The most recently verified live backend remains v50/0578e606.
+- New [#1767](https://github.com/sanskarpan/Latexy/issues/1767) is independently
+  reproduced in the actual batch loop with fully mocked infrastructure:
+  a valid PDF plus an empty converter result or converter exception incorrectly
+  reported success without a thumbnail. Root's red check reproduced both
+  failures with the normal PDF/PNG control passing. The repair counts empty,
+  conversion, image-save and PNG-upload failures as failed templates, retaining
+  any uploaded PDF for the normal two-object retry. Existing complete pairs
+  still skip regeneration. Root's final strict-warning offline suite passes
+  **10 tests**, including the compiler regressions, partial-upload retry and
+  complete-pair skip. Ruff and diff checks pass; no real TeX/provider/DB/Redis
+  operation was used for these unit controls. Logs:
+  `/tmp/latexy-template-png-false-success-root-red-2026-10-06.log` and
+  `/tmp/latexy-template-png-integrity-root-final-2026-10-06.log`.
+- The separate uncommitted frontend #1762 lifetime repair now has fresh isolated
+  Node 22 production browser evidence: **11/11 passed with zero retries** for
+  both close/reopen surfaces, stale 503/retry on both surfaces, an observed
+  A→B→A session epoch and exact current-result navigation, plus ordinary
+  preview/detail/use/Escape/backdrop/source/tags controls. A separate **2/2**
+  production run includes deferred direct-card creation after unmount on both
+  surfaces and the owner-epoch control. Both runs used port 5492, mocked APIs,
+  disposable bundles and line reports; 5485 and unrelated services were retained.
+  Final logs: `/tmp/latexy-template-preview-production-5492-final4.log` and
+  `/tmp/latexy-template-preview-production-5492-final2.log`.
+  Root review required real response/body/UI-completion barriers, reachable
+  direct-card/navigation interactions and exact retry-result IDs. Passing these
+  UI controls does not establish cancellation of server-created documents,
+  cross-account dispatch safety while waiting for auth readiness, authenticated
+  production acceptance, or a fix for the shared hydration defect.
